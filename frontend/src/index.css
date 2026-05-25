@@ -1,0 +1,206 @@
+@import "tailwindcss";
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: #f8fafc;
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  color: #1f2937;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- Scrollbar Utilities --- */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* --- Global Interaction Baseline --- */
+/* Makes all form elements and buttons feel uniformly snappy */
+button,
+a,
+input,
+select,
+textarea,
+[role="button"] {
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* --- Core Animations --- */
+
+/* 1. Fade Up: Subtle and grounded (reduced from 12px to 8px) */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.anim-fade-up {
+  animation: fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* 2. Staggered Lists: Essential for dashboards so rows don't pop in at once */
+.anim-stagger > * {
+  opacity: 0;
+  animation: fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.anim-stagger > *:nth-child(1) {
+  animation-delay: 0.03s;
+}
+.anim-stagger > *:nth-child(2) {
+  animation-delay: 0.06s;
+}
+.anim-stagger > *:nth-child(3) {
+  animation-delay: 0.09s;
+}
+.anim-stagger > *:nth-child(4) {
+  animation-delay: 0.12s;
+}
+.anim-stagger > *:nth-child(5) {
+  animation-delay: 0.15s;
+}
+.anim-stagger > *:nth-child(6) {
+  animation-delay: 0.18s;
+}
+.anim-stagger > *:nth-child(7) {
+  animation-delay: 0.21s;
+}
+.anim-stagger > *:nth-child(8) {
+  animation-delay: 0.24s;
+}
+
+/* 3. Modal/Dialog Enter: Slight scale instead of sliding up */
+@keyframes contentShow {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.anim-content-in {
+  animation: contentShow 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* 4. Overlay Backdrop: Fast fade */
+@keyframes overlayShow {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.anim-overlay {
+  animation: overlayShow 0.15s ease both;
+}
+
+/* --- Micro-interactions --- */
+
+/* Refined Card Hover: Very subtle lift, soft diffused shadow */
+.card-hover {
+  transition:
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+.card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
+}
+
+/* Button Press: Gives tactile feedback without being distracting */
+.press-scale {
+  transition: transform 0.1s ease;
+}
+.press-scale:active {
+  transform: scale(0.97);
+}
+
+/* --- Skeleton Loading (Crucial for Medical SaaS) --- */
+/* Prevents layout shift and feels faster than spinners */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+  border-radius: 6px;
+}
+/* Modal Overlay Animation */
+@keyframes overlayFade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.anim-overlay {
+  animation: overlayFade 0.18s ease-out;
+}
+
+/* Modal Content Animation */
+@keyframes modalIn {
+  from {
+    opacity: 0;
+
+    transform: translateY(8px) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+
+    transform: translateY(0) scale(1);
+  }
+}
+
+.anim-content-in {
+  animation: modalIn 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Press Animation */
+.press-scale {
+  transition:
+    transform 0.12s ease,
+    opacity 0.2s ease;
+}
+
+.press-scale:active {
+  transform: scale(0.97);
+}
