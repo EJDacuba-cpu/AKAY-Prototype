@@ -19,7 +19,7 @@ import {
   MoreVertical,
 } from "lucide-react";
 import { Link } from "react-router";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -1273,3 +1273,4 @@ export default function IncomingReferrals() {
     </DashboardLayout>
   );
 }
+

@@ -1,4 +1,4 @@
-import { Link, useParams, useNavigate } from "react-router";
+import { Link, useParams } from "react-router";
 import {
   ArrowLeft,
   User,
@@ -19,7 +19,7 @@ import {
   Eye,
   Plus,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -897,7 +897,6 @@ const categoryMap = {
 
 export default function PatientDetails() {
   const { patientId } = useParams();
-  const navigate = useNavigate();
 
   const patient = patientDB[patientId] || { ...defaultPatient, id: patientId };
 
@@ -1505,3 +1504,4 @@ function RecordPreviewCell({ label, value, badge, badgeStyle }) {
     </div>
   );
 }
+

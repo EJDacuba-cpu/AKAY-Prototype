@@ -14,7 +14,12 @@ import {
   Users,
 } from "lucide-react";
 import { Link } from "react-router";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
+import {
+  getRhuPatientVolume,
+  getRhuPatientVolumeUpdatedTime,
+  saveRhuPatientVolume,
+} from "../../services/volumeService";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -337,9 +342,6 @@ export default function RHUDashboard() {
 
 /* ─── Patient Volume Control ─── */
 function PatientVolumeControl({ delay = 0 }) {
-  const STORAGE_KEY = "akay_rhu_patient_volume";
-  const UPDATED_KEY = "akay_rhu_patient_volume_updated";
-
   const volumeMap = {
     Low: {
       percent: "18%",
@@ -384,8 +386,8 @@ function PatientVolumeControl({ delay = 0 }) {
   const [lastUpdated, setLastUpdated] = useState("Not updated yet");
 
   useEffect(() => {
-    const savedVolume = localStorage.getItem(STORAGE_KEY);
-    const savedUpdatedTime = localStorage.getItem(UPDATED_KEY);
+    const savedVolume = getRhuPatientVolume();
+    const savedUpdatedTime = getRhuPatientVolumeUpdatedTime("Not updated yet");
 
     if (savedVolume && volumeMap[savedVolume]) {
       setVolume(savedVolume);
@@ -407,8 +409,7 @@ function PatientVolumeControl({ delay = 0 }) {
     setVolume(nextVolume);
     setLastUpdated(updateTime);
 
-    localStorage.setItem(STORAGE_KEY, nextVolume);
-    localStorage.setItem(UPDATED_KEY, updateTime);
+    saveRhuPatientVolume(nextVolume, updateTime);
 
     window.dispatchEvent(new Event("akay-rhu-volume-updated"));
   }
@@ -1028,3 +1029,5 @@ function MedicineAlert({ item, status }) {
     </div>
   );
 }
+
+

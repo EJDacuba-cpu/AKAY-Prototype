@@ -1,14 +1,9 @@
-// services/dashboardService.js
-
-import { mockReferrals } from "../data/mockReferrals";
-
-import { mockHealthRecords } from "../data/mockHealthRecords";
-
-import { mockMedicineAlerts } from "../data/mockMedicineAlerts";
-
-import { mockPatientCategories } from "../data/mockPatientCategories";
-
-import { mockDashboardStats } from "../data/mockDashboardStats";
+import {
+  mockDashboardStats,
+  mockHealthRecords,
+  mockMedicineAlerts,
+  mockReferrals,
+} from "../data";
 
 /* Dashboard Analytics */
 export async function getDashboardStats() {
@@ -38,9 +33,3 @@ export async function getMedicineAlerts() {
   return mockMedicineAlerts;
 }
 
-/* Patient Categories */
-export async function getPatientCategories() {
-  await new Promise((resolve) => setTimeout(resolve, 300));
-
-  return mockPatientCategories;
-}

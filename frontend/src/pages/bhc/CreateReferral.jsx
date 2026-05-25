@@ -13,8 +13,10 @@ import {
   ExternalLink,
   ShieldCheck,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 import { createReferral } from "../../services/referrals";
+import { getHealthRecords } from "../../services/healthRecordService";
+import { getPatients } from "../../services/patientService";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -47,10 +49,17 @@ export default function CreateReferral() {
   const [patient, setPatient] = useState(null);
 
   useEffect(() => {
-    setPatients(JSON.parse(localStorage.getItem("patients")) || []);
-    setHealthRecords(
-      JSON.parse(localStorage.getItem("bhc_health_records")) || [],
-    );
+    async function loadReferralContext() {
+      const [patientList, records] = await Promise.all([
+        getPatients(),
+        getHealthRecords(),
+      ]);
+
+      setPatients(patientList);
+      setHealthRecords(records);
+    }
+
+    loadReferralContext();
   }, []);
 
   useEffect(() => {

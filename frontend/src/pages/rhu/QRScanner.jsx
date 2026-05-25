@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 /* ─────────────────────────────────────────────
    ANIMATIONS
@@ -769,3 +769,4 @@ function getInitials(name) {
     .map((part) => part[0])
     .join("");
 }
+

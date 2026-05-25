@@ -8,11 +8,10 @@ import {
   User,
   X,
   Check,
-  Activity,
   HeartPulse,
 } from "lucide-react";
 
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 import { getPatientById } from "../../services/patientService";
 import {
@@ -20,16 +19,16 @@ import {
   updateHealthRecord,
 } from "../../services/healthRecordService";
 
-import SideCard from "../../components/cards/SideCard";
-import PatientDetailItem from "../../components/patients/PatientDetailItem";
-import StatusBadge from "../../components/badges/StatusBadge";
+import SideCard from "../../components/common/cards/SideCard";
+import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
+import StatusBadge from "../../components/common/badges/StatusBadge";
 
-import FormInput from "../../components/forms/FormInput";
-import FormSelect from "../../components/forms/FormSelect";
-import FormTextarea from "../../components/forms/FormTextarea";
+import FormInput from "../../components/common/forms/FormInput";
+import FormSelect from "../../components/common/forms/FormSelect";
+import FormTextarea from "../../components/common/forms/FormTextarea";
 
-import ConfirmationModal from "../../components/modals/ConfirmationModal";
-import SuccessModal from "../../components/modals/SuccessModal";
+import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
+import SuccessModal from "../../components/common/modals/SuccessModal";
 
 export default function HealthRecordDetails() {
   const { recordId } = useParams();
@@ -530,3 +529,4 @@ function NarrativeBox({ label, value, emptyText }) {
     </div>
   );
 }
+

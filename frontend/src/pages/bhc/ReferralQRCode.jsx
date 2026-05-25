@@ -7,7 +7,7 @@ import {
   QrCode,
   ShieldCheck,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 const referrals = [
   {
@@ -226,3 +226,4 @@ function DetailItem({ label, value }) {
     </div>
   );
 }
+

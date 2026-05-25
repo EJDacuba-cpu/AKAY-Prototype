@@ -8,7 +8,6 @@ import {
   FileText,
   HeartPulse,
   Clock,
-  CheckCircle2,
   AlertTriangle,
   Stethoscope,
   ClipboardList,
@@ -20,7 +19,7 @@ import {
   UserCheck,
   RotateCcw,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -715,3 +714,4 @@ function DetailRow({ label, value }) {
     </div>
   );
 }
+

@@ -1,6 +1,6 @@
 import { ArrowLeft, Printer, QrCode } from "lucide-react";
 import { Link } from "react-router";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 export default function PrintableReferralSlip() {
   const referral = {
@@ -160,3 +160,4 @@ function Info({ label, value }) {
     </div>
   );
 }
+

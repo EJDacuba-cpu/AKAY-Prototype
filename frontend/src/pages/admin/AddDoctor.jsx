@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { Stethoscope } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 export default function AddDoctor() {
   const navigate = useNavigate();
@@ -306,3 +306,4 @@ function FieldTextarea({
     </div>
   );
 }
+

@@ -18,7 +18,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 /* ─── KEYFRAMES ─── */
 
@@ -1053,3 +1053,4 @@ function StatusBadge({ status }) {
     </span>
   );
 }
+

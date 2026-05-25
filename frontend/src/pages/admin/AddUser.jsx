@@ -5,12 +5,12 @@ import { ShieldCheck, UserPlus } from "lucide-react";
 import useForm from "../../hooks/useForm";
 import useNotification from "../../hooks/useNotification";
 
-import FormGroup from "../../components/atoms/FormGroup";
-import Input from "../../components/atoms/Input";
-import Select from "../../components/atoms/Select";
-import Button from "../../components/atoms/Button";
+import FormGroup from "../../components/common/atoms/FormGroup";
+import Input from "../../components/common/atoms/Input";
+import Select from "../../components/common/atoms/Select";
+import Button from "../../components/common/atoms/Button";
 
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 import { validators } from "../../utils/validators";
 
@@ -55,7 +55,7 @@ export default function AddUser() {
       contactNumber: "",
       setupMethod: "Send setup link to email",
     },
-    async (values) => {
+    async () => {
       // Frontend demo - Later connects to Laravel API
       // Backend creates user account and sends setup/reset link by email
       success("User account created successfully");
@@ -228,3 +228,4 @@ export default function AddUser() {
     </DashboardLayout>
   );
 }
+

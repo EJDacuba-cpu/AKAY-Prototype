@@ -2,14 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ClipboardList,
   Search,
-  Eye,
-  FileText,
-  Printer,
-  QrCode,
-  User,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
-import ActionMenu from "../../components/tables/ActionMenu";
+import DashboardLayout from "../../components/layout/DashboardLayout";
+import ActionMenu from "../../components/common/tables/ActionMenu";
 import { getReferrals } from "../../services/referrals";
 
 /* ─────────────────────────────────────────────
@@ -273,3 +268,4 @@ function ClassificationBadge({ classification }) {
     </span>
   );
 }
+

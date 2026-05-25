@@ -8,7 +8,7 @@ import {
   Shield,
   FileText,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 function calculateAge(birthDate) {
   if (!birthDate) return "";
@@ -460,3 +460,4 @@ function FieldSelect({ label, name, value, onChange, children, required }) {
     </div>
   );
 }
+

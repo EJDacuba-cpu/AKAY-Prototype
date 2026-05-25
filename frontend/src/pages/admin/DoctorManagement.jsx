@@ -2,7 +2,6 @@ import { Link } from "react-router";
 import { useState } from "react";
 import {
   Activity,
-  CalendarDays,
   Edit3,
   Plus,
   Search,
@@ -11,7 +10,7 @@ import {
   Users,
   UserX,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 export default function DoctorManagement() {
   const [doctors, setDoctors] = useState([
@@ -350,3 +349,4 @@ function StatusBadge({ status }) {
     </span>
   );
 }
+

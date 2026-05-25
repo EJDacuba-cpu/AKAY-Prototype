@@ -13,7 +13,7 @@ import toast from "react-hot-toast";
 
 export default function useNotification() {
   return {
-    show: (message, type = "blank") => {
+    show: (message) => {
       return toast(message, {
         style: {
           background: "#0B2E59",

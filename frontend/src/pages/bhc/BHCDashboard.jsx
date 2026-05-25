@@ -1,7 +1,6 @@
 import {
   Activity,
   ArrowRight,
-  Baby,
   ClipboardList,
   FileText,
   HeartPulse,
@@ -13,29 +12,25 @@ import { Link } from "react-router";
 import { useEffect, useState } from "react";
 
 /* Layout */
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 /* Cards */
-import StatCard from "../../components/cards/StatsCard";
-import SideCard from "../../components/cards/SideCard";
-import MedicineAlert from "../../components/cards/MedicineAlert";
-
-/* Patient Components */
-import PatientDetailItem from "../../components/patients/PatientDetailItem";
+import StatCard from "../../components/common/cards/StatsCard";
+import SideCard from "../../components/common/cards/SideCard";
+import MedicineAlert from "../../components/common/cards/MedicineAlert";
 
 /* Tables */
-import RecentHealthRecordsTable from "../../components/tables/RecentHealthRecordsTable";
-import RecentReferralsTable from "../../components/tables/RecentReferralsTable";
+import RecentHealthRecordsTable from "../../components/features/records/RecentHealthRecordsTable";
+import RecentReferralsTable from "../../components/features/referrals/RecentReferralsTable";
 
 /* Dashboard Components */
-import WorkflowPanel from "../../components/workflow/WorkflowPanel";
-import PatientVolumeCard from "../../components/volume/PatientVolumeCard";
+import WorkflowPanel from "../../components/features/workflow/WorkflowPanel";
+import PatientVolumeCard from "../../components/features/volume/PatientVolumeCard";
 
 /* Services */
 import {
   getDashboardStats,
   getMedicineAlerts,
-  getPatientCategories,
   getRecentHealthRecords,
   getRecentReferrals,
 } from "../../services/dashboardService";
@@ -54,8 +49,6 @@ export default function BHCDashboard() {
 
   const [medicineAlerts, setMedicineAlerts] = useState([]);
 
-  const [patientCategories, setPatientCategories] = useState([]);
-
   const [loading, setLoading] = useState(true);
 
   /* Fetch Dashboard Data */
@@ -69,7 +62,6 @@ export default function BHCDashboard() {
           recordsData,
           referralsData,
           medicineData,
-          categoriesData,
         ] = await Promise.all([
           getDashboardStats(),
 
@@ -78,8 +70,6 @@ export default function BHCDashboard() {
           getRecentReferrals(),
 
           getMedicineAlerts(),
-
-          getPatientCategories(),
         ]);
 
         setStats(statsData);
@@ -89,8 +79,6 @@ export default function BHCDashboard() {
         setReferrals(referralsData);
 
         setMedicineAlerts(medicineData);
-
-        setPatientCategories(categoriesData);
       } catch (error) {
         console.error("Failed to load dashboard:", error);
       } finally {
@@ -310,3 +298,4 @@ export default function BHCDashboard() {
     </DashboardLayout>
   );
 }
+

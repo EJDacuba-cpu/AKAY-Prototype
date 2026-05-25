@@ -1,52 +1,44 @@
-/**
- * Direct LocalStorage Patient Service
- * Ligtas sa ReferenceError at walang umaasang mock data fields
- */
+import { getItem, setItem } from "./storageService";
 
-// Helper functions para sa LocalStorage handling
-const getStoredPatients = () => {
-  try {
-    return JSON.parse(localStorage.getItem("patients") || "[]");
-  } catch (e) {
-    return [];
-  }
-};
+const PATIENTS_KEY = "patients";
+const PATIENT_DETAILS_KEY = "patient_details";
+const HEALTH_RECORDS_KEY = "bhc_health_records";
+const REFERRALS_KEY = "bhc_referrals";
 
-const setStoredPatients = (data) => {
-  localStorage.setItem("patients", JSON.stringify(data));
-};
+function getStoredPatients() {
+  return getItem(PATIENTS_KEY, []);
+}
 
-const getStoredDetails = () => {
-  try {
-    return JSON.parse(localStorage.getItem("patient_details") || "[]");
-  } catch (e) {
-    return [];
-  }
-};
+function setStoredPatients(data) {
+  setItem(PATIENTS_KEY, data);
+}
 
-const setStoredDetails = (data) => {
-  localStorage.setItem("patient_details", JSON.stringify(data));
-};
+function getStoredDetails() {
+  return getItem(PATIENT_DETAILS_KEY, []);
+}
 
-/**
- * Get all patients
- */
+function setStoredDetails(data) {
+  setItem(PATIENT_DETAILS_KEY, data);
+}
+
+function buildFullName(firstName = "", middleName = "", lastName = "") {
+  return `${firstName} ${middleName ? `${middleName} ` : ""}${lastName}`.trim();
+}
+
 export async function getPatients() {
   return getStoredPatients();
 }
 
-/**
- * Get patient by ID
- */
+export async function getPatientDetailsList() {
+  return getStoredDetails();
+}
+
 export async function getPatientById(patientId) {
   const detailsList = getStoredDetails();
   return detailsList.find((p) => p.id === patientId) || null;
 }
 
-/**
- * Create new patient
- */
-export async function createPatient(patientData) {
+export async function savePatient(patientData) {
   const currentPatients = getStoredPatients();
   const currentDetails = getStoredDetails();
 
@@ -56,24 +48,22 @@ export async function createPatient(patientData) {
   const age = patientData.age || "0";
   const sexInput = patientData.sex || "Male";
   const formattedSex = sexInput.charAt(0).toUpperCase();
-
   const selectedType =
     patientData.patientClassification ||
     patientData.patientCategory ||
     "General Consultation";
 
   const generatedId = `P-${Date.now()}`;
+  const name = buildFullName(firstName, middleName, lastName) || "Unknown Patient";
 
   const newPatient = {
     id: generatedId,
-    firstName: firstName,
-    middleName: middleName,
-    lastName: lastName,
-    name:
-      `${firstName} ${middleName ? middleName + " " : ""}${lastName}`.trim() ||
-      "Unknown Patient",
+    firstName,
+    middleName,
+    lastName,
+    name,
     ageSex: `${age}/${formattedSex}`,
-    age: age,
+    age,
     sex: sexInput,
     contact: patientData.contactNumber || "09XXXXXXXXX",
     lastVisit: new Date().toISOString().split("T")[0],
@@ -83,12 +73,12 @@ export async function createPatient(patientData) {
 
   const patientDetails = {
     id: generatedId,
-    name: newPatient.name,
-    firstName: firstName,
-    middleName: middleName,
-    lastName: lastName,
+    name,
+    firstName,
+    middleName,
+    lastName,
     birthDate: patientData.birthDate || "",
-    age: age,
+    age,
     sex: sexInput,
     civilStatus: patientData.civilStatus || "",
     notes: patientData.notes || "",
@@ -100,14 +90,12 @@ export async function createPatient(patientData) {
     patientClassification: selectedType,
     category: selectedType,
 
-    // IMMUNIZATION
     guardianName: patientData.guardianName || "",
     guardianRelationship: patientData.guardianRelationship || "",
     guardianContact: patientData.guardianContact || "",
     birthWeight: patientData.birthWeight || "",
     feedingStatus: patientData.feedingStatus || "",
 
-    // MATERNAL
     lmp: patientData.lmp || "",
     pmp: patientData.pmp || "",
     cycleDuration: patientData.cycleDuration || "",
@@ -120,162 +108,108 @@ export async function createPatient(patientData) {
     tpal: patientData.tpal || "",
 
     dateRegistered: new Date().toISOString().split("T")[0],
-
     records: [],
     referrals: [],
   };
+
   setStoredPatients([...currentPatients, newPatient]);
   setStoredDetails([...currentDetails, patientDetails]);
 
   return { patient: newPatient, details: patientDetails };
 }
 
-/**
- * Update patient
- */
+export async function createPatient(patientData) {
+  return savePatient(patientData);
+}
+
 export async function updatePatient(patientId, patientData) {
   const currentDetails = getStoredDetails();
   const currentPatients = getStoredPatients();
 
-  // 1. Detailed Patient Record
-  const updatedDetails = currentDetails.map((p) =>
-    p.id === patientId
-      ? {
-          ...p,
-          ...patientData,
-          firstName:
-            patientData.firstName !== undefined
-              ? patientData.firstName
-              : p.firstName,
-          middleName:
-            patientData.middleName !== undefined
-              ? patientData.middleName
-              : p.middleName,
-          lastName:
-            patientData.lastName !== undefined
-              ? patientData.lastName
-              : p.lastName,
-          name: `${patientData.firstName !== undefined ? patientData.firstName : p.firstName} ${
-            (
-              patientData.middleName !== undefined
-                ? patientData.middleName
-                : p.middleName
-            )
-              ? (patientData.middleName !== undefined
-                  ? patientData.middleName
-                  : p.middleName) + " "
-              : ""
-          }${patientData.lastName !== undefined ? patientData.lastName : p.lastName}`.trim(),
+  const updatedDetails = currentDetails.map((p) => {
+    if (p.id !== patientId) {
+      return p;
+    }
 
-          civilStatus:
-            patientData.civilStatus !== undefined
-              ? patientData.civilStatus
-              : p.civilStatus,
-          notes: patientData.notes !== undefined ? patientData.notes : p.notes,
-          barangay:
-            patientData.barangay !== undefined
-              ? patientData.barangay
-              : p.barangay,
-          municipality:
-            patientData.municipality !== undefined
-              ? patientData.municipality
-              : p.municipality,
+    const firstName = patientData.firstName ?? p.firstName;
+    const middleName = patientData.middleName ?? p.middleName;
+    const lastName = patientData.lastName ?? p.lastName;
 
-          contact:
-            patientData.contactNumber || patientData.contact || p.contact,
-          contactNumber: patientData.contactNumber || p.contactNumber,
-          address:
-            patientData.streetAddress || patientData.address || p.address,
-          category:
-            patientData.patientClassification ||
-            patientData.category ||
-            p.category,
-          patientClassification:
-            patientData.patientClassification || p.patientClassification,
+    return {
+      ...p,
+      ...patientData,
+      firstName,
+      middleName,
+      lastName,
+      name: buildFullName(firstName, middleName, lastName),
+      civilStatus: patientData.civilStatus ?? p.civilStatus,
+      notes: patientData.notes ?? p.notes,
+      barangay: patientData.barangay ?? p.barangay,
+      municipality: patientData.municipality ?? p.municipality,
+      contact: patientData.contactNumber || patientData.contact || p.contact,
+      contactNumber: patientData.contactNumber || p.contactNumber,
+      address: patientData.streetAddress || patientData.address || p.address,
+      category:
+        patientData.patientClassification || patientData.category || p.category,
+      patientClassification:
+        patientData.patientClassification || p.patientClassification,
 
-          // IMMUNIZATION
-          guardianName: patientData.guardianName ?? p.guardianName,
+      guardianName: patientData.guardianName ?? p.guardianName,
+      guardianRelationship:
+        patientData.guardianRelationship ?? p.guardianRelationship,
+      guardianContact: patientData.guardianContact ?? p.guardianContact,
+      birthWeight: patientData.birthWeight ?? p.birthWeight,
+      feedingStatus: patientData.feedingStatus ?? p.feedingStatus,
 
-          guardianRelationship:
-            patientData.guardianRelationship ?? p.guardianRelationship,
+      lmp: patientData.lmp ?? p.lmp,
+      pmp: patientData.pmp ?? p.pmp,
+      cycleDuration: patientData.cycleDuration ?? p.cycleDuration,
+      gravida: patientData.gravida ?? p.gravida,
+      para: patientData.para ?? p.para,
+      term: patientData.term ?? p.term,
+      preterm: patientData.preterm ?? p.preterm,
+      abortion: patientData.abortion ?? p.abortion,
+      living: patientData.living ?? p.living,
+      tpal: patientData.tpal ?? p.tpal,
+    };
+  });
 
-          guardianContact: patientData.guardianContact ?? p.guardianContact,
+  const updatedPatients = currentPatients.map((p) => {
+    if (p.id !== patientId) {
+      return p;
+    }
 
-          birthWeight: patientData.birthWeight ?? p.birthWeight,
+    const firstName = patientData.firstName ?? p.firstName;
+    const middleName = patientData.middleName ?? p.middleName;
+    const lastName = patientData.lastName ?? p.lastName;
 
-          feedingStatus: patientData.feedingStatus ?? p.feedingStatus,
-
-          // MATERNAL
-          lmp: patientData.lmp ?? p.lmp,
-
-          pmp: patientData.pmp ?? p.pmp,
-
-          cycleDuration: patientData.cycleDuration ?? p.cycleDuration,
-
-          gravida: patientData.gravida ?? p.gravida,
-
-          para: patientData.para ?? p.para,
-
-          term: patientData.term ?? p.term,
-
-          preterm: patientData.preterm ?? p.preterm,
-
-          abortion: patientData.abortion ?? p.abortion,
-
-          living: patientData.living ?? p.living,
-
-          tpal: patientData.tpal ?? p.tpal,
-        }
-      : p,
-  );
-
-  // 2. Main Patient list (Para sa Table module dashboard)
-  const updatedPatients = currentPatients.map((p) =>
-    p.id === patientId
-      ? {
-          ...p,
-          firstName:
-            patientData.firstName !== undefined
-              ? patientData.firstName
-              : p.firstName,
-          middleName:
-            patientData.middleName !== undefined
-              ? patientData.middleName
-              : p.middleName,
-          lastName:
-            patientData.lastName !== undefined
-              ? patientData.lastName
-              : p.lastName,
-          name: `${patientData.firstName !== undefined ? patientData.firstName : p.firstName} ${
-            (
-              patientData.middleName !== undefined
-                ? patientData.middleName
-                : p.middleName
-            )
-              ? (patientData.middleName !== undefined
-                  ? patientData.middleName
-                  : p.middleName) + " "
-              : ""
-          }${patientData.lastName !== undefined ? patientData.lastName : p.lastName}`.trim(),
-          ageSex: `${patientData.age || p.age || "0"}/${(patientData.sex || p.sex || "M").charAt(0).toUpperCase()}`,
-          age: patientData.age || p.age,
-          sex: patientData.sex || p.sex,
-          contact: patientData.contactNumber || p.contact,
-          type: patientData.patientClassification || p.type,
-          category: patientData.patientClassification || p.category,
-        }
-      : p,
-  );
+    return {
+      ...p,
+      firstName,
+      middleName,
+      lastName,
+      name: buildFullName(firstName, middleName, lastName),
+      ageSex: `${patientData.age || p.age || "0"}/${(
+        patientData.sex ||
+        p.sex ||
+        "M"
+      )
+        .charAt(0)
+        .toUpperCase()}`,
+      age: patientData.age || p.age,
+      sex: patientData.sex || p.sex,
+      contact: patientData.contactNumber || p.contact,
+      type: patientData.patientClassification || p.type,
+      category: patientData.patientClassification || p.category,
+    };
+  });
 
   setStoredDetails(updatedDetails);
   setStoredPatients(updatedPatients);
 
-  return updatedDetails.find((p) => p.id === patientId);
+  return updatedDetails.find((p) => p.id === patientId) || null;
 }
 
-/**
- * Delete patient
- */
 export async function deletePatient(patientId) {
   const currentPatients = getStoredPatients();
   const currentDetails = getStoredDetails();
@@ -286,34 +220,16 @@ export async function deletePatient(patientId) {
   return { success: true, message: "Patient deleted" };
 }
 
-export async function getPatientRecords(patientId) {
+export async function getPatientRecords() {
   return [];
 }
 
 export async function getPatientHealthRecords(patientId) {
-  try {
-    const localRecords = localStorage.getItem("bhc_health_records") || "[]";
-
-    const parsedRecords = JSON.parse(localRecords);
-
-    return parsedRecords.filter((record) => record.patientId === patientId);
-  } catch (error) {
-    console.error("Failed to get patient records:", error);
-    return [];
-  }
+  const records = getItem(HEALTH_RECORDS_KEY, []);
+  return records.filter((record) => record.patientId === patientId);
 }
 
 export async function getPatientReferrals(patientId) {
-  try {
-    const localReferrals = localStorage.getItem("bhc_referrals") || "[]";
-
-    const parsedReferrals = JSON.parse(localReferrals);
-
-    return parsedReferrals.filter(
-      (referral) => referral.patientId === patientId,
-    );
-  } catch (error) {
-    console.error("Failed to get referrals:", error);
-    return [];
-  }
+  const referrals = getItem(REFERRALS_KEY, []);
+  return referrals.filter((referral) => referral.patientId === patientId);
 }

@@ -1,80 +1,74 @@
-/**
- * Enhanced Health Records Service with LocalStorage CRUD operations
- * Dynamic linking with Patients data
- */
+import { getItem, setItem } from "./storageService";
 
 const MOCK_DELAY = 400;
+const RECORDS_KEY = "bhc_health_records";
+const PATIENTS_KEY = "patients";
+const RHU_RECORDS_KEY = "rhu_health_records";
+
 const delay = () => new Promise((resolve) => setTimeout(resolve, MOCK_DELAY));
 
-// LocalStorage Keys
-const RECORDS_KEY = "bhc_health_records";
-const PATIENTS_KEY = "patients"; // Siguraduhing ito ang ginagamit mo sa Patients module (or "bhc_patients")
+function getPatientsList() {
+  const patients = getItem(PATIENTS_KEY, null);
+  if (Array.isArray(patients)) {
+    return patients;
+  }
 
-/**
- * Helper: Kunin ang mga pasyente para ma-link ang pangalan sa records
- */
-const getPatientsList = () => {
-  const localPatients =
-    localStorage.getItem(PATIENTS_KEY) ||
-    localStorage.getItem("bhc_patients") ||
-    "[]";
-  return JSON.parse(localPatients);
-};
+  const fallbackPatients = getItem("bhc_patients", []);
+  return Array.isArray(fallbackPatients) ? fallbackPatients : [];
+}
 
-/**
- * 1. Get all health records
- */
+function getStoredRecords(storageKey = RECORDS_KEY) {
+  const records = getItem(storageKey, []);
+  return Array.isArray(records) ? records : [];
+}
+
+function saveStoredRecords(records, storageKey = RECORDS_KEY) {
+  setItem(storageKey, records);
+}
+
 export async function getHealthRecords() {
   await delay();
 
-  const localRecords = localStorage.getItem(RECORDS_KEY) || "[]";
-  const records = JSON.parse(localRecords);
+  const records = getStoredRecords(RECORDS_KEY);
   const patientsList = getPatientsList();
 
-  // I-join ang data: Hanapin ang totoong pasyente base sa patientId
   return records.map((record) => {
     const matchingPatient = patientsList.find((p) => p.id === record.patientId);
+
     return {
       ...record,
       patient: matchingPatient ? matchingPatient.name : "Unknown Patient",
-      ageSex: matchingPatient ? matchingPatient.ageSex : "—",
-      contact: matchingPatient ? matchingPatient.contact : "—",
+      ageSex: matchingPatient ? matchingPatient.ageSex : "-",
+      contact: matchingPatient ? matchingPatient.contact : "-",
     };
   });
 }
 
-/**
- * 2. Get health record by ID
- */
 export async function getHealthRecordById(recordId) {
   await delay();
 
-  const localRecords = localStorage.getItem(RECORDS_KEY) || "[]";
-  const records = JSON.parse(localRecords);
+  const records = getStoredRecords(RECORDS_KEY);
   const patientsList = getPatientsList();
 
   const record = records.find((r) => r.id === recordId);
-
-  if (!record) return null;
+  if (!record) {
+    return null;
+  }
 
   const matchingPatient = patientsList.find((p) => p.id === record.patientId);
 
   return {
     ...record,
     patient: matchingPatient ? matchingPatient.name : "Unknown Patient",
-    ageSex: matchingPatient ? matchingPatient.ageSex : "—",
-    contact: matchingPatient ? matchingPatient.contact : "—",
+    ageSex: matchingPatient ? matchingPatient.ageSex : "-",
+    contact: matchingPatient ? matchingPatient.contact : "-",
   };
 }
 
-/**
- * 3. Create health record
- */
 export async function createHealthRecord(recordData) {
   await delay();
-  console.log("SAVING RECORD", recordData);
-  const localRecords = localStorage.getItem(RECORDS_KEY) || "[]";
-  const records = JSON.parse(localRecords);
+
+  const records = getStoredRecords(RECORDS_KEY);
 
   const newRecord = {
     id: `HR-${Date.now()}`,
@@ -82,45 +76,27 @@ export async function createHealthRecord(recordData) {
     dateCreated: new Date().toISOString().split("T")[0],
   };
 
-  // SAVE HEALTH RECORD
   records.unshift(newRecord);
-  console.log("FINAL RECORDS", records);
+  saveStoredRecords(records, RECORDS_KEY);
 
-  localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
-
-  // =========================
-  // AUTO LINK TO PATIENT DETAILS
-  // =========================
-
-  const patientDetails = JSON.parse(
-    localStorage.getItem("patient_details") || "[]",
-  );
+  const patientDetails = getItem("patient_details", []);
 
   const updatedPatients = patientDetails.map((patient) => {
-    if (patient.id === recordData.patientId) {
-      return {
-        ...patient,
-
-        // auto append records
-        records: [...(patient.records || []), newRecord],
-
-        // latest visit tracking
-        lastVisit: recordData.dateOfVisit,
-
-        // latest diagnosis
-        latestDiagnosis: recordData.diagnosis || "",
-
-        // maternal automation
-        expectedDeliveryDate: recordData.expectedDeliveryDate || "",
-
-        aog: recordData.aog || "",
-      };
+    if (patient.id !== recordData.patientId) {
+      return patient;
     }
 
-    return patient;
+    return {
+      ...patient,
+      records: [...(patient.records || []), newRecord],
+      lastVisit: recordData.dateOfVisit,
+      latestDiagnosis: recordData.diagnosis || "",
+      expectedDeliveryDate: recordData.expectedDeliveryDate || "",
+      aog: recordData.aog || "",
+    };
   });
 
-  localStorage.setItem("patient_details", JSON.stringify(updatedPatients));
+  setItem("patient_details", updatedPatients);
 
   return {
     success: true,
@@ -128,45 +104,36 @@ export async function createHealthRecord(recordData) {
   };
 }
 
-/**
- * 4. Update health record
- */
 export async function updateHealthRecord(recordId, recordData) {
   await delay();
 
-  const localRecords = localStorage.getItem(RECORDS_KEY) || "[]";
-  const records = JSON.parse(localRecords);
-
+  const records = getStoredRecords(RECORDS_KEY);
   const index = records.findIndex((r) => r.id === recordId);
-  if (index === -1) throw new Error("Record not found");
 
-  // I-merge ang lumang data sa bagong data
+  if (index === -1) {
+    throw new Error("Record not found");
+  }
+
   const updatedRecord = { ...records[index], ...recordData };
   records[index] = updatedRecord;
-
-  localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
+  saveStoredRecords(records, RECORDS_KEY);
 
   return updatedRecord;
 }
 
-/**
- * 5. Delete health record
- */
 export async function deleteHealthRecord(recordId) {
   await delay();
 
-  const localRecords = localStorage.getItem(RECORDS_KEY) || "[]";
-  let records = JSON.parse(localRecords);
-
-  // Tanggalin ang record na may matching ID
-  records = records.filter((r) => r.id !== recordId);
-
-  localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
+  const records = getStoredRecords(RECORDS_KEY).filter((r) => r.id !== recordId);
+  saveStoredRecords(records, RECORDS_KEY);
 
   return { success: true, message: "Record deleted" };
 }
 
-// Export as a single object para tugma sa second code snippet mo
+export async function getRhuHealthRecords() {
+  return getStoredRecords(RHU_RECORDS_KEY);
+}
+
 export default {
   getHealthRecords,
   getHealthRecordById,

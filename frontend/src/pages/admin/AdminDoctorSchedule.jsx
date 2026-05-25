@@ -7,7 +7,7 @@ import {
   UserCheck,
   Users,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 export default function AdminDoctorSchedule() {
   const [schedules, setSchedules] = useState([
@@ -378,3 +378,4 @@ function CoverageItem({ label, value }) {
     </div>
   );
 }
+

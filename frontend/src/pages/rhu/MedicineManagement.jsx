@@ -9,7 +9,7 @@ import {
   Search,
   XCircle,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 export default function MedicineManagement() {
   const [items, setItems] = useState([
@@ -381,3 +381,4 @@ function CategoryBadge({ category }) {
     </span>
   );
 }
+

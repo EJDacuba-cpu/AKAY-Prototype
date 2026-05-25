@@ -14,7 +14,7 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 export default function BHCReports() {
   const referralStatus = [
@@ -770,3 +770,4 @@ function InsightCard({ title, value, description, tone }) {
     </div>
   );
 }
+

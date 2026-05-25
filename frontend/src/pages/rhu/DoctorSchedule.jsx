@@ -7,7 +7,7 @@ import {
   UserCheck,
   Users,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 export default function DoctorSchedule() {
   const [doctors, setDoctors] = useState([
@@ -391,3 +391,4 @@ function SpecializationBadge({ label }) {
     </span>
   );
 }
+

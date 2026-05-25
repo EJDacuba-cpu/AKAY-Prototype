@@ -7,7 +7,7 @@ import {
   FileText,
   ShieldCheck,
 } from "lucide-react";
-import DashboardLayout from "../layouts/DashboardLayout";
+import DashboardLayout from "../components/layout/DashboardLayout";
 
 const notificationsByRole = {
   bhc: [
@@ -268,3 +268,4 @@ function TypeBadge({ type }) {
     </span>
   );
 }
+

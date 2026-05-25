@@ -6,12 +6,14 @@ import {
   HeartPulse,
   ArrowLeft,
   Save,
-  Send,
   Search,
   AlertCircle,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
-import healthRecordService from "../../services/healthRecordService";
+import DashboardLayout from "../../components/layout/DashboardLayout";
+import healthRecordService, {
+  getRhuHealthRecords,
+} from "../../services/healthRecordService";
+import { getPatientDetailsList } from "../../services/patientService";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -142,24 +144,30 @@ export default function AddHealthRecord() {
       LOAD PATIENTS & HOOK PRESELECTION
   ───────────────────────────────────────────── */
   useEffect(() => {
-    const localPatients = localStorage.getItem("patient_details") || "[]";
-    const parsedPatients = JSON.parse(localPatients);
-    setPatients(parsedPatients);
+    async function loadPatients() {
+      const parsedPatients = await getPatientDetailsList();
+      setPatients(parsedPatients);
 
-    if (preselectedPatientId) {
-      setSelectedPatientId(preselectedPatientId);
+      if (preselectedPatientId) {
+        setSelectedPatientId(preselectedPatientId);
+      }
     }
+
+    loadPatients();
   }, [preselectedPatientId]);
 
   /* ─── Follow-up: resolve record to patient ─── */
   useEffect(() => {
     if (!recordId) return;
-    const records =
-      JSON.parse(localStorage.getItem("rhu_health_records")) || [];
-    const found = records.find((r) => r.id === recordId || r._id === recordId);
-    if (found?.patientId) {
-      setSelectedPatientId(found.patientId);
+    async function loadFollowUpRecord() {
+      const records = await getRhuHealthRecords();
+      const found = records.find((r) => r.id === recordId || r._id === recordId);
+      if (found?.patientId) {
+        setSelectedPatientId(found.patientId);
+      }
     }
+
+    loadFollowUpRecord();
   }, [recordId]);
 
   /* ─── Helpers ─── */
@@ -173,11 +181,23 @@ export default function AddHealthRecord() {
     (patient) => patient.id === selectedPatientId,
   );
 
-  const followUpRecord = isFollowUp
-    ? (JSON.parse(localStorage.getItem("rhu_health_records")) || []).find(
-        (r) => r.id === recordId || r._id === recordId,
-      )
-    : null;
+  const [followUpRecord, setFollowUpRecord] = useState(null);
+
+  useEffect(() => {
+    async function loadFollowUpPreview() {
+      if (!isFollowUp) {
+        setFollowUpRecord(null);
+        return;
+      }
+
+      const records = await getRhuHealthRecords();
+      setFollowUpRecord(
+        records.find((r) => r.id === recordId || r._id === recordId) || null,
+      );
+    }
+
+    loadFollowUpPreview();
+  }, [isFollowUp, recordId]);
 
   const getPatientClassification = () => {
     if (!selectedPatient) return "";

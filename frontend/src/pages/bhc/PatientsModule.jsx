@@ -1,9 +1,9 @@
 import { Link } from "react-router";
-import { Plus, Users, HeartPulse, Baby, FileText } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
-import StatCard from "../../components/cards/StatsCard";
-import PatientFilters from "../../components/patients/PatientFilters";
-import PatientsTable from "../../components/patients/PatientsTable";
+import { Plus, Users, HeartPulse, Baby } from "lucide-react";
+import DashboardLayout from "../../components/layout/DashboardLayout";
+import StatCard from "../../components/common/cards/StatsCard";
+import PatientFilters from "../../components/features/patients/PatientFilters";
+import PatientsTable from "../../components/features/patients/PatientsTable";
 import usePatients from "../../hooks/usePatients";
 import { stagger } from "../../utils/animation";
 
@@ -138,3 +138,6 @@ export default function PatientsModule() {
     </DashboardLayout>
   );
 }
+
+
+

@@ -10,13 +10,13 @@ import {
   Activity,
 } from "lucide-react";
 
-import DashboardLayout from "../../layouts/DashboardLayout";
-import StatCard from "../../components/cards/StatsCard";
-import HealthRecordsTable from "../../components/tables/HealthRecordsTable";
+import DashboardLayout from "../../components/layout/DashboardLayout";
+import StatCard from "../../components/common/cards/StatsCard";
+import HealthRecordsTable from "../../components/features/records/HealthRecordsTable";
 import { stagger } from "../../utils/animation";
 import { getHealthRecords } from "../../services/healthRecordService";
-import FilterSelect from "../../components/forms/FilterSelect";
-import SearchInput from "../../components/forms/SearchInput";
+import FilterSelect from "../../components/common/forms/FilterSelect";
+import SearchInput from "../../components/common/forms/SearchInput";
 
 export default function HealthRecords() {
   const [filters, setFilters] = useState({
@@ -255,3 +255,6 @@ export default function HealthRecords() {
     </DashboardLayout>
   );
 }
+
+
+

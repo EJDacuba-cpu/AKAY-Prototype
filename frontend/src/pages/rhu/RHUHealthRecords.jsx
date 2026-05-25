@@ -5,18 +5,16 @@ import {
   Clock,
   Eye,
   FilePlus2,
-  FileText,
   HeartPulse,
   MoreHorizontal,
   Plus,
   Search,
-  User,
   CheckCircle2,
   X,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -645,3 +643,4 @@ function MenuLink({ to, icon, children }) {
     </Link>
   );
 }
+

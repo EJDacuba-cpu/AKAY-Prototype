@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 export default function AddMedicineItem() {
   const navigate = useNavigate();
@@ -284,3 +284,4 @@ function StatusBadge({ status }) {
     </span>
   );
 }
+

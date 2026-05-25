@@ -19,10 +19,8 @@ import {
   TrendingDown,
   TrendingUp,
   History,
-  Filter,
-  ChevronDown,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -1814,3 +1812,4 @@ function CategoryBadge({ category }) {
     </span>
   );
 }
+

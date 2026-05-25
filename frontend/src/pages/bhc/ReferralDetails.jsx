@@ -17,8 +17,9 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { Link, useParams } from "react-router";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 import { getReferralById } from "../../services/referrals";
+import { getPatientById } from "../../services/patientService";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -73,11 +74,10 @@ export default function ReferralDetails() {
           setNotFound(true);
         } else {
           setReferral(data);
-          const patients = JSON.parse(
-            localStorage.getItem("patient_details") || "[]",
-          );
-          const found = patients.find((p) => p.id === data.patientId);
-          if (found) setPatientExtra(found);
+          const found = await getPatientById(data.patientId);
+          if (found) {
+            setPatientExtra(found);
+          }
         }
       } catch (error) {
         console.error(error);
@@ -98,7 +98,6 @@ export default function ReferralDetails() {
   const patientPhilHealth =
     patientExtra?.philHealth || patientExtra?.philHealthNumber || null;
 
-  const isNoShow = referral?.status === "No-Show";
   const isCompleted = referral?.status === "Completed";
 
   /* ─── States ─── */

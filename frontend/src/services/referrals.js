@@ -1,59 +1,56 @@
+import { getItem, setItem } from "./storageService";
+
 const REFERRALS_KEY = "bhc_referrals";
 
 const delay = () => new Promise((resolve) => setTimeout(resolve, 300));
 
-/* GET ALL REFERRALS */
-export async function getReferrals() {
-  await delay();
-
-  return JSON.parse(localStorage.getItem(REFERRALS_KEY) || "[]");
+function getStoredReferrals() {
+  const referrals = getItem(REFERRALS_KEY, []);
+  return Array.isArray(referrals) ? referrals : [];
 }
 
-/* GET SINGLE REFERRAL */
+function saveStoredReferrals(referrals) {
+  setItem(REFERRALS_KEY, referrals);
+}
+
+export async function getReferrals() {
+  await delay();
+  return getStoredReferrals();
+}
+
 export async function getReferralById(referralId) {
   await delay();
-
-  const referrals = JSON.parse(localStorage.getItem(REFERRALS_KEY) || "[]");
-
+  const referrals = getStoredReferrals();
   return referrals.find((r) => r.id === referralId) || null;
 }
 
-/* CREATE REFERRAL */
 export async function createReferral(referralData) {
   await delay();
 
-  const referrals = JSON.parse(localStorage.getItem(REFERRALS_KEY) || "[]");
+  const referrals = getStoredReferrals();
 
   const now = new Date();
-
   const deadline = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
 
   const newReferral = {
     id: `REF-${Date.now()}`,
-
     trackingId: `AKY-${Date.now().toString().slice(-6)}`,
-
     ...referralData,
-
     status: "Pending RHU Review",
-
     createdAt: now.toISOString(),
-
     referralDeadline: deadline,
   };
 
   referrals.unshift(newReferral);
-
-  localStorage.setItem(REFERRALS_KEY, JSON.stringify(referrals));
+  saveStoredReferrals(referrals);
 
   return newReferral;
 }
 
-/* UPDATE STATUS */
 export async function updateReferralStatus(referralId, status) {
   await delay();
 
-  const referrals = JSON.parse(localStorage.getItem(REFERRALS_KEY) || "[]");
+  const referrals = getStoredReferrals();
 
   const updated = referrals.map((r) =>
     r.id === referralId
@@ -64,15 +61,13 @@ export async function updateReferralStatus(referralId, status) {
       : r,
   );
 
-  localStorage.setItem(REFERRALS_KEY, JSON.stringify(updated));
+  saveStoredReferrals(updated);
 
-  return updated.find((r) => r.id === referralId);
+  return updated.find((r) => r.id === referralId) || null;
 }
 
-/* AUTO NO SHOW CHECK */
 export async function autoMarkNoShowReferrals() {
-  const referrals = JSON.parse(localStorage.getItem(REFERRALS_KEY) || "[]");
-
+  const referrals = getStoredReferrals();
   const now = new Date();
 
   const updated = referrals.map((referral) => {
@@ -89,7 +84,7 @@ export async function autoMarkNoShowReferrals() {
     return referral;
   });
 
-  localStorage.setItem(REFERRALS_KEY, JSON.stringify(updated));
+  saveStoredReferrals(updated);
 
   return updated;
 }

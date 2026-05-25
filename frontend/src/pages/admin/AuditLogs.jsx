@@ -6,7 +6,7 @@ import {
   ShieldCheck,
   UserCheck,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 export default function AuditLogs() {
   const logs = [
@@ -335,3 +335,4 @@ function TypeBadge({ type }) {
     </span>
   );
 }
+

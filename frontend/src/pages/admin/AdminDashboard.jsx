@@ -11,7 +11,7 @@ import {
   Users,
 } from "lucide-react";
 import { Link } from "react-router";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 export default function AdminDashboard() {
   const recentActivities = [
@@ -428,3 +428,4 @@ function InventoryAlert({ item, status }) {
     </div>
   );
 }
+

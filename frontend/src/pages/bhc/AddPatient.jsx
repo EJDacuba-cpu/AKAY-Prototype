@@ -11,14 +11,14 @@ import {
   Activity,
 } from "lucide-react";
 
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
-import FormInput from "../../components/forms/FormInput";
-import FormSelect from "../../components/forms/FormSelect";
-import FormTextarea from "../../components/forms/FormTextarea";
+import FormInput from "../../components/common/forms/FormInput";
+import FormSelect from "../../components/common/forms/FormSelect";
+import FormTextarea from "../../components/common/forms/FormTextarea";
 
-import ConfirmationModal from "../../components/modals/ConfirmationModal";
-import SuccessModal from "../../components/modals/SuccessModal";
+import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
+import SuccessModal from "../../components/common/modals/SuccessModal";
 
 import { createPatient } from "../../services/patientService";
 
@@ -632,3 +632,4 @@ export default function AddPatient() {
     </>
   );
 }
+

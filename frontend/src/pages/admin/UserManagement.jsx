@@ -11,7 +11,7 @@ import {
   Users,
   UserX,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 export default function UserManagement() {
   const [showForm, setShowForm] = useState(false);
@@ -570,3 +570,4 @@ function StatusBadge({ status }) {
     </span>
   );
 }
+

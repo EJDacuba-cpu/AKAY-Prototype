@@ -6,7 +6,7 @@ import {
   HeartPulse,
   Users,
 } from "lucide-react";
-import DashboardLayout from "../../layouts/DashboardLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 
 export default function RHUReports() {
   const barangayReports = [
@@ -316,3 +316,4 @@ function MedicineAlert({ item }) {
     </div>
   );
 }
+
