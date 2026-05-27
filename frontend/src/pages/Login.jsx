@@ -62,7 +62,7 @@ export default function Login() {
             {/* Email Input */}
             <div className="space-y-1.5">
               <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                Account Name / Email
+                Email
               </label>
               <div className="relative">
                 <Mail
@@ -73,7 +73,7 @@ export default function Login() {
                   type="email"
                   required
                   className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-slate-200 bg-slate-50/50 focus:border-red-700 focus:ring-2 focus:ring-red-100 outline-none transition-all text-sm text-slate-800 placeholder:text-slate-400"
-                  placeholder="name@healthcare.gov.ph"
+                  placeholder="email@akay.com"
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>

@@ -95,11 +95,9 @@ export default function AddHealthRecord() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  // ✅ GET CURRENT USER ROLE - THIS IS THE KEY FIX
   const currentUser = getCurrentUser();
-  const userRole = currentUser?.role || "rhu"; // fallback to rhu for safety
+  const userRole = currentUser?.role || "rhu";
 
-  // ✅ ROLE-BASED PATHS
   const basePath = userRole === "bhc" ? "/bhc" : "/rhu";
   const healthRecordsPath = `${basePath}/health-records`;
 
@@ -130,6 +128,7 @@ export default function AddHealthRecord() {
   const [bp, setBp] = useState("");
   const [temp, setTemp] = useState("");
   const [pulse, setPulse] = useState("");
+  const [weight, setWeight] = useState("");
 
   /* ─── Monitoring States ─── */
   const [followUpStatus, setFollowUpStatus] = useState("Under Monitoring");
@@ -142,8 +141,6 @@ export default function AddHealthRecord() {
   /* ─── Maternal States ─── */
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
   const [aog, setAog] = useState("");
-  const [maternalWeight, setMaternalWeight] = useState("");
-  const [maternalBp, setMaternalBp] = useState("");
 
   /* ─── Immunization States ─── */
   const [vaccineType, setVaccineType] = useState("");
@@ -166,12 +163,13 @@ export default function AddHealthRecord() {
     loadPatients();
   }, [preselectedPatientId]);
 
-  /* ─── Follow-up: resolve record to patient ─── */
   useEffect(() => {
     if (!recordId) return;
     async function loadFollowUpRecord() {
       const records = await getRhuHealthRecords();
-      const found = records.find((r) => r.id === recordId || r._id === recordId);
+      const found = records.find(
+        (r) => r.id === recordId || r._id === recordId,
+      );
       if (found?.patientId) {
         setSelectedPatientId(found.patientId);
       }
@@ -180,7 +178,6 @@ export default function AddHealthRecord() {
     loadFollowUpRecord();
   }, [recordId]);
 
-  /* ─── Helpers ─── */
   const filteredPatients = patients.filter((patient) =>
     `${patient.name || (patient.firstName ? `${patient.firstName} ${patient.lastName}` : "")} ${patient.contactNumber || patient.contact || ""}`
       .toLowerCase()
@@ -218,13 +215,12 @@ export default function AddHealthRecord() {
     ).toLowerCase();
   };
 
-  const concatenatedVitalSigns = `BP: ${bp || "N/A"} | Temp: ${temp || "N/A"} | Pulse: ${pulse || "N/A"}`;
+  const concatenatedVitalSigns = `BP: ${bp || "N/A"} | Temp: ${temp || "N/A"} | Pulse: ${pulse || "N/A"} | Weight: ${weight || "N/A"}`;
 
   /* ─────────────────────────────────────────────
       AUTOMATIONS
   ───────────────────────────────────────────── */
 
-  // Auto-calculate follow-up date from "Return After"
   useEffect(() => {
     if (returnAfter && dateOfVisit) {
       const baseDate = new Date(dateOfVisit);
@@ -242,7 +238,6 @@ export default function AddHealthRecord() {
     }
   }, [returnAfter, dateOfVisit]);
 
-  // Maternal: auto-set monitoring defaults
   useEffect(() => {
     if (getPatientClassification() === "maternal") {
       setFollowUpStatus("Under Monitoring");
@@ -250,7 +245,6 @@ export default function AddHealthRecord() {
     }
   }, [selectedPatientId]);
 
-  // Referred status auto-gates referral
   useEffect(() => {
     if (followUpStatus === "Referred") {
       setNeedsReferral("yes");
@@ -263,7 +257,6 @@ export default function AddHealthRecord() {
     }
   }, [followUpStatus]);
 
-  // Maternal: auto-calculate EDD and AOG from LMP
   useEffect(() => {
     const registryLmp = selectedPatient?.lmp || selectedPatient?.LMP;
     if (!registryLmp) {
@@ -304,7 +297,6 @@ export default function AddHealthRecord() {
     }
   }, [selectedPatient, dateOfVisit]);
 
-  // Immunization: auto-calculate next vaccine date
   useEffect(() => {
     if (
       dateOfVisit &&
@@ -321,7 +313,7 @@ export default function AddHealthRecord() {
   }, [dateOfVisit, doseNumber]);
 
   /* ─────────────────────────────────────────────
-      FORM SUBMIT - ✅ NOW USES ROLE-BASED PATH
+      FORM SUBMIT
   ───────────────────────────────────────────── */
   async function handleSave(e) {
     e.preventDefault();
@@ -379,19 +371,14 @@ export default function AddHealthRecord() {
       tpal: selectedPatient?.tpal || null,
       expectedDeliveryDate,
       aog,
-      maternalWeight,
-      maternalBp,
       vaccineType,
       doseNumber,
       nextVaccineDate,
-      // ✅ Store the creating role
       createdByRole: userRole,
     };
 
     try {
       await healthRecordService.createHealthRecord(formData);
-
-      // ✅ NAVIGATE TO CORRECT ROLE PATH
       navigate(healthRecordsPath);
     } catch (error) {
       console.error("Failed to save record:", error);
@@ -401,34 +388,33 @@ export default function AddHealthRecord() {
 
   /* ─── Render ─── */
   return (
-    // ✅ USE DYNAMIC ROLE FOR DASHBOARD LAYOUT
     <DashboardLayout role={userRole} title="Add Health Record">
       <style>{keyframes}</style>
 
       {/* Header */}
-      <div className="anim-fade-up mb-8" style={stagger(0)}>
+      <div className="anim-fade-up mb-6" style={stagger(0)}>
         <Link
           to={healthRecordsPath}
-          className="mb-3 inline-flex items-center gap-2 text-[13px] font-semibold text-[#B91C1C] transition-all duration-200 hover:gap-2.5 hover:text-[#991B1B]"
+          className="mb-2 inline-flex items-center gap-2 text-[13px] font-semibold text-[#B91C1C] transition-all duration-200 hover:gap-2.5 hover:text-[#991B1B]"
         >
           <ArrowLeft size={16} />
           Back to Health Records
         </Link>
 
-        <h1 className="text-xl font-bold tracking-tight text-[#1A1A1A]">
+        <h1 className="text-lg font-bold tracking-tight text-[#1A1A1A]">
           {isFollowUp ? "Follow-up Health Record" : "Add Health Record"}
         </h1>
 
-        <p className="mt-1 text-sm text-[#6B7280]">
+        <p className="mt-0.5 text-xs text-[#6B7280]">
           {isFollowUp
             ? `Create a follow-up record for ${followUpRecord?.patientName || "this patient"}.`
             : "Record a patient visit, follow-up, monitoring update, or health encounter."}
         </p>
 
         {isFollowUp && followUpRecord && (
-          <div className="mt-4 flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 p-4">
-            <AlertCircle size={16} className="mt-0.5 shrink-0 text-[#B91C1C]" />
-            <p className="text-sm text-red-800">
+          <div className="mt-3 flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 p-3">
+            <AlertCircle size={15} className="mt-0.5 shrink-0 text-[#B91C1C]" />
+            <p className="text-xs text-red-800">
               Creating a follow-up record for{" "}
               <span className="font-semibold">
                 {followUpRecord.patientName}
@@ -440,8 +426,8 @@ export default function AddHealthRecord() {
         )}
       </div>
 
-      <form onSubmit={handleSave} className="space-y-6">
-        {/* ═══ SECTION 1: Patient Selection ═══ */}
+      <form onSubmit={handleSave} className="space-y-5">
+        {/* ═══ 1. Patient Selection ═══ */}
         <FormSection
           title="Patient Selection"
           subtitle="Search and select an existing patient profile from the registry."
@@ -503,12 +489,12 @@ export default function AddHealthRecord() {
             </div>
 
             {selectedPatient && (
-              <div className="anim-fade-up rounded-xl border border-red-100 bg-red-50 p-5">
-                <div className="mb-3 flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-100">
-                    <User size={12} className="text-[#B91C1C]" />
+              <div className="anim-fade-up rounded-xl border border-red-100 bg-red-50 p-4">
+                <div className="mb-2 flex items-center gap-2">
+                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-red-100">
+                    <User size={11} className="text-[#B91C1C]" />
                   </div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#B91C1C]">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-[#B91C1C]">
                     Patient Preview
                   </span>
                 </div>
@@ -516,20 +502,20 @@ export default function AddHealthRecord() {
                   {selectedPatient.name ||
                     `${selectedPatient.firstName || ""} ${selectedPatient.lastName || ""}`}
                 </p>
-                <p className="mt-0.5 text-[13px] text-[#6B7280]">
+                <p className="mt-0.5 text-xs text-[#6B7280]">
                   Age/Sex:{" "}
                   {selectedPatient.ageSex ||
                     (selectedPatient.age
                       ? `${selectedPatient.age} years old / ${selectedPatient.sex || "—"}`
                       : "—")}
                 </p>
-                <p className="text-[13px] text-[#6B7280]">
+                <p className="text-xs text-[#6B7280]">
                   Contact:{" "}
                   {selectedPatient.contactNumber ||
                     selectedPatient.contact ||
                     "—"}
                 </p>
-                <p className="text-[13px] text-[#6B7280]">
+                <p className="text-xs text-[#6B7280]">
                   Classification:{" "}
                   <span className="font-semibold text-[#B91C1C]">
                     {selectedPatient.patientClassification ||
@@ -542,7 +528,7 @@ export default function AddHealthRecord() {
           </div>
         </FormSection>
 
-        {/* ═══ CONDITIONAL: Immunization ═══ */}
+        {/* ═══ 2. Immunization (CONDITIONAL) ═══ */}
         {getPatientClassification() === "immunization" && (
           <FormSection
             title="Vaccine Information"
@@ -578,140 +564,15 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {/* ═══ SECTION 2: Consultation Information ═══ */}
-        <FormSection
-          title="Consultation Information"
-          subtitle="Record consultation findings and observations."
-          icon={<Stethoscope size={14} />}
-          delay={2}
-        >
-          <div className="grid gap-4 lg:grid-cols-3">
-            <FieldInput
-              label="Date of Visit"
-              type="date"
-              required
-              value={dateOfVisit}
-              onChange={(e) => setDateOfVisit(e.target.value)}
-            />
-            <FieldInput
-              label="Time of Visit"
-              type="time"
-              required
-              value={timeOfVisit}
-              onChange={(e) => setTimeOfVisit(e.target.value)}
-            />
-            <FieldInput
-              label="Chief Complaint"
-              placeholder="e.g. Fever, vomiting, cough"
-              required
-              value={chiefComplaint}
-              onChange={(e) => setChiefComplaint(e.target.value)}
-            />
-          </div>
-
-          <div className="mt-4">
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Summary of Present Illness and Physical Examination{" "}
-              <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              required
-              value={summaryOfPresentIllness}
-              onChange={(e) => setSummaryOfPresentIllness(e.target.value)}
-              placeholder="Record the detailed history of the present illness and complete physical examination findings here..."
-              className="min-h-[140px] w-full rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 py-3 text-sm leading-relaxed outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 resize-none"
-            />
-          </div>
-
-          <div className="mt-4 grid gap-4 lg:grid-cols-3">
-            <FieldInput
-              label="Initial Diagnosis"
-              value={diagnosis}
-              onChange={(e) => setDiagnosis(e.target.value)}
-            />
-            <FieldInput
-              label="Initial Actions Taken"
-              value={medication}
-              onChange={(e) => setMedication(e.target.value)}
-            />
-            <FieldInput
-              label="Name of Practitioner"
-              value={attendingStaff}
-              onChange={(e) => setAttendingStaff(e.target.value)}
-            />
-          </div>
-        </FormSection>
-
-        {/* ═══ SECTION 3: Vital Signs ═══ */}
-        <FormSection
-          title="Vital Signs"
-          subtitle="Record the patient's physiological measurements."
-          icon={<HeartPulse size={14} />}
-          delay={2.5}
-        >
-          <div className="grid gap-4 lg:grid-cols-3">
-            <FieldInput
-              label="Blood Pressure (BP)"
-              placeholder="e.g. 120/80"
-              value={bp}
-              onChange={(e) => setBp(e.target.value)}
-            />
-            <FieldInput
-              label="Temperature"
-              placeholder="e.g. 36.5 °C"
-              value={temp}
-              onChange={(e) => setTemp(e.target.value)}
-            />
-            <FieldInput
-              label="Pulse Rate"
-              placeholder="e.g. 72 bpm"
-              value={pulse}
-              onChange={(e) => setPulse(e.target.value)}
-            />
-          </div>
-
-          <div className="mt-4">
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Additional Consultation Notes (Optional)
-            </label>
-            <textarea
-              value={consultationNotes}
-              onChange={(e) => setConsultationNotes(e.target.value)}
-              placeholder="Other observations not covered in the summary..."
-              className="min-h-24 w-full rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 py-3 text-sm leading-relaxed outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 resize-none"
-            />
-          </div>
-        </FormSection>
-
-        {/* ═══ CONDITIONAL: Maternal ═══ */}
+        {/* ═══ 3. Maternal  ═══ */}
         {getPatientClassification() === "maternal" && (
           <FormSection
             title="Maternal & Prenatal Assessment"
             subtitle="Monitor pregnancy progression and maternal clinical vitals."
             icon={<HeartPulse size={14} />}
-            delay={3}
+            delay={2}
             accent="pink"
           >
-            <div className="mb-5">
-              <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-pink-700">
-                Clinical Vitals
-              </p>
-              <div className="grid gap-4 lg:grid-cols-2">
-                <FieldInput
-                  label="Maternal Weight (kg)"
-                  placeholder="e.g. 60"
-                  value={maternalWeight}
-                  onChange={(e) => setMaternalWeight(e.target.value)}
-                />
-                <FieldInput
-                  label="Blood Pressure (BP)"
-                  placeholder="e.g. 120/80"
-                  value={maternalBp}
-                  onChange={(e) => setMaternalBp(e.target.value)}
-                />
-              </div>
-            </div>
-
             <div className="border-t border-[#F3F4F6] pt-5">
               <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-pink-700">
                 Obstetric Profile
@@ -749,12 +610,123 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {/* ═══ SECTION 4: Monitoring and Follow-up ═══ */}
+        {/* ═══ 4. Consultation Information (moved down) ═══ */}
+        <FormSection
+          title="Consultation Information"
+          subtitle="Record consultation findings and observations."
+          icon={<Stethoscope size={14} />}
+          delay={3}
+        >
+          <div className="grid gap-4 lg:grid-cols-3">
+            <FieldInput
+              label="Date of Visit"
+              type="date"
+              required
+              value={dateOfVisit}
+              onChange={(e) => setDateOfVisit(e.target.value)}
+            />
+            <FieldInput
+              label="Time of Visit"
+              type="time"
+              required
+              value={timeOfVisit}
+              onChange={(e) => setTimeOfVisit(e.target.value)}
+            />
+            <FieldInput
+              label="Chief Complaint"
+              placeholder="e.g. Fever, vomiting, cough"
+              required
+              value={chiefComplaint}
+              onChange={(e) => setChiefComplaint(e.target.value)}
+            />
+          </div>
+
+          <div className="mt-4">
+            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+              Summary of Present Illness and Physical Examination{" "}
+              <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              required
+              value={summaryOfPresentIllness}
+              onChange={(e) => setSummaryOfPresentIllness(e.target.value)}
+              placeholder="Record the detailed history of the present illness and complete physical examination findings here..."
+              className="min-h-[120px] w-full rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 py-3 text-sm leading-relaxed outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 resize-none"
+            />
+          </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-3">
+            <FieldInput
+              label="Initial Diagnosis"
+              value={diagnosis}
+              onChange={(e) => setDiagnosis(e.target.value)}
+            />
+            <FieldInput
+              label="Initial Actions Taken"
+              value={medication}
+              onChange={(e) => setMedication(e.target.value)}
+            />
+            <FieldInput
+              label="Name of Practitioner"
+              value={attendingStaff}
+              onChange={(e) => setAttendingStaff(e.target.value)}
+            />
+          </div>
+        </FormSection>
+
+        {/* ═══ 5. Vital Signs ═══ */}
+        <FormSection
+          title="Vital Signs"
+          subtitle="Record the patient's physiological measurements."
+          icon={<HeartPulse size={14} />}
+          delay={4}
+        >
+          <div className="grid gap-4 lg:grid-cols-4">
+            <FieldInput
+              label="Blood Pressure (BP)"
+              placeholder="e.g. 120/80"
+              value={bp}
+              onChange={(e) => setBp(e.target.value)}
+            />
+            <FieldInput
+              label="Temperature"
+              placeholder="e.g. 36.5 °C"
+              value={temp}
+              onChange={(e) => setTemp(e.target.value)}
+            />
+            <FieldInput
+              label="Pulse Rate"
+              placeholder="e.g. 72 bpm"
+              value={pulse}
+              onChange={(e) => setPulse(e.target.value)}
+            />
+            <FieldInput
+              label="Weight (kg)"
+              placeholder="e.g. 60 kg"
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+            />
+          </div>
+
+          <div className="mt-4">
+            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+              Additional Consultation Notes (Optional)
+            </label>
+            <textarea
+              value={consultationNotes}
+              onChange={(e) => setConsultationNotes(e.target.value)}
+              placeholder="Other observations not covered in the summary..."
+              className="min-h-20 w-full rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 py-3 text-sm leading-relaxed outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 resize-none"
+            />
+          </div>
+        </FormSection>
+
+        {/* ═══ 6. Monitoring and Follow-up ═══ */}
         <FormSection
           title="Monitoring and Follow-up"
           subtitle="Track patient condition and follow-up schedules."
           icon={<HeartPulse size={14} />}
-          delay={4}
+          delay={5}
         >
           <div className="grid gap-4 lg:grid-cols-3">
             <FieldSelect
@@ -807,21 +779,21 @@ export default function AddHealthRecord() {
               value={monitoringNotes}
               onChange={(e) => setMonitoringNotes(e.target.value)}
               placeholder="Write follow-up or monitoring notes..."
-              className="min-h-24 w-full rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 py-3 text-sm leading-relaxed outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 resize-none"
+              className="min-h-20 w-full rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 py-3 text-sm leading-relaxed outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 resize-none"
             />
           </div>
         </FormSection>
 
-        {/* ═══ SECTION 5: Referral Gate ═══ */}
+        {/* ═══ 7. Assessment Recommendation ═══ */}
         <FormSection
           title="Assessment Recommendation"
           subtitle="Determine if this case requires further evaluation."
           icon={<Send size={14} />}
-          delay={5}
+          delay={6}
         >
           <div className="grid gap-3 lg:grid-cols-2">
             <label
-              className={`flex min-h-[108px] cursor-pointer items-center gap-4 rounded-xl border p-5 transition-all duration-200 ${
+              className={`flex min-h-[96px] cursor-pointer items-center gap-4 rounded-xl border p-4 transition-all duration-200 ${
                 needsReferral === "no"
                   ? "border-[#B91C1C] bg-red-50"
                   : "border-[#E8ECF0] bg-white"
@@ -843,16 +815,16 @@ export default function AddHealthRecord() {
               />
               <div>
                 <p className="text-sm font-semibold text-[#1A1A1A]">
-                  Save Locally / Resolve
+                  Save Health Record
                 </p>
                 <p className="mt-0.5 text-xs text-[#6B7280]">
-                  No conditions require secondary physician consultation.
+                  Save consultation and monitoring information.
                 </p>
               </div>
             </label>
 
             <label
-              className={`flex min-h-[108px] cursor-pointer items-center gap-4 rounded-xl border p-5 transition-all duration-200 ${
+              className={`flex min-h-[96px] cursor-pointer items-center gap-4 rounded-xl border p-4 transition-all duration-200 ${
                 needsReferral === "yes"
                   ? "border-amber-500 bg-amber-50"
                   : "border-[#E8ECF0] bg-white"
@@ -874,10 +846,10 @@ export default function AddHealthRecord() {
               />
               <div>
                 <p className="text-sm font-semibold text-[#1A1A1A]">
-                  Flag for Higher-Level Assessment
+                  Create Referral
                 </p>
                 <p className="mt-0.5 text-xs text-[#6B7280]">
-                  Forward case for further clinical evaluation.
+                  Forward patient case for further medical assessment.
                 </p>
               </div>
             </label>
@@ -886,8 +858,8 @@ export default function AddHealthRecord() {
 
         {/* ═══ Actions ═══ */}
         <div
-          className="anim-fade-up flex items-center justify-end gap-3 pt-2"
-          style={stagger(6)}
+          className="anim-fade-up flex items-center justify-end gap-3 pt-1 pb-4"
+          style={stagger(7)}
         >
           <button
             type="button"

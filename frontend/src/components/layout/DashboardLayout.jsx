@@ -22,7 +22,6 @@ import { getCurrentUser, logoutUser } from "../../utils/auth";
 
 /* AKAY HEALTHCARE BRAND SYSTEM (Red & White) */
 
-
 /* MENU CONFIGURATION */
 
 const menuByRole = {
@@ -173,7 +172,7 @@ export default function DashboardLayout({ role, title, children }) {
   }
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-[#FAFAFA] text-[#1F2937]">
+    <div className="relative h-screen overflow-hidden bg-[#FAFAFA] text-[#1F2937]">
       {/* Subtle Red Background Glow */}
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_right,rgba(153,27,27,0.03),transparent_40%),radial-gradient(circle_at_bottom_left,rgba(185,28,28,0.03),transparent_40%)]" />
 
@@ -186,6 +185,20 @@ export default function DashboardLayout({ role, title, children }) {
         .akay-sidebar-scroll::-webkit-scrollbar {
           display: none;
         }
+        .akay-content-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: #E5E7EB transparent;
+        }
+        .akay-content-scroll::-webkit-scrollbar {
+          width: 5px;
+        }
+        .akay-content-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .akay-content-scroll::-webkit-scrollbar-thumb {
+          background-color: #D1D5DB;
+          border-radius: 999px;
+        }
       `}</style>
 
       {/* Mobile Overlay */}
@@ -196,27 +209,27 @@ export default function DashboardLayout({ role, title, children }) {
         />
       )}
 
-      {/* SIDEBAR */}
+      {/* SIDEBAR — narrowed from w-72 to w-56 (224px) */}
       <aside
-        className={`fixed left-0 top-0 z-40 flex h-full w-72 flex-col border-r border-[#F3F4F6] bg-white shadow-xl shadow-black/5 backdrop-blur transition-transform duration-300
+        className={`fixed left-0 top-0 z-40 flex h-full w-56 flex-col border-r border-[#F3F4F6] bg-white shadow-xl shadow-black/5 backdrop-blur transition-transform duration-300
         ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
-        {/* Logo */}
-        <div className="flex h-[72px] items-center justify-between border-b border-[#FEE2E2] px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#991B1B] to-[#7F1D1D] shadow-lg shadow-red-900/20">
-              <span className="text-sm font-black tracking-tight text-white">
+        {/* Logo — reduced height */}
+        <div className="flex h-14 items-center justify-between border-b border-[#FEE2E2] px-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#991B1B] to-[#7F1D1D] shadow-lg shadow-red-900/20">
+              <span className="text-xs font-black tracking-tight text-white">
                 AK
               </span>
             </div>
 
             <div>
-              <p className="text-[15px] font-bold tracking-tight text-[#991B1B]">
+              <p className="text-sm font-bold tracking-tight text-[#991B1B]">
                 AKAY
               </p>
-              <p className="mt-0.5 text-[9px] uppercase tracking-[0.18em] text-[#9CA3AF]">
+              <p className="text-[8px] uppercase tracking-[0.16em] text-[#9CA3AF]">
                 Health Coordination
               </p>
             </div>
@@ -225,21 +238,21 @@ export default function DashboardLayout({ role, title, children }) {
           {/* Mobile Close */}
           <button
             onClick={() => setSidebarOpen(false)}
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-[#6B7280] transition-all hover:bg-[#FEF2F2] lg:hidden"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-[#6B7280] transition-all hover:bg-[#FEF2F2] lg:hidden"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
-        {/* Navigation */}
-        <nav className="akay-sidebar-scroll flex-1 overflow-y-auto px-3 py-5">
+        {/* Navigation — tighter spacing */}
+        <nav className="akay-sidebar-scroll flex-1 overflow-y-auto px-2.5 py-3">
           {menuSections.map((section) => (
-            <div key={section.section} className="mb-6">
-              <p className="mb-2 px-3 text-[9px] font-bold uppercase tracking-[0.16em] text-[#991B1B] opacity-70">
+            <div key={section.section} className="mb-4">
+              <p className="mb-1.5 px-2.5 text-[8px] font-bold uppercase tracking-[0.16em] text-[#991B1B] opacity-70">
                 {section.section}
               </p>
 
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {section.items.map((item) => {
                   const Icon = item.icon;
                   const active = isMenuActive(item.path);
@@ -249,7 +262,7 @@ export default function DashboardLayout({ role, title, children }) {
                       key={item.label}
                       to={item.path}
                       onClick={() => setSidebarOpen(false)}
-                      className={`group relative flex items-center gap-3 overflow-hidden rounded-2xl px-3 py-3 text-[12px] font-medium transition-all duration-200
+                      className={`group relative flex items-center gap-2.5 overflow-hidden rounded-xl px-2.5 py-2 text-[11px] font-medium transition-all duration-200
                         ${
                           active
                             ? "bg-[#991B1B] text-white shadow-lg shadow-red-900/20"
@@ -258,10 +271,10 @@ export default function DashboardLayout({ role, title, children }) {
                     >
                       {/* Active Indicator */}
                       {active && (
-                        <div className="absolute left-0 top-0 h-full w-1 rounded-r-full bg-[#FECACA]" />
+                        <div className="absolute left-0 top-0 h-full w-0.5 rounded-r-full bg-[#FECACA]" />
                       )}
 
-                      <Icon size={18} strokeWidth={active ? 2.3 : 1.8} />
+                      <Icon size={15} strokeWidth={active ? 2.3 : 1.8} />
                       <span className="truncate">{item.label}</span>
                     </Link>
                   );
@@ -271,14 +284,14 @@ export default function DashboardLayout({ role, title, children }) {
           ))}
         </nav>
 
-        {/* User Panel */}
-        <div className="border-t border-[#FEE2E2] p-4 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="min-w-0 flex-1 ">
-              <p className="truncate text-[13px] font-semibold text-[#1F2937]">
+        {/* User Panel — more compact */}
+        <div className="border-t border-[#FEE2E2] p-3">
+          <div className="flex items-center gap-2.5">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[11px] font-semibold text-[#1F2937]">
                 {user.name}
               </p>
-              <p className="truncate text-[10px] text-[#9CA3AF]">
+              <p className="truncate text-[9px] text-[#9CA3AF]">
                 {user.position}
               </p>
             </div>
@@ -286,69 +299,70 @@ export default function DashboardLayout({ role, title, children }) {
 
           <button
             onClick={handleLogout}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-[#FECACA] bg-[#FEF2F2] py-3 text-[11px] font-semibold text-[#991B1B] transition-all hover:bg-[#FEE2E2]"
+            className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#FECACA] bg-[#FEF2F2] py-2 text-[10px] font-semibold text-[#991B1B] transition-all hover:bg-[#FEE2E2]"
           >
-            <LogOut size={14} />
+            <LogOut size={12} />
             Sign out
           </button>
         </div>
       </aside>
 
-      {/* MAIN CONTENT AREA */}
-      <main className="min-h-screen lg:ml-72">
-        {/* TOPBAR */}
-        <header className="sticky top-0 z-20 border-b border-[#F3F4F6] bg-white/90 backdrop-blur-xl">
-          <div className="flex items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+      {/* MAIN CONTENT AREA — matches sidebar width */}
+      <main className="flex h-screen flex-col lg:ml-56">
+        {/* TOPBAR — reduced padding & height */}
+        <header className="flex-shrink-0 border-b border-[#F3F4F6] bg-white/90 backdrop-blur-xl">
+          <div className="flex h-12 items-center justify-between px-3 sm:px-5 lg:px-5">
             {/* Left Side */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               {/* Mobile Menu Toggle */}
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[#F3F4F6] bg-white text-[#991B1B] shadow-sm transition-all hover:bg-[#FEF2F2] lg:hidden"
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-[#F3F4F6] bg-white text-[#991B1B] shadow-sm transition-all hover:bg-[#FEF2F2] lg:hidden"
               >
-                <Menu size={18} />
+                <Menu size={16} />
               </button>
 
               <div>
-                <h2 className="truncate text-[22px] font-bold tracking-tight text-[#1F2937]">
+                <h2 className="truncate text-base font-bold tracking-tight text-[#1F2937]">
                   {title}
                 </h2>
-                <p className="mt-0.5 text-[11px] font-medium text-[#9CA3AF]">
-                  {roleLabel[role]}
-                </p>
               </div>
             </div>
 
             {/* Right Side */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {/* Facility Badge */}
-              <div className="hidden items-center gap-2 rounded-2xl border border-[#F3F4F6] bg-white px-3 py-2 shadow-sm sm:flex">
-                <MapPin size={14} className="text-[#991B1B]" />
-                <span className="max-w-[190px] truncate text-[11px] font-semibold text-[#4B5563]">
+              <div className="hidden items-center gap-1.5 rounded-xl border border-[#F3F4F6] bg-white px-2.5 py-1.5 shadow-sm sm:flex">
+                <MapPin size={12} className="text-[#991B1B]" />
+                <span className="max-w-[160px] truncate text-[10px] font-semibold text-[#4B5563]">
                   {user.facility}
                 </span>
               </div>
 
+              {/* Role Badge — compact inline label */}
+              <span className="hidden rounded-xl border border-[#F3F4F6] bg-white px-2.5 py-1.5 text-[10px] font-medium text-[#6B7280] shadow-sm md:inline-block">
+                {roleLabel[role]}
+              </span>
+
               {/* Notification Bell */}
-              <button className="relative flex h-10 w-10 items-center justify-center rounded-2xl border border-[#F3F4F6] bg-white text-[#6B7280] shadow-sm transition-all hover:bg-[#FEF2F2] hover:text-[#991B1B]">
-                <Bell size={17} />
+              <button className="relative flex h-8 w-8 items-center justify-center rounded-xl border border-[#F3F4F6] bg-white text-[#6B7280] shadow-sm transition-all hover:bg-[#FEF2F2] hover:text-[#991B1B]">
+                <Bell size={14} />
 
                 {/* Red Ping Dot */}
-                <span className="absolute right-1.5 top-1.5 flex h-2.5 w-2.5">
+                <span className="absolute right-1 top-1 flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
                 </span>
               </button>
             </div>
           </div>
         </header>
 
-        {/* PAGE CONTENT */}
-        <section className="w-full overflow-x-hidden p-4 sm:p-6 lg:p-8">
+        {/* PAGE CONTENT — fills remaining height, scrolls internally */}
+        <section className="akay-content-scroll flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:p-5">
           {children}
         </section>
       </main>
     </div>
   );
 }
-
