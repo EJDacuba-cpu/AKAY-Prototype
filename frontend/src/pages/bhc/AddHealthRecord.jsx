@@ -90,6 +90,42 @@ function FieldSelect({ label, required, children, ...props }) {
   );
 }
 
+/* ─── BP Grouped Input Component ─── */
+function BpInputGroup({
+  systolic,
+  diastolic,
+  onSystolicChange,
+  onDiastolicChange,
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+        Blood Pressure (mmHg)
+      </label>
+      <div className="flex items-center gap-0">
+        <input
+          type="number"
+          placeholder="Systolic"
+          value={systolic}
+          onChange={(e) => onSystolicChange(e.target.value)}
+          className="h-10 w-full rounded-l-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center border-y border-[#E8ECF0] bg-[#F3F4F6] text-sm font-bold text-[#6B7280]">
+          /
+        </div>
+        <input
+          type="number"
+          placeholder="Diastolic"
+          value={diastolic}
+          onChange={(e) => onDiastolicChange(e.target.value)}
+          className="h-10 w-full rounded-r-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+      </div>
+      <p className="mt-1 text-[9px] text-[#BFBFBF]">Systolic / Diastolic</p>
+    </div>
+  );
+}
+
 /* ─── Main Component ─── */
 export default function AddHealthRecord() {
   const navigate = useNavigate();
@@ -125,10 +161,12 @@ export default function AddHealthRecord() {
   const [consultationNotes, setConsultationNotes] = useState("");
 
   /* ─── Vital Signs ─── */
-  const [bp, setBp] = useState("");
+  const [systolicBp, setSystolicBp] = useState("");
+  const [diastolicBp, setDiastolicBp] = useState("");
   const [temp, setTemp] = useState("");
   const [pulse, setPulse] = useState("");
   const [weight, setWeight] = useState("");
+  const [height, setHeight] = useState("");
 
   /* ─── Monitoring States ─── */
   const [followUpStatus, setFollowUpStatus] = useState("Under Monitoring");
@@ -215,7 +253,14 @@ export default function AddHealthRecord() {
     ).toLowerCase();
   };
 
-  const concatenatedVitalSigns = `BP: ${bp || "N/A"} | Temp: ${temp || "N/A"} | Pulse: ${pulse || "N/A"} | Weight: ${weight || "N/A"}`;
+  /* ─── Build formatted BP string ─── */
+  const formattedBp = (() => {
+    const sys = systolicBp || "N/A";
+    const dia = diastolicBp || "N/A";
+    return systolicBp || diastolicBp ? `${sys}/${dia}` : "N/A";
+  })();
+
+  const concatenatedVitalSigns = `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | Pulse: ${pulse || "N/A"} bpm | Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
 
   /* ─────────────────────────────────────────────
       AUTOMATIONS
@@ -350,6 +395,12 @@ export default function AddHealthRecord() {
       summaryOfPresentIllness,
       diagnosis,
       vitalSigns: concatenatedVitalSigns,
+      systolicBp: systolicBp || null,
+      diastolicBp: diastolicBp || null,
+      temperature: temp || null,
+      pulseRate: pulse || null,
+      weight: weight || null,
+      height: height || null,
       medication,
       attendingStaff,
       consultationNotes,
@@ -564,7 +615,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {/* ═══ 3. Maternal  ═══ */}
+        {/* ═══ 3. Maternal (CONDITIONAL) ═══ */}
         {getPatientClassification() === "maternal" && (
           <FormSection
             title="Maternal & Prenatal Assessment"
@@ -610,7 +661,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {/* ═══ 4. Consultation Information (moved down) ═══ */}
+        {/* ═══ 4. Consultation Information ═══ */}
         <FormSection
           title="Consultation Information"
           subtitle="Record consultation findings and observations."
@@ -681,12 +732,13 @@ export default function AddHealthRecord() {
           icon={<HeartPulse size={14} />}
           delay={4}
         >
-          <div className="grid gap-4 lg:grid-cols-4">
-            <FieldInput
-              label="Blood Pressure (BP)"
-              placeholder="e.g. 120/80"
-              value={bp}
-              onChange={(e) => setBp(e.target.value)}
+          {/* Row 1: BP group + Temp + Pulse */}
+          <div className="grid gap-4 lg:grid-cols-3">
+            <BpInputGroup
+              systolic={systolicBp}
+              diastolic={diastolicBp}
+              onSystolicChange={setSystolicBp}
+              onDiastolicChange={setDiastolicBp}
             />
             <FieldInput
               label="Temperature"
@@ -700,13 +752,34 @@ export default function AddHealthRecord() {
               value={pulse}
               onChange={(e) => setPulse(e.target.value)}
             />
+          </div>
+
+          {/* Row 2: Weight + Height */}
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <FieldInput
-              label="Weight (kg)"
-              placeholder="e.g. 60 kg"
+              label="Weight"
+              type="number"
+              placeholder="e.g. 60"
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
             />
+            <FieldInput
+              label="Height"
+              type="number"
+              placeholder="e.g. 165"
+              value={height}
+              onChange={(e) => setHeight(e.target.value)}
+            />
           </div>
+
+          {/* Row 3: Units label */}
+          {(weight || height) && (
+            <p className="mt-1 text-right text-[9px] font-medium text-[#BFBFBF]">
+              {weight ? "Weight in kg" : ""}
+              {weight && height ? " • " : ""}
+              {height ? "Height in cm" : ""}
+            </p>
+          )}
 
           <div className="mt-4">
             <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
@@ -723,23 +796,24 @@ export default function AddHealthRecord() {
 
         {/* ═══ 6. Monitoring and Follow-up ═══ */}
         <FormSection
-          title="Monitoring and Follow-up"
-          subtitle="Track patient condition and follow-up schedules."
+          title="Patient Monitoring"
+          subtitle="Track patient progress and follow-up schedules."
           icon={<HeartPulse size={14} />}
           delay={5}
         >
           <div className="grid gap-4 lg:grid-cols-3">
             <FieldSelect
-              label="Status"
+              label="Visit Type"
               value={followUpStatus}
               onChange={(e) => setFollowUpStatus(e.target.value)}
             >
-              <option>Under Monitoring</option>
-              <option>Referred</option>
+              <option>Routine Monitoring</option>
+              <option>Follow-up</option>
+              <option>For Referral</option>
               <option>Completed</option>
             </FieldSelect>
             <FieldSelect
-              label="Return After"
+              label="Next Visit Interval"
               value={returnAfter}
               onChange={(e) => setReturnAfter(e.target.value)}
             >
@@ -759,7 +833,7 @@ export default function AddHealthRecord() {
 
           <div className="mt-4">
             <FieldSelect
-              label="Patient Condition"
+              label="Current Condition"
               value={patientCondition}
               onChange={(e) => setPatientCondition(e.target.value)}
             >
@@ -773,7 +847,7 @@ export default function AddHealthRecord() {
 
           <div className="mt-4">
             <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Monitoring Notes
+              Monitoring and Follow-up
             </label>
             <textarea
               value={monitoringNotes}
