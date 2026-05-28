@@ -183,7 +183,8 @@ function ConfirmationModal({ action, onCancel, onConfirm }) {
                 {action.referral.trackingId}
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                {action.referral.patient} · {action.referral.ageSex}
+                {action.referral.patientName || action.referral.patient} ·{" "}
+                {action.referral.ageSex}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <StatusBadge status={action.referral.status} />
@@ -233,6 +234,8 @@ function ActionMenu({ referral }) {
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const btnRef = useRef(null);
   const menuRef = useRef(null);
+
+  const detailsHref = `/bhc/referrals/${referral.trackingId}`;
 
   const menuItems = [
     {
@@ -299,6 +302,12 @@ function ActionMenu({ referral }) {
   function handleAction(item) {
     if (item.key === "copy") {
       handleCopyId();
+      return;
+    }
+
+    if (item.key === "view") {
+      handleClose();
+      navigate(detailsHref);
       return;
     }
 
@@ -622,8 +631,9 @@ export default function IncomingReferrals() {
     setPendingAction(null);
   }
   function handleContinueMonitoring(referral) {
+    const patientName = referral.patientName || referral.patient || "";
     setActionToast(
-      `Monitoring confirmed for ${referral.patient} (${referral.trackingId})`,
+      `Monitoring confirmed for ${patientName} (${referral.trackingId})`,
     );
   }
 
@@ -652,18 +662,30 @@ export default function IncomingReferrals() {
   const baseFiltered = useMemo(() => {
     return referrals.filter((referral) => {
       const q = filters.search.toLowerCase();
+
+      const patientName =
+        referral.patientName || referral.patient || referral.name || "";
+
       const matchSearch =
         !filters.search ||
-        (referral.patient || "").toLowerCase().includes(q) ||
+        patientName.toLowerCase().includes(q) ||
         (referral.trackingId || "").toLowerCase().includes(q) ||
-        (referral.concern || "").toLowerCase().includes(q) ||
-        (referral.bhc || "").toLowerCase().includes(q);
+        (referral.chiefComplaint || referral.concern || "")
+          .toLowerCase()
+          .includes(q) ||
+        (referral.referringFacility || referral.bhc || "")
+          .toLowerCase()
+          .includes(q);
+
+      const priorityValue = referral.priorityLevel || referral.priority || "";
       const matchPriority =
         filters.priority === "All Priority" ||
-        referral.priority === filters.priority;
+        priorityValue === filters.priority;
+
       const matchSpec =
         filters.specialization === "All Specialization" ||
         referral.suggestedSpecialization === filters.specialization;
+
       return matchSearch && matchPriority && matchSpec;
     });
   }, [referrals, filters]);
@@ -834,23 +856,31 @@ export default function IncomingReferrals() {
                         </td>
                         <td className="whitespace-nowrap px-4 py-4">
                           <p className="text-[12.5px] font-semibold text-slate-800">
-                            {referral.patient}
+                            {referral.patientName || referral.patient}
                           </p>
                           <p className="mt-0.5 text-[10.5px] text-slate-400">
                             {referral.ageSex}
                           </p>
                         </td>
                         <td className="whitespace-nowrap px-4 py-4 text-[12px] text-slate-600">
-                          {referral.bhc}
+                          {referral.referringFacility || referral.bhc}
                         </td>
                         <td className="whitespace-nowrap px-4 py-4">
-                          <CategoryBadge category={referral.category} />
+                          <CategoryBadge
+                            category={
+                              referral.referralCategory || referral.category
+                            }
+                          />
                         </td>
                         <td className="whitespace-nowrap px-4 py-4">
-                          <PriorityBadge priority={referral.priority} />
+                          <PriorityBadge
+                            priority={
+                              referral.priorityLevel || referral.priority
+                            }
+                          />
                         </td>
                         <td className="max-w-[180px] truncate px-4 py-4 text-[12px] text-slate-600">
-                          {referral.concern}
+                          {referral.chiefComplaint || referral.concern}
                         </td>
                         <td className="whitespace-nowrap px-4 py-4">
                           <StatusBadge

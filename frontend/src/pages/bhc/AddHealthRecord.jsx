@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import {
   User,
@@ -16,6 +16,7 @@ import {
   Clock,
   X,
   ShieldCheck,
+  ChevronDown,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import healthRecordService, {
@@ -36,8 +37,13 @@ const keyframes = `
     0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
     50%      { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.08); }
   }
+  @keyframes dropIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
   .anim-fade-up    { animation: fadeUp 0.55s cubic-bezier(0.22,1,0.36,1) both; }
   .anim-pulse-next { animation: subtlePulse 2.2s ease-in-out infinite; }
+  .anim-drop-in    { animation: dropIn 0.18s cubic-bezier(0.22,1,0.36,1) both; }
 `;
 const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 
@@ -666,6 +672,10 @@ export default function AddHealthRecord() {
   const [patients, setPatients] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(-1);
+  const dropdownRef = useRef(null);
+  const inputRef = useRef(null);
 
   const [dateOfVisit, setDateOfVisit] = useState(
     new Date().toISOString().split("T")[0],
@@ -693,12 +703,9 @@ export default function AddHealthRecord() {
   const [needsReferral, setNeedsReferral] = useState("no");
   const [patientCondition, setPatientCondition] = useState("Improving");
 
-  // Referral context handoff to BHC CreateReferral form.
-  // Implemented without referencing `selectedPatient` (which is declared later) to avoid TDZ errors.
   const referralContextRef = useMemo(() => {
     const recordIdFromQuery = searchParams.get("recordId") || "";
     const patientIdFromQuery = searchParams.get("patientId") || "";
-
     return {
       recordId: recordIdFromQuery,
       patientId: selectedPatientId || patientIdFromQuery,
@@ -779,14 +786,70 @@ export default function AddHealthRecord() {
     loadFollowUpPreview();
   }, [isFollowUp, recordId]);
 
-  const getPatientClassification = () => {
+  /* ── Dropdown click-outside & keyboard ── */
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    function handleClickOutside(e) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target) &&
+        inputRef.current &&
+        !inputRef.current.contains(e.target)
+      ) {
+        closeDropdown();
+      }
+    }
+    function handleKeyDown(e) {
+      if (e.key === "Escape") {
+        closeDropdown();
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlightIndex((prev) =>
+          prev < filteredPatients.length - 1 ? prev + 1 : prev,
+        );
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlightIndex((prev) => (prev > 0 ? prev - 1 : 0));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (highlightIndex >= 0 && highlightIndex < filteredPatients.length) {
+          selectPatient(filteredPatients[highlightIndex].id);
+        }
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [dropdownOpen, filteredPatients, highlightIndex]);
+
+  useEffect(() => {
+    setHighlightIndex(0);
+  }, [searchTerm]);
+
+  function closeDropdown() {
+    setDropdownOpen(false);
+    setHighlightIndex(-1);
+    if (inputRef.current) inputRef.current.blur();
+  }
+
+  function selectPatient(id) {
+    setSelectedPatientId(id);
+    setDropdownOpen(false);
+    setHighlightIndex(-1);
+    setSearchTerm("");
+  }
+
+  function getPatientClassification() {
     if (!selectedPatient) return "";
     return (
       selectedPatient.patientClassification ||
       selectedPatient.category ||
       ""
     ).toLowerCase();
-  };
+  }
 
   /* ── Workflow Helper Variables ── */
   const patientClass = getPatientClassification();
@@ -877,60 +940,46 @@ export default function AddHealthRecord() {
 
     const formData = {
       patientId: selectedPatientId,
-
       patientName:
         selectedPatient?.name ||
         `${selectedPatient?.firstName || ""} ${selectedPatient?.lastName || ""}`,
-
       patientClassification:
         selectedPatient?.patientClassification ||
         selectedPatient?.category ||
         "General Consultation",
-
       dateOfVisit,
       timeOfVisit,
       chiefComplaint: finalChiefComplaint,
       summaryOfPresentIllness,
       diagnosis,
-
       vitalSigns: concatenatedVitalSigns,
-
       systolicBp: systolicBp || null,
       diastolicBp: diastolicBp || null,
       temperature: temp || null,
       pulseRate: pulse || null,
       weight: weight || null,
       height: height || null,
-
       medication,
       attendingStaff,
       consultationNotes,
-
       followUpStatus: finalStatus,
       followUpDate,
       monitoringNotes,
       patientCondition,
-
       needsReferral,
-
       referralReason: "",
       referralCategory: null,
-
       referralAssessmentStatus:
         needsReferral === "yes" ? "Pending RHU Assessment" : null,
-
       lmp: selectedPatient?.lmp || selectedPatient?.LMP || null,
       pmp: selectedPatient?.pmp || null,
       cycleDuration: selectedPatient?.cycleDuration || null,
       gravida: selectedPatient?.gravida || null,
       para: selectedPatient?.para || null,
       tpal: selectedPatient?.tpal || null,
-
       expectedDeliveryDate,
       aog,
-
       immunizationData,
-
       createdByRole: userRole,
     };
 
@@ -938,7 +987,6 @@ export default function AddHealthRecord() {
       const savedRecord =
         await healthRecordService.createHealthRecord(formData);
 
-      // AUTO REDIRECT TO CREATE REFERRAL
       if (needsReferral === "yes" && userRole === "bhc") {
         navigate(
           `/bhc/referrals/create?recordId=${
@@ -948,18 +996,27 @@ export default function AddHealthRecord() {
         return;
       }
 
-      // NORMAL SAVE
       navigate(healthRecordsPath);
     } catch (error) {
       console.error("Failed to save record:", error);
-
       alert("May error sa pag-save ng record. Pakisuri ang console.");
     }
   }
 
-  /* ═══════════════════════════════════════════════════════════════ */
-  // When switching to “Create Referral”, immediately navigate to the BHC CreateReferral form.
+  function getPatientDisplay(patient) {
+    const name =
+      patient.name ||
+      `${patient.firstName || ""} ${patient.lastName || ""}`.trim();
+    const age = patient.ageSex
+      ? patient.ageSex
+      : patient.age
+        ? `${patient.age} yrs`
+        : "";
+    const cls = patient.patientClassification || patient.category || "";
+    return { name, age, cls };
+  }
 
+  /* ═══════════════════════════════════════════════════════════════ */
   return (
     <DashboardLayout role={userRole} title="Add Health Record">
       <style>{keyframes}</style>
@@ -1002,96 +1059,183 @@ export default function AddHealthRecord() {
           icon={<User size={14} />}
           delay={1}
         >
-          <div className="grid gap-4">
-            <div>
-              <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                Search Existing Patient
-              </label>
-              <div className="relative">
-                <Search
-                  size={15}
-                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
-                />
-                <input
-                  type="text"
-                  placeholder="Type patient name or contact number..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="h-10 w-full rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] pl-10 pr-3.5 text-sm outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                Select Patient ({filteredPatients.length} found)
-              </label>
-              <select
-                required
-                value={selectedPatientId}
-                onChange={(e) => setSelectedPatientId(e.target.value)}
+          <div className="relative">
+            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+              Search Existing Patient
+            </label>
+
+            {/* Trigger input */}
+            <div className="relative" ref={inputRef}>
+              <Search
+                size={15}
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
+              />
+              <input
+                type="text"
+                placeholder="Type patient name or contact number..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  if (!dropdownOpen) setDropdownOpen(true);
+                }}
+                onFocus={() => {
+                  if (searchTerm || (!isFollowUp && patients.length > 0)) {
+                    setDropdownOpen(true);
+                  }
+                }}
                 disabled={isFollowUp}
-                className="h-10 w-full appearance-none rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 text-sm outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:bg-[#F3F4F6] disabled:text-[#9CA3AF]"
-              >
-                <option value="">-- Choose Patient --</option>
-                {filteredPatients.map((patient) => {
-                  const pName =
-                    patient.name ||
-                    `${patient.firstName || ""} ${patient.lastName || ""}`;
-                  const pAge = patient.ageSex
-                    ? patient.ageSex
-                    : patient.age
-                      ? `${patient.age} yrs`
-                      : "";
-                  const pClass =
-                    patient.patientClassification || patient.category || "";
-                  return (
-                    <option key={patient.id} value={patient.id}>
-                      {pName}
-                      {pAge ? ` • ${pAge}` : ""}
-                      {pClass ? ` [${pClass}]` : ""}
-                    </option>
-                  );
-                })}
-              </select>
+                readOnly={isFollowUp}
+                className={`h-10 w-full rounded-xl border bg-[#FAFBFC] pl-10 pr-10 text-sm outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:bg-[#F3F4F6] disabled:text-[#9CA3AF] ${
+                  dropdownOpen
+                    ? "border-[#B91C1C] ring-2 ring-[#B91C1C]/10 bg-white"
+                    : "border-[#E8ECF0]"
+                }`}
+              />
+              {selectedPatientId && !isFollowUp && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    selectPatient("");
+                    if (inputRef.current) inputRef.current.focus();
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-[#9CA3AF] transition-colors hover:bg-[#F3F4F6] hover:text-[#6B7280]"
+                  title="Clear selection"
+                >
+                  <X size={14} />
+                </button>
+              )}
+              {!selectedPatientId && !isFollowUp && (
+                <ChevronDown
+                  size={14}
+                  className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 transition-colors duration-200 ${
+                    dropdownOpen ? "text-[#B91C1C]" : "text-[#9CA3AF]"
+                  }`}
+                />
+              )}
             </div>
-            {selectedPatient && (
-              <div className="anim-fade-up rounded-xl border border-red-100 bg-red-50 p-4">
-                <div className="mb-2 flex items-center gap-2">
-                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-red-100">
-                    <User size={11} className="text-[#B91C1C]" />
-                  </div>
-                  <span className="text-[9px] font-bold uppercase tracking-widest text-[#B91C1C]">
-                    Patient Preview
-                  </span>
+
+            {/* Dropdown */}
+            {dropdownOpen && !isFollowUp && (
+              <div
+                ref={dropdownRef}
+                className="anim-drop-in absolute left-0 right-0 top-full z-50 mt-1.5 max-h-64 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-xl shadow-black/[0.08]"
+              >
+                <div className="border-b border-[#F3F4F6] px-3.5 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                    {filteredPatients.length} result
+                    {filteredPatients.length !== 1 ? "s" : ""}
+                  </p>
                 </div>
-                <p className="text-sm font-bold text-[#1A1A1A]">
-                  {selectedPatient.name ||
-                    `${selectedPatient.firstName || ""} ${selectedPatient.lastName || ""}`}
-                </p>
-                <p className="mt-0.5 text-xs text-[#6B7280]">
-                  Age/Sex:{" "}
-                  {selectedPatient.ageSex ||
-                    (selectedPatient.age
-                      ? `${selectedPatient.age} years old / ${selectedPatient.sex || "—"}`
-                      : "—")}
-                </p>
-                <p className="text-xs text-[#6B7280]">
-                  Contact:{" "}
-                  {selectedPatient.contactNumber ||
-                    selectedPatient.contact ||
-                    "—"}
-                </p>
-                <p className="text-xs text-[#6B7280]">
-                  Classification:{" "}
-                  <span className="font-semibold text-[#B91C1C]">
-                    {selectedPatient.patientClassification ||
-                      selectedPatient.category ||
-                      "General Consultation"}
-                  </span>
-                </p>
+
+                {filteredPatients.length === 0 ? (
+                  <div className="px-3.5 py-8 text-center">
+                    <Search size={20} className="mx-auto mb-2 text-[#D4D4D4]" />
+                    <p className="text-xs font-medium text-[#9CA3AF]">
+                      No patients found
+                    </p>
+                    <p className="mt-0.5 text-[10px] text-[#D4D4D4]">
+                      Try a different name or contact number.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="max-h-52 overflow-y-auto py-1">
+                    {filteredPatients.map((patient, index) => {
+                      const { name, age, cls } = getPatientDisplay(patient);
+                      const isSelected = patient.id === selectedPatientId;
+                      const isHighlighted = index === highlightIndex;
+
+                      return (
+                        <button
+                          key={patient.id}
+                          type="button"
+                          onMouseEnter={() => setHighlightIndex(index)}
+                          onClick={() => selectPatient(patient.id)}
+                          className={`flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors duration-100 ${
+                            isHighlighted
+                              ? "bg-[#B91C1C]/[0.06]"
+                              : isSelected
+                                ? "bg-red-50"
+                                : "hover:bg-[#FAFBFC]"
+                          }`}
+                        >
+                          <div
+                            className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-[11px] font-bold ${
+                              isSelected
+                                ? "bg-[#B91C1C] text-white"
+                                : "bg-[#F3F4F6] text-[#6B7280]"
+                            }`}
+                          >
+                            {(patient.name || "").charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className={`text-sm truncate ${
+                                isSelected
+                                  ? "font-bold text-[#B91C1C]"
+                                  : "font-medium text-[#1F2937]"
+                              }`}
+                            >
+                              {name}
+                            </p>
+                            <p className="text-[10px] text-[#9CA3AF] truncate">
+                              {age}
+                              {age && cls ? ` · ${cls}` : ""}
+                            </p>
+                          </div>
+                          {isSelected && (
+                            <Check
+                              size={14}
+                              className="flex-shrink-0 text-[#B91C1C]"
+                              strokeWidth={3}
+                            />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
+
+          {/* Selected patient preview */}
+          {selectedPatient && (
+            <div className="anim-fade-up mt-3 rounded-xl border border-red-100 bg-red-50 p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-red-100">
+                  <User size={11} className="text-[#B91C1C]" />
+                </div>
+                <span className="text-[9px] font-bold uppercase tracking-widest text-[#B91C1C]">
+                  Patient Preview
+                </span>
+              </div>
+              <p className="text-sm font-bold text-[#1A1A1A]">
+                {selectedPatient.name ||
+                  `${selectedPatient.firstName || ""} ${selectedPatient.lastName || ""}`}
+              </p>
+              <p className="mt-0.5 text-xs text-[#6B7280]">
+                Age/Sex:{" "}
+                {selectedPatient.ageSex ||
+                  (selectedPatient.age
+                    ? `${selectedPatient.age} years old / ${selectedPatient.sex || "—"}`
+                    : "—")}
+              </p>
+              <p className="text-xs text-[#6B7280]">
+                Contact:{" "}
+                {selectedPatient.contactNumber ||
+                  selectedPatient.contact ||
+                  "—"}
+              </p>
+              <p className="text-xs text-[#6B7280]">
+                Classification:{" "}
+                <span className="font-semibold text-[#B91C1C]">
+                  {selectedPatient.patientClassification ||
+                    selectedPatient.category ||
+                    "General Consultation"}
+                </span>
+              </p>
+            </div>
+          )}
         </FormSection>
 
         {/* ═══ 2. IMMUNIZATION WORKFLOW (IMMUNIZATION ONLY) ═══ */}

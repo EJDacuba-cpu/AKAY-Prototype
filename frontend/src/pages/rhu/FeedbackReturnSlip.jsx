@@ -17,69 +17,12 @@ import {
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 
-/* ─── Mock Data (matches IncomingReferrals) ─── */
-const REFERRALS = [
-  {
-    trackingId: "AKY-2026-001",
-    patient: "Juan Reyes",
-    ageSex: "31/M",
-    bhc: "Pitpitan Health Center",
-    category: "B1",
-    priority: "Medium",
-    concern: "Hypertension",
-    suggestedSpecialization: "General Consultation",
-    dateSubmitted: "May 13, 2026",
-    status: "Pending",
-  },
-  {
-    trackingId: "AKY-2026-002",
-    patient: "Maria Rosa",
-    ageSex: "31/F",
-    bhc: "Pitpitan Health Center",
-    category: "C2",
-    priority: "High",
-    concern: "Pregnancy-related abdominal pain",
-    suggestedSpecialization: "Maternal Care",
-    dateSubmitted: "May 13, 2026",
-    status: "Received",
-  },
-  {
-    trackingId: "AKY-2026-003",
-    patient: "John Cruz",
-    ageSex: "45/M",
-    bhc: "Bagumbayan Health Center",
-    category: "A1",
-    priority: "Normal",
-    concern: "Fever and cough",
-    suggestedSpecialization: "General Consultation",
-    dateSubmitted: "May 12, 2026",
-    status: "Completed",
-  },
-  {
-    trackingId: "AKY-2026-004",
-    patient: "David Perez",
-    ageSex: "44/M",
-    bhc: "San Jose Health Center",
-    category: "A2",
-    priority: "Normal",
-    concern: "Follow-up assessment",
-    suggestedSpecialization: "General Consultation",
-    dateSubmitted: "May 12, 2026",
-    status: "No-Show",
-  },
-  {
-    trackingId: "AKY-2026-005",
-    patient: "Antonio Santos",
-    ageSex: "29/M",
-    bhc: "Taliptip Health Center",
-    category: "B1",
-    priority: "Medium",
-    concern: "Needs RHU monitoring",
-    suggestedSpecialization: "General Consultation",
-    dateSubmitted: "May 11, 2026",
-    status: "For Monitoring",
-  },
-];
+import { getReferrals } from "../../services/referrals";
+
+/* ─── Note ───
+   Removed local hardcoded referral demo data.
+   This component now loads referrals from centralized shared storage via getReferrals().
+*/
 
 /* ─── Status Progression Stepper ─── */
 function StatusStepper({ currentStep }) {
@@ -343,19 +286,36 @@ export default function FeedbackReturnSlip() {
 
   const isAutoLoaded = !!routeTrackingId;
 
+  const [referrals, setReferrals] = useState([]);
+
+  /* Load referrals from centralized shared storage */
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      const all = await getReferrals();
+      if (!alive) return;
+      setReferrals(all);
+    }
+    load();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   /* Auto-load referral from URL param */
   useEffect(() => {
-    if (routeTrackingId) {
-      const exists = REFERRALS.find((r) => r.trackingId === routeTrackingId);
-      if (exists) {
-        setSelectedReferralId(routeTrackingId);
-      } else {
-        setNotFound(true);
-      }
-    }
-  }, [routeTrackingId]);
+    if (!routeTrackingId) return;
 
-  const selectedReferral = REFERRALS.find(
+    const exists = referrals.find((r) => r.trackingId === routeTrackingId);
+    if (exists) {
+      setSelectedReferralId(routeTrackingId);
+      setNotFound(false);
+    } else {
+      setNotFound(true);
+    }
+  }, [routeTrackingId, referrals]);
+
+  const selectedReferral = referrals.find(
     (r) => r.trackingId === selectedReferralId,
   );
 
