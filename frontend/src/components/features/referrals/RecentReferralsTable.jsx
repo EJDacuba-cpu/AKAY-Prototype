@@ -253,7 +253,7 @@ export default function HealthRecordsTable({
                             subtitle={record.id}
                             viewLink={`/bhc/health-records/${record.id}`}
                             editLink="/bhc/health-records/add"
-                            referralLink="/bhc/referrals/create"
+                            referralLink="/rhu/feedback/create"
                           />
                         </div>
                       </td>
@@ -275,6 +275,3 @@ export default function HealthRecordsTable({
     </div>
   );
 }
-
-
-

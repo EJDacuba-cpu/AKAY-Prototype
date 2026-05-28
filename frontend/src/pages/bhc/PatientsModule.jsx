@@ -1,14 +1,18 @@
 import { Link } from "react-router";
-import { Plus, Users, HeartPulse, Baby } from "lucide-react";
+import { Plus, Users, UserCheck, HeartPulse, Syringe } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import StatCard from "../../components/common/cards/StatsCard";
 import PatientFilters from "../../components/features/patients/PatientFilters";
 import PatientsTable from "../../components/features/patients/PatientsTable";
 import usePatients from "../../hooks/usePatients";
-import { stagger } from "../../utils/animation";
+
+const PATIENT_TABS = [
+  { key: "All Patients", label: "All Patients", icon: Users },
+  { key: "Senior Citizen", label: "Senior Citizens", icon: UserCheck },
+  { key: "Maternal", label: "Maternal", icon: HeartPulse },
+  { key: "Immunization", label: "Immunization", icon: Syringe },
+];
 
 export default function PatientsModule() {
-  /* Patients Hook */
   const {
     patients,
     paginatedPatients,
@@ -21,123 +25,106 @@ export default function PatientsModule() {
     totalPages,
   } = usePatients();
 
+  const tabCounts = {
+    "All Patients": patients.length,
+    "Senior Citizen": stats.seniorCitizens,
+    Maternal: stats.pregnantPatients,
+    Immunization: stats.children,
+  };
+
+  const handleTabChange = (typeKey) => {
+    setFilters((prev) => ({ ...prev, type: typeKey }));
+  };
+
   return (
     <DashboardLayout role="bhc" title="Patients">
-      {/* Header */}
-      <div
-        className="anim-fade-up mb-8 flex items-start justify-between gap-4"
-        style={stagger(0)}
-      >
-        <div className="flex items-center gap-3.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0B2E59]/[0.06]">
-            <Users size={20} className="text-[#0B2E59]" />
-          </div>
-
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-[#0B2E59]">
-              Patients
-            </h1>
-            <p className="mt-0.5 text-sm text-[#6B7280]">
-              Manage patient profiles registered in the Barangay Health Center.
-            </p>
-          </div>
+      {/* ═══════════════════════════════════════════════════════════════
+          TOP NAVIGATION: TABS + ACTION
+          ═══════════════════════════════════════════════════════════════ */}
+      <div className="mb-6 flex items-center justify-between gap-4">
+        {/* Category Pill Tabs */}
+        <div className="flex items-center gap-1.5 rounded-lg bg-[#F1F5F9] p-1">
+          {PATIENT_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = filters.type === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => handleTabChange(tab.key)}
+                className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-[11.5px] font-medium transition-all ${
+                  isActive
+                    ? "bg-white text-[#0F172A] shadow-sm"
+                    : "text-[#64748B] hover:text-[#0F172A]"
+                }`}
+              >
+                <Icon size={13} className={isActive ? "text-[#0B2E59]" : ""} />
+                {tab.label}
+                <span
+                  className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none ${
+                    isActive
+                      ? "bg-[#0B2E59]/10 text-[#0B2E59]"
+                      : "bg-slate-200/70 text-slate-500"
+                  }`}
+                >
+                  {(tabCounts[tab.key] || 0).toLocaleString()}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
-        {/* Add Button */}
+        {/* Add Patient Action */}
         <Link
           to="/bhc/patients/add"
-          className="
-            group flex items-center gap-2
-            rounded-xl
-            bg-[#0B2E59]
-            px-5 py-2.5
-            text-xs font-semibold text-white
-            shadow-md shadow-[#0B2E59]/15
-            transition-all duration-300
-            hover:-translate-y-0.5 hover:bg-[#092347] hover:shadow-lg hover:shadow-[#0B2E59]/25
-            active:scale-[0.98]
-          "
-          style={stagger(1)}
+          className="flex h-9 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347] active:bg-[#071D3A]"
         >
-          <Plus
-            size={15}
-            className="transition-transform duration-300 group-hover:rotate-90"
-          />
+          <Plus size={14} strokeWidth={2.5} />
           Add Patient
         </Link>
       </div>
 
-      {/* Stats Cards */}
-      <div className="mb-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Registered Patients"
-          value={String(patients.length)} // Pinalitan ng total patients imbis na filtered paginated length
-          icon={<Users size={16} />}
-          color="navy"
-          delay={2}
-        />
-
-        <StatCard
-          title="Senior Citizens"
-          value={String(stats.seniorCitizens)}
-          icon={<Users size={16} />}
-          color="amber"
-          delay={3}
-        />
-
-        <StatCard
-          title="Immunization"
-          value={String(stats.children)}
-          icon={<Baby size={16} />}
-          color="slate"
-          delay={4}
-        />
-
-        <StatCard
-          title="Maternal"
-          value={String(stats.pregnantPatients)}
-          icon={<HeartPulse size={16} />}
-          color="blue"
-          delay={5}
-        />
-      </div>
-
-      {/* Filters Area */}
-      <div className="anim-fade-up" style={stagger(6)}>
-        <PatientFilters filters={filters} setFilters={setFilters} />
-      </div>
-
-      {/* Table & Pagination Blocks (Palaging visible para hindi maglaho ang pagination controls) */}
-      <div className="anim-fade-up mt-6" style={stagger(7)}>
-        <PatientsTable
-          patients={paginatedPatients}
-          loading={loading}
-          currentPage={currentPage}
-          totalPages={totalPages}
-          setCurrentPage={setCurrentPage}
-        />
-      </div>
-
-      {/* Optional: Clear Filters helper link sa ilalim kung walang lumabas na resulta */}
-      {paginatedPatients.length === 0 && !loading && (
-        <div className="text-center mt-4 anim-fade-up">
-          <button
-            onClick={() =>
-              setFilters({
-                search: "",
-                sex: "All",
-                type: "All Patients",
-              })
-            }
-            className="text-xs font-semibold text-[#2563EB] hover:underline"
-          >
-            Clear current filters to view records
-          </button>
+      {/* ═══════════════════════════════════════════════════════════════
+          TWO-COLUMN LAYOUT: SIDEBAR + TABLE
+          ═══════════════════════════════════════════════════════════════ */}
+      <div className="flex items-start gap-6">
+        {/* ── Right Table Content ── */}
+        <div className="min-w-0 flex-1 rounded-xl border border-[#E2E8F0] bg-white shadow-sm overflow-hidden">
+          {paginatedPatients.length === 0 && !loading ? (
+            <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
+                <Users size={20} className="text-[#94A3B8]" />
+              </div>
+              <p className="text-[13px] font-semibold text-[#334155]">
+                No Matching Patients
+              </p>
+              <p className="mt-1 text-[11.5px] text-[#94A3B8]">
+                Try adjusting your search or filter criteria.
+              </p>
+              <button
+                onClick={() =>
+                  setFilters({ search: "", sex: "All", type: "All Patients" })
+                }
+                className="mt-4 text-[11px] font-semibold text-[#0B2E59] hover:underline"
+              >
+                Clear current filters
+              </button>
+            </div>
+          ) : (
+            <PatientsTable
+              patients={paginatedPatients}
+              loading={loading}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              setCurrentPage={setCurrentPage}
+            />
+          )}
         </div>
-      )}
+        {/* ── Left Filter Sidebar ── */}
+        <aside className="w-[260px] shrink-0">
+          <PatientFilters filters={filters} setFilters={setFilters} />
+        </aside>
+      </div>
     </DashboardLayout>
   );
 }
-
-
-

@@ -2,33 +2,37 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import {
   Plus,
-  ClipboardList,
+  Search,
   FileText,
-  HeartPulse,
-  Clock,
   CheckCircle2,
   Activity,
+  ClipboardList,
+  RotateCcw,
+  ArrowRightLeft,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import StatCard from "../../components/common/cards/StatsCard";
 import HealthRecordsTable from "../../components/features/records/HealthRecordsTable";
-import { stagger } from "../../utils/animation";
 import { getHealthRecords } from "../../services/healthRecordService";
-import FilterSelect from "../../components/common/forms/FilterSelect";
-import SearchInput from "../../components/common/forms/SearchInput";
+
+const STATUS_TABS = [
+  { key: "", label: "All Records", icon: ClipboardList },
+  { key: "Routine Monitoring", label: "Monitoring", icon: Activity },
+  { key: "Follow-Up", label: "Follow-Up", icon: RotateCcw },
+  { key: "For-Referral", label: "Referral", icon: ArrowRightLeft },
+  { key: "Completed", label: "Completed", icon: CheckCircle2 },
+];
 
 export default function HealthRecords() {
   const [filters, setFilters] = useState({
     search: "",
     status: "",
     classification: "",
+    date: "",
   });
 
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // 1. STATE PARA SA PAGINATION NI-SETUP PARA MACLICK ANG PAGE 2
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
@@ -36,24 +40,18 @@ export default function HealthRecords() {
       try {
         setLoading(true);
         const data = await getHealthRecords();
-
-        // Siguraduhin na array ang data at i-normalize
         const rawData = Array.isArray(data) ? data : [];
 
         const normalizedRecords = rawData.map((record) => ({
           ...record,
-
           id:
             record.id ||
             record.trackingId ||
             Math.random().toString(36).substr(2, 9),
-
           trackingId: record.trackingId || record.id || "No Tracking ID",
-
           patientName:
             record.patientName ||
             `${record.firstName || ""} ${record.lastName || ""}`.trim(),
-
           classification:
             record.patientClassification ||
             record.classification ||
@@ -63,19 +61,16 @@ export default function HealthRecords() {
               : record.aog || record.expectedDeliveryDate
                 ? "Maternal"
                 : "General Consultation"),
-
           concern:
             record.chiefComplaint ||
             (record.vaccineType
               ? `${record.vaccineType} - ${record.doseNumber || ""}`
               : "General Consultation"),
-
           status:
             record.status ||
             (record.needsReferral === "yes"
-              ? "Referred"
+              ? "Routine Monitoring"
               : record.followUpStatus || "Completed"),
-
           followUp: record.followUpDate || "No Follow-up",
           date: record.dateOfVisit || record.date || "No Date",
         }));
@@ -91,11 +86,10 @@ export default function HealthRecords() {
     fetchRecords();
   }, []);
 
-  const filteredRecords = records.filter((record) => {
+  // ── Filtering Logic ──────────────────────────────────────────────
+  const baseFiltered = records.filter((record) => {
     const searchLower = filters.search.toLowerCase();
-
     const patientWords = record.patientName?.toLowerCase().split(" ") || [];
-
     const matchesPatientName = patientWords.some((word) =>
       word.startsWith(searchLower),
     );
@@ -105,41 +99,65 @@ export default function HealthRecords() {
       record.trackingId?.toLowerCase().includes(searchLower) ||
       record.classification?.toLowerCase().includes(searchLower) ||
       record.concern?.toLowerCase().includes(searchLower);
-
-    const matchesStatus = !filters.status || record.status === filters.status;
     const matchesClassification =
       !filters.classification ||
       record.classification === filters.classification;
-
-    return matchesSearch && matchesStatus && matchesClassification;
+    const matchesDate =
+      !filters.date || (record.date && record.date.includes(filters.date));
+    return matchesSearch && matchesClassification && matchesDate;
   });
+
+  const tabCounts = STATUS_TABS.reduce((acc, tab) => {
+    acc[tab.key] =
+      tab.key === ""
+        ? baseFiltered.length
+        : baseFiltered.filter((r) => r.status === tab.key).length;
+    return acc;
+  }, {});
+
+  const filteredRecords = baseFiltered.filter(
+    (record) => !filters.status || record.status === filters.status,
+  );
 
   const stats = {
     total: filteredRecords.length,
-
-    monitoring: filteredRecords.filter((r) => r.status === "Under Monitoring")
+    monitoring: filteredRecords.filter((r) => r.status === "Follow-Up").length,
+    referral: filteredRecords.filter((r) => r.status === "Routine Monitoring")
       .length,
-
-    referral: filteredRecords.filter((r) => r.status === "Referred").length,
-
     completed: filteredRecords.filter((r) => r.status === "Completed").length,
-
     immunization: filteredRecords.filter(
       (r) => r.classification?.toLowerCase() === "immunization",
     ).length,
   };
 
-  // Helper function para ibalik sa Page 1 ang view tuwing magta-type o magpapalit ng filter options
+  const hasActiveFilters =
+    filters.status || filters.classification || filters.date;
+
   const handleFilterChange = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
+    setCurrentPage(1);
+  };
+
+  const handleTabChange = (statusKey) => {
+    setFilters((prev) => ({ ...prev, status: statusKey }));
+    setCurrentPage(1);
+  };
+
+  const clearFilters = () => {
+    setFilters({ search: "", status: "", classification: "", date: "" });
     setCurrentPage(1);
   };
 
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Health Records">
-        <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-400">
-          Loading health records...
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-7 w-7 animate-spin rounded-full border-2 border-slate-200 border-t-[#0B2E59]" />
+            <p className="text-[12px] font-medium text-slate-400">
+              Loading health records…
+            </p>
+          </div>
         </div>
       </DashboardLayout>
     );
@@ -147,114 +165,184 @@ export default function HealthRecords() {
 
   return (
     <DashboardLayout role="bhc" title="Health Records">
-      {/* Header */}
-      <div
-        className="mb-8 flex items-start justify-between gap-4"
-        style={stagger(0)}
-      >
-        <div className="flex items-center gap-3.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0B2E59]/[0.06]">
-            <ClipboardList size={20} className="text-[#0B2E59]" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-[#0B2E59]">Health Records</h1>
-            <p className="mt-0.5 text-sm text-[#6B7280]">
-              Accurate patient monitoring and consultation encounters.
-            </p>
-          </div>
+      {/* ═══════════════════════════════════════════════════════════════
+          TOP NAVIGATION: TABS + ACTION
+          ═══════════════════════════════════════════════════════════════ */}
+      <div className="mb-6 flex items-center justify-between gap-4">
+        {/* Category Pill Tabs */}
+        <div className="flex items-center gap-1.5 rounded-lg bg-[#F1F5F9] p-1">
+          {STATUS_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = filters.status === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => handleTabChange(tab.key)}
+                className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-[11.5px] font-medium transition-all ${
+                  isActive
+                    ? "bg-white text-[#0F172A] shadow-sm"
+                    : "text-[#64748B] hover:text-[#0F172A]"
+                }`}
+              >
+                <Icon size={13} className={isActive ? "text-[#0B2E59]" : ""} />
+                {tab.label}
+                <span
+                  className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none ${
+                    isActive
+                      ? "bg-[#0B2E59]/10 text-[#0B2E59]"
+                      : "bg-slate-200/70 text-slate-500"
+                  }`}
+                >
+                  {tabCounts[tab.key] ?? 0}
+                </span>
+              </button>
+            );
+          })}
         </div>
+
+        {/* Add Consultation Action */}
         <Link
           to="/bhc/health-records/add"
-          className="flex items-center gap-2 rounded-xl bg-[#0B2E59] px-5 py-2.5 text-xs font-semibold text-white shadow-md transition hover:bg-[#092347]"
+          className="flex h-9 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347] active:bg-[#071D3A]"
         >
-          <Plus size={15} /> Add Consultation
+          <Plus size={14} strokeWidth={2.5} />
+          Add Consultation
         </Link>
       </div>
 
-      {/* Stats */}
-      <div className="mb-6 grid gap-5 md:grid-cols-2 xl:grid-cols-5">
-        <StatCard
-          title="Visible Records"
-          value={String(stats.total)}
-          icon={<FileText size={16} />}
-          color="navy"
-        />
-        <StatCard
-          title="Under Monitoring"
-          value={String(stats.monitoring)}
-          icon={<HeartPulse size={16} />}
-          color="amber"
-        />
-        <StatCard
-          title="Referred Cases"
-          value={String(stats.referral)}
-          icon={<Clock size={16} />}
-          color="slate"
-        />
-        <StatCard
-          title="Completed"
-          value={String(stats.completed)}
-          icon={<CheckCircle2 size={16} />}
-          color="blue"
-        />
-        <StatCard
-          title="Immunization Visits"
-          value={String(stats.immunization)}
-          icon={<Activity size={16} />}
-          color="emerald"
-        />
-      </div>
-
-      {/* Filters */}
-      <div className="mb-6 rounded-2xl border border-[#E8ECF0] bg-white p-5">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <SearchInput
-            placeholder="Search patient or Tracking ID..."
-            value={filters.search}
-            onChange={(e) => handleFilterChange("search", e.target.value)}
-          />
-          <FilterSelect
-            label="Classification"
-            value={filters.classification}
-            onChange={(e) =>
-              handleFilterChange("classification", e.target.value)
-            }
-          >
-            <option value="">All Classifications</option>
-            <option value="Maternal">Maternal</option>
-            <option value="Immunization">Immunization</option>
-            <option value="Senior Citizen">Senior Citizen</option>
-          </FilterSelect>
-          <FilterSelect
-            label="Status"
-            value={filters.status}
-            onChange={(e) => handleFilterChange("status", e.target.value)}
-          >
-            <option value="">All Status</option>
-            <option value="Referred">Referred</option>
-            <option value="Under Monitoring">Under Monitoring</option>
-            <option value="Completed">Completed</option>
-          </FilterSelect>
+      {/* ═══════════════════════════════════════════════════════════════
+          TWO-COLUMN LAYOUT: SIDEBAR + TABLE
+          ═══════════════════════════════════════════════════════════════ */}
+      <div className="flex items-start gap-6">
+        {/* ── Right Table Content ── */}
+        <div className="min-w-0 flex-1 rounded-xl border border-[#E2E8F0] bg-white shadow-sm overflow-hidden">
+          {filteredRecords.length === 0 ? (
+            <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
+                <FileText size={20} className="text-[#94A3B8]" />
+              </div>
+              <p className="text-[13px] font-semibold text-[#334155]">
+                No Matching Records
+              </p>
+              <p className="mt-1 text-[11.5px] text-[#94A3B8]">
+                Try adjusting your search or filter criteria.
+              </p>
+            </div>
+          ) : (
+            <HealthRecordsTable
+              records={filteredRecords}
+              currentPage={currentPage}
+              setCurrentPage={setCurrentPage}
+            />
+          )}
         </div>
-      </div>
+        {/* ── Left Filter Sidebar ── */}
+        <aside className="w-[260px] shrink-0">
+          <div className="rounded-xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-[12px] font-semibold text-[#0F172A]">
+                Filters
+              </h2>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="text-[10px] font-medium text-[#0B2E59] hover:underline"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
 
-      {filteredRecords.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-[#DCE3EA] bg-white px-6 py-16 text-center">
-          <h3 className="text-sm font-semibold text-[#0B2E59]">
-            No Matching Records
-          </h3>
-        </div>
-      ) : (
-        // 2. MAHALAGA: Dito na natin ipinasa ang props papunta sa table component
-        <HealthRecordsTable
-          records={filteredRecords}
-          currentPage={currentPage}
-          setCurrentPage={setCurrentPage}
-        />
-      )}
+            <div className="space-y-5">
+              {/* Search Patient */}
+              <div>
+                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
+                  Search Patient
+                </label>
+                <div className="relative">
+                  <Search
+                    size={13}
+                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Name or Tracking ID…"
+                    value={filters.search}
+                    onChange={(e) =>
+                      handleFilterChange("search", e.target.value)
+                    }
+                    className="h-[34px] w-full rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] pl-8 pr-3 text-[12px] text-[#0F172A] outline-none transition-all placeholder:text-[#94A3B8] focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
+                  />
+                </div>
+              </div>
+
+              {/* Classification */}
+              <div>
+                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
+                  Classification
+                </label>
+                <select
+                  value={filters.classification}
+                  onChange={(e) =>
+                    handleFilterChange("classification", e.target.value)
+                  }
+                  className="h-[34px] w-full appearance-none rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-2.5 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
+                >
+                  <option value="">All Classifications</option>
+                  <option value="Maternal">Maternal</option>
+                  <option value="Immunization">Immunization</option>
+                  <option value="Senior Citizen">Senior Citizen</option>
+                </select>
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
+                  Status
+                </label>
+                <select
+                  value={filters.status}
+                  onChange={(e) => handleFilterChange("status", e.target.value)}
+                  className="h-[34px] w-full appearance-none rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-2.5 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
+                >
+                  <option value="">All Status</option>
+                  <option value="Routine Monitoring">Routine Monitoring</option>
+                  <option value="Follow-Up">Follow-Up</option>
+                  <option value="For-Referral">For-Referral</option>
+                  <option value="Completed">Completed</option>
+                </select>
+              </div>
+
+              {/* Date of Visit (Optional) */}
+              <div>
+                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
+                  Date of Visit
+                </label>
+                <input
+                  type="date"
+                  value={filters.date}
+                  onChange={(e) => handleFilterChange("date", e.target.value)}
+                  className="h-[34px] w-full rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-2.5 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
+                />
+              </div>
+            </div>
+
+            {/* Reset Button */}
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="mt-6 flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#E2E8F0] py-2 text-[11px] font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC] hover:text-[#334155]"
+              >
+                <RotateCcw size={11} />
+                Reset All Filters
+              </button>
+            )}
+          </div>
+        </aside>
+      </div>
     </DashboardLayout>
   );
 }
-
-
-

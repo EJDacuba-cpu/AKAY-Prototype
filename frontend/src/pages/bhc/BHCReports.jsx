@@ -1,20 +1,18 @@
 import {
-  Activity,
-  AlertTriangle,
-  BarChart3,
-  CalendarDays,
-  CheckCircle2,
   ClipboardList,
-  Download,
-  FileText,
-  Filter,
   HeartPulse,
   Printer,
-  RefreshCw,
-  TrendingUp,
   Users,
+  BookOpen,
+  FileSpreadsheet,
+  FileText,
+  AlertTriangle,
+  RefreshCw,
+  CheckCircle2, // Added missing import
+  XCircle, // Added missing import
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import StatCard from "../../components/common/cards/StatsCard";
 
 export default function BHCReports() {
   const referralStatus = [
@@ -26,20 +24,110 @@ export default function BHCReports() {
   ];
 
   const referralCategories = [
-    { code: "A1", label: "Emergency", value: 6, level: "Critical" },
-    { code: "A2", label: "Urgent", value: 4, level: "High" },
-    { code: "B1", label: "Routine", value: 12, level: "Moderate" },
-    { code: "B2", label: "Standard", value: 5, level: "Moderate" },
-    { code: "C1", label: "Follow-up", value: 3, level: "Low" },
-    { code: "C2", label: "Non-urgent", value: 8, level: "Low" },
+    {
+      label: "Maternal Cases",
+      value: 8,
+      monthly: 32,
+      percent: 19,
+      tone: "pink",
+    },
+    {
+      label: "Senior Citizen Cases",
+      value: 4,
+      monthly: 16,
+      percent: 10,
+      tone: "slate",
+    },
+    { label: "A1 Cases", value: 6, monthly: 24, percent: 14, tone: "red" },
+    { label: "A2 Cases", value: 4, monthly: 16, percent: 10, tone: "orange" },
+    { label: "B1 Cases", value: 12, monthly: 48, percent: 29, tone: "blue" },
+    { label: "B2 Cases", value: 5, monthly: 20, percent: 12, tone: "blue" },
+    {
+      label: "High-Risk Cases",
+      value: 4,
+      monthly: 16,
+      percent: 10,
+      tone: "red",
+    },
+    {
+      label: "Monitoring Cases",
+      value: 6,
+      monthly: 24,
+      percent: 14,
+      tone: "amber",
+    },
   ];
 
-  const patientCategories = [
-    { label: "General Consultation", value: 45, icon: <FileText size={15} /> },
-    { label: "Children", value: 28, icon: <Users size={15} /> },
-    { label: "Immunization", value: 22, icon: <CheckCircle2 size={15} /> },
-    { label: "Senior Citizen", value: 18, icon: <Activity size={15} /> },
-    { label: "Pregnant Patient", value: 15, icon: <HeartPulse size={15} /> },
+  const referralLogbook = [
+    {
+      name: "Maria Santos",
+      category: "A1",
+      status: "Completed",
+      date: "May 13, 2026",
+      rhu: "RHU Central",
+      monitoring: "Stable",
+      followUp: "May 20, 2026",
+      remarks: "Normal delivery",
+    },
+    {
+      name: "Juan Dela Cruz",
+      category: "B1",
+      status: "Pending",
+      date: "May 12, 2026",
+      rhu: "RHU North",
+      monitoring: "For Follow-up",
+      followUp: "May 19, 2026",
+      remarks: "Hypertension check",
+    },
+    {
+      name: "Ana Reyes",
+      category: "Maternal",
+      status: "For Monitoring",
+      date: "May 12, 2026",
+      rhu: "RHU Central",
+      monitoring: "High Risk",
+      followUp: "May 15, 2026",
+      remarks: "Pre-eclampsia risk",
+    },
+    {
+      name: "Pedro Lopez",
+      category: "B2",
+      status: "Received",
+      date: "May 11, 2026",
+      rhu: "RHU South",
+      monitoring: "Routine",
+      followUp: "June 11, 2026",
+      remarks: "Diabetes maintenance",
+    },
+    {
+      name: "Rosa Garcia",
+      category: "Senior Citizen",
+      status: "Completed",
+      date: "May 10, 2026",
+      rhu: "RHU North",
+      monitoring: "Stable",
+      followUp: "Aug 10, 2026",
+      remarks: "Follow-up clear",
+    },
+    {
+      name: "Carlos Mendoza",
+      category: "A2",
+      status: "Pending",
+      date: "May 10, 2026",
+      rhu: "RHU Central",
+      monitoring: "Urgent",
+      followUp: "May 13, 2026",
+      remarks: "Chest pain evaluation",
+    },
+  ];
+
+  const weeklyReconciliation = [
+    { label: "Total Weekly Referrals", value: 33 },
+    { label: "Completed Referrals", value: 18 },
+    { label: "Pending Referrals", value: 12 },
+    { label: "Monitoring Cases", value: 6 },
+    { label: "No-Show Cases", value: 3 },
+    { label: "Completion Rate", value: "54.5%", isRate: true },
   ];
 
   const weeklyReferrals = [
@@ -51,723 +139,437 @@ export default function BHCReports() {
     { day: "Sat", value: 2 },
   ];
 
-  const recentReports = [
-    {
-      title: "Weekly Referrals Sent",
-      description: "Summary of referrals submitted by BHC this week.",
-      date: "May 13, 2026",
-    },
-    {
-      title: "Patients for Monitoring",
-      description: "List of patients requiring follow-up or monitoring.",
-      date: "May 13, 2026",
-    },
-    {
-      title: "Referral Category Summary",
-      description: "Breakdown of referrals based on triage category.",
-      date: "May 12, 2026",
-    },
-  ];
-
   return (
-    <>
-      <style>{`
-        @keyframes fadeInUp {
-          from { opacity: 0; transform: translateY(12px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-
-        .anim-card {
-          opacity: 0;
-          animation: fadeInUp 0.45s ease-out forwards;
-        }
-      `}</style>
-
-      <DashboardLayout role="bhc" title="Reports">
-        {/* Header */}
-        <div
-          className="anim-card mb-8 flex flex-col justify-between gap-4 lg:flex-row lg:items-start"
-          style={{ animationDelay: "0ms" }}
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0B2E59]/[0.06] text-[#0B2E59]">
-              <BarChart3 size={20} />
-            </div>
-
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-[#0B2E59]">
-                Reports
-              </h1>
-              <p className="mt-1 text-sm text-[#6B7280]">
-                Clinical overview for patient records, referrals, monitoring,
-                and BHC coordination.
-              </p>
-            </div>
+    <DashboardLayout role="bhc" title="Reports">
+      <div className="space-y-4">
+        {/* Unified Filters & Actions Toolbar */}
+        <div className="rounded-lg border border-[#E5E7EB] bg-white shadow-sm">
+          {/* Smart Filters */}
+          <div className="grid grid-cols-2 gap-2 p-3 md:grid-cols-3 lg:grid-cols-6 border-b border-[#F3F4F6]">
+            <select className="h-8 w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-2.5 text-[13px] text-[#1F2937] outline-none focus:border-[#9CA3AF]">
+              <option>This Month</option>
+              <option>This Week</option>
+              <option>Last Month</option>
+              <option>Custom Range</option>
+            </select>
+            <select className="h-8 w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-2.5 text-[13px] text-[#1F2937] outline-none focus:border-[#9CA3AF]">
+              <option>All Categories</option>
+              <option>Maternal</option>
+              <option>Senior Citizen</option>
+              <option>A1</option>
+              <option>A2</option>
+              <option>B1</option>
+              <option>B2</option>
+            </select>
+            <select className="h-8 w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-2.5 text-[13px] text-[#1F2937] outline-none focus:border-[#9CA3AF]">
+              <option>All Status</option>
+              <option>Pending</option>
+              <option>Received</option>
+              <option>For Monitoring</option>
+              <option>Completed</option>
+              <option>No-Show</option>
+            </select>
+            <select className="h-8 w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-2.5 text-[13px] text-[#1F2937] outline-none focus:border-[#9CA3AF]">
+              <option>All Barangays</option>
+              <option>Barangay 1</option>
+              <option>Barangay 2</option>
+              <option>Barangay 3</option>
+            </select>
+            <select className="h-8 w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-2.5 text-[13px] text-[#1F2937] outline-none focus:border-[#9CA3AF]">
+              <option>All Midwives</option>
+              <option>Midwife Cruz</option>
+              <option>Midwife Reyes</option>
+            </select>
+            <select className="h-8 w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-2.5 text-[13px] text-[#1F2937] outline-none focus:border-[#9CA3AF]">
+              <option>All RHU Branches</option>
+              <option>RHU Central</option>
+              <option>RHU North</option>
+              <option>RHU South</option>
+            </select>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <button className="inline-flex items-center gap-2 rounded-lg border border-[#E8ECF0] bg-white px-4 py-2 text-xs font-semibold text-[#0B2E59] transition-all hover:bg-[#F8FAFC]">
-              <Printer size={14} />
-              Print
+          {/* Automated Report Generation Actions */}
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 bg-[#F9FAFB]">
+            <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+              Generate:
+            </span>
+            <button className="inline-flex items-center gap-1 rounded-md bg-[#0B2E59] px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-[#092347]">
+              <RefreshCw size={11} /> Weekly Report
+            </button>
+            <button className="inline-flex items-center gap-1 rounded-md bg-[#0B2E59] px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-[#092347]">
+              <RefreshCw size={11} /> Monthly Report
+            </button>
+            <button className="inline-flex items-center gap-1 rounded-md border border-[#E5E7EB] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#374151] transition-colors hover:bg-[#F3F4F6]">
+              Referral Summary
+            </button>
+            <button className="inline-flex items-center gap-1 rounded-md border border-[#E5E7EB] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#374151] transition-colors hover:bg-[#F3F4F6]">
+              Monitoring Report
             </button>
 
-            <button className="inline-flex items-center gap-2 rounded-lg bg-[#0B2E59] px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-[#092347]">
-              <Download size={14} />
-              Export Report
+            <div className="mx-1 h-4 w-px bg-[#E5E7EB]"></div>
+
+            <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+              Export:
+            </span>
+            <button className="inline-flex items-center gap-1 rounded-md border border-[#E5E7EB] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#374151] transition-colors hover:bg-[#F3F4F6]">
+              <FileText size={11} className="text-red-500" /> PDF
+            </button>
+            <button className="inline-flex items-center gap-1 rounded-md border border-[#E5E7EB] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#374151] transition-colors hover:bg-[#F3F4F6]">
+              <FileSpreadsheet size={11} className="text-emerald-600" /> Excel
+            </button>
+            <button className="inline-flex items-center gap-1 rounded-md border border-[#E5E7EB] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#374151] transition-colors hover:bg-[#F3F4F6]">
+              <Printer size={11} /> Print
             </button>
           </div>
         </div>
 
-        {/* Filter Bar */}
-        <section
-          className="anim-card mb-6 rounded-xl border border-[#E8ECF0] bg-white p-5"
-          style={{ animationDelay: "60ms" }}
-        >
-          <div className="mb-4 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0B2E59]/[0.06] text-[#0B2E59]">
-              <Filter size={15} />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-[#0B2E59]">
-                Report Filters
-              </h2>
-              <p className="text-[11px] text-[#9CA3AF]">
-                Adjust the reporting view based on date, status, and category.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-            <FilterField label="Date Range" icon={<CalendarDays size={13} />}>
-              <select className="report-input">
-                <option>This Month</option>
-                <option>This Week</option>
-                <option>Last Month</option>
-                <option>Custom Range</option>
-              </select>
-            </FilterField>
-
-            <FilterField label="Report Type">
-              <select className="report-input">
-                <option>All Reports</option>
-                <option>Referral Summary</option>
-                <option>Patient Monitoring</option>
-                <option>Health Records</option>
-              </select>
-            </FilterField>
-
-            <FilterField label="Referral Status">
-              <select className="report-input">
-                <option>All Status</option>
-                <option>Pending</option>
-                <option>Received</option>
-                <option>For Monitoring</option>
-                <option>Completed</option>
-                <option>No-Show</option>
-              </select>
-            </FilterField>
-
-            <FilterField label="Category">
-              <select className="report-input">
-                <option>All Categories</option>
-                <option>A1</option>
-                <option>A2</option>
-                <option>B1</option>
-                <option>B2</option>
-                <option>C1</option>
-                <option>C2</option>
-              </select>
-            </FilterField>
-
-            <div className="flex items-end">
-              <button className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-xs font-semibold text-white transition-all hover:bg-[#092347]">
-                <RefreshCw size={13} />
-                Generate
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <style>{`
-          .report-input {
-            height: 40px;
-            width: 100%;
-            border-radius: 0.75rem;
-            border: 1px solid #E8ECF0;
-            background: #FAFBFC;
-            padding: 0 0.85rem;
-            font-size: 0.875rem;
-            outline: none;
-          }
-          .report-input:focus {
-            border-color: rgba(11, 46, 89, 0.25);
-            background: white;
-            box-shadow: 0 0 0 4px rgba(11, 46, 89, 0.04);
-          }
-        `}</style>
-
-        {/* Analytics Cards */}
-        <div className="mb-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+        {/* Summary Statistics */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <StatCard
             title="Total Patients"
             value="128"
             icon={<Users size={16} />}
             color="navy"
-            helper="Registered BHC patients"
-            delay={0}
           />
           <StatCard
-            title="Records This Month"
-            value="64"
-            icon={<FileText size={16} />}
-            color="blue"
-            helper="Health record entries"
-            delay={1}
-          />
-          <StatCard
-            title="Referrals This Month"
-            value="42"
+            title="Total Referrals"
+            value="47"
             icon={<ClipboardList size={16} />}
             color="slate"
-            helper="BHC-to-RHU referrals"
-            delay={2}
           />
           <StatCard
-            title="For Monitoring"
-            value="8"
+            title="Completed"
+            value="18"
+            icon={<CheckCircle2 size={16} />}
+            color="emerald"
+          />
+          <StatCard
+            title="Monitoring"
+            value="6"
             icon={<HeartPulse size={16} />}
             color="amber"
-            helper="Needs follow-up"
-            delay={3}
+          />
+          <StatCard
+            title="No-Show"
+            value="3"
+            icon={<XCircle size={16} />}
+            color="red"
+          />
+          <StatCard
+            title="High-Risk"
+            value="4"
+            icon={<AlertTriangle size={16} />}
+            color="red"
           />
         </div>
 
-        {/* Main Report Grid */}
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px]">
-          <div className="space-y-6">
-            <section
-              className="anim-card rounded-xl border border-[#E8ECF0] bg-white p-6"
-              style={{ animationDelay: "180ms" }}
-            >
-              <div className="mb-5 flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-sm font-semibold text-[#0B2E59]">
-                    Referral Status Overview
-                  </h2>
-                  <p className="mt-1 text-xs text-[#9CA3AF]">
-                    Status distribution of BHC-to-RHU referrals for the selected
-                    period.
-                  </p>
-                </div>
-
-                <span className="rounded-lg bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700">
-                  47 total cases
-                </span>
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-                <div className="rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] p-5">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
-                    Most Common Status
-                  </p>
-                  <p className="mt-3 text-3xl font-bold tracking-tight text-[#0B2E59]">
-                    Completed
-                  </p>
-                  <p className="mt-2 text-xs leading-relaxed text-[#6B7280]">
-                    18 referrals were marked completed, meaning RHU feedback or
-                    service outcome has been recorded.
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  {referralStatus.map((item) => (
-                    <StatusProgress key={item.label} item={item} />
-                  ))}
-                </div>
-              </div>
-            </section>
-
-            <section
-              className="anim-card rounded-xl border border-[#E8ECF0] bg-white p-6"
-              style={{ animationDelay: "240ms" }}
-            >
-              <div className="mb-5">
-                <h2 className="text-sm font-semibold text-[#0B2E59]">
-                  Referral Category Triage Summary
-                </h2>
-                <p className="mt-1 text-xs text-[#9CA3AF]">
-                  Category-based breakdown for referral prioritization and RHU
-                  coordination.
-                </p>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {referralCategories.map((item) => (
-                  <TriageCard key={item.code} item={item} />
-                ))}
-              </div>
-            </section>
-
-            <section
-              className="anim-card rounded-xl border border-[#E8ECF0] bg-white p-6"
-              style={{ animationDelay: "300ms" }}
-            >
-              <div className="mb-5">
-                <h2 className="text-sm font-semibold text-[#0B2E59]">
-                  Clinical Coordination Insights
-                </h2>
-                <p className="mt-1 text-xs text-[#9CA3AF]">
-                  Human-readable interpretation of important report indicators.
-                </p>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-3">
-                <InsightCard
-                  title="High-priority watch"
-                  value="4 cases"
-                  description="Review urgent and sensitive referral cases first."
-                  tone="red"
-                />
-                <InsightCard
-                  title="Monitoring load"
-                  value="8 patients"
-                  description="Follow-up reminders should be checked by BHC staff."
-                  tone="amber"
-                />
-                <InsightCard
-                  title="Completed referrals"
-                  value="18 cases"
-                  description="Review RHU feedback for continuity of care."
-                  tone="emerald"
-                />
-              </div>
-            </section>
+        {/* Main Analytics Grid */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          {/* Referral Status Overview */}
+          <div className="rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-[#0B2E59]">
+                Referral Status Overview
+              </h2>
+              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                47 total cases
+              </span>
+            </div>
+            <div className="space-y-2.5">
+              {referralStatus.map((item) => (
+                <StatusProgress key={item.label} item={item} />
+              ))}
+            </div>
           </div>
 
-          {/* Right Side */}
-          <aside className="space-y-6">
-            <section
-              className="anim-card rounded-xl border border-[#E8ECF0] bg-white p-6"
-              style={{ animationDelay: "210ms" }}
-            >
-              <div className="mb-5 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-sm font-semibold text-[#0B2E59]">
-                    Weekly Referral Trend
-                  </h2>
-                  <p className="mt-1 text-xs text-[#9CA3AF]">
-                    Daily referral activity.
-                  </p>
-                </div>
-
-                <div className="rounded-lg bg-blue-50 p-2 text-blue-700">
-                  <TrendingUp size={16} />
-                </div>
+          {/* Automated Case Categories */}
+          <div className="rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-[#0B2E59]">
+                Automated Case Categories
+              </h2>
+              <div className="flex items-center gap-2 text-[10px] font-medium text-[#9CA3AF]">
+                <span>Weekly</span> / <span>Monthly</span>
               </div>
+            </div>
+            <div className="space-y-2">
+              {referralCategories.map((item) => (
+                <CaseCategoryCard key={item.label} item={item} />
+              ))}
+            </div>
+          </div>
+        </div>
 
-              <WeeklyLineChart data={weeklyReferrals} />
-            </section>
+        {/* Digital Referral Logbook Table */}
+        <div className="overflow-hidden rounded-lg border border-[#E5E7EB] bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-[#E5E7EB] px-4 py-2.5">
+            <div className="flex items-center gap-2">
+              <BookOpen size={14} className="text-[#0B2E59]" />
+              <h2 className="text-sm font-semibold text-[#0B2E59]">
+                Digital Referral Logbook
+              </h2>
+            </div>
+            <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+              Automated Entry
+            </span>
+          </div>
 
-            <section
-              className="anim-card rounded-xl border border-[#E8ECF0] bg-white p-6"
-              style={{ animationDelay: "270ms" }}
-            >
-              <div className="mb-5">
-                <h2 className="text-sm font-semibold text-[#0B2E59]">
-                  Patient Care Groups
-                </h2>
-                <p className="mt-1 text-xs text-[#9CA3AF]">
-                  Patient categories handled by the BHC.
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                {patientCategories.map((item) => (
-                  <CareGroupCard key={item.label} item={item} />
-                ))}
-              </div>
-            </section>
-
-            <section
-              className="anim-card rounded-xl border border-[#E8ECF0] bg-white p-6"
-              style={{ animationDelay: "330ms" }}
-            >
-              <div className="mb-5 flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0B2E59]/[0.06] text-[#0B2E59]">
-                  <FileText size={15} />
-                </div>
-
-                <div>
-                  <h2 className="text-sm font-semibold text-[#0B2E59]">
-                    Recent Reports
-                  </h2>
-                  <p className="text-[10px] text-[#9CA3AF]">
-                    Latest generated views
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {recentReports.map((report) => (
-                  <div
-                    key={report.title}
-                    className="rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] p-4 transition-all hover:border-[#0B2E59]/20 hover:bg-white hover:shadow-sm"
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-left text-[13px]">
+              <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                <tr>
+                  <th className="px-4 py-2 whitespace-nowrap">Patient Name</th>
+                  <th className="px-4 py-2 whitespace-nowrap">Category</th>
+                  <th className="px-4 py-2 whitespace-nowrap">Status</th>
+                  <th className="px-4 py-2 whitespace-nowrap">Date Referred</th>
+                  <th className="px-4 py-2 whitespace-nowrap">Assigned RHU</th>
+                  <th className="px-4 py-2 whitespace-nowrap">Monitoring</th>
+                  <th className="px-4 py-2 whitespace-nowrap">
+                    Follow-Up Schedule
+                  </th>
+                  <th className="px-4 py-2 whitespace-nowrap">Remarks</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F3F4F6]">
+                {referralLogbook.map((log) => (
+                  <tr
+                    key={log.name}
+                    className="transition-colors hover:bg-[#F9FAFB]"
                   >
-                    <p className="text-xs font-semibold text-[#0B2E59]">
-                      {report.title}
-                    </p>
-                    <p className="mt-1 text-[11px] leading-relaxed text-[#6B7280]">
-                      {report.description}
-                    </p>
-                    <p className="mt-2.5 text-[9px] font-semibold uppercase tracking-wider text-[#BCC3CD]">
-                      {report.date}
-                    </p>
-                  </div>
+                    <td className="px-4 py-2.5 whitespace-nowrap font-medium text-[#1F2937]">
+                      {log.name}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
+                        {log.category}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap text-[#6B7280]">
+                      {log.status}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap text-[#6B7280]">
+                      {log.date}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap text-[#6B7280]">
+                      {log.rhu}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      <span
+                        className={`text-[11px] font-medium ${
+                          log.monitoring === "Stable" ||
+                          log.monitoring === "Routine"
+                            ? "text-emerald-600"
+                            : log.monitoring === "For Follow-up"
+                              ? "text-amber-600"
+                              : "text-red-600"
+                        }`}
+                      >
+                        {log.monitoring}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap text-[#6B7280]">
+                      {log.followUp}
+                    </td>
+                    <td className="max-w-[150px] truncate px-4 py-2.5 whitespace-nowrap text-[11px] text-[#9CA3AF]">
+                      {log.remarks}
+                    </td>
+                  </tr>
                 ))}
-              </div>
-            </section>
-          </aside>
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <div
-          className="anim-card mt-6 rounded-lg border border-[#E8ECF0] bg-[#F8FAFC] px-5 py-4"
-          style={{ animationDelay: "420ms" }}
-        >
-          <p className="text-xs leading-relaxed text-[#6B7280]">
-            <span className="font-semibold text-[#4B5563]">Note:</span> Reports
-            are simplified for BHC workers and healthcare staff. The goal is to
-            make priority cases, monitoring load, and referral flow easier to
-            understand at a glance.
-          </p>
-        </div>
-      </DashboardLayout>
-    </>
-  );
-}
+        {/* Bottom Grid: Activity & Reconciliation */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          {/* Weekly Activity */}
+          <div className="rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm">
+            <h2 className="mb-4 text-sm font-semibold text-[#0B2E59]">
+              Weekly Referral Activity
+            </h2>
+            <WeeklyLineChart data={weeklyReferrals} />
+          </div>
 
-function FilterField({ label, icon, children }) {
-  return (
-    <div>
-      <label className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-        {icon}
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-function StatCard({ title, value, icon, color = "navy", helper, delay = 0 }) {
-  const map = {
-    navy: {
-      border: "border-t-[#0B2E59]",
-      iconBg: "bg-[#0B2E59]/[0.06]",
-      iconText: "text-[#0B2E59]",
-    },
-    blue: {
-      border: "border-t-blue-500",
-      iconBg: "bg-blue-50",
-      iconText: "text-blue-600",
-    },
-    slate: {
-      border: "border-t-slate-400",
-      iconBg: "bg-slate-100",
-      iconText: "text-slate-500",
-    },
-    amber: {
-      border: "border-t-amber-400",
-      iconBg: "bg-amber-50",
-      iconText: "text-amber-600",
-    },
-  };
-
-  const c = map[color] || map.navy;
-
-  return (
-    <div
-      className={`anim-card rounded-xl border border-[#E8ECF0] border-t-2 ${c.border} bg-white p-5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md`}
-      style={{ animationDelay: `${100 + delay * 70}ms` }}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
-          {title}
-        </p>
-
-        <div
-          className={`flex-shrink-0 rounded-lg p-2 ${c.iconBg} ${c.iconText}`}
-        >
-          {icon}
+          {/* Automated Reconciliation */}
+          <div className="rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm">
+            <h2 className="mb-4 text-sm font-semibold text-[#0B2E59]">
+              Automated Weekly Reconciliation
+            </h2>
+            <div className="overflow-hidden rounded-md border border-[#E5E7EB]">
+              {weeklyReconciliation.map((item, index) => (
+                <div
+                  key={item.label}
+                  className={`flex items-center justify-between px-4 py-3 ${index !== weeklyReconciliation.length - 1 ? "border-b border-[#F3F4F6]" : ""} ${
+                    item.isRate ? "bg-[#F9FAFB]" : ""
+                  }`}
+                >
+                  <p className="text-xs text-[#374151]">{item.label}</p>
+                  {item.isRate ? (
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-[#E5E7EB]">
+                        <div className="h-full w-[54.5%] rounded-full bg-[#0B2E59]" />
+                      </div>
+                      <span className="text-xs font-bold tabular-nums text-[#0B2E59]">
+                        {item.value}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-sm font-bold tabular-nums text-[#0B2E59]">
+                      {item.value}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-[11px] leading-relaxed text-[#9CA3AF]">
+              Auto-generated summary replacing manual weekly logbook counting
+              for midwife sign-off.
+            </p>
+          </div>
         </div>
       </div>
-
-      <p className="mt-4 text-2xl font-bold tracking-tight text-[#0B2E59]">
-        {value}
-      </p>
-
-      <p className="mt-1 text-[11px] text-[#9CA3AF]">{helper}</p>
-    </div>
+    </DashboardLayout>
   );
 }
+
+/* ── Helper Components ── */
 
 function StatusProgress({ item }) {
   const toneMap = {
-    slate: {
-      bar: "bg-slate-500",
-      bg: "bg-slate-100",
-      text: "text-slate-600",
-    },
-    blue: {
-      bar: "bg-blue-600",
-      bg: "bg-blue-50",
-      text: "text-blue-700",
-    },
-    amber: {
-      bar: "bg-amber-500",
-      bg: "bg-amber-50",
-      text: "text-amber-700",
-    },
+    slate: { bar: "bg-slate-500", bg: "bg-slate-100", text: "text-slate-600" },
+    blue: { bar: "bg-blue-600", bg: "bg-blue-50", text: "text-blue-700" },
+    amber: { bar: "bg-amber-500", bg: "bg-amber-50", text: "text-amber-700" },
     emerald: {
       bar: "bg-emerald-600",
       bg: "bg-emerald-50",
       text: "text-emerald-700",
     },
-    red: {
-      bar: "bg-red-600",
-      bg: "bg-red-50",
-      text: "text-red-700",
-    },
+    red: { bar: "bg-red-600", bg: "bg-red-50", text: "text-red-700" },
   };
-
   const tone = toneMap[item.tone] || toneMap.slate;
 
   return (
-    <div className="rounded-xl border border-[#E8ECF0] bg-white px-4 py-3">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold text-[#0B2E59]">{item.label}</p>
-          <p className="text-[10px] text-[#9CA3AF]">{item.percent}% of cases</p>
+    <div className="flex items-center gap-3 rounded-md border border-[#F3F4F6] px-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-[#374151]">{item.label}</p>
+          <span
+            className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${tone.bg} ${tone.text}`}
+          >
+            {item.value}
+          </span>
         </div>
-
-        <span
-          className={`rounded-md px-2 py-0.5 text-xs font-bold ${tone.bg} ${tone.text}`}
-        >
-          {item.value}
-        </span>
+        <div className="h-1.5 overflow-hidden rounded-full bg-[#F3F4F6]">
+          <div
+            className={`h-full rounded-full ${tone.bar}`}
+            style={{ width: `${item.percent}%` }}
+          />
+        </div>
       </div>
+      <span className="w-8 text-right text-[11px] tabular-nums text-[#9CA3AF]">
+        {item.percent}%
+      </span>
+    </div>
+  );
+}
 
-      <div className="h-2 overflow-hidden rounded-full bg-[#F3F4F6]">
-        <div
-          className={`h-full rounded-full ${tone.bar}`}
-          style={{ width: `${item.percent}%` }}
-        />
+function CaseCategoryCard({ item }) {
+  const toneMap = {
+    red: "bg-red-500",
+    orange: "bg-orange-500",
+    blue: "bg-blue-600",
+    slate: "bg-slate-500",
+    pink: "bg-pink-500",
+    amber: "bg-amber-500",
+  };
+  const barColor = toneMap[item.tone] || "bg-slate-500";
+
+  return (
+    <div className="flex items-center gap-3 rounded-md border border-[#F3F4F6] px-3 py-2">
+      <div className="min-w-0 flex-1">
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-[#374151]">{item.label}</p>
+          <div className="flex items-center gap-2 text-[11px]">
+            <span className="font-semibold text-[#0B2E59]">
+              {item.value} <span className="font-normal text-[#9CA3AF]">W</span>
+            </span>
+            <span className="font-medium text-[#6B7280]">
+              {item.monthly}{" "}
+              <span className="font-normal text-[#9CA3AF]">M</span>
+            </span>
+          </div>
+        </div>
+        <div className="h-1.5 overflow-hidden rounded-full bg-[#F3F4F6]">
+          <div
+            className={`h-full rounded-full ${barColor}`}
+            style={{ width: `${item.percent}%` }}
+          />
+        </div>
       </div>
+      <span className="w-8 text-right text-[11px] tabular-nums text-[#9CA3AF]">
+        {item.percent}%
+      </span>
     </div>
   );
 }
 
 function WeeklyLineChart({ data }) {
   const maxValue = Math.max(...data.map((item) => item.value));
-  const width = 300;
-  const height = 140;
-  const chartTop = 14;
-  const chartBottom = 112;
-  const chartLeft = 16;
-  const chartRight = 286;
+  const width = 280;
+  const height = 120;
+  const chartTop = 10;
+  const chartBottom = 95;
+  const chartLeft = 10;
+  const chartRight = 270;
 
   const points = data.map((item, index) => {
     const x =
       chartLeft + (index / (data.length - 1)) * (chartRight - chartLeft);
     const y = chartBottom - (item.value / maxValue) * (chartBottom - chartTop);
-
     return { ...item, x, y };
   });
 
   const pointString = points.map((point) => `${point.x},${point.y}`).join(" ");
 
   return (
-    <div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-44 w-full">
-        <line x1="16" y1="112" x2="286" y2="112" stroke="#E8ECF0" />
-        <line
-          x1="16"
-          y1="80"
-          x2="286"
-          y2="80"
-          stroke="#F3F4F6"
-          strokeDasharray="4 4"
-        />
-        <line
-          x1="16"
-          y1="48"
-          x2="286"
-          y2="48"
-          stroke="#F3F4F6"
-          strokeDasharray="4 4"
-        />
-
-        <polyline
-          points={pointString}
-          fill="none"
-          stroke="#0B2E59"
-          strokeWidth="4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-
-        {points.map((point) => (
-          <g key={point.day}>
-            <circle
-              cx={point.x}
-              cy={point.y}
-              r="5"
-              fill="#FFFFFF"
-              stroke="#0B2E59"
-              strokeWidth="3"
-            />
-            <text
-              x={point.x}
-              y={point.y - 12}
-              textAnchor="middle"
-              className="fill-[#0B2E59] text-[9px] font-bold"
-            >
-              {point.value}
-            </text>
-            <text
-              x={point.x}
-              y="132"
-              textAnchor="middle"
-              className="fill-[#6B7280] text-[9px] font-semibold"
-            >
-              {point.day}
-            </text>
-          </g>
-        ))}
-      </svg>
-
-      <div className="rounded-lg bg-blue-50 px-4 py-3">
-        <p className="text-xs leading-relaxed text-[#4B5563]">
-          Peak referral activity is on Thursday. This helps BHC staff identify
-          busy referral days and prepare patient coordination earlier.
-        </p>
-      </div>
-    </div>
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full">
+      <line x1="10" y1="95" x2="270" y2="95" stroke="#F3F4F6" />
+      <polyline
+        points={pointString}
+        fill="none"
+        stroke="#0B2E59"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {points.map((point) => (
+        <g key={point.day}>
+          <circle
+            cx={point.x}
+            cy={point.y}
+            r="3"
+            fill="#FFFFFF"
+            stroke="#0B2E59"
+            strokeWidth="2"
+          />
+          <text
+            x={point.x}
+            y={point.y - 8}
+            textAnchor="middle"
+            className="fill-[#0B2E59] text-[8px] font-semibold"
+          >
+            {point.value}
+          </text>
+          <text
+            x={point.x}
+            y="110"
+            textAnchor="middle"
+            className="fill-[#9CA3AF] text-[8px]"
+          >
+            {point.day}
+          </text>
+        </g>
+      ))}
+    </svg>
   );
 }
-
-function TriageCard({ item }) {
-  const levelMap = {
-    Critical: {
-      bg: "bg-red-50",
-      text: "text-red-700",
-      border: "border-red-100",
-      icon: <AlertTriangle size={14} />,
-    },
-    High: {
-      bg: "bg-orange-50",
-      text: "text-orange-700",
-      border: "border-orange-100",
-      icon: <AlertTriangle size={14} />,
-    },
-    Moderate: {
-      bg: "bg-blue-50",
-      text: "text-blue-700",
-      border: "border-blue-100",
-      icon: <Activity size={14} />,
-    },
-    Low: {
-      bg: "bg-emerald-50",
-      text: "text-emerald-700",
-      border: "border-emerald-100",
-      icon: <CheckCircle2 size={14} />,
-    },
-  };
-
-  const style = levelMap[item.level] || levelMap.Moderate;
-
-  return (
-    <div
-      className={`rounded-xl border ${style.border} ${style.bg} p-4 transition-all hover:-translate-y-0.5 hover:shadow-sm`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-2xl font-black tracking-tight text-[#0B2E59]">
-            {item.code}
-          </p>
-          <p className="mt-1 text-xs font-semibold text-[#4B5563]">
-            {item.label}
-          </p>
-        </div>
-
-        <div className={`rounded-lg bg-white/80 p-2 ${style.text}`}>
-          {style.icon}
-        </div>
-      </div>
-
-      <div className="mt-4 flex items-center justify-between">
-        <span
-          className={`rounded-md bg-white/80 px-2 py-0.5 text-[10px] font-semibold ${style.text}`}
-        >
-          {item.level}
-        </span>
-
-        <span className="text-lg font-bold text-[#0B2E59]">{item.value}</span>
-      </div>
-    </div>
-  );
-}
-
-function CareGroupCard({ item }) {
-  const max = 45;
-  const percent = Math.round((item.value / max) * 100);
-
-  return (
-    <div className="rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] p-4 transition-all hover:bg-white hover:shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#0B2E59]/[0.06] text-[#0B2E59]">
-            {item.icon}
-          </div>
-
-          <div className="min-w-0">
-            <p className="truncate text-xs font-semibold text-[#0B2E59]">
-              {item.label}
-            </p>
-            <p className="text-[10px] text-[#9CA3AF]">
-              {percent}% of highest group
-            </p>
-          </div>
-        </div>
-
-        <p className="text-lg font-bold text-[#0B2E59]">{item.value}</p>
-      </div>
-
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#E8ECF0]">
-        <div
-          className="h-full rounded-full bg-[#0B2E59]"
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function InsightCard({ title, value, description, tone }) {
-  const map = {
-    red: "border-red-100 bg-red-50 text-red-700",
-    amber: "border-amber-100 bg-amber-50 text-amber-700",
-    emerald: "border-emerald-100 bg-emerald-50 text-emerald-700",
-  };
-
-  return (
-    <div className={`rounded-xl border p-4 ${map[tone] || map.amber}`}>
-      <p className="text-[10px] font-semibold uppercase tracking-wider">
-        {title}
-      </p>
-      <p className="mt-2 text-xl font-bold">{value}</p>
-      <p className="mt-2 text-xs leading-relaxed text-[#4B5563]">
-        {description}
-      </p>
-    </div>
-  );
-}
-

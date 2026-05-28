@@ -57,20 +57,16 @@ export default function BHCDashboard() {
       try {
         setLoading(true);
 
-        const [
-          statsData,
-          recordsData,
-          referralsData,
-          medicineData,
-        ] = await Promise.all([
-          getDashboardStats(),
+        const [statsData, recordsData, referralsData, medicineData] =
+          await Promise.all([
+            getDashboardStats(),
 
-          getRecentHealthRecords(),
+            getRecentHealthRecords(),
 
-          getRecentReferrals(),
+            getRecentReferrals(),
 
-          getMedicineAlerts(),
-        ]);
+            getMedicineAlerts(),
+          ]);
 
         setStats(statsData);
 
@@ -141,7 +137,7 @@ export default function BHCDashboard() {
                 text-[#0B2E59]
               "
             >
-              BHC Dashboard Overview
+              WELCOME USER
             </h1>
 
             <p
@@ -298,4 +294,3 @@ export default function BHCDashboard() {
     </DashboardLayout>
   );
 }
-

@@ -4,12 +4,15 @@ import { BrowserRouter } from "react-router";
 import App from "./App";
 import "./index.css";
 import { Toaster } from "react-hot-toast";
+import { NotificationProvider } from "./hooks/useNotificationsContext";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
-      <App />
-      <Toaster position="top-right" />
+      <NotificationProvider>
+        <App />
+        <Toaster position="top-right" />
+      </NotificationProvider>
     </BrowserRouter>
   </React.StrictMode>,
 );

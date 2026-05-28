@@ -235,7 +235,9 @@ export default function HealthRecordDetails() {
                   <button
                     type="button"
                     onClick={() =>
-                      navigate(`/bhc/referrals/create?recordId=${record.id}`)
+                      navigate(
+                        `/bhc/referrals/create?recordId=${record.id || record._id}`,
+                      )
                     }
                     className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
                   >
@@ -529,4 +531,3 @@ function NarrativeBox({ label, value, emptyText }) {
     </div>
   );
 }
-

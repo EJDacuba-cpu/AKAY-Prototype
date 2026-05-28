@@ -102,7 +102,8 @@ export default function PatientsTable({
           >
             <table
               className="
-                min-w-[1250px]
+              w-full
+              table-fixed
                 w-full
                 border-separate
                 border-spacing-0
@@ -123,19 +124,17 @@ export default function PatientsTable({
                 >
                   {/* Eksaktong lapad sa bawat kolum para may breathing room sila */}
                   <th className="px-6 py-4 whitespace-nowrap w-[150px]">ID</th>
-                  <th className="px-6 py-4 whitespace-nowrap w-[260px]">
+                  <th className="px-6 py-4 whitespace-nowrap w-[220px]">
                     Patient Name
                   </th>
-                  <th className="px-6 py-4 whitespace-nowrap w-[110px]">
-                    Age / Sex
-                  </th>
-                  <th className="px-6 py-4 whitespace-nowrap w-[200px]">
-                    Classification
-                  </th>
-                  <th className="px-6 py-4 whitespace-nowrap w-[180px]">
+
+                  <th className="px-6 py-4 whitespace-nowrap w-[150px]">
                     Contact
                   </th>
-                  <th className="px-6 py-4 whitespace-nowrap w-[160px]">
+                  <th className="px-6 py-4 whitespace-nowrap w-[150px]">
+                    Classification
+                  </th>
+                  <th className="px-6 py-4 whitespace-nowrap w-[130px]">
                     Last Visit
                   </th>
                   <th
@@ -243,16 +242,20 @@ export default function PatientsTable({
                         </span>
                       </td>
 
-                      {/* Age */}
-                      <td
-                        className="
-                          px-6 py-5
-                          whitespace-nowrap
-                          text-[13px]
-                          text-[#6B7280]
-                        "
-                      >
-                        {patient.ageSex}
+                      {/* Contact */}
+                      <td className="px-6 py-5 whitespace-nowrap">
+                        <span
+                          className="
+                            inline-flex
+                            items-center
+                            gap-1.5
+                            text-[13px]
+                            text-[#6B7280]
+                          "
+                        >
+                          <Phone size={12} className="text-[#BCC3CD]" />
+                          {patient.contact}
+                        </span>
                       </td>
 
                       {/* Classification */}
@@ -269,22 +272,6 @@ export default function PatientsTable({
                           "
                         >
                           {patient.category || patient.type || "General"}
-                        </span>
-                      </td>
-
-                      {/* Contact */}
-                      <td className="px-6 py-5 whitespace-nowrap">
-                        <span
-                          className="
-                            inline-flex
-                            items-center
-                            gap-1.5
-                            text-[13px]
-                            text-[#6B7280]
-                          "
-                        >
-                          <Phone size={12} className="text-[#BCC3CD]" />
-                          {patient.contact}
                         </span>
                       </td>
 
@@ -333,4 +320,3 @@ export default function PatientsTable({
     </div>
   );
 }
-

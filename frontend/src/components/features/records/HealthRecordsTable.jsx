@@ -277,6 +277,3 @@ export default function HealthRecordsTable({
     </div>
   );
 }
-
-
-

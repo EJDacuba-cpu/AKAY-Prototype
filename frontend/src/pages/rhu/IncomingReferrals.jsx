@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import {
   CheckCircle2,
   Clock,
+  Copy,
   Eye,
   FileText,
   QrCode,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import WorkflowActionButton from "../../components/features/referrals/WorkflowActionButton";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -27,54 +29,43 @@ const keyframes = `
     from { opacity: 0; transform: translateY(14px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-
   @keyframes fadeIn {
     from { opacity: 0; }
     to   { opacity: 1; }
   }
-
   @keyframes statusPop {
     0%   { transform: scale(0.85); opacity: 0; }
     60%  { transform: scale(1.05); }
     100% { transform: scale(1); opacity: 1; }
   }
-
   @keyframes menuOpen {
     from { opacity: 0; transform: scale(0.96) translateY(-4px); }
     to   { opacity: 1; transform: scale(1) translateY(0); }
   }
-
   @keyframes menuClose {
     from { opacity: 1; transform: scale(1) translateY(0); }
     to   { opacity: 0; transform: scale(0.96) translateY(-4px); }
   }
-
   @keyframes modalPop {
     from { opacity: 0; transform: translateY(10px) scale(0.98); }
     to   { opacity: 1; transform: translateY(0) scale(1); }
   }
-
   .anim-fade-up {
     opacity: 0;
     animation: fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
-
   .anim-fade-in {
     animation: fadeIn 0.25s ease both;
   }
-
   .anim-status-pop {
     animation: statusPop 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
-
   .menu-open {
     animation: menuOpen 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
-
   .menu-close {
     animation: menuClose 0.15s cubic-bezier(0.55, 0, 1, 0.45) both;
   }
-
   .modal-pop {
     animation: modalPop 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
@@ -146,20 +137,55 @@ const INITIAL_REFERRALS = [
   },
 ];
 
+/* ─── Status Action Definitions ─── */
+const STATUS_ACTION_DEFS = {
+  checkin: {
+    nextStatus: "Received",
+    title: "Confirm patient check-in?",
+    description:
+      "This will mark the referral as received by the RHU. Use this when the referred patient has arrived or has been verified by RHU staff.",
+    confirmLabel: "Confirm Check-in",
+    tone: "blue",
+    icon: <UserCheck size={20} />,
+  },
+  noshow: {
+    nextStatus: "No-Show",
+    title: "Mark this referral as No-Show?",
+    description:
+      "This will record that the patient did not arrive for the referral. This action should only be used after verifying the patient did not show up.",
+    confirmLabel: "Mark as No-Show",
+    tone: "red",
+    icon: <UserX size={20} />,
+  },
+  monitor: {
+    nextStatus: "For Monitoring",
+    title: "Start patient monitoring?",
+    description:
+      "This will move the referral to monitoring status for follow-up or observation. Use this when the case still needs continued RHU or BHC coordination.",
+    confirmLabel: "Start Monitoring",
+    tone: "amber",
+    icon: <Activity size={20} />,
+  },
+  lateArrival: {
+    nextStatus: "Received",
+    title: "Check-in late arrival?",
+    description:
+      "Use this when a patient previously marked as No-Show arrives later and still needs to be processed by the RHU.",
+    confirmLabel: "Check-in Patient",
+    tone: "blue",
+    icon: <UserCheck size={20} />,
+  },
+};
+
 /* ─── Confirmation Modal ─── */
 function ConfirmationModal({ action, onCancel, onConfirm }) {
   useEffect(() => {
     if (!action) return;
-
     function handleKeyDown(e) {
       if (e.key === "Escape") onCancel();
     }
-
     document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [action, onCancel]);
 
   if (!action) return null;
@@ -211,39 +237,32 @@ function ConfirmationModal({ action, onCancel, onConfirm }) {
           >
             {action.icon}
           </div>
-
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-bold text-[#0B2E59]">
               {action.title}
             </h2>
-
             <p className="mt-2 text-sm leading-relaxed text-[#6B7280]">
               {action.description}
             </p>
-
             <div className="mt-4 rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-4 py-3">
               <p className="font-mono text-xs font-semibold text-[#0B2E59]">
                 {action.referral.trackingId}
               </p>
-
               <p className="mt-1 text-xs text-[#6B7280]">
                 {action.referral.patient} · {action.referral.ageSex}
               </p>
-
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <StatusBadge status={action.referral.status} />
                 <ArrowRight size={13} className="text-[#BCC3CD]" />
                 <StatusBadge status={action.nextStatus} />
               </div>
             </div>
-
             <p className="mt-3 text-[11px] leading-relaxed text-[#9CA3AF]">
               This confirmation helps prevent accidental status updates while
               processing multiple referrals.
             </p>
           </div>
         </div>
-
         <div className="mt-6 flex justify-end gap-2">
           <button
             type="button"
@@ -252,18 +271,17 @@ function ConfirmationModal({ action, onCancel, onConfirm }) {
           >
             Cancel
           </button>
-
           <button
             type="button"
             onClick={onConfirm}
             className="rounded-xl px-4 py-2.5 text-xs font-semibold text-white shadow-md transition-all active:scale-[0.97]"
             style={{ backgroundColor: tone.button }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = tone.buttonHover;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = tone.button;
-            }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.backgroundColor = tone.buttonHover)
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.backgroundColor = tone.button)
+            }
           >
             {action.confirmLabel}
           </button>
@@ -274,52 +292,14 @@ function ConfirmationModal({ action, onCancel, onConfirm }) {
   );
 }
 
-/* ─── Three-Dot Action Menu ─── */
-function ActionMenu({ referral, onRequestAction }) {
+/* ─── Secondary Action Menu (View Details, Copy ID) ─── */
+function ActionMenu({ referral }) {
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const btnRef = useRef(null);
   const menuRef = useRef(null);
-
-  const actionDetails = {
-    checkin: {
-      nextStatus: "Received",
-      title: "Confirm patient check-in?",
-      description:
-        "This will mark the referral as received by the RHU. Use this when the referred patient has arrived or has been verified by RHU staff.",
-      confirmLabel: "Confirm Check-in",
-      tone: "blue",
-      icon: <UserCheck size={20} />,
-    },
-    noshow: {
-      nextStatus: "No-Show",
-      title: "Mark this referral as No-Show?",
-      description:
-        "This will record that the patient did not arrive for the referral. This action should only be used after verifying the patient did not show up.",
-      confirmLabel: "Mark as No-Show",
-      tone: "red",
-      icon: <UserX size={20} />,
-    },
-    monitor: {
-      nextStatus: "For Monitoring",
-      title: "Start patient monitoring?",
-      description:
-        "This will move the referral to monitoring status for follow-up or observation. Use this when the case still needs continued RHU or BHC coordination.",
-      confirmLabel: "Start Monitoring",
-      tone: "amber",
-      icon: <Activity size={20} />,
-    },
-    lateArrival: {
-      nextStatus: "Received",
-      title: "Check-in late arrival?",
-      description:
-        "Use this when a patient previously marked as No-Show arrives later and still needs to be processed by the RHU.",
-      confirmLabel: "Check-in Patient",
-      tone: "blue",
-      icon: <UserCheck size={20} />,
-    },
-  };
 
   const menuItems = [
     {
@@ -327,117 +307,32 @@ function ActionMenu({ referral, onRequestAction }) {
       label: "View Details",
       icon: <Eye size={15} />,
       color: "#374151",
-      type: "view",
-      divider: true,
+    },
+    {
+      key: "copy",
+      label: copied ? "Copied!" : "Copy Tracking ID",
+      icon: copied ? <Check size={15} /> : <Copy size={15} />,
+      color: copied ? "#059669" : "#374151",
     },
   ];
 
-  if (referral.status === "Pending") {
-    menuItems.push(
-      {
-        key: "checkin",
-        label: "Check-in Patient",
-        icon: <UserCheck size={15} />,
-        color: "#2563EB",
-        badge: "Recommended",
-        badgeColor: "#2563EB",
-        type: "status",
-      },
-      {
-        key: "noshow",
-        label: "Mark as No-Show",
-        icon: <UserX size={15} />,
-        color: "#DC2626",
-        type: "status",
-      },
-    );
-  }
-
-  if (referral.status === "Received") {
-    menuItems.push(
-      {
-        key: "monitor",
-        label: "Start Monitoring",
-        icon: <Activity size={15} />,
-        color: "#D97706",
-        badge: "Next Step",
-        badgeColor: "#D97706",
-        type: "status",
-      },
-      {
-        key: "feedback",
-        label: "Proceed to Return Slip",
-        icon: <FileText size={15} />,
-        color: "#059669",
-        type: "link",
-        href: "/rhu/feedback",
-      },
-    );
-  }
-
-  if (referral.status === "For Monitoring") {
-    menuItems.push({
-      key: "feedback",
-      label: "Proceed to Return Slip",
-      icon: <FileText size={15} />,
-      color: "#059669",
-      badge: "Close Loop",
-      badgeColor: "#059669",
-      type: "link",
-      href: "/rhu/feedback",
-    });
-  }
-
-  if (referral.status === "Completed") {
-    menuItems.push({
-      key: "feedback",
-      label: "View Return Slip",
-      icon: <FileText size={15} />,
-      color: "#059669",
-      type: "link",
-      href: "/rhu/feedback",
-    });
-  }
-
-  if (referral.status === "No-Show") {
-    menuItems.push({
-      key: "lateArrival",
-      label: "Check-in Late Arrival",
-      icon: <UserCheck size={15} />,
-      color: "#2563EB",
-      badge: "If arrived",
-      badgeColor: "#2563EB",
-      type: "status",
-    });
-  }
-
   function updateMenuPosition() {
     if (!btnRef.current) return;
-
     const rect = btnRef.current.getBoundingClientRect();
-    const menuWidth = 260;
-    const menuHeight = 270;
+    const menuWidth = 240;
     const padding = 12;
-
     let top = rect.bottom + 8;
     let left = rect.right - menuWidth;
-
     if (left < padding) left = padding;
-
-    if (left + menuWidth > window.innerWidth - padding) {
+    if (left + menuWidth > window.innerWidth - padding)
       left = window.innerWidth - menuWidth - padding;
-    }
-
-    if (top + menuHeight > window.innerHeight - padding) {
-      top = rect.top - menuHeight - 8;
-    }
-
+    if (top + 200 > window.innerHeight - padding) top = rect.top - 200 - 8;
     if (top < padding) top = padding;
-
     setPosition({ top, left });
   }
 
   function handleOpen() {
+    setCopied(false);
     updateMenuPosition();
     setOpen(true);
     setClosing(false);
@@ -445,62 +340,54 @@ function ActionMenu({ referral, onRequestAction }) {
 
   function handleClose() {
     setClosing(true);
-
     setTimeout(() => {
       setOpen(false);
       setClosing(false);
     }, 150);
   }
 
-  function handleAction(item) {
-    if (item.type === "view") {
-      handleClose();
-      return;
-    }
-
-    if (item.type === "status") {
-      const details = actionDetails[item.key];
-
-      if (!details) return;
-
-      handleClose();
-
+  function handleCopyId() {
+    navigator.clipboard.writeText(referral.trackingId).then(() => {
+      setCopied(true);
       setTimeout(() => {
-        onRequestAction({
-          ...details,
-          referral,
-        });
-      }, 160);
+        setCopied(false);
+        handleClose();
+      }, 900);
+    });
+  }
+
+  function handleAction(item) {
+    if (item.key === "copy") {
+      handleCopyId();
+    } else {
+      handleClose();
     }
   }
 
   useEffect(() => {
     if (!open) return;
-
     function handleMouseDown(e) {
-      const clickedButton = btnRef.current && btnRef.current.contains(e.target);
-      const clickedMenu = menuRef.current && menuRef.current.contains(e.target);
-
-      if (!clickedButton && !clickedMenu) {
+      if (
+        btnRef.current &&
+        !btnRef.current.contains(e.target) &&
+        menuRef.current &&
+        !menuRef.current.contains(e.target)
+      ) {
         handleClose();
       }
     }
-
     function handleKeyDown(e) {
       if (e.key === "Escape") handleClose();
     }
-
     function handleWindowChange() {
       handleClose();
     }
-
     const timer = setTimeout(() => {
       document.addEventListener("mousedown", handleMouseDown);
       document.addEventListener("keydown", handleKeyDown);
       window.addEventListener("scroll", handleWindowChange, true);
       window.addEventListener("resize", handleWindowChange);
     }, 10);
-
     return () => {
       clearTimeout(timer);
       document.removeEventListener("mousedown", handleMouseDown);
@@ -531,13 +418,10 @@ function ActionMenu({ referral, onRequestAction }) {
         createPortal(
           <div
             ref={menuRef}
-            className={`fixed z-[9999] w-[260px] origin-top-right rounded-xl border border-[#E8ECF0] bg-white p-1.5 shadow-2xl shadow-black/[0.12] ${
+            className={`fixed z-[9999] w-[240px] origin-top-right rounded-xl border border-[#E8ECF0] bg-white p-1.5 shadow-2xl shadow-black/[0.12] ${
               closing ? "menu-close" : "menu-open"
             }`}
-            style={{
-              top: position.top,
-              left: position.left,
-            }}
+            style={{ top: position.top, left: position.left }}
             role="menu"
           >
             <div className="mb-1.5 border-b border-[#F3F4F6] px-2.5 pb-2">
@@ -548,74 +432,30 @@ function ActionMenu({ referral, onRequestAction }) {
                 {referral.patient} · {referral.ageSex}
               </p>
             </div>
-
-            {menuItems.map((item, index) => {
-              const itemContent = (
-                <>
-                  <div
-                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg transition-colors duration-150"
-                    style={{
-                      backgroundColor: `${item.color}0A`,
-                      color: item.color,
-                    }}
-                  >
-                    {item.icon}
-                  </div>
-
-                  <span
-                    className="flex-1 text-[12px] font-medium"
-                    style={{ color: item.color }}
-                  >
-                    {item.label}
-                  </span>
-
-                  {item.badge && (
-                    <span
-                      className="rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"
-                      style={{
-                        backgroundColor: `${item.badgeColor}10`,
-                        color: item.badgeColor,
-                      }}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
-                </>
-              );
-
-              return (
-                <div key={`${item.key}-${index}`}>
-                  {item.type === "link" ? (
-                    <Link
-                      to={item.href}
-                      onClick={handleClose}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-all duration-150 hover:bg-[#F8FAFC] active:scale-[0.98]"
-                      role="menuitem"
-                    >
-                      {itemContent}
-                    </Link>
-                  ) : (
-                    <button
-                      onClick={() => handleAction(item)}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-all duration-150 hover:bg-[#F8FAFC] active:scale-[0.98]"
-                      role="menuitem"
-                    >
-                      {itemContent}
-                    </button>
-                  )}
-
-                  {index === 0 && (
-                    <div className="my-1.5 border-t border-[#F3F4F6]" />
-                  )}
+            {menuItems.map((item) => (
+              <button
+                key={item.key}
+                onClick={() => handleAction(item)}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-all duration-150 hover:bg-[#F8FAFC] active:scale-[0.98]"
+                role="menuitem"
+              >
+                <div
+                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg transition-colors duration-150"
+                  style={{
+                    backgroundColor: `${item.color}0A`,
+                    color: item.color,
+                  }}
+                >
+                  {item.icon}
                 </div>
-              );
-            })}
-
-            <div className="mt-1.5 rounded-lg bg-[#F8FAFC] px-2.5 py-2">
-              <p className="text-[10px] leading-relaxed text-[#BCC3CD]">
-                Status updates require confirmation before updating.
-              </p>
-            </div>
+                <span
+                  className="flex-1 text-[12px] font-medium"
+                  style={{ color: item.color }}
+                >
+                  {item.label}
+                </span>
+              </button>
+            ))}
           </div>,
           document.body,
         )}
@@ -623,7 +463,90 @@ function ActionMenu({ referral, onRequestAction }) {
   );
 }
 
-/* ─── Enhanced Workflow Pipeline ─── */
+/* ─── Direct Workflow Actions (per status) ─── */
+function ReferralActions({ referral, onRequestAction, onContinueMonitoring }) {
+  function requestStatusAction(actionKey) {
+    const def = STATUS_ACTION_DEFS[actionKey];
+    if (!def) return;
+    onRequestAction({ ...def, referral });
+  }
+
+  const actionsByStatus = {
+    Pending: (
+      <>
+        <WorkflowActionButton
+          icon={UserCheck}
+          label="Check-in"
+          color="blue"
+          onClick={() => requestStatusAction("checkin")}
+        />
+        <WorkflowActionButton
+          icon={UserX}
+          label="No-Show"
+          color="red"
+          onClick={() => requestStatusAction("noshow")}
+        />
+      </>
+    ),
+    Received: (
+      <>
+        <WorkflowActionButton
+          icon={Activity}
+          label="Start Monitoring"
+          color="amber"
+          onClick={() => requestStatusAction("monitor")}
+        />
+        <WorkflowActionButton
+          icon={FileText}
+          label="Create Feedback"
+          color="emerald"
+          to={`/rhu/feedback/${referral.trackingId}`}
+        />
+      </>
+    ),
+    "For Monitoring": (
+      <>
+        <WorkflowActionButton
+          icon={Activity}
+          label="Continue Monitoring"
+          color="amber"
+          onClick={() => onContinueMonitoring(referral)}
+        />
+        <WorkflowActionButton
+          icon={FileText}
+          label="Create Feedback"
+          color="emerald"
+          to={`/rhu/feedback/${referral.trackingId}`}
+        />
+      </>
+    ),
+    Completed: (
+      <WorkflowActionButton
+        icon={FileText}
+        label="View Return Slip"
+        color="emerald"
+        to={`/rhu/feedback/${referral.trackingId}`}
+      />
+    ),
+    "No-Show": (
+      <WorkflowActionButton
+        icon={UserCheck}
+        label="Late Arrival"
+        color="blue"
+        onClick={() => requestStatusAction("lateArrival")}
+      />
+    ),
+  };
+
+  return (
+    <div className="flex items-center justify-end gap-1.5">
+      {actionsByStatus[referral.status]}
+      <ActionMenu referral={referral} />
+    </div>
+  );
+}
+
+/* ─── Workflow Pipeline ─── */
 function WorkflowPipeline({ counts }) {
   const steps = [
     {
@@ -674,7 +597,6 @@ function WorkflowPipeline({ counts }) {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EFF6FF] text-[#2563EB]">
             <Activity size={17} />
           </div>
-
           <div>
             <h2 className="text-sm font-bold text-[#0B2E59]">
               Referral Processing Flow
@@ -685,12 +607,10 @@ function WorkflowPipeline({ counts }) {
             </p>
           </div>
         </div>
-
         <div className="flex w-fit items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-red-600">
             <UserX size={14} />
           </div>
-
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wider text-red-500">
               No-Show
@@ -699,7 +619,6 @@ function WorkflowPipeline({ counts }) {
           </div>
         </div>
       </div>
-
       <div className="p-6">
         <div className="grid gap-4 xl:grid-cols-4">
           {steps.map((step, index) => (
@@ -723,7 +642,6 @@ function WorkflowPipeline({ counts }) {
                     >
                       {step.icon}
                     </div>
-
                     <div>
                       <p
                         className="text-[10px] font-bold uppercase tracking-[0.14em]"
@@ -731,13 +649,11 @@ function WorkflowPipeline({ counts }) {
                       >
                         Step {index + 1}
                       </p>
-
                       <h3 className="mt-1 text-sm font-bold text-[#0B2E59]">
                         {step.label}
                       </h3>
                     </div>
                   </div>
-
                   <p
                     className="text-3xl font-black leading-none tracking-tight"
                     style={{ color: step.color }}
@@ -745,11 +661,9 @@ function WorkflowPipeline({ counts }) {
                     {step.count}
                   </p>
                 </div>
-
                 <p className="mt-4 text-xs leading-relaxed text-[#6B7280]">
                   {step.description}
                 </p>
-
                 <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/80">
                   <div
                     className="h-full rounded-full transition-all duration-500"
@@ -763,7 +677,6 @@ function WorkflowPipeline({ counts }) {
             </div>
           ))}
         </div>
-
         <div className="mt-5 rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-4 py-3">
           <p className="text-xs leading-relaxed text-[#6B7280]">
             <span className="font-semibold text-[#0B2E59]">Note:</span> This
@@ -784,7 +697,6 @@ function FilterSelect({ label, children, value, onChange }) {
       <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
         {label}
       </label>
-
       <div className="relative">
         <select
           value={value}
@@ -793,7 +705,6 @@ function FilterSelect({ label, children, value, onChange }) {
         >
           {children}
         </select>
-
         <ChevronDown
           size={14}
           className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#BCC3CD]"
@@ -812,9 +723,7 @@ function StatusBadge({ status, animate = false }) {
     Completed: { bg: "#ECFDF5", text: "#047857", dot: "#10B981" },
     "No-Show": { bg: "#FEF2F2", text: "#B91C1C", dot: "#EF4444" },
   };
-
   const s = map[status] || map.Pending;
-
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold ${
@@ -841,9 +750,7 @@ function PriorityBadge({ priority }) {
       icon: <CheckCircle2 size={11} />,
     },
   };
-
   const s = map[priority] || map.Normal;
-
   return (
     <span
       className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold"
@@ -863,38 +770,24 @@ function CategoryBadge({ category }) {
   );
 }
 
-function TerminalPill({ status }) {
-  if (status === "Completed") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-600">
-        <Check size={12} strokeWidth={3} />
-        Done
-      </span>
-    );
-  }
-
-  if (status === "No-Show") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-500">
-        <AlertCircle size={12} />
-        Missed
-      </span>
-    );
-  }
-
-  return null;
-}
-
 /* ─── Main ─── */
 export default function IncomingReferrals() {
   const [referrals, setReferrals] = useState(INITIAL_REFERRALS);
   const [animatedIds, setAnimatedIds] = useState(new Set());
   const [pendingAction, setPendingAction] = useState(null);
+  const [actionToast, setActionToast] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("All Status");
   const [filterPriority, setFilterPriority] = useState("All Priority");
   const [filterSpecialization, setFilterSpecialization] =
     useState("All Specialization");
+
+  /* Toast auto-dismiss */
+  useEffect(() => {
+    if (!actionToast) return;
+    const timer = setTimeout(() => setActionToast(null), 3500);
+    return () => clearTimeout(timer);
+  }, [actionToast]);
 
   const updateStatus = useCallback((trackingId, newStatus) => {
     setReferrals((prev) =>
@@ -902,9 +795,7 @@ export default function IncomingReferrals() {
         ref.trackingId === trackingId ? { ...ref, status: newStatus } : ref,
       ),
     );
-
     setAnimatedIds((prev) => new Set([...prev, trackingId]));
-
     setTimeout(() => {
       setAnimatedIds((prev) => {
         const next = new Set(prev);
@@ -916,32 +807,32 @@ export default function IncomingReferrals() {
 
   function handleConfirmAction() {
     if (!pendingAction) return;
-
     updateStatus(pendingAction.referral.trackingId, pendingAction.nextStatus);
     setPendingAction(null);
   }
 
-  const filtered = referrals.filter((referral) => {
-    const query = searchTerm.toLowerCase();
+  function handleContinueMonitoring(referral) {
+    setActionToast(
+      `Monitoring confirmed for ${referral.patient} (${referral.trackingId})`,
+    );
+  }
 
+  const filtered = referrals.filter((referral) => {
+    const q = searchTerm.toLowerCase();
     const matchSearch =
       !searchTerm ||
-      referral.patient.toLowerCase().includes(query) ||
-      referral.trackingId.toLowerCase().includes(query) ||
-      referral.concern.toLowerCase().includes(query) ||
-      referral.bhc.toLowerCase().includes(query);
-
+      referral.patient.toLowerCase().includes(q) ||
+      referral.trackingId.toLowerCase().includes(q) ||
+      referral.concern.toLowerCase().includes(q) ||
+      referral.bhc.toLowerCase().includes(q);
     const matchStatus =
       filterStatus === "All Status" || referral.status === filterStatus;
-
     const matchPriority =
       filterPriority === "All Priority" || referral.priority === filterPriority;
-
-    const matchSpecialization =
+    const matchSpec =
       filterSpecialization === "All Specialization" ||
       referral.suggestedSpecialization === filterSpecialization;
-
-    return matchSearch && matchStatus && matchPriority && matchSpecialization;
+    return matchSearch && matchStatus && matchPriority && matchSpec;
   });
 
   const counts = {
@@ -951,8 +842,6 @@ export default function IncomingReferrals() {
     completed: referrals.filter((r) => r.status === "Completed").length,
     noShow: referrals.filter((r) => r.status === "No-Show").length,
   };
-
-  const isTerminal = (status) => status === "Completed" || status === "No-Show";
 
   return (
     <DashboardLayout role="rhu" title="Incoming Referrals">
@@ -964,31 +853,31 @@ export default function IncomingReferrals() {
         onConfirm={handleConfirmAction}
       />
 
-      {/* Header */}
-      <div
-        className="anim-fade-up mb-8 flex flex-col justify-between gap-4 lg:flex-row lg:items-start"
-        style={stagger(0)}
-      >
-        <div className="flex items-center gap-3.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0B2E59]/[0.06] text-[#0B2E59]">
-            <Stethoscope size={20} />
+      {/* Action Toast */}
+      {actionToast && (
+        <div className="anim-fade-in mb-4 flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 shadow-sm">
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100">
+            <CheckCircle2 size={13} className="text-emerald-600" />
           </div>
-
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-[#0B2E59]">
-              Incoming Referrals
-            </h1>
-
-            <p className="mt-1 text-sm text-[#6B7280]">
-              Review, verify, and update BHC-to-RHU referral records.
-            </p>
-          </div>
+          <p className="text-xs font-semibold text-emerald-700">
+            {actionToast}
+          </p>
         </div>
+      )}
+
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <Link
+          to="/rhu/referrals/create"
+          className="group flex items-center gap-2.5 rounded-xl border border-[#E8ECF0] bg-white px-5 py-2.5 text-xs font-semibold text-[#0B2E59] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#F8FAFC]"
+        >
+          <FileText size={16} />
+          Create Referral
+        </Link>
 
         <Link
           to="/rhu/qr-scanner"
-          className="group flex w-fit items-center gap-2.5 rounded-xl bg-[#0B2E59] px-5 py-2.5 text-xs font-semibold text-white shadow-md shadow-[#0B2E59]/20 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#092347] hover:shadow-lg hover:shadow-[#0B2E59]/30 active:scale-[0.98]"
-          style={stagger(1)}
+          className="group flex items-center gap-2.5 rounded-xl bg-[#0B2E59] px-5 py-2.5 text-xs font-semibold text-white shadow-md shadow-[#0B2E59]/20 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#092347]"
         >
           <QrCode
             size={16}
@@ -997,7 +886,6 @@ export default function IncomingReferrals() {
           Open QR Scanner
         </Link>
       </div>
-
       <div className="mb-6">
         <WorkflowPipeline counts={counts} />
       </div>
@@ -1012,17 +900,14 @@ export default function IncomingReferrals() {
             <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
               Search
             </label>
-
             <div className="flex items-center rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3 transition-all duration-200 focus-within:border-[#2563EB] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#2563EB]/10">
               <Search size={14} className="text-[#BCC3CD]" />
-
               <input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="h-10 flex-1 border-0 bg-transparent px-2 text-sm outline-none placeholder:text-[#BCC3CD]"
                 placeholder="Patient, ID, BHC, or concern..."
               />
-
               {searchTerm && (
                 <button
                   type="button"
@@ -1034,7 +919,6 @@ export default function IncomingReferrals() {
               )}
             </div>
           </div>
-
           <FilterSelect
             label="Status"
             value={filterStatus}
@@ -1047,18 +931,16 @@ export default function IncomingReferrals() {
             <option>Completed</option>
             <option>No-Show</option>
           </FilterSelect>
-
           <FilterSelect
             label="Urgency"
             value={filterPriority}
             onChange={(e) => setFilterPriority(e.target.value)}
           >
             <option>All Urgency</option>
-            <option>Urgent</option>
-            <option>Non-Urgen</option>
-            <option>Urgent</option>
+            <option>High</option>
+            <option>Medium</option>
+            <option>Normal</option>
           </FilterSelect>
-
           <FilterSelect
             label="Specialization"
             value={filterSpecialization}
@@ -1083,25 +965,22 @@ export default function IncomingReferrals() {
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#EFF6FF] text-[#2563EB]">
               <Stethoscope size={16} />
             </div>
-
             <div>
               <h2 className="text-sm font-semibold text-[#0B2E59]">
                 Referral Queue
               </h2>
-
               <p className="text-xs text-[#9CA3AF]">
-                Process patient arrival, no-show, monitoring, and feedback.
+                Process patient arrival, monitoring, and feedback.
               </p>
             </div>
           </div>
-
           <span className="w-fit rounded-lg bg-[#F3F4F6] px-3 py-1.5 text-[11px] font-semibold text-[#6B7280]">
             {filtered.length} of {referrals.length} records
           </span>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1160px] text-left">
+          <table className="w-full min-w-[1200px] text-left">
             <thead>
               <tr className="border-b border-[#F3F4F6] bg-[#FAFBFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
                 <th className="px-6 py-3.5">Tracking ID</th>
@@ -1115,7 +994,6 @@ export default function IncomingReferrals() {
                 <th className="px-6 py-3.5 text-right">Actions</th>
               </tr>
             </thead>
-
             <tbody className="divide-y divide-[#F8FAFC]">
               {filtered.length === 0 ? (
                 <tr>
@@ -1124,11 +1002,9 @@ export default function IncomingReferrals() {
                       <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F8FAFC]">
                         <Search size={20} className="text-[#BCC3CD]" />
                       </div>
-
                       <p className="text-sm font-medium text-[#9CA3AF]">
                         No referrals match your filters
                       </p>
-
                       <button
                         type="button"
                         onClick={() => {
@@ -1147,13 +1023,15 @@ export default function IncomingReferrals() {
               ) : (
                 filtered.map((referral, index) => {
                   const animated = animatedIds.has(referral.trackingId);
-                  const terminal = isTerminal(referral.status);
+                  const isTerminal =
+                    referral.status === "Completed" ||
+                    referral.status === "No-Show";
 
                   return (
                     <tr
                       key={referral.trackingId}
                       className={`group transition-colors duration-150 hover:bg-[#FAFBFD] ${
-                        terminal ? "bg-[#FAFBFC]/40" : ""
+                        isTerminal ? "bg-[#FAFBFC]/40" : ""
                       }`}
                       style={stagger(index)}
                     >
@@ -1162,7 +1040,6 @@ export default function IncomingReferrals() {
                           {referral.trackingId}
                         </span>
                       </td>
-
                       <td className="whitespace-nowrap px-4 py-4">
                         <p className="text-sm font-semibold text-[#1A1A1A]">
                           {referral.patient}
@@ -1171,45 +1048,33 @@ export default function IncomingReferrals() {
                           {referral.ageSex}
                         </p>
                       </td>
-
                       <td className="whitespace-nowrap px-4 py-4 text-sm text-[#6B7280]">
                         {referral.bhc}
                       </td>
-
                       <td className="whitespace-nowrap px-4 py-4">
                         <CategoryBadge category={referral.category} />
                       </td>
-
                       <td className="whitespace-nowrap px-4 py-4">
                         <PriorityBadge priority={referral.priority} />
                       </td>
-
-                      <td className="max-w-[190px] truncate px-4 py-4 text-sm text-[#6B7280]">
+                      <td className="max-w-[180px] truncate px-4 py-4 text-sm text-[#6B7280]">
                         {referral.concern}
                       </td>
-
                       <td className="whitespace-nowrap px-4 py-4 text-sm text-[#6B7280]">
                         {referral.suggestedSpecialization}
                       </td>
-
                       <td className="whitespace-nowrap px-4 py-4">
                         <StatusBadge
                           status={referral.status}
                           animate={animated}
                         />
                       </td>
-
-                      <td className="whitespace-nowrap px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {terminal && (
-                            <TerminalPill status={referral.status} />
-                          )}
-
-                          <ActionMenu
-                            referral={referral}
-                            onRequestAction={setPendingAction}
-                          />
-                        </div>
+                      <td className="whitespace-nowrap px-6 py-4">
+                        <ReferralActions
+                          referral={referral}
+                          onRequestAction={setPendingAction}
+                          onContinueMonitoring={handleContinueMonitoring}
+                        />
                       </td>
                     </tr>
                   );
@@ -1225,7 +1090,6 @@ export default function IncomingReferrals() {
               Showing {filtered.length} referral
               {filtered.length !== 1 ? "s" : ""}
             </p>
-
             <div className="flex items-center gap-1">
               {[1, 2, 3].map((page) => (
                 <button
@@ -1253,12 +1117,10 @@ export default function IncomingReferrals() {
         <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-[#DBEAFE] text-[#2563EB]">
           <FileText size={14} />
         </div>
-
         <div>
           <p className="text-xs font-semibold text-[#1D4ED8]">
             Clinical Reminder
           </p>
-
           <p className="mt-1 text-xs leading-relaxed text-[#4B5563]">
             Status-changing actions require confirmation to prevent accidental
             updates. Diagnosis, treatment notes, prescription details, and final
@@ -1273,4 +1135,3 @@ export default function IncomingReferrals() {
     </DashboardLayout>
   );
 }
-

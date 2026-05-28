@@ -1,9 +1,8 @@
 import { Navigate, Route, Routes, useParams } from "react-router";
 import Login from "./pages/Login";
 import { getCurrentUser } from "./utils/auth";
-
-// Shared Pages
-import Notifications from "./shared/Notifications";
+import DashboardLayout from "./components/layout/DashboardLayout";
+import NotificationsPage from "./pages/bhc/NotificationsPage";
 
 // BHC Pages
 import BHCDashboard from "./pages/bhc/BHCDashboard";
@@ -19,21 +18,18 @@ import MedicineAvailability from "./pages/bhc/MedicineAvailability";
 import BHCReports from "./pages/bhc/BHCReports";
 import PatientDetails from "./pages/bhc/PatientDetails";
 import HealthRecordDetails from "./pages/bhc/HealthRecordDetails";
-
 import ReferralQRCode from "./pages/bhc/ReferralQRCode";
 
 // RHU Pages
 import RHUDashboard from "./pages/rhu/RHUDashboard";
 import IncomingReferrals from "./pages/rhu/IncomingReferrals";
 import QRScanner from "./pages/rhu/QRScanner";
-
 import RHUPatientsModule from "./pages/rhu/RHUPatientsModule";
 import RHUPatientDetails from "./pages/rhu/RHUPatientDetails";
 import RHUAddPatient from "./pages/rhu/RHUAddPatient";
 import RHUHealthRecord from "./pages/rhu/RHUHealthRecords";
 import RHUAddHealthRecords from "./pages/rhu/RHUAddHealthRecords";
 import RHURecordDetails from "./pages/rhu/RHURecordDetails";
-
 import DoctorSchedule from "./pages/rhu/DoctorSchedule";
 import MedicineManagement from "./pages/rhu/MedicineManagement";
 import AddMedicineItem from "./pages/rhu/AddMedicineItem";
@@ -47,21 +43,13 @@ import AddUser from "./pages/admin/AddUser";
 import DoctorManagement from "./pages/admin/DoctorManagement";
 import AddDoctor from "./pages/admin/AddDoctor";
 import AdminDoctorSchedule from "./pages/admin/AdminDoctorSchedule";
-
 import AdminReports from "./pages/admin/AdminReports";
 import AuditLogs from "./pages/admin/AuditLogs";
 
 function ProtectedPage({ allowedRole, children }) {
   const user = getCurrentUser();
-
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (user.role !== allowedRole) {
-    return <Navigate to="/unauthorized" replace />;
-  }
-
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== allowedRole) return <Navigate to="/unauthorized" replace />;
   return children;
 }
 
@@ -70,11 +58,9 @@ function Unauthorized() {
     <div className="flex min-h-screen items-center justify-center bg-slate-100">
       <div className="rounded-3xl bg-white p-8 text-center shadow-sm">
         <h1 className="text-3xl font-bold text-red-600">Unauthorized</h1>
-
         <p className="mt-2 text-slate-600">
           You are not allowed to access this page.
         </p>
-
         <a
           href="/login"
           className="mt-6 inline-block rounded-xl bg-[#0B2E59] px-4 py-2 font-semibold text-white"
@@ -91,13 +77,22 @@ function LegacyRHURecordRedirect() {
   return <Navigate to={`/rhu/health-records/${recordId}`} replace />;
 }
 
+function NotificationRouteWrapper() {
+  const user = getCurrentUser();
+  if (!user) return <Navigate to="/login" replace />;
+  return (
+    <DashboardLayout role={user.role} title="Notifications">
+      <NotificationsPage />
+    </DashboardLayout>
+  );
+}
+
 export default function App() {
   return (
     <Routes>
-      {/* Public Routes */}
       <Route path="/login" element={<Login />} />
 
-      {/* Admin / MHO Routes */}
+      {/* Admin Routes */}
       <Route
         path="/admin/dashboard"
         element={
@@ -106,7 +101,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/admin/users"
         element={
@@ -115,7 +109,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/admin/users/add"
         element={
@@ -124,7 +117,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/admin/doctors"
         element={
@@ -133,7 +125,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/admin/doctors/add"
         element={
@@ -142,7 +133,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/admin/doctor-schedule"
         element={
@@ -151,7 +141,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/admin/reports"
         element={
@@ -160,21 +149,11 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/admin/audit-logs"
         element={
           <ProtectedPage allowedRole="admin">
             <AuditLogs />
-          </ProtectedPage>
-        }
-      />
-
-      <Route
-        path="/admin/notifications"
-        element={
-          <ProtectedPage allowedRole="admin">
-            <Notifications role="admin" />
           </ProtectedPage>
         }
       />
@@ -188,7 +167,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/bhc/patients"
         element={
@@ -197,7 +175,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/bhc/patients/add"
         element={
@@ -206,7 +183,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/bhc/patients/edit/:patientId"
         element={
@@ -215,7 +191,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/bhc/health-records"
         element={
@@ -224,7 +199,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/bhc/health-records/add"
         element={
@@ -233,7 +207,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/bhc/referrals"
         element={
@@ -242,7 +215,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/bhc/referrals/create"
         element={
@@ -260,7 +232,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/bhc/referrals/:trackingId"
         element={
@@ -269,7 +240,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/bhc/medicine-availability"
         element={
@@ -278,21 +248,11 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/bhc/reports"
         element={
           <ProtectedPage allowedRole="bhc">
             <BHCReports />
-          </ProtectedPage>
-        }
-      />
-
-      <Route
-        path="/bhc/notifications"
-        element={
-          <ProtectedPage allowedRole="bhc">
-            <Notifications role="bhc" />
           </ProtectedPage>
         }
       />
@@ -304,7 +264,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/bhc/health-records/:recordId"
         element={
@@ -313,7 +272,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/bhc/referrals/:trackingId/qr"
         element={
@@ -332,7 +290,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/rhu/incoming-referrals"
         element={
@@ -341,7 +298,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/rhu/qr-scanner"
         element={
@@ -350,7 +306,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/rhu/patients"
         element={
@@ -359,7 +314,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/rhu/patients/add"
         element={
@@ -368,7 +322,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/rhu/patients/:patientId"
         element={
@@ -377,7 +330,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/rhu/health-records"
         element={
@@ -386,7 +338,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/rhu/health-records/add"
         element={
@@ -395,7 +346,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/rhu/health-records/:recordId"
         element={
@@ -404,43 +354,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
-      {/* RHU legacy route aliases */}
-      <Route
-        path="/rhu/rhu-patients"
-        element={<Navigate to="/rhu/patients" replace />}
-      />
-
-      <Route
-        path="/rhu/rhu-patients/add-patient"
-        element={<Navigate to="/rhu/patients/add" replace />}
-      />
-
-      <Route
-        path="/rhu/rhu-records"
-        element={<Navigate to="/rhu/health-records" replace />}
-      />
-
-      <Route
-        path="/rhu/rhu-health-records/add"
-        element={<Navigate to="/rhu/health-records/add" replace />}
-      />
-
-      <Route
-        path="/rhu/rhu-health-records/:recordId"
-        element={<LegacyRHURecordRedirect />}
-      />
-
-      <Route
-        path="/rhu/rhu-records/:recordId"
-        element={<LegacyRHURecordRedirect />}
-      />
-
-      <Route
-        path="/rhu/walk-in-patients"
-        element={<Navigate to="/rhu/patients/add" replace />}
-      />
-
       <Route
         path="/rhu/doctor-schedule"
         element={
@@ -449,7 +362,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/rhu/medicine-management"
         element={
@@ -458,7 +370,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-
       <Route
         path="/rhu/medicine-management/add"
         element={
@@ -468,15 +379,15 @@ export default function App() {
         }
       />
 
+      {/* NEW: Dynamic route with trackingId param */}
       <Route
-        path="/rhu/feedback"
+        path="/rhu/feedback/:trackingId"
         element={
           <ProtectedPage allowedRole="rhu">
             <FeedbackReturnSlip />
           </ProtectedPage>
         }
       />
-
       <Route
         path="/rhu/reports"
         element={
@@ -486,16 +397,39 @@ export default function App() {
         }
       />
 
+      {/* RHU legacy route aliases */}
       <Route
-        path="/rhu/notifications"
-        element={
-          <ProtectedPage allowedRole="rhu">
-            <Notifications role="rhu" />
-          </ProtectedPage>
-        }
+        path="/rhu/rhu-patients"
+        element={<Navigate to="/rhu/patients" replace />}
+      />
+      <Route
+        path="/rhu/rhu-patients/add-patient"
+        element={<Navigate to="/rhu/patients/add" replace />}
+      />
+      <Route
+        path="/rhu/rhu-records"
+        element={<Navigate to="/rhu/health-records" replace />}
+      />
+      <Route
+        path="/rhu/rhu-health-records/add"
+        element={<Navigate to="/rhu/health-records/add" replace />}
+      />
+      <Route
+        path="/rhu/rhu-health-records/:recordId"
+        element={<LegacyRHURecordRedirect />}
+      />
+      <Route
+        path="/rhu/rhu-records/:recordId"
+        element={<LegacyRHURecordRedirect />}
+      />
+      <Route
+        path="/rhu/walk-in-patients"
+        element={<Navigate to="/rhu/patients/add" replace />}
       />
 
-      {/* Error / Fallback Routes */}
+      {/* Notifications Route */}
+      <Route path="/notifications" element={<NotificationRouteWrapper />} />
+
       <Route path="/unauthorized" element={<Unauthorized />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>

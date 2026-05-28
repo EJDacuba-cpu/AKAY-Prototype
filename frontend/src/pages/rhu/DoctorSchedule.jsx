@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   CalendarDays,
   Clock,
@@ -6,52 +6,72 @@ import {
   Stethoscope,
   UserCheck,
   Users,
+  RotateCcw,
+  Activity,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 
+/* ─── Tab Configuration ─── */
+const SCHEDULE_TABS = [
+  { key: "", label: "All Doctors", icon: Users },
+  { key: "Available", label: "Available", icon: UserCheck },
+  { key: "On Duty", label: "On Duty", icon: Activity },
+  { key: "Fully Booked", label: "Fully Booked", icon: Clock },
+];
+
+/* ─── Data ─── */
+const initialDoctors = [
+  {
+    id: "DOC-001",
+    name: "Dr. Maria Santos",
+    specialization: "Maternal Care",
+    expertise: "Prenatal and pregnancy-related cases",
+    day: "Monday",
+    time: "8:00 AM - 12:00 PM",
+    room: "Consultation Room 1",
+    status: "Available",
+  },
+  {
+    id: "DOC-002",
+    name: "Dr. Jose Cruz",
+    specialization: "Pediatrics",
+    expertise: "Child health check-up and pediatric consultation",
+    day: "Monday",
+    time: "1:00 PM - 5:00 PM",
+    room: "Consultation Room 2",
+    status: "On Duty",
+  },
+  {
+    id: "DOC-003",
+    name: "Dr. Ana Reyes",
+    specialization: "General Consultation",
+    expertise: "General RHU consultation and walk-in assessment",
+    day: "Tuesday",
+    time: "8:00 AM - 5:00 PM",
+    room: "Consultation Room 3",
+    status: "Fully Booked",
+  },
+  {
+    id: "DOC-004",
+    name: "Dr. Carlo Mendoza",
+    specialization: "Senior Citizen Care",
+    expertise: "Hypertension, follow-up, and elderly patient monitoring",
+    day: "Wednesday",
+    time: "8:00 AM - 12:00 PM",
+    room: "Consultation Room 1",
+    status: "Available",
+  },
+];
+
+/* ─── Main Component ─── */
 export default function DoctorSchedule() {
-  const [doctors, setDoctors] = useState([
-    {
-      id: "DOC-001",
-      name: "Dr. Maria Santos",
-      specialization: "Maternal Care",
-      expertise: "Prenatal and pregnancy-related cases",
-      day: "Monday",
-      time: "8:00 AM - 12:00 PM",
-      room: "Consultation Room 1",
-      status: "Available",
-    },
-    {
-      id: "DOC-002",
-      name: "Dr. Jose Cruz",
-      specialization: "Pediatrics",
-      expertise: "Child health check-up and pediatric consultation",
-      day: "Monday",
-      time: "1:00 PM - 5:00 PM",
-      room: "Consultation Room 2",
-      status: "On Duty",
-    },
-    {
-      id: "DOC-003",
-      name: "Dr. Ana Reyes",
-      specialization: "General Consultation",
-      expertise: "General RHU consultation and walk-in assessment",
-      day: "Tuesday",
-      time: "8:00 AM - 5:00 PM",
-      room: "Consultation Room 3",
-      status: "Fully Booked",
-    },
-    {
-      id: "DOC-004",
-      name: "Dr. Carlo Mendoza",
-      specialization: "Senior Citizen Care",
-      expertise: "Hypertension, follow-up, and elderly patient monitoring",
-      day: "Wednesday",
-      time: "8:00 AM - 12:00 PM",
-      room: "Consultation Room 1",
-      status: "Available",
-    },
-  ]);
+  const [doctors, setDoctors] = useState(initialDoctors);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [filters, setFilters] = useState({
+    search: "",
+    specialization: "All Specializations",
+    day: "All Days",
+  });
 
   function updateStatus(id, newStatus) {
     setDoctors((prev) =>
@@ -61,322 +81,381 @@ export default function DoctorSchedule() {
     );
   }
 
-  const availableCount = doctors.filter(
-    (doctor) => doctor.status === "Available",
-  ).length;
+  const handleFilterChange = (key, value) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
 
-  const onDutyCount = doctors.filter(
-    (doctor) => doctor.status === "On Duty",
-  ).length;
+  const handleTabChange = (statusKey) => {
+    setStatusFilter(statusKey);
+  };
 
-  const fullyBookedCount = doctors.filter(
-    (doctor) => doctor.status === "Fully Booked",
-  ).length;
+  const clearFilters = () => {
+    setFilters({
+      search: "",
+      specialization: "All Specializations",
+      day: "All Days",
+    });
+    setStatusFilter("");
+  };
 
-  const totalDoctors = doctors.length;
+  const hasActiveFilters =
+    filters.search !== "" ||
+    filters.specialization !== "All Specializations" ||
+    filters.day !== "All Days" ||
+    statusFilter !== "";
+
+  // Base filter (Search, Spec, Day) - used for tab counts
+  const baseFiltered = useMemo(() => {
+    return doctors.filter((doctor) => {
+      const matchesSearch =
+        !filters.search ||
+        doctor.name.toLowerCase().includes(filters.search.toLowerCase()) ||
+        doctor.id.toLowerCase().includes(filters.search.toLowerCase());
+      const matchesSpec =
+        filters.specialization === "All Specializations" ||
+        doctor.specialization === filters.specialization;
+      const matchesDay =
+        filters.day === "All Days" || doctor.day === filters.day;
+      return matchesSearch && matchesSpec && matchesDay;
+    });
+  }, [doctors, filters]);
+
+  // Tab Counts
+  const tabCounts = SCHEDULE_TABS.reduce((acc, tab) => {
+    acc[tab.key] =
+      tab.key === ""
+        ? baseFiltered.length
+        : baseFiltered.filter((d) => d.status === tab.key).length;
+    return acc;
+  }, {});
+
+  // Fully filtered doctors (includes status tab filter)
+  const filteredDoctors = useMemo(() => {
+    return baseFiltered.filter(
+      (doctor) => !statusFilter || doctor.status === statusFilter,
+    );
+  }, [baseFiltered, statusFilter]);
+
+  // Today's Schedule (Mock logic for display: showing Monday)
+  const todaySchedule = doctors.filter((d) => d.day === "Monday");
 
   return (
     <DashboardLayout role="rhu" title="Doctor Schedule">
-      <div className="mb-8">
-        <h1 className="text-xl font-bold tracking-tight text-[#0B2E59]">
-          Doctor Schedule
-        </h1>
-        <p className="mt-1 text-sm text-[#6B7280]">
-          View doctor availability, specialization, and expertise for referral
-          and walk-in patient coordination.
-        </p>
+      {/* ═══════════════════════════════════════════════════════════════
+          TOP NAVIGATION: TABS
+          ═══════════════════════════════════════════════════════════════ */}
+      <div className="mb-6 flex items-center gap-1.5 rounded-lg bg-[#F1F5F9] p-1">
+        {SCHEDULE_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = statusFilter === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => handleTabChange(tab.key)}
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-[11.5px] font-medium transition-all ${
+                isActive
+                  ? "bg-white text-[#0F172A] shadow-sm"
+                  : "text-[#64748B] hover:text-[#0F172A]"
+              }`}
+            >
+              <Icon size={13} className={isActive ? "text-[#0B2E59]" : ""} />
+              {tab.label}
+              <span
+                className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none ${
+                  isActive
+                    ? "bg-[#0B2E59]/10 text-[#0B2E59]"
+                    : "bg-slate-200/70 text-slate-500"
+                }`}
+              >
+                {tabCounts[tab.key] ?? 0}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      <div className="mb-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Total Doctors"
-          value={totalDoctors}
-          icon={<Users size={17} />}
-          color="navy"
-        />
-        <StatCard
-          title="Available"
-          value={availableCount}
-          icon={<UserCheck size={17} />}
-          color="green"
-        />
-        <StatCard
-          title="On Duty"
-          value={onDutyCount}
-          icon={<Stethoscope size={17} />}
-          color="blue"
-        />
-        <StatCard
-          title="Fully Booked"
-          value={fullyBookedCount}
-          icon={<Clock size={17} />}
-          color="amber"
-        />
-      </div>
-
-      <div className="mb-6 rounded-xl border border-[#E8ECF0] bg-white p-5">
-        <div className="grid gap-4 xl:grid-cols-4">
-          <div>
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Search Doctor
-            </label>
-            <div className="flex items-center rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3">
-              <Search size={14} className="text-[#BCC3CD]" />
-              <input
-                className="h-9 flex-1 border-0 bg-transparent px-2 text-sm outline-none"
-                placeholder="Search doctor..."
-              />
-            </div>
-          </div>
-
-          <FilterSelect label="Specialization">
-            <option>All Specializations</option>
-            <option>General Consultation</option>
-            <option>Maternal Care</option>
-            <option>Pediatrics</option>
-            <option>Senior Citizen Care</option>
-          </FilterSelect>
-
-          <FilterSelect label="Day">
-            <option>All Days</option>
-            <option>Monday</option>
-            <option>Tuesday</option>
-            <option>Wednesday</option>
-            <option>Thursday</option>
-            <option>Friday</option>
-          </FilterSelect>
-
-          <FilterSelect label="Status">
-            <option>All Status</option>
-            <option>Available</option>
-            <option>On Duty</option>
-            <option>Fully Booked</option>
-            <option>Not Available</option>
-            <option>On Leave</option>
-          </FilterSelect>
-        </div>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
-        <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
-          <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
+      {/* ═══════════════════════════════════════════════════════════════
+          TWO-COLUMN LAYOUT: TABLE (LEFT) + SIDEBAR (RIGHT)
+          ═══════════════════════════════════════════════════════════════ */}
+      <div className="flex items-start gap-6">
+        {/* ── Left Table Content ── */}
+        <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
             <div>
-              <h2 className="text-sm font-semibold text-[#0B2E59]">
-                Doctor Schedule List
+              <h2 className="text-[13px] font-bold text-slate-900">
+                Doctor Schedule Registry
               </h2>
-              <p className="mt-1 text-xs text-[#9CA3AF]">
-                Used for matching referrals with the right doctor
-                specialization.
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                Coordination and specialization matching for referrals
               </p>
             </div>
-
-            <span className="rounded-md bg-[#F3F4F6] px-2 py-1 text-[10px] font-semibold text-[#6B7280]">
-              {doctors.length} doctors
+            <span className="rounded-md bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
+              {filteredDoctors.length} records
             </span>
           </div>
 
-          <div className="w-full overflow-x-auto">
-            <table className="w-full min-w-[1000px] text-left">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-left">
               <thead>
-                <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                   <th className="px-6 py-3">Doctor ID</th>
                   <th className="px-4 py-3">Doctor</th>
                   <th className="px-4 py-3">Specialization</th>
-                  <th className="px-4 py-3">Expertise</th>
-                  <th className="px-4 py-3">Day</th>
-                  <th className="px-4 py-3">Time</th>
+                  <th className="px-4 py-3">Schedule</th>
                   <th className="px-4 py-3">Room</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Action</th>
                 </tr>
               </thead>
 
-              <tbody className="divide-y divide-[#F3F4F6]">
-                {doctors.map((doctor) => (
-                  <tr
-                    key={doctor.id}
-                    className="transition-colors hover:bg-[#F9FAFB]"
-                  >
-                    <td className="whitespace-nowrap px-6 py-3.5">
-                      <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0B2E59]">
-                        {doctor.id}
-                      </span>
-                    </td>
-
-                    <td className="whitespace-nowrap px-4 py-3.5 text-sm font-semibold text-[#1A1A1A]">
-                      {doctor.name}
-                    </td>
-
-                    <td className="whitespace-nowrap px-4 py-3.5">
-                      <SpecializationBadge label={doctor.specialization} />
-                    </td>
-
-                    <td className="px-4 py-3.5 text-sm text-[#6B7280]">
-                      {doctor.expertise}
-                    </td>
-
-                    <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
-                      {doctor.day}
-                    </td>
-
-                    <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
-                      {doctor.time}
-                    </td>
-
-                    <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
-                      {doctor.room}
-                    </td>
-
-                    <td className="whitespace-nowrap px-4 py-3.5">
-                      <StatusBadge status={doctor.status} />
-                    </td>
-
-                    <td className="whitespace-nowrap px-4 py-3.5 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => updateStatus(doctor.id, "Available")}
-                          className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-                        >
-                          Available
-                        </button>
-
-                        <button
-                          onClick={() =>
-                            updateStatus(doctor.id, "Fully Booked")
-                          }
-                          className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100"
-                        >
-                          Full
-                        </button>
-
-                        <button
-                          onClick={() => updateStatus(doctor.id, "On Leave")}
-                          className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100"
-                        >
-                          Leave
-                        </button>
+              <tbody className="divide-y divide-slate-50">
+                {filteredDoctors.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-24 text-center">
+                      <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
+                        <Users size={20} className="text-slate-400" />
                       </div>
+                      <p className="text-[13px] font-semibold text-slate-700">
+                        No doctors found
+                      </p>
+                      <p className="mt-1 text-[11.5px] text-slate-400">
+                        Try adjusting your search or filters
+                      </p>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredDoctors.map((doctor) => (
+                    <tr
+                      key={doctor.id}
+                      className="group transition-colors hover:bg-slate-50/50"
+                    >
+                      <td className="whitespace-nowrap px-6 py-4">
+                        <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-[11px] font-semibold text-[#0B2E59]">
+                          {doctor.id}
+                        </span>
+                      </td>
+
+                      <td className="whitespace-nowrap px-4 py-4">
+                        <p className="text-[12.5px] font-semibold text-slate-800">
+                          {doctor.name}
+                        </p>
+                        <p className="text-[10.5px] text-slate-400">
+                          {doctor.expertise}
+                        </p>
+                      </td>
+
+                      <td className="whitespace-nowrap px-4 py-4">
+                        <SpecializationBadge label={doctor.specialization} />
+                      </td>
+
+                      <td className="whitespace-nowrap px-4 py-4">
+                        <div className="flex items-center gap-1.5 text-[12px] text-slate-600">
+                          <CalendarDays size={11} className="text-slate-400" />
+                          {doctor.day}
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-1.5 text-[10.5px] text-slate-400">
+                          <Clock size={10} className="text-slate-300" />
+                          {doctor.time}
+                        </div>
+                      </td>
+
+                      <td className="whitespace-nowrap px-4 py-4 text-[12px] text-slate-600">
+                        {doctor.room}
+                      </td>
+
+                      <td className="whitespace-nowrap px-4 py-4">
+                        <StatusBadge status={doctor.status} />
+                      </td>
+
+                      <td className="whitespace-nowrap px-4 py-4 text-right">
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            onClick={() => updateStatus(doctor.id, "Available")}
+                            className="flex h-7 items-center rounded-md border border-emerald-200 bg-emerald-50 px-2 text-[10px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+                          >
+                            Available
+                          </button>
+                          <button
+                            onClick={() =>
+                              updateStatus(doctor.id, "Fully Booked")
+                            }
+                            className="flex h-7 items-center rounded-md border border-amber-200 bg-amber-50 px-2 text-[10px] font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+                          >
+                            Full
+                          </button>
+                          <button
+                            onClick={() => updateStatus(doctor.id, "On Leave")}
+                            className="flex h-7 items-center rounded-md border border-red-200 bg-red-50 px-2 text-[10px] font-semibold text-red-700 transition-colors hover:bg-red-100"
+                          >
+                            Leave
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
         </div>
 
-        <aside className="space-y-6">
-          <section className="rounded-xl border border-[#E8ECF0] bg-white p-6">
-            <div className="mb-5 flex items-center gap-3">
-              <div className="rounded-xl bg-[#0B2E59]/[0.06] p-3 text-[#0B2E59]">
-                <CalendarDays size={20} />
+        {/* ── Right Filter Sidebar ── */}
+        <aside className="w-[340px] shrink-0 space-y-5">
+          {/* Filters Panel */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-[12px] font-semibold text-slate-900">
+                Filters
+              </h2>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="text-[10px] font-medium text-[#0B2E59] hover:underline"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  Search Doctor
+                </label>
+                <div className="relative">
+                  <Search
+                    size={13}
+                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+                  <input
+                    type="text"
+                    value={filters.search}
+                    onChange={(e) =>
+                      handleFilterChange("search", e.target.value)
+                    }
+                    placeholder="Name or ID..."
+                    className="h-[34px] w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-3 text-[12px] text-slate-800 outline-none transition-all placeholder:text-slate-400 focus:border-slate-300 focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
+                  />
+                </div>
               </div>
 
               <div>
-                <h2 className="text-sm font-semibold text-[#0B2E59]">
+                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  Specialization
+                </label>
+                <select
+                  value={filters.specialization}
+                  onChange={(e) =>
+                    handleFilterChange("specialization", e.target.value)
+                  }
+                  className="h-[34px] w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-[12px] text-slate-800 outline-none transition-colors focus:border-slate-300 focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
+                >
+                  <option>All Specializations</option>
+                  <option>General Consultation</option>
+                  <option>Maternal Care</option>
+                  <option>Pediatrics</option>
+                  <option>Senior Citizen Care</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  Day
+                </label>
+                <select
+                  value={filters.day}
+                  onChange={(e) => handleFilterChange("day", e.target.value)}
+                  className="h-[34px] w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-[12px] text-slate-800 outline-none transition-colors focus:border-slate-300 focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
+                >
+                  <option>All Days</option>
+                  <option>Monday</option>
+                  <option>Tuesday</option>
+                  <option>Wednesday</option>
+                  <option>Thursday</option>
+                  <option>Friday</option>
+                </select>
+              </div>
+            </div>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="mt-5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
+              >
+                <RotateCcw size={11} />
+                Reset All Filters
+              </button>
+            )}
+          </div>
+
+          {/* Today's Schedule Panel */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                <CalendarDays size={14} />
+              </div>
+              <div>
+                <h2 className="text-[12px] font-bold text-slate-900">
                   Today’s Schedule
                 </h2>
-                <p className="text-xs text-[#9CA3AF]">
-                  Quick view for RHU staff.
+                <p className="text-[10px] text-slate-400">
+                  Quick view for RHU staff
                 </p>
               </div>
             </div>
 
-            <div className="space-y-3">
-              {doctors.slice(0, 3).map((doctor) => (
+            <div className="space-y-2.5">
+              {todaySchedule.map((doctor) => (
                 <div
                   key={doctor.id}
-                  className="rounded-lg border border-[#E8ECF0] bg-[#F8FAFC] p-4"
+                  className="rounded-lg border border-slate-100 bg-slate-50/50 p-3.5 transition-colors hover:border-slate-200"
                 >
-                  <p className="text-sm font-semibold text-[#0B2E59]">
-                    {doctor.name}
-                  </p>
-                  <p className="mt-1 text-xs text-[#6B7280]">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-[12px] font-semibold text-slate-800">
+                      {doctor.name}
+                    </p>
+                    <StatusBadge status={doctor.status} />
+                  </div>
+                  <p className="mt-1 text-[10.5px] font-medium text-blue-600">
                     {doctor.specialization}
                   </p>
-                  <p className="mt-1 text-xs text-[#9CA3AF]">{doctor.time}</p>
-
-                  <div className="mt-3">
-                    <StatusBadge status={doctor.status} />
+                  <div className="mt-2 flex items-center gap-1.5 text-[10.5px] text-slate-500">
+                    <Clock size={10} className="text-slate-400" />
+                    {doctor.time}
                   </div>
                 </div>
               ))}
+              {todaySchedule.length === 0 && (
+                <p className="py-4 text-center text-[11px] text-slate-400">
+                  No doctors scheduled today.
+                </p>
+              )}
             </div>
-          </section>
-
-          <section className="rounded-xl border border-blue-100 bg-blue-50 p-5">
-            <p className="text-xs leading-relaxed text-[#4B5563]">
-              <span className="font-semibold text-[#0B2E59]">Note:</span> Doctor
-              schedules help RHU staff prioritize referrals based on category
-              and specialization. The system may suggest a specialization, but
-              RHU staff still make the final decision.
-            </p>
-          </section>
+          </div>
         </aside>
       </div>
     </DashboardLayout>
   );
 }
 
-function FilterSelect({ label, children }) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-        {label}
-      </label>
-      <select className="h-9 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 text-sm outline-none">
-        {children}
-      </select>
-    </div>
-  );
-}
-
-function StatCard({ title, value, icon, color = "navy" }) {
-  const map = {
-    navy: "border-t-[#0B2E59] text-[#0B2E59] bg-blue-50",
-    blue: "border-t-blue-500 text-blue-700 bg-blue-50",
-    amber: "border-t-amber-400 text-amber-700 bg-amber-50",
-    green: "border-t-emerald-400 text-emerald-700 bg-emerald-50",
-  };
-
-  const selected = map[color] || map.navy;
-  const parts = selected.split(" ");
-  const border = parts[0];
-  const iconStyle = parts.slice(1).join(" ");
-
-  return (
-    <div
-      className={`rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-5 ${border}`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
-          {title}
-        </p>
-
-        <div className={`flex-shrink-0 rounded-lg p-2 ${iconStyle}`}>
-          {icon}
-        </div>
-      </div>
-
-      <p className="mt-4 text-2xl font-bold tracking-tight text-[#0B2E59]">
-        {value}
-      </p>
-    </div>
-  );
-}
+/* ─── Sub-Components ─── */
 
 function StatusBadge({ status }) {
   const map = {
-    Available: "bg-emerald-50 text-emerald-700",
-    "On Duty": "bg-blue-50 text-blue-700",
-    "Fully Booked": "bg-amber-50 text-amber-700",
-    "Not Available": "bg-slate-100 text-slate-600",
-    "On Leave": "bg-red-50 text-red-700",
+    Available: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    "On Duty": "bg-blue-50 text-blue-700 border-blue-200",
+    "Fully Booked": "bg-amber-50 text-amber-700 border-amber-200",
+    "Not Available": "bg-slate-100 text-slate-600 border-slate-200",
+    "On Leave": "bg-red-50 text-red-700 border-red-200",
   };
 
   return (
     <span
-      className={`inline-block whitespace-nowrap rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-        map[status] || "bg-slate-100 text-slate-600"
+      className={`inline-flex items-center whitespace-nowrap rounded-md border px-2 py-0.5 text-[9.5px] font-semibold ${
+        map[status] || "bg-slate-100 text-slate-600 border-slate-200"
       }`}
     >
       {status}
@@ -385,10 +464,20 @@ function StatusBadge({ status }) {
 }
 
 function SpecializationBadge({ label }) {
+  const map = {
+    "Maternal Care": "bg-pink-50 text-pink-700 border-pink-200",
+    Pediatrics: "bg-violet-50 text-violet-700 border-violet-200",
+    "General Consultation": "bg-blue-50 text-blue-700 border-blue-200",
+    "Senior Citizen Care": "bg-amber-50 text-amber-700 border-amber-200",
+  };
+
   return (
-    <span className="inline-block whitespace-nowrap rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+    <span
+      className={`inline-flex items-center whitespace-nowrap rounded-md border px-2 py-0.5 text-[9.5px] font-semibold ${
+        map[label] || "bg-slate-50 text-slate-700 border-slate-200"
+      }`}
+    >
       {label}
     </span>
   );
 }
-
