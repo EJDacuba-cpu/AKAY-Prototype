@@ -1,33 +1,26 @@
-import { getItem, setItem } from "./storageService";
-
-const REFERRALS_KEY = "bhc_referrals";
+import { getAllReferrals, setAllReferrals } from "./localStorageDataService";
 
 const delay = () => new Promise((resolve) => setTimeout(resolve, 300));
 
-function getStoredReferrals() {
-  const referrals = getItem(REFERRALS_KEY, []);
+function normalizeReferrals(referrals) {
   return Array.isArray(referrals) ? referrals : [];
-}
-
-function saveStoredReferrals(referrals) {
-  setItem(REFERRALS_KEY, referrals);
 }
 
 export async function getReferrals() {
   await delay();
-  return getStoredReferrals();
+  return normalizeReferrals(getAllReferrals());
 }
 
 export async function getReferralById(referralId) {
   await delay();
-  const referrals = getStoredReferrals();
+  const referrals = normalizeReferrals(getAllReferrals());
   return referrals.find((r) => r.id === referralId) || null;
 }
 
 export async function createReferral(referralData) {
   await delay();
 
-  const referrals = getStoredReferrals();
+  const referrals = normalizeReferrals(getAllReferrals());
 
   const now = new Date();
   const deadline = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
@@ -42,7 +35,7 @@ export async function createReferral(referralData) {
   };
 
   referrals.unshift(newReferral);
-  saveStoredReferrals(referrals);
+  setAllReferrals(referrals);
 
   return newReferral;
 }
@@ -50,7 +43,7 @@ export async function createReferral(referralData) {
 export async function updateReferralStatus(referralId, status) {
   await delay();
 
-  const referrals = getStoredReferrals();
+  const referrals = normalizeReferrals(getAllReferrals());
 
   const updated = referrals.map((r) =>
     r.id === referralId
@@ -61,13 +54,13 @@ export async function updateReferralStatus(referralId, status) {
       : r,
   );
 
-  saveStoredReferrals(updated);
+  setAllReferrals(updated);
 
   return updated.find((r) => r.id === referralId) || null;
 }
 
 export async function autoMarkNoShowReferrals() {
-  const referrals = getStoredReferrals();
+  const referrals = normalizeReferrals(getAllReferrals());
   const now = new Date();
 
   const updated = referrals.map((referral) => {
@@ -84,7 +77,7 @@ export async function autoMarkNoShowReferrals() {
     return referral;
   });
 
-  saveStoredReferrals(updated);
+  setAllReferrals(updated);
 
   return updated;
 }

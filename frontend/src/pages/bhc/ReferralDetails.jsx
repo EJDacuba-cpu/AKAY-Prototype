@@ -18,7 +18,8 @@ import {
 } from "lucide-react";
 import { Link, useParams } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { getReferralById } from "../../services/referrals";
+import {} from "../../services/referrals";
+
 import { getPatientById } from "../../services/patientService";
 
 /* ─── Keyframes ─── */
@@ -66,27 +67,52 @@ export default function ReferralDetails() {
   const [activeTab, setActiveTab] = useState("referral");
 
   useEffect(() => {
-    async function fetchReferral() {
+    let alive = true;
+
+    async function load() {
       try {
         setLoading(true);
-        const data = await getReferralById(trackingId);
-        if (!data) {
+        setNotFound(false);
+
+        // `trackingId` is what the route provides.
+        // Referral storage is keyed by internal `id`, so we load by trackingId.
+        const all = await (async () => {
+          const { getReferrals } = await import("../../services/referrals");
+          return getReferrals();
+        })();
+
+        const byTracking = (all || []).find((r) => r.trackingId === trackingId);
+        if (!byTracking) {
+          if (!alive) return;
+          setReferral(null);
+          setPatientExtra(null);
           setNotFound(true);
-        } else {
-          setReferral(data);
-          const found = await getPatientById(data.patientId);
-          if (found) {
-            setPatientExtra(found);
-          }
+          return;
         }
+
+        const patientData = byTracking.patientId
+          ? await getPatientById(byTracking.patientId)
+          : null;
+
+        if (!alive) return;
+        setReferral(byTracking);
+        setPatientExtra(patientData);
       } catch (error) {
         console.error(error);
+        if (!alive) return;
         setNotFound(true);
+        setReferral(null);
+        setPatientExtra(null);
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     }
-    fetchReferral();
+
+    load();
+
+    return () => {
+      alive = false;
+    };
   }, [trackingId]);
 
   /* ─── Derived Data ─── */

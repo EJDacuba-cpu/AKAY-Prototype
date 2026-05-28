@@ -215,7 +215,7 @@ export default function Referrals() {
                         <ActionMenu
                           title={referral.patient}
                           subtitle={referral.trackingId}
-                          viewLink={`/bhc/referrals/${referral.id}`}
+                          viewLink={`/bhc/referrals/${referral.trackingId || referral.id}`}
                           viewLabel="View Referral"
                           editLink={`/bhc/referrals/${referral.id}/print`}
                           editLabel="Print Referral Slip"

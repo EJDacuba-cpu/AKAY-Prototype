@@ -693,6 +693,19 @@ export default function AddHealthRecord() {
   const [needsReferral, setNeedsReferral] = useState("no");
   const [patientCondition, setPatientCondition] = useState("Improving");
 
+  // Referral context handoff to BHC CreateReferral form.
+  // Implemented without referencing `selectedPatient` (which is declared later) to avoid TDZ errors.
+  const referralContextRef = useMemo(() => {
+    const recordIdFromQuery = searchParams.get("recordId") || "";
+    const patientIdFromQuery = searchParams.get("patientId") || "";
+
+    return {
+      recordId: recordIdFromQuery,
+      patientId: selectedPatientId || patientIdFromQuery,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPatientId, searchParams]);
+
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
   const [aog, setAog] = useState("");
 
@@ -851,70 +864,102 @@ export default function AddHealthRecord() {
 
   async function handleSave(e) {
     e.preventDefault();
+
     if (!selectedPatientId) {
       alert("Please select a patient first.");
       return;
     }
+
     const finalStatus = followUpStatus;
-    // Backend compatibility: Auto-fill complaint for immunization if hidden
+
     const finalChiefComplaint =
       isImmunization && !chiefComplaint ? "Vaccination Visit" : chiefComplaint;
 
     const formData = {
       patientId: selectedPatientId,
+
       patientName:
         selectedPatient?.name ||
         `${selectedPatient?.firstName || ""} ${selectedPatient?.lastName || ""}`,
+
       patientClassification:
         selectedPatient?.patientClassification ||
         selectedPatient?.category ||
         "General Consultation",
+
       dateOfVisit,
       timeOfVisit,
       chiefComplaint: finalChiefComplaint,
       summaryOfPresentIllness,
       diagnosis,
+
       vitalSigns: concatenatedVitalSigns,
+
       systolicBp: systolicBp || null,
       diastolicBp: diastolicBp || null,
       temperature: temp || null,
       pulseRate: pulse || null,
       weight: weight || null,
       height: height || null,
+
       medication,
       attendingStaff,
       consultationNotes,
+
       followUpStatus: finalStatus,
       followUpDate,
       monitoringNotes,
       patientCondition,
+
       needsReferral,
+
       referralReason: "",
       referralCategory: null,
+
       referralAssessmentStatus:
         needsReferral === "yes" ? "Pending RHU Assessment" : null,
+
       lmp: selectedPatient?.lmp || selectedPatient?.LMP || null,
       pmp: selectedPatient?.pmp || null,
       cycleDuration: selectedPatient?.cycleDuration || null,
       gravida: selectedPatient?.gravida || null,
       para: selectedPatient?.para || null,
       tpal: selectedPatient?.tpal || null,
+
       expectedDeliveryDate,
       aog,
+
       immunizationData,
+
       createdByRole: userRole,
     };
 
     try {
-      await healthRecordService.createHealthRecord(formData);
+      const savedRecord =
+        await healthRecordService.createHealthRecord(formData);
+
+      // AUTO REDIRECT TO CREATE REFERRAL
+      if (needsReferral === "yes" && userRole === "bhc") {
+        navigate(
+          `/bhc/referrals/create?recordId=${
+            savedRecord.data.id || savedRecord.data._id
+          }&patientId=${selectedPatientId}`,
+        );
+        return;
+      }
+
+      // NORMAL SAVE
       navigate(healthRecordsPath);
     } catch (error) {
       console.error("Failed to save record:", error);
+
       alert("May error sa pag-save ng record. Pakisuri ang console.");
     }
   }
 
   /* ═══════════════════════════════════════════════════════════════ */
+  // When switching to “Create Referral”, immediately navigate to the BHC CreateReferral form.
+
   return (
     <DashboardLayout role={userRole} title="Add Health Record">
       <style>{keyframes}</style>

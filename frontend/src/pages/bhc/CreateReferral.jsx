@@ -47,21 +47,29 @@ export default function CreateReferral() {
   const [healthRecords, setHealthRecords] = useState([]);
   const [record, setRecord] = useState(null);
   const [patient, setPatient] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadReferralContext() {
-      const [patientList, records] = await Promise.all([
-        getPatients(),
-        getHealthRecords(),
-      ]);
+      try {
+        setLoading(true);
 
-      setPatients(patientList);
-      setHealthRecords(records);
+        const [patientList, records] = await Promise.all([
+          getPatients(),
+          getHealthRecords(),
+        ]);
+
+        setPatients(patientList);
+        setHealthRecords(records);
+      } catch (error) {
+        console.error("Failed to load referral context:", error);
+      } finally {
+        setLoading(false);
+      }
     }
 
     loadReferralContext();
   }, []);
-
   useEffect(() => {
     if (!targetRecordId) return;
     const foundRecord = healthRecords.find(
@@ -132,10 +140,19 @@ export default function CreateReferral() {
     setSubmitted(true);
   }
 
+  if (loading) {
+    return (
+      <DashboardLayout role="bhc" title="Create Referral">
+        <div className="flex h-[60vh] items-center justify-center">
+          <p className="text-sm text-slate-500">Loading referral context...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
   /* ─── Error: No Context ─── */
   if (!targetRecordId || !record) {
     return (
-      <DashboardLayout role="rhu" title="Create Referral">
+      <DashboardLayout role="bhc" title="Create Referral">
         <style>{keyframes}</style>
         <div className="anim-fade-up mx-auto max-w-lg py-24 text-center">
           <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-500">
@@ -148,7 +165,7 @@ export default function CreateReferral() {
             and click &quot;Create Referral&quot;.
           </p>
           <Link
-            to="/rhu/health-records"
+            to="/bhc/health-records"
             className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
           >
             Go to Health Records
@@ -161,7 +178,7 @@ export default function CreateReferral() {
   /* ─── Success Screen ─── */
   if (submitted) {
     return (
-      <DashboardLayout role="rhu" title="Referral Transmitted">
+      <DashboardLayout role="bhc" title="Referral Transmitted">
         <style>{keyframes}</style>
         <div className="mx-auto max-w-2xl py-10">
           <div className="anim-fade-up mb-8 text-center" style={stagger(0)}>
@@ -238,7 +255,7 @@ export default function CreateReferral() {
             style={stagger(4)}
           >
             <button
-              onClick={() => navigate("/rhu/incoming-referrals")}
+              onClick={() => navigate("/bhc/referrals")}
               className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
             >
               Go to Referrals
@@ -257,7 +274,7 @@ export default function CreateReferral() {
 
   /* ─── Main Form ─── */
   return (
-    <DashboardLayout role="rhu" title="Escalate to RHU">
+    <DashboardLayout role="bhc" title="Escalate to RHU">
       <style>{keyframes}</style>
 
       {/* ─── Confirm Modal ─── */}
@@ -312,7 +329,7 @@ export default function CreateReferral() {
         {/* Header */}
         <div className="anim-fade-up mb-6" style={stagger(0)}>
           <Link
-            to="/rhu/health-records"
+            to="/bhc/health-records"
             className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 hover:text-[#B91C1C]"
           >
             <ArrowLeft size={15} /> Back to Health Records
@@ -376,7 +393,7 @@ export default function CreateReferral() {
             icon={<User size={14} />}
             headerRight={
               <Link
-                to={`/rhu/patients/${patient?.id}`}
+                to={`/bhc/patients/${patient?.id}`}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-500 hover:border-red-200 hover:text-[#B91C1C]"
               >
                 <ExternalLink size={11} /> Open Patient Details
@@ -423,7 +440,7 @@ export default function CreateReferral() {
             icon={<FileText size={14} />}
             headerRight={
               <Link
-                to={`/rhu/health-records/${record.id || record._id}`}
+                to={`/bhc/health-records/${record.id || record._id}`}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-500 hover:border-red-200 hover:text-[#B91C1C]"
               >
                 <ExternalLink size={11} /> Open Full Consultation
