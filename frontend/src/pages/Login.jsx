@@ -180,8 +180,8 @@ export default function Login() {
               <span className="text-red-700">Quality Care</span>
             </h3>
             <p className="text-slate-500 text-sm leading-relaxed mb-8">
-              A centralized digital ecosystem bridging Barangay Health Centers
-              and Rural Health Units for seamless patient referrals.
+              A web-based referral and healthcare coordination system connecting
+              Barangay Health Centers and the Rural Health Unit of Bulakan.
             </p>
 
             <div className="flex items-center gap-6">

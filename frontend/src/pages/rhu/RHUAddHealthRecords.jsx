@@ -21,11 +21,10 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import healthRecordService, {
-  getRhuHealthRecords,
-} from "../../services/healthRecordService";
+import { getRhuHealthRecords } from "../../services/healthRecordService";
 import { getPatientDetailsList } from "../../services/patientService";
 import { getCurrentUser } from "../../utils/auth";
+import { setItem } from "../../services/storageService";
 
 /* ═══════════════════════════════════════════════════════════════
    KEYFRAMES
@@ -159,6 +158,7 @@ export default function AddHealthRecord() {
 
   const recordId = searchParams.get("recordId");
   const preselectedPatientId = searchParams.get("patientId") || "";
+  const linkedTrackingId = searchParams.get("trackingId") || "";
   const isFollowUp = !!recordId;
 
   /* ── States ── */
@@ -221,15 +221,59 @@ export default function AddHealthRecord() {
 
   /* ── Original useEffects & Logic Stubs (Keep intact) ── */
   useEffect(() => {
-    // Fetch patients logic
+    let active = true;
+
+    async function loadPatients() {
+      const list = await getPatientDetailsList();
+      if (active) setPatients(Array.isArray(list) ? list : []);
+    }
+
+    loadPatients();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
-    // Follow-up record fetch logic
+    let active = true;
+
+    async function loadExistingRecord() {
+      if (!recordId) return;
+      const records = await getRhuHealthRecords();
+      const record = records.find((item) => item.id === recordId);
+      if (!record || !active) return;
+
+      setSelectedPatientId(record.patientId || "");
+      setDateOfVisit(record.dateOfVisit || new Date().toISOString().split("T")[0]);
+      setTimeOfVisit(record.timeOfVisit || new Date().toTimeString().split(" ")[0].slice(0, 5));
+      setChiefComplaint(record.chiefComplaint || "");
+      setSummaryOfPresentIllness(record.summaryOfPresentIllness || "");
+      setDiagnosis(record.diagnosis || "");
+      setMedication(record.medication || "");
+      setAttendingStaff(record.attendingStaff || "");
+      setConsultationNotes(record.consultationNotes || "");
+      setSystolicBp(record.systolicBp || "");
+      setDiastolicBp(record.diastolicBp || "");
+      setTemp(record.temp || "");
+      setPulse(record.pulse || "");
+      setWeight(record.weight || "");
+      setHeight(record.height || "");
+      setFollowUpStatus(record.followUpStatus || "Routine Monitoring");
+      setFollowUpDate(record.followUpDate || "");
+      setMonitoringNotes(record.monitoringNotes || "");
+      setPatientCondition(record.patientCondition || "Improving");
+    }
+
+    loadExistingRecord();
+
+    return () => {
+      active = false;
+    };
   }, [recordId]);
 
   useEffect(() => {
-    // Preselected patient logic
+    if (preselectedPatientId) setSelectedPatientId(preselectedPatientId);
   }, [preselectedPatientId]);
 
   useEffect(() => {
@@ -276,7 +320,48 @@ export default function AddHealthRecord() {
       alert("Please select a patient first.");
       return;
     }
-    // Original handleSave logic
+
+    const records = await getRhuHealthRecords();
+    const now = new Date().toISOString();
+    const currentId = recordId || `RHU-HR-${Date.now()}`;
+
+    const recordData = {
+      id: currentId,
+      patientId: selectedPatientId,
+      dateOfVisit,
+      timeOfVisit,
+      chiefComplaint,
+      summaryOfPresentIllness,
+      diagnosis,
+      medication,
+      attendingStaff,
+      consultationNotes,
+      systolicBp,
+      diastolicBp,
+      temp,
+      pulse,
+      weight,
+      height,
+      followUpStatus,
+      followUpDate,
+      monitoringNotes,
+      patientCondition,
+      expectedDeliveryDate,
+      aog,
+      immunizationData,
+      linkedTrackingId,
+      status: followUpStatus === "Completed" ? "Completed" : "Active",
+      recordedBy: attendingStaff || "RHU Staff",
+      updatedAt: now,
+      createdAt: records.find((item) => item.id === currentId)?.createdAt || now,
+    };
+
+    const nextRecords = records.some((item) => item.id === currentId)
+      ? records.map((item) => (item.id === currentId ? recordData : item))
+      : [recordData, ...records];
+
+    setItem("rhu_health_records", nextRecords);
+    navigate(`/rhu/health-records/${currentId}`);
   }
 
   /* ── Filtered Patient List ── */
@@ -575,7 +660,7 @@ export default function AddHealthRecord() {
                 onChange={(e) => setTimeOfVisit(e.target.value)}
               />
               <FieldInput
-                label="Attending Staff"
+                label="Attending Staff / Receiving Practitioner"
                 value={attendingStaff}
                 onChange={(e) => setAttendingStaff(e.target.value)}
                 placeholder="e.g. Dr. Cruz"
@@ -590,28 +675,28 @@ export default function AddHealthRecord() {
                 placeholder="Primary reason for visit"
               />
               <FieldTextarea
-                label="History of Present Illness"
+                label="Summary of Present Illness and Physical Examination"
                 value={summaryOfPresentIllness}
                 onChange={(e) => setSummaryOfPresentIllness(e.target.value)}
                 placeholder="Describe the onset, duration, and progression of symptoms..."
               />
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <FieldInput
-                  label="Diagnosis"
+                  label="Initial Diagnosis"
                   required
                   value={diagnosis}
                   onChange={(e) => setDiagnosis(e.target.value)}
                   placeholder="Clinical diagnosis"
                 />
                 <FieldInput
-                  label="Medication / Treatment"
+                  label="Initial Actions Taken"
                   value={medication}
                   onChange={(e) => setMedication(e.target.value)}
                   placeholder="Prescribed medication"
                 />
               </div>
               <FieldTextarea
-                label="Additional Consultation Notes"
+                label="Additional Notes"
                 value={consultationNotes}
                 onChange={(e) => setConsultationNotes(e.target.value)}
                 placeholder="Other relevant clinical observations..."
@@ -730,35 +815,6 @@ export default function AddHealthRecord() {
         {/* ═══════════════════════════════════════════════════════════════
             ASSESSMENT REFERRAL SECTION
             ═══════════════════════════════════════════════════════════════ */}
-        <FormSection
-          title="Assessment & Recommendation"
-          subtitle="Determine if this case requires further evaluation or escalation."
-          icon={<Send size={14} />}
-          delay={6}
-        >
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <FieldSelect
-              label="Requires Referral?"
-              required
-              value={needsReferral}
-              onChange={(e) => setNeedsReferral(e.target.value)}
-            >
-              <option value="no">No - Routine Case</option>
-              <option value="yes">Yes - Escalate to RHU/Hospital</option>
-            </FieldSelect>
-            {needsReferral === "yes" && (
-              <div className="flex items-end">
-                <div className="w-full flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2.5 border border-red-200">
-                  <ShieldCheck size={14} className="text-red-500 shrink-0" />
-                  <p className="text-[11px] font-semibold text-red-800">
-                    Referral coordination will be initiated upon saving.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </FormSection>
-
         {/* ═══════════════════════════════════════════════════════════════
             ACTION FOOTER
             ═══════════════════════════════════════════════════════════════ */}

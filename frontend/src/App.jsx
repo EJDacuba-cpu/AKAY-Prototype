@@ -23,6 +23,7 @@ import ReferralQRCode from "./pages/bhc/ReferralQRCode";
 // RHU Pages
 import RHUDashboard from "./pages/rhu/RHUDashboard";
 import IncomingReferrals from "./pages/rhu/IncomingReferrals";
+import RHUReferralDetails from "./pages/rhu/ReferralDetails";
 import QRScanner from "./pages/rhu/QRScanner";
 import RHUPatientsModule from "./pages/rhu/RHUPatientsModule";
 import RHUPatientDetails from "./pages/rhu/RHUPatientDetails";
@@ -42,7 +43,7 @@ import UserManagement from "./pages/admin/UserManagement";
 import AddUser from "./pages/admin/AddUser";
 import DoctorManagement from "./pages/admin/DoctorManagement";
 import AddDoctor from "./pages/admin/AddDoctor";
-import AdminDoctorSchedule from "./pages/admin/AdminDoctorSchedule";
+
 import AdminReports from "./pages/admin/AdminReports";
 import AuditLogs from "./pages/admin/AuditLogs";
 
@@ -133,14 +134,7 @@ export default function App() {
           </ProtectedPage>
         }
       />
-      <Route
-        path="/admin/doctor-schedule"
-        element={
-          <ProtectedPage allowedRole="admin">
-            <AdminDoctorSchedule />
-          </ProtectedPage>
-        }
-      />
+
       <Route
         path="/admin/reports"
         element={
@@ -295,6 +289,14 @@ export default function App() {
         element={
           <ProtectedPage allowedRole="rhu">
             <IncomingReferrals />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/rhu/referrals/:trackingId"
+        element={
+          <ProtectedPage allowedRole="rhu">
+            <RHUReferralDetails />
           </ProtectedPage>
         }
       />

@@ -166,10 +166,43 @@ const stats = [
   },
 ];
 
+const STATUS_TABS = [
+  { key: "All Status", label: "All Records", icon: ClipboardList },
+  { key: "Active", label: "Active", icon: HeartPulse },
+  { key: "For Monitoring", label: "Monitoring", icon: Clock },
+  { key: "Completed", label: "Completed", icon: CheckCircle2 },
+];
+
+function inferClassification(record) {
+  const concern = record.concern.toLowerCase();
+  if (concern.includes("prenatal") || concern.includes("pregnan")) {
+    return "Maternal";
+  }
+  if (concern.includes("immunization") || concern.includes("vaccine")) {
+    return "Immunization";
+  }
+  if (concern.includes("hypertension") || concern.includes("diabetes")) {
+    return "Senior Citizen";
+  }
+  return "General Consultation";
+}
+
+function matchesDate(recordDate, selectedDate) {
+  if (!selectedDate) return true;
+
+  const parsed = new Date(recordDate);
+  if (Number.isNaN(parsed.getTime())) return false;
+
+  return parsed.toISOString().slice(0, 10) === selectedDate;
+}
+
 /* ─── Main Component ─── */
 export default function RHUHealthRecords() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("All Status");
+  const [filterClassification, setFilterClassification] =
+    useState("All Classifications");
+  const [filterDate, setFilterDate] = useState("");
   const [sortKey, setSortKey] = useState("date");
   const [sortDir, setSortDir] = useState("desc");
   const [page, setPage] = useState(1);
@@ -186,9 +219,45 @@ export default function RHUHealthRecords() {
         r.concern.toLowerCase().includes(q);
       const matchesStatus =
         filterStatus === "All Status" || r.status === filterStatus;
-      return matchesSearch && matchesStatus;
+      const matchesClassification =
+        filterClassification === "All Classifications" ||
+        inferClassification(r) === filterClassification;
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesClassification &&
+        matchesDate(r.date, filterDate)
+      );
     });
-  }, [searchQuery, filterStatus]);
+  }, [searchQuery, filterStatus, filterClassification, filterDate]);
+
+  const tabCounts = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    const baseRecords = healthRecords.filter((r) => {
+      const matchesSearch =
+        !q ||
+        r.patient.toLowerCase().includes(q) ||
+        r.id.toLowerCase().includes(q) ||
+        r.concern.toLowerCase().includes(q);
+      const matchesClassification =
+        filterClassification === "All Classifications" ||
+        inferClassification(r) === filterClassification;
+
+      return (
+        matchesSearch &&
+        matchesClassification &&
+        matchesDate(r.date, filterDate)
+      );
+    });
+
+    return STATUS_TABS.reduce((acc, tab) => {
+      acc[tab.key] =
+        tab.key === "All Status"
+          ? baseRecords.length
+          : baseRecords.filter((r) => r.status === tab.key).length;
+      return acc;
+    }, {});
+  }, [searchQuery, filterClassification, filterDate]);
 
   /* ─── Sorted ─── */
   const sortedRecords = useMemo(() => {
@@ -221,13 +290,23 @@ export default function RHUHealthRecords() {
         label: "Status",
         value: filterStatus,
       });
+    if (filterClassification !== "All Classifications") {
+      filters.push({
+        key: "classification",
+        label: "Classification",
+        value: filterClassification,
+      });
+    }
+    if (filterDate) {
+      filters.push({ key: "date", label: "Date", value: filterDate });
+    }
     return filters;
-  }, [searchQuery, filterStatus]);
+  }, [searchQuery, filterStatus, filterClassification, filterDate]);
 
   /* ─── Reset page on filter change ─── */
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, filterStatus]);
+  }, [searchQuery, filterStatus, filterClassification, filterDate]);
 
   /* ─── Handlers ─── */
   function handleSort(key) {
@@ -242,11 +321,17 @@ export default function RHUHealthRecords() {
   function clearFilter(key) {
     if (key === "search") setSearchQuery("");
     if (key === "status") setFilterStatus("All Status");
+    if (key === "classification") {
+      setFilterClassification("All Classifications");
+    }
+    if (key === "date") setFilterDate("");
   }
 
   function clearAllFilters() {
     setSearchQuery("");
     setFilterStatus("All Status");
+    setFilterClassification("All Classifications");
+    setFilterDate("");
   }
 
   /* ─── Render ─── */
@@ -273,43 +358,15 @@ export default function RHUHealthRecords() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div
-        className="anim-fade-up mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4"
-        style={stagger(1)}
-      >
-        {stats.map((s, i) => (
-          <div
-            key={s.label}
-            className="anim-count rounded-xl border border-[#E8ECF0] bg-white p-4"
-            style={stagger(i + 1)}
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className={`flex h-9 w-9 items-center justify-center rounded-lg ${s.bg}`}
-              >
-                <s.icon size={16} className={s.color} />
-              </div>
-              <div>
-                <p className="text-xl font-bold text-[#1A1A1A]">{s.value}</p>
-                <p className="text-[11px] font-medium text-[#9CA3AF]">
-                  {s.label}
-                </p>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
       {/* Filters */}
       <div
-        className="anim-fade-up rounded-t-2xl border border-b-0 border-[#E8ECF0] bg-white p-5"
-        style={stagger(2)}
+        className="anim-fade-up mb-4 rounded-2xl border border-[#E8ECF0] bg-white p-5"
+        style={stagger(1)}
       >
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
+        <div className="grid items-end gap-4 xl:grid-cols-[minmax(0,1fr)_190px_170px]">
+          <div className="min-w-0">
             <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Search Record
+              Search Patient / Record ID / Consultation
             </label>
             <div className="relative">
               <Search
@@ -325,16 +382,30 @@ export default function RHUHealthRecords() {
               />
             </div>
           </div>
+
           <FilterSelect
-            label="Status"
-            value={filterStatus}
-            onChange={setFilterStatus}
+            label="Classification"
+            value={filterClassification}
+            onChange={setFilterClassification}
           >
-            <option>All Status</option>
-            <option>Active</option>
-            <option>For Monitoring</option>
-            <option>Completed</option>
+            <option>All Classifications</option>
+            <option>General Consultation</option>
+            <option>Maternal</option>
+            <option>Immunization</option>
+            <option>Senior Citizen</option>
           </FilterSelect>
+
+          <div>
+            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+              Date
+            </label>
+            <input
+              type="date"
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              className="h-11 w-full rounded-xl border border-[#E8ECF0] bg-white px-4 text-sm text-[#1A1A1A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+            />
+          </div>
         </div>
 
         {/* Active Filter Tags */}
@@ -363,9 +434,44 @@ export default function RHUHealthRecords() {
         )}
       </div>
 
+      <div
+        className="anim-fade-up mb-4 flex items-center gap-1 overflow-x-auto rounded-lg bg-[#F1F5F9] p-1"
+        style={stagger(2)}
+      >
+        {STATUS_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = filterStatus === tab.key;
+
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setFilterStatus(tab.key)}
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${
+                isActive
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:bg-slate-200/50 hover:text-slate-700"
+              }`}
+            >
+              <Icon size={12} className={isActive ? "text-[#B91C1C]" : ""} />
+              {tab.label}
+              <span
+                className={`rounded-full px-1.5 py-px text-[9px] font-bold leading-none ${
+                  isActive
+                    ? "bg-[#B91C1C]/10 text-[#B91C1C]"
+                    : "bg-slate-300/70 text-slate-600"
+                }`}
+              >
+                {tabCounts[tab.key] ?? 0}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Table */}
       <div
-        className="anim-fade-up overflow-hidden rounded-b-2xl border border-t-0 border-[#E8ECF0] bg-white shadow-sm"
+        className="anim-fade-up overflow-hidden rounded-2xl border border-[#E8ECF0] bg-white shadow-sm"
         style={stagger(3)}
       >
         <div className="overflow-x-auto">

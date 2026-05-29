@@ -6,6 +6,31 @@ function normalizeReferrals(referrals) {
   return Array.isArray(referrals) ? referrals : [];
 }
 
+function parseDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getNoShowCutoff(referral) {
+  const deadline = parseDate(referral.referralDeadline);
+  if (deadline) return deadline;
+
+  const referralDay = parseDate(
+    referral.preferredVisitDate ||
+      referral.dateOfReferral ||
+      referral.referralDate ||
+      referral.dateSubmitted ||
+      referral.date ||
+      referral.createdAt,
+  );
+
+  if (!referralDay) return null;
+
+  referralDay.setHours(23, 59, 59, 999);
+  return referralDay;
+}
+
 export async function getReferrals() {
   await delay();
   return normalizeReferrals(getAllReferrals());
@@ -60,18 +85,41 @@ export async function updateReferralStatus(referralId, status) {
   return updated.find((r) => r.id === referralId) || null;
 }
 
+export async function updateReferralByTrackingId(trackingId, changes) {
+  await delay();
+
+  const referrals = normalizeReferrals(getAllReferrals());
+  const nextChanges =
+    typeof changes === "function" ? changes : () => ({ ...changes });
+
+  let updatedReferral = null;
+  const updated = referrals.map((r) => {
+    if (r.trackingId !== trackingId) return r;
+    updatedReferral = {
+      ...r,
+      ...nextChanges(r),
+      updatedAt: new Date().toISOString(),
+    };
+    return updatedReferral;
+  });
+
+  setAllReferrals(updated);
+
+  return updatedReferral;
+}
+
 export async function autoMarkNoShowReferrals() {
   const referrals = normalizeReferrals(getAllReferrals());
   const now = new Date();
 
   const updated = referrals.map((referral) => {
-    if (
-      referral.status === "Pending" &&
-      new Date(referral.referralDeadline) < now
-    ) {
+    const cutoff = getNoShowCutoff(referral);
+    if (referral.status === "Pending" && cutoff && cutoff < now) {
       return {
         ...referral,
         status: "No-Show",
+        noShowAt: referral.noShowAt || now.toISOString(),
+        previousStatus: referral.previousStatus || "Pending",
       };
     }
 
@@ -88,5 +136,6 @@ export default {
   getReferralById,
   createReferral,
   updateReferralStatus,
+  updateReferralByTrackingId,
   autoMarkNoShowReferrals,
 };

@@ -38,12 +38,21 @@ export default function PatientsModule() {
 
   return (
     <DashboardLayout role="bhc" title="Patients">
-      {/* ═══════════════════════════════════════════════════════════════
-          TOP NAVIGATION: TABS + ACTION
-          ═══════════════════════════════════════════════════════════════ */}
-      <div className="mb-6 flex items-center justify-between gap-4">
-        {/* Category Pill Tabs */}
-        <div className="flex items-center gap-1.5 rounded-lg bg-[#F1F5F9] p-1">
+      <PatientFilters
+        filters={filters}
+        setFilters={setFilters}
+        action={
+          <Link
+            to="/bhc/patients/add"
+            className="flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347] active:bg-[#071D3A]"
+          >
+            <Plus size={14} strokeWidth={2.5} />
+            Add Patient
+          </Link>
+        }
+      />
+
+      <div className="mb-4 flex items-center gap-1.5 overflow-x-auto rounded-lg bg-[#F1F5F9] p-1">
           {PATIENT_TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = filters.type === tab.key;
@@ -72,26 +81,12 @@ export default function PatientsModule() {
               </button>
             );
           })}
-        </div>
-
-        {/* Add Patient Action */}
-        <Link
-          to="/bhc/patients/add"
-          className="flex h-9 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347] active:bg-[#071D3A]"
-        >
-          <Plus size={14} strokeWidth={2.5} />
-          Add Patient
-        </Link>
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════════
-          TWO-COLUMN LAYOUT: SIDEBAR + TABLE
-          ═══════════════════════════════════════════════════════════════ */}
-      <div className="flex items-start gap-6">
-        {/* ── Right Table Content ── */}
-        <div className="min-w-0 flex-1 rounded-xl border border-[#E2E8F0] bg-white shadow-sm overflow-hidden">
+      <div className="min-w-0">
           {paginatedPatients.length === 0 && !loading ? (
-            <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
+            <div className="rounded-xl border border-[#E2E8F0] bg-white px-6 py-24 text-center shadow-sm">
+              <div className="flex flex-col items-center justify-center">
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
                 <Users size={20} className="text-[#94A3B8]" />
               </div>
@@ -110,6 +105,7 @@ export default function PatientsModule() {
                 Clear current filters
               </button>
             </div>
+            </div>
           ) : (
             <PatientsTable
               patients={paginatedPatients}
@@ -119,11 +115,6 @@ export default function PatientsModule() {
               setCurrentPage={setCurrentPage}
             />
           )}
-        </div>
-        {/* ── Left Filter Sidebar ── */}
-        <aside className="w-[260px] shrink-0">
-          <PatientFilters filters={filters} setFilters={setFilters} />
-        </aside>
       </div>
     </DashboardLayout>
   );

@@ -1,135 +1,139 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
+  Activity,
+  AlertCircle,
+  AlertTriangle,
   ArrowLeft,
+  Building2,
+  CalendarDays,
+  CheckCircle2,
+  ClipboardList,
+  Clock,
   FileText,
+  MapPin,
+  MessageSquare,
+  Phone,
   Printer,
   QrCode,
-  ClipboardList,
-  User,
   Stethoscope,
-  ShieldCheck,
-  AlertTriangle,
-  MapPin,
-  AlertCircle,
-  CheckCircle2,
-  Clock,
-  Activity,
-  MessageSquare,
+  User,
+  UserCheck,
 } from "lucide-react";
 import { Link, useParams } from "react-router";
-import DashboardLayout from "../../components/layout/DashboardLayout";
-import {} from "../../services/referrals";
 
+import DashboardLayout from "../../components/layout/DashboardLayout";
+import {
+  getReferrals,
+  updateReferralByTrackingId,
+} from "../../services/referrals";
 import { getPatientById } from "../../services/patientService";
 
-/* ─── Keyframes ─── */
 const keyframes = `
-  @keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes pulseSoft { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-  .anim-fade-up  { animation: fadeUp 0.55s cubic-bezier(0.22,1,0.36,1) both; }
-  .pulse-soft    { animation: pulseSoft 2.5s ease-in-out infinite; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .anim-fade-up { animation: fadeUp 0.45s cubic-bezier(0.22,1,0.36,1) both; }
 `;
-const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 
-/* ─── Formatters ─── */
-const fmtDate = (d) =>
-  d
-    ? new Date(d).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
-    : "—";
-const fmtTime = (d) =>
-  d
-    ? new Date(d).toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      })
-    : "—";
+const stagger = (i) => ({ animationDelay: `${i * 55}ms` });
 
-/* ─── Tab Config ─── */
-const TABS = [
+const RHU_TABS = [
   { key: "referral", label: "Referral Information", icon: ClipboardList },
   { key: "clinical", label: "Clinical Summary", icon: Stethoscope },
-  { key: "rhu", label: "RHU Feedback", icon: MessageSquare },
+  { key: "feedback", label: "RHU Feedback", icon: MessageSquare },
+];
+
+const BHC_TABS = [
+  ...RHU_TABS,
   { key: "timeline", label: "Referral Timeline", icon: Clock },
 ];
 
-/* ─── Main Component ─── */
-export default function ReferralDetails() {
+export default function ReferralDetails({ role = "bhc" }) {
   const { trackingId } = useParams();
   const [referral, setReferral] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
   const [patientExtra, setPatientExtra] = useState(null);
   const [activeTab, setActiveTab] = useState("referral");
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
+
+  const isRhu = role === "rhu";
+  const backHref = isRhu ? "/rhu/incoming-referrals" : "/bhc/referrals";
+  const backLabel = isRhu ? "Back to Incoming Referrals" : "Back to Referrals";
+  const tabs = isRhu ? RHU_TABS : BHC_TABS;
 
   useEffect(() => {
-    let alive = true;
+    let active = true;
 
-    async function load() {
+    async function loadReferral() {
+      setLoading(true);
+      setNotFound(false);
+
       try {
-        setLoading(true);
-        setNotFound(false);
+        const all = await getReferrals();
+        const found = (all || []).find(
+          (item) => item.trackingId === trackingId || item.id === trackingId,
+        );
 
-        // `trackingId` is what the route provides.
-        // Referral storage is keyed by internal `id`, so we load by trackingId.
-        const all = await (async () => {
-          const { getReferrals } = await import("../../services/referrals");
-          return getReferrals();
-        })();
-
-        const byTracking = (all || []).find((r) => r.trackingId === trackingId);
-        if (!byTracking) {
-          if (!alive) return;
+        if (!found) {
+          if (!active) return;
           setReferral(null);
           setPatientExtra(null);
           setNotFound(true);
           return;
         }
 
-        const patientData = byTracking.patientId
-          ? await getPatientById(byTracking.patientId)
+        const patient = found.patientId
+          ? await getPatientById(found.patientId)
           : null;
 
-        if (!alive) return;
-        setReferral(byTracking);
-        setPatientExtra(patientData);
+        if (!active) return;
+        setReferral(found);
+        setPatientExtra(patient);
       } catch (error) {
         console.error(error);
-        if (!alive) return;
-        setNotFound(true);
+        if (!active) return;
         setReferral(null);
         setPatientExtra(null);
+        setNotFound(true);
       } finally {
-        if (alive) setLoading(false);
+        if (active) setLoading(false);
       }
     }
 
-    load();
+    loadReferral();
 
     return () => {
-      alive = false;
+      active = false;
     };
   }, [trackingId]);
 
-  /* ─── Derived Data ─── */
-  const patientAddress = patientExtra
-    ? [patientExtra.address, patientExtra.barangay, patientExtra.municipality]
-        .filter(Boolean)
-        .join(", ")
-    : null;
-  const patientPhilHealth =
-    patientExtra?.philHealth || patientExtra?.philHealthNumber || null;
+  async function updateReferralStatus(nextStatus, extraChanges = {}) {
+    if (!referral || statusBusy) return;
 
-  const isCompleted = referral?.status === "Completed";
+    setStatusBusy(true);
+    setStatusMessage("");
 
-  /* ─── States ─── */
+    try {
+      const updated = await updateReferralByTrackingId(referral.trackingId, {
+        status: nextStatus,
+        ...extraChanges,
+      });
+
+      if (updated) {
+        setReferral(updated);
+        setStatusMessage(`Referral status updated to ${nextStatus}.`);
+      }
+    } finally {
+      setStatusBusy(false);
+    }
+  }
+
   if (loading) {
     return (
-      <DashboardLayout role="bhc" title="Referral Details">
+      <DashboardLayout role={role} title="Referral Details">
         <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-400">
           Loading referral details...
         </div>
@@ -137,9 +141,9 @@ export default function ReferralDetails() {
     );
   }
 
-  if (notFound) {
+  if (notFound || !referral) {
     return (
-      <DashboardLayout role="bhc" title="Not Found">
+      <DashboardLayout role={role} title="Referral Not Found">
         <div className="mx-auto max-w-lg py-24 text-center">
           <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50 text-red-500">
             <AlertTriangle size={30} />
@@ -152,10 +156,11 @@ export default function ReferralDetails() {
             is broken.
           </p>
           <Link
-            to="/bhc/referrals"
+            to={backHref}
             className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#0B2E59] px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#092347]"
           >
-            Back to Referrals
+            <ArrowLeft size={15} />
+            {backLabel}
           </Link>
         </div>
       </DashboardLayout>
@@ -163,745 +168,981 @@ export default function ReferralDetails() {
   }
 
   return (
-    <DashboardLayout role="bhc" title="Referral Details">
+    <DashboardLayout role={role} title="Referral Details">
       <style>{keyframes}</style>
 
-      {/* ─── BACK LINK + HEADER ─── */}
       <div className="anim-fade-up mb-4" style={stagger(0)}>
         <Link
-          to="/bhc/referrals"
+          to={backHref}
           className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 hover:text-[#0B2E59]"
         >
-          <ArrowLeft size={15} /> Back to Referrals
+          <ArrowLeft size={15} />
+          {backLabel}
         </Link>
       </div>
 
-      {/* ─── PAGE TITLE BAR ─── */}
-      <div
-        className="anim-fade-up mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-        style={stagger(1)}
-      >
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0B2E59]/10 text-[#0B2E59]">
-            <FileText size={20} />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-slate-800">Referral Slip</h1>
-            <p className="font-mono text-xs font-semibold text-[#0B2E59]/70">
-              {referral.trackingId}
-            </p>
-          </div>
-        </div>
-        <StatusBadge status={referral.status} />
-      </div>
+      <ReferralHeader referral={referral} patientExtra={patientExtra} />
 
-      {/* ─── TAB BAR ─── */}
       <div
         className="anim-fade-up mb-5 border-b border-slate-200"
         style={stagger(2)}
       >
-        <nav className="-mb-px flex gap-0 overflow-x-auto" role="tablist">
-          {TABS.map((tab) => {
+        <nav className="-mb-px flex overflow-x-auto" role="tablist">
+          {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.key;
-            const isRhuLocked = tab.key === "rhu" && !isCompleted;
+
             return (
               <button
                 key={tab.key}
+                type="button"
                 role="tab"
                 aria-selected={isActive}
                 onClick={() => setActiveTab(tab.key)}
-                disabled={isRhuLocked}
-                className={`relative flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-xs font-semibold transition-colors ${
+                className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-xs font-semibold transition-colors ${
                   isActive
                     ? "border-[#0B2E59] text-[#0B2E59]"
-                    : isRhuLocked
-                      ? "cursor-not-allowed border-transparent text-slate-300"
-                      : "border-transparent text-slate-400 hover:border-slate-300 hover:text-slate-600"
+                    : "border-transparent text-slate-400 hover:border-slate-300 hover:text-slate-600"
                 }`}
               >
                 <Icon size={14} />
                 {tab.label}
-                {isRhuLocked && (
-                  <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-400">
-                    Locked
-                  </span>
-                )}
               </button>
             );
           })}
         </nav>
       </div>
 
-      {/* ─── CONTENT AREA ─── */}
-      <div className="grid gap-5 xl:grid-cols-[1fr_280px]">
-        {/* ════════════════════════════════════════════
-            MAIN TAB CONTENT
-        ════════════════════════════════════════════ */}
-        <div className="anim-fade-up min-w-0" style={stagger(3)}>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <main className="anim-fade-up min-w-0" style={stagger(3)}>
           {activeTab === "referral" && (
-            <TabReferral
+            <ReferralInformationTab
               referral={referral}
-              patientAddress={patientAddress}
-              patientPhilHealth={patientPhilHealth}
+              patientExtra={patientExtra}
             />
           )}
-          {activeTab === "clinical" && <TabClinical referral={referral} />}
-          {activeTab === "rhu" && (
-            <TabRHU referral={referral} isCompleted={isCompleted} />
+
+          {activeTab === "clinical" && (
+            <ClinicalSummaryTab referral={referral} />
           )}
-          {activeTab === "timeline" && <TabTimeline referral={referral} />}
-        </div>
 
-        {/* ════════════════════════════════════════════
-            SIDEBAR — MINIMAL
-        ════════════════════════════════════════════ */}
-        <aside className="space-y-4">
-          {/* QR Card */}
-          <div
-            className="anim-fade-up rounded-2xl border border-slate-200 bg-white p-5 shadow-sm text-center"
-            style={stagger(4)}
-          >
-            <div className="mx-auto mb-3 flex h-32 w-32 items-center justify-center rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/50">
-              <QrCode size={64} className="text-[#0B2E59]/60" />
+          {activeTab === "feedback" && <RhuFeedbackTab referral={referral} />}
+
+          {!isRhu && activeTab === "timeline" && (
+            <TimelineTab referral={referral} />
+          )}
+        </main>
+
+        <aside className="space-y-4 xl:sticky xl:top-5 xl:self-start">
+          {isRhu && statusMessage && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-700">
+              {statusMessage}
             </div>
-            <p className="font-mono text-xs font-bold text-slate-700">
-              {referral.trackingId}
-            </p>
-            <p className="mt-0.5 text-[11px] text-slate-400">
-              Scan to verify at RHU
-            </p>
-          </div>
+          )}
 
-          {/* Quick Actions */}
-          <div
-            className="anim-fade-up flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
-            style={stagger(5)}
-          >
-            <Link
-              to={`/bhc/referrals/${referral.id}/print`}
-              className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-            >
-              <Printer size={14} /> Print Referral Slip
-            </Link>
-            <Link
-              to={`/bhc/referrals/${referral.id}/qr`}
-              className="flex items-center justify-center gap-2 rounded-xl bg-[#0B2E59] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#092347]"
-            >
-              <QrCode size={14} /> Open Full QR Code
-            </Link>
-          </div>
+          {isRhu ? (
+            <>
+              <WorkflowPanel
+                referral={referral}
+                busy={statusBusy}
+                onStatusChange={updateReferralStatus}
+              />
+              <ReferralProgressPanel referral={referral} />
+              <QRCodePanel referral={referral} />
+            </>
+          ) : (
+            <>
+              <QRCodePanel referral={referral} />
+              <BhcActionsPanel referral={referral} />
+            </>
+          )}
         </aside>
       </div>
     </DashboardLayout>
   );
 }
 
-/* ═══════════════════════════════════════════════════
-   TAB 1 — REFERRAL INFORMATION
-═══════════════════════════════════════════════════ */
-function TabReferral({ referral, patientAddress, patientPhilHealth }) {
+function ReferralHeader({ referral, patientExtra }) {
+  const patientName = getPatientName(referral, patientExtra);
+  const contactNumber = getContactNumber(referral, patientExtra);
+  const classification = getClassification(referral, patientExtra);
+  const referralDate = getReferralDate(referral);
+  const referringFacility = getReferringFacility(referral, patientExtra);
+  const destinationFacility = getDestinationFacility(referral);
+
   return (
-    <div className="space-y-4">
-      {/* Section A — Referral Header */}
-      <HealthSection title="Referral Header" icon={<ClipboardList size={14} />}>
-        <div className="grid grid-cols-2 gap-x-8 gap-y-3 md:grid-cols-4">
-          <MetaField label="Tracking ID" value={referral.trackingId} mono />
-
-          <MetaField
-            label="Date of Referral"
-            value={fmtDate(referral.createdAt)}
-          />
-          <MetaField
-            label="Time of Referral"
-            value={fmtTime(referral.createdAt)}
-          />
-
-          <MetaField
-            label="Referring Health Center"
-            value="Pitpitan Health Center"
-          />
-
-          <MetaField
-            label="Destination Facility"
-            value={referral.referredFacility}
-          />
-          <MetaField label="Name of Practitioner" value="BHC Staff" />
-        </div>
-      </HealthSection>
-
-      {/* Section B — Patient Information */}
-      <HealthSection title="Patient Information" icon={<User size={14} />}>
-        <div className="grid grid-cols-2 gap-x-8 gap-y-3">
-          <FormField
-            label="Patient Name"
-            value={referral.patientName || referral.patient}
-            bold
-          />
-          <FormField label="Age / Sex / Civil Status" value={referral.ageSex} />
-          <FormField
-            label="Address"
-            value={patientAddress || "—"}
-            icon={<MapPin size={12} />}
-          />
-          <FormField
-            label="Patient Classification"
-            value={referral.classification}
-            isBadge
-          />
-          {patientPhilHealth && (
-            <FormField label="PhilHealth Number" value={patientPhilHealth} />
-          )}
-          <FormField label="Chief Complaint" value={referral.chiefComplaint} />
-        </div>
-      </HealthSection>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════
-   TAB 2 — CLINICAL SUMMARY
-═══════════════════════════════════════════════════ */
-function TabClinical({ referral }) {
-  return (
-    <div className="space-y-4">
-      {/* 1. Summary of Present Illness & Physical Examination */}
-      <HealthSection
-        title="Summary of Present Illness & Physical Examination"
-        icon={<Stethoscope size={14} />}
-        accent="blue"
-      >
-        <ClinicalNarrative
-          value={
-            referral.chiefComplaint ||
-            "No clinical summary provided in the referral record."
-          }
-          large
-        />
-      </HealthSection>
-
-      {/* 2. Initial Diagnosis */}
-      <HealthSection title="Initial Diagnosis" icon={<FileText size={14} />}>
-        <ClinicalBlock
-          label="Working Diagnosis / Assessment"
-          value={referral.diagnosis || "No initial diagnosis recorded."}
-        />
-      </HealthSection>
-
-      {/* 3. Initial Actions Taken */}
-      <HealthSection
-        title="Initial Actions Taken"
-        icon={<CheckCircle2 size={14} />}
-      >
-        {referral.initialActionsTaken ? (
-          <ClinicalBlock value={referral.initialActionsTaken} />
-        ) : (
-          <HealthEmpty
-            message="Not specified in this referral record."
-            sub="Initial interventions prior to escalation were not documented."
-          />
-        )}
-      </HealthSection>
-
-      {/* 4. Reason for Referral */}
-      <HealthSection
-        title="Reason for Referral"
-        icon={<AlertCircle size={14} />}
-        accent="amber"
-      >
-        <ClinicalBlock
-          label="Clinical justification for RHU escalation"
-          value={referral.reasonForReferral || "No reason specified."}
-          highlight
-        />
-      </HealthSection>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════
-   TAB 3 — RHU FEEDBACK / RETURN SLIP
-═══════════════════════════════════════════════════ */
-function TabRHU({ referral, isCompleted }) {
-  /* Not completed — show waiting state */
-  if (!isCompleted) {
-    return (
-      <div className="rounded-2xl border border-slate-200 bg-white">
-        <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-            <ShieldCheck size={26} />
+    <header
+      className="anim-fade-up mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+      style={stagger(1)}
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-xl font-bold text-[#0B2E59]">
+              {patientName}
+            </h1>
+            <StatusBadge status={referral.status} />
           </div>
-          <h3 className="text-sm font-bold text-slate-700">
-            Awaiting RHU Response
-          </h3>
-          <p className="mt-2 max-w-sm text-xs leading-relaxed text-slate-400">
-            This section will contain the RHU return slip details once the
-            receiving facility completes the referral and submits clinical
-            feedback.
-          </p>
-          <div className="mt-5 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2">
-            <span className="pulse-soft h-2 w-2 rounded-full bg-blue-500" />
-            <span className="text-[11px] font-semibold text-slate-500">
-              Current Status: {referral.status}
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <HeaderChip icon={<User size={12} />} value={getAgeSex(referral, patientExtra)} />
+            <HeaderChip icon={<Phone size={12} />} value={contactNumber} />
+            <HeaderChip value={classification} />
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+            <span className="font-mono font-semibold text-[#0B2E59]">
+              {referral.trackingId}
+            </span>
+            <span className="text-slate-300">/</span>
+            <span>
+              {formatDate(referralDate)} at {formatTime(referralDate)}
+            </span>
+            <span className="text-slate-300">/</span>
+            <span>
+              {referringFacility} to {destinationFacility}
             </span>
           </div>
         </div>
       </div>
-    );
-  }
+    </header>
+  );
+}
 
-  /* Completed but no feedback data */
-  if (!referral.feedback) {
-    return (
-      <div className="rounded-2xl border border-emerald-200 bg-white">
-        <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-400">
-            <ShieldCheck size={26} />
-          </div>
-          <h3 className="text-sm font-bold text-emerald-700">
-            No Return Slip Details Attached
-          </h3>
-          <p className="mt-2 max-w-sm text-xs leading-relaxed text-emerald-500">
-            The receiving facility has marked this referral as completed but has
-            not yet submitted the clinical return slip details.
-          </p>
-        </div>
-      </div>
-    );
-  }
+function HeaderChip({ icon, value }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+      {icon}
+      {value || "Not recorded"}
+    </span>
+  );
+}
 
-  /* Full return slip */
+function ReferralInformationTab({ referral, patientExtra }) {
+  const referralDate = getReferralDate(referral);
+
   return (
     <div className="space-y-4">
-      <HealthSection
-        title="RHU Return Slip"
-        icon={<ShieldCheck size={14} />}
-        accent="emerald"
+      <RecordSection
+        title="Referral Concern"
+        description="Primary reason the patient was endorsed to RHU."
+        icon={<AlertCircle size={14} />}
       >
-        <div className="grid grid-cols-2 gap-x-8 gap-y-3">
-          <FormField
-            label="Date Received"
-            value={referral.feedback.dateOfReceipt || "—"}
+        <div className="grid gap-4 md:grid-cols-3">
+          <DetailBlock
+            label="Chief Complaint / Concern"
+            value={getConcern(referral)}
+            wide
           />
-          <FormField
-            label="Time Received"
-            value={referral.feedback.timeOfReceipt || "—"}
+          <DetailBlock
+            label="Reason for Referral"
+            value={referral.reasonForReferral || referral.referralReason}
+            wide
           />
-          <FormField
-            label="Receiving Facility"
-            value={referral.feedback.receivingFacility || "Rural Health Unit"}
-          />
-          <FormField
-            label="Receiving Practitioner"
-            value={referral.feedback.receivingPractitioner || "RHU Staff"}
+          <DetailBlock
+            label="Priority / Urgency"
+            value={getUrgency(referral)}
+            badge
           />
         </div>
-      </HealthSection>
+      </RecordSection>
 
-      <HealthSection
-        title="RHU Assessment / Diagnosis"
-        icon={<Activity size={14} />}
+      <RecordSection
+        title="Patient Information"
+        description="Patient identity and contact details."
+        icon={<User size={14} />}
       >
-        <ClinicalBlock
-          value={referral.feedback.rhuDiagnosis || "No RHU diagnosis recorded."}
-        />
-      </HealthSection>
+        <div className="grid gap-4 md:grid-cols-2">
+          <DetailBlock
+            label="Patient Name"
+            value={getPatientName(referral, patientExtra)}
+            strong
+          />
+          <DetailBlock
+            label="Age / Sex / Civil Status"
+            value={getAgeSexCivil(referral, patientExtra)}
+          />
+          <DetailBlock
+            label="Address"
+            value={getPatientAddress(referral, patientExtra)}
+            icon={<MapPin size={12} />}
+          />
+          <DetailBlock
+            label="Contact Number"
+            value={getContactNumber(referral, patientExtra)}
+          />
+          <DetailBlock
+            label="Patient Classification"
+            value={getClassification(referral, patientExtra)}
+            badge
+          />
+          <DetailBlock
+            label="PhilHealth"
+            value={getPhilHealth(referral, patientExtra)}
+          />
+        </div>
+      </RecordSection>
 
-      <HealthSection
-        title="Actions Taken / Recommendations"
-        icon={<CheckCircle2 size={14} />}
-        accent="emerald"
+      <RecordSection
+        title="Referral Summary / Form Details"
+        description="Operational details from the BHC referral form."
+        icon={<ClipboardList size={14} />}
       >
-        <ClinicalBlock
-          value={
-            referral.feedback.actionsTaken ||
-            "No actions or recommendations recorded."
-          }
-        />
-      </HealthSection>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <DetailBlock label="Tracking ID" value={referral.trackingId} mono />
+          <DetailBlock label="Date of Referral" value={formatDate(referralDate)} />
+          <DetailBlock label="Time of Referral" value={formatTime(referralDate)} />
+          <DetailBlock
+            label="Referring Health Center"
+            value={getReferringFacility(referral, patientExtra)}
+            icon={<Building2 size={12} />}
+          />
+          <DetailBlock
+            label="Destination Facility"
+            value={getDestinationFacility(referral)}
+            icon={<Building2 size={12} />}
+          />
+          <DetailBlock
+            label="Referring Practitioner"
+            value={
+              referral.practitioner ||
+              referral.referringPractitioner ||
+              referral.attendingStaff ||
+              "BHC Staff"
+            }
+          />
+        </div>
+      </RecordSection>
     </div>
   );
 }
 
-/* ═══════════════════════════════════════════════════
-   TAB 4 — REFERRAL TIMELINE
-═══════════════════════════════════════════════════ */
-function TabTimeline({ referral }) {
-  const isNoShow = referral.status === "No-Show";
+function ClinicalSummaryTab({ referral }) {
+  return (
+    <div className="space-y-4">
+      <RecordSection
+        title="Clinical Information"
+        description="Clinical endorsement and assessment from the referring BHC."
+        icon={<Stethoscope size={14} />}
+      >
+        <NarrativeBox
+          value={
+            referral.clinicalSummary ||
+            referral.summaryOfPresentIllness ||
+            referral.physicalExamination ||
+            getConcern(referral)
+          }
+          empty="No clinical summary provided in the referral record."
+        />
+      </RecordSection>
+
+      <RecordSection
+        title="Initial Assessment / Diagnosis"
+        icon={<FileText size={14} />}
+      >
+        <NarrativeBox
+          value={referral.initialDiagnosis || referral.diagnosis}
+          empty="No initial diagnosis recorded."
+        />
+      </RecordSection>
+
+      <RecordSection
+        title="Initial Actions Taken"
+        icon={<CheckCircle2 size={14} />}
+      >
+        <NarrativeBox
+          value={referral.initialActionsTaken || referral.actionsTaken}
+          empty="Initial actions were not documented."
+        />
+      </RecordSection>
+
+      <RecordSection
+        title="Reason for Referral"
+        icon={<AlertCircle size={14} />}
+      >
+        <NarrativeBox
+          value={referral.reasonForReferral || referral.referralReason}
+          empty="No referral reason recorded."
+        />
+      </RecordSection>
+    </div>
+  );
+}
+
+function RhuFeedbackTab({ referral }) {
+  const feedback = referral.feedback;
+
+  if (!feedback) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+          <MessageSquare size={26} />
+        </div>
+        <h2 className="text-sm font-bold text-slate-700">No feedback yet</h2>
+        <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed text-slate-400">
+          No RHU return slip or feedback has been submitted for this referral
+          yet.
+        </p>
+        <p className="mx-auto mt-1 max-w-md text-[11px] leading-relaxed text-slate-400">
+          Feedback will appear here once RHU staff completes and submits the
+          return slip.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <RecordSection title="Receiving Details" icon={<UserCheck size={14} />}>
+        <div className="grid gap-4 md:grid-cols-2">
+          <DetailBlock label="Date Received" value={feedback.dateOfReceipt} />
+          <DetailBlock label="Time Received" value={feedback.timeOfReceipt} />
+          <DetailBlock
+            label="Receiving Facility"
+            value={
+              feedback.receivingFacility ||
+              getDestinationFacility(referral)
+            }
+          />
+          <DetailBlock
+            label="Receiving Practitioner"
+            value={feedback.receivingPractitioner || "RHU Staff"}
+          />
+        </div>
+      </RecordSection>
+
+      <RecordSection
+        title="RHU Diagnosis / Findings"
+        icon={<Activity size={14} />}
+      >
+        <NarrativeBox
+          value={feedback.rhuDiagnosis}
+          empty="No RHU diagnosis recorded."
+        />
+      </RecordSection>
+
+      <RecordSection title="Actions Taken" icon={<CheckCircle2 size={14} />}>
+        <NarrativeBox
+          value={feedback.actionsTaken}
+          empty="No RHU actions recorded."
+        />
+      </RecordSection>
+
+      <RecordSection
+        title="Recommendation / Return Slip Notes"
+        icon={<FileText size={14} />}
+      >
+        <NarrativeBox
+          value={[feedback.recommendation, feedback.remarks]
+            .filter(Boolean)
+            .join("\n\n")}
+          empty="No recommendation or return slip notes recorded."
+        />
+      </RecordSection>
+    </div>
+  );
+}
+
+function TimelineTab({ referral }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-5 flex items-center gap-2.5 border-b border-slate-100 pb-3">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+          <Clock size={14} />
+        </div>
+        <h2 className="text-sm font-bold text-slate-800">Referral Progress</h2>
+      </div>
+      <ReferralProgress referral={referral} />
+    </div>
+  );
+}
+
+function WorkflowPanel({ referral, busy, onStatusChange }) {
+  const status = referral.status || "Pending";
+  const actionClass =
+    "flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60";
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-4 border-b border-slate-100 pb-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          Current Status
+        </p>
+        <div className="mt-1">
+          <StatusBadge status={status} />
+        </div>
+      </div>
+
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+        Workflow Actions
+      </p>
+
+      <div className="space-y-2">
+        {isPending(status) && (
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                onStatusChange("Received", {
+                  receivedAt: new Date().toISOString(),
+                })
+              }
+              className={`${actionClass} bg-[#0B2E59] text-white hover:bg-[#092347]`}
+            >
+              <UserCheck size={14} />
+              Receive Patient
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                onStatusChange("No-Show", {
+                  noShowAt: new Date().toISOString(),
+                })
+              }
+              className={`${actionClass} border border-red-200 bg-white text-red-700 hover:bg-red-50`}
+            >
+              <AlertTriangle size={14} />
+              Mark as No-Show
+            </button>
+          </>
+        )}
+
+        {status === "No-Show" && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              onStatusChange("Received", {
+                lateArrival: true,
+                previousStatus: "No-Show",
+                receivedAt: new Date().toISOString(),
+              })
+            }
+            className={`${actionClass} bg-[#0B2E59] text-white hover:bg-[#092347]`}
+          >
+            <UserCheck size={14} />
+            Receive Late Arrival
+          </button>
+        )}
+
+        {isReceived(status) && (
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                onStatusChange("For Monitoring", {
+                  monitoringStartedAt: new Date().toISOString(),
+                })
+              }
+              className={`${actionClass} bg-[#0B2E59] text-white hover:bg-[#092347]`}
+            >
+              <Activity size={14} />
+              Start Monitoring
+            </button>
+            <Link
+              to={`/rhu/feedback/${referral.trackingId}`}
+              className={`${actionClass} border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100`}
+            >
+              <FileText size={14} />
+              Create Feedback
+            </Link>
+          </>
+        )}
+
+        {isMonitoring(status) && (
+          <Link
+            to={`/rhu/feedback/${referral.trackingId}`}
+            className={`${actionClass} bg-[#0B2E59] text-white hover:bg-[#092347]`}
+          >
+            <FileText size={14} />
+            Create Feedback
+          </Link>
+        )}
+
+        {status === "Completed" && (
+          <Link
+            to={`/rhu/feedback/${referral.trackingId}`}
+            className={`${actionClass} bg-emerald-600 text-white hover:bg-emerald-700`}
+          >
+            <FileText size={14} />
+            View Return Slip
+          </Link>
+        )}
+      </div>
+
+      {referral.lateArrival && (
+        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium leading-relaxed text-amber-700">
+          Late arrival recorded from previous No-Show status.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ReferralProgressPanel({ referral }) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex items-center gap-2.5">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+          <Clock size={14} />
+        </div>
+        <div>
+          <h2 className="text-[13px] font-bold text-slate-800">
+            Referral Progress
+          </h2>
+          <p className="text-[10.5px] text-slate-400">
+            Case movement through RHU
+          </p>
+        </div>
+      </div>
+      <ReferralProgress referral={referral} />
+    </section>
+  );
+}
+
+function ReferralProgress({ referral }) {
+  const status = referral.status || "Pending";
+  const hadNoShow =
+    status === "No-Show" ||
+    referral.noShowAt ||
+    referral.previousStatus === "No-Show" ||
+    referral.lateArrival;
 
   const steps = [
     {
       label: "Pending",
-      desc: "Referral submitted and awaiting receipt at the destination facility.",
-      color: "slate",
-      active: ["Pending RHU Review", "Pending"].includes(referral.status),
-      done: !["Pending RHU Review", "Pending", "No-Show"].includes(
-        referral.status,
-      ),
-      failed: isNoShow,
-    },
-    {
-      label: "Received by RHU",
-      desc: "Patient and referral documents received by the receiving facility.",
-      color: "blue",
-      active: referral.status === "Received by RHU",
-      done: ["Under Assessment", "Completed"].includes(referral.status),
-      failed: isNoShow,
-    },
-    {
-      label: "Under Assessment",
-      desc: "Patient is being evaluated by the RHU medical team.",
-      color: "amber",
-      active: referral.status === "Under Assessment",
-      done: referral.status === "Completed",
-      failed: isNoShow,
-    },
-    {
-      label: "Completed",
-      desc: "RHU has finalized assessment and submitted the return slip.",
-      color: "emerald",
-      active: referral.status === "Completed",
-      done: referral.status === "Completed",
-      failed: false,
+      desc: "Referral received in queue",
+      active: isPending(status),
+      done: !isPending(status),
+      tone: "slate",
     },
   ];
 
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6">
-      <div className="mb-6 flex items-center gap-2.5 border-b border-slate-100 pb-3">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-          <Clock size={14} />
-        </div>
-        <h2 className="text-sm font-bold text-slate-800">Referral Progress</h2>
-        {isNoShow && (
-          <span className="ml-2 rounded-md bg-red-100 px-2 py-0.5 text-[10px] font-bold uppercase text-red-600">
-            Patient Did Not Arrive
-          </span>
-        )}
-      </div>
+  if (hadNoShow) {
+    steps.push({
+      label: "No-Show",
+      desc:
+        status === "No-Show"
+          ? "Patient did not arrive"
+          : "Patient later arrived",
+      active: status === "No-Show",
+      done: status !== "No-Show",
+      tone: status === "No-Show" ? "red" : "amber",
+    });
+  }
 
-      <div className="relative">
-        {steps.map((step, i) => (
-          <div key={step.label}>
-            {/* The step row */}
-            <div className="flex gap-4">
-              {/* Dot + line column */}
-              <div className="flex flex-col items-center">
-                <TimelineDot step={step} />
-                {i < steps.length - 1 && <TimelineLine step={step} />}
-              </div>
-              {/* Content */}
-              <div className={`pb-6 ${i === steps.length - 1 ? "pb-0" : ""}`}>
-                <p
-                  className={`text-sm font-bold ${
-                    step.failed
-                      ? "text-red-600"
-                      : step.done
-                        ? "text-emerald-700"
-                        : step.active
-                          ? "text-blue-700"
-                          : "text-slate-300"
-                  }`}
-                >
-                  {step.label}
-                </p>
-                <p
-                  className={`mt-0.5 text-xs leading-relaxed ${
-                    step.done || step.active
-                      ? "text-slate-500"
-                      : "text-slate-300"
-                  }`}
-                >
-                  {step.desc}
-                </p>
-                {step.active && (
-                  <span className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase text-blue-600">
-                    <span className="pulse-soft h-1.5 w-1.5 rounded-full bg-blue-500" />
-                    Current
-                  </span>
-                )}
-                {step.done && !step.failed && (
-                  <span className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase text-emerald-600">
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                      <path
-                        d="M2 5L4.5 7.5L8 3"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                    Done
-                  </span>
-                )}
-                {step.failed && (
-                  <span className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-red-50 px-2.5 py-1 text-[10px] font-bold uppercase text-red-600">
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                      <path
-                        d="M2 2L8 8M8 2L2 8"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                    No-Show
-                  </span>
-                )}
-              </div>
-            </div>
+  steps.push(
+    {
+      label: "Received",
+      desc: referral.lateArrival ? "Late arrival checked in" : "Patient checked in",
+      active: isReceived(status),
+      done: isMonitoring(status) || status === "Completed",
+      tone: "blue",
+    },
+    {
+      label: "For Monitoring",
+      desc: "Under RHU monitoring",
+      active: isMonitoring(status),
+      done: status === "Completed",
+      tone: "amber",
+    },
+    {
+      label: "Completed",
+      desc: "Return slip submitted",
+      active: status === "Completed",
+      done: status === "Completed",
+      tone: "emerald",
+    },
+  );
+
+  return (
+    <div>
+      {steps.map((step, index) => (
+        <div key={`${step.label}-${index}`} className="flex gap-3">
+          <div className="flex flex-col items-center">
+            <span className={getProgressDotClass(step)} />
+            {index < steps.length - 1 && (
+              <span className="h-10 w-px bg-slate-200" />
+            )}
           </div>
-        ))}
-      </div>
+          <div className={index < steps.length - 1 ? "pb-4" : ""}>
+            <p
+              className={`text-xs font-bold ${
+                step.done || step.active ? "text-slate-800" : "text-slate-300"
+              }`}
+            >
+              {step.label}
+            </p>
+            <p
+              className={`mt-0.5 text-[10.5px] leading-relaxed ${
+                step.done || step.active ? "text-slate-500" : "text-slate-300"
+              }`}
+            >
+              {step.desc}
+            </p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
 
-/* ─────────────────────────────────────────────
-   SHARED SUB-COMPONENTS
-──────────────────────────────────────────── */
-
-function HealthSection({ title, icon, children, accent }) {
-  const accentBorder = {
-    blue: "border-l-blue-500",
-    amber: "border-l-amber-400",
-    emerald: "border-l-emerald-400",
-  };
-  const accentIconBg = {
-    blue: "bg-blue-50 text-blue-600",
-    amber: "bg-amber-50 text-amber-600",
-    emerald: "bg-emerald-50 text-emerald-600",
-  };
-
+function QRCodePanel({ referral }) {
   return (
-    <div
-      className={`rounded-2xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-sm ${
-        accent ? `border-l-4 ${accentBorder[accent]}` : ""
-      }`}
-    >
-      <div className="mb-4 flex items-center gap-2.5 border-b border-slate-100 pb-3">
-        <div
-          className={`flex h-7 w-7 items-center justify-center rounded-lg ${
-            accent ? accentIconBg[accent] : "bg-slate-100 text-slate-500"
-          }`}
-        >
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm">
+      <div className="mx-auto mb-3 flex h-28 w-28 items-center justify-center rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/50">
+        <QrCode size={56} className="text-[#0B2E59]/60" />
+      </div>
+      <p className="font-mono text-xs font-bold text-slate-700">
+        {referral.trackingId}
+      </p>
+      <p className="mt-0.5 text-[11px] text-slate-400">
+        Scan to verify referral
+      </p>
+    </section>
+  );
+}
+
+function BhcActionsPanel({ referral }) {
+  return (
+    <section className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+      <Link
+        to={`/bhc/referrals/${referral.trackingId}/print`}
+        className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+      >
+        <Printer size={14} />
+        Print Referral Slip
+      </Link>
+      <Link
+        to={`/bhc/referrals/${referral.trackingId}/qr`}
+        className="flex items-center justify-center gap-2 rounded-xl bg-[#0B2E59] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#092347]"
+      >
+        <QrCode size={14} />
+        Open Full QR Code
+      </Link>
+    </section>
+  );
+}
+
+function RecordSection({ title, description, icon, children }) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-start gap-2.5 border-b border-slate-100 pb-3">
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[#EFF6FF] text-[#2563EB]">
           {icon}
         </div>
-        <h2 className="text-[13px] font-bold text-slate-800">{title}</h2>
+        <div>
+          <h2 className="text-[13px] font-bold text-slate-800">{title}</h2>
+          {description && (
+            <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
+              {description}
+            </p>
+          )}
+        </div>
       </div>
       {children}
-    </div>
+    </section>
   );
 }
 
-function MetaField({ label, value, mono, isStatus, isBadge }) {
-  let display = (
-    <p
-      className="mt-0.5 truncate text-sm font-medium text-slate-700"
-      title={value}
-    >
-      {value || "—"}
-    </p>
-  );
-
-  if (mono)
-    display = (
-      <p className="mt-0.5 font-mono text-sm font-bold text-[#0B2E59]">
-        {value}
-      </p>
-    );
-  if (isStatus) display = <StatusBadge status={value} />;
-  if (isBadge) display = <ClassBadge value={value} />;
+function DetailBlock({ label, value, icon, strong, mono, badge, wide }) {
+  const className = wide ? "md:col-span-2" : "";
 
   return (
-    <div>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+    <div className={`min-w-0 ${className}`}>
+      <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        {icon}
         {label}
       </p>
-      {display}
-    </div>
-  );
-}
-
-function FormField({ label, value, bold, mono, isBadge, icon }) {
-  let display = (
-    <p className="mt-0.5 text-sm leading-relaxed text-slate-700">
-      {value || "—"}
-    </p>
-  );
-  if (bold)
-    display = (
-      <p className="mt-0.5 text-sm font-bold leading-relaxed text-slate-800">
-        {value || "—"}
-      </p>
-    );
-  if (mono)
-    display = (
-      <p className="mt-0.5 font-mono text-sm font-bold text-[#0B2E59]">
-        {value}
-      </p>
-    );
-  if (isBadge) display = <ClassBadge value={value} />;
-
-  return (
-    <div>
-      <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-        {icon} {label}
-      </p>
-      {display}
-    </div>
-  );
-}
-
-function ClinicalNarrative({ value, large }) {
-  return (
-    <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-5">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-400 mb-2">
-        Clinical Endorsement — Handed off to RHU
-      </p>
-      <p
-        className={`whitespace-pre-wrap leading-relaxed text-slate-700 ${
-          large ? "text-[15px] leading-7" : "text-sm leading-6"
-        }`}
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function ClinicalBlock({ label, value, highlight }) {
-  if (!value) return null;
-  return (
-    <div>
-      {label && (
-        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-          {label}
+      {badge ? (
+        <ClassBadge value={value} />
+      ) : (
+        <p
+          className={`mt-1 leading-relaxed ${
+            mono
+              ? "font-mono text-sm font-bold text-[#0B2E59]"
+              : strong
+                ? "text-sm font-bold text-slate-800"
+                : "text-sm text-slate-700"
+          }`}
+        >
+          {value || "-"}
         </p>
       )}
-      <div
-        className={`whitespace-pre-wrap rounded-xl border p-4 text-sm leading-relaxed ${
-          highlight
-            ? "border-amber-200 bg-amber-50/50 font-medium text-slate-800"
-            : "border-slate-100 bg-slate-50 text-slate-600"
-        }`}
-      >
-        {value}
-      </div>
     </div>
   );
 }
 
-function HealthEmpty({ message, sub }) {
+function NarrativeBox({ value, empty }) {
   return (
-    <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 px-5 py-8 text-center">
-      <p className="text-sm font-medium text-slate-400">{message}</p>
-      {sub && <p className="mt-1 text-xs text-slate-300">{sub}</p>}
+    <div className="whitespace-pre-wrap rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3 text-sm leading-6 text-slate-700">
+      {value || empty}
     </div>
   );
 }
 
 function StatusBadge({ status }) {
-  const m = {
-    "Pending RHU Review": "bg-slate-100 text-slate-700",
+  const map = {
     Pending: "bg-slate-100 text-slate-700",
-    "Received by RHU": "bg-blue-100 text-blue-700",
+    "Pending RHU Review": "bg-slate-100 text-slate-700",
     Received: "bg-blue-100 text-blue-700",
+    "Received by RHU": "bg-blue-100 text-blue-700",
+    "For Monitoring": "bg-amber-100 text-amber-700",
     "Under Assessment": "bg-amber-100 text-amber-700",
     Completed: "bg-emerald-100 text-emerald-700",
     "No-Show": "bg-red-100 text-red-700",
   };
+
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold ${m[status] || m["Pending RHU Review"]}`}
+      className={`inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-semibold ${
+        map[status] || map.Pending
+      }`}
     >
-      {status}
+      {status || "Pending"}
     </span>
   );
 }
 
 function ClassBadge({ value }) {
-  const m = {
+  const map = {
     "General Consultation": "bg-slate-100 text-slate-600",
     "Maternal Care": "bg-pink-100 text-pink-700",
+    Maternal: "bg-pink-100 text-pink-700",
     Immunization: "bg-emerald-100 text-emerald-700",
     "Senior Citizen": "bg-violet-100 text-violet-700",
+    Emergency: "bg-red-100 text-red-700",
+    Urgent: "bg-amber-100 text-amber-700",
+    "Non-Urgent": "bg-slate-100 text-slate-600",
   };
+
   return (
     <span
-      className={`inline-flex rounded-md px-2.5 py-1 text-[11px] font-semibold ${m[value] || "bg-slate-100 text-slate-600"}`}
+      className={`mt-1 inline-flex rounded-md px-2.5 py-1 text-[11px] font-semibold ${
+        map[value] || "bg-slate-100 text-slate-600"
+      }`}
     >
-      {value}
+      {value || "-"}
     </span>
   );
 }
 
-/* ─── Timeline Visuals ─── */
-function TimelineDot({ step }) {
-  let cls = "h-4 w-4 rounded-full border-2 border-slate-200 bg-white";
-  if (step.failed) cls = "h-4 w-4 rounded-full bg-red-500";
-  else if (step.done) cls = "h-4 w-4 rounded-full bg-emerald-500";
-  else if (step.active)
-    cls = "h-4 w-4 rounded-full bg-blue-500 ring-4 ring-blue-100";
-
-  let inner = null;
-  if (step.done && !step.failed) {
-    inner = (
-      <svg
-        width="8"
-        height="8"
-        viewBox="0 0 10 10"
-        fill="none"
-        className="text-white"
-      >
-        <path
-          d="M2 5L4.5 7.5L8 3"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-  if (step.failed) {
-    inner = (
-      <svg
-        width="8"
-        height="8"
-        viewBox="0 0 10 10"
-        fill="none"
-        className="text-white"
-      >
-        <path
-          d="M2 2L8 8M8 2L2 8"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-  if (step.active) {
-    inner = (
-      <span className="pulse-soft block h-1.5 w-1.5 rounded-full bg-white" />
-    );
+function getProgressDotClass(step) {
+  if (!step.done && !step.active) {
+    return "mt-0.5 h-3.5 w-3.5 rounded-full border-2 border-slate-200 bg-white";
   }
 
+  const colors = {
+    slate: "bg-slate-500",
+    blue: "bg-blue-500",
+    amber: "bg-amber-500",
+    emerald: "bg-emerald-500",
+    red: "bg-red-500",
+  };
+
+  return `mt-0.5 h-3.5 w-3.5 rounded-full ${colors[step.tone] || colors.slate}`;
+}
+
+function isRhuFacility(value = "") {
+  return /rhu|rural health unit/i.test(String(value));
+}
+
+function cleanBarangayName(value = "") {
+  return String(value).replace(/^barangay\s+/i, "").trim();
+}
+
+function getDestinationFacility(referral = {}) {
   return (
-    <div
-      className={`flex flex-shrink-0 items-center justify-center ${cls} mt-0.5`}
-    >
-      {inner}
-    </div>
+    referral.referredFacility ||
+    referral.destinationFacility ||
+    referral.destinationHci ||
+    referral.receivingFacility ||
+    referral.rhu ||
+    "Rural Health Unit Bulakan"
   );
 }
 
-function TimelineLine({ step }) {
-  let cls = "w-px flex-1 min-h-[28px]";
-  if (step.failed) cls += " bg-red-200";
-  else if (step.done) cls += " bg-emerald-300";
-  else cls += " bg-slate-100";
-  return <div className={cls} />;
+function getReferringFacility(referral = {}, patientExtra = null) {
+  const destination = getDestinationFacility(referral);
+  const candidates = [
+    referral.referringHealthCenter,
+    referral.referringBHC,
+    referral.bhcName,
+    referral.sourceFacility,
+    referral.referringFacility,
+    referral.bhc,
+    referral.referringHci,
+  ].filter(Boolean);
+
+  const validCandidate = candidates.find(
+    (value) => value !== destination && !isRhuFacility(value),
+  );
+
+  if (validCandidate) return validCandidate;
+
+  const barangay =
+    referral.referringBarangay ||
+    referral.patientBarangay ||
+    referral.barangay ||
+    patientExtra?.barangay;
+
+  if (barangay) {
+    return `Barangay ${cleanBarangayName(barangay)} Health Center`;
+  }
+
+  return "Barangay Health Center";
+}
+
+function getReferralDate(referral = {}) {
+  const raw =
+    referral.createdAt ||
+    referral.dateOfReferral ||
+    referral.referralDate ||
+    referral.dateSubmitted ||
+    referral.date;
+
+  if (!raw) return null;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? raw : date;
+}
+
+function formatDate(value) {
+  if (!value) return "Not recorded";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatTime(value) {
+  if (!value) return "Not recorded";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not recorded";
+
+  return date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function getPatientName(referral = {}, patientExtra = null) {
+  return (
+    referral.patientName ||
+    referral.patient ||
+    patientExtra?.name ||
+    [patientExtra?.firstName, patientExtra?.lastName].filter(Boolean).join(" ") ||
+    "Unknown Patient"
+  );
+}
+
+function getAgeSex(referral = {}, patientExtra = null) {
+  if (referral.ageSex) return referral.ageSex;
+  const age = referral.age || patientExtra?.age;
+  const sex = referral.sex || patientExtra?.sex;
+  return [age, sex].filter(Boolean).join(" / ") || "Age / sex not recorded";
+}
+
+function getAgeSexCivil(referral = {}, patientExtra = null) {
+  const civilStatus =
+    referral.civilStatus || referral.civil_status || patientExtra?.civilStatus;
+  return [getAgeSex(referral, patientExtra), civilStatus]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function getContactNumber(referral = {}, patientExtra = null) {
+  return (
+    referral.contactNumber ||
+    referral.contact ||
+    referral.patientContact ||
+    patientExtra?.contactNumber ||
+    patientExtra?.contact ||
+    "No contact recorded"
+  );
+}
+
+function getClassification(referral = {}, patientExtra = null) {
+  return (
+    referral.patientClassification ||
+    referral.classification ||
+    referral.referralCategory ||
+    referral.category ||
+    patientExtra?.patientClassification ||
+    patientExtra?.category ||
+    "General Consultation"
+  );
+}
+
+function getPatientAddress(referral = {}, patientExtra = null) {
+  const patientAddress = patientExtra
+    ? [patientExtra.address, patientExtra.barangay, patientExtra.municipality]
+        .filter(Boolean)
+        .join(", ")
+    : "";
+
+  return (
+    referral.address ||
+    referral.patientAddress ||
+    patientAddress ||
+    [referral.street, referral.barangay, referral.municipality]
+      .filter(Boolean)
+      .join(", ") ||
+    "No address recorded"
+  );
+}
+
+function getPhilHealth(referral = {}, patientExtra = null) {
+  return (
+    referral.philHealth ||
+    referral.philHealthNumber ||
+    referral.philhealthNumber ||
+    patientExtra?.philHealth ||
+    patientExtra?.philHealthNumber ||
+    "Not recorded"
+  );
+}
+
+function getConcern(referral = {}) {
+  return (
+    referral.chiefComplaint ||
+    referral.concern ||
+    referral.reasonForReferral ||
+    "No concern recorded."
+  );
+}
+
+function getUrgency(referral = {}) {
+  const raw =
+    referral.urgency ||
+    referral.priorityLevel ||
+    referral.priority ||
+    "Non-Urgent";
+
+  const map = {
+    High: "Emergency",
+    Medium: "Urgent",
+    Normal: "Non-Urgent",
+  };
+
+  return map[raw] || raw;
+}
+
+function isPending(status) {
+  return status === "Pending" || status === "Pending RHU Review";
+}
+
+function isReceived(status) {
+  return status === "Received" || status === "Received by RHU";
+}
+
+function isMonitoring(status) {
+  return status === "For Monitoring" || status === "Under Assessment";
 }

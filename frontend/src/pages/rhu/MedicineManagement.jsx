@@ -6,10 +6,19 @@ import {
   CheckCircle2,
   Edit3,
   PackagePlus,
+  RotateCcw,
   Search,
+  X,
   XCircle,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+
+const MEDICINE_STATUS_TABS = [
+  { key: "All Status", label: "All Items", icon: Boxes },
+  { key: "Available", label: "Available", icon: CheckCircle2 },
+  { key: "Low Stock", label: "Low Stock", icon: AlertTriangle },
+  { key: "Unavailable", label: "Unavailable", icon: XCircle },
+];
 
 export default function MedicineManagement() {
   const [items, setItems] = useState([
@@ -64,6 +73,9 @@ export default function MedicineManagement() {
       notes: "Low supply. Restock needed soon.",
     },
   ]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterCategory, setFilterCategory] = useState("All Categories");
+  const [filterStatus, setFilterStatus] = useState("All Status");
 
   function updateStatus(id, newStatus) {
     setItems((prev) =>
@@ -91,6 +103,43 @@ export default function MedicineManagement() {
     (item) => item.status === "Unavailable",
   ).length;
 
+  const filteredItems = items.filter((item) => {
+    const query = searchQuery.toLowerCase();
+    const matchesSearch =
+      !query ||
+      item.name.toLowerCase().includes(query) ||
+      item.id.toLowerCase().includes(query);
+    const matchesCategory =
+      filterCategory === "All Categories" || item.category === filterCategory;
+    const matchesStatus =
+      filterStatus === "All Status" || item.status === filterStatus;
+
+    return matchesSearch && matchesCategory && matchesStatus;
+  });
+
+  const activeFilters = [
+    searchQuery && { key: "search", label: searchQuery },
+    filterCategory !== "All Categories" && {
+      key: "category",
+      label: filterCategory,
+    },
+    filterStatus !== "All Status" && { key: "status", label: filterStatus },
+  ].filter(Boolean);
+
+  const hasActiveFilters = activeFilters.length > 0;
+
+  function clearFilters() {
+    setSearchQuery("");
+    setFilterCategory("All Categories");
+    setFilterStatus("All Status");
+  }
+
+  function removeFilter(key) {
+    if (key === "search") setSearchQuery("");
+    if (key === "category") setFilterCategory("All Categories");
+    if (key === "status") setFilterStatus("All Status");
+  }
+
   return (
     <DashboardLayout role="rhu" title="Medicine Management">
       <div className="mb-8 flex items-start justify-between gap-4">
@@ -112,49 +161,28 @@ export default function MedicineManagement() {
         </Link>
       </div>
 
-      <div className="mb-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Available Items"
-          value={availableCount}
-          icon={<CheckCircle2 size={17} />}
-          color="green"
-        />
-        <StatCard
-          title="Low Stock Items"
-          value={lowStockCount}
-          icon={<AlertTriangle size={17} />}
-          color="amber"
-        />
-        <StatCard
-          title="Unavailable Items"
-          value={unavailableCount}
-          icon={<XCircle size={17} />}
-          color="red"
-        />
-        <StatCard
-          title="Total Items"
-          value={items.length}
-          icon={<Boxes size={17} />}
-          color="navy"
-        />
-      </div>
-
-      <div className="mb-6 rounded-xl border border-[#E8ECF0] bg-white p-5">
-        <div className="grid gap-4 xl:grid-cols-4">
-          <div>
+      <div className="mb-4 rounded-xl border border-[#E8ECF0] bg-white p-5">
+        <div className="grid items-end gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
+          <div className="min-w-0">
             <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Search Item
+              Search Medicine / Item ID
             </label>
             <div className="flex items-center rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3">
               <Search size={14} className="text-[#BCC3CD]" />
               <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="h-9 flex-1 border-0 bg-transparent px-2 text-sm outline-none"
-                placeholder="Search medicine or resource..."
+                placeholder="Search medicine name or item ID..."
               />
             </div>
           </div>
 
-          <FilterSelect label="Category">
+          <FilterSelect
+            label="Category"
+            value={filterCategory}
+            onChange={setFilterCategory}
+          >
             <option>All Categories</option>
             <option>Basic Medicines</option>
             <option>Vaccines</option>
@@ -163,20 +191,70 @@ export default function MedicineManagement() {
             <option>Child Health Supplies</option>
             <option>Referral-related Resources</option>
           </FilterSelect>
-
-          <FilterSelect label="Availability">
-            <option>All Status</option>
-            <option>Available</option>
-            <option>Low Stock</option>
-            <option>Unavailable</option>
-          </FilterSelect>
-
-          <div className="flex items-end">
-            <button className="h-9 w-full rounded-lg border border-[#E8ECF0] bg-white px-3 text-xs font-medium text-[#6B7280] hover:bg-[#F9FAFB]">
-              Clear Filters
-            </button>
-          </div>
         </div>
+
+        {activeFilters.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#F3F4F6] pt-3">
+            {activeFilters.map((filter) => (
+              <button
+                key={filter.key}
+                type="button"
+                onClick={() => removeFilter(filter.key)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#DBEAFE] bg-[#EFF6FF] px-2.5 py-1 text-[11px] font-medium text-[#1D4ED8] transition-colors hover:bg-[#DBEAFE]"
+              >
+                {filter.label}
+                <X size={10} />
+              </button>
+            ))}
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#64748B] transition-colors hover:text-[#0B2E59]"
+              >
+                <RotateCcw size={11} />
+                Clear all
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="mb-4 flex items-center gap-1 overflow-x-auto rounded-lg bg-[#F1F5F9] p-1">
+        {MEDICINE_STATUS_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = filterStatus === tab.key;
+          const count =
+            tab.key === "All Status"
+              ? items.length
+              : items.filter((item) => item.status === tab.key).length;
+
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setFilterStatus(tab.key)}
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${
+                isActive
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:bg-slate-200/50 hover:text-slate-700"
+              }`}
+            >
+              <Icon size={12} className={isActive ? "text-[#0B2E59]" : ""} />
+              {tab.label}
+              <span
+                className={`rounded-full px-1.5 py-px text-[9px] font-bold leading-none ${
+                  isActive
+                    ? "bg-[#0B2E59]/10 text-[#0B2E59]"
+                    : "bg-slate-300/70 text-slate-600"
+                }`}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
@@ -192,7 +270,7 @@ export default function MedicineManagement() {
           </div>
 
           <span className="rounded-md bg-[#F3F4F6] px-2 py-1 text-[10px] font-semibold text-[#6B7280]">
-            {items.length} items
+            {filteredItems.length} of {items.length} items
           </span>
         </div>
 
@@ -212,7 +290,22 @@ export default function MedicineManagement() {
             </thead>
 
             <tbody className="divide-y divide-[#F3F4F6]">
-              {items.map((item) => (
+              {filteredItems.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-20 text-center">
+                    <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F3F4F6]">
+                      <Boxes size={20} className="text-[#9CA3AF]" />
+                    </div>
+                    <p className="text-sm font-semibold text-[#0B2E59]">
+                      No medicines found
+                    </p>
+                    <p className="mt-1 text-xs text-[#9CA3AF]">
+                      Try adjusting your search or filters.
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                filteredItems.map((item) => (
                 <tr
                   key={item.id}
                   className="transition-colors hover:bg-[#F9FAFB]"
@@ -278,7 +371,8 @@ export default function MedicineManagement() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -296,13 +390,17 @@ export default function MedicineManagement() {
   );
 }
 
-function FilterSelect({ label, children }) {
+function FilterSelect({ label, value, onChange, children }) {
   return (
     <div>
       <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
         {label}
       </label>
-      <select className="h-9 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 text-sm outline-none">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-9 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 text-sm outline-none"
+      >
         {children}
       </select>
     </div>

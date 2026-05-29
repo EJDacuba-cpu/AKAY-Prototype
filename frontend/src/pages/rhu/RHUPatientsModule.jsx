@@ -320,11 +320,19 @@ const categoryStats = [
   },
 ];
 
+const PATIENT_TABS = [
+  { key: "All Categories", label: "All Patients", icon: Users },
+  { key: "Senior Citizen", label: "Senior Citizens", icon: UserRound },
+  { key: "Pregnant Patient", label: "Maternal", icon: Baby },
+  { key: "Immunization", label: "Immunization", icon: UserCheck },
+];
+
 /* ───────────────── MAIN ───────────────── */
 
 export default function Patients() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCategory, setFilterCategory] = useState("All Categories");
+  const [filterSex, setFilterSex] = useState("All Sex");
   const [filterStatus, setFilterStatus] = useState("All Status");
   const [sortKey, setSortKey] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
@@ -338,14 +346,17 @@ export default function Patients() {
         !q ||
         p.name.toLowerCase().includes(q) ||
         p.id.toLowerCase().includes(q) ||
-        p.barangay.toLowerCase().includes(q);
+        p.contact.toLowerCase().includes(q);
       const matchesCategory =
         filterCategory === "All Categories" || p.category === filterCategory;
+      const matchesSex =
+        filterSex === "All Sex" ||
+        p.ageSex.toLowerCase().endsWith(`/${filterSex.charAt(0).toLowerCase()}`);
       const matchesStatus =
         filterStatus === "All Status" || p.status === filterStatus;
-      return matchesSearch && matchesCategory && matchesStatus;
+      return matchesSearch && matchesCategory && matchesSex && matchesStatus;
     });
-  }, [searchQuery, filterCategory, filterStatus]);
+  }, [searchQuery, filterCategory, filterSex, filterStatus]);
 
   const sortedPatients = useMemo(() => {
     const arr = [...filteredPatients];
@@ -395,15 +406,17 @@ export default function Patients() {
       f.push({ key: "search", label: "Search", value: searchQuery });
     if (filterCategory !== "All Categories")
       f.push({ key: "category", label: "Category", value: filterCategory });
+    if (filterSex !== "All Sex")
+      f.push({ key: "sex", label: "Sex", value: filterSex });
     if (filterStatus !== "All Status")
       f.push({ key: "status", label: "Status", value: filterStatus });
     return f;
-  }, [searchQuery, filterCategory, filterStatus]);
+  }, [searchQuery, filterCategory, filterSex, filterStatus]);
 
   /* Reset page when filters change */
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, filterCategory, filterStatus]);
+  }, [searchQuery, filterCategory, filterSex, filterStatus]);
 
   /* Handlers */
   function handleSort(key) {
@@ -422,6 +435,9 @@ export default function Patients() {
       case "category":
         setFilterCategory("All Categories");
         break;
+      case "sex":
+        setFilterSex("All Sex");
+        break;
       case "status":
         setFilterStatus("All Status");
         break;
@@ -431,6 +447,7 @@ export default function Patients() {
   function clearAllFilters() {
     setSearchQuery("");
     setFilterCategory("All Categories");
+    setFilterSex("All Sex");
     setFilterStatus("All Status");
   }
 
@@ -490,22 +507,15 @@ export default function Patients() {
         </Link>
       </div>
 
-      {/* STAT CARDS */}
-      <div className="mb-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        {categoryStats.map((stat, i) => (
-          <PatientStatCard key={stat.key} {...stat} delay={i + 1} />
-        ))}
-      </div>
-
       {/* FILTERS */}
       <div
-        className="anim-fade-up rounded-t-2xl border border-b-0 border-[#E8ECF0] bg-white p-5"
-        style={stagger(5)}
+        className="anim-fade-up mb-4 rounded-2xl border border-[#E8ECF0] bg-white p-5"
+        style={stagger(1)}
       >
-        <div className="grid items-end gap-4 md:grid-cols-3">
+        <div className="grid items-end gap-4 xl:grid-cols-[minmax(0,1fr)_180px_180px]">
           <div>
             <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Patient Name
+              Search Patient / ID / Contact
             </label>
             <div className="flex items-center rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3 transition-all duration-200 focus-within:border-[#2563EB] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#2563EB]/10">
               <Search size={14} className="text-[#BCC3CD]" />
@@ -513,7 +523,7 @@ export default function Patients() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="h-10 flex-1 border-0 bg-transparent px-2 text-sm text-[#1A1A1A] outline-none placeholder:text-[#BCC3CD]"
-                placeholder="Search name, ID, or barangay..."
+                placeholder="Search name, ID, or contact number..."
               />
               {searchQuery && (
                 <button
@@ -528,15 +538,13 @@ export default function Patients() {
           </div>
 
           <FilterSelect
-            label="Category"
-            value={filterCategory}
-            onChange={setFilterCategory}
+            label="Sex"
+            value={filterSex}
+            onChange={setFilterSex}
           >
-            <option>All Categories</option>
-            <option>Pregnant Patient</option>
-            <option>Senior Citizen</option>
-            <option>General Consultation</option>
-            <option>Immunization</option>
+            <option>All Sex</option>
+            <option>Female</option>
+            <option>Male</option>
           </FilterSelect>
 
           <FilterSelect
@@ -584,10 +592,49 @@ export default function Patients() {
         )}
       </div>
 
+      <div
+        className="anim-fade-up mb-4 flex items-center gap-1 overflow-x-auto rounded-lg bg-[#F1F5F9] p-1"
+        style={stagger(2)}
+      >
+        {PATIENT_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = filterCategory === tab.key;
+          const count =
+            tab.key === "All Categories"
+              ? initialPatients.length
+              : initialPatients.filter((p) => p.category === tab.key).length;
+
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setFilterCategory(tab.key)}
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${
+                isActive
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:bg-slate-200/50 hover:text-slate-700"
+              }`}
+            >
+              <Icon size={12} className={isActive ? "text-[#0B2E59]" : ""} />
+              {tab.label}
+              <span
+                className={`rounded-full px-1.5 py-px text-[9px] font-bold leading-none ${
+                  isActive
+                    ? "bg-[#0B2E59]/10 text-[#0B2E59]"
+                    : "bg-slate-300/70 text-slate-600"
+                }`}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* TABLE */}
       <div
-        className="anim-fade-up overflow-hidden rounded-b-2xl border border-t-0 border-[#E8ECF0] bg-white shadow-sm"
-        style={stagger(6)}
+        className="anim-fade-up overflow-hidden rounded-2xl border border-[#E8ECF0] bg-white shadow-sm"
+        style={stagger(3)}
       >
         {/* Table header bar */}
         <div className="flex items-center gap-2.5 border-b border-[#F3F4F6] px-6 py-4">

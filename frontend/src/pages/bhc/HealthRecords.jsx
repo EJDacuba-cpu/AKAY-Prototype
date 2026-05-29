@@ -9,6 +9,7 @@ import {
   ClipboardList,
   RotateCcw,
   ArrowRightLeft,
+  X,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -95,6 +96,7 @@ export default function HealthRecords() {
     );
 
     const matchesSearch =
+      !filters.search ||
       matchesPatientName ||
       record.trackingId?.toLowerCase().includes(searchLower) ||
       record.classification?.toLowerCase().includes(searchLower) ||
@@ -130,8 +132,17 @@ export default function HealthRecords() {
     ).length,
   };
 
-  const hasActiveFilters =
-    filters.status || filters.classification || filters.date;
+  const activeFilters = [
+    filters.search && { key: "search", label: filters.search },
+    filters.classification && {
+      key: "classification",
+      label: filters.classification,
+    },
+    filters.status && { key: "status", label: filters.status },
+    filters.date && { key: "date", label: filters.date },
+  ].filter(Boolean);
+
+  const hasActiveFilters = activeFilters.length > 0;
 
   const handleFilterChange = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -146,6 +157,10 @@ export default function HealthRecords() {
   const clearFilters = () => {
     setFilters({ search: "", status: "", classification: "", date: "" });
     setCurrentPage(1);
+  };
+
+  const removeFilter = (key) => {
+    handleFilterChange(key, "");
   };
 
   if (loading) {
@@ -165,183 +180,145 @@ export default function HealthRecords() {
 
   return (
     <DashboardLayout role="bhc" title="Health Records">
-      {/* ═══════════════════════════════════════════════════════════════
-          TOP NAVIGATION: TABS + ACTION
-          ═══════════════════════════════════════════════════════════════ */}
-      <div className="mb-6 flex items-center justify-between gap-4">
-        {/* Category Pill Tabs */}
-        <div className="flex items-center gap-1.5 rounded-lg bg-[#F1F5F9] p-1">
-          {STATUS_TABS.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = filters.status === tab.key;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => handleTabChange(tab.key)}
-                className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-[11.5px] font-medium transition-all ${
-                  isActive
-                    ? "bg-white text-[#0F172A] shadow-sm"
-                    : "text-[#64748B] hover:text-[#0F172A]"
-                }`}
-              >
-                <Icon size={13} className={isActive ? "text-[#0B2E59]" : ""} />
-                {tab.label}
-                <span
-                  className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none ${
-                    isActive
-                      ? "bg-[#0B2E59]/10 text-[#0B2E59]"
-                      : "bg-slate-200/70 text-slate-500"
-                  }`}
-                >
-                  {tabCounts[tab.key] ?? 0}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Add Consultation Action */}
-        <Link
-          to="/bhc/health-records/add"
-          className="flex h-9 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347] active:bg-[#071D3A]"
-        >
-          <Plus size={14} strokeWidth={2.5} />
-          Add Consultation
-        </Link>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════════
-          TWO-COLUMN LAYOUT: SIDEBAR + TABLE
-          ═══════════════════════════════════════════════════════════════ */}
-      <div className="flex items-start gap-6">
-        {/* ── Right Table Content ── */}
-        <div className="min-w-0 flex-1 rounded-xl border border-[#E2E8F0] bg-white shadow-sm overflow-hidden">
-          {filteredRecords.length === 0 ? (
-            <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
-                <FileText size={20} className="text-[#94A3B8]" />
-              </div>
-              <p className="text-[13px] font-semibold text-[#334155]">
-                No Matching Records
-              </p>
-              <p className="mt-1 text-[11.5px] text-[#94A3B8]">
-                Try adjusting your search or filter criteria.
-              </p>
+      <div className="mb-4 rounded-xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
+          <div className="min-w-0 flex-1">
+            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
+              Search Patient / Record ID / Consultation
+            </label>
+            <div className="relative">
+              <Search
+                size={13}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]"
+              />
+              <input
+                type="text"
+                placeholder="Search patient, record ID, or consultation..."
+                value={filters.search}
+                onChange={(e) => handleFilterChange("search", e.target.value)}
+                className="h-10 w-full rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] pl-8 pr-3 text-[13px] text-[#0F172A] outline-none transition-all placeholder:text-[#94A3B8] focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
+              />
             </div>
-          ) : (
-            <HealthRecordsTable
-              records={filteredRecords}
-              currentPage={currentPage}
-              setCurrentPage={setCurrentPage}
+          </div>
+
+          <div className="w-full xl:w-[190px]">
+            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
+              Classification
+            </label>
+            <select
+              value={filters.classification}
+              onChange={(e) =>
+                handleFilterChange("classification", e.target.value)
+              }
+              className="h-10 w-full appearance-none rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-2.5 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
+            >
+              <option value="">All Classifications</option>
+              <option value="Maternal">Maternal</option>
+              <option value="Immunization">Immunization</option>
+              <option value="Senior Citizen">Senior Citizen</option>
+            </select>
+          </div>
+
+          <div className="w-full xl:w-[170px]">
+            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
+              Date
+            </label>
+            <input
+              type="date"
+              value={filters.date}
+              onChange={(e) => handleFilterChange("date", e.target.value)}
+              className="h-10 w-full rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-2.5 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
             />
-          )}
+          </div>
+
+          <Link
+            to="/bhc/health-records/add"
+            className="flex h-10 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347] active:bg-[#071D3A]"
+          >
+            <Plus size={14} strokeWidth={2.5} />
+            Add Consultation
+          </Link>
         </div>
-        {/* ── Left Filter Sidebar ── */}
-        <aside className="w-[260px] shrink-0">
-          <div className="rounded-xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
-            <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-[12px] font-semibold text-[#0F172A]">
-                Filters
-              </h2>
-              {hasActiveFilters && (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="text-[10px] font-medium text-[#0B2E59] hover:underline"
-                >
-                  Clear all
-                </button>
-              )}
-            </div>
 
-            <div className="space-y-5">
-              {/* Search Patient */}
-              <div>
-                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-                  Search Patient
-                </label>
-                <div className="relative">
-                  <Search
-                    size={13}
-                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Name or Tracking ID…"
-                    value={filters.search}
-                    onChange={(e) =>
-                      handleFilterChange("search", e.target.value)
-                    }
-                    className="h-[34px] w-full rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] pl-8 pr-3 text-[12px] text-[#0F172A] outline-none transition-all placeholder:text-[#94A3B8] focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
-                  />
-                </div>
-              </div>
+        {activeFilters.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#F3F4F6] pt-3">
+            {activeFilters.map((filter) => (
+              <button
+                key={filter.key}
+                type="button"
+                onClick={() => removeFilter(filter.key)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#DBEAFE] bg-[#EFF6FF] px-2.5 py-1 text-[11px] font-medium text-[#1D4ED8] transition-colors hover:bg-[#DBEAFE]"
+              >
+                {filter.label}
+                <X size={10} />
+              </button>
+            ))}
 
-              {/* Classification */}
-              <div>
-                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-                  Classification
-                </label>
-                <select
-                  value={filters.classification}
-                  onChange={(e) =>
-                    handleFilterChange("classification", e.target.value)
-                  }
-                  className="h-[34px] w-full appearance-none rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-2.5 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
-                >
-                  <option value="">All Classifications</option>
-                  <option value="Maternal">Maternal</option>
-                  <option value="Immunization">Immunization</option>
-                  <option value="Senior Citizen">Senior Citizen</option>
-                </select>
-              </div>
-
-              {/* Status */}
-              <div>
-                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-                  Status
-                </label>
-                <select
-                  value={filters.status}
-                  onChange={(e) => handleFilterChange("status", e.target.value)}
-                  className="h-[34px] w-full appearance-none rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-2.5 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
-                >
-                  <option value="">All Status</option>
-                  <option value="Routine Monitoring">Routine Monitoring</option>
-                  <option value="Follow-Up">Follow-Up</option>
-                  <option value="For-Referral">For-Referral</option>
-                  <option value="Completed">Completed</option>
-                </select>
-              </div>
-
-              {/* Date of Visit (Optional) */}
-              <div>
-                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-                  Date of Visit
-                </label>
-                <input
-                  type="date"
-                  value={filters.date}
-                  onChange={(e) => handleFilterChange("date", e.target.value)}
-                  className="h-[34px] w-full rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-2.5 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
-                />
-              </div>
-            </div>
-
-            {/* Reset Button */}
             {hasActiveFilters && (
               <button
                 type="button"
                 onClick={clearFilters}
-                className="mt-6 flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#E2E8F0] py-2 text-[11px] font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC] hover:text-[#334155]"
+                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#64748B] transition-colors hover:text-[#0B2E59]"
               >
                 <RotateCcw size={11} />
-                Reset All Filters
+                Clear all
               </button>
             )}
           </div>
-        </aside>
+        )}
+      </div>
+
+      <div className="mb-4 flex items-center gap-1.5 overflow-x-auto rounded-lg bg-[#F1F5F9] p-1">
+        {STATUS_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = filters.status === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => handleTabChange(tab.key)}
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-[11.5px] font-medium transition-all ${
+                isActive
+                  ? "bg-white text-[#0F172A] shadow-sm"
+                  : "text-[#64748B] hover:text-[#0F172A]"
+              }`}
+            >
+              <Icon size={13} className={isActive ? "text-[#0B2E59]" : ""} />
+              {tab.label}
+              <span
+                className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none ${
+                  isActive
+                    ? "bg-[#0B2E59]/10 text-[#0B2E59]"
+                    : "bg-slate-200/70 text-slate-500"
+                }`}
+              >
+                {tabCounts[tab.key] ?? 0}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="min-w-0">
+        {filteredRecords.length === 0 ? (
+          <div className="rounded-xl border border-[#E2E8F0] bg-white px-6 py-24 text-center shadow-sm">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9] mx-auto">
+              <FileText size={20} className="text-[#94A3B8]" />
+            </div>
+            <p className="text-[13px] font-semibold text-[#334155]">
+              No Matching Records
+            </p>
+            <p className="mt-1 text-[11.5px] text-[#94A3B8]">
+              Try adjusting your search or filter criteria.
+            </p>
+          </div>
+        ) : (
+          <HealthRecordsTable
+            records={filteredRecords}
+            currentPage={currentPage}
+            setCurrentPage={setCurrentPage}
+          />
+        )}
       </div>
     </DashboardLayout>
   );

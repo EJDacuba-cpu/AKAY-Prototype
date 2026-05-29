@@ -1,13 +1,9 @@
 import { useState } from "react";
 import {
-  AlertTriangle,
   Boxes,
-  CheckCircle2,
   Search,
-  XCircle,
   Eye,
   Pill,
-  Stethoscope,
   Plus,
   Pencil,
   Trash2,
@@ -20,6 +16,7 @@ import {
   TrendingUp,
   History,
   RotateCcw,
+  MoreVertical,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 
@@ -52,8 +49,6 @@ const keyframes = `
   .anim-overlay  { animation: overlayIn 0.25s ease both; }
   .shake { animation: shake 0.3s ease; }
 `;
-
-const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 
 /* ─── Data ─── */
 const initialBHCItems = [
@@ -289,14 +284,9 @@ const rhuItems = [
   },
 ];
 
-const categories = [
-  "Basic Medicines",
-  "Vaccines",
-  "Medical Supplies",
-  "Maternal Care Supplies",
-  "Child Health Supplies",
-  "Referral-related Resources",
-];
+const DEFAULT_ITEM_CATEGORY = "Basic Medicines";
+const DEFAULT_LOW_STOCK_THRESHOLD = 10;
+
 const units = [
   "pcs",
   "sachets",
@@ -315,12 +305,10 @@ export default function MedicineInventory() {
 
   const [bhcFilters, setBhcFilters] = useState({
     search: "",
-    category: "All Categories",
     status: "All Status",
   });
   const [rhuFilters, setRhuFilters] = useState({
     search: "",
-    category: "All Categories",
     status: "All Status",
   });
 
@@ -328,30 +316,25 @@ export default function MedicineInventory() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [showStockModal, setShowStockModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
-  // Selected item
+  // Selected item / row menu
   const [selectedItem, setSelectedItem] = useState(null);
+  const [openActionMenu, setOpenActionMenu] = useState(null);
 
   // Form states
   const [addForm, setAddForm] = useState({
     name: "",
-    category: "Basic Medicines",
     quantity: "",
     unit: "pcs",
-    threshold: "",
     notes: "",
   });
   const [editForm, setEditForm] = useState({
     name: "",
-    category: "",
     quantity: "",
     unit: "",
-    threshold: "",
     notes: "",
   });
-  const [stockForm, setStockForm] = useState({ type: "in", qty: "", note: "" });
 
   // Sort state
   const [sortField, setSortField] = useState("id");
@@ -372,12 +355,9 @@ export default function MedicineInventory() {
         !bhcFilters.search ||
         item.name.toLowerCase().includes(bhcFilters.search.toLowerCase()) ||
         item.id.toLowerCase().includes(bhcFilters.search.toLowerCase());
-      const matchCat =
-        bhcFilters.category === "All Categories" ||
-        item.category === bhcFilters.category;
       const matchStatus =
         bhcFilters.status === "All Status" || item.status === bhcFilters.status;
-      return matchSearch && matchCat && matchStatus;
+      return matchSearch && matchStatus;
     })
     .sort((a, b) => {
       let valA, valB;
@@ -387,9 +367,6 @@ export default function MedicineInventory() {
       } else if (sortField === "quantity") {
         valA = a.quantity;
         valB = b.quantity;
-      } else if (sortField === "category") {
-        valA = a.category.toLowerCase();
-        valB = b.category.toLowerCase();
       } else if (sortField === "status") {
         valA = a.status;
         valB = b.status;
@@ -408,12 +385,9 @@ export default function MedicineInventory() {
       !rhuFilters.search ||
       item.name.toLowerCase().includes(rhuFilters.search.toLowerCase()) ||
       item.id.toLowerCase().includes(rhuFilters.search.toLowerCase());
-    const matchCat =
-      rhuFilters.category === "All Categories" ||
-      item.category === rhuFilters.category;
     const matchStatus =
       rhuFilters.status === "All Status" || item.status === rhuFilters.status;
-    return matchSearch && matchCat && matchStatus;
+    return matchSearch && matchStatus;
   });
 
   const computeStatus = (qty, threshold) => {
@@ -440,12 +414,12 @@ export default function MedicineInventory() {
   // Handlers
   const handleAdd = () => {
     const qty = parseInt(addForm.quantity, 10) || 0;
-    const threshold = parseInt(addForm.threshold, 10) || 10;
+    const threshold = DEFAULT_LOW_STOCK_THRESHOLD;
     if (!addForm.name.trim()) return;
     const newItem = {
       id: nextId(),
       name: addForm.name.trim(),
-      category: addForm.category,
+      category: DEFAULT_ITEM_CATEGORY,
       quantity: qty,
       unit: addForm.unit,
       status: computeStatus(qty, threshold),
@@ -462,10 +436,8 @@ export default function MedicineInventory() {
     setShowAddModal(false);
     setAddForm({
       name: "",
-      category: "Basic Medicines",
       quantity: "",
       unit: "pcs",
-      threshold: "",
       notes: "",
     });
   };
@@ -473,14 +445,14 @@ export default function MedicineInventory() {
   const handleEdit = () => {
     if (!selectedItem || !editForm.name.trim()) return;
     const qty = parseInt(editForm.quantity, 10) || 0;
-    const threshold = parseInt(editForm.threshold, 10) || 10;
+    const threshold = selectedItem.threshold ?? DEFAULT_LOW_STOCK_THRESHOLD;
     setBhcItems(
       bhcItems.map((item) =>
         item.id === selectedItem.id
           ? {
               ...item,
               name: editForm.name.trim(),
-              category: editForm.category,
+              category: selectedItem.category,
               quantity: qty,
               unit: editForm.unit,
               threshold,
@@ -503,68 +475,24 @@ export default function MedicineInventory() {
     setSelectedItem(null);
   };
 
-  const handleStock = () => {
-    if (!selectedItem) return;
-    const qty = parseInt(stockForm.qty, 10) || 0;
-    if (qty <= 0) return;
-    const item = bhcItems.find((i) => i.id === selectedItem.id);
-    if (!item) return;
-    const newQty =
-      stockForm.type === "in"
-        ? item.quantity + qty
-        : Math.max(0, item.quantity - qty);
-    const newHistory = [
-      {
-        date: today(),
-        type: stockForm.type,
-        qty,
-        note:
-          stockForm.note.trim() ||
-          (stockForm.type === "in" ? "Stock added" : "Stock dispensed"),
-      },
-      ...item.history,
-    ];
-    setBhcItems(
-      bhcItems.map((i) =>
-        i.id === selectedItem.id
-          ? {
-              ...i,
-              quantity: newQty,
-              status: computeStatus(newQty, i.threshold),
-              lastUpdated: today(),
-              updatedBy: "Midwife Cruz",
-              history: newHistory,
-            }
-          : i,
-      ),
-    );
-    setShowStockModal(false);
-    setSelectedItem(null);
-    setStockForm({ type: "in", qty: "", note: "" });
-  };
-
   const openEdit = (item) => {
+    setOpenActionMenu(null);
     setSelectedItem(item);
     setEditForm({
       name: item.name,
-      category: item.category,
       quantity: String(item.quantity),
       unit: item.unit,
-      threshold: String(item.threshold),
       notes: item.notes,
     });
     setShowEditModal(true);
   };
   const openDelete = (item) => {
+    setOpenActionMenu(null);
     setSelectedItem(item);
     setShowDeleteModal(true);
   };
-  const openStock = (item) => {
-    setSelectedItem(item);
-    setStockForm({ type: "in", qty: "", note: "" });
-    setShowStockModal(true);
-  };
   const openHistory = (item) => {
+    setOpenActionMenu(null);
     setSelectedItem(item);
     setShowHistoryModal(true);
   };
@@ -591,25 +519,40 @@ export default function MedicineInventory() {
     if (activeTab === "bhc")
       setBhcFilters({
         search: "",
-        category: "All Categories",
         status: "All Status",
       });
     else
       setRhuFilters({
         search: "",
-        category: "All Categories",
         status: "All Status",
       });
   };
 
   const hasActiveFilters =
     activeTab === "bhc"
-      ? bhcFilters.search !== "" ||
-        bhcFilters.category !== "All Categories" ||
-        bhcFilters.status !== "All Status"
-      : rhuFilters.search !== "" ||
-        rhuFilters.category !== "All Categories" ||
-        rhuFilters.status !== "All Status";
+      ? bhcFilters.search !== "" || bhcFilters.status !== "All Status"
+      : rhuFilters.search !== "" || rhuFilters.status !== "All Status";
+
+  const currentFilters = activeTab === "bhc" ? bhcFilters : rhuFilters;
+
+  const activeFilters = [
+    currentFilters.search && { key: "search", label: currentFilters.search },
+    currentFilters.status !== "All Status" && {
+      key: "status",
+      label: currentFilters.status,
+    },
+  ].filter(Boolean);
+
+  const updateActiveFilter = (key, value) => {
+    const updater = (prev) => ({ ...prev, [key]: value });
+    if (activeTab === "bhc") setBhcFilters(updater);
+    else setRhuFilters(updater);
+  };
+
+  const removeFilter = (key) => {
+    if (key === "search") updateActiveFilter("search", "");
+    if (key === "status") updateActiveFilter("status", "All Status");
+  };
 
   return (
     <DashboardLayout role="bhc" title="Medicine Inventory">
@@ -669,16 +612,78 @@ export default function MedicineInventory() {
         )}
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════════
-          TWO-COLUMN LAYOUT: TABLE (LEFT) + SIDEBAR (RIGHT)
-          ═══════════════════════════════════════════════════════════════ */}
-      <div className="flex items-start gap-6">
-        {/* ── Left Table Content ── */}
-        <div className="min-w-0 flex-1">
+      <div className="mb-4 rounded-xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
+          <div className="min-w-0 flex-1">
+            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
+              Search Medicine / Item ID
+            </label>
+            <div className="relative">
+              <Search
+                size={13}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]"
+              />
+              <input
+                type="text"
+                value={currentFilters.search}
+                onChange={(e) => updateActiveFilter("search", e.target.value)}
+                placeholder="Search medicine name or item ID..."
+                className="h-10 w-full rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] pl-8 pr-3 text-[13px] text-[#0F172A] outline-none transition-all placeholder:text-[#94A3B8] focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
+              />
+            </div>
+          </div>
+
+          <div className="w-full xl:w-[170px]">
+            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
+              Status
+            </label>
+            <select
+              value={currentFilters.status}
+              onChange={(e) => updateActiveFilter("status", e.target.value)}
+              className="h-10 w-full appearance-none rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-2.5 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
+            >
+              <option>All Status</option>
+              <option>Available</option>
+              <option>Low Stock</option>
+              <option>Unavailable</option>
+            </select>
+          </div>
+        </div>
+
+        {activeFilters.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#F3F4F6] pt-3">
+            {activeFilters.map((filter) => (
+              <button
+                key={filter.key}
+                type="button"
+                onClick={() => removeFilter(filter.key)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#DBEAFE] bg-[#EFF6FF] px-2.5 py-1 text-[11px] font-medium text-[#1D4ED8] transition-colors hover:bg-[#DBEAFE]"
+              >
+                {filter.label}
+                <X size={10} />
+              </button>
+            ))}
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#64748B] transition-colors hover:text-[#0B2E59]"
+              >
+                <RotateCcw size={11} />
+                Clear all
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="min-w-0">
+        <div className="min-w-0">
           {activeTab === "bhc" ? (
             <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1000px] text-left">
+                <table className="w-full min-w-[880px] text-left">
                   <thead>
                     <tr className="border-b border-[#E2E8F0] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
                       <th className="whitespace-nowrap px-6 py-3">Item ID</th>
@@ -688,14 +693,6 @@ export default function MedicineInventory() {
                       >
                         <div className="flex items-center gap-1">
                           Item Name <SortIcon field="name" />
-                        </div>
-                      </th>
-                      <th
-                        className="cursor-pointer whitespace-nowrap px-4 py-3 select-none"
-                        onClick={() => toggleSort("category")}
-                      >
-                        <div className="flex items-center gap-1">
-                          Category <SortIcon field="category" />
                         </div>
                       </th>
                       <th
@@ -725,7 +722,7 @@ export default function MedicineInventory() {
                   <tbody className="divide-y divide-[#F8FAFC]">
                     {filteredBHC.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-24 text-center">
+                        <td colSpan={6} className="px-6 py-24 text-center">
                           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
                             <Boxes size={20} className="text-[#94A3B8]" />
                           </div>
@@ -764,9 +761,6 @@ export default function MedicineInventory() {
                             </div>
                           </td>
                           <td className="whitespace-nowrap px-4 py-4">
-                            <CategoryBadge category={item.category} />
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-4">
                             <span className="text-[12.5px] font-semibold text-[#0F172A]">
                               {item.quantity}
                             </span>
@@ -781,35 +775,53 @@ export default function MedicineInventory() {
                             {item.lastUpdated}
                           </td>
                           <td className="whitespace-nowrap px-4 py-4">
-                            <div className="flex items-center justify-end gap-1">
+                            <div className="relative flex justify-end">
                               <button
-                                onClick={() => openHistory(item)}
-                                title="View History"
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-[#94A3B8] transition-all hover:bg-[#F1F5F9] hover:text-[#64748B]"
+                                type="button"
+                                onClick={() =>
+                                  setOpenActionMenu(
+                                    openActionMenu === item.id ? null : item.id,
+                                  )
+                                }
+                                title="Open actions"
+                                className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-all ${
+                                  openActionMenu === item.id
+                                    ? "border-[#BFDBFE] bg-[#EFF6FF] text-[#2563EB]"
+                                    : "border-transparent text-[#94A3B8] hover:bg-[#F1F5F9] hover:text-[#64748B]"
+                                }`}
                               >
-                                <History size={14} />
+                                <MoreVertical size={15} />
                               </button>
-                              <button
-                                onClick={() => openStock(item)}
-                                title="Adjust Stock"
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-[#94A3B8] transition-all hover:bg-[#EFF6FF] hover:text-[#2563EB]"
-                              >
-                                <ArrowUpDown size={14} />
-                              </button>
-                              <button
-                                onClick={() => openEdit(item)}
-                                title="Edit"
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-[#94A3B8] transition-all hover:bg-[#FFFBEB] hover:text-[#D97706]"
-                              >
-                                <Pencil size={14} />
-                              </button>
-                              <button
-                                onClick={() => openDelete(item)}
-                                title="Delete"
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-[#94A3B8] transition-all hover:bg-[#FEF2F2] hover:text-[#DC2626]"
-                              >
-                                <Trash2 size={14} />
-                              </button>
+
+                              {openActionMenu === item.id && (
+                                <div className="absolute right-0 top-9 z-30 w-44 overflow-hidden rounded-xl border border-[#E2E8F0] bg-white py-1.5 shadow-xl shadow-slate-900/10">
+                                  <button
+                                    type="button"
+                                    onClick={() => openHistory(item)}
+                                    className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[12px] font-medium text-[#475569] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A]"
+                                  >
+                                    <History size={14} />
+                                    View History
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => openEdit(item)}
+                                    className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[12px] font-medium text-[#475569] transition-colors hover:bg-[#FFFBEB] hover:text-[#D97706]"
+                                  >
+                                    <Pencil size={14} />
+                                    Edit Details
+                                  </button>
+                                  <div className="my-1 border-t border-[#F1F5F9]" />
+                                  <button
+                                    type="button"
+                                    onClick={() => openDelete(item)}
+                                    className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[12px] font-medium text-[#DC2626] transition-colors hover:bg-[#FEF2F2]"
+                                  >
+                                    <Trash2 size={14} />
+                                    Delete
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -838,12 +850,11 @@ export default function MedicineInventory() {
           ) : (
             <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[900px] text-left">
+                <table className="w-full min-w-[760px] text-left">
                   <thead>
                     <tr className="border-b border-[#E2E8F0] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
                       <th className="whitespace-nowrap px-6 py-3">Item ID</th>
                       <th className="whitespace-nowrap px-4 py-3">Item Name</th>
-                      <th className="whitespace-nowrap px-4 py-3">Category</th>
                       <th className="whitespace-nowrap px-4 py-3">Quantity</th>
                       <th className="whitespace-nowrap px-4 py-3">Status</th>
                       <th className="whitespace-nowrap px-4 py-3">
@@ -855,7 +866,7 @@ export default function MedicineInventory() {
                   <tbody className="divide-y divide-[#F8FAFC]">
                     {filteredRHU.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-24 text-center">
+                        <td colSpan={6} className="px-6 py-24 text-center">
                           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
                             <Boxes size={20} className="text-[#94A3B8]" />
                           </div>
@@ -887,9 +898,6 @@ export default function MedicineInventory() {
                                 {item.name}
                               </span>
                             </div>
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-4">
-                            <CategoryBadge category={item.category} />
                           </td>
                           <td className="whitespace-nowrap px-4 py-4 text-[12.5px] font-medium text-[#64748B]">
                             {item.quantity}
@@ -928,194 +936,17 @@ export default function MedicineInventory() {
             </div>
           )}
         </div>
-
-        {/* ── Right Filter Sidebar ── */}
-        <aside className="w-[260px] shrink-0">
-          <div className="rounded-xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
-            <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-[12px] font-semibold text-[#0F172A]">
-                Filters
-              </h2>
-              {hasActiveFilters && (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="text-[10px] font-medium text-[#0B2E59] hover:underline"
-                >
-                  Clear all
-                </button>
-              )}
-            </div>
-
-            {/* BHC Compact Stats */}
-            {activeTab === "bhc" && (
-              <div className="mb-5 space-y-2">
-                <div className="flex items-center justify-between rounded-lg bg-[#F8FAFC] px-3 py-2">
-                  <div className="flex items-center gap-2 text-[11px] font-medium text-[#334155]">
-                    <CheckCircle2 size={12} className="text-[#059669]" />{" "}
-                    Available
-                  </div>
-                  <span className="text-[11px] font-bold text-[#059669]">
-                    {bhcStats.available}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between rounded-lg bg-[#FFFBEB] px-3 py-2">
-                  <div className="flex items-center gap-2 text-[11px] font-medium text-[#92400E]">
-                    <AlertTriangle size={12} className="text-[#D97706]" /> Low
-                    Stock
-                  </div>
-                  <span className="text-[11px] font-bold text-[#D97706]">
-                    {bhcStats.lowStock}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between rounded-lg bg-[#FEF2F2] px-3 py-2">
-                  <div className="flex items-center gap-2 text-[11px] font-medium text-[#991B1B]">
-                    <XCircle size={12} className="text-[#DC2626]" /> Unavailable
-                  </div>
-                  <span className="text-[11px] font-bold text-[#DC2626]">
-                    {bhcStats.unavailable}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* RHU View Only Notice */}
-            {activeTab === "rhu" && (
-              <div className="mb-5 flex items-start gap-2 rounded-lg border border-[#DBEAFE] bg-[#EFF6FF] p-3">
-                <Eye size={12} className="mt-0.5 shrink-0 text-[#2563EB]" />
-                <p className="text-[10px] leading-relaxed text-[#1D4ED8]">
-                  Read-only view of RHU medicine availability for coordination.
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-5">
-              {/* Search */}
-              <div>
-                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-                  Search Medicine
-                </label>
-                <div className="relative">
-                  <Search
-                    size={13}
-                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]"
-                  />
-                  <input
-                    type="text"
-                    value={
-                      activeTab === "bhc"
-                        ? bhcFilters.search
-                        : rhuFilters.search
-                    }
-                    onChange={(e) =>
-                      activeTab === "bhc"
-                        ? setBhcFilters((p) => ({
-                            ...p,
-                            search: e.target.value,
-                          }))
-                        : setRhuFilters((p) => ({
-                            ...p,
-                            search: e.target.value,
-                          }))
-                    }
-                    placeholder="Name or ID..."
-                    className="h-[34px] w-full rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] pl-8 pr-3 text-[12px] text-[#0F172A] outline-none transition-all placeholder:text-[#94A3B8] focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
-                  />
-                </div>
-              </div>
-
-              {/* Category */}
-              <div>
-                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-                  Category
-                </label>
-                <select
-                  value={
-                    activeTab === "bhc"
-                      ? bhcFilters.category
-                      : rhuFilters.category
-                  }
-                  onChange={(e) =>
-                    activeTab === "bhc"
-                      ? setBhcFilters((p) => ({
-                          ...p,
-                          category: e.target.value,
-                        }))
-                      : setRhuFilters((p) => ({
-                          ...p,
-                          category: e.target.value,
-                        }))
-                  }
-                  className="h-[34px] w-full appearance-none rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-2.5 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
-                >
-                  <option>All Categories</option>
-                  {categories.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Status */}
-              <div>
-                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-                  Status
-                </label>
-                <select
-                  value={
-                    activeTab === "bhc" ? bhcFilters.status : rhuFilters.status
-                  }
-                  onChange={(e) =>
-                    activeTab === "bhc"
-                      ? setBhcFilters((p) => ({ ...p, status: e.target.value }))
-                      : setRhuFilters((p) => ({ ...p, status: e.target.value }))
-                  }
-                  className="h-[34px] w-full appearance-none rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-2.5 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
-                >
-                  <option>All Status</option>
-                  <option>Available</option>
-                  <option>Low Stock</option>
-                  <option>Unavailable</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Low Stock Alert in Sidebar */}
-            {activeTab === "bhc" && bhcStats.lowStock > 0 && (
-              <div className="mt-5 flex items-start gap-2 rounded-lg border border-[#FDE68A] bg-[#FFFBEB] p-3">
-                <AlertTriangle
-                  size={12}
-                  className="mt-0.5 shrink-0 text-[#D97706]"
-                />
-                <p className="text-[10px] leading-relaxed text-[#92400E]">
-                  <span className="font-bold">Low Stock:</span>{" "}
-                  {bhcItems
-                    .filter((i) => i.status === "Low Stock")
-                    .map((i) => i.name)
-                    .join(", ")}
-                </p>
-              </div>
-            )}
-
-            {/* Reset Button */}
-            {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="mt-5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#E2E8F0] py-2 text-[11px] font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC] hover:text-[#334155]"
-              >
-                <RotateCcw size={11} />
-                Reset All Filters
-              </button>
-            )}
-          </div>
-        </aside>
       </div>
 
       {/* ═══════════ MODALS ═══════════ */}
       {showAddModal && (
-        <Modal onClose={() => setShowAddModal(false)} title="Add New Medicine">
-          <div className="space-y-4">
-            <FormField label="Medicine Name" required>
+        <Modal
+          onClose={() => setShowAddModal(false)}
+          title="Add Medicine / Supply"
+          width="sm"
+        >
+          <div className="space-y-3">
+            <FormField label="Medicine / Supply Name" required>
               <input
                 value={addForm.name}
                 onChange={(e) =>
@@ -1125,20 +956,21 @@ export default function MedicineInventory() {
                 className={inputClass}
               />
             </FormField>
-            <div className="grid grid-cols-2 gap-4">
-              <FormField label="Category">
-                <select
-                  value={addForm.category}
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Quantity" required>
+                <input
+                  type="number"
+                  min="0"
+                  value={addForm.quantity}
                   onChange={(e) =>
-                    setAddForm({ ...addForm, category: e.target.value })
+                    setAddForm({ ...addForm, quantity: e.target.value })
                   }
-                  className={selectClass}
-                >
-                  {categories.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                </select>
+                  placeholder="0"
+                  className={inputClass}
+                />
               </FormField>
+
               <FormField label="Unit">
                 <select
                   value={addForm.unit}
@@ -1153,55 +985,31 @@ export default function MedicineInventory() {
                 </select>
               </FormField>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <FormField label="Initial Quantity" required>
-                <input
-                  type="number"
-                  min="0"
-                  value={addForm.quantity}
-                  onChange={(e) =>
-                    setAddForm({ ...addForm, quantity: e.target.value })
-                  }
-                  placeholder="0"
-                  className={inputClass}
-                />
-              </FormField>
-              <FormField label="Low Stock Threshold">
-                <input
-                  type="number"
-                  min="0"
-                  value={addForm.threshold}
-                  onChange={(e) =>
-                    setAddForm({ ...addForm, threshold: e.target.value })
-                  }
-                  placeholder="10"
-                  className={inputClass}
-                />
-              </FormField>
-            </div>
+
             <FormField label="Notes">
               <textarea
                 value={addForm.notes}
                 onChange={(e) =>
                   setAddForm({ ...addForm, notes: e.target.value })
                 }
-                placeholder="Optional notes about this medicine..."
-                rows={3}
-                className={inputClass + " resize-none"}
+                placeholder="Optional notes..."
+                rows={2}
+                className={inputClass + " min-h-[70px] resize-none py-2.5"}
               />
             </FormField>
           </div>
-          <div className="mt-6 flex items-center justify-end gap-3 border-t border-[#F3F4F6] pt-5">
+
+          <div className="mt-4 flex items-center justify-end gap-2 border-t border-[#F3F4F6] pt-4">
             <button
               onClick={() => setShowAddModal(false)}
-              className="h-10 rounded-xl border border-[#E8ECF0] bg-white px-5 text-xs font-semibold text-[#6B7280] transition-all hover:bg-[#F9FAFB]"
+              className="h-9 rounded-lg border border-[#E8ECF0] bg-white px-4 text-[11px] font-semibold text-[#6B7280] transition-all hover:bg-[#F9FAFB]"
             >
               Cancel
             </button>
             <button
               onClick={handleAdd}
               disabled={!addForm.name.trim()}
-              className="h-10 rounded-xl bg-[#0B2E59] px-6 text-xs font-semibold text-white shadow-md shadow-[#0B2E59]/20 transition-all hover:bg-[#0A2548] disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+              className="h-9 rounded-lg bg-[#0B2E59] px-4 text-[11px] font-semibold text-white shadow-md shadow-[#0B2E59]/20 transition-all hover:bg-[#0A2548] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
             >
               Add Medicine
             </button>
@@ -1210,17 +1018,29 @@ export default function MedicineInventory() {
       )}
 
       {showEditModal && selectedItem && (
-        <Modal onClose={() => setShowEditModal(false)} title="Edit Medicine">
-          <div className="space-y-4">
-            <div className="rounded-lg border border-[#F3F4F6] bg-[#FAFBFC] px-4 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#BCC3CD]">
-                Item ID
-              </p>
-              <p className="mt-0.5 font-mono text-sm font-semibold text-[#0B2E59]">
+        <Modal
+          onClose={() => setShowEditModal(false)}
+          title="Edit Medicine / Supply"
+          width="sm"
+        >
+          <div className="mb-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-[12px] font-bold text-[#0F172A]">
+                  {selectedItem.name}
+                </p>
+                <p className="text-[10.5px] text-[#94A3B8]">
+                  Current: {selectedItem.quantity} {selectedItem.unit}
+                </p>
+              </div>
+              <span className="shrink-0 rounded-md border border-[#BFDBFE] bg-white px-2 py-1 font-mono text-[10px] font-semibold text-[#0B2E59]">
                 {selectedItem.id}
-              </p>
+              </span>
             </div>
-            <FormField label="Medicine Name" required>
+          </div>
+
+          <div className="space-y-3">
+            <FormField label="Medicine / Supply Name" required>
               <input
                 value={editForm.name}
                 onChange={(e) =>
@@ -1229,20 +1049,20 @@ export default function MedicineInventory() {
                 className={inputClass}
               />
             </FormField>
-            <div className="grid grid-cols-2 gap-4">
-              <FormField label="Category">
-                <select
-                  value={editForm.category}
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Quantity" required>
+                <input
+                  type="number"
+                  min="0"
+                  value={editForm.quantity}
                   onChange={(e) =>
-                    setEditForm({ ...editForm, category: e.target.value })
+                    setEditForm({ ...editForm, quantity: e.target.value })
                   }
-                  className={selectClass}
-                >
-                  {categories.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                </select>
+                  className={inputClass}
+                />
               </FormField>
+
               <FormField label="Unit">
                 <select
                   value={editForm.unit}
@@ -1257,179 +1077,32 @@ export default function MedicineInventory() {
                 </select>
               </FormField>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <FormField label="Quantity" required>
-                <input
-                  type="number"
-                  min="0"
-                  value={editForm.quantity}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, quantity: e.target.value })
-                  }
-                  className={inputClass}
-                />
-              </FormField>
-              <FormField label="Low Stock Threshold">
-                <input
-                  type="number"
-                  min="0"
-                  value={editForm.threshold}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, threshold: e.target.value })
-                  }
-                  className={inputClass}
-                />
-              </FormField>
-            </div>
+
             <FormField label="Notes">
               <textarea
                 value={editForm.notes}
                 onChange={(e) =>
                   setEditForm({ ...editForm, notes: e.target.value })
                 }
-                rows={3}
-                className={inputClass + " resize-none"}
+                rows={2}
+                className={inputClass + " min-h-[70px] resize-none py-2.5"}
               />
             </FormField>
           </div>
-          <div className="mt-6 flex items-center justify-end gap-3 border-t border-[#F3F4F6] pt-5">
+
+          <div className="mt-4 flex items-center justify-end gap-2 border-t border-[#F3F4F6] pt-4">
             <button
               onClick={() => setShowEditModal(false)}
-              className="h-10 rounded-xl border border-[#E8ECF0] bg-white px-5 text-xs font-semibold text-[#6B7280] transition-all hover:bg-[#F9FAFB]"
+              className="h-9 rounded-lg border border-[#E8ECF0] bg-white px-4 text-[11px] font-semibold text-[#6B7280] transition-all hover:bg-[#F9FAFB]"
             >
               Cancel
             </button>
             <button
               onClick={handleEdit}
               disabled={!editForm.name.trim()}
-              className="h-10 rounded-xl bg-[#0B2E59] px-6 text-xs font-semibold text-white shadow-md shadow-[#0B2E59]/20 transition-all hover:bg-[#0A2548] disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+              className="h-9 rounded-lg bg-[#0B2E59] px-4 text-[11px] font-semibold text-white shadow-md shadow-[#0B2E59]/20 transition-all hover:bg-[#0A2548] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
             >
               Save Changes
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {showStockModal && selectedItem && (
-        <Modal
-          onClose={() => setShowStockModal(false)}
-          title="Adjust Stock"
-          width="sm"
-        >
-          <div className="mb-5 rounded-lg border border-[#F3F4F6] bg-[#FAFBFC] p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EFF6FF]">
-                <Pill size={18} className="text-[#2563EB]" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-[#0B2E59]">
-                  {selectedItem.name}
-                </p>
-                <p className="text-xs text-[#94A3B8]">
-                  Current stock:{" "}
-                  <span className="font-semibold text-[#0F172A]">
-                    {selectedItem.quantity} {selectedItem.unit}
-                  </span>
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="space-y-4">
-            <FormField label="Adjustment Type">
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => setStockForm({ ...stockForm, type: "in" })}
-                  className={`flex items-center justify-center gap-2 rounded-xl border-2 px-4 py-3 text-xs font-semibold transition-all ${stockForm.type === "in" ? "border-[#059669] bg-[#ECFDF5] text-[#047857]" : "border-[#E8ECF0] bg-white text-[#6B7280] hover:border-[#D1D5DB]"}`}
-                >
-                  <TrendingUp size={15} /> Stock In
-                </button>
-                <button
-                  onClick={() => setStockForm({ ...stockForm, type: "out" })}
-                  className={`flex items-center justify-center gap-2 rounded-xl border-2 px-4 py-3 text-xs font-semibold transition-all ${stockForm.type === "out" ? "border-[#DC2626] bg-[#FEF2F2] text-[#B91C1C]" : "border-[#E8ECF0] bg-white text-[#6B7280] hover:border-[#D1D5DB]"}`}
-                >
-                  <TrendingDown size={15} /> Stock Out
-                </button>
-              </div>
-            </FormField>
-            <FormField label="Quantity" required>
-              <input
-                type="number"
-                min="1"
-                max={
-                  stockForm.type === "out" ? selectedItem.quantity : undefined
-                }
-                value={stockForm.qty}
-                onChange={(e) =>
-                  setStockForm({ ...stockForm, qty: e.target.value })
-                }
-                placeholder="Enter quantity"
-                className={inputClass}
-              />
-              {stockForm.type === "out" &&
-                parseInt(stockForm.qty, 10) > selectedItem.quantity && (
-                  <p className="mt-1.5 text-[11px] text-[#DC2626]">
-                    Cannot exceed current stock ({selectedItem.quantity})
-                  </p>
-                )}
-            </FormField>
-            <FormField label="Reason / Note">
-              <input
-                value={stockForm.note}
-                onChange={(e) =>
-                  setStockForm({ ...stockForm, note: e.target.value })
-                }
-                placeholder={
-                  stockForm.type === "in"
-                    ? "e.g. Restocked from RHU"
-                    : "e.g. Dispensed to patient"
-                }
-                className={inputClass}
-              />
-            </FormField>
-            {parseInt(stockForm.qty, 10) > 0 && (
-              <div
-                className={`rounded-lg border p-3.5 ${stockForm.type === "in" ? "border-[#A7F3D0] bg-[#ECFDF5]" : "border-[#FECACA] bg-[#FEF2F2]"}`}
-              >
-                <p
-                  className={`text-[10px] font-semibold uppercase tracking-wider ${stockForm.type === "in" ? "text-[#047857]" : "text-[#B91C1C]"}`}
-                >
-                  New Stock Preview
-                </p>
-                <p
-                  className={`mt-1 text-lg font-bold ${stockForm.type === "in" ? "text-[#047857]" : "text-[#B91C1C]"}`}
-                >
-                  {stockForm.type === "in"
-                    ? selectedItem.quantity + (parseInt(stockForm.qty, 10) || 0)
-                    : Math.max(
-                        0,
-                        selectedItem.quantity -
-                          (parseInt(stockForm.qty, 10) || 0),
-                      )}{" "}
-                  <span className="text-sm font-medium opacity-70">
-                    {selectedItem.unit}
-                  </span>
-                </p>
-              </div>
-            )}
-          </div>
-          <div className="mt-6 flex items-center justify-end gap-3 border-t border-[#F3F4F6] pt-5">
-            <button
-              onClick={() => setShowStockModal(false)}
-              className="h-10 rounded-xl border border-[#E8ECF0] bg-white px-5 text-xs font-semibold text-[#6B7280] transition-all hover:bg-[#F9FAFB]"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleStock}
-              disabled={
-                !stockForm.qty ||
-                parseInt(stockForm.qty, 10) <= 0 ||
-                (stockForm.type === "out" &&
-                  parseInt(stockForm.qty, 10) > selectedItem.quantity)
-              }
-              className={`h-10 rounded-xl px-6 text-xs font-semibold text-white shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none ${stockForm.type === "in" ? "bg-[#059669] shadow-[#059669]/20 hover:bg-[#047857]" : "bg-[#DC2626] shadow-[#DC2626]/20 hover:bg-[#B91C1C]"}`}
-            >
-              {stockForm.type === "in" ? "Add Stock" : "Remove Stock"}
             </button>
           </div>
         </Modal>
@@ -1551,32 +1224,32 @@ export default function MedicineInventory() {
 
 /* ─── Shared Styles ─── */
 const inputClass =
-  "h-10 w-full rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 text-sm outline-none transition-all duration-200 placeholder:text-[#BCC3CD] focus:border-[#2563EB] focus:bg-white focus:ring-2 focus:ring-[#2563EB]/10";
+  "h-9 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 text-[13px] outline-none transition-all duration-200 placeholder:text-[#BCC3CD] focus:border-[#2563EB] focus:bg-white focus:ring-2 focus:ring-[#2563EB]/10";
 const selectClass =
-  "h-10 w-full appearance-none rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 text-sm outline-none transition-all duration-200 focus:border-[#2563EB] focus:bg-white focus:ring-2 focus:ring-[#2563EB]/10";
+  "h-9 w-full appearance-none rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 text-[13px] outline-none transition-all duration-200 focus:border-[#2563EB] focus:bg-white focus:ring-2 focus:ring-[#2563EB]/10";
 
 /* ─── Modal ─── */
 function Modal({ children, onClose, title, width = "md" }) {
-  const widthMap = { sm: "max-w-md", md: "max-w-lg", lg: "max-w-2xl" };
+  const widthMap = { sm: "max-w-md", md: "max-w-lg", lg: "max-w-xl" };
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
       <div
         className="anim-overlay absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
       <div
-        className={`anim-slide-in relative w-full ${widthMap[width]} rounded-2xl border border-[#E2E8F0] bg-white shadow-2xl shadow-black/10`}
+        className={`anim-slide-in relative flex max-h-[calc(100vh-1.5rem)] w-full ${widthMap[width]} flex-col overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-2xl shadow-black/10`}
       >
-        <div className="flex items-center justify-between border-b border-[#F3F4F6] px-6 py-4">
-          <h3 className="text-sm font-bold text-[#0B2E59]">{title}</h3>
+        <div className="flex shrink-0 items-center justify-between border-b border-[#F3F4F6] px-4 py-3">
+          <h3 className="text-[13px] font-bold text-[#0B2E59]">{title}</h3>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[#94A3B8] transition-all hover:bg-[#F1F5F9] hover:text-[#64748B]"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-[#94A3B8] transition-all hover:bg-[#F1F5F9] hover:text-[#64748B]"
           >
-            <X size={16} />
+            <X size={15} />
           </button>
         </div>
-        <div className="px-6 py-5">{children}</div>
+        <div className="overflow-y-auto px-4 py-4">{children}</div>
       </div>
     </div>
   );
@@ -1613,39 +1286,6 @@ function StatusBadge({ status }) {
         style={{ backgroundColor: s.dot }}
       />
       {status}
-    </span>
-  );
-}
-
-/* ─── Category Badge ─── */
-function CategoryBadge({ category }) {
-  const map = {
-    "Basic Medicines": { bg: "#EFF6FF", text: "#1D4ED8", border: "#BFDBFE" },
-    Vaccines: { bg: "#F5F3FF", text: "#6D28D9", border: "#DDD6FE" },
-    "Medical Supplies": { bg: "#F8FAFC", text: "#475569", border: "#E2E8F0" },
-    "Maternal Care Supplies": {
-      bg: "#FFF1F2",
-      text: "#BE123C",
-      border: "#FECDD3",
-    },
-    "Child Health Supplies": {
-      bg: "#ECFDF5",
-      text: "#047857",
-      border: "#A7F3D0",
-    },
-    "Referral-related Resources": {
-      bg: "#FFFBEB",
-      text: "#B45309",
-      border: "#FDE68A",
-    },
-  };
-  const s = map[category] || map["Medical Supplies"];
-  return (
-    <span
-      className="inline-block rounded-lg border px-2.5 py-1 text-[10px] font-semibold"
-      style={{ backgroundColor: s.bg, color: s.text, borderColor: s.border }}
-    >
-      {category}
     </span>
   );
 }

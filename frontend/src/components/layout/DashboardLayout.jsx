@@ -38,11 +38,6 @@ const menuByRole = {
           path: "/admin/doctors",
           icon: HeartPulse,
         },
-        {
-          label: "Doctor Schedule",
-          path: "/admin/doctor-schedule",
-          icon: CalendarDays,
-        },
       ],
     },
     {

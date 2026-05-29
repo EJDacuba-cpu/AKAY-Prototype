@@ -148,6 +148,7 @@ export default function AddPatient() {
         name: `${form.firstName} ${form.middleName ? form.middleName + " " : ""}${form.lastName}`.trim(),
         category: form.patientCategory,
         ageSex: `${form.age || calculateAge(form.birthDate)} / ${form.sex}`,
+        registrationSource: "RHU_DIRECT_REGISTRATION",
       };
 
       await createPatient(patientDataToSave);

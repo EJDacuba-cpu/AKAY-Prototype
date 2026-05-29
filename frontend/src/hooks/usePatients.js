@@ -19,6 +19,24 @@ export default function usePatients() {
 
   const itemsPerPage = 10;
 
+  function matchesPatientType(patient, filterType) {
+    if (filterType === "All Patients") return true;
+
+    const type = patient.type || patient.category || patient.patientClassification || "";
+
+    if (filterType === "Maternal") {
+      return ["Maternal", "Pregnant", "Pregnant Patient", "Maternal Care"].includes(
+        type,
+      );
+    }
+
+    if (filterType === "Immunization") {
+      return ["Immunization", "Child", "Child Health"].includes(type);
+    }
+
+    return type === filterType;
+  }
+
   /* ─────────────────────────────────────────────
    * Fetch Patients
    * ───────────────────────────────────────────── */
@@ -45,18 +63,26 @@ export default function usePatients() {
    * ───────────────────────────────────────────── */
   const filteredPatients = useMemo(() => {
     return patients.filter((patient) => {
-      const matchesSearch = patient.name
-        .toLowerCase()
-        .includes(filters.search.toLowerCase());
+      const query = filters.search.toLowerCase();
+      const searchable = [
+        patient.name,
+        patient.id,
+        patient.contact,
+        patient.contactNumber,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const matchesSearch = !query || searchable.includes(query);
 
       const matchesSex =
         filters.sex === "All" ||
-        patient.ageSex
+        (patient.ageSex || "")
           .toLowerCase()
           .includes(filters.sex === "Male" ? "/m" : "/f");
 
-      const matchesType =
-        filters.type === "All Patients" || patient.type === filters.type;
+      const matchesType = matchesPatientType(patient, filters.type);
 
       return matchesSearch && matchesSex && matchesType;
     });
@@ -95,12 +121,12 @@ export default function usePatients() {
       (patient) => patient.type === "Senior Citizen",
     ).length;
 
-    const children = patients.filter(
-      (patient) => patient.type === "Child",
+    const children = patients.filter((patient) =>
+      matchesPatientType(patient, "Immunization"),
     ).length;
 
-    const pregnantPatients = patients.filter(
-      (patient) => patient.type === "Pregnant",
+    const pregnantPatients = patients.filter((patient) =>
+      matchesPatientType(patient, "Maternal"),
     ).length;
 
     return {
