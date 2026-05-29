@@ -196,14 +196,13 @@ export default function DoctorSchedule() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left">
+            <table className="w-full min-w-[800px] text-left">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                   <th className="px-6 py-3">Doctor ID</th>
                   <th className="px-4 py-3">Doctor</th>
                   <th className="px-4 py-3">Specialization</th>
                   <th className="px-4 py-3">Schedule</th>
-                  <th className="px-4 py-3">Room</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Action</th>
                 </tr>
@@ -212,7 +211,7 @@ export default function DoctorSchedule() {
               <tbody className="divide-y divide-slate-50">
                 {filteredDoctors.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-24 text-center">
+                    <td colSpan={6} className="px-6 py-24 text-center">
                       <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
                         <Users size={20} className="text-slate-400" />
                       </div>
@@ -258,10 +257,6 @@ export default function DoctorSchedule() {
                           <Clock size={10} className="text-slate-300" />
                           {doctor.time}
                         </div>
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4 text-[12px] text-slate-600">
-                        {doctor.room}
                       </td>
 
                       <td className="whitespace-nowrap px-4 py-4">
@@ -399,7 +394,7 @@ export default function DoctorSchedule() {
               </div>
               <div>
                 <h2 className="text-[12px] font-bold text-slate-900">
-                  Today’s Schedule
+                  Today's Schedule
                 </h2>
                 <p className="text-[10px] text-slate-400">
                   Quick view for RHU staff

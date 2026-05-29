@@ -531,11 +531,13 @@ function TabTimeline({ referral }) {
 
   const steps = [
     {
-      label: "Pending RHU Review",
+      label: "Pending",
       desc: "Referral submitted and awaiting receipt at the destination facility.",
       color: "slate",
-      active: referral.status === "Pending RHU Review",
-      done: !["Pending RHU Review", "No-Show"].includes(referral.status),
+      active: ["Pending RHU Review", "Pending"].includes(referral.status),
+      done: !["Pending RHU Review", "Pending", "No-Show"].includes(
+        referral.status,
+      ),
       failed: isNoShow,
     },
     {
@@ -802,7 +804,9 @@ function HealthEmpty({ message, sub }) {
 function StatusBadge({ status }) {
   const m = {
     "Pending RHU Review": "bg-slate-100 text-slate-700",
+    Pending: "bg-slate-100 text-slate-700",
     "Received by RHU": "bg-blue-100 text-blue-700",
+    Received: "bg-blue-100 text-blue-700",
     "Under Assessment": "bg-amber-100 text-amber-700",
     Completed: "bg-emerald-100 text-emerald-700",
     "No-Show": "bg-red-100 text-red-700",

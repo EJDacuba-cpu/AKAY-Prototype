@@ -18,7 +18,9 @@ import { getReferrals } from "../../services/referrals";
 const REFERRAL_TABS = [
   { key: "All", label: "All Referrals", icon: ClipboardList },
   { key: "Pending RHU Review", label: "Pending", icon: Clock },
-  { key: "Under Assessment", label: "Assessment", icon: Activity },
+  { key: "Pending", label: "Pending", icon: Clock },
+  { key: "For Monitoring", label: "Monitoring", icon: Activity },
+  { key: "Received", label: "Received", icon: ClipboardList },
   { key: "Completed", label: "Completed", icon: CheckCircle2 },
   { key: "No-Show", label: "No-Show", icon: XCircle },
 ];
@@ -351,6 +353,9 @@ export default function Referrals() {
 function StatusBadge({ status }) {
   const map = {
     "Pending RHU Review": "bg-slate-100 text-slate-700",
+    Pending: "bg-slate-100 text-slate-700",
+    "For Monitoring": "bg-amber-50 text-amber-700",
+    Received: "bg-blue-50 text-blue-700",
     "Received by RHU": "bg-blue-50 text-blue-700",
     "Under Assessment": "bg-amber-50 text-amber-700",
     Completed: "bg-emerald-50 text-emerald-700",

@@ -125,15 +125,53 @@ export default function CreateReferral() {
       patientName: patient?.name,
       ageSex:
         patient?.ageSex || `${patient?.age || ""} / ${patient?.sex || ""}`,
+
+      // RHU IncomingReferrals expects these field names:
+      // - referringFacility (or fallback: bhc)
+      // - referralCategory (or fallback: category)
+      // - priorityLevel (or fallback: priority)
+      // - chiefComplaint (or fallback: concern)
+      // - patientName / patient
+      // Use the existing referral object as source-of-truth.
+      bhc: form.referredFacility,
+      referringFacility: form.referredFacility,
+
+      // Category is based on patient classification/category
+      referralCategory:
+        patient?.category ||
+        patient?.patientClassification ||
+        "General Consultation",
+      category:
+        patient?.category ||
+        patient?.patientClassification ||
+        "General Consultation",
+
+      // This CreateReferral form currently has no urgency UI.
+      // Persist a default urgency so RHU can filter and display it.
+      urgency: "Non-Urgent",
+
+      // Backward compatibility for older pages that still read the priority system.
+      // Keep these fields unchanged.
+      priorityLevel: "Not Specified",
+      priority: "Not Specified",
+      // NOTE: No conversion from urgency => priority is performed here.
+      // Legacy display (if any) should fallback safely.
+
+      healthRecordId: record?.id || record?._id,
+
+      // RHU IncomingReferrals uses `chiefComplaint || concern`.
+      chiefComplaint: record?.chiefComplaint,
+      concern: record?.chiefComplaint,
+
+      diagnosis: record?.diagnosis || record?.assessment,
+      reasonForReferral: form.reasonForReferral,
+      referredFacility: form.referredFacility,
+
+      // Keep existing fields for backward compatibility.
       classification:
         patient?.category ||
         patient?.patientClassification ||
         "General Consultation",
-      healthRecordId: record?.id || record?._id,
-      chiefComplaint: record?.chiefComplaint,
-      diagnosis: record?.diagnosis || record?.assessment,
-      reasonForReferral: form.reasonForReferral,
-      referredFacility: form.referredFacility,
     });
     setGeneratedTrackingId(referral.trackingId);
     setShowConfirmModal(false);

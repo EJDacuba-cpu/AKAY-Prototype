@@ -518,8 +518,21 @@ function StatusBadge({ status, animate = false }) {
   );
 }
 
-function PriorityBadge({ priority }) {
+function UrgencyBadge({ urgency }) {
   const map = {
+    Emergency: {
+      bg: "#FEF2F2",
+      text: "#B91C1C",
+      icon: <AlertCircle size={11} />,
+    },
+    Urgent: { bg: "#FFFBEB", text: "#B45309", icon: <Clock size={11} /> },
+    "Non-Urgent": {
+      bg: "#F8FAFC",
+      text: "#475569",
+      icon: <CheckCircle2 size={11} />,
+    },
+
+    // Backward compatibility for legacy priority values
     High: { bg: "#FEF2F2", text: "#B91C1C", icon: <AlertCircle size={11} /> },
     Medium: { bg: "#FFFBEB", text: "#B45309", icon: <Clock size={11} /> },
     Normal: {
@@ -528,16 +541,35 @@ function PriorityBadge({ priority }) {
       icon: <CheckCircle2 size={11} />,
     },
   };
-  const s = map[priority] || map.Normal;
+
+  const s = map[urgency] || map["Non-Urgent"];
+
   return (
     <span
       className="inline-flex items-center gap-1 rounded-md border border-slate-100 px-2 py-0.5 text-[10px] font-semibold"
       style={{ backgroundColor: s.bg, color: s.text }}
     >
       {s.icon}
-      {priority}
+      {urgency}
     </span>
   );
+}
+
+function getReferralUrgency(referral) {
+  const raw =
+    referral?.urgency ||
+    referral?.priorityLevel ||
+    referral?.priority ||
+    "Non-Urgent";
+
+  // Legacy priority -> new urgency mapping
+  const mapLegacyToNew = {
+    High: "Emergency",
+    Medium: "Urgent",
+    Normal: "Non-Urgent",
+  };
+
+  return mapLegacyToNew[raw] || raw;
 }
 
 function CategoryBadge({ category }) {
@@ -558,7 +590,8 @@ export default function IncomingReferrals() {
   const [filterStatus, setFilterStatus] = useState("All Status");
   const [filters, setFilters] = useState({
     search: "",
-    priority: "All Priority",
+    priority: "All Urgency",
+
     specialization: "All Specialization",
   });
 
@@ -647,14 +680,15 @@ export default function IncomingReferrals() {
   const clearFilters = () => {
     setFilters({
       search: "",
-      priority: "All Priority",
+      priority: "All Urgency",
       specialization: "All Specialization",
     });
     setFilterStatus("All Status");
   };
+
   const hasActiveFilters =
     filters.search !== "" ||
-    filters.priority !== "All Priority" ||
+    filters.priority !== "All Urgency" ||
     filters.specialization !== "All Specialization" ||
     filterStatus !== "All Status";
 
@@ -677,10 +711,10 @@ export default function IncomingReferrals() {
           .toLowerCase()
           .includes(q);
 
-      const priorityValue = referral.priorityLevel || referral.priority || "";
+      // Urgency filter (new field: urgency) + backward compatibility for legacy priority values
+      const urgencyValue = getReferralUrgency(referral);
       const matchPriority =
-        filters.priority === "All Priority" ||
-        priorityValue === filters.priority;
+        filters.priority === "All Urgency" || urgencyValue === filters.priority;
 
       const matchSpec =
         filters.specialization === "All Specialization" ||
@@ -809,7 +843,7 @@ export default function IncomingReferrals() {
                   <th className="px-4 py-3">Referring HCI</th>
                   <th className="px-4 py-3">Category</th>
                   <th className="px-4 py-3">Priority</th>
-                  <th className="px-4 py-3">Concern</th>
+                  <th className="px-4 py-3">Chief Complaint</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-6 py-3 text-right">Actions</th>
                 </tr>
@@ -873,10 +907,8 @@ export default function IncomingReferrals() {
                           />
                         </td>
                         <td className="whitespace-nowrap px-4 py-4">
-                          <PriorityBadge
-                            priority={
-                              referral.priorityLevel || referral.priority
-                            }
+                          <UrgencyBadge
+                            urgency={getReferralUrgency(referral)}
                           />
                         </td>
                         <td className="max-w-[180px] truncate px-4 py-4 text-[12px] text-slate-600">
@@ -956,10 +988,10 @@ export default function IncomingReferrals() {
                   }
                   className="h-[34px] w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-[12px] text-slate-800 outline-none transition-colors focus:border-slate-300 focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
                 >
-                  <option>All Priority</option>
-                  <option>High</option>
-                  <option>Medium</option>
-                  <option>Normal</option>
+                  <option>All Urgency</option>
+                  <option>Emergency</option>
+                  <option>Urgent</option>
+                  <option>Non-Urgent</option>
                 </select>
               </div>
 

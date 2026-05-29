@@ -29,7 +29,8 @@ export async function createReferral(referralData) {
     id: `REF-${Date.now()}`,
     trackingId: `AKY-${Date.now().toString().slice(-6)}`,
     ...referralData,
-    status: "Pending RHU Review",
+    // Keep new referrals in the unified "Pending" status
+    status: "Pending",
     createdAt: now.toISOString(),
     referralDeadline: deadline,
   };
@@ -65,7 +66,7 @@ export async function autoMarkNoShowReferrals() {
 
   const updated = referrals.map((referral) => {
     if (
-      referral.status === "Pending RHU Review" &&
+      referral.status === "Pending" &&
       new Date(referral.referralDeadline) < now
     ) {
       return {

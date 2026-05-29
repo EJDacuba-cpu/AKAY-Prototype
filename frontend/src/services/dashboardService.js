@@ -106,7 +106,7 @@ function normalizeRecentReferrals(referrals, patients) {
           referral.diagnosis ||
           referral.reasonForReferral ||
           "",
-        status: referral.status || "Pending RHU Review",
+        status: referral.status || "Pending",
         date: formatMaybeDate(
           referral.createdAt || referral.dateOfReferral || referral.date,
         ),
@@ -149,7 +149,7 @@ export async function getDashboardStats() {
 
   const pendingReferrals = referrals.filter(
     (r) =>
-      r.status === "Pending RHU Review" ||
+      r.status === "Pending " ||
       r.status === "Pending" ||
       r.status === "Received",
   ).length;
