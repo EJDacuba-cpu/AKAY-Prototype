@@ -7,6 +7,7 @@ import {
   KeyRound,
   MoreHorizontal,
   Plus,
+  ShieldCheck,
   UserCheck,
   UserX,
   Users,
@@ -151,6 +152,16 @@ export default function UserManagement({ initialTab = "all" }) {
     [users],
   );
 
+  const activeUsers = useMemo(
+    () => users.filter((user) => user.status === "Active"),
+    [users],
+  );
+
+  const inactiveUsers = useMemo(
+    () => users.filter((user) => user.status === "Inactive"),
+    [users],
+  );
+
   const visibleUsers = useMemo(() => {
     const query = filters.search.trim().toLowerCase();
     const source = activeTab === "doctors" ? rhuDoctors : users;
@@ -246,39 +257,41 @@ export default function UserManagement({ initialTab = "all" }) {
 
   return (
     <DashboardLayout role="admin" title="User & Personnel Management">
-      <div className="mx-auto max-w-7xl space-y-5 px-4 py-6 md:px-8">
-        <div className="flex items-center gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1">
-          {TABS.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.key;
-            const count =
-              tab.key === "doctors" ? rhuDoctors.length : users.length;
+      <div className="space-y-6">
+        <div className="rounded-xl border border-[#E8ECF0] bg-white p-1">
+          <div className="flex items-center gap-1 overflow-x-auto">
+            {TABS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.key;
+              const count =
+                tab.key === "doctors" ? rhuDoctors.length : users.length;
 
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${
-                  isActive
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-500 hover:bg-slate-200/50 hover:text-slate-700"
-                }`}
-              >
-                <Icon size={12} className={isActive ? "text-[#0B2E59]" : ""} />
-                {tab.label}
-                <span
-                  className={`rounded-full px-1.5 py-px text-[9px] font-bold leading-none ${
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-[12px] font-semibold transition-all ${
                     isActive
-                      ? "bg-[#0B2E59]/10 text-[#0B2E59]"
-                      : "bg-slate-300/70 text-slate-600"
+                      ? "bg-[#FEF2F2] text-[#B91C1C]"
+                      : "text-[#6B7280] hover:bg-[#F9FAFB] hover:text-[#111827]"
                   }`}
                 >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
+                  <Icon size={14} />
+                  {tab.label}
+                  <span
+                    className={`rounded-full px-1.5 py-px text-[10px] font-bold leading-none ${
+                      isActive
+                        ? "bg-white text-[#B91C1C]"
+                        : "bg-[#F3F4F6] text-[#6B7280]"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <ListToolbar
@@ -297,7 +310,7 @@ export default function UserManagement({ initialTab = "all" }) {
           actions={
             <Link
               to="/admin/users/add"
-              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-[#092347]"
+              className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
             >
               <Plus size={14} strokeWidth={2.5} />
               Add User Account
@@ -325,17 +338,6 @@ export default function UserManagement({ initialTab = "all" }) {
           />
         )}
 
-        <div className="rounded-lg border border-blue-100 bg-blue-50 px-5 py-4">
-          <div className="flex gap-3">
-            <Activity size={18} className="mt-0.5 shrink-0 text-[#0B2E59]" />
-            <p className="text-xs leading-relaxed text-[#4B5563]">
-              <span className="font-semibold text-[#0B2E59]">Note:</span> MHO
-              manages accounts, passwords, activation, and role assignments. RHU
-              staff still manages daily doctor availability.
-            </p>
-          </div>
-        </div>
-
         {passwordTarget && (
           <ChangePasswordModal
             user={passwordTarget}
@@ -352,27 +354,27 @@ export default function UserManagement({ initialTab = "all" }) {
 
 function AccountsTable({ users, onChangePassword, onUpdateStatus }) {
   return (
-    <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
+    <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
       <TableHeader
         title="User Accounts"
         description="MHO/Admin can update passwords, activate, and deactivate accounts."
         count={users.length}
       />
 
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[820px] table-fixed text-left">
+      <div className="w-full overflow-x-auto">
+        <table className="w-full min-w-[980px] text-left">
           <thead>
-            <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              <th className="w-[110px] px-6 py-4">User ID</th>
-              <th className="w-[250px] px-4 py-4">Account</th>
-              <th className="w-[170px] px-4 py-4">Role / Position</th>
-              <th className="px-4 py-4">Facility</th>
-              <th className="w-[110px] px-4 py-4">Status</th>
-              <th className="w-[80px] px-6 py-4 text-right">Actions</th>
+            <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+              <th className="w-[120px] px-6 py-3">User ID</th>
+              <th className="w-[260px] px-4 py-3">Account</th>
+              <th className="w-[190px] px-4 py-3">Role / Position</th>
+              <th className="px-4 py-3">Facility</th>
+              <th className="w-[120px] px-4 py-3">Status</th>
+              <th className="w-[90px] px-6 py-3 text-right">Actions</th>
             </tr>
           </thead>
 
-          <tbody className="divide-y divide-slate-50">
+          <tbody className="divide-y divide-[#F3F4F6]">
             {users.length === 0 ? (
               <EmptyRow
                 colSpan={6}
@@ -382,38 +384,43 @@ function AccountsTable({ users, onChangePassword, onUpdateStatus }) {
               users.map((user) => (
                 <tr
                   key={user.id}
-                  className="group transition-colors hover:bg-slate-50/30"
+                  className="transition-colors hover:bg-[#F9FAFB]"
                 >
-                  <td className="whitespace-nowrap px-6 py-4 align-middle">
-                    <span className="font-mono text-xs font-medium text-slate-500">
+                  <td className="whitespace-nowrap px-6 py-3.5 align-middle">
+                    <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0B2E59]">
                       {user.id}
                     </span>
                   </td>
-                  <td className="px-4 py-4 align-middle">
-                    <p className="truncate text-sm font-semibold text-slate-900">
+
+                  <td className="px-4 py-3.5 align-middle">
+                    <p className="truncate text-sm font-semibold text-[#111827]">
                       {getDisplayName(user)}
                     </p>
-                    <p className="mt-0.5 truncate text-xs text-slate-400">
+                    <p className="mt-0.5 truncate text-xs text-[#9CA3AF]">
                       {user.email || "No email recorded"}
                     </p>
                   </td>
-                  <td className="px-4 py-4 align-middle">
+
+                  <td className="px-4 py-3.5 align-middle">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <RoleBadge role={user.role} />
-                      <span className="max-w-[130px] truncate text-xs font-medium text-slate-500">
+                      <span className="max-w-[130px] truncate text-xs font-medium text-[#6B7280]">
                         {user.position || "Unassigned"}
                       </span>
                     </div>
                   </td>
-                  <td className="px-4 py-4 align-middle">
-                    <p className="truncate text-sm text-slate-500">
+
+                  <td className="px-4 py-3.5 align-middle">
+                    <p className="truncate text-sm text-[#6B7280]">
                       {user.facility || "-"}
                     </p>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-4 align-middle">
+
+                  <td className="whitespace-nowrap px-4 py-3.5 align-middle">
                     <StatusBadge status={user.status} />
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-right align-middle">
+
+                  <td className="whitespace-nowrap px-6 py-3.5 text-right align-middle">
                     <AccountActions
                       user={user}
                       onChangePassword={onChangePassword}
@@ -432,27 +439,27 @@ function AccountsTable({ users, onChangePassword, onUpdateStatus }) {
 
 function DoctorsTable({ doctors, onChangePassword, onUpdateStatus }) {
   return (
-    <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
+    <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
       <TableHeader
         title="RHU Doctor Accounts"
         description="Doctors are RHU user accounts. Daily availability is updated by RHU staff."
         count={doctors.length}
       />
 
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] table-fixed text-left">
+      <div className="w-full overflow-x-auto">
+        <table className="w-full min-w-[920px] text-left">
           <thead>
-            <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              <th className="w-[120px] px-6 py-4">Doctor ID</th>
-              <th className="w-[280px] px-4 py-4">Doctor Account</th>
-              <th className="w-[190px] px-4 py-4">Doctor Type</th>
-              <th className="px-4 py-4">Facility</th>
-              <th className="w-[110px] px-4 py-4">Status</th>
-              <th className="w-[80px] px-6 py-4 text-right">Actions</th>
+            <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+              <th className="w-[130px] px-6 py-3">Doctor ID</th>
+              <th className="w-[280px] px-4 py-3">Doctor Account</th>
+              <th className="w-[190px] px-4 py-3">Doctor Type</th>
+              <th className="px-4 py-3">Facility</th>
+              <th className="w-[120px] px-4 py-3">Status</th>
+              <th className="w-[90px] px-6 py-3 text-right">Actions</th>
             </tr>
           </thead>
 
-          <tbody className="divide-y divide-slate-50">
+          <tbody className="divide-y divide-[#F3F4F6]">
             {doctors.length === 0 ? (
               <EmptyRow
                 colSpan={6}
@@ -462,22 +469,24 @@ function DoctorsTable({ doctors, onChangePassword, onUpdateStatus }) {
               doctors.map((doctor) => (
                 <tr
                   key={doctor.id}
-                  className="group transition-colors hover:bg-slate-50/30"
+                  className="transition-colors hover:bg-[#F9FAFB]"
                 >
-                  <td className="whitespace-nowrap px-6 py-4 align-middle">
-                    <span className="font-mono text-xs font-medium text-slate-500">
+                  <td className="whitespace-nowrap px-6 py-3.5 align-middle">
+                    <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0B2E59]">
                       {doctor.doctorProfile?.doctorId || doctor.id}
                     </span>
                   </td>
-                  <td className="px-4 py-4 align-middle">
-                    <p className="truncate text-sm font-semibold text-slate-900">
+
+                  <td className="px-4 py-3.5 align-middle">
+                    <p className="truncate text-sm font-semibold text-[#111827]">
                       {getDisplayName(doctor)}
                     </p>
-                    <p className="mt-0.5 truncate text-xs text-slate-400">
+                    <p className="mt-0.5 truncate text-xs text-[#9CA3AF]">
                       {doctor.email || "No email recorded"}
                     </p>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-4 align-middle">
+
+                  <td className="whitespace-nowrap px-4 py-3.5 align-middle">
                     <DoctorTypeBadge
                       label={
                         doctor.doctorProfile?.doctorType ||
@@ -485,15 +494,18 @@ function DoctorsTable({ doctors, onChangePassword, onUpdateStatus }) {
                       }
                     />
                   </td>
-                  <td className="px-4 py-4 align-middle">
-                    <p className="truncate text-sm text-slate-500">
+
+                  <td className="px-4 py-3.5 align-middle">
+                    <p className="truncate text-sm text-[#6B7280]">
                       {doctor.facility || "Rural Health Unit Bulakan"}
                     </p>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-4 align-middle">
+
+                  <td className="whitespace-nowrap px-4 py-3.5 align-middle">
                     <StatusBadge status={doctor.status} />
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-right align-middle">
+
+                  <td className="whitespace-nowrap px-6 py-3.5 text-right align-middle">
                     <AccountActions
                       user={doctor}
                       onChangePassword={onChangePassword}
@@ -512,14 +524,47 @@ function DoctorsTable({ doctors, onChangePassword, onUpdateStatus }) {
 
 function TableHeader({ title, description, count }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-slate-50 bg-slate-50/30 px-6 py-3">
+    <div className="flex flex-col gap-2 border-b border-[#E8ECF0] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
-        <p className="mt-1 text-xs text-slate-400">{description}</p>
+        <h2 className="text-sm font-semibold text-[#0B2E59]">{title}</h2>
+        <p className="mt-1 text-xs text-[#9CA3AF]">{description}</p>
       </div>
-      <span className="shrink-0 text-xs text-slate-400">
-        Showing {count} records
-      </span>
+
+      <div className="flex w-fit items-center gap-2 rounded-md bg-[#F3F4F6] px-2 py-1 text-[10px] font-semibold text-[#6B7280]">
+        {count} records
+      </div>
+    </div>
+  );
+}
+
+function SummaryCard({ title, value, icon, color = "red" }) {
+  const map = {
+    red: "border-t-[#B91C1C] text-[#B91C1C] bg-[#FEF2F2]",
+    green: "border-t-emerald-500 text-emerald-700 bg-emerald-50",
+    blue: "border-t-blue-500 text-blue-700 bg-blue-50",
+    amber: "border-t-amber-400 text-amber-700 bg-amber-50",
+  };
+
+  const selected = map[color] || map.red;
+  const parts = selected.split(" ");
+  const border = parts[0];
+  const iconStyle = parts.slice(1).join(" ");
+
+  return (
+    <div
+      className={`rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-5 ${border}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
+          {title}
+        </p>
+
+        <div className={`shrink-0 rounded-lg p-2 ${iconStyle}`}>{icon}</div>
+      </div>
+
+      <p className="mt-4 text-2xl font-bold tracking-tight text-[#0B2E59]">
+        {value}
+      </p>
     </div>
   );
 }
@@ -529,7 +574,7 @@ function EmptyRow({ colSpan, message }) {
     <tr>
       <td
         colSpan={colSpan}
-        className="px-6 py-12 text-center text-sm text-slate-400"
+        className="px-6 py-12 text-center text-sm text-[#9CA3AF]"
       >
         {message}
       </td>
@@ -576,6 +621,7 @@ function AccountActions({ user, onChangePassword, onUpdateStatus }) {
       ) {
         return;
       }
+
       setOpen(false);
     }
 
@@ -602,7 +648,7 @@ function AccountActions({ user, onChangePassword, onUpdateStatus }) {
     createPortal(
       <div
         ref={menuRef}
-        className="fixed z-[9999] w-56 origin-top-right overflow-hidden rounded-xl border border-slate-100 bg-white shadow-lg ring-1 ring-black/5 focus:outline-none"
+        className="fixed z-[9999] w-56 origin-top-right overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-lg ring-1 ring-black/5 focus:outline-none"
         style={{
           top: position.top,
           left: position.left,
@@ -610,11 +656,11 @@ function AccountActions({ user, onChangePassword, onUpdateStatus }) {
         }}
       >
         <div className="py-1">
-          <div className="border-b border-slate-50 px-4 py-2">
-            <p className="truncate text-xs font-semibold text-slate-900">
+          <div className="border-b border-[#F3F4F6] px-4 py-2">
+            <p className="truncate text-xs font-semibold text-[#111827]">
               {fullName}
             </p>
-            <p className="font-mono text-[10px] text-slate-400">{user.id}</p>
+            <p className="font-mono text-[10px] text-[#9CA3AF]">{user.id}</p>
           </div>
 
           <button
@@ -623,9 +669,9 @@ function AccountActions({ user, onChangePassword, onUpdateStatus }) {
               onChangePassword(user);
               setOpen(false);
             }}
-            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
+            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-[#4B5563] transition-colors hover:bg-[#F9FAFB] hover:text-[#111827]"
           >
-            <KeyRound size={14} className="text-slate-400" />
+            <KeyRound size={14} className="text-[#9CA3AF]" />
             Change Password
           </button>
 
@@ -662,11 +708,12 @@ function AccountActions({ user, onChangePassword, onUpdateStatus }) {
           if (!open) updatePosition();
           setOpen((current) => !current);
         }}
-        className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+        className="flex h-8 w-8 items-center justify-center rounded-full text-[#9CA3AF] transition hover:bg-[#F3F4F6] hover:text-[#4B5563]"
         aria-label={`Open actions for ${fullName}`}
       >
         <MoreHorizontal size={16} />
       </button>
+
       {menu}
     </div>
   );
@@ -702,14 +749,14 @@ function ChangePasswordModal({ user, onClose, onSubmit }) {
         onSubmit={handleSubmit}
         className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl"
       >
-        <div className="border-b border-slate-100 px-5 py-4">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        <div className="border-b border-[#E5E7EB] px-5 py-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
             Admin Password Update
           </p>
           <h2 className="mt-1 text-lg font-bold text-[#0B2E59]">
             Change Password
           </h2>
-          <p className="mt-1 text-xs leading-relaxed text-slate-500">
+          <p className="mt-1 text-xs leading-relaxed text-[#6B7280]">
             Set a new account password for {fullName}. This action is handled by
             the Admin/MHO.
           </p>
@@ -717,28 +764,28 @@ function ChangePasswordModal({ user, onClose, onSubmit }) {
 
         <div className="space-y-4 px-5 py-5">
           <div>
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
               New Password
             </label>
             <input
               type="password"
               value={newPassword}
               onChange={(event) => setNewPassword(event.target.value)}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm outline-none transition focus:border-[#0B2E59]/30 focus:bg-white focus:ring-4 focus:ring-[#0B2E59]/[0.04]"
+              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-sm outline-none transition focus:border-[#B91C1C]/30 focus:bg-white focus:ring-4 focus:ring-[#B91C1C]/[0.08]"
               placeholder="Enter new password"
               autoFocus
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
               Confirm Password
             </label>
             <input
               type="password"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm outline-none transition focus:border-[#0B2E59]/30 focus:bg-white focus:ring-4 focus:ring-[#0B2E59]/[0.04]"
+              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-sm outline-none transition focus:border-[#B91C1C]/30 focus:bg-white focus:ring-4 focus:ring-[#B91C1C]/[0.08]"
               placeholder="Re-enter new password"
             />
           </div>
@@ -750,17 +797,17 @@ function ChangePasswordModal({ user, onClose, onSubmit }) {
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-4">
+        <div className="flex items-center justify-end gap-2 border-t border-[#E5E7EB] bg-[#F9FAFB] px-5 py-4">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+            className="rounded-lg border border-[#E5E7EB] bg-white px-4 py-2 text-xs font-semibold text-[#6B7280] transition hover:bg-[#F9FAFB]"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="rounded-lg bg-[#0B2E59] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#092347]"
+            className="rounded-lg bg-[#B91C1C] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#991B1B]"
           >
             Save Password
           </button>
@@ -781,7 +828,7 @@ function RoleBadge({ role }) {
   return (
     <span
       className={`inline-block whitespace-nowrap rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-        map[role] || "bg-slate-50 text-slate-600 border-slate-200"
+        map[role] || "border-slate-200 bg-slate-50 text-slate-600"
       }`}
     >
       {role || "Unassigned"}
@@ -806,7 +853,7 @@ function StatusBadge({ status }) {
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-        map[status] || "bg-slate-50 text-slate-600 border-slate-200"
+        map[status] || "border-slate-200 bg-slate-50 text-slate-600"
       }`}
     >
       {status || "Active"}
