@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import healthRecordService, {
-  getRhuHealthRecords,
+  getHealthRecordById,
 } from "../../services/healthRecordService";
 import { getPatientDetailsListByRole } from "../../services/patientService";
 import { getCurrentUser } from "../../utils/auth";
@@ -247,7 +247,9 @@ export default function AddHealthRecord() {
 
   const recordId = searchParams.get("recordId");
   const preselectedPatientId = searchParams.get("patientId") || "";
-  const isFollowUp = !!recordId;
+  const mode = searchParams.get("mode") || (recordId ? "follow-up" : "create");
+  const isFollowUp = !!recordId && mode === "follow-up";
+  const isEditingRecord = !!recordId && mode === "edit";
 
   const [patients, setPatients] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -306,6 +308,12 @@ export default function AddHealthRecord() {
     feeding_status: "",
   });
 
+  function normalizePatientStatus(status) {
+    if (status === "Follow-up") return "Follow-up Required";
+    if (status === "For Referral") return "Routine Monitoring";
+    return status || "Routine Monitoring";
+  }
+
   useEffect(() => {
     async function loadPatients() {
       const parsedPatients = await getPatientDetailsListByRole("bhc");
@@ -319,16 +327,43 @@ export default function AddHealthRecord() {
   useEffect(() => {
     if (!recordId) return;
 
-    async function loadFollowUpRecord() {
-      const records = await getRhuHealthRecords();
-      const found = records.find(
-        (record) => record.id === recordId || record._id === recordId,
-      );
+    async function loadExistingRecord() {
+      const found = await getHealthRecordById(recordId, "bhc");
       if (found?.patientId) setSelectedPatientId(found.patientId);
+
+      if (!found || !isEditingRecord) return;
+
+      setDateOfVisit(
+        found.dateOfVisit || new Date().toISOString().split("T")[0],
+      );
+      setTimeOfVisit(
+        found.timeOfVisit ||
+          new Date().toTimeString().split(" ")[0].slice(0, 5),
+      );
+      setChiefComplaint(found.chiefComplaint || "");
+      setSummaryOfPresentIllness(found.summaryOfPresentIllness || "");
+      setDiagnosis(found.diagnosis || "");
+      setMedication(found.medication || found.initialActionsTaken || "");
+      setAttendingStaff(found.attendingStaff || found.recordedBy || "");
+      setConsultationNotes(found.consultationNotes || "");
+      setSystolicBp(found.systolicBp || "");
+      setDiastolicBp(found.diastolicBp || "");
+      setTemp(found.temperature || found.temp || "");
+      setPulse(found.pulseRate || found.pulse || "");
+      setWeight(found.weight || "");
+      setHeight(found.height || "");
+      setFollowUpStatus(normalizePatientStatus(found.followUpStatus));
+      setFollowUpDate(found.followUpDate || "");
+      setMonitoringNotes(found.monitoringNotes || "");
+      setNeedsReferral(found.needsReferral || "no");
+      setPatientCondition(found.patientCondition || "Improving");
+      setExpectedDeliveryDate(found.expectedDeliveryDate || "");
+      setAog(found.aog || "");
+      if (found.immunizationData) setImmunizationData(found.immunizationData);
     }
 
-    loadFollowUpRecord();
-  }, [recordId]);
+    loadExistingRecord();
+  }, [recordId, isEditingRecord]);
 
   useEffect(() => {
     async function loadFollowUpPreview() {
@@ -337,12 +372,7 @@ export default function AddHealthRecord() {
         return;
       }
 
-      const records = await getRhuHealthRecords();
-      setFollowUpRecord(
-        records.find(
-          (record) => record.id === recordId || record._id === recordId,
-        ) || null,
-      );
+      setFollowUpRecord((await getHealthRecordById(recordId, "bhc")) || null);
     }
 
     loadFollowUpPreview();
@@ -496,17 +526,12 @@ export default function AddHealthRecord() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPatientId]);
 
-  useEffect(() => {
-    if (followUpStatus === "For Referral") {
-      setNeedsReferral("yes");
-      setPatientCondition("Needs Further Assessment");
-    } else {
-      setNeedsReferral("no");
-      if (patientCondition === "Needs Further Assessment") {
-        setPatientCondition("Improving");
-      }
+  function handlePatientStatusChange(value) {
+    setFollowUpStatus(value);
+    if (value !== "Follow-up Required") {
+      setFollowUpDate("");
     }
-  }, [followUpStatus, patientCondition]);
+  }
 
   useEffect(() => {
     const registryLmp = selectedPatient?.lmp || selectedPatient?.LMP;
@@ -592,7 +617,7 @@ export default function AddHealthRecord() {
       medication,
       attendingStaff,
       consultationNotes,
-      followUpStatus,
+      followUpStatus: normalizePatientStatus(followUpStatus),
       followUpDate,
       monitoringNotes,
       patientCondition,
@@ -600,7 +625,7 @@ export default function AddHealthRecord() {
       referralReason: "",
       referralCategory: null,
       referralAssessmentStatus:
-        needsReferral === "yes" ? "Pending RHU Assessment" : null,
+              needsReferral === "yes" ? "Pending RHU Assessment" : null,
       lmp: selectedPatient?.lmp || selectedPatient?.LMP || null,
       pmp: selectedPatient?.pmp || null,
       cycleDuration: selectedPatient?.cycleDuration || null,
@@ -611,21 +636,46 @@ export default function AddHealthRecord() {
       aog,
       immunizationData,
       createdByRole: userRole,
+      linkedTrackingId: isFollowUp ? followUpRecord?.linkedTrackingId || "" : "",
     };
 
     try {
-      const savedRecord =
-        await healthRecordService.createHealthRecord(formData);
+      const savedRecord = isEditingRecord
+        ? {
+            success: true,
+            data: await healthRecordService.updateHealthRecordById(
+              recordId,
+              formData,
+              "bhc",
+            ),
+          }
+        : isFollowUp
+          ? await healthRecordService.createFollowUpHealthRecord(
+              {
+                ...formData,
+                previousRecordId: recordId,
+                recordType: "Follow-up",
+                isFollowUp: true,
+              },
+              "bhc",
+            )
+          : await healthRecordService.createHealthRecord(formData, "bhc");
       const savedId = savedRecord?.data?.id || savedRecord?.data?._id;
 
-      if (needsReferral === "yes" && userRole === "bhc") {
+      if (
+        needsReferral === "yes" &&
+        userRole === "bhc" &&
+        !isEditingRecord
+      ) {
         navigate(
           `/bhc/referrals/create?recordId=${savedId}&patientId=${selectedPatientId}`,
         );
         return;
       }
 
-      navigate(healthRecordsPath);
+      navigate(
+        savedId ? `${healthRecordsPath}/${savedId}` : healthRecordsPath,
+      );
     } catch (error) {
       console.error("Failed to save record:", error);
       alert("May error sa pag-save ng record. Pakisuri ang console.");
@@ -644,11 +694,17 @@ export default function AddHealthRecord() {
           <ArrowLeft size={16} /> Back to Health Records
         </Link>
         <h1 className="text-lg font-bold tracking-tight text-[#1A1A1A]">
-          {isFollowUp ? "Follow-up Health Record" : "Add Health Record"}
+          {isFollowUp
+            ? "Follow-up Health Record"
+            : isEditingRecord
+              ? "Edit Health Record"
+              : "Add Health Record"}
         </h1>
         <p className="mt-0.5 text-xs text-[#6B7280]">
           {isFollowUp
             ? `Create a follow-up record for ${followUpRecord?.patientName || "this patient"}.`
+            : isEditingRecord
+              ? "Correct or update details in this existing health record."
             : "Record a consultation, maternal record, immunization record, monitoring update, follow-up, or referral basis."}
         </p>
         {isFollowUp && followUpRecord && (
@@ -677,7 +733,7 @@ export default function AddHealthRecord() {
             <PatientSearchDropdown
               inputRef={inputRef}
               dropdownRef={dropdownRef}
-              disabled={isFollowUp}
+              disabled={isFollowUp || isEditingRecord}
               dropdownOpen={dropdownOpen}
               selectedPatientId={selectedPatientId}
               selectedPatient={selectedPatient}
@@ -687,7 +743,7 @@ export default function AddHealthRecord() {
               highlightIndex={highlightIndex}
               onSearchChange={handlePatientSearchChange}
               onOpen={() => {
-                if (isFollowUp) return;
+                if (isFollowUp || isEditingRecord) return;
                 setSearchTerm("");
                 setDropdownOpen(true);
               }}
@@ -917,28 +973,30 @@ export default function AddHealthRecord() {
         </FormSection>
 
         <FormSection
-          title="Patient Monitoring"
-          subtitle="Track patient progress and follow-up schedules."
-          icon={<HeartPulse size={14} />}
-          delay={5}
-        >
-          <div className="grid gap-4 lg:grid-cols-2">
-            <FieldSelect
-              label="Record Type"
+        title="Patient Monitoring"
+        subtitle="Track patient progress and follow-up schedules."
+        icon={<HeartPulse size={14} />}
+        delay={5}
+      >
+        <div className="grid gap-4 lg:grid-cols-2">
+          <FieldSelect
+              label="Patient Status"
               value={followUpStatus}
-              onChange={(event) => setFollowUpStatus(event.target.value)}
+              onChange={(event) => handlePatientStatusChange(event.target.value)}
             >
               <option>Routine Monitoring</option>
-              <option>Follow-up</option>
-              <option>For Referral</option>
+              <option>Follow-up Required</option>
               <option>Completed</option>
             </FieldSelect>
-            <FieldInput
-              label="Follow-up Date"
-              type="date"
-              value={followUpDate}
-              onChange={(event) => setFollowUpDate(event.target.value)}
-            />
+            {followUpStatus === "Follow-up Required" && (
+              <FieldInput
+                label="Follow-up Date"
+                type="date"
+                value={followUpDate}
+                onChange={(event) => setFollowUpDate(event.target.value)}
+                required
+              />
+            )}
           </div>
           <div className="mt-4">
             <FieldSelect

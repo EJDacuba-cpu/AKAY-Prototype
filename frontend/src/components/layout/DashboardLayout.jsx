@@ -6,7 +6,6 @@ import {
   CalendarDays,
   ClipboardList,
   FileText,
-  HeartPulse,
   LayoutGrid,
   LogOut,
   MapPin,
@@ -32,11 +31,10 @@ const menuByRole = {
     {
       section: "Management",
       items: [
-        { label: "User Management", path: "/admin/users", icon: Users },
         {
-          label: "Doctor Management",
-          path: "/admin/doctors",
-          icon: HeartPulse,
+          label: "Accounts",
+          path: "/admin/users",
+          icon: Users,
         },
       ],
     },

@@ -42,7 +42,6 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import UserManagement from "./pages/admin/UserManagement";
 import AddUser from "./pages/admin/AddUser";
 import DoctorManagement from "./pages/admin/DoctorManagement";
-import AddDoctor from "./pages/admin/AddDoctor";
 
 import AdminReports from "./pages/admin/AdminReports";
 import AuditLogs from "./pages/admin/AuditLogs";
@@ -130,7 +129,7 @@ export default function App() {
         path="/admin/doctors/add"
         element={
           <ProtectedPage allowedRole="admin">
-            <AddDoctor />
+            <AddUser />
           </ProtectedPage>
         }
       />

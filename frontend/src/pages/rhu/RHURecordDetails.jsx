@@ -288,7 +288,7 @@ export default function RHURecordDetails() {
 
           <div className="flex shrink-0 flex-wrap gap-2">
             <Link
-              to={`/rhu/health-records/add?recordId=${getRecordId(record)}`}
+              to={`/rhu/health-records/add?recordId=${getRecordId(record)}&mode=edit`}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0B2E59] shadow-sm transition hover:bg-slate-50"
             >
               <Pencil size={14} />

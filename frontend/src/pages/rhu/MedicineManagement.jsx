@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   Boxes,
@@ -406,37 +407,86 @@ function filterMedicineItems(items, filters) {
 }
 
 function ActionMenu({ item, open, onToggle, onClose, onEdit, onDelete }) {
-  const ref = useRef(null);
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  function updatePosition() {
+    if (!btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    const menuWidth = 176;
+    const menuHeight = 96;
+    const padding = 12;
+    let top = rect.bottom + 6;
+    let left = rect.right - menuWidth;
+
+    if (left < padding) left = padding;
+    if (left + menuWidth > window.innerWidth - padding) {
+      left = window.innerWidth - menuWidth - padding;
+    }
+    if (top + menuHeight > window.innerHeight - padding) {
+      top = rect.top - menuHeight - 6;
+    }
+    if (top < padding) top = padding;
+
+    setPosition({ top, left });
+  }
 
   useEffect(() => {
     if (!open) return;
 
     function handleClick(event) {
-      if (ref.current && !ref.current.contains(event.target)) {
-        onClose();
+      if (
+        btnRef.current?.contains(event.target) ||
+        menuRef.current?.contains(event.target)
+      ) {
+        return;
       }
+      onClose();
+    }
+
+    function handleWindowChange() {
+      onClose();
     }
 
     document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    window.addEventListener("scroll", handleWindowChange, true);
+    window.addEventListener("resize", handleWindowChange);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      window.removeEventListener("scroll", handleWindowChange, true);
+      window.removeEventListener("resize", handleWindowChange);
+    };
   }, [open, onClose]);
 
   return (
-    <div ref={ref} className="relative inline-block">
+    <div className="relative inline-block">
       <button
+        ref={btnRef}
         type="button"
-        onClick={onToggle}
+        onClick={() => {
+          if (!open) updatePosition();
+          onToggle();
+        }}
         className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E8ECF0] bg-white text-[#9CA3AF] transition hover:bg-[#F9FAFB] hover:text-[#0B2E59]"
         aria-label={`Actions for ${item.name}`}
       >
         <MoreVertical size={15} />
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-lg">
+      {open &&
+        createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-[9999] w-44 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-lg"
+          style={{ top: position.top, left: position.left }}
+        >
           <button
             type="button"
-            onClick={onEdit}
+            onClick={() => {
+              onEdit();
+              onClose();
+            }}
             className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#0B2E59]"
           >
             <Edit3 size={14} className="text-[#9CA3AF]" />
@@ -444,13 +494,17 @@ function ActionMenu({ item, open, onToggle, onClose, onEdit, onDelete }) {
           </button>
           <button
             type="button"
-            onClick={onDelete}
+            onClick={() => {
+              onDelete();
+              onClose();
+            }}
             className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-red-700 transition hover:bg-red-50"
           >
             <Trash2 size={14} />
             Delete
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

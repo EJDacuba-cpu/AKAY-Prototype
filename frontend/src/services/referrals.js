@@ -2,8 +2,23 @@ import { getAllReferrals, setAllReferrals } from "./localStorageDataService";
 
 const delay = () => new Promise((resolve) => setTimeout(resolve, 300));
 
-function normalizeReferrals(referrals) {
-  return Array.isArray(referrals) ? referrals : [];
+const ACTIVE_REFERRAL_STATUSES = ["Pending", "Received", "For Monitoring"];
+
+const STATUS_ALIASES = {
+  pending: "Pending",
+  received: "Received",
+  monitoring: "For Monitoring",
+  "for monitoring": "For Monitoring",
+  "under assessment": "For Monitoring",
+  completed: "Completed",
+  "no show": "No-Show",
+  "no-show": "No-Show",
+  noshow: "No-Show",
+};
+
+export function normalizeReferralStatus(status) {
+  const raw = String(status || "Pending").trim();
+  return STATUS_ALIASES[raw.toLowerCase()] || raw;
 }
 
 function normalizeText(value) {
@@ -110,27 +125,74 @@ function getNoShowCutoff(referral) {
   return referralDay;
 }
 
+function getReferralKey(referral = {}) {
+  return referral.trackingId || referral.id || "";
+}
+
+function normalizeReferral(referral = {}) {
+  return {
+    ...referral,
+    status: normalizeReferralStatus(referral.status),
+    statusHistory: Array.isArray(referral.statusHistory)
+      ? referral.statusHistory
+      : [],
+  };
+}
+
+function normalizeReferrals(referrals) {
+  const map = new Map();
+
+  for (const referral of Array.isArray(referrals) ? referrals : []) {
+    const normalized = normalizeReferral(referral);
+    const key = getReferralKey(normalized);
+    if (!key) continue;
+    map.set(key, { ...(map.get(key) || {}), ...normalized });
+  }
+
+  return [...map.values()];
+}
+
+export function saveReferrals(referrals) {
+  const normalized = normalizeReferrals(referrals);
+  setAllReferrals(normalized);
+  return normalized;
+}
+
+function appendStatusHistory(referral, status, extra = {}) {
+  const nextStatus = normalizeReferralStatus(status);
+  return [
+    ...(Array.isArray(referral?.statusHistory) ? referral.statusHistory : []),
+    {
+      status: nextStatus,
+      timestamp: extra.timestamp || new Date().toISOString(),
+      ...extra,
+    },
+  ];
+}
+
+function findReferralByIdOrTrackingId(referrals, id) {
+  return referrals.find(
+    (referral) => referral.id === id || referral.trackingId === id,
+  );
+}
+
 export async function getReferrals() {
   await delay();
-  return normalizeReferrals(getAllReferrals());
+  const referrals = normalizeReferrals(getAllReferrals());
+  saveReferrals(referrals);
+  return referrals;
 }
 
 export async function getReferralById(referralId) {
   await delay();
   const referrals = normalizeReferrals(getAllReferrals());
-  return referrals.find((r) => r.id === referralId) || null;
+  return findReferralByIdOrTrackingId(referrals, referralId) || null;
 }
 
 export async function getReferralByTrackingId(trackingId) {
   await delay();
   const referrals = normalizeReferrals(getAllReferrals());
-  return (
-    referrals.find(
-      (referral) =>
-        referral.trackingId === trackingId ||
-        referral.id === trackingId,
-    ) || null
-  );
+  return findReferralByIdOrTrackingId(referrals, trackingId) || null;
 }
 
 export async function getReferralsByPatient(patient) {
@@ -144,47 +206,125 @@ export async function getReferralsByPatient(patient) {
   );
 }
 
+export async function hasActiveReferralForPatient(patient) {
+  const referrals = await getReferralsByPatient(patient);
+  return referrals.some((referral) =>
+    ACTIVE_REFERRAL_STATUSES.includes(normalizeReferralStatus(referral.status)),
+  );
+}
+
+export async function getReferralByHealthRecordId(recordId) {
+  await delay();
+  if (!recordId) return null;
+
+  const referrals = normalizeReferrals(getAllReferrals());
+  return (
+    referrals.find((referral) =>
+      [
+        referral.healthRecordId,
+        referral.recordId,
+        referral.sourceRecordId,
+        referral.consultationRecordId,
+      ]
+        .filter(Boolean)
+        .includes(recordId),
+    ) || null
+  );
+}
+
 export async function createReferral(referralData) {
   await delay();
 
   const referrals = normalizeReferrals(getAllReferrals());
+  const sourceRecordIds = [
+    referralData?.healthRecordId,
+    referralData?.recordId,
+    referralData?.sourceRecordId,
+    referralData?.consultationRecordId,
+  ].filter(Boolean);
+
+  const existingByRecord =
+    sourceRecordIds.length > 0
+      ? referrals.find((referral) =>
+          [
+            referral.healthRecordId,
+            referral.recordId,
+            referral.sourceRecordId,
+            referral.consultationRecordId,
+          ]
+            .filter(Boolean)
+            .some((recordId) => sourceRecordIds.includes(recordId)),
+        )
+      : null;
+
+  if (existingByRecord) {
+    return existingByRecord;
+  }
 
   const now = new Date();
   const deadline = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+  const trackingId =
+    referralData?.trackingId || `AKY-${Date.now().toString().slice(-6)}`;
 
-  const newReferral = {
-    id: `REF-${Date.now()}`,
-    trackingId: `AKY-${Date.now().toString().slice(-6)}`,
+  const existingByTrackingId = referrals.find(
+    (referral) => referral.trackingId === trackingId,
+  );
+  if (existingByTrackingId) {
+    return existingByTrackingId;
+  }
+
+  const newReferral = normalizeReferral({
+    id: referralData?.id || `REF-${Date.now()}`,
+    trackingId,
     ...referralData,
-    // Keep new referrals in the unified "Pending" status
+    healthRecordId: referralData?.healthRecordId || referralData?.recordId,
+    recordId: referralData?.recordId || referralData?.healthRecordId,
     status: "Pending",
     createdAt: now.toISOString(),
-    referralDeadline: deadline,
-  };
+    updatedAt: now.toISOString(),
+    referralDeadline: referralData?.referralDeadline || deadline,
+    statusHistory: [
+      {
+        status: "Pending",
+        timestamp: now.toISOString(),
+        label: "Submitted",
+      },
+    ],
+  });
 
-  referrals.unshift(newReferral);
-  setAllReferrals(referrals);
+  saveReferrals([newReferral, ...referrals]);
 
   return newReferral;
 }
 
-export async function updateReferralStatus(referralId, status) {
+export async function updateReferralStatus(referralId, status, changes = {}) {
   await delay();
 
   const referrals = normalizeReferrals(getAllReferrals());
+  const now = new Date().toISOString();
+  let updatedReferral = null;
 
-  const updated = referrals.map((r) =>
-    r.id === referralId
-      ? {
-          ...r,
-          status,
-        }
-      : r,
-  );
+  const updated = referrals.map((referral) => {
+    if (referral.id !== referralId && referral.trackingId !== referralId) {
+      return referral;
+    }
 
-  setAllReferrals(updated);
+    const nextStatus = normalizeReferralStatus(status);
+    updatedReferral = normalizeReferral({
+      ...referral,
+      ...changes,
+      status: nextStatus,
+      updatedAt: now,
+      statusHistory: appendStatusHistory(referral, nextStatus, {
+        timestamp: now,
+      }),
+    });
+    return updatedReferral;
+  });
 
-  return updated.find((r) => r.id === referralId) || null;
+  saveReferrals(updated);
+
+  return updatedReferral;
 }
 
 export async function updateReferralByTrackingId(trackingId, changes) {
@@ -195,19 +335,92 @@ export async function updateReferralByTrackingId(trackingId, changes) {
     typeof changes === "function" ? changes : () => ({ ...changes });
 
   let updatedReferral = null;
-  const updated = referrals.map((r) => {
-    if (r.trackingId !== trackingId) return r;
-    updatedReferral = {
-      ...r,
-      ...nextChanges(r),
-      updatedAt: new Date().toISOString(),
-    };
+  const updated = referrals.map((referral) => {
+    if (referral.trackingId !== trackingId && referral.id !== trackingId) {
+      return referral;
+    }
+
+    const computedChanges = nextChanges(referral) || {};
+    const previousStatus = normalizeReferralStatus(referral.status);
+    const nextStatus = computedChanges.status
+      ? normalizeReferralStatus(computedChanges.status)
+      : previousStatus;
+    const statusChanged = nextStatus !== previousStatus;
+    const now = new Date().toISOString();
+
+    updatedReferral = normalizeReferral({
+      ...referral,
+      ...computedChanges,
+      status: nextStatus,
+      updatedAt: now,
+      statusHistory:
+        computedChanges.statusHistory ||
+        (statusChanged
+          ? appendStatusHistory(referral, nextStatus, { timestamp: now })
+          : referral.statusHistory),
+    });
+
     return updatedReferral;
   });
 
-  setAllReferrals(updated);
+  saveReferrals(updated);
 
   return updatedReferral;
+}
+
+export async function submitReturnSlip(trackingId, feedbackData = {}) {
+  const now = new Date().toISOString();
+
+  return updateReferralByTrackingId(trackingId, (referral) => {
+    const feedback = {
+      ...feedbackData,
+      dateOfReceipt:
+        feedbackData.dateOfReceipt || feedbackData.dateReceived || "",
+      timeOfReceipt:
+        feedbackData.timeOfReceipt || feedbackData.timeReceived || "",
+      patientName:
+        feedbackData.patientName ||
+        referral.patientName ||
+        referral.patient ||
+        "",
+      ageSex: feedbackData.ageSex || referral.ageSex || "",
+      receivingFacility:
+        feedbackData.receivingFacility ||
+        feedbackData.nameOfHealthCareInstitution ||
+        "Rural Health Unit Bulakan",
+      nameOfHealthCareInstitution:
+        feedbackData.nameOfHealthCareInstitution ||
+        feedbackData.receivingFacility ||
+        "Rural Health Unit Bulakan",
+      receivingPractitioner:
+        feedbackData.receivingPractitioner ||
+        feedbackData.receivingPersonnel ||
+        "",
+      initialDiagnosis:
+        feedbackData.initialDiagnosis || feedbackData.rhuDiagnosis || "",
+      rhuDiagnosis:
+        feedbackData.rhuDiagnosis || feedbackData.initialDiagnosis || "",
+      actionsTaken: feedbackData.actionsTaken || "",
+      recommendation:
+        feedbackData.recommendation || feedbackData.instructionsToBhc || "",
+      instructionsToBhc:
+        feedbackData.instructionsToBhc || feedbackData.recommendation || "",
+      additionalNotes: feedbackData.additionalNotes || feedbackData.remarks || "",
+      remarks: feedbackData.remarks || feedbackData.additionalNotes || "",
+      submittedAt: feedbackData.submittedAt || now,
+      submittedBy: feedbackData.submittedBy || "RHU Staff",
+    };
+
+    return {
+      status: "Completed",
+      feedback,
+      completedAt: now,
+      statusHistory: appendStatusHistory(referral, "Completed", {
+        timestamp: now,
+        label: "Return Slip Submitted",
+      }),
+    };
+  });
 }
 
 export async function autoMarkNoShowReferrals() {
@@ -216,19 +429,28 @@ export async function autoMarkNoShowReferrals() {
 
   const updated = referrals.map((referral) => {
     const cutoff = getNoShowCutoff(referral);
-    if (referral.status === "Pending" && cutoff && cutoff < now) {
-      return {
+    if (
+      normalizeReferralStatus(referral.status) === "Pending" &&
+      cutoff &&
+      cutoff < now
+    ) {
+      return normalizeReferral({
         ...referral,
         status: "No-Show",
         noShowAt: referral.noShowAt || now.toISOString(),
         previousStatus: referral.previousStatus || "Pending",
-      };
+        statusHistory: referral.noShowAt
+          ? referral.statusHistory
+          : appendStatusHistory(referral, "No-Show", {
+              timestamp: now.toISOString(),
+            }),
+      });
     }
 
     return referral;
   });
 
-  setAllReferrals(updated);
+  saveReferrals(updated);
 
   return updated;
 }
@@ -238,8 +460,13 @@ export default {
   getReferralById,
   getReferralByTrackingId,
   getReferralsByPatient,
+  hasActiveReferralForPatient,
+  getReferralByHealthRecordId,
   createReferral,
   updateReferralStatus,
   updateReferralByTrackingId,
+  submitReturnSlip,
   autoMarkNoShowReferrals,
+  saveReferrals,
+  normalizeReferralStatus,
 };

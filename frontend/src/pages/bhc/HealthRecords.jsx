@@ -6,6 +6,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import ListToolbar from "../../components/common/list/ListToolbar";
 import HealthRecordsTable from "../../components/features/records/HealthRecordsTable";
 import { getHealthRecords } from "../../services/healthRecordService";
+import { getReferrals } from "../../services/referrals";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -24,41 +25,64 @@ export default function HealthRecords() {
     async function fetchRecords() {
       try {
         setLoading(true);
-        const data = await getHealthRecords();
+        const [data, referrals] = await Promise.all([
+          getHealthRecords(),
+          getReferrals(),
+        ]);
         const rawData = Array.isArray(data) ? data : [];
 
-        const normalizedRecords = rawData.map((record) => ({
-          ...record,
-          id:
+        const normalizedRecords = rawData.map((record) => {
+          const recordId =
             record.id ||
             record.trackingId ||
-            Math.random().toString(36).substr(2, 9),
-          trackingId: record.trackingId || record.id || "No Tracking ID",
-          patientName:
-            record.patientName ||
-            `${record.firstName || ""} ${record.lastName || ""}`.trim(),
-          classification:
-            record.patientClassification ||
-            record.classification ||
-            record.category ||
-            (record.vaccineType
-              ? "Immunization"
-              : record.aog || record.expectedDeliveryDate
-                ? "Maternal"
+            Math.random().toString(36).substr(2, 9);
+          const linkedReferral = referrals.find((referral) =>
+            [
+              referral.healthRecordId,
+              referral.recordId,
+              referral.sourceRecordId,
+              referral.consultationRecordId,
+            ]
+              .filter(Boolean)
+              .includes(recordId),
+          );
+
+          return {
+            ...record,
+            id: recordId,
+            trackingId: record.trackingId || record.id || "No Tracking ID",
+            patientName:
+              record.patientName ||
+              `${record.firstName || ""} ${record.lastName || ""}`.trim(),
+            classification:
+              record.patientClassification ||
+              record.classification ||
+              record.category ||
+              (record.vaccineType
+                ? "Immunization"
+                : record.aog || record.expectedDeliveryDate
+                  ? "Maternal"
+                  : "General Consultation"),
+            concern:
+              record.chiefComplaint ||
+              (record.vaccineType
+                ? `${record.vaccineType} - ${record.doseNumber || ""}`
                 : "General Consultation"),
-          concern:
-            record.chiefComplaint ||
-            (record.vaccineType
-              ? `${record.vaccineType} - ${record.doseNumber || ""}`
-              : "General Consultation"),
-          status:
-            record.status ||
-            (record.needsReferral === "yes"
-              ? "Routine Monitoring"
-              : record.followUpStatus || "Completed"),
-          followUp: record.followUpDate || "No Follow-up",
-          date: record.dateOfVisit || record.date || "No Date",
-        }));
+            status:
+              record.status ||
+              (record.needsReferral === "yes"
+                ? "Routine Monitoring"
+                : record.followUpStatus || "Completed"),
+            followUp: record.followUpDate || "No Follow-up",
+            date: record.dateOfVisit || record.date || "No Date",
+            linkedReferralTrackingId:
+              linkedReferral?.trackingId ||
+              (!record.isFollowUp
+                ? record.linkedTrackingId || record.referralTrackingId
+                : "") ||
+              "",
+          };
+        });
 
         setRecords(normalizedRecords.reverse());
       } catch (error) {

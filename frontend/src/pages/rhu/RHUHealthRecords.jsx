@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import {
   Eye,
@@ -17,9 +18,11 @@ import {
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ListToolbar from "../../components/common/list/ListToolbar";
+import { getRhuHealthRecords } from "../../services/healthRecordService";
 
 /* ─── Constants ─── */
-const STORAGE_KEY = "rhu_health_records";
+const STORAGE_KEY = "akay_rhu_health_records";
+const LEGACY_STORAGE_KEY = "rhu_health_records";
 const PER_PAGE = 6;
 
 /* ─── Component ─── */
@@ -39,13 +42,10 @@ export default function RHUHealthRecords() {
 
   /* ─── Load Data from LocalStorage ─── */
   useEffect(() => {
-    const loadRecords = () => {
+    const loadRecords = async () => {
       try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          setAllRecords(Array.isArray(parsed) ? parsed : []);
-        }
+        const parsed = await getRhuHealthRecords();
+        setAllRecords(Array.isArray(parsed) ? parsed : []);
       } catch (error) {
         console.error("Failed to load health records:", error);
       } finally {
@@ -56,7 +56,7 @@ export default function RHUHealthRecords() {
     loadRecords();
 
     const handleStorageChange = (e) => {
-      if (e.key === STORAGE_KEY) {
+      if (e.key === STORAGE_KEY || e.key === LEGACY_STORAGE_KEY) {
         loadRecords();
       }
     };
@@ -488,20 +488,83 @@ function StatusBadge({ status }) {
 }
 
 function ActionMenu({ record, open, onToggle, onClose }) {
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+
+  function updatePosition() {
+    if (!btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    const menuWidth = 192;
+    const menuHeight = 110;
+    const padding = 12;
+    let top = rect.bottom + 8;
+    let left = rect.right - menuWidth;
+
+    if (left < padding) left = padding;
+    if (left + menuWidth > window.innerWidth - padding) {
+      left = window.innerWidth - menuWidth - padding;
+    }
+    if (top + menuHeight > window.innerHeight - padding) {
+      top = rect.top - menuHeight - 8;
+    }
+    if (top < padding) top = padding;
+
+    setPosition({ top, left });
+  }
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function handleMouseDown(event) {
+      if (
+        btnRef.current?.contains(event.target) ||
+        menuRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      onClose();
+    }
+
+    function handleWindowChange() {
+      onClose();
+    }
+
+    document.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("scroll", handleWindowChange, true);
+    window.addEventListener("resize", handleWindowChange);
+
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("scroll", handleWindowChange, true);
+      window.removeEventListener("resize", handleWindowChange);
+    };
+  }, [open, onClose]);
+
   return (
     <div className="relative inline-block text-left">
       <button
-        onClick={onToggle}
+        ref={btnRef}
+        onClick={() => {
+          if (!open) updatePosition();
+          onToggle();
+        }}
         className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
       >
         <MoreHorizontal size={16} />
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-full z-10 mt-2 w-48 origin-top-right overflow-hidden rounded-xl border border-slate-100 bg-white shadow-lg ring-1 ring-black/5 focus:outline-none">
+      {open &&
+        createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-[9999] w-48 origin-top-right overflow-hidden rounded-xl border border-slate-100 bg-white shadow-lg ring-1 ring-black/5 focus:outline-none"
+          style={{ top: position.top, left: position.left }}
+        >
           <div className="py-1">
             <Link
               to={`/rhu/health-records/${record.id}`}
+              onClick={onClose}
               className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
             >
               <Eye size={14} className="text-slate-400" />
@@ -509,13 +572,15 @@ function ActionMenu({ record, open, onToggle, onClose }) {
             </Link>
             <Link
               to={`/rhu/health-records/add?recordId=${record.id}&mode=follow-up`}
+              onClick={onClose}
               className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
             >
               <FilePlus2 size={14} className="text-slate-400" />
               Add Follow-up Record
             </Link>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

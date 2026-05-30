@@ -6,8 +6,7 @@ const LEGACY_PATIENT_DETAILS_KEY = "patient_details";
 const LEGACY_RHU_PATIENTS_KEY = "rhu_patients";
 const BHC_PATIENTS_KEY = "akay_bhc_patients";
 const RHU_PATIENTS_KEY = "akay_rhu_patients";
-const HEALTH_RECORDS_KEY = "bhc_health_records";
-const REFERRALS_KEY = "bhc_referrals";
+const HEALTH_RECORDS_KEY = "akay_bhc_health_records";
 
 function ensureArray(value) {
   return Array.isArray(value) ? value : [];

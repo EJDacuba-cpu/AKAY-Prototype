@@ -617,8 +617,30 @@ function StatusBadge({ status }) {
 
 function ActionMenu({ patientId, patientName }) {
   const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
   const btnRef = useRef(null);
   const menuRef = useRef(null);
+
+  function updatePosition() {
+    if (!btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    const menuWidth = 192;
+    const menuHeight = 150;
+    const padding = 12;
+    let top = rect.bottom + 8;
+    let left = rect.right - menuWidth;
+
+    if (left < padding) left = padding;
+    if (left + menuWidth > window.innerWidth - padding) {
+      left = window.innerWidth - menuWidth - padding;
+    }
+    if (top + menuHeight > window.innerHeight - padding) {
+      top = rect.top - menuHeight - 8;
+    }
+    if (top < padding) top = padding;
+
+    setPosition({ top, left });
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -630,15 +652,29 @@ function ActionMenu({ patientId, patientName }) {
         return;
       setOpen(false);
     }
+    function handleWindowChange() {
+      setOpen(false);
+    }
     document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
+    window.addEventListener("scroll", handleWindowChange, true);
+    window.addEventListener("resize", handleWindowChange);
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      window.removeEventListener("scroll", handleWindowChange, true);
+      window.removeEventListener("resize", handleWindowChange);
+    };
   }, [open]);
 
-  const menu = open && (
+  const menu = open &&
+    createPortal(
     <div
       ref={menuRef}
-      className="absolute right-0 top-full z-10 mt-2 w-48 origin-top-right overflow-hidden rounded-xl border border-slate-100 bg-white shadow-lg ring-1 ring-black/5 focus:outline-none"
-      style={{ minWidth: "180px" }}
+      className="fixed z-[9999] w-48 origin-top-right overflow-hidden rounded-xl border border-slate-100 bg-white shadow-lg ring-1 ring-black/5 focus:outline-none"
+      style={{
+        top: position.top,
+        left: position.left,
+        minWidth: "180px",
+      }}
     >
       <div className="py-1">
         <div className="px-4 py-2 border-b border-slate-50">
@@ -649,6 +685,7 @@ function ActionMenu({ patientId, patientName }) {
         </div>
         <Link
           to={`/rhu/patients/${patientId}`}
+          onClick={() => setOpen(false)}
           className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
         >
           <Eye size={14} className="text-slate-400" />
@@ -656,20 +693,25 @@ function ActionMenu({ patientId, patientName }) {
         </Link>
         <Link
           to={`/rhu/health-records/add?patientId=${patientId}`}
+          onClick={() => setOpen(false)}
           className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
         >
           <FilePlus2 size={14} className="text-slate-400" />
           Add Health Record
         </Link>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 
   return (
     <div className="relative inline-block text-left">
       <button
         ref={btnRef}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open) updatePosition();
+          setOpen(!open);
+        }}
         className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
       >
         <MoreHorizontal size={16} />

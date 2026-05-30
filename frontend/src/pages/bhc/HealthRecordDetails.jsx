@@ -19,6 +19,10 @@ import {
   getHealthRecordById,
   updateHealthRecord,
 } from "../../services/healthRecordService";
+import {
+  getReferralByHealthRecordId,
+  getReferralByTrackingId,
+} from "../../services/referrals";
 
 import SideCard from "../../components/common/cards/SideCard";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
@@ -38,6 +42,7 @@ export default function HealthRecordDetails() {
 
   const [record, setRecord] = useState(null);
   const [patient, setPatient] = useState(null);
+  const [linkedReferral, setLinkedReferral] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -54,6 +59,12 @@ export default function HealthRecordDetails() {
 
         const recordData = await getHealthRecordById(recordId);
         setRecord(recordData);
+        const existingReferral =
+          (await getReferralByHealthRecordId(recordId)) ||
+          (!recordData?.isFollowUp && recordData?.linkedTrackingId
+            ? await getReferralByTrackingId(recordData.linkedTrackingId)
+            : null);
+        setLinkedReferral(existingReferral);
 
         if (recordData) {
           initializeForm(recordData);
@@ -232,33 +243,42 @@ export default function HealthRecordDetails() {
                 </>
               ) : (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => setIsEditing(true)}
+                  <Link
+                    to={`/bhc/health-records/add?recordId=${record.id || record._id}&mode=edit`}
                     className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0B2E59] shadow-sm transition hover:bg-slate-50"
                   >
                     <Pencil size={14} />
                     Edit Record
-                  </button>
+                  </Link>
                   <Link
-                    to={`/bhc/health-records/add?recordId=${record.id || record._id}`}
+                    to={`/bhc/health-records/add?recordId=${record.id || record._id}&mode=follow-up`}
                     className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0B2E59] shadow-sm transition hover:bg-slate-50"
                   >
                     <FilePlus2 size={14} />
                     Add Follow-up Record
                   </Link>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      navigate(
-                        `/bhc/referrals/create?recordId=${record.id || record._id}`,
-                      )
-                    }
-                    className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
-                  >
-                    <ClipboardList size={14} />
-                    Create Referral
-                  </button>
+                  {linkedReferral?.trackingId ? (
+                    <Link
+                      to={`/bhc/referrals/${linkedReferral.trackingId}`}
+                      className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+                    >
+                      <ClipboardList size={14} />
+                      View Referral
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate(
+                          `/bhc/referrals/create?recordId=${record.id || record._id}`,
+                        )
+                      }
+                      className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+                    >
+                      <ClipboardList size={14} />
+                      Create Referral
+                    </button>
+                  )}
                 </>
               )}
             </div>

@@ -19,7 +19,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 
 import {
   getReferrals,
-  updateReferralByTrackingId,
+  submitReturnSlip,
 } from "../../services/referrals";
 
 const OUTCOME_OPTIONS = [
@@ -369,14 +369,10 @@ export default function FeedbackReturnSlip() {
       submittedAt: now,
     };
 
-    const updated = await updateReferralByTrackingId(
-      selectedReferral.trackingId,
-      {
-        status: "Completed",
-        feedback,
-        completedAt: now,
-      },
-    );
+    const updated = await submitReturnSlip(selectedReferral.trackingId, {
+      ...feedback,
+      submittedBy: form.receivingPersonnel || "RHU Staff",
+    });
 
     if (updated) {
       setReferrals((prev) =>

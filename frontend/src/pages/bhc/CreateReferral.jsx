@@ -15,8 +15,16 @@ import {
   Radio,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { createReferral } from "../../services/referrals";
-import { getHealthRecords } from "../../services/healthRecordService";
+import {
+  createReferral,
+  getReferralByHealthRecordId,
+  getReferralByTrackingId,
+  hasActiveReferralForPatient,
+} from "../../services/referrals";
+import {
+  getHealthRecords,
+  updateHealthRecordById,
+} from "../../services/healthRecordService";
 import { getPatients } from "../../services/patientService";
 import {
   createDoctorAvailabilitySnapshot,
@@ -249,12 +257,41 @@ export default function CreateReferral() {
     setShowUnavailableDoctorModal(false);
   }
 
-  function handleSubmit(e) {
+  async function findExistingReferralForRecord() {
+    const sourceRecordId = record?.id || record?._id || targetRecordId;
+    return (
+      (await getReferralByHealthRecordId(sourceRecordId)) ||
+      (!record?.isFollowUp && record?.linkedTrackingId
+        ? await getReferralByTrackingId(record.linkedTrackingId)
+        : null)
+    );
+  }
+
+  async function handleSubmit(e) {
     e.preventDefault();
+    const existingReferral = await findExistingReferralForRecord();
+    if (existingReferral?.trackingId) {
+      navigate(`/bhc/referrals/${existingReferral.trackingId}`);
+      return;
+    }
+
+    if (patient && (await hasActiveReferralForPatient(patient))) {
+      const proceed = window.confirm(
+        "This patient already has an active BHC-RHU referral. Continue only if this is a separate referral transaction.",
+      );
+      if (!proceed) return;
+    }
     setShowConfirmModal(true);
   }
 
   async function confirmReferralSubmission() {
+    const existingReferral = await findExistingReferralForRecord();
+    if (existingReferral?.trackingId) {
+      setShowConfirmModal(false);
+      navigate(`/bhc/referrals/${existingReferral.trackingId}`);
+      return;
+    }
+
     const availabilitySnapshot = createDoctorAvailabilitySnapshot(
       rhuDoctorAvailability,
     );
@@ -317,6 +354,7 @@ export default function CreateReferral() {
       patientPhilHealthCategory: form.philHealthCategory,
 
       healthRecordId: record?.id || record?._id,
+      recordId: record?.id || record?._id,
 
       // RHU IncomingReferrals uses `chiefComplaint || concern`.
       chiefComplaint: record?.chiefComplaint,
@@ -330,6 +368,17 @@ export default function CreateReferral() {
       practitioner: "Lorna Reyes",
       suggestedSpecialization,
     });
+
+    if (record?.id || record?._id) {
+      await updateHealthRecordById(
+        record.id || record._id,
+        {
+          linkedTrackingId: referral.trackingId,
+          referralTrackingId: referral.trackingId,
+        },
+        "bhc",
+      );
+    }
 
     setGeneratedTrackingId(referral.trackingId);
     setShowConfirmModal(false);

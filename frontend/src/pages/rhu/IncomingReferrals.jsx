@@ -491,7 +491,12 @@ export default function IncomingReferrals() {
     loadReferrals();
 
     function handleStorageEvent(e) {
-      if (!e || e.key !== "referrals") return;
+      if (
+        !e ||
+        !["akay_referrals", "referrals", "bhc_referrals"].includes(e.key)
+      ) {
+        return;
+      }
       loadReferrals();
     }
 

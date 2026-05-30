@@ -2,18 +2,21 @@ import { getItem, setItem } from "./storageService";
 
 // Shared localStorage keys (as requested)
 export const KEYS = {
-  patients: "patients",
-  healthRecords: "healthRecords",
-  referrals: "referrals",
+  patients: "akay_bhc_patients",
+  healthRecords: "akay_bhc_health_records",
+  referrals: "akay_referrals",
   feedbackRecords: "feedbackRecords",
   notifications: "notifications",
 };
 
 // Legacy keys already used elsewhere in the app
 const LEGACY_KEYS = {
+  patients: "patients",
   patients_bhc: "bhc_patients",
   patient_details: "patient_details",
+  healthRecords: "healthRecords",
   bhc_health_records: "bhc_health_records",
+  referrals: "referrals",
   bhc_referrals: "bhc_referrals",
   // Some flows may store notifications elsewhere; keep room for it.
   mock_notifications: "mock_notifications",
@@ -33,19 +36,50 @@ function uniqById(items = []) {
   return [...map.values()];
 }
 
+function uniqByKey(items = [], keySelector = (item) => item?.id) {
+  const keyed = new Map();
+  const unkeyed = [];
+
+  for (const item of ensureArray(items)) {
+    const key = keySelector(item);
+    if (!key) {
+      unkeyed.push(item);
+      continue;
+    }
+    keyed.set(key, { ...(keyed.get(key) || {}), ...item });
+  }
+
+  return [...keyed.values(), ...unkeyed];
+}
+
+function mergeStoredArrays(primaryKey, legacyKeys, keySelector) {
+  const primary = ensureArray(getItem(primaryKey, []));
+  const legacy = legacyKeys.flatMap((key) => ensureArray(getItem(key, [])));
+  const merged = uniqByKey([...legacy, ...primary], keySelector);
+
+  if (legacy.length > 0 && merged.length >= primary.length) {
+    setItem(primaryKey, merged);
+  }
+
+  return merged;
+}
+
 function migrateOnce() {
   // Prevent repeated migrations across renders.
   const flagKey = "_akay_migrated_localstorage_shared_keys_v1";
   const already = getItem(flagKey, false);
   if (already) return;
 
-  // 1) Patients: if shared `patients` is empty, try legacy sources
+  // 1) Patients: if shared BHC patients are empty, try legacy sources
   const sharedPatients = getItem(KEYS.patients, null);
   const hasSharedPatients =
     Array.isArray(sharedPatients) && sharedPatients.length > 0;
 
   if (!hasSharedPatients) {
-    const legacyPatients = ensureArray(getItem(LEGACY_KEYS.patients_bhc, []));
+    const legacyPatients = [
+      ...ensureArray(getItem(LEGACY_KEYS.patients, [])),
+      ...ensureArray(getItem(LEGACY_KEYS.patients_bhc, [])),
+    ];
     const patientDetails = ensureArray(
       getItem(LEGACY_KEYS.patient_details, []),
     );
@@ -67,23 +101,29 @@ function migrateOnce() {
     if (deduped.length > 0) setItem(KEYS.patients, deduped);
   }
 
-  // 2) Health records: if shared `healthRecords` is empty, copy legacy `bhc_health_records`
+  // 2) Health records: if BHC records are empty, copy legacy BHC records
   const sharedHealthRecords = getItem(KEYS.healthRecords, null);
   const hasSharedHealthRecords =
     Array.isArray(sharedHealthRecords) && sharedHealthRecords.length > 0;
 
   if (!hasSharedHealthRecords) {
-    const legacy = ensureArray(getItem(LEGACY_KEYS.bhc_health_records, []));
+    const legacy = [
+      ...ensureArray(getItem(LEGACY_KEYS.healthRecords, [])),
+      ...ensureArray(getItem(LEGACY_KEYS.bhc_health_records, [])),
+    ];
     if (legacy.length > 0) setItem(KEYS.healthRecords, legacy);
   }
 
-  // 3) Referrals: if shared `referrals` is empty, copy legacy `bhc_referrals`
+  // 3) Referrals: if shared `akay_referrals` is empty, copy legacy referrals
   const sharedReferrals = getItem(KEYS.referrals, null);
   const hasSharedReferrals =
     Array.isArray(sharedReferrals) && sharedReferrals.length > 0;
 
   if (!hasSharedReferrals) {
-    const legacy = ensureArray(getItem(LEGACY_KEYS.bhc_referrals, []));
+    const legacy = [
+      ...ensureArray(getItem(LEGACY_KEYS.referrals, [])),
+      ...ensureArray(getItem(LEGACY_KEYS.bhc_referrals, [])),
+    ];
     if (legacy.length > 0) setItem(KEYS.referrals, legacy);
   }
 
@@ -104,17 +144,29 @@ export function runMigrationIfNeeded() {
 
 export function getAllPatients() {
   runMigrationIfNeeded();
-  return ensureArray(getItem(KEYS.patients, []));
+  return mergeStoredArrays(
+    KEYS.patients,
+    [LEGACY_KEYS.patients, LEGACY_KEYS.patients_bhc, LEGACY_KEYS.patient_details],
+    (patient) => patient?.id || patient?.patientId || patient?._id,
+  );
 }
 
 export function getAllHealthRecords() {
   runMigrationIfNeeded();
-  return ensureArray(getItem(KEYS.healthRecords, []));
+  return mergeStoredArrays(
+    KEYS.healthRecords,
+    [LEGACY_KEYS.healthRecords, LEGACY_KEYS.bhc_health_records],
+    (record) => record?.id || record?._id,
+  );
 }
 
 export function getAllReferrals() {
   runMigrationIfNeeded();
-  return ensureArray(getItem(KEYS.referrals, []));
+  return mergeStoredArrays(
+    KEYS.referrals,
+    [LEGACY_KEYS.referrals, LEGACY_KEYS.bhc_referrals],
+    (referral) => referral?.trackingId || referral?.id,
+  );
 }
 
 export function getAllFeedbackRecords() {
@@ -138,7 +190,13 @@ export function setAllHealthRecords(records) {
 }
 
 export function setAllReferrals(referrals) {
-  setItem(KEYS.referrals, ensureArray(referrals));
+  setItem(
+    KEYS.referrals,
+    uniqByKey(
+      ensureArray(referrals),
+      (referral) => referral?.trackingId || referral?.id,
+    ),
+  );
 }
 
 export function setAllFeedbackRecords(records) {

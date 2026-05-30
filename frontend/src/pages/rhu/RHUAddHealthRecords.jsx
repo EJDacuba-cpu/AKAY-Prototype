@@ -18,10 +18,12 @@ import {
   X,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { getRhuHealthRecords } from "../../services/healthRecordService";
+import {
+  getRhuHealthRecords,
+  saveRhuHealthRecords,
+} from "../../services/healthRecordService";
 import { getPatientDetailsListByRole } from "../../services/patientService";
 import { getCurrentUser } from "../../utils/auth";
-import { setItem } from "../../services/storageService";
 
 /* ═══════════════════════════════════════════════════════════════
    KEYFRAMES
@@ -246,9 +248,9 @@ export default function AddHealthRecord() {
   const recordId = searchParams.get("recordId");
   const preselectedPatientId = searchParams.get("patientId") || "";
   const linkedTrackingId = searchParams.get("trackingId") || "";
-  const mode = searchParams.get("mode") || "";
+  const mode = searchParams.get("mode") || (recordId ? "edit" : "create");
   const isFollowUp = !!recordId && mode === "follow-up";
-  const isEditingRecord = !!recordId && !isFollowUp;
+  const isEditingRecord = !!recordId && mode === "edit";
 
   const [patients, setPatients] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -306,6 +308,12 @@ export default function AddHealthRecord() {
     feeding_status: "",
   });
 
+  function normalizePatientStatus(status) {
+    if (status === "Follow-up") return "Follow-up Required";
+    if (status === "For Referral") return "Routine Monitoring";
+    return status || "Routine Monitoring";
+  }
+
   useEffect(() => {
     async function loadPatients() {
       const parsedPatients = await getPatientDetailsListByRole("rhu");
@@ -330,6 +338,8 @@ export default function AddHealthRecord() {
       if (!found || !active) return;
 
       setSelectedPatientId(found.patientId || "");
+      if (!isEditingRecord) return;
+
       setDateOfVisit(
         found.dateOfVisit || new Date().toISOString().split("T")[0],
       );
@@ -349,7 +359,7 @@ export default function AddHealthRecord() {
       setPulse(found.pulseRate || found.pulse || "");
       setWeight(found.weight || "");
       setHeight(found.height || "");
-      setFollowUpStatus(found.followUpStatus || "Routine Monitoring");
+      setFollowUpStatus(normalizePatientStatus(found.followUpStatus));
       setFollowUpDate(found.followUpDate || "");
       setMonitoringNotes(found.monitoringNotes || "");
       setPatientCondition(found.patientCondition || "Improving");
@@ -363,7 +373,7 @@ export default function AddHealthRecord() {
     return () => {
       active = false;
     };
-  }, [recordId]);
+  }, [recordId, isEditingRecord]);
 
   useEffect(() => {
     async function loadFollowUpPreview() {
@@ -581,6 +591,13 @@ export default function AddHealthRecord() {
     });
   }
 
+  function handlePatientStatusChange(value) {
+    setFollowUpStatus(value);
+    if (value !== "Follow-up Required") {
+      setFollowUpDate("");
+    }
+  }
+
   async function handleSave(event) {
     event.preventDefault();
 
@@ -634,7 +651,7 @@ export default function AddHealthRecord() {
         initialActionsTaken: medication,
         attendingStaff,
         consultationNotes,
-        followUpStatus,
+        followUpStatus: normalizePatientStatus(followUpStatus),
         followUpDate,
         monitoringNotes,
         patientCondition,
@@ -647,8 +664,12 @@ export default function AddHealthRecord() {
         expectedDeliveryDate,
         aog,
         immunizationData,
-        linkedTrackingId,
+        linkedTrackingId:
+          linkedTrackingId ||
+          (isFollowUp ? followUpRecord?.linkedTrackingId || "" : ""),
         previousRecordId: isFollowUp ? recordId : "",
+        recordType: isFollowUp ? "Follow-up" : existingRecord?.recordType,
+        isFollowUp,
         status: followUpStatus === "Completed" ? "Completed" : "Active",
         recordedBy: attendingStaff || "RHU Staff",
         createdByRole: "rhu",
@@ -666,7 +687,7 @@ export default function AddHealthRecord() {
           )
         : [recordData, ...records];
 
-      setItem("rhu_health_records", nextRecords);
+      await saveRhuHealthRecords(nextRecords);
       navigate(`/rhu/health-records/${currentId}`);
     } catch (error) {
       console.error("Failed to save RHU health record:", error);
@@ -727,7 +748,7 @@ export default function AddHealthRecord() {
             <PatientSearchDropdown
               inputRef={inputRef}
               dropdownRef={dropdownRef}
-              disabled={isFollowUp}
+              disabled={isFollowUp || isEditingRecord}
               dropdownOpen={dropdownOpen}
               selectedPatientId={selectedPatientId}
               selectedPatient={selectedPatient}
@@ -737,7 +758,7 @@ export default function AddHealthRecord() {
               highlightIndex={highlightIndex}
               onSearchChange={handlePatientSearchChange}
               onOpen={() => {
-                if (isFollowUp) return;
+                if (isFollowUp || isEditingRecord) return;
                 setSearchTerm("");
                 setDropdownOpen(true);
               }}
@@ -976,20 +997,23 @@ export default function AddHealthRecord() {
         >
           <div className="grid gap-4 lg:grid-cols-2">
             <FieldSelect
-              label="Record Type"
+              label="Patient Status"
               value={followUpStatus}
-              onChange={(event) => setFollowUpStatus(event.target.value)}
+              onChange={(event) => handlePatientStatusChange(event.target.value)}
             >
               <option>Routine Monitoring</option>
-              <option>Follow-up</option>
+              <option>Follow-up Required</option>
               <option>Completed</option>
             </FieldSelect>
-            <FieldInput
-              label="Follow-up Date"
-              type="date"
-              value={followUpDate}
-              onChange={(event) => setFollowUpDate(event.target.value)}
-            />
+            {followUpStatus === "Follow-up Required" && (
+              <FieldInput
+                label="Follow-up Date"
+                type="date"
+                value={followUpDate}
+                onChange={(event) => setFollowUpDate(event.target.value)}
+                required
+              />
+            )}
           </div>
           <div className="mt-4">
             <FieldSelect

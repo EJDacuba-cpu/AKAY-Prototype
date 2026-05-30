@@ -107,15 +107,15 @@ export default function AdminDashboard() {
 
       <div className="mb-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         <QuickCard
-          title="User Management"
-          description="Create and manage BHC, RHU, and admin accounts."
+          title="User & Personnel Management"
+          description="Create and manage MHO, BHC, RHU, and doctor accounts."
           icon={<UserCheck size={20} />}
           href="/admin/users"
         />
 
         <QuickCard
-          title="Doctor Management"
-          description="Manage doctor profiles, specialization, and expertise."
+          title="RHU Doctors"
+          description="View RHU doctor accounts and default schedules."
           icon={<Stethoscope size={20} />}
           href="/admin/doctors"
         />
