@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   Building2,
-  CalendarDays,
   CheckCircle2,
   ClipboardList,
   Clock,
@@ -41,8 +40,9 @@ const keyframes = `
 `;
 
 const TABS = [
-  { key: "referral", label: "Referral Information", icon: ClipboardList },
+  { key: "patient", label: "Patient Information", icon: User },
   { key: "clinical", label: "Clinical Data", icon: Stethoscope },
+  { key: "history", label: "Referral History", icon: Clock },
   { key: "returnSlip", label: "Return Slip", icon: MessageSquare },
 ];
 
@@ -55,9 +55,10 @@ export default function RHUReferralDetails() {
   const [patient, setPatient] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [activeTab, setActiveTab] = useState("referral");
+  const [activeTab, setActiveTab] = useState("patient");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [selectedHistoryReferral, setSelectedHistoryReferral] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -184,7 +185,7 @@ export default function RHUReferralDetails() {
     <DashboardLayout role="rhu" title="Referral Details">
       <style>{keyframes}</style>
 
-      <div className="anim-fade-up mb-4" style={stagger(0)}>
+      <div className="anim-fade-up mb-3" style={stagger(0)}>
         <Link
           to="/rhu/incoming-referrals"
           className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 hover:text-[#0B2E59]"
@@ -227,14 +228,17 @@ export default function RHUReferralDetails() {
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <main className="anim-fade-up min-w-0" style={stagger(3)}>
-          {activeTab === "referral" && (
-            <ReferralInformation
-              referral={referral}
-              patient={patient}
-              relatedReferrals={relatedReferrals}
-            />
+          {activeTab === "patient" && (
+            <PatientInformation referral={referral} patient={patient} />
           )}
           {activeTab === "clinical" && <ClinicalDetails referral={referral} />}
+          {activeTab === "history" && (
+            <PreviousReferrals
+              currentReferral={referral}
+              referrals={relatedReferrals}
+              onView={setSelectedHistoryReferral}
+            />
+          )}
           {activeTab === "returnSlip" && <ReturnSlip referral={referral} />}
         </main>
 
@@ -253,20 +257,30 @@ export default function RHUReferralDetails() {
           <StatusHistory referral={referral} />
         </aside>
       </div>
+
+      {selectedHistoryReferral && (
+        <ReferralHistoryModal
+          referral={selectedHistoryReferral}
+          currentPatient={patient}
+          onClose={() => setSelectedHistoryReferral(null)}
+        />
+      )}
     </DashboardLayout>
   );
 }
 
 function ReferralHeader({ referral, patient }) {
+  const referralDate = getReferralDate(referral);
+
   return (
     <header
-      className="anim-fade-up mb-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+      className="anim-fade-up mb-5 border-b border-slate-200 pb-5"
       style={stagger(1)}
     >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-xl font-bold text-[#0B2E59]">
+            <h1 className="text-2xl font-bold tracking-tight text-[#0B2E59]">
               {getPatientName(referral, patient)}
             </h1>
             <StatusBadge status={referral.status} />
@@ -281,73 +295,79 @@ function ReferralHeader({ referral, patient }) {
               icon={<Phone size={12} />}
               value={getContact(referral, patient)}
             />
-            <InfoChip value={getPatientClassification(referral, patient)} />
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-            <span className="font-mono font-semibold text-[#0B2E59]">
-              {referral.trackingId}
-            </span>
-            <span className="text-slate-300">/</span>
-            <span>
-              {formatDate(getReferralDate(referral))} at{" "}
-              {formatTime(getReferralDate(referral))}
-            </span>
-            <span className="text-slate-300">/</span>
-            <span>
-              {getReferringHci(referral, patient)} to Rural Health Unit Bulakan
-            </span>
           </div>
         </div>
+      </div>
+
+      <div className="mt-4 grid gap-x-6 gap-y-3 border-t border-slate-100 pt-4 sm:grid-cols-2 xl:grid-cols-4">
+        <HeaderDetail
+          label="Tracking ID"
+          value={referral.trackingId || referral.id}
+          mono
+        />
+        <HeaderDetail
+          label="Date / Time of Referral"
+          value={`${formatDate(referralDate)} · ${formatTime(referralDate)}`}
+        />
+        <HeaderDetail
+          label="Name of Referring HCI"
+          value={getReferringHci(referral, patient)}
+        />
+        <HeaderDetail
+          label="Destination Facility"
+          value={getDestinationFacility(referral)}
+        />
+        <HeaderDetail
+          label="Referral Category"
+          value={getReferralCategory(referral)}
+        />
+        <HeaderDetail
+          label="PhilHealth Acct No."
+          value={getPhilHealth(referral, patient)}
+        />
+        <HeaderDetail
+          label="Referring Practitioner"
+          value={getReferringPractitioner(referral)}
+        />
       </div>
     </header>
   );
 }
 
-function ReferralInformation({ referral, patient, relatedReferrals }) {
-  const referralDate = getReferralDate(referral);
+function HeaderDetail({ label, value, mono }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        {label}
+      </p>
+      <p
+        className={`mt-1 truncate text-sm font-semibold text-slate-700 ${
+          mono ? "font-mono text-[#0B2E59]" : ""
+        }`}
+        title={value || "Not recorded"}
+      >
+        {value || "Not recorded"}
+      </p>
+    </div>
+  );
+}
 
+function PatientInformation({ referral, patient }) {
   return (
     <div className="space-y-4">
       <RecordSection
-        title="Official Referral Form Details"
-        description="BHC-RHU referral transaction information."
-        icon={<ClipboardList size={14} />}
+        title="Patient Demographics"
+        description="Basic patient details from the referral record."
+        icon={<User size={14} />}
       >
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Detail
-            label="Referral Category"
-            value={getReferralCategory(referral)}
-            badge
-          />
-          <Detail label="Date of Referral" value={formatDate(referralDate)} />
-          <Detail label="Time of Referral" value={formatTime(referralDate)} />
-          <Detail
-            label="Name of Referring HCI"
-            value={getReferringHci(referral, patient)}
-            icon={<Building2 size={12} />}
-          />
-          <Detail
-            label="PhilHealth Acct No."
-            value={getPhilHealth(referral, patient)}
-          />
-          <Detail
-            label="Name and Signature of Referring Practitioner"
-            value={getReferringPractitioner(referral)}
-          />
-        </div>
-      </RecordSection>
-
-      <RecordSection title="Patient Information" icon={<User size={14} />}>
         <div className="grid gap-4 md:grid-cols-2">
-          <Detail
-            label="Name of Patient"
-            value={getPatientName(referral, patient)}
-            strong
-          />
           <Detail
             label="Date of Birth"
             value={getBirthDate(referral, patient)}
+          />
+          <Detail
+            label="Age / Sex / Civil Status"
+            value={getAgeSexCivil(referral, patient)}
           />
           <Detail
             label="Address"
@@ -355,8 +375,9 @@ function ReferralInformation({ referral, patient, relatedReferrals }) {
             icon={<MapPin size={12} />}
           />
           <Detail
-            label="Age / Sex / Civil Status"
-            value={getAgeSexCivil(referral, patient)}
+            label="Contact Number"
+            value={getContact(referral, patient)}
+            icon={<Phone size={12} />}
           />
           <Detail
             label="PhilHealth Category"
@@ -364,105 +385,195 @@ function ReferralInformation({ referral, patient, relatedReferrals }) {
           />
         </div>
       </RecordSection>
-
-      <PreviousReferrals
-        currentReferral={referral}
-        referrals={relatedReferrals}
-      />
     </div>
   );
 }
 
-function PreviousReferrals({ currentReferral, referrals }) {
+function PreviousReferrals({ currentReferral, referrals, onView }) {
   const previous = referrals
     .filter((item) => item.trackingId !== currentReferral.trackingId)
     .sort(sortReferralDesc);
-  const completedCount = referrals.filter(
-    (item) => item.status === "Completed",
-  ).length;
-  const noShowCount = referrals.filter(
-    (item) => item.status === "No-Show",
-  ).length;
-  const latestReferral = [...referrals].sort(sortReferralDesc)[0];
 
   return (
     <RecordSection
-      title="Previous BHC-RHU Referrals"
-      description="Referral history context for this patient only."
+      title="Referral History"
+      description="Previous BHC-RHU referrals for the same patient."
       icon={<Clock size={14} />}
     >
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MiniStat label="Total Referrals" value={referrals.length} />
-        <MiniStat label="Completed Referrals" value={completedCount} />
-        <MiniStat label="No-Show Referrals" value={noShowCount} />
-        <MiniStat
-          label="Latest Referral Date"
-          value={formatDate(getReferralDate(latestReferral))}
-        />
-      </div>
-
       {previous.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-8 text-center text-sm text-slate-400">
           No previous BHC-RHU referrals found for this patient.
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                <th className="px-4 py-3">Tracking ID</th>
-                <th className="px-4 py-3">Date of Referral</th>
-                <th className="px-4 py-3">Name of Referring HCI</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {previous.map((item) => (
-                <tr
-                  key={item.trackingId || item.id}
-                  className="hover:bg-slate-50/70"
-                >
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <span className="font-mono text-xs font-bold text-[#0B2E59]">
-                      {item.trackingId || item.id}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">
-                    {formatDate(getReferralDate(item))}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-600">
-                    {getReferringHci(item)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <StatusBadge status={item.status} />
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right">
-                    <Link
-                      to={`/rhu/referrals/${item.trackingId || item.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0B2E59] hover:bg-slate-50"
-                    >
-                      <Eye size={12} />
-                      View
-                    </Link>
-                  </td>
+        <>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-slate-500">
+              {previous.length} previous referral
+              {previous.length > 1 ? "s" : ""} found for this patient.
+            </p>
+            <p className="text-[11px] font-medium text-slate-400">
+              Click View Info to review the previous transaction.
+            </p>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-100">
+            <table className="w-full min-w-[720px] text-left">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  <th className="px-4 py-3">Tracking ID</th>
+                  <th className="px-4 py-3">Date of Referral</th>
+                  <th className="px-4 py-3">Name of Referring HCI</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {previous.map((item) => (
+                  <tr
+                    key={item.trackingId || item.id}
+                    className="hover:bg-slate-50/70"
+                  >
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <span className="font-mono text-xs font-bold text-[#0B2E59]">
+                        {item.trackingId || item.id}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">
+                      {formatDate(getReferralDate(item))}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-600">
+                      {getReferringHci(item)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <StatusBadge status={item.status} />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => onView(item)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0B2E59] hover:bg-slate-50"
+                      >
+                        <Eye size={12} />
+                        View Info
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </RecordSection>
   );
 }
 
-function MiniStat({ label, value }) {
+function ReferralHistoryModal({ referral, currentPatient, onClose }) {
+  const referralDate = getReferralDate(referral);
+
   return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-        {label}
-      </p>
-      <p className="mt-1 text-sm font-bold text-[#0B2E59]">{value || 0}</p>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/40 px-4 py-6 backdrop-blur-sm">
+      <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Previous Referral Information
+            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-bold text-[#0B2E59]">
+                {referral.trackingId || referral.id}
+              </h2>
+              <StatusBadge status={referral.status} />
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="max-h-[70vh] overflow-y-auto p-5">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Detail
+              label="Patient"
+              value={getPatientName(referral, currentPatient)}
+              strong
+            />
+            <Detail
+              label="Date / Time"
+              value={`${formatDate(referralDate)} · ${formatTime(referralDate)}`}
+            />
+            <Detail
+              label="Name of Referring HCI"
+              value={getReferringHci(referral, currentPatient)}
+            />
+            <Detail
+              label="Referral Category"
+              value={getReferralCategory(referral)}
+              badge
+            />
+            <Detail
+              label="PhilHealth Acct No."
+              value={getPhilHealth(referral, currentPatient)}
+            />
+            <Detail
+              label="Referring Practitioner"
+              value={getReferringPractitioner(referral)}
+            />
+          </div>
+
+          <div className="mt-5 space-y-4">
+            <div>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Chief Complaint
+              </p>
+              <Narrative
+                value={referral.chiefComplaint || referral.concern}
+                empty="No chief complaint recorded."
+              />
+            </div>
+            <div>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Reason for Referral
+              </p>
+              <Narrative
+                value={referral.reasonForReferral || referral.referralReason}
+                empty="No reason for referral recorded."
+              />
+            </div>
+            <div>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Return Slip / Feedback
+              </p>
+              {referral.feedback ? (
+                <Narrative
+                  value={[
+                    referral.feedback.rhuDiagnosis &&
+                      `Diagnosis: ${referral.feedback.rhuDiagnosis}`,
+                    referral.feedback.actionsTaken &&
+                      `Actions: ${referral.feedback.actionsTaken}`,
+                    referral.feedback.recommendation &&
+                      `Recommendation: ${referral.feedback.recommendation}`,
+                    referral.feedback.remarks &&
+                      `Remarks: ${referral.feedback.remarks}`,
+                  ]
+                    .filter(Boolean)
+                    .join("\n")}
+                  empty="No feedback recorded."
+                />
+              ) : (
+                <Narrative
+                  value=""
+                  empty="No return slip or feedback recorded."
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -592,16 +703,11 @@ function ReturnSlip({ referral }) {
 function SystemReference({ referral }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
-        <div>
-          <h2 className="text-[13px] font-bold text-slate-800">
-            System Reference
-          </h2>
-          <p className="text-[10.5px] text-slate-400">
-            Referral tracking details
-          </p>
-        </div>
-        <StatusBadge status={referral.status} />
+      <div className="mb-4 border-b border-slate-100 pb-3">
+        <h2 className="text-[13px] font-bold text-slate-800">
+          System Reference
+        </h2>
+        <p className="text-[10.5px] text-slate-400">QR code and tracking ID</p>
       </div>
       <div className="mx-auto mb-3 flex h-28 w-28 items-center justify-center rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/50">
         <QrCode size={56} className="text-[#0B2E59]/60" />
@@ -851,6 +957,7 @@ function ClassBadge({ value }) {
     Maternal: "bg-pink-100 text-pink-700",
     Immunization: "bg-emerald-100 text-emerald-700",
     "Senior Citizen": "bg-violet-100 text-violet-700",
+    "General Consultation": "bg-blue-100 text-blue-700",
   };
 
   return (
@@ -998,6 +1105,15 @@ function getReferringHci(referral = {}, patient = null) {
   return barangay
     ? `Barangay ${cleanBarangayName(barangay)} Health Center`
     : "Barangay Health Center";
+}
+
+function getDestinationFacility(referral = {}) {
+  return (
+    referral.destinationFacility ||
+    referral.referredFacility ||
+    referral.receivingFacility ||
+    "Rural Health Unit Bulakan"
+  );
 }
 
 function getReferralDate(referral = {}) {

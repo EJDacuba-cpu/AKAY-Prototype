@@ -158,9 +158,7 @@ export default function RHUPatientDetails() {
 
         <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <h1 className="text-xl font-bold text-[#0B2E59]">
-              {patientName}
-            </h1>
+            <h1 className="text-xl font-bold text-[#0B2E59]">{patientName}</h1>
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <InfoChip label={patient.id || patientId} />
@@ -250,7 +248,10 @@ function PatientInformationTab({ patient, classification }) {
                 General Information
               </h3>
               <div className="grid gap-x-8 gap-y-1 md:grid-cols-2">
-                <PatientDetailItem label="First Name" value={patient.firstName} />
+                <PatientDetailItem
+                  label="First Name"
+                  value={patient.firstName}
+                />
                 <PatientDetailItem
                   label="Middle Name"
                   value={patient.middleName}
@@ -328,9 +329,7 @@ function RhuRecordsTab({ records }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
-        <h2 className="text-sm font-bold text-[#0B2E59]">
-          RHU Record History
-        </h2>
+        <h2 className="text-sm font-bold text-[#0B2E59]">RHU Record History</h2>
         <p className="text-xs text-slate-400">
           Facility visits and clinical records linked to this patient.
         </p>
@@ -408,9 +407,7 @@ function ReferralHistoryTab({ referrals }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
-        <h2 className="text-sm font-bold text-[#0B2E59]">
-          Referral History
-        </h2>
+        <h2 className="text-sm font-bold text-[#0B2E59]">Referral History</h2>
         <p className="text-xs text-slate-400">
           Referrals from BHC facilities connected to this patient.
         </p>

@@ -4,6 +4,7 @@ import {
   ClipboardList,
   FileText,
   HeartPulse,
+  Stethoscope,
   Users,
 } from "lucide-react";
 
@@ -34,6 +35,12 @@ import {
   getRecentHealthRecords,
   getRecentReferrals,
 } from "../../services/dashboardService";
+import {
+  formatDoctorAvailabilityDate,
+  formatDoctorAvailabilitySummary,
+  getDoctorAvailability,
+  listenDoctorAvailabilityUpdates,
+} from "../../services/doctorAvailability";
 
 /* Reusable Animation */
 const stagger = (i) => ({
@@ -48,6 +55,9 @@ export default function BHCDashboard() {
   const [referrals, setReferrals] = useState([]);
 
   const [medicineAlerts, setMedicineAlerts] = useState([]);
+  const [doctorAvailability, setDoctorAvailability] = useState(() =>
+    getDoctorAvailability(),
+  );
 
   const [loading, setLoading] = useState(true);
 
@@ -83,6 +93,10 @@ export default function BHCDashboard() {
     }
 
     fetchDashboard();
+  }, []);
+
+  useEffect(() => {
+    return listenDoctorAvailabilityUpdates(setDoctorAvailability);
   }, []);
 
   /* Loading */
@@ -228,6 +242,8 @@ export default function BHCDashboard() {
               2xl:self-start
             "
           >
+            <DoctorAvailabilityCard availability={doctorAvailability} />
+
             <WorkflowPanel delay={8} />
 
             {/* Medicine */}
@@ -292,5 +308,45 @@ export default function BHCDashboard() {
         </div>
       </div>
     </DashboardLayout>
+  );
+}
+
+function DoctorAvailabilityCard({ availability }) {
+  return (
+    <SideCard title="RHU Doctor Availability" delay={8}>
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
+          <Stethoscope size={17} />
+        </div>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                availability.status === "Not Available"
+                  ? "bg-red-50 text-red-700"
+                  : "bg-emerald-50 text-emerald-700"
+              }`}
+            >
+              {availability.status}
+            </span>
+            <span className="text-[11px] font-semibold text-[#6B7280]">
+              {availability.availableDoctorCount} of{" "}
+              {availability.totalDoctorCount} available
+            </span>
+          </div>
+
+          <p className="mt-2 text-xs font-semibold text-[#4B5563]">
+            {formatDoctorAvailabilitySummary(availability)}.
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-[#6B7280]">
+            {availability.note}
+          </p>
+          <p className="mt-2 text-[10px] font-medium text-[#9CA3AF]">
+            Updated by {availability.updatedBy || "RHU Staff"} ·{" "}
+            {formatDoctorAvailabilityDate(availability.updatedAt)}
+          </p>
+        </div>
+      </div>
+    </SideCard>
   );
 }

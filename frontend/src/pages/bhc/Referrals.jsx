@@ -1,29 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  ClipboardList,
-  Search,
-  Clock,
-  CheckCircle2,
-  Activity,
-  XCircle,
-  RotateCcw,
-  X,
-} from "lucide-react";
+import { ClipboardList, Stethoscope } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import ListToolbar from "../../components/common/list/ListToolbar";
 import ActionMenu from "../../components/common/tables/ActionMenu";
 import { getReferrals } from "../../services/referrals";
+import {
+  getDoctorAvailability,
+  listenDoctorAvailabilityUpdates,
+} from "../../services/doctorAvailability";
 
-/* ─────────────────────────────────────────────
-   Tab Configuration
-───────────────────────────────────────────── */
-const REFERRAL_TABS = [
-  { key: "All", label: "All Referrals", icon: ClipboardList },
-  { key: "Pending", label: "Pending", icon: Clock },
-  { key: "Received", label: "Received", icon: ClipboardList },
-  { key: "For Monitoring", label: "Monitoring", icon: Activity },
-  { key: "Completed", label: "Completed", icon: CheckCircle2 },
-  { key: "No-Show", label: "No-Show", icon: XCircle },
-];
+const DEFAULT_FILTERS = {
+  search: "",
+  status: "All",
+  classification: "All",
+  urgency: "All Urgency",
+  dateSubmitted: "",
+};
 
 function getReferralClassification(referral) {
   return (
@@ -34,33 +26,93 @@ function getReferralClassification(referral) {
   );
 }
 
-function matchesStatusTab(referralStatus, tabKey) {
-  if (tabKey === "All") return true;
-  if (tabKey === "Pending") {
-    return referralStatus === "Pending" || referralStatus === "Pending RHU Review";
-  }
-  if (tabKey === "Received") {
-    return referralStatus === "Received" || referralStatus === "Received by RHU";
-  }
-  if (tabKey === "For Monitoring") {
-    return referralStatus === "For Monitoring" || referralStatus === "Under Assessment";
-  }
-  return referralStatus === tabKey;
+function getReferralUrgency(referral) {
+  const raw =
+    referral.urgency ||
+    referral.priorityLevel ||
+    referral.priority ||
+    "Non-Urgent";
+
+  const mapLegacyToNew = {
+    High: "Emergency",
+    Medium: "Urgent",
+    Normal: "Non-Urgent",
+  };
+
+  return mapLegacyToNew[raw] || raw;
 }
 
-/* ─────────────────────────────────────────────
-   Main Component
-───────────────────────────────────────────── */
+function matchesReferralStatus(referralStatus, selectedStatus) {
+  if (selectedStatus === "All") return true;
+  if (selectedStatus === "Pending") {
+    return (
+      referralStatus === "Pending" || referralStatus === "Pending RHU Review"
+    );
+  }
+  if (selectedStatus === "Received") {
+    return (
+      referralStatus === "Received" || referralStatus === "Received by RHU"
+    );
+  }
+  if (selectedStatus === "For Monitoring") {
+    return (
+      referralStatus === "For Monitoring" ||
+      referralStatus === "Under Assessment"
+    );
+  }
+
+  return referralStatus === selectedStatus;
+}
+
+function getDateValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+  return date.toISOString().slice(0, 10);
+}
+
+function getSubmittedDate(referral) {
+  return getDateValue(
+    referral.createdAt ||
+      referral.dateSubmitted ||
+      referral.dateOfReferral ||
+      referral.referralDate,
+  );
+}
+
+function getAvailableDoctorCount(doctorAvailability) {
+  if (typeof doctorAvailability?.availableDoctorCount === "number") {
+    return doctorAvailability.availableDoctorCount;
+  }
+
+  if (Array.isArray(doctorAvailability?.doctors)) {
+    return doctorAvailability.doctors.filter(
+      (doctor) => doctor.status === "Available",
+    ).length;
+  }
+
+  return doctorAvailability?.status === "Not Available" ? 0 : 2;
+}
+
+function getTotalDoctorCount(doctorAvailability) {
+  if (typeof doctorAvailability?.totalDoctorCount === "number") {
+    return doctorAvailability.totalDoctorCount;
+  }
+
+  if (Array.isArray(doctorAvailability?.doctors)) {
+    return doctorAvailability.doctors.length;
+  }
+
+  return 2;
+}
 
 export default function Referrals() {
   const [referrals, setReferrals] = useState([]);
-  const [filters, setFilters] = useState({
-    search: "",
-    status: "All",
-    classification: "All",
-  });
+  const [doctorAvailability, setDoctorAvailability] = useState(() =>
+    getDoctorAvailability(),
+  );
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
 
-  /* Load Referrals via Service */
   useEffect(() => {
     async function loadReferrals() {
       const data = await getReferrals();
@@ -69,211 +121,176 @@ export default function Referrals() {
     loadReferrals();
   }, []);
 
-  /* Tab Counts */
-  const tabCounts = useMemo(() => {
-    const baseSearch = referrals.filter((referral) => {
-      const matchesSearch =
-        !filters.search ||
-        referral.patientName
-          ?.toLowerCase()
-          .includes(filters.search.toLowerCase()) ||
-        referral.trackingId
-          ?.toLowerCase()
-          .includes(filters.search.toLowerCase()) ||
-        referral.chiefComplaint
-          ?.toLowerCase()
-          .includes(filters.search.toLowerCase()) ||
-        referral.concern?.toLowerCase().includes(filters.search.toLowerCase());
-      const matchesClass =
-        filters.classification === "All"
-          ? true
-          : getReferralClassification(referral) === filters.classification;
-      return matchesSearch && matchesClass;
-    });
+  useEffect(() => {
+    return listenDoctorAvailabilityUpdates(setDoctorAvailability);
+  }, []);
 
-    return REFERRAL_TABS.reduce((acc, tab) => {
-      acc[tab.key] =
-        tab.key === "All"
-          ? baseSearch.length
-          : baseSearch.filter((r) => matchesStatusTab(r.status, tab.key))
-              .length;
-      return acc;
-    }, {});
-  }, [referrals, filters.search, filters.classification]);
+  const classificationOptions = useMemo(
+    () => [
+      "All",
+      ...new Set(referrals.map(getReferralClassification).filter(Boolean)),
+    ],
+    [referrals],
+  );
 
-  /* Filtered Referrals */
   const filteredReferrals = useMemo(() => {
     return referrals.filter((referral) => {
+      const searchTerm = filters.search.toLowerCase();
       const matchesSearch =
         !filters.search ||
-        referral.patientName
-          ?.toLowerCase()
-          .includes(filters.search.toLowerCase()) ||
-        referral.trackingId
-          ?.toLowerCase()
-          .includes(filters.search.toLowerCase()) ||
-        referral.chiefComplaint
-          ?.toLowerCase()
-          .includes(filters.search.toLowerCase()) ||
-        referral.concern?.toLowerCase().includes(filters.search.toLowerCase());
+        referral.patientName?.toLowerCase().includes(searchTerm) ||
+        referral.patient?.toLowerCase().includes(searchTerm) ||
+        referral.trackingId?.toLowerCase().includes(searchTerm) ||
+        referral.chiefComplaint?.toLowerCase().includes(searchTerm) ||
+        referral.concern?.toLowerCase().includes(searchTerm);
 
-      const matchesStatus =
-        filters.status === "All"
-          ? true
-          : matchesStatusTab(referral.status, filters.status);
-
+      const matchesStatus = matchesReferralStatus(
+        referral.status,
+        filters.status,
+      );
       const matchesClass =
-        filters.classification === "All"
-          ? true
-          : getReferralClassification(referral) === filters.classification;
+        filters.classification === "All" ||
+        getReferralClassification(referral) === filters.classification;
+      const matchesUrgency =
+        filters.urgency === "All Urgency" ||
+        getReferralUrgency(referral) === filters.urgency;
+      const matchesDate =
+        !filters.dateSubmitted ||
+        getSubmittedDate(referral) === filters.dateSubmitted;
 
-      return matchesSearch && matchesStatus && matchesClass;
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesClass &&
+        matchesUrgency &&
+        matchesDate
+      );
     });
   }, [referrals, filters]);
 
-  const handleFilterChange = (key, value) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const handleTabChange = (statusKey) => {
-    setFilters((prev) => ({ ...prev, status: statusKey }));
-  };
-
-  const clearFilters = () => {
-    setFilters({ search: "", status: "All", classification: "All" });
-  };
-
-  const hasActiveFilters =
-    filters.search !== "" ||
-    filters.status !== "All" ||
-    filters.classification !== "All";
-
   const activeFilters = [
-    filters.search && { key: "search", label: filters.search },
+    filters.search && { key: "search", label: `Search: ${filters.search}` },
     filters.status !== "All" && { key: "status", label: filters.status },
     filters.classification !== "All" && {
       key: "classification",
       label: filters.classification,
     },
+    filters.urgency !== "All Urgency" && {
+      key: "urgency",
+      label: filters.urgency,
+    },
+    filters.dateSubmitted && {
+      key: "dateSubmitted",
+      label: filters.dateSubmitted,
+    },
   ].filter(Boolean);
 
+  const activeFilterCount = activeFilters.filter(
+    (filter) => filter.key !== "search",
+  ).length;
+
+  const dropdownFilters = [
+    {
+      key: "status",
+      label: "Status",
+      value: filters.status,
+      options: [
+        "All",
+        "Pending",
+        "Received",
+        "For Monitoring",
+        "Completed",
+        "No-Show",
+      ],
+    },
+    {
+      key: "classification",
+      label: "Classification",
+      value: filters.classification,
+      options: classificationOptions,
+    },
+    {
+      key: "urgency",
+      label: "Urgency",
+      value: filters.urgency,
+      options: ["All Urgency", "Non-Urgent", "Urgent", "Emergency"],
+    },
+    {
+      key: "dateSubmitted",
+      label: "Date Submitted",
+      value: filters.dateSubmitted,
+      type: "date",
+    },
+  ];
+
+  const availableDoctorCount = getAvailableDoctorCount(doctorAvailability);
+  const totalDoctorCount = getTotalDoctorCount(doctorAvailability);
+
+  function updateFilter(key, value) {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function clearFilters() {
+    setFilters(DEFAULT_FILTERS);
+  }
+
   function removeFilter(key) {
-    if (key === "search") handleFilterChange("search", "");
-    if (key === "status") handleFilterChange("status", "All");
-    if (key === "classification") handleFilterChange("classification", "All");
+    const resetValues = {
+      search: "",
+      status: "All",
+      classification: "All",
+      urgency: "All Urgency",
+      dateSubmitted: "",
+    };
+    setFilters((prev) => ({ ...prev, [key]: resetValues[key] }));
   }
 
   return (
     <DashboardLayout role="bhc" title="Referral Coordination Center">
-      <div className="mb-4 rounded-xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
-          <div className="min-w-0 flex-1">
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-              Search Patient / Tracking ID / Chief Complaint
-            </label>
-            <div className="relative">
-              <Search
-                size={13}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]"
-              />
-              <input
-                type="text"
-                value={filters.search}
-                onChange={(e) => handleFilterChange("search", e.target.value)}
-                placeholder="Search patient, tracking ID, or chief complaint..."
-                className="h-10 w-full rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] pl-8 pr-3 text-[13px] text-[#0F172A] outline-none transition-all placeholder:text-[#94A3B8] focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
-              />
-            </div>
-          </div>
+      <ListToolbar
+        searchValue={filters.search}
+        onSearchChange={(value) => updateFilter("search", value)}
+        searchPlaceholder="Search by patient name, referral ID, or chief complaint..."
+        chip={
+          <span className="inline-flex items-center gap-2">
+            <Stethoscope size={14} className="text-[#B91C1C]" />
+            RHU Doctors: {availableDoctorCount} of {totalDoctorCount} available
+          </span>
+        }
+        filters={dropdownFilters}
+        activeFilterCount={activeFilterCount}
+        activeFilters={activeFilters}
+        onApplyFilters={(nextFilters) =>
+          setFilters((prev) => ({ ...prev, ...nextFilters }))
+        }
+        onClearFilters={clearFilters}
+        onRemoveFilter={removeFilter}
+      />
 
-          <div className="w-full xl:w-[210px]">
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-              Classification
-            </label>
-            <select
-              value={filters.classification}
-              onChange={(e) =>
-                handleFilterChange("classification", e.target.value)
-              }
-              className="h-10 w-full appearance-none rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-2.5 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
-            >
-              <option value="All">All Classifications</option>
-              <option value="General Consultation">General Consultation</option>
-              <option value="Maternal Care">Maternal Care</option>
-              <option value="Immunization">Immunization</option>
-            </select>
+      <div className="min-w-0 overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-[#F3F4F6] px-5 py-3">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">
+              Referral Tracking
+            </h2>
+            <p className="text-[11px] text-slate-400">
+              {filteredReferrals.length} referral record
+              {filteredReferrals.length === 1 ? "" : "s"} shown
+            </p>
           </div>
         </div>
 
-        {activeFilters.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#F3F4F6] pt-3">
-            {activeFilters.map((filter) => (
-              <button
-                key={filter.key}
-                type="button"
-                onClick={() => removeFilter(filter.key)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[#DBEAFE] bg-[#EFF6FF] px-2.5 py-1 text-[11px] font-medium text-[#1D4ED8] transition-colors hover:bg-[#DBEAFE]"
-              >
-                {filter.label}
-                <X size={10} />
-              </button>
-            ))}
-
-            {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#64748B] transition-colors hover:text-[#0B2E59]"
-              >
-                <RotateCcw size={11} />
-                Clear all
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="mb-4 flex items-center gap-1.5 overflow-x-auto rounded-lg bg-[#F1F5F9] p-1">
-        {REFERRAL_TABS.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = filters.status === tab.key;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => handleTabChange(tab.key)}
-              className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-[11.5px] font-medium transition-all ${
-                isActive
-                  ? "bg-white text-[#0F172A] shadow-sm"
-                  : "text-[#64748B] hover:text-[#0F172A]"
-              }`}
-            >
-              <Icon size={13} className={isActive ? "text-[#0B2E59]" : ""} />
-              {tab.label}
-              <span
-                className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none ${
-                  isActive
-                    ? "bg-[#0B2E59]/10 text-[#0B2E59]"
-                    : "bg-slate-200/70 text-slate-500"
-                }`}
-              >
-                {tabCounts[tab.key] ?? 0}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="min-w-0 rounded-xl border border-[#E2E8F0] bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px] text-left">
+          <table className="w-full min-w-[900px] text-left">
             <thead>
               <tr className="border-b border-[#F3F4F6] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
                 <th className="px-6 py-3">Tracking ID</th>
                 <th className="px-4 py-3">Patient</th>
+                <th className="px-4 py-3">Referred To</th>
                 <th className="px-4 py-3">Classification</th>
-                <th className="px-4 py-3">Referral Status</th>
-                <th className="px-4 py-3">Submitted</th>
+                <th className="px-4 py-3">Urgency</th>
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -282,7 +299,7 @@ export default function Referrals() {
               {filteredReferrals.length > 0 ? (
                 filteredReferrals.map((referral) => (
                   <tr
-                    key={referral.id}
+                    key={referral.trackingId || referral.id}
                     className="group transition-colors duration-150 hover:bg-slate-50/80"
                   >
                     <td className="px-6 py-4">
@@ -292,16 +309,20 @@ export default function Referrals() {
                     </td>
 
                     <td className="px-4 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-[12.5px] font-semibold text-slate-800">
-                            {referral.patientName || referral.patient}
-                          </p>
-                          <p className="text-[11px] text-slate-400">
-                            {referral.ageSex}
-                          </p>
-                        </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-[12.5px] font-semibold text-slate-800">
+                          {referral.patientName || referral.patient}
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          {referral.ageSex}
+                        </p>
                       </div>
+                    </td>
+
+                    <td className="px-4 py-4 text-[12px] text-slate-600">
+                      {referral.receivingFacility ||
+                        referral.destinationFacility ||
+                        "Rural Health Unit Bulakan"}
                     </td>
 
                     <td className="px-4 py-4">
@@ -311,18 +332,24 @@ export default function Referrals() {
                     </td>
 
                     <td className="px-4 py-4">
-                      <StatusBadge status={referral.status} />
+                      <UrgencyBadge urgency={getReferralUrgency(referral)} />
                     </td>
 
                     <td className="px-4 py-4 text-[12px] text-slate-500">
-                      {new Date(referral.createdAt).toLocaleDateString()}
+                      {getSubmittedDate(referral) || "—"}
+                    </td>
+
+                    <td className="px-4 py-4">
+                      <StatusBadge status={referral.status} />
                     </td>
 
                     <td className="px-4 py-4 text-right">
                       <ActionMenu
                         title={referral.patientName || referral.patient}
                         subtitle={referral.trackingId}
-                        viewLink={`/bhc/referrals/${referral.trackingId || referral.id}`}
+                        viewLink={`/bhc/referrals/${
+                          referral.trackingId || referral.id
+                        }`}
                         viewLabel="View Referral"
                         editLink={`/bhc/referrals/${referral.id}/print`}
                         editLabel="Print Referral Slip"
@@ -332,16 +359,16 @@ export default function Referrals() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-6 py-24 text-center">
+                  <td colSpan={8} className="px-6 py-24 text-center">
                     <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
                       <ClipboardList size={20} className="text-[#94A3B8]" />
                     </div>
                     <p className="text-[13px] font-semibold text-[#334155]">
                       No referrals found
                     </p>
-                    <p className="mt-1 max-w-sm mx-auto text-[11.5px] text-[#94A3B8]">
+                    <p className="mx-auto mt-1 max-w-sm text-[11.5px] text-[#94A3B8]">
                       Referrals generated from consultation assessments will
-                      appear here after escalation to RHU.
+                      appear here after submission to RHU.
                     </p>
                   </td>
                 </tr>
@@ -353,10 +380,6 @@ export default function Referrals() {
     </DashboardLayout>
   );
 }
-
-/* ─────────────────────────────────────────────
-   Sub-Components
-───────────────────────────────────────────── */
 
 function StatusBadge({ status }) {
   const map = {
@@ -385,6 +408,7 @@ function ClassificationBadge({ classification }) {
   const map = {
     "General Consultation": "bg-blue-50 text-blue-700",
     "Maternal Care": "bg-pink-50 text-pink-700",
+    Maternal: "bg-pink-50 text-pink-700",
     Immunization: "bg-emerald-50 text-emerald-700",
   };
 
@@ -395,6 +419,24 @@ function ClassificationBadge({ classification }) {
       }`}
     >
       {classification}
+    </span>
+  );
+}
+
+function UrgencyBadge({ urgency }) {
+  const map = {
+    Emergency: "bg-red-50 text-red-700",
+    Urgent: "bg-amber-50 text-amber-700",
+    "Non-Urgent": "bg-slate-100 text-slate-700",
+  };
+
+  return (
+    <span
+      className={`inline-flex rounded-md px-2.5 py-1 text-[11px] font-semibold ${
+        map[urgency] || "bg-slate-100 text-slate-700"
+      }`}
+    >
+      {urgency}
     </span>
   );
 }

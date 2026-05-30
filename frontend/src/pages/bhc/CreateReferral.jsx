@@ -18,6 +18,11 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import { createReferral } from "../../services/referrals";
 import { getHealthRecords } from "../../services/healthRecordService";
 import { getPatients } from "../../services/patientService";
+import {
+  createDoctorAvailabilitySnapshot,
+  getDoctorAvailability,
+  listenDoctorAvailabilityUpdates,
+} from "../../services/doctorAvailability";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -60,7 +65,7 @@ export default function CreateReferral() {
     preferredVisitDate: "",
     preferredVisitTime: "",
     urgencyLevel: "Non-Urgent",
-    doctorAvailability: "Not Confirmed",
+    preferredRhuDoctorId: "",
     philHealthNumber: "",
     philHealthCategory: "",
     reasonForReferral: "",
@@ -68,7 +73,13 @@ export default function CreateReferral() {
 
   const [submitted, setSubmitted] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showUnavailableDoctorModal, setShowUnavailableDoctorModal] =
+    useState(false);
+  const [unavailableDoctorNotice, setUnavailableDoctorNotice] = useState(null);
   const [generatedTrackingId, setGeneratedTrackingId] = useState("");
+  const [rhuDoctorAvailability, setRhuDoctorAvailability] = useState(() =>
+    getDoctorAvailability(),
+  );
 
   useEffect(() => {
     async function loadReferralContext() {
@@ -90,6 +101,10 @@ export default function CreateReferral() {
     }
 
     loadReferralContext();
+  }, []);
+
+  useEffect(() => {
+    return listenDoctorAvailabilityUpdates(setRhuDoctorAvailability);
   }, []);
 
   useEffect(() => {
@@ -153,9 +168,85 @@ export default function CreateReferral() {
     return "General Consultation";
   }, [patientClassification]);
 
+  const rhuDoctors = useMemo(() => {
+    const rawDoctors = Array.isArray(rhuDoctorAvailability?.doctors)
+      ? rhuDoctorAvailability.doctors
+      : [];
+
+    if (rawDoctors.length > 0) {
+      return rawDoctors.slice(0, 2).map((doctor, index) => ({
+        id: doctor.id || `DOC-00${index + 1}`,
+        name: doctor.name || `Doctor ${index + 1}`,
+        role: doctor.role || "General Practitioner",
+        status:
+          doctor.status === "Not Available" ? "Not Available" : "Available",
+        note: doctor.note || "",
+        updatedAt: doctor.updatedAt || rhuDoctorAvailability?.updatedAt || null,
+      }));
+    }
+
+    const total = rhuDoctorAvailability?.totalDoctorCount || 2;
+    const inferredAvailableCount =
+      typeof rhuDoctorAvailability?.availableDoctorCount === "number"
+        ? rhuDoctorAvailability.availableDoctorCount
+        : rhuDoctorAvailability?.status === "Not Available"
+          ? 0
+          : total;
+
+    return Array.from({ length: total })
+      .slice(0, 2)
+      .map((_, index) => ({
+        id: `DOC-00${index + 1}`,
+        name: `Doctor ${index + 1}`,
+        role: rhuDoctorAvailability?.doctorType || "General Practitioner",
+        status: index < inferredAvailableCount ? "Available" : "Not Available",
+        note:
+          index < inferredAvailableCount
+            ? ""
+            : rhuDoctorAvailability?.note || "No note provided.",
+        updatedAt: rhuDoctorAvailability?.updatedAt || null,
+      }));
+  }, [rhuDoctorAvailability]);
+
+  const totalDoctorCount = rhuDoctors.length || 2;
+  const availableDoctorCount = rhuDoctors.filter(
+    (doctor) => doctor.status === "Available",
+  ).length;
+  const doctorAvailabilityStatus =
+    availableDoctorCount > 0 ? "Available" : "Not Available";
+  const doctorAvailabilitySummary = `${availableDoctorCount} of ${totalDoctorCount} doctors available`;
+  const selectedRhuDoctor = rhuDoctors.find(
+    (doctor) => doctor.id === form.preferredRhuDoctorId,
+  );
+  const preferredRhuDoctorLabel = selectedRhuDoctor
+    ? `${selectedRhuDoctor.name} · ${selectedRhuDoctor.status}`
+    : "RHU to assign";
+
   function handleChange(e) {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
+  }
+
+  function handleDoctorPreferenceChange(e) {
+    const doctorId = e.target.value;
+    const nextDoctor = rhuDoctors.find((doctor) => doctor.id === doctorId);
+
+    setForm((prev) => ({ ...prev, preferredRhuDoctorId: doctorId }));
+
+    if (nextDoctor?.status === "Not Available") {
+      setUnavailableDoctorNotice(nextDoctor);
+      setShowUnavailableDoctorModal(true);
+    }
+  }
+
+  function handleChooseAnotherDoctor() {
+    setForm((prev) => ({ ...prev, preferredRhuDoctorId: "" }));
+    setUnavailableDoctorNotice(null);
+    setShowUnavailableDoctorModal(false);
+  }
+
+  function handleContinueWithUnavailableDoctor() {
+    setShowUnavailableDoctorModal(false);
   }
 
   function handleSubmit(e) {
@@ -164,6 +255,10 @@ export default function CreateReferral() {
   }
 
   async function confirmReferralSubmission() {
+    const availabilitySnapshot = createDoctorAvailabilitySnapshot(
+      rhuDoctorAvailability,
+    );
+
     const referral = await createReferral({
       patientId: patient?.id,
       patientName: patient?.name,
@@ -193,9 +288,27 @@ export default function CreateReferral() {
       priorityLevel: form.urgencyLevel,
       priority: form.urgencyLevel,
 
-      // RHU doctor availability is informational only.
-      doctorAvailability: form.doctorAvailability,
-      rhuDoctorAvailability: form.doctorAvailability,
+      // RHU doctor availability is advisory only and comes from RHU.
+      doctorAvailability: doctorAvailabilityStatus,
+      rhuDoctorAvailability: doctorAvailabilityStatus,
+      doctorAvailabilityStatus,
+      doctorAvailabilitySummary,
+      availableDoctorCount,
+      totalDoctorCount,
+      doctorAvailabilityUpdatedAt: rhuDoctorAvailability?.updatedAt || null,
+      doctorAvailabilityUpdatedBy:
+        rhuDoctorAvailability?.updatedBy || "RHU Staff",
+      doctorAvailabilitySnapshot: availabilitySnapshot,
+
+      // BHC may indicate a preferred RHU doctor, but RHU can still reassign.
+      preferredRhuDoctorId: selectedRhuDoctor?.id || "",
+      preferredRhuDoctorName: selectedRhuDoctor?.name || "RHU to assign",
+      preferredRhuDoctorRole:
+        selectedRhuDoctor?.role ||
+        rhuDoctorAvailability?.doctorType ||
+        "General Practitioner",
+      preferredRhuDoctorStatus: selectedRhuDoctor?.status || "",
+      preferredRhuDoctorNote: selectedRhuDoctor?.note || "",
 
       // Optional supporting patient information.
       philHealthNumber: form.philHealthNumber.trim(),
@@ -329,8 +442,8 @@ export default function CreateReferral() {
               />
               <Info label="Urgency" value={form.urgencyLevel} />
               <Info
-                label="RHU Doctor Availability"
-                value={form.doctorAvailability}
+                label="Preferred RHU Doctor"
+                value={preferredRhuDoctorLabel}
               />
               <Info
                 label="PhilHealth"
@@ -371,66 +484,162 @@ export default function CreateReferral() {
 
   /* ─── Main Form ─── */
   return (
-    <DashboardLayout role="bhc" title="Escalate to RHU">
+    <DashboardLayout role="bhc" title="Create Referral">
       <style>{keyframes}</style>
 
       {/* ─── Confirm Modal ─── */}
       {showConfirmModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 backdrop-blur-sm px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden anim-scale-in">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 px-4 py-5 backdrop-blur-sm">
+          <div className="anim-scale-in flex max-h-[82vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="h-1 bg-[#B91C1C]" />
-            <div className="p-7">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-[#B91C1C]">
-                <AlertTriangle size={24} />
+
+            <div className="border-b border-slate-100 px-5 py-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
+                  <AlertTriangle size={21} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-800">
+                    Review Referral Before Submission
+                  </h2>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                    Check the key details before sending this referral to the
+                    RHU.
+                  </p>
+                </div>
               </div>
-              <h2 className="text-center text-lg font-bold text-slate-800">
-                Confirm Referral Submission
-              </h2>
-              <p className="mt-2 text-center text-sm leading-relaxed text-slate-500">
-                You are about to officially refer this patient to the RHU. This
-                action will generate a tracking reference and referral QR code.
-              </p>
-              <div className="mt-5 rounded-xl bg-slate-50 border border-slate-100 p-4 space-y-2.5">
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Info label="Patient" value={patient?.name} highlight />
-                <Info label="Destination" value={form.referredFacility} />
-                <Info label="Urgency" value={form.urgencyLevel} />
                 <Info
-                  label="RHU Doctor Availability"
-                  value={form.doctorAvailability}
-                />
-                <Info
-                  label="PhilHealth"
+                  label="Age / Sex"
                   value={
-                    form.philHealthNumber
-                      ? `${form.philHealthNumber}${
-                          form.philHealthCategory
-                            ? ` · ${form.philHealthCategory}`
-                            : ""
-                        }`
-                      : "Not provided"
+                    patient?.ageSex ||
+                    (patient?.age ? `${patient.age} yrs / ${patient.sex}` : "—")
                   }
+                />
+                <Info label="Destination" value={form.referredFacility} />
+                <Info label="Urgency" value={form.urgencyLevel} highlight />
+                <Info
+                  label="Preferred RHU Doctor"
+                  value={preferredRhuDoctorLabel}
                 />
                 <Info
                   label="Consultation Record"
                   value={recordIdDisplay}
                   mono
                 />
+                <div className="sm:col-span-2">
+                  <Info
+                    label="Reason for Referral"
+                    value={form.reasonForReferral || "Not provided"}
+                  />
+                </div>
               </div>
-              <div className="mt-6 flex justify-end gap-3">
+
+              {selectedRhuDoctor?.status === "Not Available" && (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+                    Doctor Availability Notice
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-700">
+                    <span className="font-semibold text-slate-900">
+                      {selectedRhuDoctor.name}
+                    </span>{" "}
+                    is currently not available
+                    {selectedRhuDoctor.note
+                      ? ` — ${selectedRhuDoctor.note}`
+                      : " — No note provided."}
+                  </p>
+                  <p className="mt-1.5 text-[11px] font-medium text-slate-500">
+                    RHU may assign another available doctor upon receiving the
+                    patient. Referral submission is still allowed.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 bg-white px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Back to Edit
+              </button>
+              <button
+                type="button"
+                onClick={confirmReferralSubmission}
+                className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
+              >
+                <Send size={14} />
+                Submit Referral
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Unavailable Doctor Notice Modal ─── */}
+      {showUnavailableDoctorModal && unavailableDoctorNotice && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 px-4 py-5 backdrop-blur-sm">
+          <div className="anim-scale-in w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="h-1 bg-amber-500" />
+
+            <div className="p-5">
+              <div className="mb-4 flex items-start gap-3">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                  <AlertTriangle size={21} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-800">
+                    Doctor Currently Not Available
+                  </h2>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                    RHU staff marked this doctor as unavailable.
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+                <p className="text-sm font-bold text-slate-900">
+                  {unavailableDoctorNotice.name}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {unavailableDoctorNotice.role || "General Practitioner"}
+                </p>
+
+                <div className="mt-3 rounded-lg bg-white/70 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+                    RHU Note
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-700">
+                    {unavailableDoctorNotice.note || "No note provided."}
+                  </p>
+                </div>
+              </div>
+
+              <p className="mt-3 text-xs leading-relaxed text-slate-500">
+                You may choose another doctor, or continue anyway. RHU staff may
+                assign another available doctor after receiving the patient.
+              </p>
+
+              <div className="mt-5 flex flex-wrap justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowConfirmModal(false)}
-                  className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                  onClick={handleChooseAnotherDoctor}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
                 >
-                  Cancel
+                  Choose Another Doctor
                 </button>
                 <button
                   type="button"
-                  onClick={confirmReferralSubmission}
-                  className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
+                  onClick={handleContinueWithUnavailableDoctor}
+                  className="rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
                 >
-                  <Send size={14} />
-                  Confirm & Refer Patient
+                  Continue Anyway
                 </button>
               </div>
             </div>
@@ -483,7 +692,7 @@ export default function CreateReferral() {
               <MetaField label="Time of Referral" value={form.timeOfReferral} />
             </div>
 
-            <SectionDivider label="Destination & RHU Readiness" />
+            <SectionDivider label="Destination & RHU Coordination" />
             <div className="grid gap-4 pt-3 pb-1 lg:grid-cols-2">
               <FieldInput
                 label="Referred Facility"
@@ -493,28 +702,11 @@ export default function CreateReferral() {
                 required
               />
 
-              <RadioCardGroup
-                label="RHU Doctor Availability"
-                name="doctorAvailability"
-                value={form.doctorAvailability}
-                onChange={handleChange}
-                options={[
-                  {
-                    value: "Available",
-                    title: "Available",
-                    description: "RHU doctor is available for assessment.",
-                  },
-                  {
-                    value: "Limited",
-                    title: "Limited",
-                    description: "Doctor availability may require waiting.",
-                  },
-                  {
-                    value: "Not Confirmed",
-                    title: "Not Confirmed",
-                    description: "No confirmed doctor availability yet.",
-                  },
-                ]}
+              <RhuDoctorPreferenceSelect
+                doctors={rhuDoctors}
+                selectedDoctorId={form.preferredRhuDoctorId}
+                selectedDoctor={selectedRhuDoctor}
+                onChange={handleDoctorPreferenceChange}
               />
             </div>
 
@@ -886,26 +1078,60 @@ function FieldTextarea({
   );
 }
 
+function RhuDoctorPreferenceSelect({
+  doctors,
+  selectedDoctorId,
+  selectedDoctor,
+  onChange,
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        Preferred RHU Doctor
+      </label>
+
+      <select
+        name="preferredRhuDoctorId"
+        value={selectedDoctorId}
+        onChange={onChange}
+        className={`h-11 w-full rounded-xl border bg-white px-4 text-sm text-slate-800 outline-none transition-all focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
+          selectedDoctor?.status === "Not Available"
+            ? "border-amber-300"
+            : "border-slate-200"
+        }`}
+      >
+        <option value="">RHU to assign</option>
+        {doctors.map((doctor) => (
+          <option key={doctor.id} value={doctor.id}>
+            {doctor.name} — {doctor.status}
+          </option>
+        ))}
+      </select>
+
+      <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">
+        Advisory only. RHU may assign the final attending doctor upon receiving
+        the patient.
+      </p>
+    </div>
+  );
+}
+
 function RadioCardGroup({ label, name, value, onChange, options }) {
   return (
     <div>
-      <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+      <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
         <Radio size={11} />
         {label}
       </p>
 
-      <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1">
+      <div className="grid gap-3 sm:grid-cols-3">
         {options.map((option) => {
           const active = value === option.value;
 
           return (
             <label
               key={option.value}
-              className={`cursor-pointer rounded-xl border px-3.5 py-3 transition-all ${
-                active
-                  ? "border-[#B91C1C] bg-red-50/60 ring-2 ring-[#B91C1C]/10"
-                  : "border-slate-200 bg-white hover:border-red-200 hover:bg-red-50/30"
-              }`}
+              className="flex cursor-pointer items-start gap-2.5"
             >
               <input
                 type="radio"
@@ -913,35 +1139,21 @@ function RadioCardGroup({ label, name, value, onChange, options }) {
                 value={option.value}
                 checked={active}
                 onChange={onChange}
-                className="sr-only"
+                className="mt-0.5 h-4 w-4 accent-[#B91C1C]"
               />
 
-              <div className="flex items-start gap-2.5">
+              <span>
                 <span
-                  className={`mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border ${
-                    active
-                      ? "border-[#B91C1C] bg-[#B91C1C]"
-                      : "border-slate-300 bg-white"
+                  className={`block text-xs font-bold ${
+                    active ? "text-[#B91C1C]" : "text-slate-700"
                   }`}
                 >
-                  {active && (
-                    <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                  )}
+                  {option.title}
                 </span>
-
-                <span>
-                  <span
-                    className={`block text-xs font-bold ${
-                      active ? "text-[#B91C1C]" : "text-slate-700"
-                    }`}
-                  >
-                    {option.title}
-                  </span>
-                  <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">
-                    {option.description}
-                  </span>
+                <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">
+                  {option.description}
                 </span>
-              </div>
+              </span>
             </label>
           );
         })}

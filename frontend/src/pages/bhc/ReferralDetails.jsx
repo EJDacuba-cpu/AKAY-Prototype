@@ -27,6 +27,10 @@ import {
   updateReferralByTrackingId,
 } from "../../services/referrals";
 import { getPatientById } from "../../services/patientService";
+import {
+  formatDoctorAvailabilityDate,
+  normalizeDoctorAvailability,
+} from "../../services/doctorAvailability";
 
 const keyframes = `
   @keyframes fadeUp {
@@ -413,7 +417,39 @@ function ReferralInformationTab({ referral, patientExtra }) {
           />
         </div>
       </RecordSection>
+
+      <DoctorAvailabilitySnapshot referral={referral} />
     </div>
+  );
+}
+
+function DoctorAvailabilitySnapshot({ referral }) {
+  const snapshot = getReferralDoctorAvailabilitySnapshot(referral);
+
+  return (
+    <RecordSection
+      title="RHU Availability at Submission"
+      description="Doctor availability snapshot saved when this referral was submitted."
+      icon={<Stethoscope size={14} />}
+    >
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <DetailBlock label="Status" value={snapshot.status} badge />
+        <DetailBlock
+          label="Available Doctor Count"
+          value={`${snapshot.availableDoctorCount} of ${snapshot.totalDoctorCount}`}
+        />
+        <DetailBlock label="Doctor Type" value={snapshot.doctorType} />
+        <DetailBlock label="Note" value={snapshot.note} wide />
+        <DetailBlock
+          label="Updated By"
+          value={snapshot.updatedBy || "RHU Staff"}
+        />
+        <DetailBlock
+          label="Last Updated"
+          value={formatDoctorAvailabilityDate(snapshot.updatedAt)}
+        />
+      </div>
+    </RecordSection>
   );
 }
 
@@ -917,6 +953,8 @@ function ClassBadge({ value }) {
     Emergency: "bg-red-100 text-red-700",
     Urgent: "bg-amber-100 text-amber-700",
     "Non-Urgent": "bg-slate-100 text-slate-600",
+    Available: "bg-emerald-100 text-emerald-700",
+    "Not Available": "bg-red-100 text-red-700",
   };
 
   return (
@@ -952,6 +990,20 @@ function isRhuFacility(value = "") {
 
 function cleanBarangayName(value = "") {
   return String(value).replace(/^barangay\s+/i, "").trim();
+}
+
+function getReferralDoctorAvailabilitySnapshot(referral = {}) {
+  return normalizeDoctorAvailability(
+    referral.doctorAvailabilitySnapshot || {
+      status: referral.doctorAvailabilityStatus || referral.doctorAvailability,
+      doctorType: referral.doctorType,
+      totalDoctorCount: referral.totalDoctorCount,
+      availableDoctorCount: referral.availableDoctorCount,
+      note: referral.doctorAvailabilityNote,
+      updatedAt: referral.doctorAvailabilityUpdatedAt,
+      updatedBy: referral.doctorAvailabilityUpdatedBy,
+    },
+  );
 }
 
 function getDestinationFacility(referral = {}) {

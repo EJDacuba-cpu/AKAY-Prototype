@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   Boxes,
-  Search,
   Eye,
   Pill,
   Plus,
@@ -15,10 +14,10 @@ import {
   TrendingDown,
   TrendingUp,
   History,
-  RotateCcw,
   MoreVertical,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import ListToolbar from "../../components/common/list/ListToolbar";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -306,10 +305,12 @@ export default function MedicineInventory() {
   const [bhcFilters, setBhcFilters] = useState({
     search: "",
     status: "All Status",
+    category: "All Categories",
   });
   const [rhuFilters, setRhuFilters] = useState({
     search: "",
     status: "All Status",
+    category: "All Categories",
   });
 
   // Modal states
@@ -354,10 +355,14 @@ export default function MedicineInventory() {
       const matchSearch =
         !bhcFilters.search ||
         item.name.toLowerCase().includes(bhcFilters.search.toLowerCase()) ||
+        item.category.toLowerCase().includes(bhcFilters.search.toLowerCase()) ||
         item.id.toLowerCase().includes(bhcFilters.search.toLowerCase());
       const matchStatus =
         bhcFilters.status === "All Status" || item.status === bhcFilters.status;
-      return matchSearch && matchStatus;
+      const matchCategory =
+        bhcFilters.category === "All Categories" ||
+        item.category === bhcFilters.category;
+      return matchSearch && matchStatus && matchCategory;
     })
     .sort((a, b) => {
       let valA, valB;
@@ -384,10 +389,14 @@ export default function MedicineInventory() {
     const matchSearch =
       !rhuFilters.search ||
       item.name.toLowerCase().includes(rhuFilters.search.toLowerCase()) ||
+      item.category.toLowerCase().includes(rhuFilters.search.toLowerCase()) ||
       item.id.toLowerCase().includes(rhuFilters.search.toLowerCase());
     const matchStatus =
       rhuFilters.status === "All Status" || item.status === rhuFilters.status;
-    return matchSearch && matchStatus;
+    const matchCategory =
+      rhuFilters.category === "All Categories" ||
+      item.category === rhuFilters.category;
+    return matchSearch && matchStatus && matchCategory;
   });
 
   const computeStatus = (qty, threshold) => {
@@ -520,23 +529,38 @@ export default function MedicineInventory() {
       setBhcFilters({
         search: "",
         status: "All Status",
+        category: "All Categories",
       });
     else
       setRhuFilters({
         search: "",
         status: "All Status",
+        category: "All Categories",
       });
   };
 
   const hasActiveFilters =
     activeTab === "bhc"
-      ? bhcFilters.search !== "" || bhcFilters.status !== "All Status"
-      : rhuFilters.search !== "" || rhuFilters.status !== "All Status";
+      ? bhcFilters.search !== "" ||
+        bhcFilters.status !== "All Status" ||
+        bhcFilters.category !== "All Categories"
+      : rhuFilters.search !== "" ||
+        rhuFilters.status !== "All Status" ||
+        rhuFilters.category !== "All Categories";
 
   const currentFilters = activeTab === "bhc" ? bhcFilters : rhuFilters;
+  const currentCount =
+    activeTab === "bhc" ? filteredBHC.length : filteredRHU.length;
 
   const activeFilters = [
-    currentFilters.search && { key: "search", label: currentFilters.search },
+    currentFilters.search && {
+      key: "search",
+      label: `Search: ${currentFilters.search}`,
+    },
+    currentFilters.category !== "All Categories" && {
+      key: "category",
+      label: currentFilters.category,
+    },
     currentFilters.status !== "All Status" && {
       key: "status",
       label: currentFilters.status,
@@ -551,8 +575,30 @@ export default function MedicineInventory() {
 
   const removeFilter = (key) => {
     if (key === "search") updateActiveFilter("search", "");
+    if (key === "category") updateActiveFilter("category", "All Categories");
     if (key === "status") updateActiveFilter("status", "All Status");
   };
+
+  const medicineFilterFields = [
+    {
+      key: "category",
+      label: "Category",
+      value: currentFilters.category,
+      options: [
+        "All Categories",
+        "Basic Medicines",
+        "Vaccines",
+        "Medical Supplies",
+        "Maternal Care Supplies",
+      ],
+    },
+    {
+      key: "status",
+      label: "Stock Status",
+      value: currentFilters.status,
+      options: ["All Status", "Available", "Low Stock", "Unavailable"],
+    },
+  ];
 
   return (
     <DashboardLayout role="bhc" title="Medicine Inventory">
@@ -601,82 +647,38 @@ export default function MedicineInventory() {
           </button>
         </div>
 
-        {activeTab === "bhc" && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex h-9 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347] active:bg-[#071D3A]"
-          >
-            <Plus size={14} strokeWidth={2.5} />
-            Add Medicine
-          </button>
-        )}
       </div>
 
-      <div className="mb-4 rounded-xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
-          <div className="min-w-0 flex-1">
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-              Search Medicine / Item ID
-            </label>
-            <div className="relative">
-              <Search
-                size={13}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]"
-              />
-              <input
-                type="text"
-                value={currentFilters.search}
-                onChange={(e) => updateActiveFilter("search", e.target.value)}
-                placeholder="Search medicine name or item ID..."
-                className="h-10 w-full rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] pl-8 pr-3 text-[13px] text-[#0F172A] outline-none transition-all placeholder:text-[#94A3B8] focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
-              />
-            </div>
-          </div>
-
-          <div className="w-full xl:w-[170px]">
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-              Status
-            </label>
-            <select
-              value={currentFilters.status}
-              onChange={(e) => updateActiveFilter("status", e.target.value)}
-              className="h-10 w-full appearance-none rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-2.5 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
+      <ListToolbar
+        searchValue={currentFilters.search}
+        onSearchChange={(value) => updateActiveFilter("search", value)}
+        searchPlaceholder="Search by medicine name or category..."
+        chip={`● ${currentCount.toLocaleString()} Items`}
+        filters={medicineFilterFields}
+        activeFilterCount={
+          activeFilters.filter((filter) => filter.key !== "search").length
+        }
+        activeFilters={activeFilters}
+        onApplyFilters={(nextFilters) => {
+          const updater = (prev) => ({ ...prev, ...nextFilters });
+          if (activeTab === "bhc") setBhcFilters(updater);
+          else setRhuFilters(updater);
+        }}
+        onClearFilters={clearFilters}
+        onRemoveFilter={removeFilter}
+        actions={
+          activeTab === "bhc" ? (
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347] active:bg-[#071D3A]"
             >
-              <option>All Status</option>
-              <option>Available</option>
-              <option>Low Stock</option>
-              <option>Unavailable</option>
-            </select>
-          </div>
-        </div>
-
-        {activeFilters.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#F3F4F6] pt-3">
-            {activeFilters.map((filter) => (
-              <button
-                key={filter.key}
-                type="button"
-                onClick={() => removeFilter(filter.key)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[#DBEAFE] bg-[#EFF6FF] px-2.5 py-1 text-[11px] font-medium text-[#1D4ED8] transition-colors hover:bg-[#DBEAFE]"
-              >
-                {filter.label}
-                <X size={10} />
-              </button>
-            ))}
-
-            {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#64748B] transition-colors hover:text-[#0B2E59]"
-              >
-                <RotateCcw size={11} />
-                Clear all
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+              <Plus size={14} strokeWidth={2.5} />
+              Add Medicine
+            </button>
+          ) : null
+        }
+      />
 
       <div className="min-w-0">
         <div className="min-w-0">

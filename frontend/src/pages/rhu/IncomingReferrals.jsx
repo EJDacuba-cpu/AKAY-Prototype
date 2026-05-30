@@ -3,23 +3,18 @@ import { createPortal } from "react-dom";
 import {
   CheckCircle2,
   Clock,
-  ClipboardList,
   Copy,
   Eye,
   QrCode,
   Search,
   AlertCircle,
   Check,
-  X,
-  Activity,
-  UserCheck,
-  UserX,
   Stethoscope,
   MoreVertical,
-  RotateCcw,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import ListToolbar from "../../components/common/list/ListToolbar";
 import {
   autoMarkNoShowReferrals,
   getReferrals,
@@ -55,13 +50,13 @@ const keyframes = `
   .menu-close { animation: menuClose 0.15s cubic-bezier(0.55, 0, 1, 0.45) both; }
 `;
 
-const REFERRAL_TABS = [
-  { key: "All Status", label: "All", icon: ClipboardList },
-  { key: "Pending", label: "Pending", icon: Clock },
-  { key: "Received", label: "Received", icon: UserCheck },
-  { key: "For Monitoring", label: "Monitoring", icon: Activity },
-  { key: "Completed", label: "Completed", icon: CheckCircle2 },
-  { key: "No-Show", label: "No-Show", icon: UserX },
+const REFERRAL_STATUS_OPTIONS = [
+  { key: "All Status", label: "All" },
+  { key: "Pending", label: "Pending" },
+  { key: "Received", label: "Received" },
+  { key: "For Monitoring", label: "Monitoring" },
+  { key: "Completed", label: "Completed" },
+  { key: "No-Show", label: "No-Show" },
 ];
 
 const DATE_OPTIONS = ["All Dates", "Today", "Yesterday", "Last 7 Days"];
@@ -369,7 +364,9 @@ function isReferralCategory(value) {
 }
 
 function getCategoryColumnLabel(referrals) {
-  return referrals.some((referral) => isReferralCategory(getReferralCategory(referral)))
+  return referrals.some((referral) =>
+    isReferralCategory(getReferralCategory(referral)),
+  )
     ? "Referral Category"
     : "Patient Classification";
 }
@@ -379,7 +376,9 @@ function isRhuFacility(value = "") {
 }
 
 function cleanBarangayName(value = "") {
-  return String(value).replace(/^barangay\s+/i, "").trim();
+  return String(value)
+    .replace(/^barangay\s+/i, "")
+    .trim();
 }
 
 function getReferringHci(referral) {
@@ -470,7 +469,9 @@ export default function IncomingReferrals() {
     search: "",
     status: "All Status",
     category: "All Categories",
+    urgency: "All Urgency",
     date: "All Dates",
+    referringBhc: "All Referring BHCs",
   });
 
   useEffect(() => {
@@ -509,16 +510,14 @@ export default function IncomingReferrals() {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleTabChange = (status) => {
-    setFilters((prev) => ({ ...prev, status }));
-  };
-
   const clearFilters = () => {
     setFilters({
       search: "",
       status: "All Status",
       category: "All Categories",
+      urgency: "All Urgency",
       date: "All Dates",
+      referringBhc: "All Referring BHCs",
     });
   };
 
@@ -526,29 +525,52 @@ export default function IncomingReferrals() {
     filters.search !== "" ||
     filters.status !== "All Status" ||
     filters.category !== "All Categories" ||
-    filters.date !== "All Dates";
+    filters.urgency !== "All Urgency" ||
+    filters.date !== "All Dates" ||
+    filters.referringBhc !== "All Referring BHCs";
 
   const activeFilters = [
-    filters.search && { key: "search", label: filters.search },
-    filters.status !== "All Status" && { key: "status", label: filters.status },
+    filters.status !== "All Status" && {
+      key: "status",
+      label:
+        filters.status === "For Monitoring" ? "Monitoring" : filters.status,
+    },
     filters.category !== "All Categories" && {
       key: "category",
       label: filters.category,
     },
+    filters.urgency !== "All Urgency" && {
+      key: "urgency",
+      label: filters.urgency,
+    },
     filters.date !== "All Dates" && { key: "date", label: filters.date },
+    filters.referringBhc !== "All Referring BHCs" && {
+      key: "referringBhc",
+      label: filters.referringBhc,
+    },
   ].filter(Boolean);
 
   function removeFilter(key) {
-    if (key === "search") handleFilterChange("search", "");
     if (key === "status") handleFilterChange("status", "All Status");
     if (key === "category") handleFilterChange("category", "All Categories");
+    if (key === "urgency") handleFilterChange("urgency", "All Urgency");
     if (key === "date") handleFilterChange("date", "All Dates");
+    if (key === "referringBhc") {
+      handleFilterChange("referringBhc", "All Referring BHCs");
+    }
   }
 
   const categoryOptions = useMemo(() => {
     return [
       "All Categories",
       ...new Set(referrals.map(getReferralCategory).filter(Boolean)),
+    ];
+  }, [referrals]);
+
+  const referringBhcOptions = useMemo(() => {
+    return [
+      "All Referring BHCs",
+      ...new Set(referrals.map(getReferringHci).filter(Boolean)),
     ];
   }, [referrals]);
 
@@ -571,154 +593,94 @@ export default function IncomingReferrals() {
         (referral.chiefComplaint || referral.concern || "")
           .toLowerCase()
           .includes(q) ||
-        (referral.referringFacility || referral.bhc || "")
-          .toLowerCase()
-          .includes(q);
+        getReferringHci(referral).toLowerCase().includes(q);
 
       const matchCategory =
         filters.category === "All Categories" ||
         getReferralCategory(referral) === filters.category;
+      const matchUrgency =
+        filters.urgency === "All Urgency" ||
+        getReferralUrgency(referral) === filters.urgency;
       const matchDate = matchesDateFilter(referral, filters.date);
+      const matchReferringBhc =
+        filters.referringBhc === "All Referring BHCs" ||
+        getReferringHci(referral) === filters.referringBhc;
 
-      return matchSearch && matchCategory && matchDate;
+      return (
+        matchSearch &&
+        matchCategory &&
+        matchUrgency &&
+        matchDate &&
+        matchReferringBhc
+      );
     });
   }, [referrals, filters]);
-
-  const tabCounts = REFERRAL_TABS.reduce((acc, tab) => {
-    acc[tab.key] =
-      tab.key === "All Status"
-        ? baseFiltered.length
-        : baseFiltered.filter((referral) => referral.status === tab.key).length;
-
-    return acc;
-  }, {});
 
   const filtered = baseFiltered.filter(
     (referral) =>
       filters.status === "All Status" || referral.status === filters.status,
   );
 
+  const toolbarFilters = [
+    {
+      key: "status",
+      label: "Status",
+      value: filters.status,
+      options: REFERRAL_STATUS_OPTIONS.map((option) => option.key),
+    },
+    {
+      key: "category",
+      label: categoryColumnLabel,
+      value: filters.category,
+      options: categoryOptions,
+    },
+    {
+      key: "urgency",
+      label: "Urgency",
+      value: filters.urgency,
+      options: ["All Urgency", "Non-Urgent", "Urgent", "Emergency"],
+    },
+    {
+      key: "date",
+      label: "Date Submitted",
+      value: filters.date,
+      options: DATE_OPTIONS,
+    },
+    {
+      key: "referringBhc",
+      label: "Referring BHC",
+      value: filters.referringBhc,
+      options: referringBhcOptions,
+    },
+  ];
+
   return (
     <DashboardLayout role="rhu" title="Incoming Referrals">
       <style>{keyframes}</style>
 
-      <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="relative min-w-0 flex-1">
-            <Search
-              size={14}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-            <input
-              type="text"
-              value={filters.search}
-              onChange={(e) => handleFilterChange("search", e.target.value)}
-              placeholder="Search Patient / Tracking ID"
-              className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-[12px] text-slate-800 outline-none transition-all placeholder:text-slate-400 focus:border-slate-300 focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={filters.category}
-              onChange={(e) => handleFilterChange("category", e.target.value)}
-              className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-[12px] font-medium text-slate-700 outline-none transition-colors focus:border-slate-300 focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
-            >
-              {categoryOptions.map((category) => (
-                <option key={category}>{category}</option>
-              ))}
-            </select>
-
-            <select
-              value={filters.date}
-              onChange={(e) => handleFilterChange("date", e.target.value)}
-              className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-[12px] font-medium text-slate-700 outline-none transition-colors focus:border-slate-300 focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
-            >
-              {DATE_OPTIONS.map((dateOption) => (
-                <option key={dateOption}>{dateOption}</option>
-              ))}
-            </select>
-
-            {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
-              >
-                <RotateCcw size={11} />
-                Reset
-              </button>
-            )}
-
-            <Link
-              to="/rhu/qr-scanner"
-              className="flex h-9 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347] active:bg-[#071D3A]"
-            >
-              <QrCode size={14} strokeWidth={2.5} />
-              QR Scan
-            </Link>
-          </div>
-        </div>
-
-        {activeFilters.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
-            {activeFilters.map((filter) => (
-              <button
-                key={filter.key}
-                type="button"
-                onClick={() => removeFilter(filter.key)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-700 transition-colors hover:bg-blue-100"
-              >
-                {filter.label}
-                <X size={10} />
-              </button>
-            ))}
-
-            {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500 transition-colors hover:text-[#0B2E59]"
-              >
-                <RotateCcw size={11} />
-                Clear all
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="mb-4 flex items-center gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1">
-        {REFERRAL_TABS.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = filters.status === tab.key;
-
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => handleTabChange(tab.key)}
-              className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${
-                isActive
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-500 hover:bg-slate-200/50 hover:text-slate-700"
-              }`}
-            >
-              <Icon size={12} className={isActive ? "text-[#0B2E59]" : ""} />
-              {tab.label}
-              <span
-                className={`rounded-full px-1.5 py-px text-[9px] font-bold leading-none ${
-                  isActive
-                    ? "bg-[#0B2E59]/10 text-[#0B2E59]"
-                    : "bg-slate-300/70 text-slate-600"
-                }`}
-              >
-                {tabCounts[tab.key] ?? 0}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      <ListToolbar
+        searchValue={filters.search}
+        onSearchChange={(value) => handleFilterChange("search", value)}
+        searchPlaceholder="Search by patient name, BHC, referral ID, or chief complaint..."
+        chip={`● ${filtered.length.toLocaleString()} Referrals`}
+        filters={toolbarFilters}
+        activeFilterCount={activeFilters.length}
+        activeFilters={activeFilters}
+        onApplyFilters={(nextFilters) =>
+          setFilters((prev) => ({ ...prev, ...nextFilters }))
+        }
+        onClearFilters={clearFilters}
+        onRemoveFilter={removeFilter}
+        actions={
+          <Link
+            to="/rhu/qr-scanner"
+            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347] active:bg-[#071D3A]"
+          >
+            <QrCode size={14} strokeWidth={2.5} />
+            QR Scan
+          </Link>
+        }
+      />
 
       <div className="flex items-start gap-6">
         <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -751,7 +713,7 @@ export default function IncomingReferrals() {
                   <th className="px-4 py-3">Patient</th>
                   <th className="px-4 py-3">Name of Referring HCI</th>
                   <th className="px-4 py-3">{categoryColumnLabel}</th>
-                  <th className="px-4 py-3">Priority</th>
+                  <th className="px-4 py-3">Urgency</th>
                   <th className="px-4 py-3">Chief Complaint</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-6 py-3 text-right">Actions</th>
@@ -821,9 +783,7 @@ export default function IncomingReferrals() {
 
                         <td className="whitespace-nowrap px-4 py-4">
                           <CategoryBadge
-                            category={
-                              referral.referralCategory || referral.category
-                            }
+                            category={getReferralCategory(referral)}
                           />
                         </td>
 
@@ -857,7 +817,6 @@ export default function IncomingReferrals() {
             </table>
           </div>
         </div>
-
       </div>
     </DashboardLayout>
   );

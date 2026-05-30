@@ -6,12 +6,11 @@ import {
   CheckCircle2,
   Edit3,
   PackagePlus,
-  RotateCcw,
-  Search,
   X,
   XCircle,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import ListToolbar from "../../components/common/list/ListToolbar";
 
 const MEDICINE_STATUS_TABS = [
   { key: "All Status", label: "All Items", icon: Boxes },
@@ -108,6 +107,8 @@ export default function MedicineManagement() {
     const matchesSearch =
       !query ||
       item.name.toLowerCase().includes(query) ||
+      item.category.toLowerCase().includes(query) ||
+      (item.supplier || "").toLowerCase().includes(query) ||
       item.id.toLowerCase().includes(query);
     const matchesCategory =
       filterCategory === "All Categories" || item.category === filterCategory;
@@ -127,6 +128,29 @@ export default function MedicineManagement() {
   ].filter(Boolean);
 
   const hasActiveFilters = activeFilters.length > 0;
+
+  const toolbarFilters = [
+    {
+      key: "category",
+      label: "Category",
+      value: filterCategory,
+      options: [
+        "All Categories",
+        "Basic Medicines",
+        "Vaccines",
+        "Medical Supplies",
+        "Maternal Care Supplies",
+        "Child Health Supplies",
+        "Referral-related Resources",
+      ],
+    },
+    {
+      key: "status",
+      label: "Stock Status",
+      value: filterStatus,
+      options: ["All Status", "Available", "Low Stock", "Unavailable"],
+    },
+  ];
 
   function clearFilters() {
     setSearchQuery("");
@@ -152,110 +176,34 @@ export default function MedicineManagement() {
           </p>
         </div>
 
-        <Link
-          to="/rhu/medicine-management/add"
-          className="flex items-center gap-2 rounded-lg bg-[#0B2E59] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#092347]"
-        >
-          <PackagePlus size={15} />
-          Add Item
-        </Link>
       </div>
 
-      <div className="mb-4 rounded-xl border border-[#E8ECF0] bg-white p-5">
-        <div className="grid items-end gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
-          <div className="min-w-0">
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Search Medicine / Item ID
-            </label>
-            <div className="flex items-center rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3">
-              <Search size={14} className="text-[#BCC3CD]" />
-              <input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-9 flex-1 border-0 bg-transparent px-2 text-sm outline-none"
-                placeholder="Search medicine name or item ID..."
-              />
-            </div>
-          </div>
-
-          <FilterSelect
-            label="Category"
-            value={filterCategory}
-            onChange={setFilterCategory}
+      <ListToolbar
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Search by medicine name, category, or supplier..."
+        chip={`● ${filteredItems.length.toLocaleString()} Items`}
+        filters={toolbarFilters}
+        activeFilterCount={
+          activeFilters.filter((filter) => filter.key !== "search").length
+        }
+        activeFilters={activeFilters}
+        onApplyFilters={(nextFilters) => {
+          setFilterCategory(nextFilters.category);
+          setFilterStatus(nextFilters.status);
+        }}
+        onClearFilters={clearFilters}
+        onRemoveFilter={removeFilter}
+        actions={
+          <Link
+            to="/rhu/medicine-management/add"
+            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm hover:bg-[#092347]"
           >
-            <option>All Categories</option>
-            <option>Basic Medicines</option>
-            <option>Vaccines</option>
-            <option>Medical Supplies</option>
-            <option>Maternal Care Supplies</option>
-            <option>Child Health Supplies</option>
-            <option>Referral-related Resources</option>
-          </FilterSelect>
-        </div>
-
-        {activeFilters.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#F3F4F6] pt-3">
-            {activeFilters.map((filter) => (
-              <button
-                key={filter.key}
-                type="button"
-                onClick={() => removeFilter(filter.key)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[#DBEAFE] bg-[#EFF6FF] px-2.5 py-1 text-[11px] font-medium text-[#1D4ED8] transition-colors hover:bg-[#DBEAFE]"
-              >
-                {filter.label}
-                <X size={10} />
-              </button>
-            ))}
-
-            {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#64748B] transition-colors hover:text-[#0B2E59]"
-              >
-                <RotateCcw size={11} />
-                Clear all
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="mb-4 flex items-center gap-1 overflow-x-auto rounded-lg bg-[#F1F5F9] p-1">
-        {MEDICINE_STATUS_TABS.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = filterStatus === tab.key;
-          const count =
-            tab.key === "All Status"
-              ? items.length
-              : items.filter((item) => item.status === tab.key).length;
-
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setFilterStatus(tab.key)}
-              className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${
-                isActive
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-500 hover:bg-slate-200/50 hover:text-slate-700"
-              }`}
-            >
-              <Icon size={12} className={isActive ? "text-[#0B2E59]" : ""} />
-              {tab.label}
-              <span
-                className={`rounded-full px-1.5 py-px text-[9px] font-bold leading-none ${
-                  isActive
-                    ? "bg-[#0B2E59]/10 text-[#0B2E59]"
-                    : "bg-slate-300/70 text-slate-600"
-                }`}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+            <PackagePlus size={15} />
+            Add Medicine
+          </Link>
+        }
+      />
 
       <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
         <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">

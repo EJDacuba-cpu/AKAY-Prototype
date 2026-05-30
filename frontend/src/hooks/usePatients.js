@@ -15,6 +15,10 @@ export default function usePatients() {
     search: "",
     sex: "All",
     type: "All Patients",
+    barangay: "All Barangays",
+    ageGroup: "All Age Groups",
+    civilStatus: "All Civil Status",
+    dateRegistered: "",
   });
 
   const itemsPerPage = 10;
@@ -35,6 +39,39 @@ export default function usePatients() {
     }
 
     return type === filterType;
+  }
+
+  function getPatientAge(patient) {
+    if (typeof patient.age === "number") return patient.age;
+
+    const rawAge =
+      patient.age ||
+      String(patient.ageSex || "")
+        .split("/")
+        .at(0);
+    const parsed = parseInt(rawAge, 10);
+
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  function matchesAgeGroup(patient, ageGroup) {
+    if (ageGroup === "All Age Groups") return true;
+
+    const age = getPatientAge(patient);
+    if (age === null) return false;
+
+    if (ageGroup === "Child") return age <= 17;
+    if (ageGroup === "Adult") return age >= 18 && age <= 59;
+    if (ageGroup === "Senior") return age >= 60;
+
+    return true;
+  }
+
+  function getDateValue(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+    return date.toISOString().slice(0, 10);
   }
 
   /* ─────────────────────────────────────────────
@@ -67,6 +104,9 @@ export default function usePatients() {
       const searchable = [
         patient.name,
         patient.id,
+        patient.barangay,
+        patient.assignedBhc,
+        patient.assignedBHC,
         patient.contact,
         patient.contactNumber,
       ]
@@ -84,7 +124,33 @@ export default function usePatients() {
 
       const matchesType = matchesPatientType(patient, filters.type);
 
-      return matchesSearch && matchesSex && matchesType;
+      const matchesBarangay =
+        filters.barangay === "All Barangays" ||
+        patient.barangay === filters.barangay ||
+        patient.assignedBhc === filters.barangay ||
+        patient.assignedBHC === filters.barangay;
+
+      const matchesAge = matchesAgeGroup(patient, filters.ageGroup);
+
+      const matchesCivilStatus =
+        filters.civilStatus === "All Civil Status" ||
+        patient.civilStatus === filters.civilStatus;
+
+      const registeredDate = getDateValue(
+        patient.dateRegistered || patient.createdAt || patient.registeredAt,
+      );
+      const matchesDate =
+        !filters.dateRegistered || registeredDate === filters.dateRegistered;
+
+      return (
+        matchesSearch &&
+        matchesSex &&
+        matchesType &&
+        matchesBarangay &&
+        matchesAge &&
+        matchesCivilStatus &&
+        matchesDate
+      );
     });
   }, [patients, filters]);
 

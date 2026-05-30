@@ -320,9 +320,7 @@ export default function RHURecordDetails() {
                 <PatientDetailItem
                   label="Recorded By"
                   value={
-                    record.recordedBy ||
-                    record.attendingStaff ||
-                    "RHU Staff"
+                    record.recordedBy || record.attendingStaff || "RHU Staff"
                   }
                 />
               </div>

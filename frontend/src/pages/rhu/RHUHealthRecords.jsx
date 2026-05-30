@@ -1,8 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import {
-  ClipboardList,
-  Clock,
   Eye,
   FilePlus2,
   HeartPulse,
@@ -13,300 +11,121 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Activity,
+  ClipboardList,
+  Clock,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import ListToolbar from "../../components/common/list/ListToolbar";
 
-/* ─── Keyframes ─── */
-const keyframes = `
-  @keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes countUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-  .anim-fade-up { animation: fadeUp 0.55s cubic-bezier(0.22,1,0.36,1) both; }
-  .anim-count { animation: countUp 0.5s cubic-bezier(0.22,1,0.36,1) both; }
-`;
-const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
-
-/* ─── Data ─── */
+/* ─── Constants ─── */
+const STORAGE_KEY = "rhu_health_records";
 const PER_PAGE = 6;
 
-const healthRecords = [
-  {
-    id: "HR-001",
-    patient: "Maria Rosa",
-    concern: "Abdominal pain",
-    status: "For Monitoring",
-    date: "May 13, 2026",
-    recordedBy: "Joshua Pio",
-  },
-  {
-    id: "HR-002",
-    patient: "Juan Reyes",
-    concern: "Hypertension",
-    status: "Active",
-    date: "May 13, 2026",
-    recordedBy: "Joshua Pio",
-  },
-  {
-    id: "HR-003",
-    patient: "Carmen Santos",
-    concern: "Prenatal checkup",
-    status: "Active",
-    date: "May 12, 2026",
-    recordedBy: "Grace Navalta",
-  },
-  {
-    id: "HR-004",
-    patient: "Pedro Dela Cruz",
-    concern: "Persistent cough",
-    status: "Completed",
-    date: "May 12, 2026",
-    recordedBy: "Joshua Pio",
-  },
-  {
-    id: "HR-005",
-    patient: "Ana Lim",
-    concern: "Fever and headache",
-    status: "Active",
-    date: "May 11, 2026",
-    recordedBy: "Grace Navalta",
-  },
-  {
-    id: "HR-006",
-    patient: "Luis Garcia",
-    concern: "Diabetes follow-up",
-    status: "For Monitoring",
-    date: "May 11, 2026",
-    recordedBy: "Joshua Pio",
-  },
-  {
-    id: "HR-007",
-    patient: "Rosa Mendoza",
-    concern: "Skin rash",
-    status: "Completed",
-    date: "May 10, 2026",
-    recordedBy: "Grace Navalta",
-  },
-  {
-    id: "HR-008",
-    patient: "Miguel Torres",
-    concern: "Back pain",
-    status: "Active",
-    date: "May 10, 2026",
-    recordedBy: "Joshua Pio",
-  },
-  {
-    id: "HR-009",
-    patient: "Elena Flores",
-    concern: "Prenatal checkup",
-    status: "Active",
-    date: "May 9, 2026",
-    recordedBy: "Grace Navalta",
-  },
-  {
-    id: "HR-010",
-    patient: "Ricardo Ramos",
-    concern: "High blood pressure",
-    status: "For Monitoring",
-    date: "May 9, 2026",
-    recordedBy: "Joshua Pio",
-  },
-  {
-    id: "HR-011",
-    patient: "Sofia Villanueva",
-    concern: "Child immunization",
-    status: "Completed",
-    date: "May 8, 2026",
-    recordedBy: "Grace Navalta",
-  },
-  {
-    id: "HR-012",
-    patient: "Andres Cruz",
-    concern: "Chest tightness",
-    status: "Active",
-    date: "May 8, 2026",
-    recordedBy: "Joshua Pio",
-  },
-  {
-    id: "HR-013",
-    patient: "Isabelle Reyes",
-    concern: "Urinary tract infection",
-    status: "Completed",
-    date: "May 7, 2026",
-    recordedBy: "Grace Navalta",
-  },
-];
-
-const stats = [
-  {
-    label: "Total Records",
-    value: healthRecords.length,
-    icon: ClipboardList,
-    color: "text-[#B91C1C]",
-    bg: "bg-red-50",
-  },
-  {
-    label: "Active Consultations",
-    value: healthRecords.filter((r) => r.status === "Active").length,
-    icon: HeartPulse,
-    color: "text-emerald-600",
-    bg: "bg-emerald-50",
-  },
-  {
-    label: "For Monitoring",
-    value: healthRecords.filter((r) => r.status === "For Monitoring").length,
-    icon: Clock,
-    color: "text-amber-600",
-    bg: "bg-amber-50",
-  },
-  {
-    label: "Completed",
-    value: healthRecords.filter((r) => r.status === "Completed").length,
-    icon: CheckCircle2,
-    color: "text-slate-500",
-    bg: "bg-slate-100",
-  },
-];
-
-const STATUS_TABS = [
-  { key: "All Status", label: "All Records", icon: ClipboardList },
-  { key: "Active", label: "Active", icon: HeartPulse },
-  { key: "For Monitoring", label: "Monitoring", icon: Clock },
-  { key: "Completed", label: "Completed", icon: CheckCircle2 },
-];
-
-function inferClassification(record) {
-  const concern = record.concern.toLowerCase();
-  if (concern.includes("prenatal") || concern.includes("pregnan")) {
-    return "Maternal";
-  }
-  if (concern.includes("immunization") || concern.includes("vaccine")) {
-    return "Immunization";
-  }
-  if (concern.includes("hypertension") || concern.includes("diabetes")) {
-    return "Senior Citizen";
-  }
-  return "General Consultation";
-}
-
-function matchesDate(recordDate, selectedDate) {
-  if (!selectedDate) return true;
-
-  const parsed = new Date(recordDate);
-  if (Number.isNaN(parsed.getTime())) return false;
-
-  return parsed.toISOString().slice(0, 10) === selectedDate;
-}
-
-/* ─── Main Component ─── */
+/* ─── Component ─── */
 export default function RHUHealthRecords() {
+  const [allRecords, setAllRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("All Status");
-  const [filterClassification, setFilterClassification] =
-    useState("All Classifications");
+  const [filterClassification, setFilterClassification] = useState(
+    "All Classifications",
+  );
   const [filterDate, setFilterDate] = useState("");
   const [sortKey, setSortKey] = useState("date");
   const [sortDir, setSortDir] = useState("desc");
   const [page, setPage] = useState(1);
   const [openMenuId, setOpenMenuId] = useState(null);
 
-  /* ─── Filtered ─── */
-  const filteredRecords = useMemo(() => {
-    return healthRecords.filter((r) => {
+  /* ─── Load Data from LocalStorage ─── */
+  useEffect(() => {
+    const loadRecords = () => {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          setAllRecords(Array.isArray(parsed) ? parsed : []);
+        }
+      } catch (error) {
+        console.error("Failed to load health records:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadRecords();
+
+    const handleStorageChange = (e) => {
+      if (e.key === STORAGE_KEY) {
+        loadRecords();
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
+  /* ─── Logic Helpers ─── */
+  function inferClassification(record) {
+    if (!record) return "General Consultation";
+    const concern = (record.concern || "").toLowerCase();
+    if (concern.includes("prenatal") || concern.includes("pregnan")) {
+      return "Maternal";
+    }
+    if (concern.includes("immunization") || concern.includes("vaccine")) {
+      return "Immunization";
+    }
+    if (concern.includes("hypertension") || concern.includes("diabetes")) {
+      return "Senior Citizen";
+    }
+    return "General Consultation";
+  }
+
+  const STATUS_TABS = [
+    { key: "All Status", label: "All Records", icon: ClipboardList },
+    { key: "Active", label: "Active", icon: HeartPulse },
+    { key: "For Monitoring", label: "Monitoring", icon: Activity },
+    { key: "Completed", label: "Completed", icon: CheckCircle2 },
+  ];
+
+  /* ─── Filtered & Sorted ─── */
+  const processedRecords = () => {
+    let result = allRecords.filter((r) => {
       const q = searchQuery.toLowerCase();
       const matchesSearch =
         !q ||
-        r.patient.toLowerCase().includes(q) ||
-        r.id.toLowerCase().includes(q) ||
-        r.concern.toLowerCase().includes(q);
+        (r.patient && r.patient.toLowerCase().includes(q)) ||
+        (r.id && r.id.toLowerCase().includes(q)) ||
+        (r.concern && r.concern.toLowerCase().includes(q));
       const matchesStatus =
         filterStatus === "All Status" || r.status === filterStatus;
       const matchesClassification =
         filterClassification === "All Classifications" ||
         inferClassification(r) === filterClassification;
-      return (
-        matchesSearch &&
-        matchesStatus &&
-        matchesClassification &&
-        matchesDate(r.date, filterDate)
-      );
-    });
-  }, [searchQuery, filterStatus, filterClassification, filterDate]);
 
-  const tabCounts = useMemo(() => {
-    const q = searchQuery.toLowerCase();
-    const baseRecords = healthRecords.filter((r) => {
-      const matchesSearch =
-        !q ||
-        r.patient.toLowerCase().includes(q) ||
-        r.id.toLowerCase().includes(q) ||
-        r.concern.toLowerCase().includes(q);
-      const matchesClassification =
-        filterClassification === "All Classifications" ||
-        inferClassification(r) === filterClassification;
+      const matchesDate = !filterDate || r.date === filterDate;
 
       return (
-        matchesSearch &&
-        matchesClassification &&
-        matchesDate(r.date, filterDate)
+        matchesSearch && matchesStatus && matchesClassification && matchesDate
       );
     });
 
-    return STATUS_TABS.reduce((acc, tab) => {
-      acc[tab.key] =
-        tab.key === "All Status"
-          ? baseRecords.length
-          : baseRecords.filter((r) => r.status === tab.key).length;
-      return acc;
-    }, {});
-  }, [searchQuery, filterClassification, filterDate]);
-
-  /* ─── Sorted ─── */
-  const sortedRecords = useMemo(() => {
-    return [...filteredRecords].sort((a, b) => {
+    return result.sort((a, b) => {
       const aVal = a[sortKey] || "";
       const bVal = b[sortKey] || "";
       const cmp = aVal.localeCompare(bVal);
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [filteredRecords, sortKey, sortDir]);
+  };
 
-  const totalPages = Math.max(1, Math.ceil(sortedRecords.length / PER_PAGE));
-  const pagedRecords = sortedRecords.slice(
+  // Compute filtered records on render or via useMemo. Since no counts are needed, simple computation is fine.
+  // But let's keep it performant.
+  const currentRecords = processedRecords();
+
+  const totalPages = Math.max(1, Math.ceil(currentRecords.length / PER_PAGE));
+  const pagedRecords = currentRecords.slice(
     (page - 1) * PER_PAGE,
     page * PER_PAGE,
   );
-
-  /* ─── Active Filter Tags ─── */
-  const activeFilters = useMemo(() => {
-    const filters = [];
-    if (searchQuery)
-      filters.push({
-        key: "search",
-        label: "Search",
-        value: searchQuery,
-      });
-    if (filterStatus !== "All Status")
-      filters.push({
-        key: "status",
-        label: "Status",
-        value: filterStatus,
-      });
-    if (filterClassification !== "All Classifications") {
-      filters.push({
-        key: "classification",
-        label: "Classification",
-        value: filterClassification,
-      });
-    }
-    if (filterDate) {
-      filters.push({ key: "date", label: "Date", value: filterDate });
-    }
-    return filters;
-  }, [searchQuery, filterStatus, filterClassification, filterDate]);
-
-  /* ─── Reset page on filter change ─── */
-  useEffect(() => {
-    setPage(1);
-  }, [searchQuery, filterStatus, filterClassification, filterDate]);
 
   /* ─── Handlers ─── */
   function handleSort(key) {
@@ -334,290 +153,257 @@ export default function RHUHealthRecords() {
     setFilterDate("");
   }
 
-  /* ─── Render ─── */
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, filterStatus, filterClassification, filterDate]);
+
+  if (loading) {
+    return (
+      <DashboardLayout role="rhu" title="Health Records">
+        <div className="flex h-64 items-center justify-center text-slate-400">
+          Loading records...
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  const activeFilters = [
+    searchQuery && { key: "search", label: `Search: ${searchQuery}` },
+    filterStatus !== "All Status" && { key: "status", label: filterStatus },
+    filterClassification !== "All Classifications" && {
+      key: "classification",
+      label: filterClassification,
+    },
+    filterDate && { key: "date", label: filterDate },
+  ].filter(Boolean);
+
+  const toolbarFilters = [
+    {
+      key: "status",
+      label: "Record Type / Status",
+      value: filterStatus,
+      options: ["All Status", "Active", "For Monitoring", "Completed"],
+    },
+    {
+      key: "classification",
+      label: "Patient Classification",
+      value: filterClassification,
+      options: [
+        "All Classifications",
+        "General Consultation",
+        "Maternal",
+        "Immunization",
+        "Senior Citizen",
+      ],
+    },
+    {
+      key: "date",
+      label: "Date of Visit",
+      value: filterDate,
+      type: "date",
+    },
+  ];
+
+  function applyToolbarFilters(nextFilters) {
+    setFilterStatus(nextFilters.status);
+    setFilterClassification(nextFilters.classification);
+    setFilterDate(nextFilters.date);
+  }
+
   return (
     <DashboardLayout role="rhu" title="Health Records">
-      <style>{keyframes}</style>
-
-      {/* Header */}
-      <div className="anim-fade-up mb-6" style={stagger(0)}>
+      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 md:px-8">
+        {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-bold text-[#1A1A1A]">Health Records</h1>
-            <p className="mt-1 text-sm text-[#6B7280]">
-              Manage and review all patient consultation records received at
-              this facility.
+            <h1 className="text-2xl font-light tracking-tight text-slate-900">
+              Health Records
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Comprehensive log of patient consultations and treatments.
             </p>
           </div>
-          <Link
-            to="/rhu/health-records/add"
-            className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
-          >
-            <Plus size={15} /> New Record
-          </Link>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div
-        className="anim-fade-up mb-4 rounded-2xl border border-[#E8ECF0] bg-white p-5"
-        style={stagger(1)}
-      >
-        <div className="grid items-end gap-4 xl:grid-cols-[minmax(0,1fr)_190px_170px]">
-          <div className="min-w-0">
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Search Patient / Record ID / Consultation
-            </label>
-            <div className="relative">
-              <Search
-                size={15}
-                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
-              />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Patient name, record ID, or complaint..."
-                className="h-11 w-full rounded-xl border border-[#E8ECF0] bg-white pl-10 pr-4 text-sm text-[#1A1A1A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
-              />
-            </div>
-          </div>
-
-          <FilterSelect
-            label="Classification"
-            value={filterClassification}
-            onChange={setFilterClassification}
-          >
-            <option>All Classifications</option>
-            <option>General Consultation</option>
-            <option>Maternal</option>
-            <option>Immunization</option>
-            <option>Senior Citizen</option>
-          </FilterSelect>
-
-          <div>
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Date
-            </label>
-            <input
-              type="date"
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
-              className="h-11 w-full rounded-xl border border-[#E8ECF0] bg-white px-4 text-sm text-[#1A1A1A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
-            />
-          </div>
         </div>
 
-        {/* Active Filter Tags */}
-        {activeFilters.length > 0 && (
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-semibold text-[#9CA3AF]">
-              Active:
-            </span>
-            {activeFilters.map((f) => (
-              <button
-                key={f.key}
-                onClick={() => clearFilter(f.key)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-2.5 py-1 text-[11px] font-medium text-[#6B7280] transition hover:border-red-200 hover:text-[#B91C1C]"
-              >
-                {f.label}: {f.value}
-                <X size={11} />
-              </button>
-            ))}
-            <button
-              onClick={clearAllFilters}
-              className="text-[11px] font-semibold text-[#B91C1C] hover:underline"
+        <ListToolbar
+          searchValue={searchQuery}
+          onSearchChange={setSearchQuery}
+          searchPlaceholder="Search by patient name or record type..."
+          chip={`● ${currentRecords.length.toLocaleString()} Records`}
+          filters={toolbarFilters}
+          activeFilterCount={
+            activeFilters.filter((filter) => filter.key !== "search").length
+          }
+          activeFilters={activeFilters}
+          onApplyFilters={applyToolbarFilters}
+          onClearFilters={clearAllFilters}
+          onRemoveFilter={clearFilter}
+          actions={
+            <Link
+              to="/rhu/health-records/add"
+              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-[#092347]"
             >
-              Clear all
-            </button>
-          </div>
-        )}
-      </div>
+              <Plus size={14} strokeWidth={2.5} />
+              Add Record
+            </Link>
+          }
+        />
 
-      <div
-        className="anim-fade-up mb-4 flex items-center gap-1 overflow-x-auto rounded-lg bg-[#F1F5F9] p-1"
-        style={stagger(2)}
-      >
-        {STATUS_TABS.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = filterStatus === tab.key;
-
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setFilterStatus(tab.key)}
-              className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${
-                isActive
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-500 hover:bg-slate-200/50 hover:text-slate-700"
-              }`}
-            >
-              <Icon size={12} className={isActive ? "text-[#B91C1C]" : ""} />
-              {tab.label}
-              <span
-                className={`rounded-full px-1.5 py-px text-[9px] font-bold leading-none ${
-                  isActive
-                    ? "bg-[#B91C1C]/10 text-[#B91C1C]"
-                    : "bg-slate-300/70 text-slate-600"
-                }`}
-              >
-                {tabCounts[tab.key] ?? 0}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Table */}
-      <div
-        className="anim-fade-up overflow-hidden rounded-2xl border border-[#E8ECF0] bg-white shadow-sm"
-        style={stagger(3)}
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] text-left">
-            <thead>
-              <tr className="border-b border-[#F3F4F6] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                <SortableHeader
-                  label="Record ID"
-                  sortKey="id"
-                  currentSort={sortKey}
-                  currentDir={sortDir}
-                  onSort={handleSort}
-                  className="px-5"
-                />
-                <SortableHeader
-                  label="Patient"
-                  sortKey="patient"
-                  currentSort={sortKey}
-                  currentDir={sortDir}
-                  onSort={handleSort}
-                />
-                <th className="px-4 py-3">Chief Complaint</th>
-                <SortableHeader
-                  label="Status"
-                  sortKey="status"
-                  currentSort={sortKey}
-                  currentDir={sortDir}
-                  onSort={handleSort}
-                />
-                <SortableHeader
-                  label="Date"
-                  sortKey="date"
-                  currentSort={sortKey}
-                  currentDir={sortDir}
-                  onSort={handleSort}
-                />
-                <th className="px-4 py-3">Recorded By</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
-              {pagedRecords.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="px-5 py-16 text-center text-sm text-[#9CA3AF]"
-                  >
-                    No health records found matching your criteria.
-                  </td>
+        {/* Table Area */}
+        <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[800px] text-left">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  <SortableHeader
+                    label="ID"
+                    sortKey="id"
+                    currentSort={sortKey}
+                    currentDir={sortDir}
+                    onSort={handleSort}
+                    className="px-6 py-4"
+                  />
+                  <SortableHeader
+                    label="Patient Name"
+                    sortKey="patient"
+                    currentSort={sortKey}
+                    currentDir={sortDir}
+                    onSort={handleSort}
+                    className="px-4 py-4"
+                  />
+                  <th className="px-4 py-4">Classification</th>
+                  <th className="px-4 py-4">Concern</th>
+                  <SortableHeader
+                    label="Status"
+                    sortKey="status"
+                    currentSort={sortKey}
+                    currentDir={sortDir}
+                    onSort={handleSort}
+                    className="px-4 py-4"
+                  />
+                  <SortableHeader
+                    label="Date"
+                    sortKey="date"
+                    currentSort={sortKey}
+                    currentDir={sortDir}
+                    onSort={handleSort}
+                    className="px-4 py-4"
+                  />
+                  <th className="px-4 py-4 text-right">Actions</th>
                 </tr>
-              ) : (
-                pagedRecords.map((record) => (
-                  <tr
-                    key={record.id}
-                    className="group transition-colors duration-150 hover:bg-[#FAFBFD]"
-                  >
-                    <td className="px-5 py-4">
-                      <span className="rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-2.5 py-1.5 font-mono text-[11px] font-semibold text-[#B91C1C]">
-                        {record.id}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="text-[13px] font-semibold text-[#1A1A1A]">
-                        {record.patient}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-[13px] text-[#6B7280]">
-                      {record.concern}
-                    </td>
-                    <td className="px-4 py-4">
-                      <StatusBadge status={record.status} />
-                    </td>
-                    <td className="px-4 py-4 text-[13px] text-[#9CA3AF]">
-                      {record.date}
-                    </td>
-                    <td className="px-4 py-4 text-[13px] text-[#6B7280]">
-                      {record.recordedBy}
-                    </td>
-                    <td className="px-4 py-4 text-right">
-                      <ActionMenu
-                        record={record}
-                        open={openMenuId === record.id}
-                        onToggle={() =>
-                          setOpenMenuId(
-                            openMenuId === record.id ? null : record.id,
-                          )
-                        }
-                        onClose={() => setOpenMenuId(null)}
-                      />
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {pagedRecords.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-6 py-12 text-center text-sm text-slate-400"
+                    >
+                      No records found. Try adjusting your filters or add a new
+                      consultation.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-[#F3F4F6] px-5 py-3.5">
-            <p className="text-[12px] text-[#9CA3AF]">
-              Showing{" "}
-              <span className="font-semibold text-[#6B7280]">
-                {(page - 1) * PER_PAGE + 1}
-              </span>{" "}
-              to{" "}
-              <span className="font-semibold text-[#6B7280]">
-                {Math.min(page * PER_PAGE, sortedRecords.length)}
-              </span>{" "}
-              of{" "}
-              <span className="font-semibold text-[#6B7280]">
-                {sortedRecords.length}
-              </span>{" "}
-              records
-            </p>
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E8ECF0] text-[#6B7280] transition hover:bg-[#F9FAFB] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <ChevronLeft size={14} />
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setPage(p)}
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg text-[12px] font-semibold transition ${
-                    p === page
-                      ? "bg-[#B91C1C] text-white"
-                      : "border border-[#E8ECF0] text-[#6B7280] hover:bg-[#F9FAFB]"
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E8ECF0] text-[#6B7280] transition hover:bg-[#F9FAFB] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <ChevronRight size={14} />
-              </button>
-            </div>
+                ) : (
+                  pagedRecords.map((record) => (
+                    <tr
+                      key={record.id}
+                      className="group transition-colors hover:bg-slate-50/30"
+                    >
+                      <td className="px-6 py-4">
+                        <span className="font-mono text-xs font-medium text-slate-500">
+                          {record.id}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {record.patient}
+                        </p>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="inline-flex items-center rounded-md border border-slate-100 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600">
+                          {inferClassification(record)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-sm text-slate-600">
+                        {record.concern}
+                      </td>
+                      <td className="px-4 py-4">
+                        <StatusBadge status={record.status} />
+                      </td>
+                      <td className="px-4 py-4 text-sm text-slate-500">
+                        {record.date}
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <ActionMenu
+                          record={record}
+                          open={openMenuId === record.id}
+                          onToggle={() =>
+                            setOpenMenuId(
+                              openMenuId === record.id ? null : record.id,
+                            )
+                          }
+                          onClose={() => setOpenMenuId(null)}
+                        />
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-        )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4 bg-slate-50/30">
+              <p className="text-xs text-slate-500">
+                Showing{" "}
+                <span className="font-medium text-slate-900">
+                  {(page - 1) * PER_PAGE + 1}
+                </span>{" "}
+                to{" "}
+                <span className="font-medium text-slate-900">
+                  {Math.min(page * PER_PAGE, currentRecords.length)}
+                </span>{" "}
+                of{" "}
+                <span className="font-medium text-slate-900">
+                  {currentRecords.length}
+                </span>{" "}
+                results
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition hover:bg-white hover:border-slate-300 hover:text-slate-600 disabled:opacity-30 disabled:hover:bg-transparent"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                  (p) => (
+                    <button
+                      key={p}
+                      onClick={() => setPage(p)}
+                      className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition ${
+                        p === page
+                          ? "bg-slate-900 text-white shadow-sm"
+                          : "text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ),
+                )}
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition hover:bg-white hover:border-slate-300 hover:text-slate-600 disabled:opacity-30 disabled:hover:bg-transparent"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </DashboardLayout>
   );
@@ -627,25 +413,32 @@ export default function RHUHealthRecords() {
    SUB-COMPONENTS
 ──────────────────────────────────────────── */
 
-function FilterSelect({ label, value, onChange, children }) {
+function FilterSelect({ value, onChange, children }) {
   return (
-    <div>
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-        {label}
-      </label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-11 w-full appearance-none rounded-xl border border-[#E8ECF0] bg-white px-4 pr-10 text-sm text-[#1A1A1A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
-          backgroundRepeat: "no-repeat",
-          backgroundPosition: "right 14px center",
-        }}
-      >
-        {children}
-      </select>
-    </div>
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-8 text-sm text-slate-900 outline-none transition-all focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-900/5"
+      style={{
+        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+        backgroundRepeat: "no-repeat",
+        backgroundPosition: "right 10px center",
+      }}
+    >
+      {children}
+    </select>
+  );
+}
+
+function FilterTag({ label, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+    >
+      {label}
+      <X size={10} className="text-slate-400" />
+    </button>
   );
 }
 
@@ -655,19 +448,19 @@ function SortableHeader({
   currentSort,
   currentDir,
   onSort,
-  className = "px-4",
+  className = "px-4 py-4",
 }) {
   const isActive = currentSort === sortKey;
   return (
     <th
-      className={`cursor-pointer select-none py-3 transition hover:text-[#B91C1C] ${className}`}
+      className={`${className} cursor-pointer select-none transition-colors hover:text-slate-600`}
       onClick={() => onSort(sortKey)}
     >
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2">
         {label}
         <span
-          className={`text-[10px] transition ${
-            isActive ? "text-[#B91C1C]" : "text-[#D1D5DB]"
+          className={`text-[10px] ${
+            isActive ? "text-slate-900" : "text-slate-300"
           }`}
         >
           {isActive ? (currentDir === "asc" ? "↑" : "↓") : "↕"}
@@ -679,13 +472,13 @@ function SortableHeader({
 
 function StatusBadge({ status }) {
   const m = {
-    Active: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    "For Monitoring": "bg-amber-50 text-amber-700 border-amber-200",
-    Completed: "bg-slate-50 text-slate-600 border-slate-200",
+    Active: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+    "For Monitoring": "bg-amber-50 text-amber-700 border border-amber-200",
+    Completed: "bg-slate-100 text-slate-600 border border-slate-200",
   };
   return (
     <span
-      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-semibold ${
+      className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
         m[status] || m.Active
       }`}
     >
@@ -695,58 +488,35 @@ function StatusBadge({ status }) {
 }
 
 function ActionMenu({ record, open, onToggle, onClose }) {
-  const ref = useRef(null);
-
-  useEffect(() => {
-    function handleClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) {
-        onClose();
-      }
-    }
-    if (open) document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open, onClose]);
-
   return (
-    <div className="relative inline-block" ref={ref}>
+    <div className="relative inline-block text-left">
       <button
         onClick={onToggle}
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-[#9CA3AF] transition hover:bg-[#F3F4F6] hover:text-[#6B7280]"
+        className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
       >
         <MoreHorizontal size={16} />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-lg">
+        <div className="absolute right-0 top-full z-10 mt-2 w-48 origin-top-right overflow-hidden rounded-xl border border-slate-100 bg-white shadow-lg ring-1 ring-black/5 focus:outline-none">
           <div className="py-1">
-            <MenuLink
+            <Link
               to={`/rhu/health-records/${record.id}`}
-              icon={<Eye size={14} />}
+              className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
             >
-              View Record Details
-            </MenuLink>
-            <MenuLink
+              <Eye size={14} className="text-slate-400" />
+              View Details
+            </Link>
+            <Link
               to={`/rhu/health-records/add?recordId=${record.id}`}
-              icon={<FilePlus2 size={14} />}
+              className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
             >
-              Add Follow-up Record
-            </MenuLink>
+              <FilePlus2 size={14} className="text-slate-400" />
+              Add Follow-up
+            </Link>
           </div>
         </div>
       )}
     </div>
   );
 }
-
-function MenuLink({ to, icon, children }) {
-  return (
-    <Link
-      to={to}
-      className="flex items-center gap-2.5 px-4 py-2.5 text-[13px] font-medium text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#B91C1C]"
-    >
-      <span className="text-[#9CA3AF]">{icon}</span>
-      {children}
-    </Link>
-  );
-}
-
