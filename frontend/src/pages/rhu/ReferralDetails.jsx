@@ -26,9 +26,8 @@ import {
   updateReferralByTrackingId,
 } from "../../services/referrals";
 import {
-  createPatient,
-  getPatientById,
-  getPatients,
+  getRhuPatientById,
+  linkReferralPatientToRhu,
 } from "../../services/patientService";
 
 const keyframes = `
@@ -83,7 +82,7 @@ export default function RHUReferralDetails() {
         }
 
         const linkedPatient = found.patientId
-          ? await getPatientById(found.patientId)
+          ? await getRhuPatientById(found.patientId)
           : null;
 
         if (!active) return;
@@ -134,7 +133,7 @@ export default function RHUReferralDetails() {
           ),
         );
         if (patientId) {
-          const linkedPatient = await getPatientById(patientId);
+          const linkedPatient = await getRhuPatientById(patientId);
           setPatient(linkedPatient);
         }
         setMessage(`Referral status updated to ${nextStatus}.`);
@@ -1006,45 +1005,7 @@ function getReferralTimeValue(referral) {
 }
 
 async function ensureLinkedPatient(referral) {
-  if (referral.patientId) return referral.patientId;
-
-  const patients = await getPatients();
-  const referralName = normalize(getPatientName(referral));
-  const referralContact = normalize(getContact(referral));
-
-  const existing = patients.find((patient) => {
-    const sameName = normalize(patient.name) === referralName;
-    const sameContact =
-      referralContact &&
-      normalize(patient.contact || patient.contactNumber) === referralContact;
-    return sameName && (sameContact || !referralContact);
-  });
-
-  if (existing?.id) return existing.id;
-
-  const nameParts = splitPatientName(getPatientName(referral));
-  const created = await createPatient({
-    ...nameParts,
-    birthDate: referral.birthDate || referral.dateOfBirth || "",
-    age: referral.age || parseAge(referral.ageSex),
-    sex: referral.sex || parseSex(referral.ageSex),
-    civilStatus: referral.civilStatus || "",
-    contactNumber: getContact(referral),
-    streetAddress:
-      referral.street || referral.address || referral.patientAddress || "",
-    barangay: referral.barangay || referral.patientBarangay || "",
-    municipality: referral.municipality || "Bulakan",
-    patientClassification: getPatientClassification(referral),
-    philhealthNumber:
-      referral.philHealthNumber ||
-      referral.philhealthNumber ||
-      referral.philHealth ||
-      "",
-    registrationSource: "BHC_RHU_REFERRAL",
-    linkedTrackingId: referral.trackingId,
-  });
-
-  return created?.patient?.id || created?.details?.id || null;
+  return linkReferralPatientToRhu(referral);
 }
 
 function splitPatientName(name) {

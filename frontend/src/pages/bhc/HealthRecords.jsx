@@ -196,7 +196,7 @@ export default function HealthRecords() {
             className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347] active:bg-[#071D3A]"
           >
             <Plus size={14} strokeWidth={2.5} />
-            Add Record
+            Add Health Record
           </Link>
         }
       />

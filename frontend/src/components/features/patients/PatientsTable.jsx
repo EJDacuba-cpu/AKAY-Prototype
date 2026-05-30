@@ -298,7 +298,7 @@ export default function PatientsTable({
                             editPatientLink={`/bhc/patients/${patient.id}`}
                             editPatientLabel="Edit Patient"
                             editLink={`/bhc/health-records/add?patientId=${patient.id}`}
-                            editLabel="Add Consultation"
+                            editLabel="Add Health Record"
                           />
                         </div>
                       </td>

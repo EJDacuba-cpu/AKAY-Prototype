@@ -14,7 +14,10 @@ import SideCard from "../../components/common/cards/SideCard";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 import StatusBadge from "../../components/common/badges/StatusBadge";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
-import { getPatientDetailsList, getPatients } from "../../services/patients";
+import {
+  getPatientDetailsListByRole,
+  getPatientsByRole,
+} from "../../services/patients";
 
 const keyframes = `
   @keyframes fadeUp {
@@ -159,8 +162,8 @@ export default function RHURecordDetails() {
       try {
         const [rhuRecords, patientDetails, patientList] = await Promise.all([
           getRhuHealthRecords(),
-          getPatientDetailsList(),
-          getPatients(),
+          getPatientDetailsListByRole("rhu"),
+          getPatientsByRole("rhu"),
         ]);
 
         if (!active) return;

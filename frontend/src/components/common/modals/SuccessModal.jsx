@@ -6,6 +6,8 @@ export default function SuccessModal({
   description,
   buttonText = "Continue",
   onClose,
+  secondaryButtonText,
+  onSecondaryAction,
 }) {
   if (!open) return null;
 
@@ -107,7 +109,38 @@ export default function SuccessModal({
           </p>
 
           {/* Action */}
-          <div className="mt-6 flex justify-end">
+          <div className="mt-6 flex flex-wrap justify-end gap-2">
+            {secondaryButtonText && onSecondaryAction && (
+              <button
+                type="button"
+                onClick={onSecondaryAction}
+                className="
+                  press-scale
+
+                  flex h-9.5
+                  items-center justify-center
+
+                  rounded-lg
+
+                  border border-slate-200
+                  bg-white
+
+                  px-4
+
+                  text-[13px]
+                  font-medium
+                  text-slate-600
+
+                  transition-all duration-150
+
+                  hover:bg-slate-50
+                  active:bg-slate-100
+                "
+              >
+                {secondaryButtonText}
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onClose}

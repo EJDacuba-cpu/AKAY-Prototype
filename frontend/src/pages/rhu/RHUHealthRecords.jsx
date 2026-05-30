@@ -244,7 +244,7 @@ export default function RHUHealthRecords() {
               className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-[#092347]"
             >
               <Plus size={14} strokeWidth={2.5} />
-              Add Record
+              Add Health Record
             </Link>
           }
         />
@@ -300,7 +300,7 @@ export default function RHUHealthRecords() {
                       className="px-6 py-12 text-center text-sm text-slate-400"
                     >
                       No records found. Try adjusting your filters or add a new
-                      consultation.
+                      health record.
                     </td>
                   </tr>
                 ) : (
@@ -508,11 +508,11 @@ function ActionMenu({ record, open, onToggle, onClose }) {
               View Details
             </Link>
             <Link
-              to={`/rhu/health-records/add?recordId=${record.id}`}
+              to={`/rhu/health-records/add?recordId=${record.id}&mode=follow-up`}
               className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
             >
               <FilePlus2 size={14} className="text-slate-400" />
-              Add Follow-up
+              Add Follow-up Record
             </Link>
           </div>
         </div>

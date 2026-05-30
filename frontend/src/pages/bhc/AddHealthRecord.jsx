@@ -1,28 +1,28 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import {
-  User,
-  Stethoscope,
-  HeartPulse,
-  ArrowLeft,
-  Save,
-  Send,
-  Search,
   AlertCircle,
-  Syringe,
-  Check,
+  ArrowLeft,
   Baby,
-  Lock,
-  Clock,
-  X,
-  ShieldCheck,
+  Check,
   ChevronDown,
+  Clock,
+  HeartPulse,
+  Lock,
+  Save,
+  Search,
+  Send,
+  ShieldCheck,
+  Stethoscope,
+  Syringe,
+  User,
+  X,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import healthRecordService, {
   getRhuHealthRecords,
 } from "../../services/healthRecordService";
-import { getPatientDetailsList } from "../../services/patientService";
+import { getPatientDetailsListByRole } from "../../services/patientService";
 import { getCurrentUser } from "../../utils/auth";
 
 /* ═══════════════════════════════════════════════════════════════
@@ -81,113 +81,78 @@ const VACCINE_TIMELINE = [
     id: "birth",
     label: "At Birth",
     sublabel: "0 weeks",
-    order: 0,
     vaccines: [
-      {
-        field: "bcg_vaccine",
-        label: "BCG Vaccine",
-        series: null,
-        doseIndex: -1,
-      },
-      {
-        field: "hepb_birth",
-        label: "Hep B Birth Dose",
-        series: null,
-        doseIndex: -1,
-      },
+      { field: "bcg_vaccine", label: "BCG Vaccine" },
+      { field: "hepb_birth", label: "Hep B Birth Dose" },
     ],
   },
   {
     id: "week6",
     label: "6 Weeks",
     sublabel: "1.5 months",
-    order: 1,
     vaccines: [
-      {
-        field: "pentavalent_dose1",
-        label: "Pentavalent Dose 1",
-        series: "pentavalent",
-        doseIndex: 0,
-      },
-      { field: "opv_dose1", label: "OPV Dose 1", series: "opv", doseIndex: 0 },
-      { field: "pcv_dose1", label: "PCV Dose 1", series: "pcv", doseIndex: 0 },
-      { field: "ipv_dose1", label: "IPV Dose 1", series: "ipv", doseIndex: 0 },
+      { field: "pentavalent_dose1", label: "Pentavalent Dose 1" },
+      { field: "opv_dose1", label: "OPV Dose 1" },
+      { field: "pcv_dose1", label: "PCV Dose 1" },
+      { field: "ipv_dose1", label: "IPV Dose 1" },
     ],
   },
   {
     id: "week10",
     label: "10 Weeks",
     sublabel: "2.5 months",
-    order: 2,
     vaccines: [
-      {
-        field: "pentavalent_dose2",
-        label: "Pentavalent Dose 2",
-        series: "pentavalent",
-        doseIndex: 1,
-      },
-      { field: "opv_dose2", label: "OPV Dose 2", series: "opv", doseIndex: 1 },
-      { field: "pcv_dose2", label: "PCV Dose 2", series: "pcv", doseIndex: 1 },
+      { field: "pentavalent_dose2", label: "Pentavalent Dose 2" },
+      { field: "opv_dose2", label: "OPV Dose 2" },
+      { field: "pcv_dose2", label: "PCV Dose 2" },
     ],
   },
   {
     id: "week14",
     label: "14 Weeks",
     sublabel: "3.5 months",
-    order: 3,
     vaccines: [
-      {
-        field: "pentavalent_dose3",
-        label: "Pentavalent Dose 3",
-        series: "pentavalent",
-        doseIndex: 2,
-      },
-      { field: "opv_dose3", label: "OPV Dose 3", series: "opv", doseIndex: 2 },
-      { field: "pcv_dose3", label: "PCV Dose 3", series: "pcv", doseIndex: 2 },
-      { field: "ipv_dose2", label: "IPV Dose 2", series: "ipv", doseIndex: 1 },
+      { field: "pentavalent_dose3", label: "Pentavalent Dose 3" },
+      { field: "opv_dose3", label: "OPV Dose 3" },
+      { field: "pcv_dose3", label: "PCV Dose 3" },
+      { field: "ipv_dose2", label: "IPV Dose 2" },
     ],
   },
   {
     id: "month9",
     label: "9 Months",
     sublabel: "36 weeks",
-    order: 4,
-    vaccines: [
-      { field: "mmr_dose1", label: "MMR Dose 1", series: "mmr", doseIndex: 0 },
-    ],
+    vaccines: [{ field: "mmr_dose1", label: "MMR Dose 1" }],
   },
   {
     id: "month12",
     label: "12–15 Months",
     sublabel: "Catch-up",
-    order: 5,
-    vaccines: [
-      { field: "mmr_dose2", label: "MMR Dose 2", series: "mmr", doseIndex: 1 },
-    ],
+    vaccines: [{ field: "mmr_dose2", label: "MMR Dose 2" }],
   },
 ];
 
-const VACCINE_LABELS = {};
-VACCINE_TIMELINE.forEach((g) =>
-  g.vaccines.forEach((v) => {
-    VACCINE_LABELS[v.field] = v.label;
-  }),
-);
-
 function isVaccineEligible(field, data) {
   for (const seriesFields of Object.values(VACCINE_SERIES)) {
-    const idx = seriesFields.indexOf(field);
-    if (idx === -1) continue;
-    return seriesFields.slice(0, idx).every((f) => data[f]);
+    const index = seriesFields.indexOf(field);
+    if (index === -1) continue;
+    return seriesFields
+      .slice(0, index)
+      .every((previousField) => data[previousField]);
   }
   return true;
 }
 
 function getTimelineOrder(field) {
-  for (let g = 0; g < VACCINE_TIMELINE.length; g++) {
-    for (let v = 0; v < VACCINE_TIMELINE[g].vaccines.length; v++) {
-      if (VACCINE_TIMELINE[g].vaccines[v].field === field) return g * 100 + v;
-    }
+  for (
+    let groupIndex = 0;
+    groupIndex < VACCINE_TIMELINE.length;
+    groupIndex += 1
+  ) {
+    const vaccineIndex = VACCINE_TIMELINE[groupIndex].vaccines.findIndex(
+      (vaccine) => vaccine.field === field,
+    );
+    if (vaccineIndex !== -1) return groupIndex * 100 + vaccineIndex;
   }
   return -1;
 }
@@ -195,67 +160,1096 @@ function getTimelineOrder(field) {
 function getVaccineStatus(field, data) {
   if (data[field]) return "administered";
   if (!isVaccineEligible(field, data)) return "locked";
-  const thisOrder = getTimelineOrder(field);
-  const hasLaterChecked = VACCINE_TIMELINE.some((g) =>
-    g.vaccines.some(
-      (v) => getTimelineOrder(v.field) > thisOrder && data[v.field],
+
+  const currentOrder = getTimelineOrder(field);
+  const hasLaterChecked = VACCINE_TIMELINE.some((group) =>
+    group.vaccines.some(
+      (vaccine) =>
+        getTimelineOrder(vaccine.field) > currentOrder && data[vaccine.field],
     ),
   );
-  return hasLaterChecked ? "behind" : "upcoming";
-}
 
-function getTimelineNodeStatus(group, data) {
-  const statuses = group.vaccines.map((v) => getVaccineStatus(v.field, data));
-  if (statuses.every((s) => s === "administered")) return "completed";
-  if (statuses.some((s) => s === "administered")) return "in-progress";
-  return "pending";
+  return hasLaterChecked ? "behind" : "upcoming";
 }
 
 function applyAutomation(data) {
   const next = { ...data };
+
   for (const seriesFields of Object.values(VACCINE_SERIES)) {
-    const highest = seriesFields.reduce((h, f, i) => (next[f] ? i : h), -1);
-    if (highest > 0) {
-      for (let i = 0; i < highest; i++) next[seriesFields[i]] = true;
+    const highestCheckedIndex = seriesFields.reduce(
+      (highest, field, index) => (next[field] ? index : highest),
+      -1,
+    );
+
+    if (highestCheckedIndex > 0) {
+      for (let i = 0; i < highestCheckedIndex; i += 1) {
+        next[seriesFields[i]] = true;
+      }
     }
   }
+
   return next;
 }
 
 function getNextInSchedule(data) {
-  for (const g of VACCINE_TIMELINE) {
-    for (const v of g.vaccines) {
-      if (getVaccineStatus(v.field, data) === "behind") {
-        return { ...v, groupLabel: g.label, priority: "behind" };
+  for (const group of VACCINE_TIMELINE) {
+    for (const vaccine of group.vaccines) {
+      if (getVaccineStatus(vaccine.field, data) === "behind") {
+        return { ...vaccine, groupLabel: group.label, priority: "behind" };
       }
     }
   }
-  for (const g of VACCINE_TIMELINE) {
-    for (const v of g.vaccines) {
-      if (getVaccineStatus(v.field, data) === "upcoming") {
-        return { ...v, groupLabel: g.label, priority: "upcoming" };
+
+  for (const group of VACCINE_TIMELINE) {
+    for (const vaccine of group.vaccines) {
+      if (getVaccineStatus(vaccine.field, data) === "upcoming") {
+        return { ...vaccine, groupLabel: group.label, priority: "upcoming" };
       }
     }
   }
+
   return null;
 }
 
 function isFIC(data) {
-  return VACCINE_FIELDS.every((f) => data[f]);
+  return VACCINE_FIELDS.every((field) => data[field]);
 }
 
 function getImmunizationStats(data) {
-  const completed = VACCINE_FIELDS.filter((f) => data[f]).length;
-  const remaining = VACCINE_FIELDS.length - completed;
-  const pct = Math.round((completed / VACCINE_FIELDS.length) * 100);
-  return { completed, remaining, total: VACCINE_FIELDS.length, pct };
+  const completed = VACCINE_FIELDS.filter((field) => data[field]).length;
+  const total = VACCINE_FIELDS.length;
+  const remaining = total - completed;
+  const pct = Math.round((completed / total) * 100);
+  return { completed, remaining, total, pct };
+}
+
+function getTimelineNodeStatus(group, data) {
+  const statuses = group.vaccines.map((vaccine) =>
+    getVaccineStatus(vaccine.field, data),
+  );
+  if (statuses.every((status) => status === "administered")) return "completed";
+  if (statuses.some((status) => status === "administered"))
+    return "in-progress";
+  return "pending";
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   REUSABLE FORM SUB-COMPONENTS
+   MAIN COMPONENT
+   ═══════════════════════════════════════════════════════════════ */
+export default function AddHealthRecord() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const currentUser = getCurrentUser();
+  const userRole = currentUser?.role || "rhu";
+  const basePath = userRole === "bhc" ? "/bhc" : "/rhu";
+  const healthRecordsPath = `${basePath}/health-records`;
+
+  const recordId = searchParams.get("recordId");
+  const preselectedPatientId = searchParams.get("patientId") || "";
+  const isFollowUp = !!recordId;
+
+  const [patients, setPatients] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(-1);
+  const dropdownRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const [dateOfVisit, setDateOfVisit] = useState(
+    new Date().toISOString().split("T")[0],
+  );
+  const [timeOfVisit, setTimeOfVisit] = useState(
+    new Date().toTimeString().split(" ")[0].slice(0, 5),
+  );
+  const [chiefComplaint, setChiefComplaint] = useState("");
+  const [summaryOfPresentIllness, setSummaryOfPresentIllness] = useState("");
+  const [diagnosis, setDiagnosis] = useState("");
+  const [medication, setMedication] = useState("");
+  const [attendingStaff, setAttendingStaff] = useState("");
+  const [consultationNotes, setConsultationNotes] = useState("");
+
+  const [systolicBp, setSystolicBp] = useState("");
+  const [diastolicBp, setDiastolicBp] = useState("");
+  const [temp, setTemp] = useState("");
+  const [pulse, setPulse] = useState("");
+  const [weight, setWeight] = useState("");
+  const [height, setHeight] = useState("");
+
+  const [followUpStatus, setFollowUpStatus] = useState("Routine Monitoring");
+  const [followUpDate, setFollowUpDate] = useState("");
+  const [monitoringNotes, setMonitoringNotes] = useState("");
+  const [needsReferral, setNeedsReferral] = useState("no");
+  const [patientCondition, setPatientCondition] = useState("Improving");
+
+  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
+  const [aog, setAog] = useState("");
+  const [followUpRecord, setFollowUpRecord] = useState(null);
+
+  const [immunizationData, setImmunizationData] = useState({
+    bcg_vaccine: false,
+    hepb_birth: false,
+    pentavalent_dose1: false,
+    pentavalent_dose2: false,
+    pentavalent_dose3: false,
+    opv_dose1: false,
+    opv_dose2: false,
+    opv_dose3: false,
+    ipv_dose1: false,
+    ipv_dose2: false,
+    pcv_dose1: false,
+    pcv_dose2: false,
+    pcv_dose3: false,
+    mmr_dose1: false,
+    mmr_dose2: false,
+    feeding_status: "",
+  });
+
+  useEffect(() => {
+    async function loadPatients() {
+      const parsedPatients = await getPatientDetailsListByRole("bhc");
+      setPatients(parsedPatients || []);
+      if (preselectedPatientId) setSelectedPatientId(preselectedPatientId);
+    }
+
+    loadPatients();
+  }, [preselectedPatientId]);
+
+  useEffect(() => {
+    if (!recordId) return;
+
+    async function loadFollowUpRecord() {
+      const records = await getRhuHealthRecords();
+      const found = records.find(
+        (record) => record.id === recordId || record._id === recordId,
+      );
+      if (found?.patientId) setSelectedPatientId(found.patientId);
+    }
+
+    loadFollowUpRecord();
+  }, [recordId]);
+
+  useEffect(() => {
+    async function loadFollowUpPreview() {
+      if (!isFollowUp) {
+        setFollowUpRecord(null);
+        return;
+      }
+
+      const records = await getRhuHealthRecords();
+      setFollowUpRecord(
+        records.find(
+          (record) => record.id === recordId || record._id === recordId,
+        ) || null,
+      );
+    }
+
+    loadFollowUpPreview();
+  }, [isFollowUp, recordId]);
+
+  const selectedPatient = patients.find(
+    (patient) => patient.id === selectedPatientId,
+  );
+
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+
+  const filteredPatients = useMemo(() => {
+    const source = patients || [];
+
+    if (!normalizedSearch) return source.slice(0, 8);
+
+    return source
+      .filter((patient) =>
+        getPatientSearchText(patient).includes(normalizedSearch),
+      )
+      .slice(0, 12);
+  }, [patients, normalizedSearch]);
+
+  const selectedPatientLabel = selectedPatient
+    ? getPatientSearchLabel(selectedPatient)
+    : "";
+  const patientSearchInputValue =
+    dropdownOpen || !selectedPatientId ? searchTerm : selectedPatientLabel;
+
+  useEffect(() => {
+    if (!dropdownOpen) return;
+
+    function handleClickOutside(event) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target) &&
+        inputRef.current &&
+        !inputRef.current.contains(event.target)
+      ) {
+        closeDropdown();
+      }
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        closeDropdown();
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setHighlightIndex((prev) =>
+          filteredPatients.length === 0
+            ? -1
+            : prev < filteredPatients.length - 1
+              ? prev + 1
+              : 0,
+        );
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setHighlightIndex((prev) =>
+          filteredPatients.length === 0
+            ? -1
+            : prev > 0
+              ? prev - 1
+              : filteredPatients.length - 1,
+        );
+        return;
+      }
+
+      if (event.key === "Enter") {
+        if (highlightIndex >= 0 && highlightIndex < filteredPatients.length) {
+          event.preventDefault();
+          selectPatient(filteredPatients[highlightIndex].id);
+        }
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [dropdownOpen, filteredPatients, highlightIndex]);
+
+  useEffect(() => {
+    setHighlightIndex(filteredPatients.length > 0 ? 0 : -1);
+  }, [searchTerm, filteredPatients.length]);
+
+  function closeDropdown() {
+    setDropdownOpen(false);
+    setHighlightIndex(-1);
+  }
+
+  function selectPatient(id) {
+    setSelectedPatientId(id);
+    setSearchTerm("");
+    setDropdownOpen(false);
+    setHighlightIndex(-1);
+  }
+
+  function clearSelectedPatient() {
+    setSelectedPatientId("");
+    setSearchTerm("");
+    setDropdownOpen(true);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  function handlePatientSearchChange(event) {
+    if (selectedPatientId) setSelectedPatientId("");
+    setSearchTerm(event.target.value);
+    setDropdownOpen(true);
+  }
+
+  function getPatientClassification() {
+    if (!selectedPatient) return "";
+    return (
+      selectedPatient.patientClassification ||
+      selectedPatient.category ||
+      ""
+    ).toLowerCase();
+  }
+
+  const patientClass = getPatientClassification();
+  const isImmunization = patientClass === "immunization";
+  const isMaternal = patientClass === "maternal";
+  const immunizationFIC = useMemo(
+    () => isFIC(immunizationData),
+    [immunizationData],
+  );
+
+  const formattedBp = (() => {
+    const sys = systolicBp || "N/A";
+    const dia = diastolicBp || "N/A";
+    return systolicBp || diastolicBp ? `${sys}/${dia}` : "N/A";
+  })();
+
+  const concatenatedVitalSigns = `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | Pulse: ${
+    pulse || "N/A"
+  } bpm | Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
+
+  useEffect(() => {
+    if (getPatientClassification() === "maternal") {
+      setFollowUpStatus("Routine Monitoring");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPatientId]);
+
+  useEffect(() => {
+    if (followUpStatus === "For Referral") {
+      setNeedsReferral("yes");
+      setPatientCondition("Needs Further Assessment");
+    } else {
+      setNeedsReferral("no");
+      if (patientCondition === "Needs Further Assessment") {
+        setPatientCondition("Improving");
+      }
+    }
+  }, [followUpStatus, patientCondition]);
+
+  useEffect(() => {
+    const registryLmp = selectedPatient?.lmp || selectedPatient?.LMP;
+    if (!registryLmp) {
+      setExpectedDeliveryDate("");
+      setAog("");
+      return;
+    }
+
+    const lmpDate = new Date(registryLmp);
+    const visitDate = dateOfVisit ? new Date(dateOfVisit) : new Date();
+
+    if (Number.isNaN(lmpDate.getTime())) {
+      setExpectedDeliveryDate("Invalid Date");
+      setAog("Invalid Date");
+      return;
+    }
+
+    const edd = new Date(lmpDate);
+    edd.setDate(edd.getDate() + 7);
+    edd.setMonth(edd.getMonth() - 3);
+    edd.setFullYear(edd.getFullYear() + 1);
+    setExpectedDeliveryDate(edd.toISOString().split("T")[0]);
+
+    const timeDiff = visitDate.getTime() - lmpDate.getTime();
+    if (timeDiff < 0) {
+      setAog("Invalid (LMP is ahead of visit)");
+      return;
+    }
+
+    const totalDays = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+    const weeks = Math.floor(totalDays / 7);
+    const days = totalDays % 7;
+
+    if (weeks > 42) {
+      setAog("Post-term (>42 Weeks)");
+      return;
+    }
+
+    const weekStr = `${weeks} week${weeks !== 1 ? "s" : ""}`;
+    const dayStr = days > 0 ? ` and ${days} day${days > 1 ? "s" : ""}` : "";
+    setAog(`${weekStr}${dayStr}`);
+  }, [selectedPatient, dateOfVisit]);
+
+  function handleVaccineChange(field, value) {
+    setImmunizationData((prev) => {
+      const updated = { ...prev, [field]: value };
+      return typeof value === "boolean" ? applyAutomation(updated) : updated;
+    });
+  }
+
+  async function handleSave(event) {
+    event.preventDefault();
+
+    if (!selectedPatientId) {
+      alert("Please select a patient first.");
+      requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
+
+    const finalChiefComplaint =
+      isImmunization && !chiefComplaint ? "Vaccination Visit" : chiefComplaint;
+
+    const formData = {
+      patientId: selectedPatientId,
+      patientName: getPatientName(selectedPatient),
+      patientClassification:
+        selectedPatient?.patientClassification ||
+        selectedPatient?.category ||
+        "General Consultation",
+      dateOfVisit,
+      timeOfVisit,
+      chiefComplaint: finalChiefComplaint,
+      summaryOfPresentIllness,
+      diagnosis,
+      vitalSigns: concatenatedVitalSigns,
+      systolicBp: systolicBp || null,
+      diastolicBp: diastolicBp || null,
+      temperature: temp || null,
+      pulseRate: pulse || null,
+      weight: weight || null,
+      height: height || null,
+      medication,
+      attendingStaff,
+      consultationNotes,
+      followUpStatus,
+      followUpDate,
+      monitoringNotes,
+      patientCondition,
+      needsReferral,
+      referralReason: "",
+      referralCategory: null,
+      referralAssessmentStatus:
+        needsReferral === "yes" ? "Pending RHU Assessment" : null,
+      lmp: selectedPatient?.lmp || selectedPatient?.LMP || null,
+      pmp: selectedPatient?.pmp || null,
+      cycleDuration: selectedPatient?.cycleDuration || null,
+      gravida: selectedPatient?.gravida || null,
+      para: selectedPatient?.para || null,
+      tpal: selectedPatient?.tpal || null,
+      expectedDeliveryDate,
+      aog,
+      immunizationData,
+      createdByRole: userRole,
+    };
+
+    try {
+      const savedRecord =
+        await healthRecordService.createHealthRecord(formData);
+      const savedId = savedRecord?.data?.id || savedRecord?.data?._id;
+
+      if (needsReferral === "yes" && userRole === "bhc") {
+        navigate(
+          `/bhc/referrals/create?recordId=${savedId}&patientId=${selectedPatientId}`,
+        );
+        return;
+      }
+
+      navigate(healthRecordsPath);
+    } catch (error) {
+      console.error("Failed to save record:", error);
+      alert("May error sa pag-save ng record. Pakisuri ang console.");
+    }
+  }
+
+  return (
+    <DashboardLayout role={userRole} title="Add Health Record">
+      <style>{keyframes}</style>
+
+      <div className="anim-fade-up mb-6" style={stagger(0)}>
+        <Link
+          to={healthRecordsPath}
+          className="mb-2 inline-flex items-center gap-2 text-[13px] font-semibold text-[#B91C1C] transition-all duration-200 hover:gap-2.5 hover:text-[#991B1B]"
+        >
+          <ArrowLeft size={16} /> Back to Health Records
+        </Link>
+        <h1 className="text-lg font-bold tracking-tight text-[#1A1A1A]">
+          {isFollowUp ? "Follow-up Health Record" : "Add Health Record"}
+        </h1>
+        <p className="mt-0.5 text-xs text-[#6B7280]">
+          {isFollowUp
+            ? `Create a follow-up record for ${followUpRecord?.patientName || "this patient"}.`
+            : "Record a consultation, maternal record, immunization record, monitoring update, follow-up, or referral basis."}
+        </p>
+        {isFollowUp && followUpRecord && (
+          <div className="mt-3 flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 p-3">
+            <AlertCircle size={15} className="mt-0.5 shrink-0 text-[#B91C1C]" />
+            <p className="text-xs text-red-800">
+              Creating a follow-up record for{" "}
+              <span className="font-semibold">
+                {followUpRecord.patientName}
+              </span>
+              . Original record:{" "}
+              <span className="font-mono font-semibold">{recordId}</span>
+            </p>
+          </div>
+        )}
+      </div>
+
+      <form onSubmit={handleSave} className="relative space-y-5">
+        <div className="relative z-[90]">
+          <FormSection
+            title="Patient Selection"
+            subtitle="Search and select an existing patient profile from the registry."
+            icon={<User size={14} />}
+            delay={1}
+          >
+            <PatientSearchDropdown
+              inputRef={inputRef}
+              dropdownRef={dropdownRef}
+              disabled={isFollowUp}
+              dropdownOpen={dropdownOpen}
+              selectedPatientId={selectedPatientId}
+              selectedPatient={selectedPatient}
+              searchTerm={searchTerm}
+              inputValue={patientSearchInputValue}
+              patients={filteredPatients}
+              highlightIndex={highlightIndex}
+              onSearchChange={handlePatientSearchChange}
+              onOpen={() => {
+                if (isFollowUp) return;
+                setSearchTerm("");
+                setDropdownOpen(true);
+              }}
+              onClear={clearSelectedPatient}
+              onSelect={selectPatient}
+              onHighlight={setHighlightIndex}
+            />
+          </FormSection>
+        </div>
+
+        {isImmunization && (
+          <FormSection
+            title="Smart Immunization Tracker"
+            subtitle="Digital immunization card with automated schedule tracking."
+            icon={<Syringe size={14} />}
+            delay={2}
+          >
+            <div className="mb-5 grid gap-4 lg:grid-cols-2">
+              <ImmunizationSummaryCard data={immunizationData} />
+              {immunizationFIC ? (
+                <FICCard />
+              ) : (
+                <ScheduleStatusPanel data={immunizationData} />
+              )}
+            </div>
+
+            <div className="mb-6 max-w-xs">
+              <FieldSelect
+                label="Feeding Status"
+                value={immunizationData.feeding_status}
+                onChange={(event) =>
+                  handleVaccineChange("feeding_status", event.target.value)
+                }
+              >
+                <option value="">Select status</option>
+                <option>Breastfeeding</option>
+                <option>Formula Milk</option>
+                <option>Mixed Feeding</option>
+              </FieldSelect>
+            </div>
+
+            <div className="rounded-2xl border border-[#F0F0F0] bg-[#FCFCFC] p-5">
+              <div className="mb-5 flex items-center gap-2.5">
+                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-red-50">
+                  <Syringe size={11} className="text-[#B91C1C]" />
+                </div>
+                <div>
+                  <h3 className="text-[11px] font-bold tracking-wide text-[#1F2937]">
+                    Vaccine Schedule
+                  </h3>
+                  <p className="text-[9px] text-[#C9C9C9]">
+                    Based on the standard immunization schedule
+                  </p>
+                </div>
+              </div>
+              <VaccineTimeline
+                data={immunizationData}
+                onChange={handleVaccineChange}
+              />
+            </div>
+
+            <p className="mt-3 text-center text-[9px] text-[#D4D4D4]">
+              <Lock size={8} className="mr-1 inline-block -mt-px" />
+              Checking a higher dose automatically fills in previous doses in
+              the same series.
+            </p>
+          </FormSection>
+        )}
+
+        {isMaternal && (
+          <FormSection
+            title="Maternal & Prenatal Assessment"
+            subtitle="Monitor pregnancy progression and maternal clinical vitals."
+            icon={<HeartPulse size={14} />}
+            delay={2}
+            accent="pink"
+          >
+            <div className="border-t border-[#F3F4F6] pt-5">
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-pink-700">
+                Obstetric Profile
+              </p>
+              <div className="grid gap-4 lg:grid-cols-3">
+                <ReadOnlyField
+                  label="Registered LMP"
+                  value={
+                    formatLongDate(
+                      selectedPatient?.lmp || selectedPatient?.LMP,
+                    ) || "Not set"
+                  }
+                />
+                <FieldInput
+                  label="Calculated AOG"
+                  value={aog || "Calculating..."}
+                  readOnly
+                />
+                <FieldInput
+                  label="Expected Delivery Date"
+                  value={expectedDeliveryDate || "Calculating..."}
+                  readOnly
+                />
+              </div>
+            </div>
+          </FormSection>
+        )}
+
+        {!isImmunization && (
+          <FormSection
+            title="Consultation Information"
+            subtitle="Record consultation findings and observations."
+            icon={<Stethoscope size={14} />}
+            delay={3}
+          >
+            <div className="grid gap-4 lg:grid-cols-3">
+              <FieldInput
+                label="Date of Visit"
+                type="date"
+                required
+                value={dateOfVisit}
+                onChange={(event) => setDateOfVisit(event.target.value)}
+              />
+              <FieldInput
+                label="Time of Visit"
+                type="time"
+                required
+                value={timeOfVisit}
+                onChange={(event) => setTimeOfVisit(event.target.value)}
+              />
+              <FieldInput
+                label="Chief Complaint"
+                placeholder="e.g. Fever, vomiting, cough"
+                required
+                value={chiefComplaint}
+                onChange={(event) => setChiefComplaint(event.target.value)}
+              />
+            </div>
+            <div className="mt-4">
+              <FieldTextarea
+                label="Summary of Present Illness and Physical Examination"
+                required
+                value={summaryOfPresentIllness}
+                onChange={(event) =>
+                  setSummaryOfPresentIllness(event.target.value)
+                }
+                placeholder="Record the detailed history of the present illness and physical examination findings here..."
+                rows={5}
+              />
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-3">
+              <FieldInput
+                label="Initial Diagnosis"
+                value={diagnosis}
+                onChange={(event) => setDiagnosis(event.target.value)}
+              />
+              <FieldInput
+                label="Initial Actions Taken"
+                value={medication}
+                onChange={(event) => setMedication(event.target.value)}
+              />
+              <FieldInput
+                label="Name of Practitioner"
+                value={attendingStaff}
+                onChange={(event) => setAttendingStaff(event.target.value)}
+              />
+            </div>
+          </FormSection>
+        )}
+
+        <FormSection
+          title="Vital Signs"
+          subtitle="Record the patient's physiological measurements."
+          icon={<HeartPulse size={14} />}
+          delay={4}
+        >
+          <div className="grid gap-4 lg:grid-cols-3">
+            <BpInputGroup
+              systolic={systolicBp}
+              diastolic={diastolicBp}
+              onSystolicChange={setSystolicBp}
+              onDiastolicChange={setDiastolicBp}
+            />
+            <FieldInput
+              label="Temperature"
+              placeholder="e.g. 36.5 °C"
+              value={temp}
+              onChange={(event) => setTemp(event.target.value)}
+            />
+            <FieldInput
+              label="Pulse Rate"
+              placeholder="e.g. 72 bpm"
+              value={pulse}
+              onChange={(event) => setPulse(event.target.value)}
+            />
+          </div>
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <FieldInput
+              label="Weight"
+              type="number"
+              placeholder="e.g. 60"
+              value={weight}
+              onChange={(event) => setWeight(event.target.value)}
+            />
+            <FieldInput
+              label="Height"
+              type="number"
+              placeholder="e.g. 165"
+              value={height}
+              onChange={(event) => setHeight(event.target.value)}
+            />
+          </div>
+          <div className="mt-4">
+            <FieldTextarea
+              label={
+                isImmunization
+                  ? "Vaccination Notes (Optional)"
+                  : "Additional Notes (Optional)"
+              }
+              value={consultationNotes}
+              onChange={(event) => setConsultationNotes(event.target.value)}
+              placeholder={
+                isImmunization
+                  ? "e.g. Post-vaccination observations, adverse events, etc..."
+                  : "Other observations not covered in the summary..."
+              }
+              rows={3}
+            />
+          </div>
+        </FormSection>
+
+        <FormSection
+          title="Patient Monitoring"
+          subtitle="Track patient progress and follow-up schedules."
+          icon={<HeartPulse size={14} />}
+          delay={5}
+        >
+          <div className="grid gap-4 lg:grid-cols-2">
+            <FieldSelect
+              label="Record Type"
+              value={followUpStatus}
+              onChange={(event) => setFollowUpStatus(event.target.value)}
+            >
+              <option>Routine Monitoring</option>
+              <option>Follow-up</option>
+              <option>For Referral</option>
+              <option>Completed</option>
+            </FieldSelect>
+            <FieldInput
+              label="Follow-up Date"
+              type="date"
+              value={followUpDate}
+              onChange={(event) => setFollowUpDate(event.target.value)}
+            />
+          </div>
+          <div className="mt-4">
+            <FieldSelect
+              label="Current Condition"
+              value={patientCondition}
+              onChange={(event) => setPatientCondition(event.target.value)}
+            >
+              <option>Improving</option>
+              <option>Stable</option>
+              <option>No Improvement Observed</option>
+              <option>Needs Further Assessment</option>
+              <option>Recovered</option>
+            </FieldSelect>
+          </div>
+          <div className="mt-4">
+            <FieldTextarea
+              label="Monitoring and Follow-up"
+              value={monitoringNotes}
+              onChange={(event) => setMonitoringNotes(event.target.value)}
+              placeholder="Write follow-up or monitoring notes..."
+              rows={3}
+            />
+          </div>
+        </FormSection>
+
+        <FormSection
+          title="Assessment Recommendation"
+          subtitle="Determine if this case requires further evaluation."
+          icon={<Send size={14} />}
+          delay={6}
+        >
+          <div className="grid gap-3 lg:grid-cols-2">
+            <RecommendationOption
+              name="needsReferral"
+              value="no"
+              checked={needsReferral === "no"}
+              onChange={setNeedsReferral}
+              icon={<Save size={18} />}
+              title="Save Health Record"
+              description="Save health record and monitoring information."
+              activeClass="border-[#B91C1C] bg-red-50"
+              iconActiveClass="text-[#B91C1C]"
+            />
+            <RecommendationOption
+              name="needsReferral"
+              value="yes"
+              checked={needsReferral === "yes"}
+              onChange={setNeedsReferral}
+              icon={<Send size={18} />}
+              title="Create Referral"
+              description="Forward patient case for further medical assessment."
+              activeClass="border-amber-500 bg-amber-50"
+              iconActiveClass="text-amber-600"
+            />
+          </div>
+        </FormSection>
+
+        <div
+          className="anim-fade-up flex items-center justify-end gap-3 pt-1 pb-4"
+          style={stagger(7)}
+        >
+          <button
+            type="button"
+            onClick={() => navigate(healthRecordsPath)}
+            className="rounded-xl border border-[#E8ECF0] bg-white px-5 py-2.5 text-sm font-semibold text-[#6B7280] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#D1D5DB] hover:shadow-md active:scale-[0.97]"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="group flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98]"
+          >
+            <Save
+              size={15}
+              className="transition-transform duration-300 group-hover:scale-110"
+            />
+            Save Health Record
+          </button>
+        </div>
+      </form>
+    </DashboardLayout>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PATIENT SEARCH DROPDOWN
+   ═══════════════════════════════════════════════════════════════ */
+function PatientSearchDropdown({
+  inputRef,
+  dropdownRef,
+  disabled,
+  dropdownOpen,
+  selectedPatientId,
+  selectedPatient,
+  searchTerm,
+  inputValue,
+  patients,
+  highlightIndex,
+  onSearchChange,
+  onOpen,
+  onClear,
+  onSelect,
+  onHighlight,
+}) {
+  return (
+    <div className="relative z-[9999]">
+      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+        Search Existing Patient
+      </label>
+
+      <div className="relative" ref={inputRef}>
+        <Search
+          size={15}
+          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
+        />
+        <input
+          type="text"
+          placeholder="Search patient name, ID, contact, or barangay..."
+          value={inputValue}
+          onChange={onSearchChange}
+          onFocus={onOpen}
+          disabled={disabled}
+          readOnly={disabled}
+          className={`h-10 w-full rounded-xl border bg-[#FAFBFC] pl-10 pr-10 text-sm outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:bg-[#F3F4F6] disabled:text-[#9CA3AF] ${
+            dropdownOpen
+              ? "border-[#B91C1C] bg-white ring-2 ring-[#B91C1C]/10"
+              : "border-[#E8ECF0]"
+          }`}
+        />
+
+        {selectedPatientId && !disabled ? (
+          <button
+            type="button"
+            onClick={onClear}
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-[#9CA3AF] transition-colors hover:bg-[#F3F4F6] hover:text-[#6B7280]"
+            title="Clear selection"
+          >
+            <X size={14} />
+          </button>
+        ) : (
+          !disabled && (
+            <ChevronDown
+              size={14}
+              className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 transition-colors duration-200 ${
+                dropdownOpen ? "text-[#B91C1C]" : "text-[#9CA3AF]"
+              }`}
+            />
+          )
+        )}
+      </div>
+
+      {dropdownOpen && !disabled && (
+        <div
+          ref={dropdownRef}
+          className="anim-drop-in absolute left-0 right-0 top-full z-[9999] mt-1.5 max-h-72 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-xl shadow-black/[0.08]"
+        >
+          <div className="flex items-center justify-between border-b border-[#F3F4F6] px-3.5 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+              {patients.length} result{patients.length !== 1 ? "s" : ""}
+            </p>
+            {searchTerm && (
+              <span className="max-w-[220px] truncate text-[10px] text-[#BFBFBF]">
+                Searching: {searchTerm}
+              </span>
+            )}
+          </div>
+
+          {patients.length === 0 ? (
+            <div className="px-3.5 py-8 text-center">
+              <Search size={20} className="mx-auto mb-2 text-[#D4D4D4]" />
+              <p className="text-xs font-medium text-[#9CA3AF]">
+                No patients found
+              </p>
+              <p className="mt-0.5 text-[10px] text-[#D4D4D4]">
+                Try a different name, ID, contact number, or barangay.
+              </p>
+            </div>
+          ) : (
+            <div className="max-h-64 overflow-y-auto py-1">
+              {patients.map((patient, index) => {
+                const display = getPatientDisplay(patient);
+                const isSelected = patient.id === selectedPatientId;
+                const isHighlighted = index === highlightIndex;
+
+                return (
+                  <button
+                    key={patient.id}
+                    type="button"
+                    onMouseEnter={() => onHighlight(index)}
+                    onClick={() => onSelect(patient.id)}
+                    className={`flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors duration-100 ${
+                      isHighlighted
+                        ? "bg-[#B91C1C]/[0.06]"
+                        : isSelected
+                          ? "bg-red-50"
+                          : "hover:bg-[#FAFBFC]"
+                    }`}
+                  >
+                    <div
+                      className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-[11px] font-bold ${
+                        isSelected
+                          ? "bg-[#B91C1C] text-white"
+                          : "bg-[#F3F4F6] text-[#6B7280]"
+                      }`}
+                    >
+                      {getPatientInitial(patient)}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p
+                          className={`truncate text-sm ${
+                            isSelected
+                              ? "font-bold text-[#B91C1C]"
+                              : "font-semibold text-[#1F2937]"
+                          }`}
+                        >
+                          {display.name}
+                        </p>
+                        {(patient.id || patient.patientId) && (
+                          <span className="shrink-0 rounded-md border border-[#E8ECF0] bg-[#F8FAFC] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-[#0B2E59]">
+                            {patient.patientId || patient.id}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 truncate text-[10px] text-[#9CA3AF]">
+                        {[
+                          display.age,
+                          display.cls,
+                          display.contact,
+                          display.barangay,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </div>
+
+                    {isSelected && (
+                      <Check
+                        size={14}
+                        className="flex-shrink-0 text-[#B91C1C]"
+                        strokeWidth={3}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {selectedPatient && <SelectedPatientPreview patient={selectedPatient} />}
+    </div>
+  );
+}
+
+function SelectedPatientPreview({ patient }) {
+  const display = getPatientDisplay(patient);
+
+  return (
+    <div className="anim-fade-up mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3 py-2">
+      <span className="text-[9px] font-bold uppercase tracking-widest text-[#B91C1C]">
+        Selected Patient
+      </span>
+      <span className="text-slate-300">•</span>
+      <span className="text-xs font-bold text-[#1A1A1A]">{display.name}</span>
+      {display.age && (
+        <>
+          <span className="text-slate-300">•</span>
+          <span className="text-xs text-[#6B7280]">{display.age}</span>
+        </>
+      )}
+      {(display.cls || patient.patientClassification || patient.category) && (
+        <>
+          <span className="text-slate-300">•</span>
+          <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-[#B91C1C]">
+            {display.cls || patient.patientClassification || patient.category}
+          </span>
+        </>
+      )}
+      {display.contact && (
+        <>
+          <span className="text-slate-300">•</span>
+          <span className="text-xs text-[#6B7280]">{display.contact}</span>
+        </>
+      )}
+      {display.barangay && (
+        <>
+          <span className="text-slate-300">•</span>
+          <span className="text-xs text-[#6B7280]">{display.barangay}</span>
+        </>
+      )}
+      {(patient.patientId || patient.id) && (
+        <>
+          <span className="text-slate-300">•</span>
+          <span className="font-mono text-[10px] font-semibold text-[#0B2E59]">
+            {patient.patientId || patient.id}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FORM SUB-COMPONENTS
    ═══════════════════════════════════════════════════════════════ */
 function FormSection({ title, subtitle, icon, children, delay = 0, accent }) {
   const borderClass = accent === "pink" ? "border-t-2 border-t-pink-600" : "";
+
   return (
     <div
       className={`anim-fade-up rounded-2xl border border-[#E8ECF0] bg-white p-6 shadow-sm ${borderClass}`}
@@ -263,7 +1257,11 @@ function FormSection({ title, subtitle, icon, children, delay = 0, accent }) {
     >
       <div className="flex items-center gap-2.5 border-b border-[#F3F4F6] pb-4">
         <div
-          className={`flex h-7 w-7 items-center justify-center rounded-lg ${accent === "pink" ? "bg-pink-50 text-pink-600" : "bg-red-50 text-[#B91C1C]"}`}
+          className={`flex h-7 w-7 items-center justify-center rounded-lg ${
+            accent === "pink"
+              ? "bg-pink-50 text-pink-600"
+              : "bg-red-50 text-[#B91C1C]"
+          }`}
         >
           {icon}
         </div>
@@ -312,6 +1310,33 @@ function FieldSelect({ label, required, children, ...props }) {
   );
 }
 
+function FieldTextarea({ label, required, rows = 3, ...props }) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <textarea
+        {...props}
+        required={required}
+        rows={rows}
+        className="w-full resize-none rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 py-3 text-sm leading-relaxed text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10"
+      />
+    </div>
+  );
+}
+
+function ReadOnlyField({ label, value }) {
+  return (
+    <div className="rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] p-3">
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+        {label}
+      </p>
+      <p className="text-sm font-semibold text-[#1F2937]">{value}</p>
+    </div>
+  );
+}
+
 function BpInputGroup({
   systolic,
   diastolic,
@@ -328,8 +1353,8 @@ function BpInputGroup({
           type="number"
           placeholder="Systolic"
           value={systolic}
-          onChange={(e) => onSystolicChange(e.target.value)}
-          className="h-10 w-full rounded-l-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          onChange={(event) => onSystolicChange(event.target.value)}
+          className="h-10 w-full rounded-l-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
         <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center border-y border-[#E8ECF0] bg-[#F3F4F6] text-sm font-bold text-[#6B7280]">
           /
@@ -338,8 +1363,8 @@ function BpInputGroup({
           type="number"
           placeholder="Diastolic"
           value={diastolic}
-          onChange={(e) => onDiastolicChange(e.target.value)}
-          className="h-10 w-full rounded-r-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:opacity-60 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          onChange={(event) => onDiastolicChange(event.target.value)}
+          className="h-10 w-full rounded-r-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
       </div>
       <p className="mt-1 text-[9px] text-[#BFBFBF]">Systolic / Diastolic</p>
@@ -347,10 +1372,49 @@ function BpInputGroup({
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   SMART IMMUNIZATION SUB-COMPONENTS
-   ═══════════════════════════════════════════════════════════════ */
+function RecommendationOption({
+  name,
+  value,
+  checked,
+  onChange,
+  icon,
+  title,
+  description,
+  activeClass,
+  iconActiveClass,
+}) {
+  return (
+    <label
+      className={`flex min-h-[96px] cursor-pointer items-center gap-4 rounded-xl border p-4 transition-all duration-200 ${
+        checked ? activeClass : "border-[#E8ECF0] bg-white hover:bg-[#FAFBFC]"
+      }`}
+    >
+      <input
+        type="radio"
+        name={name}
+        value={value}
+        checked={checked}
+        onChange={(event) => onChange(event.target.value)}
+        className="sr-only"
+      />
+      <span className={checked ? iconActiveClass : "text-[#9CA3AF]"}>
+        {icon}
+      </span>
+      <span>
+        <span className="block text-sm font-semibold text-[#1A1A1A]">
+          {title}
+        </span>
+        <span className="mt-0.5 block text-xs text-[#6B7280]">
+          {description}
+        </span>
+      </span>
+    </label>
+  );
+}
 
+/* ═══════════════════════════════════════════════════════════════
+   IMMUNIZATION SUB-COMPONENTS
+   ═══════════════════════════════════════════════════════════════ */
 function StatusChip({ status, compact }) {
   const map = {
     administered: {
@@ -378,17 +1442,17 @@ function StatusChip({ status, compact }) {
       icon: <Lock size={compact ? 8 : 9} />,
     },
   };
-  const c = map[status];
-  if (!c) return null;
+  const config = map[status];
+  if (!config) return null;
   const size = compact
     ? "rounded-md px-1.5 py-0.5 text-[9px]"
     : "rounded-lg px-2 py-0.5 text-[10px]";
   return (
     <span
-      className={`inline-flex items-center gap-1 font-semibold whitespace-nowrap ${c.bg} ${c.text} ${size}`}
+      className={`inline-flex items-center gap-1 whitespace-nowrap font-semibold ${config.bg} ${config.text} ${size}`}
     >
-      {c.icon}
-      {c.label}
+      {config.icon}
+      {config.label}
     </span>
   );
 }
@@ -409,7 +1473,8 @@ function ImmunizationSummaryCard({ data }) {
             <span className="font-semibold text-[#1F2937]">
               {stats.completed}
             </span>{" "}
-            vaccine{stats.completed !== 1 ? "s" : ""} recorded
+            vaccine
+            {stats.completed !== 1 ? "s" : ""} recorded
             <span className="mx-1.5 text-[#D4D4D4]">·</span>
             <span className="font-semibold text-[#1F2937]">
               {stats.remaining}
@@ -483,11 +1548,17 @@ function ScheduleStatusPanel({ data }) {
 
   return (
     <div
-      className={`rounded-2xl border p-4 shadow-sm ${isBehind ? "border-red-200 bg-red-50/40" : "border-amber-200 bg-amber-50/40"}`}
+      className={`rounded-2xl border p-4 shadow-sm ${
+        isBehind
+          ? "border-red-200 bg-red-50/40"
+          : "border-amber-200 bg-amber-50/40"
+      }`}
     >
       <div className="mb-2.5 flex items-center gap-2">
         <div
-          className={`flex h-6 w-6 items-center justify-center rounded-lg ${isBehind ? "bg-red-100" : "bg-amber-100"}`}
+          className={`flex h-6 w-6 items-center justify-center rounded-lg ${
+            isBehind ? "bg-red-100" : "bg-amber-100"
+          }`}
         >
           {isBehind ? (
             <X size={12} className="text-red-600" strokeWidth={3} />
@@ -496,7 +1567,9 @@ function ScheduleStatusPanel({ data }) {
           )}
         </div>
         <h4
-          className={`text-[10px] font-bold uppercase tracking-widest ${isBehind ? "text-red-700" : "text-amber-800"}`}
+          className={`text-[10px] font-bold uppercase tracking-widest ${
+            isBehind ? "text-red-700" : "text-amber-800"
+          }`}
         >
           {isBehind ? "Behind Schedule" : "Next in Schedule"}
         </h4>
@@ -543,13 +1616,16 @@ function SmartVaccineCheckbox({
       `}
     >
       <div
-        className={`flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded-md border transition-all duration-200
-        ${checked ? "border-[#B91C1C] bg-[#B91C1C]" : "border-[#D4D4D4] bg-white group-hover:border-[#BFBFBF]"}`}
+        className={`flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded-md border transition-all duration-200 ${
+          checked
+            ? "border-[#B91C1C] bg-[#B91C1C]"
+            : "border-[#D4D4D4] bg-white group-hover:border-[#BFBFBF]"
+        }`}
       >
         {checked && <Check size={10} className="text-white" strokeWidth={3} />}
       </div>
       <span
-        className={`min-w-0 flex-1 text-xs font-medium transition-colors duration-200 ${checked ? "text-[#991B1B]" : "text-[#6B7280]"}`}
+        className={`min-w-0 flex-1 text-xs font-medium ${checked ? "text-[#991B1B]" : "text-[#6B7280]"}`}
       >
         {label}
       </span>
@@ -570,7 +1646,9 @@ function SmartVaccineCheckbox({
 
 function VaccineTimelineNode({ group, data, nextField, onChange }) {
   const nodeStatus = getTimelineNodeStatus(group, data);
-  const doneCount = group.vaccines.filter((v) => data[v.field]).length;
+  const doneCount = group.vaccines.filter(
+    (vaccine) => data[vaccine.field],
+  ).length;
   const totalCount = group.vaccines.length;
 
   const dotStyles = {
@@ -654,966 +1732,74 @@ function VaccineTimeline({ data, onChange }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   MAIN COMPONENT
+   PATIENT DISPLAY HELPERS
    ═══════════════════════════════════════════════════════════════ */
-export default function AddHealthRecord() {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-
-  const currentUser = getCurrentUser();
-  const userRole = currentUser?.role || "rhu";
-  const basePath = userRole === "bhc" ? "/bhc" : "/rhu";
-  const healthRecordsPath = `${basePath}/health-records`;
-
-  const recordId = searchParams.get("recordId");
-  const preselectedPatientId = searchParams.get("patientId") || "";
-  const isFollowUp = !!recordId;
-
-  const [patients, setPatients] = useState([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedPatientId, setSelectedPatientId] = useState("");
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [highlightIndex, setHighlightIndex] = useState(-1);
-  const dropdownRef = useRef(null);
-  const inputRef = useRef(null);
-
-  const [dateOfVisit, setDateOfVisit] = useState(
-    new Date().toISOString().split("T")[0],
-  );
-  const [timeOfVisit, setTimeOfVisit] = useState(
-    new Date().toTimeString().split(" ")[0].slice(0, 5),
-  );
-  const [chiefComplaint, setChiefComplaint] = useState("");
-  const [summaryOfPresentIllness, setSummaryOfPresentIllness] = useState("");
-  const [diagnosis, setDiagnosis] = useState("");
-  const [medication, setMedication] = useState("");
-  const [attendingStaff, setAttendingStaff] = useState("");
-  const [consultationNotes, setConsultationNotes] = useState("");
-
-  const [systolicBp, setSystolicBp] = useState("");
-  const [diastolicBp, setDiastolicBp] = useState("");
-  const [temp, setTemp] = useState("");
-  const [pulse, setPulse] = useState("");
-  const [weight, setWeight] = useState("");
-  const [height, setHeight] = useState("");
-
-  const [followUpStatus, setFollowUpStatus] = useState("Routine Monitoring");
-  const [followUpDate, setFollowUpDate] = useState("");
-  const [monitoringNotes, setMonitoringNotes] = useState("");
-  const [needsReferral, setNeedsReferral] = useState("no");
-  const [patientCondition, setPatientCondition] = useState("Improving");
-
-  const referralContextRef = useMemo(() => {
-    const recordIdFromQuery = searchParams.get("recordId") || "";
-    const patientIdFromQuery = searchParams.get("patientId") || "";
-    return {
-      recordId: recordIdFromQuery,
-      patientId: selectedPatientId || patientIdFromQuery,
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPatientId, searchParams]);
-
-  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
-  const [aog, setAog] = useState("");
-
-  const [immunizationData, setImmunizationData] = useState({
-    bcg_vaccine: false,
-    hepb_birth: false,
-    pentavalent_dose1: false,
-    pentavalent_dose2: false,
-    pentavalent_dose3: false,
-    opv_dose1: false,
-    opv_dose2: false,
-    opv_dose3: false,
-    ipv_dose1: false,
-    ipv_dose2: false,
-    pcv_dose1: false,
-    pcv_dose2: false,
-    pcv_dose3: false,
-    mmr_dose1: false,
-    mmr_dose2: false,
-    feeding_status: "",
-  });
-
-  const immunizationFIC = useMemo(
-    () => isFIC(immunizationData),
-    [immunizationData],
-  );
-
-  useEffect(() => {
-    async function loadPatients() {
-      const parsedPatients = await getPatientDetailsList();
-      setPatients(parsedPatients);
-      if (preselectedPatientId) setSelectedPatientId(preselectedPatientId);
-    }
-    loadPatients();
-  }, [preselectedPatientId]);
-
-  useEffect(() => {
-    if (!recordId) return;
-    async function loadFollowUpRecord() {
-      const records = await getRhuHealthRecords();
-      const found = records.find(
-        (r) => r.id === recordId || r._id === recordId,
-      );
-      if (found?.patientId) setSelectedPatientId(found.patientId);
-    }
-    loadFollowUpRecord();
-  }, [recordId]);
-
-  const filteredPatients = patients.filter((patient) =>
-    `${patient.name || (patient.firstName ? `${patient.firstName} ${patient.lastName}` : "")} ${patient.contactNumber || patient.contact || ""}`
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase()),
-  );
-
-  const selectedPatient = patients.find(
-    (patient) => patient.id === selectedPatientId,
-  );
-  const [followUpRecord, setFollowUpRecord] = useState(null);
-
-  useEffect(() => {
-    async function loadFollowUpPreview() {
-      if (!isFollowUp) {
-        setFollowUpRecord(null);
-        return;
-      }
-      const records = await getRhuHealthRecords();
-      setFollowUpRecord(
-        records.find((r) => r.id === recordId || r._id === recordId) || null,
-      );
-    }
-    loadFollowUpPreview();
-  }, [isFollowUp, recordId]);
-
-  /* ── Dropdown click-outside & keyboard ── */
-  useEffect(() => {
-    if (!dropdownOpen) return;
-    function handleClickOutside(e) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(e.target) &&
-        inputRef.current &&
-        !inputRef.current.contains(e.target)
-      ) {
-        closeDropdown();
-      }
-    }
-    function handleKeyDown(e) {
-      if (e.key === "Escape") {
-        closeDropdown();
-      } else if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setHighlightIndex((prev) =>
-          prev < filteredPatients.length - 1 ? prev + 1 : prev,
-        );
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setHighlightIndex((prev) => (prev > 0 ? prev - 1 : 0));
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        if (highlightIndex >= 0 && highlightIndex < filteredPatients.length) {
-          selectPatient(filteredPatients[highlightIndex].id);
-        }
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [dropdownOpen, filteredPatients, highlightIndex]);
-
-  useEffect(() => {
-    setHighlightIndex(0);
-  }, [searchTerm]);
-
-  function closeDropdown() {
-    setDropdownOpen(false);
-    setHighlightIndex(-1);
-    if (inputRef.current) inputRef.current.blur();
-  }
-
-  function selectPatient(id) {
-    setSelectedPatientId(id);
-    setDropdownOpen(false);
-    setHighlightIndex(-1);
-    setSearchTerm("");
-  }
-
-  function getPatientClassification() {
-    if (!selectedPatient) return "";
-    return (
-      selectedPatient.patientClassification ||
-      selectedPatient.category ||
-      ""
-    ).toLowerCase();
-  }
-
-  /* ── Workflow Helper Variables ── */
-  const patientClass = getPatientClassification();
-  const isImmunization = patientClass === "immunization";
-  const isMaternal = patientClass === "maternal";
-  const isGeneral = !isImmunization && !isMaternal;
-
-  const formattedBp = (() => {
-    const sys = systolicBp || "N/A";
-    const dia = diastolicBp || "N/A";
-    return systolicBp || diastolicBp ? `${sys}/${dia}` : "N/A";
-  })();
-
-  const concatenatedVitalSigns = `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | Pulse: ${pulse || "N/A"} bpm | Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
-
-  useEffect(() => {
-    if (getPatientClassification() === "maternal")
-      setFollowUpStatus("Routine Monitoring");
-  }, [selectedPatientId]);
-
-  useEffect(() => {
-    if (followUpStatus === "For Referral") {
-      setNeedsReferral("yes");
-      setPatientCondition("Needs Further Assessment");
-    } else {
-      setNeedsReferral("no");
-      if (patientCondition === "Needs Further Assessment")
-        setPatientCondition("Improving");
-    }
-  }, [followUpStatus]);
-
-  useEffect(() => {
-    const registryLmp = selectedPatient?.lmp || selectedPatient?.LMP;
-    if (!registryLmp) {
-      setExpectedDeliveryDate("");
-      setAog("");
-      return;
-    }
-    const lmpDate = new Date(registryLmp);
-    const visitDate = dateOfVisit ? new Date(dateOfVisit) : new Date();
-    if (isNaN(lmpDate.getTime())) {
-      setExpectedDeliveryDate("Invalid Date");
-      setAog("Invalid Date");
-      return;
-    }
-    const edd = new Date(lmpDate);
-    edd.setDate(edd.getDate() + 7);
-    edd.setMonth(edd.getMonth() - 3);
-    edd.setFullYear(edd.getFullYear() + 1);
-    setExpectedDeliveryDate(edd.toISOString().split("T")[0]);
-    const timeDiff = visitDate.getTime() - lmpDate.getTime();
-    if (timeDiff < 0) {
-      setAog("Invalid (LMP is ahead of visit)");
-      return;
-    }
-    const totalDays = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-    const weeks = Math.floor(totalDays / 7);
-    const days = totalDays % 7;
-    if (weeks > 42) {
-      setAog("Post-term (>42 Weeks)");
-      return;
-    }
-    const weekStr = `${weeks} week${weeks !== 1 ? "s" : ""}`;
-    const dayStr = days > 0 ? ` and ${days} day${days > 1 ? "s" : ""}` : "";
-    setAog(`${weekStr}${dayStr}`);
-  }, [selectedPatient, dateOfVisit]);
-
-  const handleVaccineChange = (field, value) => {
-    setImmunizationData((prev) => {
-      const updated = { ...prev, [field]: value };
-      if (typeof value === "boolean") return applyAutomation(updated);
-      return updated;
-    });
-  };
-
-  async function handleSave(e) {
-    e.preventDefault();
-
-    if (!selectedPatientId) {
-      alert("Please select a patient first.");
-      return;
-    }
-
-    const finalStatus = followUpStatus;
-
-    const finalChiefComplaint =
-      isImmunization && !chiefComplaint ? "Vaccination Visit" : chiefComplaint;
-
-    const formData = {
-      patientId: selectedPatientId,
-      patientName:
-        selectedPatient?.name ||
-        `${selectedPatient?.firstName || ""} ${selectedPatient?.lastName || ""}`,
-      patientClassification:
-        selectedPatient?.patientClassification ||
-        selectedPatient?.category ||
-        "General Consultation",
-      dateOfVisit,
-      timeOfVisit,
-      chiefComplaint: finalChiefComplaint,
-      summaryOfPresentIllness,
-      diagnosis,
-      vitalSigns: concatenatedVitalSigns,
-      systolicBp: systolicBp || null,
-      diastolicBp: diastolicBp || null,
-      temperature: temp || null,
-      pulseRate: pulse || null,
-      weight: weight || null,
-      height: height || null,
-      medication,
-      attendingStaff,
-      consultationNotes,
-      followUpStatus: finalStatus,
-      followUpDate,
-      monitoringNotes,
-      patientCondition,
-      needsReferral,
-      referralReason: "",
-      referralCategory: null,
-      referralAssessmentStatus:
-        needsReferral === "yes" ? "Pending RHU Assessment" : null,
-      lmp: selectedPatient?.lmp || selectedPatient?.LMP || null,
-      pmp: selectedPatient?.pmp || null,
-      cycleDuration: selectedPatient?.cycleDuration || null,
-      gravida: selectedPatient?.gravida || null,
-      para: selectedPatient?.para || null,
-      tpal: selectedPatient?.tpal || null,
-      expectedDeliveryDate,
-      aog,
-      immunizationData,
-      createdByRole: userRole,
-    };
-
-    try {
-      const savedRecord =
-        await healthRecordService.createHealthRecord(formData);
-
-      if (needsReferral === "yes" && userRole === "bhc") {
-        navigate(
-          `/bhc/referrals/create?recordId=${
-            savedRecord.data.id || savedRecord.data._id
-          }&patientId=${selectedPatientId}`,
-        );
-        return;
-      }
-
-      navigate(healthRecordsPath);
-    } catch (error) {
-      console.error("Failed to save record:", error);
-      alert("May error sa pag-save ng record. Pakisuri ang console.");
-    }
-  }
-
-  function getPatientDisplay(patient) {
-    const name =
-      patient.name ||
-      `${patient.firstName || ""} ${patient.lastName || ""}`.trim();
-    const age = patient.ageSex
-      ? patient.ageSex
-      : patient.age
-        ? `${patient.age} yrs`
-        : "";
-    const cls = patient.patientClassification || patient.category || "";
-    return { name, age, cls };
-  }
-
-  /* ═══════════════════════════════════════════════════════════════ */
+function getPatientName(patient = {}) {
   return (
-    <DashboardLayout role={userRole} title="Add Health Record">
-      <style>{keyframes}</style>
-
-      <div className="anim-fade-up mb-6" style={stagger(0)}>
-        <Link
-          to={healthRecordsPath}
-          className="mb-2 inline-flex items-center gap-2 text-[13px] font-semibold text-[#B91C1C] transition-all duration-200 hover:gap-2.5 hover:text-[#991B1B]"
-        >
-          <ArrowLeft size={16} /> Back to Health Records
-        </Link>
-        <h1 className="text-lg font-bold tracking-tight text-[#1A1A1A]">
-          {isFollowUp ? "Follow-up Health Record" : "Add Health Record"}
-        </h1>
-        <p className="mt-0.5 text-xs text-[#6B7280]">
-          {isFollowUp
-            ? `Create a follow-up record for ${followUpRecord?.patientName || "this patient"}.`
-            : "Record a patient visit, follow-up, monitoring update, or health encounter."}
-        </p>
-        {isFollowUp && followUpRecord && (
-          <div className="mt-3 flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 p-3">
-            <AlertCircle size={15} className="mt-0.5 shrink-0 text-[#B91C1C]" />
-            <p className="text-xs text-red-800">
-              Creating a follow-up record for{" "}
-              <span className="font-semibold">
-                {followUpRecord.patientName}
-              </span>
-              . Original record:{" "}
-              <span className="font-mono font-semibold">{recordId}</span>
-            </p>
-          </div>
-        )}
-      </div>
-
-      <form onSubmit={handleSave} className="space-y-5">
-        {/* ═══ 1. PATIENT SELECTION (ALWAYS VISIBLE) ═══ */}
-        <FormSection
-          title="Patient Selection"
-          subtitle="Search and select an existing patient profile from the registry."
-          icon={<User size={14} />}
-          delay={1}
-        >
-          <div className="relative">
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Search Existing Patient
-            </label>
-
-            {/* Trigger input */}
-            <div className="relative" ref={inputRef}>
-              <Search
-                size={15}
-                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
-              />
-              <input
-                type="text"
-                placeholder="Type patient name or contact number..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  if (!dropdownOpen) setDropdownOpen(true);
-                }}
-                onFocus={() => {
-                  if (searchTerm || (!isFollowUp && patients.length > 0)) {
-                    setDropdownOpen(true);
-                  }
-                }}
-                disabled={isFollowUp}
-                readOnly={isFollowUp}
-                className={`h-10 w-full rounded-xl border bg-[#FAFBFC] pl-10 pr-10 text-sm outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:bg-[#F3F4F6] disabled:text-[#9CA3AF] ${
-                  dropdownOpen
-                    ? "border-[#B91C1C] ring-2 ring-[#B91C1C]/10 bg-white"
-                    : "border-[#E8ECF0]"
-                }`}
-              />
-              {selectedPatientId && !isFollowUp && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    selectPatient("");
-                    if (inputRef.current) inputRef.current.focus();
-                  }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-[#9CA3AF] transition-colors hover:bg-[#F3F4F6] hover:text-[#6B7280]"
-                  title="Clear selection"
-                >
-                  <X size={14} />
-                </button>
-              )}
-              {!selectedPatientId && !isFollowUp && (
-                <ChevronDown
-                  size={14}
-                  className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 transition-colors duration-200 ${
-                    dropdownOpen ? "text-[#B91C1C]" : "text-[#9CA3AF]"
-                  }`}
-                />
-              )}
-            </div>
-
-            {/* Dropdown */}
-            {dropdownOpen && !isFollowUp && (
-              <div
-                ref={dropdownRef}
-                className="anim-drop-in absolute left-0 right-0 top-full z-50 mt-1.5 max-h-64 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-xl shadow-black/[0.08]"
-              >
-                <div className="border-b border-[#F3F4F6] px-3.5 py-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                    {filteredPatients.length} result
-                    {filteredPatients.length !== 1 ? "s" : ""}
-                  </p>
-                </div>
-
-                {filteredPatients.length === 0 ? (
-                  <div className="px-3.5 py-8 text-center">
-                    <Search size={20} className="mx-auto mb-2 text-[#D4D4D4]" />
-                    <p className="text-xs font-medium text-[#9CA3AF]">
-                      No patients found
-                    </p>
-                    <p className="mt-0.5 text-[10px] text-[#D4D4D4]">
-                      Try a different name or contact number.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="max-h-52 overflow-y-auto py-1">
-                    {filteredPatients.map((patient, index) => {
-                      const { name, age, cls } = getPatientDisplay(patient);
-                      const isSelected = patient.id === selectedPatientId;
-                      const isHighlighted = index === highlightIndex;
-
-                      return (
-                        <button
-                          key={patient.id}
-                          type="button"
-                          onMouseEnter={() => setHighlightIndex(index)}
-                          onClick={() => selectPatient(patient.id)}
-                          className={`flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors duration-100 ${
-                            isHighlighted
-                              ? "bg-[#B91C1C]/[0.06]"
-                              : isSelected
-                                ? "bg-red-50"
-                                : "hover:bg-[#FAFBFC]"
-                          }`}
-                        >
-                          <div
-                            className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-[11px] font-bold ${
-                              isSelected
-                                ? "bg-[#B91C1C] text-white"
-                                : "bg-[#F3F4F6] text-[#6B7280]"
-                            }`}
-                          >
-                            {(patient.name || "").charAt(0).toUpperCase()}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p
-                              className={`text-sm truncate ${
-                                isSelected
-                                  ? "font-bold text-[#B91C1C]"
-                                  : "font-medium text-[#1F2937]"
-                              }`}
-                            >
-                              {name}
-                            </p>
-                            <p className="text-[10px] text-[#9CA3AF] truncate">
-                              {age}
-                              {age && cls ? ` · ${cls}` : ""}
-                            </p>
-                          </div>
-                          {isSelected && (
-                            <Check
-                              size={14}
-                              className="flex-shrink-0 text-[#B91C1C]"
-                              strokeWidth={3}
-                            />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Selected patient preview */}
-          {selectedPatient && (
-            <div className="anim-fade-up mt-3 rounded-xl border border-red-100 bg-red-50 p-4">
-              <div className="mb-2 flex items-center gap-2">
-                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-red-100">
-                  <User size={11} className="text-[#B91C1C]" />
-                </div>
-                <span className="text-[9px] font-bold uppercase tracking-widest text-[#B91C1C]">
-                  Patient Preview
-                </span>
-              </div>
-              <p className="text-sm font-bold text-[#1A1A1A]">
-                {selectedPatient.name ||
-                  `${selectedPatient.firstName || ""} ${selectedPatient.lastName || ""}`}
-              </p>
-              <p className="mt-0.5 text-xs text-[#6B7280]">
-                Age/Sex:{" "}
-                {selectedPatient.ageSex ||
-                  (selectedPatient.age
-                    ? `${selectedPatient.age} years old / ${selectedPatient.sex || "—"}`
-                    : "—")}
-              </p>
-              <p className="text-xs text-[#6B7280]">
-                Contact:{" "}
-                {selectedPatient.contactNumber ||
-                  selectedPatient.contact ||
-                  "—"}
-              </p>
-              <p className="text-xs text-[#6B7280]">
-                Classification:{" "}
-                <span className="font-semibold text-[#B91C1C]">
-                  {selectedPatient.patientClassification ||
-                    selectedPatient.category ||
-                    "General Consultation"}
-                </span>
-              </p>
-            </div>
-          )}
-        </FormSection>
-
-        {/* ═══ 2. IMMUNIZATION WORKFLOW (IMMUNIZATION ONLY) ═══ */}
-        {isImmunization && (
-          <FormSection
-            title="Smart Immunization Tracker"
-            subtitle="Digital immunization card with automated schedule tracking."
-            icon={<Syringe size={14} />}
-            delay={2}
-          >
-            <div className="mb-5 grid gap-4 lg:grid-cols-2">
-              <ImmunizationSummaryCard data={immunizationData} />
-              {immunizationFIC ? (
-                <FICCard />
-              ) : (
-                <ScheduleStatusPanel data={immunizationData} />
-              )}
-            </div>
-
-            <div className="mb-6 max-w-xs">
-              <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                Feeding Status
-              </label>
-              <select
-                value={immunizationData.feeding_status}
-                onChange={(e) =>
-                  handleVaccineChange("feeding_status", e.target.value)
-                }
-                className="h-10 w-full appearance-none rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10"
-              >
-                <option value="">Select status</option>
-                <option>Breastfeeding</option>
-                <option>Formula Milk</option>
-                <option>Mixed Feeding</option>
-              </select>
-            </div>
-
-            <div className="rounded-2xl border border-[#F0F0F0] bg-[#FCFCFC] p-5">
-              <div className="mb-5 flex items-center gap-2.5">
-                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-red-50">
-                  <Syringe size={11} className="text-[#B91C1C]" />
-                </div>
-                <div>
-                  <h3 className="text-[11px] font-bold tracking-wide text-[#1F2937]">
-                    Vaccine Schedule
-                  </h3>
-                  <p className="text-[9px] text-[#C9C9C9]">
-                    Based on the standard immunization schedule
-                  </p>
-                </div>
-              </div>
-              <VaccineTimeline
-                data={immunizationData}
-                onChange={handleVaccineChange}
-              />
-            </div>
-
-            <p className="mt-3 text-center text-[9px] text-[#D4D4D4]">
-              <Lock size={8} className="mr-1 inline-block -mt-px" />
-              Checking a higher dose automatically fills in previous doses in
-              the same series.
-            </p>
-          </FormSection>
-        )}
-
-        {/* ═══ 3. MATERNAL WORKFLOW (MATERNAL ONLY) ═══ */}
-        {isMaternal && (
-          <FormSection
-            title="Maternal & Prenatal Assessment"
-            subtitle="Monitor pregnancy progression and maternal clinical vitals."
-            icon={<HeartPulse size={14} />}
-            delay={2}
-            accent="pink"
-          >
-            <div className="border-t border-[#F3F4F6] pt-5">
-              <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-pink-700">
-                Obstetric Profile
-              </p>
-              <div className="grid gap-4 lg:grid-cols-3">
-                <div className="rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] p-3">
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                    Registered LMP
-                  </label>
-                  <p className="text-sm font-semibold text-[#1F2937]">
-                    {selectedPatient?.lmp
-                      ? new Date(selectedPatient.lmp).toLocaleDateString(
-                          "en-US",
-                          { year: "numeric", month: "long", day: "numeric" },
-                        )
-                      : "Not set"}
-                  </p>
-                </div>
-                <FieldInput
-                  label="Calculated AOG"
-                  value={aog || "Calculating..."}
-                  readOnly
-                />
-                <FieldInput
-                  label="Expected Delivery Date"
-                  value={expectedDeliveryDate || "Calculating..."}
-                  readOnly
-                />
-              </div>
-            </div>
-          </FormSection>
-        )}
-
-        {/* ═══ 4. CONSULTATION INFORMATION (HIDDEN FOR IMMUNIZATION) ═══ */}
-        {!isImmunization && (
-          <FormSection
-            title="Consultation Information"
-            subtitle="Record consultation findings and observations."
-            icon={<Stethoscope size={14} />}
-            delay={3}
-          >
-            <div className="grid gap-4 lg:grid-cols-3">
-              <FieldInput
-                label="Date of Visit"
-                type="date"
-                required
-                value={dateOfVisit}
-                onChange={(e) => setDateOfVisit(e.target.value)}
-              />
-              <FieldInput
-                label="Time of Visit"
-                type="time"
-                required
-                value={timeOfVisit}
-                onChange={(e) => setTimeOfVisit(e.target.value)}
-              />
-              <FieldInput
-                label="Chief Complaint"
-                placeholder="e.g. Fever, vomiting, cough"
-                required
-                value={chiefComplaint}
-                onChange={(e) => setChiefComplaint(e.target.value)}
-              />
-            </div>
-            <div className="mt-4">
-              <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                Summary of Present Illness and Physical Examination{" "}
-                <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                required
-                value={summaryOfPresentIllness}
-                onChange={(e) => setSummaryOfPresentIllness(e.target.value)}
-                placeholder="Record the detailed history of the present illness and complete physical examination findings here..."
-                className="min-h-[120px] w-full rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 py-3 text-sm leading-relaxed outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 resize-none"
-              />
-            </div>
-            <div className="mt-4 grid gap-4 lg:grid-cols-3">
-              <FieldInput
-                label="Initial Diagnosis"
-                value={diagnosis}
-                onChange={(e) => setDiagnosis(e.target.value)}
-              />
-              <FieldInput
-                label="Initial Actions Taken"
-                value={medication}
-                onChange={(e) => setMedication(e.target.value)}
-              />
-              <FieldInput
-                label="Name of Practitioner"
-                value={attendingStaff}
-                onChange={(e) => setAttendingStaff(e.target.value)}
-              />
-            </div>
-          </FormSection>
-        )}
-
-        {/* ═══ 5. VITAL SIGNS (ALWAYS VISIBLE) ═══ */}
-        <FormSection
-          title="Vital Signs"
-          subtitle="Record the patient's physiological measurements."
-          icon={<HeartPulse size={14} />}
-          delay={4}
-        >
-          <div className="grid gap-4 lg:grid-cols-3">
-            <BpInputGroup
-              systolic={systolicBp}
-              diastolic={diastolicBp}
-              onSystolicChange={setSystolicBp}
-              onDiastolicChange={setDiastolicBp}
-            />
-            <FieldInput
-              label="Temperature"
-              placeholder="e.g. 36.5 °C"
-              value={temp}
-              onChange={(e) => setTemp(e.target.value)}
-            />
-            <FieldInput
-              label="Pulse Rate"
-              placeholder="e.g. 72 bpm"
-              value={pulse}
-              onChange={(e) => setPulse(e.target.value)}
-            />
-          </div>
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <FieldInput
-              label="Weight"
-              type="number"
-              placeholder="e.g. 60"
-              value={weight}
-              onChange={(e) => setWeight(e.target.value)}
-            />
-            <FieldInput
-              label="Height"
-              type="number"
-              placeholder="e.g. 165"
-              value={height}
-              onChange={(e) => setHeight(e.target.value)}
-            />
-          </div>
-          {(weight || height) && (
-            <p className="mt-1 text-right text-[9px] font-medium text-[#BFBFBF]">
-              {weight ? "Weight in kg" : ""}
-              {weight && height ? " • " : ""}
-              {height ? "Height in cm" : ""}
-            </p>
-          )}
-          <div className="mt-4">
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              {isImmunization
-                ? "Vaccination Visit Notes (Optional)"
-                : "Additional Consultation Notes (Optional)"}
-            </label>
-            <textarea
-              value={consultationNotes}
-              onChange={(e) => setConsultationNotes(e.target.value)}
-              placeholder={
-                isImmunization
-                  ? "e.g. Post-vaccination observations, adverse events, etc..."
-                  : "Other observations not covered in the summary..."
-              }
-              className="min-h-20 w-full rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 py-3 text-sm leading-relaxed outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 resize-none"
-            />
-          </div>
-        </FormSection>
-
-        {/* ═══ 6. PATIENT MONITORING (ALWAYS VISIBLE) ═══ */}
-        <FormSection
-          title="Patient Monitoring"
-          subtitle="Track patient progress and follow-up schedules."
-          icon={<HeartPulse size={14} />}
-          delay={5}
-        >
-          <div className="grid gap-4 lg:grid-cols-2">
-            <FieldSelect
-              label="Visit Type"
-              value={followUpStatus}
-              onChange={(e) => setFollowUpStatus(e.target.value)}
-            >
-              <option>Routine Monitoring</option>
-              <option>Follow-up</option>
-              <option>For Referral</option>
-              <option>Completed</option>
-            </FieldSelect>
-            <FieldInput
-              label="Follow-up Date"
-              type="date"
-              value={followUpDate}
-              onChange={(e) => setFollowUpDate(e.target.value)}
-            />
-          </div>
-          <div className="mt-4">
-            <FieldSelect
-              label="Current Condition"
-              value={patientCondition}
-              onChange={(e) => setPatientCondition(e.target.value)}
-            >
-              <option>Improving</option>
-              <option>Stable</option>
-              <option>No Improvement Observed</option>
-              <option>Needs Further Assessment</option>
-              <option>Recovered</option>
-            </FieldSelect>
-          </div>
-          <div className="mt-4">
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Monitoring and Follow-up
-            </label>
-            <textarea
-              value={monitoringNotes}
-              onChange={(e) => setMonitoringNotes(e.target.value)}
-              placeholder="Write follow-up or monitoring notes..."
-              className="min-h-20 w-full rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 py-3 text-sm leading-relaxed outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 resize-none"
-            />
-          </div>
-        </FormSection>
-
-        {/* ═══ 7. ASSESSMENT RECOMMENDATION (ALWAYS VISIBLE) ═══ */}
-        <FormSection
-          title="Assessment Recommendation"
-          subtitle="Determine if this case requires further evaluation."
-          icon={<Send size={14} />}
-          delay={6}
-        >
-          <div className="grid gap-3 lg:grid-cols-2">
-            <label
-              className={`flex min-h-[96px] cursor-pointer items-center gap-4 rounded-xl border p-4 transition-all duration-200 ${needsReferral === "no" ? "border-[#B91C1C] bg-red-50" : "border-[#E8ECF0] bg-white"}`}
-            >
-              <input
-                type="radio"
-                name="needsReferral"
-                value="no"
-                checked={needsReferral === "no"}
-                onChange={(e) => setNeedsReferral(e.target.value)}
-                className="sr-only"
-              />
-              <Save
-                size={18}
-                className={
-                  needsReferral === "no" ? "text-[#B91C1C]" : "text-[#9CA3AF]"
-                }
-              />
-              <div>
-                <p className="text-sm font-semibold text-[#1A1A1A]">
-                  Save Health Record
-                </p>
-                <p className="mt-0.5 text-xs text-[#6B7280]">
-                  Save consultation and monitoring information.
-                </p>
-              </div>
-            </label>
-            <label
-              className={`flex min-h-[96px] cursor-pointer items-center gap-4 rounded-xl border p-4 transition-all duration-200 ${needsReferral === "yes" ? "border-amber-500 bg-amber-50" : "border-[#E8ECF0] bg-white"}`}
-            >
-              <input
-                type="radio"
-                name="needsReferral"
-                value="yes"
-                checked={needsReferral === "yes"}
-                onChange={(e) => setNeedsReferral(e.target.value)}
-                className="sr-only"
-              />
-              <Send
-                size={18}
-                className={
-                  needsReferral === "yes" ? "text-amber-600" : "text-[#9CA3AF]"
-                }
-              />
-              <div>
-                <p className="text-sm font-semibold text-[#1A1A1A]">
-                  Create Referral
-                </p>
-                <p className="mt-0.5 text-xs text-[#6B7280]">
-                  Forward patient case for further medical assessment.
-                </p>
-              </div>
-            </label>
-          </div>
-        </FormSection>
-
-        {/* ═══ ACTIONS ═══ */}
-        <div
-          className="anim-fade-up flex items-center justify-end gap-3 pt-1 pb-4"
-          style={stagger(7)}
-        >
-          <button
-            type="button"
-            onClick={() => navigate(healthRecordsPath)}
-            className="rounded-xl border border-[#E8ECF0] bg-white px-5 py-2.5 text-sm font-semibold text-[#6B7280] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#D1D5DB] hover:shadow-md active:scale-[0.97]"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="group flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98]"
-          >
-            <Save
-              size={15}
-              className="transition-transform duration-300 group-hover:scale-110"
-            />
-            Save Health Record
-          </button>
-        </div>
-      </form>
-    </DashboardLayout>
+    patient.name ||
+    [patient.firstName, patient.middleName, patient.lastName]
+      .filter(Boolean)
+      .join(" ")
+      .trim() ||
+    "Unnamed Patient"
   );
+}
+
+function getPatientDisplay(patient = {}) {
+  const name = getPatientName(patient);
+  const age = patient.ageSex
+    ? patient.ageSex
+    : patient.age
+      ? `${patient.age} yrs${patient.sex ? ` / ${patient.sex}` : ""}`
+      : patient.sex || "";
+  const cls = patient.patientClassification || patient.category || "";
+  const contact = patient.contactNumber || patient.contact || "";
+  const barangay = patient.barangay || patient.patientBarangay || "";
+
+  return { name, age, cls, contact, barangay };
+}
+
+function getPatientSearchLabel(patient = {}) {
+  const display = getPatientDisplay(patient);
+  return [display.name, display.age, display.cls].filter(Boolean).join(" · ");
+}
+
+function getPatientSearchText(patient = {}) {
+  const display = getPatientDisplay(patient);
+
+  return [
+    patient.id,
+    patient.patientId,
+    patient.familySerialNo,
+    patient.philHealthNumber,
+    patient.philhealthNumber,
+    display.name,
+    display.age,
+    display.cls,
+    display.contact,
+    patient.contact,
+    patient.contactNumber,
+    patient.address,
+    patient.streetAddress,
+    display.barangay,
+    patient.municipality,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function getPatientInitial(patient = {}) {
+  return getPatientName(patient).charAt(0).toUpperCase() || "P";
+}
+
+function formatLongDate(value) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 }

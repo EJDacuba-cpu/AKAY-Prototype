@@ -319,7 +319,7 @@ export default function PatientDetails() {
                   className="inline-flex items-center gap-2 rounded-xl bg-[#0B2E59] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#092347]"
                 >
                   <Plus size={14} />
-                  Add Consultation
+                  Add Health Record
                 </Link>
               )}
             </div>
@@ -764,11 +764,10 @@ export default function PatientDetails() {
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
               <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
                 <h2 className="text-sm font-bold text-[#0B2E59]">
-                  Consultation History
+                  Health Record History
                 </h2>
                 <p className="text-xs text-slate-400">
-                  Chronological history of patient check-ups based on chief
-                  complaints.
+                  Chronological health records linked to this patient.
                 </p>
               </div>
               {safeRecords.length === 0 ? (
@@ -840,8 +839,7 @@ export default function PatientDetails() {
                   Referral Tracking Logs
                 </h2>
                 <p className="text-xs text-slate-400">
-                  Logs of hospital transfer files and official outer-facility
-                  coordination updates.
+                  BHC-RHU referral tracking logs linked to this patient.
                 </p>
               </div>
               {safeReferrals.length === 0 ? (
@@ -850,7 +848,7 @@ export default function PatientDetails() {
                     className="mx-auto mb-3 text-slate-300"
                     size={32}
                   />
-                  No transfer or referral logs requested for this profile.
+                  No referral history found for this profile.
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100">

@@ -1,21 +1,11 @@
 import { getItem, setItem } from "./storageService";
+import { getBhcPatients, saveBhcPatients } from "./patientService";
 
 const MOCK_DELAY = 400;
 const RECORDS_KEY = "bhc_health_records";
-const PATIENTS_KEY = "patients";
 const RHU_RECORDS_KEY = "rhu_health_records";
 
 const delay = () => new Promise((resolve) => setTimeout(resolve, MOCK_DELAY));
-
-function getPatientsList() {
-  const patients = getItem(PATIENTS_KEY, null);
-  if (Array.isArray(patients)) {
-    return patients;
-  }
-
-  const fallbackPatients = getItem("bhc_patients", []);
-  return Array.isArray(fallbackPatients) ? fallbackPatients : [];
-}
 
 function getStoredRecords(storageKey = RECORDS_KEY) {
   const records = getItem(storageKey, []);
@@ -30,7 +20,7 @@ export async function getHealthRecords() {
   await delay();
 
   const records = getStoredRecords(RECORDS_KEY);
-  const patientsList = getPatientsList();
+  const patientsList = await getBhcPatients();
 
   return records.map((record) => {
     const matchingPatient = patientsList.find((p) => p.id === record.patientId);
@@ -48,7 +38,7 @@ export async function getHealthRecordById(recordId) {
   await delay();
 
   const records = getStoredRecords(RECORDS_KEY);
-  const patientsList = getPatientsList();
+  const patientsList = await getBhcPatients();
 
   const record = records.find((r) => r.id === recordId);
   if (!record) {
@@ -79,7 +69,7 @@ export async function createHealthRecord(recordData) {
   records.unshift(newRecord);
   saveStoredRecords(records, RECORDS_KEY);
 
-  const patientDetails = getItem("patient_details", []);
+  const patientDetails = await getBhcPatients();
 
   const updatedPatients = patientDetails.map((patient) => {
     if (patient.id !== recordData.patientId) {
@@ -96,7 +86,7 @@ export async function createHealthRecord(recordData) {
     };
   });
 
-  setItem("patient_details", updatedPatients);
+  await saveBhcPatients(updatedPatients);
 
   return {
     success: true,

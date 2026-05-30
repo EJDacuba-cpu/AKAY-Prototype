@@ -1,9 +1,10 @@
-import { Link, useParams, useNavigate } from "react-router";
+import { Link, useLocation, useParams, useNavigate } from "react-router";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   CalendarDays,
   ClipboardList,
+  FilePlus2,
   Pencil,
   User,
   X,
@@ -33,6 +34,7 @@ import SuccessModal from "../../components/common/modals/SuccessModal";
 export default function HealthRecordDetails() {
   const { recordId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [record, setRecord] = useState(null);
   const [patient, setPatient] = useState(null);
@@ -70,6 +72,12 @@ export default function HealthRecordDetails() {
 
     fetchData();
   }, [recordId]);
+
+  useEffect(() => {
+    if (location.state?.startInEditMode && record) {
+      setIsEditing(true);
+    }
+  }, [location.state, record]);
 
   const initializeForm = (data) => {
     setForm({
@@ -232,6 +240,13 @@ export default function HealthRecordDetails() {
                     <Pencil size={14} />
                     Edit Record
                   </button>
+                  <Link
+                    to={`/bhc/health-records/add?recordId=${record.id || record._id}`}
+                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0B2E59] shadow-sm transition hover:bg-slate-50"
+                  >
+                    <FilePlus2 size={14} />
+                    Add Follow-up Record
+                  </Link>
                   <button
                     type="button"
                     onClick={() =>
@@ -279,7 +294,7 @@ export default function HealthRecordDetails() {
                         <option>Under Observation</option>
                         <option>Follow-up After 2 Days</option>
                         <option>Discharged</option>
-                        <option>Referred to Hospital</option>
+                        <option>For Referral</option>
                       </FormSelect>
                     </div>
                   </div>
@@ -484,7 +499,7 @@ export default function HealthRecordDetails() {
       <SuccessModal
         open={openSuccess}
         title="Health Record Updated"
-        description="The consultation information has been successfully saved."
+        description="The health record information has been successfully saved."
         onClose={() => setOpenSuccess(false)}
       />
     </>

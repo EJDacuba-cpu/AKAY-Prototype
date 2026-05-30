@@ -11,9 +11,9 @@ import {
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ListToolbar from "../../components/common/list/ListToolbar";
+import { getRhuPatients } from "../../services/patientService";
 
 /* ─── Constants ─── */
-const STORAGE_KEY = "rhu_patients";
 const PER_PAGE = 8;
 
 /* ─── Component ─── */
@@ -36,13 +36,10 @@ export default function Patients() {
 
   /* ─── Load Data from LocalStorage ─── */
   useEffect(() => {
-    const loadPatients = () => {
+    const loadPatients = async () => {
       try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          setAllPatients(Array.isArray(parsed) ? parsed : []);
-        }
+        const patients = await getRhuPatients();
+        setAllPatients(Array.isArray(patients) ? patients : []);
       } catch (error) {
         console.error("Failed to load patients:", error);
       } finally {
@@ -53,7 +50,7 @@ export default function Patients() {
     loadPatients();
 
     const handleStorageChange = (e) => {
-      if (e.key === STORAGE_KEY) {
+      if (e.key === "akay_rhu_patients" || e.key === "rhu_patients") {
         loadPatients();
       }
     };
@@ -662,7 +659,7 @@ function ActionMenu({ patientId, patientName }) {
           className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
         >
           <FilePlus2 size={14} className="text-slate-400" />
-          Add Record
+          Add Health Record
         </Link>
       </div>
     </div>

@@ -17,9 +17,9 @@ import PatientDetailItem from "../../components/features/patients/PatientDetailI
 import StatusBadge from "../../components/common/badges/StatusBadge";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
-  getPatientById,
-  getPatientDetailsList,
-  getPatients,
+  getPatientByIdForRole,
+  getPatientDetailsListByRole,
+  getPatientsByRole,
 } from "../../services/patients";
 import { getReferrals } from "../../services/referrals";
 
@@ -59,9 +59,9 @@ export default function RHUPatientDetails() {
           rhuRecords,
           referralList,
         ] = await Promise.all([
-          getPatientById(patientId),
-          getPatientDetailsList(),
-          getPatients(),
+          getPatientByIdForRole(patientId, "rhu"),
+          getPatientDetailsListByRole("rhu"),
+          getPatientsByRole("rhu"),
           getRhuHealthRecords(),
           getReferrals(),
         ]);
@@ -184,7 +184,7 @@ export default function RHUPatientDetails() {
               className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#0B2E59] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#092347]"
             >
               <Plus size={14} />
-              Add RHU Record
+              Add Health Record
             </Link>
           )}
         </div>
@@ -331,7 +331,7 @@ function RhuRecordsTab({ records }) {
       <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
         <h2 className="text-sm font-bold text-[#0B2E59]">RHU Record History</h2>
         <p className="text-xs text-slate-400">
-          Facility visits and clinical records linked to this patient.
+          RHU health records linked to this patient.
         </p>
       </div>
 

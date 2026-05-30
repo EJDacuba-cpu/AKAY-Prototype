@@ -20,7 +20,7 @@ import FormTextarea from "../../components/common/forms/FormTextarea";
 import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
 import SuccessModal from "../../components/common/modals/SuccessModal";
 
-import { createPatient } from "../../services/patientService";
+import { createBhcPatient } from "../../services/patientService";
 
 /* Stagger Animation */
 const stagger = (i) => ({
@@ -52,6 +52,7 @@ export default function AddPatient() {
   const [openConfirm, setOpenConfirm] = useState(false);
   const [openSuccess, setOpenSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [createdPatientId, setCreatedPatientId] = useState("");
 
   /* Form State */
   const [form, setForm] = useState({
@@ -155,14 +156,13 @@ export default function AddPatient() {
         tpal: tpalCombined, // I-papasa ang combined format sa service
       };
 
-      await createPatient(patientDataToSave);
+      const created = await createBhcPatient(patientDataToSave);
+      const nextPatientId =
+        created?.details?.id || created?.patient?.id || patientDataToSave.id;
 
       setOpenConfirm(false);
+      setCreatedPatientId(nextPatientId);
       setOpenSuccess(true);
-
-      setTimeout(() => {
-        navigate("/bhc/patients");
-      }, 1500);
     } catch (error) {
       console.error("Failed to create patient:", error);
     } finally {
@@ -618,6 +618,12 @@ export default function AddPatient() {
         open={openSuccess}
         title="Patient Successfully Added"
         description="The patient profile has been successfully saved to the system."
+        buttonText="Back to Patients"
+        onClose={() => navigate("/bhc/patients")}
+        secondaryButtonText="Add Health Record"
+        onSecondaryAction={() =>
+          navigate(`/bhc/health-records/add?patientId=${createdPatientId}`)
+        }
       />
       <ConfirmationModal
         open={openConfirm}

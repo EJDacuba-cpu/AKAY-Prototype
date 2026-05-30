@@ -21,7 +21,7 @@ import FormTextarea from "../../components/common/forms/FormTextarea";
 import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
 import SuccessModal from "../../components/common/modals/SuccessModal";
 
-import { createPatient } from "../../services/patientService";
+import { createRhuPatient } from "../../services/patientService";
 
 /* Stagger Animation */
 const stagger = (i) => ({
@@ -53,6 +53,7 @@ export default function AddPatient() {
   const [openConfirm, setOpenConfirm] = useState(false);
   const [openSuccess, setOpenSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [createdPatientId, setCreatedPatientId] = useState("");
 
   /* Form State */
   const [form, setForm] = useState({
@@ -148,17 +149,16 @@ export default function AddPatient() {
         name: `${form.firstName} ${form.middleName ? form.middleName + " " : ""}${form.lastName}`.trim(),
         category: form.patientCategory,
         ageSex: `${form.age || calculateAge(form.birthDate)} / ${form.sex}`,
-        registrationSource: "RHU_DIRECT_REGISTRATION",
+        registrationSource: "RHU_REGISTRATION",
       };
 
-      await createPatient(patientDataToSave);
+      const created = await createRhuPatient(patientDataToSave);
+      const nextPatientId =
+        created?.details?.id || created?.patient?.id || patientDataToSave.id;
 
       setOpenConfirm(false);
+      setCreatedPatientId(nextPatientId);
       setOpenSuccess(true);
-
-      setTimeout(() => {
-        navigate("/rhu/patients");
-      }, 1500);
     } catch (error) {
       console.error("Failed to create patient:", error);
     } finally {
@@ -649,6 +649,12 @@ export default function AddPatient() {
         open={openSuccess}
         title="Patient Successfully Added"
         description="The patient profile has been successfully saved to the system."
+        buttonText="Back to Patients"
+        onClose={() => navigate("/rhu/patients")}
+        secondaryButtonText="Add Health Record"
+        onSecondaryAction={() =>
+          navigate(`/rhu/health-records/add?patientId=${createdPatientId}`)
+        }
       />
       <ConfirmationModal
         open={openConfirm}

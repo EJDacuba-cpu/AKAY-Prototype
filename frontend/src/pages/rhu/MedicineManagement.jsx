@@ -1,16 +1,27 @@
-import { Link } from "react-router";
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Boxes,
   CheckCircle2,
   Edit3,
+  MoreVertical,
   PackagePlus,
-  X,
+  Trash2,
   XCircle,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ListToolbar from "../../components/common/list/ListToolbar";
+import MedicineFormModal from "../../components/features/medicine/MedicineFormModal";
+import {
+  addRhuMedicine,
+  deleteRhuMedicine,
+  formatMedicineQuantity,
+  getMedicineExpiryStatus,
+  getRhuMedicines,
+  MEDICINE_CATEGORIES,
+  RHU_MEDICINES_UPDATED_EVENT,
+  updateRhuMedicine,
+} from "../../services/medicineService";
 
 const MEDICINE_STATUS_TABS = [
   { key: "All Status", label: "All Items", icon: Boxes },
@@ -19,149 +30,139 @@ const MEDICINE_STATUS_TABS = [
   { key: "Unavailable", label: "Unavailable", icon: XCircle },
 ];
 
+const DEFAULT_FILTERS = {
+  search: "",
+  category: "All Categories",
+  status: "All Status",
+  expiry: "All Expiry",
+};
+
 export default function MedicineManagement() {
-  const [items, setItems] = useState([
-    {
-      id: "MED-001",
-      name: "Paracetamol",
-      category: "Basic Medicines",
-      quantity: 120,
-      unit: "pcs",
-      status: "Available",
-      lastUpdated: "May 14, 2026",
-      notes: "Available for common fever and pain cases.",
-    },
-    {
-      id: "MED-002",
-      name: "Amoxicillin",
-      category: "Basic Medicines",
-      quantity: 15,
-      unit: "pcs",
-      status: "Low Stock",
-      lastUpdated: "May 14, 2026",
-      notes: "Limited supply. Coordinate before referral.",
-    },
-    {
-      id: "MED-003",
-      name: "Tetanus Vaccine",
-      category: "Vaccines",
-      quantity: 0,
-      unit: "vials",
-      status: "Unavailable",
-      lastUpdated: "May 14, 2026",
-      notes: "Currently unavailable.",
-    },
-    {
-      id: "MED-004",
-      name: "Prenatal Vitamins",
-      category: "Maternal Care Supplies",
-      quantity: 45,
-      unit: "pcs",
-      status: "Available",
-      lastUpdated: "May 13, 2026",
-      notes: "Available for maternal care referrals.",
-    },
-    {
-      id: "MED-005",
-      name: "Syringe",
-      category: "Medical Supplies",
-      quantity: 20,
-      unit: "pcs",
-      status: "Low Stock",
-      lastUpdated: "May 13, 2026",
-      notes: "Low supply. Restock needed soon.",
-    },
-  ]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterCategory, setFilterCategory] = useState("All Categories");
-  const [filterStatus, setFilterStatus] = useState("All Status");
+  const [items, setItems] = useState([]);
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [modalMode, setModalMode] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [openMenuId, setOpenMenuId] = useState("");
 
-  function updateStatus(id, newStatus) {
-    setItems((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              status: newStatus,
-              lastUpdated: "May 14, 2026",
-            }
-          : item,
-      ),
-    );
-  }
+  useEffect(() => {
+    function loadItems() {
+      setItems(getRhuMedicines());
+    }
 
-  const availableCount = items.filter(
-    (item) => item.status === "Available",
-  ).length;
+    loadItems();
 
-  const lowStockCount = items.filter(
-    (item) => item.status === "Low Stock",
-  ).length;
+    window.addEventListener("storage", loadItems);
+    window.addEventListener(RHU_MEDICINES_UPDATED_EVENT, loadItems);
 
-  const unavailableCount = items.filter(
-    (item) => item.status === "Unavailable",
-  ).length;
+    return () => {
+      window.removeEventListener("storage", loadItems);
+      window.removeEventListener(RHU_MEDICINES_UPDATED_EVENT, loadItems);
+    };
+  }, []);
 
-  const filteredItems = items.filter((item) => {
-    const query = searchQuery.toLowerCase();
-    const matchesSearch =
-      !query ||
-      item.name.toLowerCase().includes(query) ||
-      item.category.toLowerCase().includes(query) ||
-      (item.supplier || "").toLowerCase().includes(query) ||
-      item.id.toLowerCase().includes(query);
-    const matchesCategory =
-      filterCategory === "All Categories" || item.category === filterCategory;
-    const matchesStatus =
-      filterStatus === "All Status" || item.status === filterStatus;
+  const filteredItems = useMemo(
+    () => filterMedicineItems(items, filters),
+    [items, filters],
+  );
 
-    return matchesSearch && matchesCategory && matchesStatus;
-  });
+  const tabCounts = useMemo(() => {
+    const baseItems = filterMedicineItems(items, {
+      ...filters,
+      status: "All Status",
+    });
+
+    return MEDICINE_STATUS_TABS.reduce((acc, tab) => {
+      acc[tab.key] =
+        tab.key === "All Status"
+          ? baseItems.length
+          : baseItems.filter((item) => item.status === tab.key).length;
+      return acc;
+    }, {});
+  }, [items, filters]);
 
   const activeFilters = [
-    searchQuery && { key: "search", label: searchQuery },
-    filterCategory !== "All Categories" && {
+    filters.search && { key: "search", label: `Search: ${filters.search}` },
+    filters.category !== "All Categories" && {
       key: "category",
-      label: filterCategory,
+      label: filters.category,
     },
-    filterStatus !== "All Status" && { key: "status", label: filterStatus },
+    filters.status !== "All Status" && {
+      key: "status",
+      label: filters.status,
+    },
+    filters.expiry !== "All Expiry" && {
+      key: "expiry",
+      label: filters.expiry,
+    },
   ].filter(Boolean);
-
-  const hasActiveFilters = activeFilters.length > 0;
 
   const toolbarFilters = [
     {
       key: "category",
       label: "Category",
-      value: filterCategory,
-      options: [
-        "All Categories",
-        "Basic Medicines",
-        "Vaccines",
-        "Medical Supplies",
-        "Maternal Care Supplies",
-        "Child Health Supplies",
-        "Referral-related Resources",
-      ],
+      value: filters.category,
+      options: ["All Categories", ...MEDICINE_CATEGORIES],
     },
     {
       key: "status",
       label: "Stock Status",
-      value: filterStatus,
+      value: filters.status,
       options: ["All Status", "Available", "Low Stock", "Unavailable"],
+    },
+    {
+      key: "expiry",
+      label: "Expiry Status",
+      value: filters.expiry,
+      options: ["All Expiry", "Valid", "Expiring Soon", "Expired"],
     },
   ];
 
+  function updateFilter(key, value) {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }
+
   function clearFilters() {
-    setSearchQuery("");
-    setFilterCategory("All Categories");
-    setFilterStatus("All Status");
+    setFilters(DEFAULT_FILTERS);
   }
 
   function removeFilter(key) {
-    if (key === "search") setSearchQuery("");
-    if (key === "category") setFilterCategory("All Categories");
-    if (key === "status") setFilterStatus("All Status");
+    if (key === "search") updateFilter("search", "");
+    if (key === "category") updateFilter("category", "All Categories");
+    if (key === "status") updateFilter("status", "All Status");
+    if (key === "expiry") updateFilter("expiry", "All Expiry");
+  }
+
+  function openAddModal() {
+    setSelectedItem(null);
+    setModalMode("add");
+  }
+
+  function openEditModal(item) {
+    setOpenMenuId("");
+    setSelectedItem(item);
+    setModalMode("edit");
+  }
+
+  function closeModal() {
+    setModalMode(null);
+    setSelectedItem(null);
+  }
+
+  function handleSubmit(payload) {
+    const nextItems =
+      modalMode === "edit" && selectedItem
+        ? updateRhuMedicine(selectedItem.id, payload)
+        : addRhuMedicine(payload);
+
+    setItems(nextItems);
+    closeModal();
+  }
+
+  function handleDelete(item) {
+    setOpenMenuId("");
+    const confirmed = window.confirm(`Delete ${item.name} from RHU inventory?`);
+    if (!confirmed) return;
+    setItems(deleteRhuMedicine(item.id));
   }
 
   return (
@@ -175,35 +176,66 @@ export default function MedicineManagement() {
             Update RHU medicine and referral-related resource availability.
           </p>
         </div>
-
       </div>
 
       <ListToolbar
-        searchValue={searchQuery}
-        onSearchChange={setSearchQuery}
-        searchPlaceholder="Search by medicine name, category, or supplier..."
-        chip={`● ${filteredItems.length.toLocaleString()} Items`}
+        searchValue={filters.search}
+        onSearchChange={(value) => updateFilter("search", value)}
+        searchPlaceholder="Search by medicine name, category, item ID, or notes..."
+        chip={`${filteredItems.length.toLocaleString()} Items`}
         filters={toolbarFilters}
         activeFilterCount={
           activeFilters.filter((filter) => filter.key !== "search").length
         }
         activeFilters={activeFilters}
-        onApplyFilters={(nextFilters) => {
-          setFilterCategory(nextFilters.category);
-          setFilterStatus(nextFilters.status);
-        }}
+        onApplyFilters={(nextFilters) =>
+          setFilters((prev) => ({ ...prev, ...nextFilters }))
+        }
         onClearFilters={clearFilters}
         onRemoveFilter={removeFilter}
         actions={
-          <Link
-            to="/rhu/medicine-management/add"
-            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm hover:bg-[#092347]"
+          <button
+            type="button"
+            onClick={openAddModal}
+            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347]"
           >
             <PackagePlus size={15} />
             Add Medicine
-          </Link>
+          </button>
         }
       />
+
+      <div className="mb-4 flex items-center gap-1 overflow-x-auto rounded-lg bg-[#F1F5F9] p-1">
+        {MEDICINE_STATUS_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = filters.status === tab.key;
+
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => updateFilter("status", tab.key)}
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${
+                isActive
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:bg-slate-200/50 hover:text-slate-700"
+              }`}
+            >
+              <Icon size={12} className={isActive ? "text-[#0B2E59]" : ""} />
+              {tab.label}
+              <span
+                className={`rounded-full px-1.5 py-px text-[9px] font-bold leading-none ${
+                  isActive
+                    ? "bg-[#0B2E59]/10 text-[#0B2E59]"
+                    : "bg-slate-300/70 text-slate-600"
+                }`}
+              >
+                {tabCounts[tab.key] ?? 0}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
       <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
         <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
@@ -212,7 +244,7 @@ export default function MedicineManagement() {
               Medicine and Resource Inventory
             </h2>
             <p className="mt-1 text-xs text-[#9CA3AF]">
-              Items shown here are visible to BHC users as medicine
+              Items shown here are visible to BHC users as RHU medicine
               availability.
             </p>
           </div>
@@ -223,24 +255,25 @@ export default function MedicineManagement() {
         </div>
 
         <div className="w-full overflow-x-auto">
-          <table className="w-full min-w-[1050px] text-left">
+          <table className="w-full min-w-[1160px] text-left">
             <thead>
               <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
                 <th className="px-6 py-3">Item ID</th>
-                <th className="px-4 py-3">Item Name</th>
+                <th className="px-4 py-3">Medicine / Supply Name</th>
                 <th className="px-4 py-3">Category</th>
-                <th className="px-4 py-3">Quantity</th>
+                <th className="px-4 py-3">Quantity + Unit</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Expiry Date</th>
                 <th className="px-4 py-3">Last Updated</th>
                 <th className="px-4 py-3">Notes</th>
-                <th className="px-4 py-3 text-right">Action</th>
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-[#F3F4F6]">
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-20 text-center">
+                  <td colSpan={9} className="px-6 py-20 text-center">
                     <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F3F4F6]">
                       <Boxes size={20} className="text-[#9CA3AF]" />
                     </div>
@@ -254,71 +287,67 @@ export default function MedicineManagement() {
                 </tr>
               ) : (
                 filteredItems.map((item) => (
-                <tr
-                  key={item.id}
-                  className="transition-colors hover:bg-[#F9FAFB]"
-                >
-                  <td className="whitespace-nowrap px-6 py-3.5">
-                    <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0B2E59]">
-                      {item.id}
-                    </span>
-                  </td>
+                  <tr
+                    key={item.id}
+                    className="transition-colors hover:bg-[#F9FAFB]"
+                  >
+                    <td className="whitespace-nowrap px-6 py-3.5">
+                      <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0B2E59]">
+                        {item.id}
+                      </span>
+                    </td>
 
-                  <td className="whitespace-nowrap px-4 py-3.5">
-                    <p className="text-sm font-semibold text-[#1A1A1A]">
-                      {item.name}
-                    </p>
-                  </td>
+                    <td className="whitespace-nowrap px-4 py-3.5">
+                      <p className="text-sm font-semibold text-[#1A1A1A]">
+                        {item.name}
+                      </p>
+                    </td>
 
-                  <td className="whitespace-nowrap px-4 py-3.5">
-                    <CategoryBadge category={item.category} />
-                  </td>
+                    <td className="whitespace-nowrap px-4 py-3.5">
+                      <CategoryBadge category={item.category} />
+                    </td>
 
-                  <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
-                    {item.quantity} {item.unit}
-                  </td>
+                    <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
+                      {formatMedicineQuantity(item)}
+                    </td>
 
-                  <td className="whitespace-nowrap px-4 py-3.5">
-                    <StatusBadge status={item.status} />
-                  </td>
+                    <td className="whitespace-nowrap px-4 py-3.5">
+                      <StatusBadge status={item.status} />
+                    </td>
 
-                  <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#9CA3AF]">
-                    {item.lastUpdated}
-                  </td>
+                    <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
+                      <div className="flex flex-col gap-1">
+                        <span>{formatDate(item.expiryDate)}</span>
+                        <ExpiryBadge status={getMedicineExpiryStatus(item)} />
+                      </div>
+                    </td>
 
-                  <td className="px-4 py-3.5 text-sm text-[#6B7280]">
-                    {item.notes}
-                  </td>
+                    <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#9CA3AF]">
+                      <div>
+                        <p>{item.lastUpdated}</p>
+                        <p className="mt-0.5 text-[10px] text-[#BCC3CD]">
+                          {item.updatedBy}
+                        </p>
+                      </div>
+                    </td>
 
-                  <td className="whitespace-nowrap px-4 py-3.5 text-right">
-                    <div className="flex justify-end gap-2">
-                      <button className="rounded-lg border border-[#E8ECF0] bg-white px-3 py-2 text-xs font-semibold text-[#0B2E59] hover:bg-[#F9FAFB]">
-                        <Edit3 size={14} />
-                      </button>
+                    <td className="max-w-[220px] truncate px-4 py-3.5 text-sm text-[#6B7280]">
+                      {item.notes || "-"}
+                    </td>
 
-                      <button
-                        onClick={() => updateStatus(item.id, "Available")}
-                        className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-                      >
-                        Available
-                      </button>
-
-                      <button
-                        onClick={() => updateStatus(item.id, "Low Stock")}
-                        className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100"
-                      >
-                        Low
-                      </button>
-
-                      <button
-                        onClick={() => updateStatus(item.id, "Unavailable")}
-                        className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100"
-                      >
-                        None
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                    <td className="whitespace-nowrap px-4 py-3.5 text-right">
+                      <ActionMenu
+                        item={item}
+                        open={openMenuId === item.id}
+                        onToggle={() =>
+                          setOpenMenuId(openMenuId === item.id ? "" : item.id)
+                        }
+                        onClose={() => setOpenMenuId("")}
+                        onEdit={() => openEditModal(item)}
+                        onDelete={() => handleDelete(item)}
+                      />
+                    </td>
+                  </tr>
                 ))
               )}
             </tbody>
@@ -334,57 +363,95 @@ export default function MedicineManagement() {
           prescription transactions.
         </p>
       </div>
+
+      <MedicineFormModal
+        open={!!modalMode}
+        mode={modalMode || "add"}
+        item={selectedItem}
+        title={modalMode === "edit" ? "Edit Medicine" : "Add Medicine"}
+        onClose={closeModal}
+        onSubmit={handleSubmit}
+      />
     </DashboardLayout>
   );
 }
 
-function FilterSelect({ label, value, onChange, children }) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-        {label}
-      </label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-9 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 text-sm outline-none"
-      >
-        {children}
-      </select>
-    </div>
-  );
+function filterMedicineItems(items, filters) {
+  const query = filters.search.trim().toLowerCase();
+
+  return items.filter((item) => {
+    const searchable = [
+      item.id,
+      item.name,
+      item.category,
+      item.notes,
+      item.updatedBy,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    const matchesSearch = !query || searchable.includes(query);
+    const matchesCategory =
+      filters.category === "All Categories" ||
+      item.category === filters.category;
+    const matchesStatus =
+      filters.status === "All Status" || item.status === filters.status;
+    const matchesExpiry =
+      filters.expiry === "All Expiry" ||
+      getMedicineExpiryStatus(item) === filters.expiry;
+
+    return matchesSearch && matchesCategory && matchesStatus && matchesExpiry;
+  });
 }
 
-function StatCard({ title, value, icon, color = "navy" }) {
-  const map = {
-    navy: "border-t-[#0B2E59] text-[#0B2E59] bg-blue-50",
-    green: "border-t-emerald-400 text-emerald-700 bg-emerald-50",
-    amber: "border-t-amber-400 text-amber-700 bg-amber-50",
-    red: "border-t-red-400 text-red-700 bg-red-50",
-  };
+function ActionMenu({ item, open, onToggle, onClose, onEdit, onDelete }) {
+  const ref = useRef(null);
 
-  const selected = map[color] || map.navy;
-  const parts = selected.split(" ");
-  const border = parts[0];
-  const iconStyle = parts.slice(1).join(" ");
+  useEffect(() => {
+    if (!open) return;
+
+    function handleClick(event) {
+      if (ref.current && !ref.current.contains(event.target)) {
+        onClose();
+      }
+    }
+
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open, onClose]);
 
   return (
-    <div
-      className={`rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-5 ${border}`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
-          {title}
-        </p>
+    <div ref={ref} className="relative inline-block">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E8ECF0] bg-white text-[#9CA3AF] transition hover:bg-[#F9FAFB] hover:text-[#0B2E59]"
+        aria-label={`Actions for ${item.name}`}
+      >
+        <MoreVertical size={15} />
+      </button>
 
-        <div className={`flex-shrink-0 rounded-lg p-2 ${iconStyle}`}>
-          {icon}
+      {open && (
+        <div className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-lg">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#0B2E59]"
+          >
+            <Edit3 size={14} className="text-[#9CA3AF]" />
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-red-700 transition hover:bg-red-50"
+          >
+            <Trash2 size={14} />
+            Delete
+          </button>
         </div>
-      </div>
-
-      <p className="mt-4 text-2xl font-bold tracking-tight text-[#0B2E59]">
-        {value}
-      </p>
+      )}
     </div>
   );
 }
@@ -428,3 +495,33 @@ function CategoryBadge({ category }) {
   );
 }
 
+function ExpiryBadge({ status }) {
+  const map = {
+    Valid: "bg-emerald-50 text-emerald-700",
+    "Expiring Soon": "bg-amber-50 text-amber-700",
+    Expired: "bg-red-50 text-red-700",
+  };
+
+  return (
+    <span
+      className={`w-fit rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+        map[status] || map.Valid
+      }`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function formatDate(value) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
