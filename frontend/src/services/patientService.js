@@ -1,4 +1,5 @@
 import { getItem, setItem } from "./storageService";
+import { getReferralsByPatient } from "./referrals";
 
 const LEGACY_PATIENTS_KEY = "patients";
 const LEGACY_PATIENT_DETAILS_KEY = "patient_details";
@@ -502,8 +503,7 @@ export async function getPatientHealthRecords(patientId) {
 }
 
 export async function getPatientReferrals(patientId) {
-  const referrals = getItem(REFERRALS_KEY, []);
-  return ensureArray(referrals).filter(
-    (referral) => referral.patientId === patientId,
-  );
+  const patient =
+    (await getBhcPatientById(patientId)) || { id: patientId, patientId };
+  return getReferralsByPatient(patient);
 }

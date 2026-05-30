@@ -695,7 +695,7 @@ export default function IncomingReferrals() {
                   Referral Queue
                 </h2>
                 <p className="mt-0.5 text-[11px] text-slate-500">
-                  Process patient arrival, monitoring, and feedback
+                  Process patient arrival, monitoring, and return slips
                 </p>
               </div>
             </div>

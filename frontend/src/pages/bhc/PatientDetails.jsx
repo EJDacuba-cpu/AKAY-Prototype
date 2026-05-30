@@ -851,39 +851,64 @@ export default function PatientDetails() {
                   No referral history found for this profile.
                 </div>
               ) : (
-                <div className="divide-y divide-slate-100">
-                  {safeReferrals.map((ref) => (
-                    <div
-                      key={ref.trackingId}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 transition hover:bg-slate-50/50"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                            Tracking ID:
-                          </span>
-                          <span className="font-mono text-sm font-bold text-[#0B2E59]">
-                            {ref.trackingId}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500">
-                          Destination Facility: Barangay Central Health Unit Hub
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <StatusBadge status={ref.status} />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            navigate(`/bhc/referrals/${ref.trackingId}`)
-                          }
-                          className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0B2E59] shadow-sm transition hover:bg-slate-50"
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[900px] text-left">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        <th className="px-6 py-3">Tracking ID</th>
+                        <th className="px-4 py-3">Date of Referral</th>
+                        <th className="px-4 py-3">Destination Facility</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3">RHU Return Slip</th>
+                        <th className="px-4 py-3 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-sm">
+                      {safeReferrals.map((ref) => (
+                        <tr
+                          key={ref.trackingId || ref.id}
+                          className="transition-colors hover:bg-slate-50/80"
                         >
-                          <Eye size={12} /> Full View
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                          <td className="whitespace-nowrap px-6 py-4">
+                            <span className="font-mono text-xs font-bold text-[#0B2E59]">
+                              {ref.trackingId || ref.id}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-slate-600">
+                            {formatReferralDate(
+                              ref.dateOfReferral ||
+                                ref.referralDate ||
+                                ref.dateSubmitted ||
+                                ref.createdAt ||
+                                ref.date,
+                            )}
+                          </td>
+                          <td className="px-4 py-4 text-slate-600">
+                            {getReferralDestination(ref)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4">
+                            <StatusBadge status={ref.status} />
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4">
+                            <ReturnSlipIndicator referral={ref} />
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                navigate(
+                                  `/bhc/referrals/${ref.trackingId || ref.id}`,
+                                )
+                              }
+                              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0B2E59] shadow-sm transition hover:bg-slate-50"
+                            >
+                              <Eye size={12} /> View Details
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
@@ -909,5 +934,42 @@ export default function PatientDetails() {
       />
     </>
   );
+}
+
+function ReturnSlipIndicator({ referral }) {
+  const hasReturnSlip = !!(referral.feedback || referral.returnSlip);
+
+  return (
+    <span
+      className={`inline-flex rounded-md px-2.5 py-1 text-[11px] font-semibold ${
+        hasReturnSlip
+          ? "bg-emerald-50 text-emerald-700"
+          : "bg-amber-50 text-amber-700"
+      }`}
+    >
+      {hasReturnSlip ? "Return Slip Available" : "Awaiting RHU Feedback"}
+    </span>
+  );
+}
+
+function getReferralDestination(referral = {}) {
+  return (
+    referral.receivingFacility ||
+    referral.destinationFacility ||
+    referral.referredFacility ||
+    "Rural Health Unit Bulakan"
+  );
+}
+
+function formatReferralDate(value) {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 

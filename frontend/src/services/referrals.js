@@ -6,6 +6,85 @@ function normalizeReferrals(referrals) {
   return Array.isArray(referrals) ? referrals : [];
 }
 
+function normalizeText(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function normalizeContact(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function getPatientName(patient = {}) {
+  return (
+    patient.name ||
+    patient.patientName ||
+    [patient.firstName, patient.middleName, patient.lastName]
+      .filter(Boolean)
+      .join(" ")
+  );
+}
+
+function getReferralPatientName(referral = {}) {
+  return (
+    referral.patientName ||
+    referral.patient ||
+    getPatientName(referral.patient || {})
+  );
+}
+
+function getPatientContact(patient = {}) {
+  return patient.contactNumber || patient.contact || patient.phone || "";
+}
+
+function getReferralContact(referral = {}) {
+  return (
+    referral.contactNumber ||
+    referral.contact ||
+    referral.patientContact ||
+    getPatientContact(referral.patient || {})
+  );
+}
+
+function isReferralForPatient(referral = {}, patient = {}) {
+  const patientIds = [
+    patient.id,
+    patient.patientId,
+    patient._id,
+  ].filter(Boolean);
+
+  const referralIds = [
+    referral.patientId,
+    referral.patient?.id,
+    referral.patient?.patientId,
+    referral.patient?._id,
+  ].filter(Boolean);
+
+  if (
+    patientIds.length > 0 &&
+    referralIds.some((referralId) => patientIds.includes(referralId))
+  ) {
+    return true;
+  }
+
+  const patientName = normalizeText(getPatientName(patient));
+  const referralName = normalizeText(getReferralPatientName(referral));
+  if (!patientName || !referralName || patientName !== referralName) {
+    return false;
+  }
+
+  const patientContact = normalizeContact(getPatientContact(patient));
+  const referralContact = normalizeContact(getReferralContact(referral));
+
+  if (patientContact && referralContact) {
+    return patientContact === referralContact;
+  }
+
+  return true;
+}
+
 function parseDate(value) {
   if (!value) return null;
   const date = new Date(value);
@@ -40,6 +119,29 @@ export async function getReferralById(referralId) {
   await delay();
   const referrals = normalizeReferrals(getAllReferrals());
   return referrals.find((r) => r.id === referralId) || null;
+}
+
+export async function getReferralByTrackingId(trackingId) {
+  await delay();
+  const referrals = normalizeReferrals(getAllReferrals());
+  return (
+    referrals.find(
+      (referral) =>
+        referral.trackingId === trackingId ||
+        referral.id === trackingId,
+    ) || null
+  );
+}
+
+export async function getReferralsByPatient(patient) {
+  await delay();
+  const referrals = normalizeReferrals(getAllReferrals());
+  const patientInput =
+    typeof patient === "string" ? { id: patient, patientId: patient } : patient;
+
+  return referrals.filter((referral) =>
+    isReferralForPatient(referral, patientInput || {}),
+  );
 }
 
 export async function createReferral(referralData) {
@@ -134,6 +236,8 @@ export async function autoMarkNoShowReferrals() {
 export default {
   getReferrals,
   getReferralById,
+  getReferralByTrackingId,
+  getReferralsByPatient,
   createReferral,
   updateReferralStatus,
   updateReferralByTrackingId,

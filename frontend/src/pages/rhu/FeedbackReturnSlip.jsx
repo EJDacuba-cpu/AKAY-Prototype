@@ -1,19 +1,19 @@
-import { useState, useEffect, Fragment } from "react";
-import { useParams, Link } from "react-router";
+import { Fragment, useEffect, useState } from "react";
+import { Link, useParams } from "react-router";
 import {
+  Activity,
+  AlertCircle,
   ArrowLeft,
+  Building2,
+  CalendarDays,
   Check,
   CheckCircle2,
   ClipboardList,
+  Clock,
   FileText,
   Send,
   Stethoscope,
-  AlertCircle,
-  Clock,
   UserCheck,
-  Activity,
-  Building2,
-  CalendarDays,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 
@@ -22,13 +22,20 @@ import {
   updateReferralByTrackingId,
 } from "../../services/referrals";
 
-/* ─── Status Progression Stepper ─── */
+const OUTCOME_OPTIONS = [
+  "Managed at RHU",
+  "Follow-up Required",
+  "Continue care at BHC",
+  "Coordinated Follow-up",
+  "Referred back to BHC for monitoring",
+];
+
 function StatusStepper({ currentStep }) {
   const steps = [
     { label: "BHC Referral", sub: "Referral sent to RHU" },
     { label: "RHU Received", sub: "Patient checked in" },
-    { label: "RHU Assessment", sub: "Diagnosis & findings" },
-    { label: "Return Slip Sent", sub: "Return slip to BHC" },
+    { label: "RHU Assessment", sub: "Assessment or monitoring" },
+    { label: "Return Slip Sent", sub: "Final RHU response to BHC" },
   ];
 
   return (
@@ -42,7 +49,7 @@ function StatusStepper({ currentStep }) {
             Referral Progression
           </h3>
           <p className="text-[11px] text-slate-400">
-            Current stage in the BHC → RHU coordination loop
+            Current stage in the BHC-RHU coordination loop
           </p>
         </div>
       </div>
@@ -54,7 +61,7 @@ function StatusStepper({ currentStep }) {
           const isLast = i === steps.length - 1;
 
           return (
-            <Fragment key={i}>
+            <Fragment key={step.label}>
               <div
                 className="flex flex-col items-center"
                 style={{ minWidth: 0, flex: 1 }}
@@ -93,7 +100,7 @@ function StatusStepper({ currentStep }) {
               </div>
 
               {!isLast && (
-                <div className="flex flex-1 items-start pt-[18px] px-1">
+                <div className="flex flex-1 items-start px-1 pt-[18px]">
                   <div
                     className={`h-0.5 w-full rounded-full transition-all duration-500 ${
                       i < currentStep ? "bg-slate-900" : "bg-slate-200"
@@ -109,7 +116,6 @@ function StatusStepper({ currentStep }) {
   );
 }
 
-/* ─── Referral Summary Card ─── */
 function ReferralSummaryCard({ referral }) {
   if (!referral) return null;
 
@@ -125,23 +131,23 @@ function ReferralSummaryCard({ referral }) {
           </span>
         </div>
         <span className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
-          {referral.ageSex}
+          {referral.ageSex || "Age / Sex not recorded"}
         </span>
       </div>
 
       <div className="p-5">
         <h2 className="text-lg font-semibold text-slate-900">
-          {referral.patientName || referral.patient}
+          {getPatientName(referral)}
         </h2>
         <p className="mt-0.5 text-sm text-slate-500">
-          {referral.category || "General Consultation"}
+          {getReferralCategory(referral)}
         </p>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryItem
             icon={<Building2 size={13} />}
-            label="Referring BHC"
-            value={referral.bhc || referral.referringFacility}
+            label="Name of Referring HCI"
+            value={getReferringHci(referral)}
           />
           <SummaryItem
             icon={<Stethoscope size={13} />}
@@ -150,21 +156,13 @@ function ReferralSummaryCard({ referral }) {
           />
           <SummaryItem
             icon={<UserCheck size={13} />}
-            label="Specialization"
-            value={referral.suggestedSpecialization}
+            label="Receiving Facility"
+            value="Rural Health Unit Bulakan"
           />
           <SummaryItem
             icon={<CalendarDays size={13} />}
-            label="Date Submitted"
-            value={
-              referral.createdAt
-                ? new Date(referral.createdAt).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })
-                : referral.dateSubmitted
-            }
+            label="Date of Referral"
+            value={formatDate(getReferralDate(referral))}
           />
         </div>
       </div>
@@ -179,14 +177,13 @@ function SummaryItem({ icon, label, value }) {
         {icon}
         {label}
       </div>
-      <p className="mt-1 text-sm font-medium text-slate-800 leading-snug">
-        {value || "—"}
+      <p className="mt-1 text-sm font-medium leading-snug text-slate-800">
+        {value || "Not recorded"}
       </p>
     </div>
   );
 }
 
-/* ─── Form Fields ─── */
 function FieldInput({
   label,
   name,
@@ -263,7 +260,6 @@ function FieldTextarea({
   );
 }
 
-/* ─── Section Header ─── */
 function SectionHeader({ icon, title, description }) {
   return (
     <div className="mb-5 flex items-center gap-3">
@@ -280,16 +276,15 @@ function SectionHeader({ icon, title, description }) {
   );
 }
 
-/* ─── Main Component ─── */
 export default function FeedbackReturnSlip() {
   const { trackingId: routeTrackingId } = useParams();
   const [selectedReferralId, setSelectedReferralId] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [referrals, setReferrals] = useState([]);
 
   const isAutoLoaded = !!routeTrackingId;
-  const [referrals, setReferrals] = useState([]);
 
   useEffect(() => {
     let alive = true;
@@ -323,40 +318,29 @@ export default function FeedbackReturnSlip() {
   const selectedReferral = referrals.find(
     (r) => r.trackingId === selectedReferralId,
   );
-  const canCreateFeedback =
+  const selectedStatus = getOfficialStatus(selectedReferral?.status);
+  const canCreateReturnSlip =
     selectedReferral &&
-    ["Received", "For Monitoring", "Under Assessment"].includes(
-      selectedReferral.status,
-    );
-  const isCompletedReferral = selectedReferral?.status === "Completed";
+    (selectedStatus === "Received" || selectedStatus === "For Monitoring");
+  const isCompletedReferral = selectedStatus === "Completed";
 
   function getCurrentStep() {
     if (!selectedReferral) return 0;
-    switch (selectedReferral.status) {
-      case "Pending":
-        return 0;
-      case "Received":
-        return 1;
-      case "For Monitoring":
-      case "Under Assessment":
-        return 2;
-      case "Completed":
-        return 3;
-      case "No-Show":
-        return 0;
-      default:
-        return 0;
-    }
+    if (selectedStatus === "Received") return 1;
+    if (selectedStatus === "For Monitoring") return 2;
+    if (selectedStatus === "Completed") return 3;
+    return 0;
   }
 
   const [form, setForm] = useState({
     dateReceived: new Date().toISOString().split("T")[0],
     timeReceived: "",
+    receivingPersonnel: "RHU Staff",
     rhuDiagnosis: "",
     actionsTaken: "",
+    assessmentOutcome: "Managed at RHU",
+    followUpDate: "",
     recommendation: "",
-    monitoringStatus: "For Monitoring",
-    receivingPersonnel: "RHU Staff",
     remarks: "",
   });
 
@@ -366,8 +350,9 @@ export default function FeedbackReturnSlip() {
 
   async function handleSubmit(e) {
     e?.preventDefault();
-    if (!selectedReferral || !canCreateFeedback) return;
+    if (!selectedReferral || !canCreateReturnSlip) return;
 
+    const now = new Date().toISOString();
     const feedback = {
       dateOfReceipt: form.dateReceived,
       timeOfReceipt: form.timeReceived,
@@ -375,10 +360,13 @@ export default function FeedbackReturnSlip() {
       receivingPractitioner: form.receivingPersonnel,
       rhuDiagnosis: form.rhuDiagnosis,
       actionsTaken: form.actionsTaken,
+      assessmentOutcome: form.assessmentOutcome,
+      followUpDate: shouldShowFollowUpDate(form.assessmentOutcome)
+        ? form.followUpDate
+        : "",
       recommendation: form.recommendation,
-      monitoringStatus: form.monitoringStatus,
       remarks: form.remarks,
-      submittedAt: new Date().toISOString(),
+      submittedAt: now,
     };
 
     const updated = await updateReferralByTrackingId(
@@ -386,7 +374,7 @@ export default function FeedbackReturnSlip() {
       {
         status: "Completed",
         feedback,
-        completedAt: new Date().toISOString(),
+        completedAt: now,
       },
     );
 
@@ -451,25 +439,22 @@ export default function FeedbackReturnSlip() {
             Return Slip Submitted
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            The RHU return slip has been recorded for the selected referral.
+            The RHU return slip has been recorded and the referral is now
+            completed.
           </p>
 
           <div className="mt-6 rounded-lg border border-slate-100 bg-slate-50 p-5 text-left">
             <div className="grid gap-4 md:grid-cols-2">
               <Info label="Tracking ID" value={selectedReferral?.trackingId} />
+              <Info label="Patient" value={getPatientName(selectedReferral)} />
               <Info
-                label="Patient"
-                value={
-                  selectedReferral?.patientName || selectedReferral?.patient
-                }
+                label="Name of Referring HCI"
+                value={getReferringHci(selectedReferral)}
               />
               <Info
-                label="Referring BHC"
-                value={
-                  selectedReferral?.bhc || selectedReferral?.referringFacility
-                }
+                label="RHU Assessment Outcome"
+                value={form.assessmentOutcome}
               />
-              <Info label="Monitoring Status" value={form.monitoringStatus} />
               <Info
                 label="Receiving Personnel"
                 value={form.receivingPersonnel}
@@ -480,21 +465,12 @@ export default function FeedbackReturnSlip() {
 
           <div className="mt-8 flex items-center justify-center gap-3">
             <Link
-              to="/rhu/incoming-referrals"
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+              to={`/rhu/referrals/${selectedReferral?.trackingId || ""}`}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-800"
             >
               <ArrowLeft size={14} />
-              Back to Referrals
+              Back to Referral Details
             </Link>
-            <button
-              onClick={() => {
-                setSubmitted(false);
-                if (!isAutoLoaded) setSelectedReferralId("");
-              }}
-              className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-800"
-            >
-              Create Another Return Slip
-            </button>
           </div>
         </div>
       </DashboardLayout>
@@ -510,7 +486,7 @@ export default function FeedbackReturnSlip() {
     );
   }
 
-  if (selectedReferral && !canCreateFeedback) {
+  if (selectedReferral && !canCreateReturnSlip) {
     return (
       <DashboardLayout role="rhu" title="Return Slip">
         <div className="mx-auto flex max-w-lg flex-col items-center justify-center py-20 text-center">
@@ -521,10 +497,10 @@ export default function FeedbackReturnSlip() {
             Return Slip Not Available
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            Create Return Slip is only available when a referral is Received or
+            Create Return Slip is available only when a referral is Received or
             For Monitoring. Current status:{" "}
             <span className="font-medium text-slate-800">
-              {selectedReferral.status}
+              {selectedStatus}
             </span>
           </p>
           <Link
@@ -542,14 +518,19 @@ export default function FeedbackReturnSlip() {
   return (
     <DashboardLayout role="rhu" title="Return Slip">
       <div className="mx-auto max-w-4xl">
-        {/* Back Link */}
         <div className="mb-6">
           <Link
-            to="/rhu/incoming-referrals"
+            to={
+              selectedReferral
+                ? `/rhu/referrals/${selectedReferral.trackingId}`
+                : "/rhu/incoming-referrals"
+            }
             className="inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-slate-900"
           >
             <ArrowLeft size={14} />
-            Back to Incoming Referrals
+            {selectedReferral
+              ? "Back to Referral Details"
+              : "Back to Incoming Referrals"}
           </Link>
 
           {!isAutoLoaded && (
@@ -566,7 +547,6 @@ export default function FeedbackReturnSlip() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5 pb-4">
-          {/* Referral Selection (hidden when auto-loaded) */}
           {!isAutoLoaded && (
             <section className="rounded-xl border border-slate-200 bg-white p-6">
               <SectionHeader
@@ -589,20 +569,18 @@ export default function FeedbackReturnSlip() {
                     >
                       <option value="">Select referral</option>
                       {referrals
-                        .filter(
-                          (r) =>
-                            r.status === "Received" ||
-                            r.status === "For Monitoring" ||
-                            r.status === "Under Assessment",
+                        .filter((r) =>
+                          ["Received", "For Monitoring"].includes(
+                            getOfficialStatus(r.status),
+                          ),
                         )
                         .map((referral) => (
                           <option
                             key={referral.trackingId}
                             value={referral.trackingId}
                           >
-                            {referral.trackingId} —{" "}
-                            {referral.patientName || referral.patient} (
-                            {referral.status})
+                            {referral.trackingId} - {getPatientName(referral)} (
+                            {getOfficialStatus(referral.status)})
                           </option>
                         ))}
                     </select>
@@ -615,13 +593,12 @@ export default function FeedbackReturnSlip() {
                       Selected Referral
                     </p>
                     <p className="mt-1 text-sm font-semibold text-slate-800">
-                      {selectedReferral.patientName || selectedReferral.patient}
+                      {getPatientName(selectedReferral)}
                     </p>
                     <p className="text-xs text-slate-500">
-                      {selectedReferral.trackingId} · {selectedReferral.ageSex}{" "}
-                      ·{" "}
-                      {selectedReferral.bhc ||
-                        selectedReferral.referringFacility}
+                      {selectedReferral.trackingId} -{" "}
+                      {selectedReferral.ageSex || "Age / Sex not recorded"} -{" "}
+                      {getReferringHci(selectedReferral)}
                     </p>
                   </div>
                 )}
@@ -629,25 +606,18 @@ export default function FeedbackReturnSlip() {
             </section>
           )}
 
-          {/* Referral Summary */}
-          {selectedReferral && (
-            <ReferralSummaryCard referral={selectedReferral} />
-          )}
-
-          {/* Status Progression */}
-          {selectedReferral && <StatusStepper currentStep={getCurrentStep()} />}
-
-          {/* Clinical Assessment Form */}
           {selectedReferral && (
             <>
-              {/* Reception Details */}
+              <ReferralSummaryCard referral={selectedReferral} />
+              <StatusStepper currentStep={getCurrentStep()} />
+
               <section className="rounded-xl border border-slate-200 bg-white p-6">
                 <SectionHeader
                   icon={<Clock size={18} />}
                   title="Reception Details"
                   description="Record when and by whom the patient was received at the RHU."
                 />
-                <div className="grid gap-4 lg:grid-cols-4">
+                <div className="grid gap-4 lg:grid-cols-3">
                   <FieldInput
                     label="Date Received"
                     name="dateReceived"
@@ -664,19 +634,6 @@ export default function FeedbackReturnSlip() {
                     onChange={handleChange}
                     required
                   />
-                  <FieldSelect
-                    label="Monitoring Status"
-                    name="monitoringStatus"
-                    value={form.monitoringStatus}
-                    onChange={handleChange}
-                    required
-                  >
-                    <option>For Monitoring</option>
-                    <option>Follow-up Required</option>
-                    <option>Under Observation</option>
-                    <option>Completed</option>
-                    <option>Coordinated Follow-up</option>
-                  </FieldSelect>
                   <FieldInput
                     label="Receiving Personnel"
                     name="receivingPersonnel"
@@ -687,12 +644,11 @@ export default function FeedbackReturnSlip() {
                 </div>
               </section>
 
-              {/* Clinical Findings */}
               <section className="rounded-xl border border-slate-200 bg-white p-6">
                 <SectionHeader
                   icon={<Stethoscope size={18} />}
                   title="Clinical Findings"
-                  description="Record the RHU diagnosis, actions taken, and recommendation."
+                  description="Record the RHU diagnosis and actions taken."
                 />
                 <div className="space-y-4">
                   <FieldTextarea
@@ -708,30 +664,53 @@ export default function FeedbackReturnSlip() {
                     name="actionsTaken"
                     value={form.actionsTaken}
                     onChange={handleChange}
-                    placeholder="Write actions taken by RHU personnel (e.g., vital signs taken, medication prescribed, lab orders)..."
+                    placeholder="Write actions taken by RHU personnel..."
                     required
                   />
                 </div>
               </section>
 
-              {/* Recommendation */}
               <section className="rounded-xl border border-slate-200 bg-white p-6">
                 <SectionHeader
                   icon={<FileText size={18} />}
-                  title="Recommendation & Follow-up"
-                  description="Provide follow-up instructions for the BHC and patient."
+                  title="RHU Assessment Outcome"
+                  description="This outcome is part of the return slip and does not change the official referral status."
                 />
                 <div className="space-y-4">
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <FieldSelect
+                      label="RHU Assessment Outcome"
+                      name="assessmentOutcome"
+                      value={form.assessmentOutcome}
+                      onChange={handleChange}
+                      required
+                    >
+                      {OUTCOME_OPTIONS.map((option) => (
+                        <option key={option}>{option}</option>
+                      ))}
+                    </FieldSelect>
+
+                    {shouldShowFollowUpDate(form.assessmentOutcome) && (
+                      <FieldInput
+                        label="Follow-up Date"
+                        name="followUpDate"
+                        type="date"
+                        value={form.followUpDate}
+                        onChange={handleChange}
+                      />
+                    )}
+                  </div>
+
                   <FieldTextarea
-                    label="Recommendation / Follow-up Instructions"
+                    label="Remarks / Instructions to BHC"
                     name="recommendation"
                     value={form.recommendation}
                     onChange={handleChange}
-                    placeholder="Write recommendation, follow-up schedule, or monitoring instructions for the BHC..."
+                    placeholder="Write recommendation, follow-up instructions, or BHC monitoring notes..."
                     required
                   />
                   <FieldTextarea
-                    label="Additional Remarks"
+                    label="Additional Notes"
                     name="remarks"
                     value={form.remarks}
                     onChange={handleChange}
@@ -741,7 +720,6 @@ export default function FeedbackReturnSlip() {
                 </div>
               </section>
 
-              {/* Clinical Note */}
               <section className="rounded-xl border border-slate-200 bg-slate-50 p-5">
                 <div className="flex gap-3">
                   <FileText
@@ -752,17 +730,16 @@ export default function FeedbackReturnSlip() {
                     <span className="font-medium text-slate-700">
                       Clinical Note:
                     </span>{" "}
-                    This form serves as the RHU return slip. It updates the
-                    referral record and informs the BHC about RHU assessment,
-                    action taken, and monitoring status. Ensure all clinical
-                    findings are accurate before submission.
+                    Submitting this form saves the return slip for the referring
+                    BHC and marks this referral as Completed. If the patient
+                    still needs RHU monitoring, use Start Monitoring from
+                    Referral Details before creating the return slip.
                   </p>
                 </div>
               </section>
             </>
           )}
 
-          {/* Empty state */}
           {!isAutoLoaded && !selectedReferral && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 py-16 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-300">
@@ -779,7 +756,6 @@ export default function FeedbackReturnSlip() {
           )}
         </form>
 
-        {/* Action Footer - placed at the end of the scroll, not fixed */}
         {selectedReferral && (
           <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -788,17 +764,17 @@ export default function FeedbackReturnSlip() {
                   {selectedReferral.trackingId}
                 </p>
                 <p className="mt-0.5 truncate text-xs text-slate-500">
-                  {selectedReferral.patientName || selectedReferral.patient}
+                  {getPatientName(selectedReferral)}
                 </p>
               </div>
 
               <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
-                <button
-                  type="button"
-                  className="h-10 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                <Link
+                  to={`/rhu/referrals/${selectedReferral.trackingId}`}
+                  className="flex h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
                 >
-                  Save as Draft
-                </button>
+                  Cancel
+                </Link>
                 <button
                   type="button"
                   onClick={handleSubmit}
@@ -816,7 +792,6 @@ export default function FeedbackReturnSlip() {
   );
 }
 
-/* ─── Completed Return Slip View ─── */
 function CompletedReturnSlip({ referral, feedback }) {
   return (
     <DashboardLayout role="rhu" title="Return Slip">
@@ -850,30 +825,29 @@ function CompletedReturnSlip({ referral, feedback }) {
           </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <Info label="Date of Receipt" value={feedback?.dateOfReceipt} />
+            <Info label="Time of Receipt" value={feedback?.timeOfReceipt} />
+            <Info label="Patient Name" value={getPatientName(referral)} />
+            <Info label="Age / Sex" value={referral.ageSex} />
             <Info
-              label="Patient"
-              value={referral.patientName || referral.patient}
+              label="Name of Health Care Institution"
+              value={feedback?.receivingFacility || "Rural Health Unit Bulakan"}
             />
             <Info
-              label="Referring BHC"
-              value={referral.referringFacility || referral.bhc}
-            />
-            <Info label="Date Received" value={feedback?.dateOfReceipt} />
-            <Info label="Time Received" value={feedback?.timeOfReceipt} />
-            <Info
-              label="Receiving Personnel"
+              label="Name and Signature of Receiving Practitioner"
               value={feedback?.receivingPractitioner}
             />
             <Info
-              label="Monitoring Status"
-              value={feedback?.monitoringStatus}
+              label="RHU Assessment Outcome"
+              value={feedback?.assessmentOutcome || feedback?.monitoringStatus}
             />
+            <Info label="Follow-up Date" value={feedback?.followUpDate} />
           </div>
 
           {feedback ? (
             <div className="mt-6 space-y-4">
               <ReturnSlipBlock
-                label="RHU Diagnosis / Findings"
+                label="Initial Diagnosis"
                 value={feedback.rhuDiagnosis}
               />
               <ReturnSlipBlock
@@ -881,11 +855,11 @@ function CompletedReturnSlip({ referral, feedback }) {
                 value={feedback.actionsTaken}
               />
               <ReturnSlipBlock
-                label="Recommendation / Follow-up Instructions"
+                label="Remarks / Instructions to BHC"
                 value={feedback.recommendation}
               />
               <ReturnSlipBlock
-                label="Additional Remarks"
+                label="Additional Notes"
                 value={feedback.remarks}
               />
             </div>
@@ -895,7 +869,8 @@ function CompletedReturnSlip({ referral, feedback }) {
                 No return slip details attached.
               </p>
               <p className="mt-1 text-xs text-slate-300">
-                This referral is completed, but no feedback payload is stored.
+                This referral is completed, but no return slip payload is
+                stored.
               </p>
             </div>
           )}
@@ -926,7 +901,99 @@ function Info({ label, value }) {
       <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400">
         {label}
       </p>
-      <p className="mt-1 text-sm font-medium text-slate-800">{value || "—"}</p>
+      <p className="mt-1 text-sm font-medium text-slate-800">
+        {value || "Not recorded"}
+      </p>
     </div>
   );
+}
+
+function shouldShowFollowUpDate(outcome) {
+  return outcome === "Follow-up Required" || outcome === "Coordinated Follow-up";
+}
+
+function getOfficialStatus(status) {
+  const raw = String(status || "Pending").trim();
+  if (
+    ["Pending", "Received", "For Monitoring", "Completed", "No-Show"].includes(
+      raw,
+    )
+  ) {
+    return raw;
+  }
+
+  const lower = raw.toLowerCase();
+  if (lower.includes("assessment") || lower.includes("monitoring")) {
+    return "For Monitoring";
+  }
+  if (lower.includes("received")) return "Received";
+  if (lower.includes("completed")) return "Completed";
+  if (lower.includes("show")) return "No-Show";
+  return "Pending";
+}
+
+function isRhuFacility(value = "") {
+  return /rhu|rural health unit/i.test(String(value));
+}
+
+function cleanBarangayName(value = "") {
+  return String(value)
+    .replace(/^barangay\s+/i, "")
+    .trim();
+}
+
+function getReferringHci(referral = {}) {
+  const candidates = [
+    referral.referringHealthCenter,
+    referral.referringBHC,
+    referral.bhcName,
+    referral.sourceFacility,
+    referral.referringFacility,
+    referral.bhc,
+    referral.referringHci,
+  ].filter(Boolean);
+
+  const valid = candidates.find((item) => !isRhuFacility(item));
+  if (valid) return valid;
+
+  const barangay =
+    referral.referringBarangay ||
+    referral.patientBarangay ||
+    referral.barangay;
+
+  return barangay
+    ? `Barangay ${cleanBarangayName(barangay)} Health Center`
+    : "Barangay Health Center";
+}
+
+function getPatientName(referral = {}) {
+  return referral.patientName || referral.patient || "Unknown Patient";
+}
+
+function getReferralCategory(referral = {}) {
+  return referral.referralCategory || referral.category || "Unclassified";
+}
+
+function getReferralDate(referral = {}) {
+  const raw =
+    referral.dateOfReferral ||
+    referral.referralDate ||
+    referral.dateSubmitted ||
+    referral.createdAt ||
+    referral.date;
+
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? raw : parsed;
+}
+
+function formatDate(value) {
+  if (!value) return "Not recorded";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
