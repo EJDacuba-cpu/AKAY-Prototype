@@ -42,7 +42,7 @@ const keyframes = `
 
 const TABS = [
   { key: "referral", label: "Referral Information", icon: ClipboardList },
-  { key: "clinical", label: "Clinical Details", icon: Stethoscope },
+  { key: "clinical", label: "Clinical Data", icon: Stethoscope },
   { key: "returnSlip", label: "Return Slip", icon: MessageSquare },
 ];
 
@@ -234,9 +234,7 @@ export default function RHUReferralDetails() {
               relatedReferrals={relatedReferrals}
             />
           )}
-          {activeTab === "clinical" && (
-            <ClinicalDetails referral={referral} />
-          )}
+          {activeTab === "clinical" && <ClinicalDetails referral={referral} />}
           {activeTab === "returnSlip" && <ReturnSlip referral={referral} />}
         </main>
 
@@ -275,8 +273,14 @@ function ReferralHeader({ referral, patient }) {
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <InfoChip icon={<User size={12} />} value={getAgeSex(referral, patient)} />
-            <InfoChip icon={<Phone size={12} />} value={getContact(referral, patient)} />
+            <InfoChip
+              icon={<User size={12} />}
+              value={getAgeSex(referral, patient)}
+            />
+            <InfoChip
+              icon={<Phone size={12} />}
+              value={getContact(referral, patient)}
+            />
             <InfoChip value={getPatientClassification(referral, patient)} />
           </div>
 
@@ -295,7 +299,6 @@ function ReferralHeader({ referral, patient }) {
             </span>
           </div>
         </div>
-
       </div>
     </header>
   );
@@ -312,7 +315,11 @@ function ReferralInformation({ referral, patient, relatedReferrals }) {
         icon={<ClipboardList size={14} />}
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Detail label="Referral Category" value={getReferralCategory(referral)} badge />
+          <Detail
+            label="Referral Category"
+            value={getReferralCategory(referral)}
+            badge
+          />
           <Detail label="Date of Referral" value={formatDate(referralDate)} />
           <Detail label="Time of Referral" value={formatTime(referralDate)} />
           <Detail
@@ -320,7 +327,10 @@ function ReferralInformation({ referral, patient, relatedReferrals }) {
             value={getReferringHci(referral, patient)}
             icon={<Building2 size={12} />}
           />
-          <Detail label="PhilHealth Acct No." value={getPhilHealth(referral, patient)} />
+          <Detail
+            label="PhilHealth Acct No."
+            value={getPhilHealth(referral, patient)}
+          />
           <Detail
             label="Name and Signature of Referring Practitioner"
             value={getReferringPractitioner(referral)}
@@ -330,15 +340,28 @@ function ReferralInformation({ referral, patient, relatedReferrals }) {
 
       <RecordSection title="Patient Information" icon={<User size={14} />}>
         <div className="grid gap-4 md:grid-cols-2">
-          <Detail label="Name of Patient" value={getPatientName(referral, patient)} strong />
-          <Detail label="Date of Birth" value={getBirthDate(referral, patient)} />
+          <Detail
+            label="Name of Patient"
+            value={getPatientName(referral, patient)}
+            strong
+          />
+          <Detail
+            label="Date of Birth"
+            value={getBirthDate(referral, patient)}
+          />
           <Detail
             label="Address"
             value={getPatientAddress(referral, patient)}
             icon={<MapPin size={12} />}
           />
-          <Detail label="Age / Sex / Civil Status" value={getAgeSexCivil(referral, patient)} />
-          <Detail label="PhilHealth Category" value={getPhilHealthCategory(referral, patient)} />
+          <Detail
+            label="Age / Sex / Civil Status"
+            value={getAgeSexCivil(referral, patient)}
+          />
+          <Detail
+            label="PhilHealth Category"
+            value={getPhilHealthCategory(referral, patient)}
+          />
         </div>
       </RecordSection>
 
@@ -357,7 +380,9 @@ function PreviousReferrals({ currentReferral, referrals }) {
   const completedCount = referrals.filter(
     (item) => item.status === "Completed",
   ).length;
-  const noShowCount = referrals.filter((item) => item.status === "No-Show").length;
+  const noShowCount = referrals.filter(
+    (item) => item.status === "No-Show",
+  ).length;
   const latestReferral = [...referrals].sort(sortReferralDesc)[0];
 
   return (
@@ -394,7 +419,10 @@ function PreviousReferrals({ currentReferral, referrals }) {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {previous.map((item) => (
-                <tr key={item.trackingId || item.id} className="hover:bg-slate-50/70">
+                <tr
+                  key={item.trackingId || item.id}
+                  className="hover:bg-slate-50/70"
+                >
                   <td className="whitespace-nowrap px-4 py-3">
                     <span className="font-mono text-xs font-bold text-[#0B2E59]">
                       {item.trackingId || item.id}
@@ -443,7 +471,10 @@ function ClinicalDetails({ referral }) {
   return (
     <div className="space-y-4">
       <RecordSection title="Chief Complaint" icon={<AlertCircle size={14} />}>
-        <Narrative value={referral.chiefComplaint || referral.concern} empty="No chief complaint recorded." />
+        <Narrative
+          value={referral.chiefComplaint || referral.concern}
+          empty="No chief complaint recorded."
+        />
       </RecordSection>
 
       <RecordSection
@@ -461,15 +492,30 @@ function ClinicalDetails({ referral }) {
       </RecordSection>
 
       <RecordSection title="Initial Diagnosis" icon={<FileText size={14} />}>
-        <Narrative value={referral.initialDiagnosis || referral.diagnosis} empty="No initial diagnosis recorded." />
+        <Narrative
+          value={referral.initialDiagnosis || referral.diagnosis}
+          empty="No initial diagnosis recorded."
+        />
       </RecordSection>
 
-      <RecordSection title="Initial Actions Taken" icon={<CheckCircle2 size={14} />}>
-        <Narrative value={referral.initialActionsTaken || referral.actionsTaken} empty="No initial actions recorded." />
+      <RecordSection
+        title="Initial Actions Taken"
+        icon={<CheckCircle2 size={14} />}
+      >
+        <Narrative
+          value={referral.initialActionsTaken || referral.actionsTaken}
+          empty="No initial actions recorded."
+        />
       </RecordSection>
 
-      <RecordSection title="Reason for Referral" icon={<ClipboardList size={14} />}>
-        <Narrative value={referral.reasonForReferral || referral.referralReason} empty="No reason for referral recorded." />
+      <RecordSection
+        title="Reason for Referral"
+        icon={<ClipboardList size={14} />}
+      >
+        <Narrative
+          value={referral.reasonForReferral || referral.referralReason}
+          empty="No reason for referral recorded."
+        />
       </RecordSection>
     </div>
   );
@@ -496,24 +542,44 @@ function ReturnSlip({ referral }) {
 
   return (
     <div className="space-y-4">
-      <RecordSection title="Return Slip Details" icon={<MessageSquare size={14} />}>
+      <RecordSection
+        title="Return Slip Details"
+        icon={<MessageSquare size={14} />}
+      >
         <div className="grid gap-4 md:grid-cols-2">
           <Detail label="Date of Receipt" value={feedback.dateOfReceipt} />
           <Detail label="Time of Receipt" value={feedback.timeOfReceipt} />
-          <Detail label="Patient Name" value={getPatientName(referral)} strong />
+          <Detail
+            label="Patient Name"
+            value={getPatientName(referral)}
+            strong
+          />
           <Detail label="Age / Sex" value={getAgeSex(referral)} />
-          <Detail label="Name of Health Care Institution" value={feedback.receivingFacility || "Rural Health Unit Bulakan"} />
-          <Detail label="Name and Signature of Receiving Practitioner" value={feedback.receivingPractitioner || "RHU Staff"} />
+          <Detail
+            label="Name of Health Care Institution"
+            value={feedback.receivingFacility || "Rural Health Unit Bulakan"}
+          />
+          <Detail
+            label="Name and Signature of Receiving Practitioner"
+            value={feedback.receivingPractitioner || "RHU Staff"}
+          />
         </div>
       </RecordSection>
 
       <RecordSection title="Initial Diagnosis" icon={<FileText size={14} />}>
-        <Narrative value={feedback.rhuDiagnosis} empty="No RHU diagnosis recorded." />
+        <Narrative
+          value={feedback.rhuDiagnosis}
+          empty="No RHU diagnosis recorded."
+        />
       </RecordSection>
 
       <RecordSection title="Actions Taken" icon={<CheckCircle2 size={14} />}>
         <Narrative
-          value={[feedback.actionsTaken, feedback.recommendation, feedback.remarks]
+          value={[
+            feedback.actionsTaken,
+            feedback.recommendation,
+            feedback.remarks,
+          ]
             .filter(Boolean)
             .join("\n\n")}
           empty="No actions recorded."
@@ -646,7 +712,10 @@ function ReferralActions({ referral, busy, onStatusChange }) {
 
 function StatusHistory({ referral }) {
   const items = [
-    ["Submitted", referral.createdAt || referral.dateOfReferral || referral.referralDate],
+    [
+      "Submitted",
+      referral.createdAt || referral.dateOfReferral || referral.referralDate,
+    ],
     ["Received", referral.receivedAt],
     ["Monitoring Started", referral.monitoringStartedAt],
     ["Return Slip Submitted", referral.feedback?.submittedAt],
@@ -673,7 +742,9 @@ function StatusHistory({ referral }) {
             <div>
               <p className="text-xs font-semibold text-slate-700">{label}</p>
               <p className="text-[10.5px] text-slate-400">
-                {value ? `${formatDate(value)} ${formatTime(value)}` : "Pending"}
+                {value
+                  ? `${formatDate(value)} ${formatTime(value)}`
+                  : "Pending"}
               </p>
             </div>
           </div>
@@ -716,7 +787,9 @@ function Detail({ label, value, icon, strong, badge }) {
       ) : (
         <p
           className={`mt-1 leading-relaxed ${
-            strong ? "text-sm font-bold text-slate-800" : "text-sm text-slate-700"
+            strong
+              ? "text-sm font-bold text-slate-800"
+              : "text-sm text-slate-700"
           }`}
         >
           {value || "Not recorded"}
@@ -850,7 +923,8 @@ async function ensureLinkedPatient(referral) {
     sex: referral.sex || parseSex(referral.ageSex),
     civilStatus: referral.civilStatus || "",
     contactNumber: getContact(referral),
-    streetAddress: referral.street || referral.address || referral.patientAddress || "",
+    streetAddress:
+      referral.street || referral.address || referral.patientAddress || "",
     barangay: referral.barangay || referral.patientBarangay || "",
     municipality: referral.municipality || "Bulakan",
     patientClassification: getPatientClassification(referral),
@@ -867,7 +941,10 @@ async function ensureLinkedPatient(referral) {
 }
 
 function splitPatientName(name) {
-  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
   if (parts.length === 0) {
     return { firstName: "Unknown", middleName: "", lastName: "Patient" };
   }
@@ -882,7 +959,10 @@ function splitPatientName(name) {
 }
 
 function normalize(value) {
-  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
 }
 
 function isRhuFacility(value = "") {
@@ -890,7 +970,9 @@ function isRhuFacility(value = "") {
 }
 
 function cleanBarangayName(value = "") {
-  return String(value).replace(/^barangay\s+/i, "").trim();
+  return String(value)
+    .replace(/^barangay\s+/i, "")
+    .trim();
 }
 
 function getReferringHci(referral = {}, patient = null) {

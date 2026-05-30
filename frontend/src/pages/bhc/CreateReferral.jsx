@@ -12,6 +12,7 @@ import {
   Printer,
   ExternalLink,
   ShieldCheck,
+  Radio,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { createReferral } from "../../services/referrals";
@@ -31,6 +32,9 @@ const keyframes = `
 `;
 const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 
+const REFERRING_HCI = "Pitpitan Health Center";
+const DEFAULT_RECEIVING_FACILITY = "Rural Health Unit of Bulakan";
+
 export default function CreateReferral() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -48,6 +52,23 @@ export default function CreateReferral() {
   const [record, setRecord] = useState(null);
   const [patient, setPatient] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const [form, setForm] = useState({
+    dateOfReferral: today,
+    timeOfReferral: currentTime,
+    referredFacility: DEFAULT_RECEIVING_FACILITY,
+    preferredVisitDate: "",
+    preferredVisitTime: "",
+    urgencyLevel: "Non-Urgent",
+    doctorAvailability: "Not Confirmed",
+    philHealthNumber: "",
+    philHealthCategory: "",
+    reasonForReferral: "",
+  });
+
+  const [submitted, setSubmitted] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [generatedTrackingId, setGeneratedTrackingId] = useState("");
 
   useEffect(() => {
     async function loadReferralContext() {
@@ -70,44 +91,67 @@ export default function CreateReferral() {
 
     loadReferralContext();
   }, []);
+
   useEffect(() => {
     if (!targetRecordId) return;
+
     const foundRecord = healthRecords.find(
       (r) => r.id === targetRecordId || r._id === targetRecordId,
     );
+
     if (foundRecord) {
       setRecord(foundRecord);
+
       const foundPatient = patients.find((p) => p.id === foundRecord.patientId);
       if (foundPatient) setPatient(foundPatient);
     }
   }, [targetRecordId, patients, healthRecords]);
 
-  const [form, setForm] = useState({
-    dateOfReferral: today,
-    timeOfReferral: currentTime,
-    referredFacility: "Rural Health Unit of Bulakan",
-    preferredVisitDate: "",
-    preferredVisitTime: "",
-    reasonForReferral: "",
-  });
-  const [submitted, setSubmitted] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [generatedTrackingId, setGeneratedTrackingId] = useState("");
+  useEffect(() => {
+    if (!patient) return;
+
+    setForm((prev) => ({
+      ...prev,
+      philHealthNumber:
+        prev.philHealthNumber ||
+        patient.philHealthNumber ||
+        patient.philHealth ||
+        patient.philhealthNumber ||
+        patient.philhealth ||
+        "",
+      philHealthCategory:
+        prev.philHealthCategory ||
+        patient.philHealthCategory ||
+        patient.philhealthCategory ||
+        patient.philHealthType ||
+        "",
+    }));
+  }, [patient]);
 
   const recordIdDisplay = record?.id || record?._id || targetRecordId;
 
+  const patientClassification =
+    patient?.category ||
+    patient?.patientClassification ||
+    "General Consultation";
+
+  const patientAddress =
+    [
+      patient?.address || patient?.streetAddress,
+      patient?.barangay,
+      patient?.municipality,
+    ]
+      .filter(Boolean)
+      .join(", ") || "—";
+
   const suggestedSpecialization = useMemo(() => {
-    const cat = (
-      patient?.category ||
-      patient?.patientClassification ||
-      ""
-    ).toLowerCase();
+    const cat = (patientClassification || "").toLowerCase();
     if (cat === "pregnant patient" || cat === "maternal")
       return "Maternal Care";
     if (cat === "children" || cat === "pediatric" || cat === "immunization")
       return "Pediatrics";
     return "General Consultation";
-  }, [patient]);
+  }, [patientClassification]);
 
   function handleChange(e) {
     const { name, value } = e.target;
@@ -126,36 +170,38 @@ export default function CreateReferral() {
       ageSex:
         patient?.ageSex || `${patient?.age || ""} / ${patient?.sex || ""}`,
 
-      // RHU IncomingReferrals expects these field names:
-      // - referringFacility (or fallback: bhc)
-      // - referralCategory (or fallback: category)
-      // - priorityLevel (or fallback: priority)
-      // - chiefComplaint (or fallback: concern)
-      // - patientName / patient
-      // Use the existing referral object as source-of-truth.
-      bhc: form.referredFacility,
-      referringFacility: form.referredFacility,
+      // Correct BHC → RHU facility direction.
+      // Referring facility must be the Barangay Health Center.
+      bhc: REFERRING_HCI,
+      referringFacility: REFERRING_HCI,
+      referringHci: REFERRING_HCI,
 
-      // Category is based on patient classification/category
-      referralCategory:
-        patient?.category ||
-        patient?.patientClassification ||
-        "General Consultation",
-      category:
-        patient?.category ||
-        patient?.patientClassification ||
-        "General Consultation",
+      // Receiving / destination facility.
+      referredFacility: form.referredFacility,
+      destinationFacility: form.referredFacility,
 
-      // This CreateReferral form currently has no urgency UI.
-      // Persist a default urgency so RHU can filter and display it.
-      urgency: "Non-Urgent",
+      // Category is based on patient classification/category.
+      referralCategory: patientClassification,
+      category: patientClassification,
+      classification: patientClassification,
 
-      // Backward compatibility for older pages that still read the priority system.
-      // Keep these fields unchanged.
-      priorityLevel: "Not Specified",
-      priority: "Not Specified",
-      // NOTE: No conversion from urgency => priority is performed here.
-      // Legacy display (if any) should fallback safely.
+      // Urgency is chosen by BHC staff.
+      urgency: form.urgencyLevel,
+      urgencyLevel: form.urgencyLevel,
+
+      // Backward compatibility for older RHU pages that still read priority.
+      priorityLevel: form.urgencyLevel,
+      priority: form.urgencyLevel,
+
+      // RHU doctor availability is informational only.
+      doctorAvailability: form.doctorAvailability,
+      rhuDoctorAvailability: form.doctorAvailability,
+
+      // Optional supporting patient information.
+      philHealthNumber: form.philHealthNumber.trim(),
+      philHealthCategory: form.philHealthCategory,
+      patientPhilHealthNumber: form.philHealthNumber.trim(),
+      patientPhilHealthCategory: form.philHealthCategory,
 
       healthRecordId: record?.id || record?._id,
 
@@ -165,14 +211,13 @@ export default function CreateReferral() {
 
       diagnosis: record?.diagnosis || record?.assessment,
       reasonForReferral: form.reasonForReferral,
-      referredFacility: form.referredFacility,
-
-      // Keep existing fields for backward compatibility.
-      classification:
-        patient?.category ||
-        patient?.patientClassification ||
-        "General Consultation",
+      summaryOfPresentIllness: record?.summaryOfPresentIllness,
+      initialActionsTaken: record?.actiontaken || record?.medication,
+      attendingStaff: record?.attendingStaff,
+      practitioner: "Lorna Reyes",
+      suggestedSpecialization,
     });
+
     setGeneratedTrackingId(referral.trackingId);
     setShowConfirmModal(false);
     setSubmitted(true);
@@ -187,6 +232,7 @@ export default function CreateReferral() {
       </DashboardLayout>
     );
   }
+
   /* ─── Error: No Context ─── */
   if (!targetRecordId || !record) {
     return (
@@ -277,13 +323,26 @@ export default function CreateReferral() {
               <Info label="Tracking ID" value={generatedTrackingId} mono />
               <Info label="Patient" value={patient?.name || "—"} highlight />
               <Info
-                label="Suggested Specialization"
-                value={suggestedSpecialization}
-              />
-              <Info
                 label="Destination Facility"
                 value={form.referredFacility}
                 highlight
+              />
+              <Info label="Urgency" value={form.urgencyLevel} />
+              <Info
+                label="RHU Doctor Availability"
+                value={form.doctorAvailability}
+              />
+              <Info
+                label="PhilHealth"
+                value={
+                  form.philHealthNumber
+                    ? `${form.philHealthNumber}${
+                        form.philHealthCategory
+                          ? ` · ${form.philHealthCategory}`
+                          : ""
+                      }`
+                    : "Not provided"
+                }
               />
             </div>
           </div>
@@ -334,6 +393,23 @@ export default function CreateReferral() {
               <div className="mt-5 rounded-xl bg-slate-50 border border-slate-100 p-4 space-y-2.5">
                 <Info label="Patient" value={patient?.name} highlight />
                 <Info label="Destination" value={form.referredFacility} />
+                <Info label="Urgency" value={form.urgencyLevel} />
+                <Info
+                  label="RHU Doctor Availability"
+                  value={form.doctorAvailability}
+                />
+                <Info
+                  label="PhilHealth"
+                  value={
+                    form.philHealthNumber
+                      ? `${form.philHealthNumber}${
+                          form.philHealthCategory
+                            ? ` · ${form.philHealthCategory}`
+                            : ""
+                        }`
+                      : "Not provided"
+                  }
+                />
                 <Info
                   label="Consultation Record"
                   value={recordIdDisplay}
@@ -384,7 +460,7 @@ export default function CreateReferral() {
             </span>
           </div>
           <p className="mt-1.5 text-sm text-slate-500">
-            Review the consultation context and configure escalation details for
+            Review the consultation context and configure referral details for
             the receiving facility.
           </p>
         </div>
@@ -395,29 +471,77 @@ export default function CreateReferral() {
           ═══════════════════════════════════ */}
           <FormDocument
             title="Referral Information"
-            subtitle="Configure destination facility and escalation details"
+            subtitle="Configure destination facility and referral details"
             icon={<Send size={14} />}
             delay={1}
           >
             <SectionDivider label="System-Generated Metadata" />
             <div className="grid grid-cols-2 gap-x-8 gap-y-1 pt-3 md:grid-cols-4">
-              <MetaField
-                label="Name Of Referring HCI"
-                value="Pitpitan Health Center"
-              />
+              <MetaField label="Name Of Referring HCI" value={REFERRING_HCI} />
               <MetaField label="Referring Practitioner" value="Lorna Reyes" />
               <MetaField label="Date of Referral" value={form.dateOfReferral} />
               <MetaField label="Time of Referral" value={form.timeOfReferral} />
             </div>
 
-            <SectionDivider label="Destination & Scheduling" />
-            <div className="pt-3 pb-1">
+            <SectionDivider label="Destination & RHU Readiness" />
+            <div className="grid gap-4 pt-3 pb-1 lg:grid-cols-2">
               <FieldInput
                 label="Referred Facility"
                 name="referredFacility"
                 value={form.referredFacility}
                 onChange={handleChange}
                 required
+              />
+
+              <RadioCardGroup
+                label="RHU Doctor Availability"
+                name="doctorAvailability"
+                value={form.doctorAvailability}
+                onChange={handleChange}
+                options={[
+                  {
+                    value: "Available",
+                    title: "Available",
+                    description: "RHU doctor is available for assessment.",
+                  },
+                  {
+                    value: "Limited",
+                    title: "Limited",
+                    description: "Doctor availability may require waiting.",
+                  },
+                  {
+                    value: "Not Confirmed",
+                    title: "Not Confirmed",
+                    description: "No confirmed doctor availability yet.",
+                  },
+                ]}
+              />
+            </div>
+
+            <SectionDivider label="Urgency Level" />
+            <div className="pt-3 pb-1">
+              <RadioCardGroup
+                label="Select referral urgency"
+                name="urgencyLevel"
+                value={form.urgencyLevel}
+                onChange={handleChange}
+                options={[
+                  {
+                    value: "Non-Urgent",
+                    title: "Non-Urgent",
+                    description: "Routine referral; patient is stable.",
+                  },
+                  {
+                    value: "Urgent",
+                    title: "Urgent",
+                    description: "Needs timely RHU assessment.",
+                  },
+                  {
+                    value: "Emergency",
+                    title: "Emergency",
+                    description: "Requires immediate RHU attention.",
+                  },
+                ]}
               />
             </div>
           </FormDocument>
@@ -446,19 +570,7 @@ export default function CreateReferral() {
                 bold
               />
               <MetaField label="Date of Birth" value={patient?.dob || "—"} />
-              <MetaField
-                label="Address"
-                value={
-                  [
-                    patient?.address || patient?.streetAddress,
-                    patient?.barangay,
-                    patient?.municipality,
-                  ]
-                    .filter(Boolean)
-                    .join(", ") || "—"
-                }
-                span
-              />
+              <MetaField label="Address" value={patientAddress} span />
               <MetaField
                 label="Age / Sex"
                 value={
@@ -466,6 +578,37 @@ export default function CreateReferral() {
                   (patient?.age ? `${patient.age} yrs / ${patient.sex}` : "—")
                 }
               />
+              <MetaField
+                label="Patient Classification"
+                value={patientClassification}
+              />
+            </div>
+
+            <SectionDivider label="PhilHealth Information Optional" />
+            <div className="grid gap-4 pt-3 pb-1 sm:grid-cols-2">
+              <FieldInput
+                label="PhilHealth Number"
+                name="philHealthNumber"
+                value={form.philHealthNumber}
+                onChange={handleChange}
+                placeholder="Enter PhilHealth number if available"
+              />
+
+              <FieldSelect
+                label="PhilHealth Category"
+                name="philHealthCategory"
+                value={form.philHealthCategory}
+                onChange={handleChange}
+              >
+                <option value="">Not provided</option>
+                <option value="Member">Member</option>
+                <option value="Dependent">Dependent</option>
+                <option value="Indigent">Indigent</option>
+                <option value="Senior Citizen">Senior Citizen</option>
+                <option value="Sponsored">Sponsored</option>
+                <option value="Lifetime Member">Lifetime Member</option>
+                <option value="Not Applicable">Not Applicable</option>
+              </FieldSelect>
             </div>
           </FormDocument>
 
@@ -546,7 +689,7 @@ export default function CreateReferral() {
                 name="reasonForReferral"
                 value={form.reasonForReferral}
                 onChange={handleChange}
-                placeholder="State the specific clinical triggers or escalation reasons based on the consultation..."
+                placeholder="State the specific clinical triggers or referral reasons based on the consultation..."
                 required
               />
             </div>
@@ -557,11 +700,6 @@ export default function CreateReferral() {
             className="anim-fade-up flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-6 py-4"
             style={stagger(5)}
           >
-            <p className="text-xs text-slate-400">
-              <span className="font-semibold text-slate-500">Note:</span>{" "}
-              Referral will be logged and linked to the health record upon
-              submission.
-            </p>
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -676,7 +814,15 @@ function Info({ label, value, mono, highlight }) {
   );
 }
 
-function FieldInput({ label, name, value, onChange, type = "text", required }) {
+function FieldInput({
+  label,
+  name,
+  value,
+  onChange,
+  type = "text",
+  required,
+  placeholder,
+}) {
   return (
     <div>
       <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
@@ -688,8 +834,28 @@ function FieldInput({ label, name, value, onChange, type = "text", required }) {
         value={value}
         onChange={onChange}
         required={required}
-        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition-all focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+        placeholder={placeholder}
+        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition-all placeholder:text-slate-300 focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
       />
+    </div>
+  );
+}
+
+function FieldSelect({ label, name, value, onChange, children, required }) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        {label} {required && <span className="text-red-400">*</span>}
+      </label>
+      <select
+        name={name}
+        value={value}
+        onChange={onChange}
+        required={required}
+        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition-all focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+      >
+        {children}
+      </select>
     </div>
   );
 }
@@ -716,6 +882,70 @@ function FieldTextarea({
         rows={5}
         className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-relaxed text-slate-800 outline-none transition-all focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 resize-none"
       />
+    </div>
+  );
+}
+
+function RadioCardGroup({ label, name, value, onChange, options }) {
+  return (
+    <div>
+      <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        <Radio size={11} />
+        {label}
+      </p>
+
+      <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1">
+        {options.map((option) => {
+          const active = value === option.value;
+
+          return (
+            <label
+              key={option.value}
+              className={`cursor-pointer rounded-xl border px-3.5 py-3 transition-all ${
+                active
+                  ? "border-[#B91C1C] bg-red-50/60 ring-2 ring-[#B91C1C]/10"
+                  : "border-slate-200 bg-white hover:border-red-200 hover:bg-red-50/30"
+              }`}
+            >
+              <input
+                type="radio"
+                name={name}
+                value={option.value}
+                checked={active}
+                onChange={onChange}
+                className="sr-only"
+              />
+
+              <div className="flex items-start gap-2.5">
+                <span
+                  className={`mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border ${
+                    active
+                      ? "border-[#B91C1C] bg-[#B91C1C]"
+                      : "border-slate-300 bg-white"
+                  }`}
+                >
+                  {active && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                  )}
+                </span>
+
+                <span>
+                  <span
+                    className={`block text-xs font-bold ${
+                      active ? "text-[#B91C1C]" : "text-slate-700"
+                    }`}
+                  >
+                    {option.title}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">
+                    {option.description}
+                  </span>
+                </span>
+              </div>
+            </label>
+          );
+        })}
+      </div>
     </div>
   );
 }
