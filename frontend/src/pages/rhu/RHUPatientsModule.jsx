@@ -1,40 +1,172 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import {
-  Plus,
-  MoreHorizontal,
-  Eye,
-  FilePlus2,
   ChevronLeft,
   ChevronRight,
+  Eye,
+  FilePlus2,
+  MoreHorizontal,
+  Plus,
+  Users,
 } from "lucide-react";
+
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ListToolbar from "../../components/common/list/ListToolbar";
 import { getRhuPatients } from "../../services/patientService";
 
-/* ─── Constants ─── */
 const PER_PAGE = 8;
 
-/* ─── Component ─── */
+const DEFAULT_FILTERS = {
+  search: "",
+  classification: "All Classifications",
+  sex: "All",
+  ageGroup: "All Age Groups",
+  civilStatus: "All Civil Status",
+  status: "All Status",
+  dateRegistered: "",
+};
+
+function uniqueOptions(items, selectors, fallback) {
+  const values = items
+    .flatMap((item) => selectors.map((selector) => selector(item)))
+    .filter(Boolean);
+
+  return [fallback, ...new Set(values)];
+}
+
+function normalizeDate(value) {
+  if (!value) return "";
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  return parsed.toISOString().slice(0, 10);
+}
+
+function formatDate(value) {
+  const normalized = normalizeDate(value);
+
+  if (!normalized) return "";
+
+  return normalized;
+}
+
+function getPatientSex(patient) {
+  if (patient.sex) return patient.sex;
+
+  const ageSex = (patient.ageSex || "").toLowerCase();
+
+  if (ageSex.endsWith("/f") || ageSex.includes("female")) return "Female";
+  if (ageSex.endsWith("/m") || ageSex.includes("male")) return "Male";
+
+  return "";
+}
+
+function getPatientAge(patient) {
+  const rawAge = patient.age || patient.ageSex || "";
+  const match = rawAge.toString().match(/\d+/);
+
+  return match ? Number(match[0]) : null;
+}
+
+function getPatientContact(patient) {
+  return (
+    patient.contact ||
+    patient.contactNumber ||
+    patient.phone ||
+    patient.mobileNumber ||
+    patient.guardianContact ||
+    ""
+  );
+}
+
+function getPatientClassification(patient) {
+  return (
+    patient.patientClassification ||
+    patient.classification ||
+    patient.category ||
+    patient.patientCategory ||
+    "General Consultation"
+  );
+}
+
+function getRegisteredDate(patient) {
+  return normalizeDate(
+    patient.dateRegistered || patient.createdAt || patient.registeredAt,
+  );
+}
+
+function getLatestRhuRecord(patient) {
+  const records =
+    patient.rhuRecords ||
+    patient.rhuHealthRecords ||
+    patient.healthRecords ||
+    [];
+
+  if (Array.isArray(records) && records.length > 0) {
+    const sorted = [...records].sort((a, b) => {
+      const aDate = new Date(a.date || a.visitDate || a.createdAt || 0);
+      const bDate = new Date(b.date || b.visitDate || b.createdAt || 0);
+
+      return bDate - aDate;
+    });
+
+    const latest = sorted[0];
+    const label =
+      latest.date ||
+      latest.visitDate ||
+      latest.createdAt ||
+      latest.type ||
+      latest.recordType ||
+      "RHU record available";
+
+    return {
+      label: formatDate(label) || String(label),
+      empty: false,
+      sortValue: normalizeDate(label) || String(label),
+    };
+  }
+
+  const explicitRecord =
+    patient.latestRhuRecord ||
+    patient.latestRhuRecordDate ||
+    patient.rhuRecordDate ||
+    patient.latestHealthRecord ||
+    patient.latestHealthRecordDate;
+
+  if (explicitRecord) {
+    return {
+      label: formatDate(explicitRecord) || explicitRecord,
+      empty: false,
+      sortValue: normalizeDate(explicitRecord) || String(explicitRecord),
+    };
+  }
+
+  if (patient.hasHealthRecord && patient.lastVisit) {
+    return {
+      label: formatDate(patient.lastVisit) || patient.lastVisit,
+      empty: false,
+      sortValue: normalizeDate(patient.lastVisit) || String(patient.lastVisit),
+    };
+  }
+
+  return {
+    label: "No RHU record yet",
+    empty: true,
+    sortValue: "",
+  };
+}
+
 export default function Patients() {
   const [allPatients, setAllPatients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterCategory, setFilterCategory] = useState("All Categories");
-  const [filterSex, setFilterSex] = useState("All Sex");
-  const [filterStatus, setFilterStatus] = useState("All Status");
-  const [filterAssignedBhc, setFilterAssignedBhc] = useState("All BHCs");
-  const [filterAgeGroup, setFilterAgeGroup] = useState("All Age Groups");
-  const [filterCivilStatus, setFilterCivilStatus] =
-    useState("All Civil Status");
-  const [filterDateRegistered, setFilterDateRegistered] = useState("");
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [sortKey, setSortKey] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
-  const [page, setPage] = useState(1);
-  const [openMenuId, setOpenMenuId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
-  /* ─── Load Data from LocalStorage ─── */
   useEffect(() => {
     const loadPatients = async () => {
       try {
@@ -49,285 +181,227 @@ export default function Patients() {
 
     loadPatients();
 
-    const handleStorageChange = (e) => {
-      if (e.key === "akay_rhu_patients" || e.key === "rhu_patients") {
+    const handleStorageChange = (event) => {
+      if (event.key === "akay_rhu_patients" || event.key === "rhu_patients") {
         loadPatients();
       }
     };
+
     window.addEventListener("storage", handleStorageChange);
+
     return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
 
-  /* ─── Filtered & Sorted ─── */
-  const processedPatients = () => {
-    let result = allPatients.filter((p) => {
-      const q = searchQuery.toLowerCase();
-      const matchesSearch =
-        !q ||
-        (p.name && p.name.toLowerCase().includes(q)) ||
-        (p.id && p.id.toLowerCase().includes(q)) ||
-        (p.barangay && p.barangay.toLowerCase().includes(q)) ||
-        (p.assignedBhc && p.assignedBhc.toLowerCase().includes(q)) ||
-        (p.assignedBHC && p.assignedBHC.toLowerCase().includes(q)) ||
-        (p.contact && p.contact.toLowerCase().includes(q));
-      const matchesCategory =
-        filterCategory === "All Categories" || p.category === filterCategory;
-      const matchesSex =
-        filterSex === "All Sex" ||
-        (p.ageSex &&
-          p.ageSex
-            .toLowerCase()
-            .endsWith(`/${filterSex.charAt(0).toLowerCase()}`));
-      const matchesStatus =
-        filterStatus === "All Status" || p.status === filterStatus;
-      const matchesAssignedBhc =
-        filterAssignedBhc === "All BHCs" ||
-        p.assignedBhc === filterAssignedBhc ||
-        p.assignedBHC === filterAssignedBhc ||
-        p.barangay === filterAssignedBhc;
-      const age = parseInt((p.age || p.ageSex || "").toString(), 10);
+  const classificationOptions = uniqueOptions(
+    allPatients,
+    [getPatientClassification],
+    "All Classifications",
+  );
+
+  const civilStatusOptions = uniqueOptions(
+    allPatients,
+    [(patient) => patient.civilStatus],
+    "All Civil Status",
+  );
+
+  const filteredPatients = useMemo(() => {
+    const query = filters.search.trim().toLowerCase();
+
+    const filtered = allPatients.filter((patient) => {
+      const latestRhuRecord = getLatestRhuRecord(patient);
+      const sex = getPatientSex(patient);
+      const age = getPatientAge(patient);
+      const contact = getPatientContact(patient);
+      const classification = getPatientClassification(patient);
+      const registeredDate = getRegisteredDate(patient);
+
+      const searchText = [
+        patient.id,
+        patient.name,
+        patient.fullName,
+        contact,
+        patient.email,
+        classification,
+        patient.civilStatus,
+        patient.status,
+        registeredDate,
+        latestRhuRecord.label,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const matchesSearch = !query || searchText.includes(query);
+
+      const matchesClassification =
+        filters.classification === "All Classifications" ||
+        classification === filters.classification;
+
+      const matchesSex = filters.sex === "All" || sex === filters.sex;
+
       const matchesAgeGroup =
-        filterAgeGroup === "All Age Groups" ||
-        (filterAgeGroup === "Child" && age <= 17) ||
-        (filterAgeGroup === "Adult" && age >= 18 && age <= 59) ||
-        (filterAgeGroup === "Senior" && age >= 60);
+        filters.ageGroup === "All Age Groups" ||
+        (filters.ageGroup === "Child" && age !== null && age <= 17) ||
+        (filters.ageGroup === "Adult" &&
+          age !== null &&
+          age >= 18 &&
+          age <= 59) ||
+        (filters.ageGroup === "Senior" && age !== null && age >= 60);
+
       const matchesCivilStatus =
-        filterCivilStatus === "All Civil Status" ||
-        p.civilStatus === filterCivilStatus;
-      const rawRegisteredDate =
-        p.dateRegistered || p.createdAt || p.registeredAt;
-      const parsedRegisteredDate = rawRegisteredDate
-        ? new Date(rawRegisteredDate)
-        : null;
-      const normalizedRegisteredDate =
-        parsedRegisteredDate && !Number.isNaN(parsedRegisteredDate.getTime())
-          ? parsedRegisteredDate.toISOString().slice(0, 10)
-          : "";
+        filters.civilStatus === "All Civil Status" ||
+        patient.civilStatus === filters.civilStatus;
+
+      const matchesStatus =
+        filters.status === "All Status" || patient.status === filters.status;
+
       const matchesDate =
-        !filterDateRegistered ||
-        normalizedRegisteredDate === filterDateRegistered;
+        !filters.dateRegistered || registeredDate === filters.dateRegistered;
 
       return (
         matchesSearch &&
-        matchesCategory &&
+        matchesClassification &&
         matchesSex &&
-        matchesStatus &&
-        matchesAssignedBhc &&
         matchesAgeGroup &&
         matchesCivilStatus &&
+        matchesStatus &&
         matchesDate
       );
     });
 
-    return result.sort((a, b) => {
-      let aVal, bVal;
-      // Handle potential undefined keys gracefully
-      switch (sortKey) {
-        case "name":
-          aVal = a.name;
-          bVal = b.name;
-          break;
-        case "id":
-          aVal = a.id;
-          bVal = b.id;
-          break;
-        case "barangay":
-          aVal = a.barangay;
-          bVal = b.barangay;
-          break;
-        case "lastVisit":
-          aVal = a.lastVisit;
-          bVal = b.lastVisit;
-          break;
-        case "status":
-          aVal = a.status;
-          bVal = b.status;
-          break;
-        default:
-          return 0;
-      }
-      const cmp = (aVal || "").localeCompare(bVal || "");
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-  };
+    return filtered.sort((a, b) => {
+      const getValue = (patient) => {
+        if (sortKey === "classification")
+          return getPatientClassification(patient);
+        if (sortKey === "contact") return getPatientContact(patient);
+        if (sortKey === "latestRhuRecord") {
+          return getLatestRhuRecord(patient).sortValue;
+        }
+        if (sortKey === "registeredDate") return getRegisteredDate(patient);
+        if (sortKey === "sex") return getPatientSex(patient);
 
-  const currentPatients = processedPatients();
-  const totalPages = Math.max(1, Math.ceil(currentPatients.length / PER_PAGE));
-  const pagedPatients = currentPatients.slice(
-    (page - 1) * PER_PAGE,
-    page * PER_PAGE,
+        return patient[sortKey] || "";
+      };
+
+      const aValue = String(getValue(a)).toLowerCase();
+      const bValue = String(getValue(b)).toLowerCase();
+      const comparison = aValue.localeCompare(bValue);
+
+      return sortDir === "asc" ? comparison : -comparison;
+    });
+  }, [allPatients, filters, sortKey, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredPatients.length / PER_PAGE));
+
+  const paginatedPatients = filteredPatients.slice(
+    (currentPage - 1) * PER_PAGE,
+    currentPage * PER_PAGE,
   );
 
-  /* ─── Handlers ─── */
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters]);
+
   function handleSort(key) {
-    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else {
-      setSortKey(key);
-      setSortDir("asc");
+    if (sortKey === key) {
+      setSortDir((current) => (current === "asc" ? "desc" : "asc"));
+      return;
     }
+
+    setSortKey(key);
+    setSortDir("asc");
+  }
+
+  function applyDropdownFilters(nextFilters) {
+    setFilters((prev) => ({ ...prev, ...nextFilters }));
+  }
+
+  function clearFilters() {
+    setFilters(DEFAULT_FILTERS);
   }
 
   function removeFilter(key) {
-    switch (key) {
-      case "search":
-        setSearchQuery("");
-        break;
-      case "category":
-        setFilterCategory("All Categories");
-        break;
-      case "sex":
-        setFilterSex("All Sex");
-        break;
-      case "status":
-        setFilterStatus("All Status");
-        break;
-      case "assignedBhc":
-        setFilterAssignedBhc("All BHCs");
-        break;
-      case "ageGroup":
-        setFilterAgeGroup("All Age Groups");
-        break;
-      case "civilStatus":
-        setFilterCivilStatus("All Civil Status");
-        break;
-      case "dateRegistered":
-        setFilterDateRegistered("");
-        break;
-    }
+    const resetValues = {
+      search: "",
+      classification: "All Classifications",
+      sex: "All",
+      ageGroup: "All Age Groups",
+      civilStatus: "All Civil Status",
+      status: "All Status",
+      dateRegistered: "",
+    };
+
+    setFilters((prev) => ({ ...prev, [key]: resetValues[key] }));
   }
 
-  function clearAllFilters() {
-    setSearchQuery("");
-    setFilterCategory("All Categories");
-    setFilterSex("All Sex");
-    setFilterStatus("All Status");
-    setFilterAssignedBhc("All BHCs");
-    setFilterAgeGroup("All Age Groups");
-    setFilterCivilStatus("All Civil Status");
-    setFilterDateRegistered("");
-  }
-
-  useEffect(() => {
-    setPage(1);
-  }, [
-    searchQuery,
-    filterCategory,
-    filterSex,
-    filterStatus,
-    filterAssignedBhc,
-    filterAgeGroup,
-    filterCivilStatus,
-    filterDateRegistered,
-  ]);
-
-  if (loading) {
-    return (
-      <DashboardLayout role="rhu" title="Patients">
-        <div className="flex h-64 items-center justify-center text-slate-400">
-          Loading patients...
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  const startRecord =
-    currentPatients.length === 0 ? 0 : (page - 1) * PER_PAGE + 1;
-  const endRecord = Math.min(page * PER_PAGE, currentPatients.length);
-
-  const assignedBhcOptions = [
-    "All BHCs",
-    ...new Set(
-      allPatients
-        .map((patient) => patient.assignedBhc || patient.assignedBHC || patient.barangay)
-        .filter(Boolean),
-    ),
-  ];
-
-  const civilStatusOptions = [
-    "All Civil Status",
-    ...new Set(allPatients.map((patient) => patient.civilStatus).filter(Boolean)),
-  ];
-
-  const toolbarFilters = [
+  const dropdownFilters = [
     {
-      key: "assignedBhc",
-      label: "Assigned BHC",
-      value: filterAssignedBhc,
-      options: assignedBhcOptions,
-    },
-    {
-      key: "category",
-      label: "Classification",
-      value: filterCategory,
-      options: [
-        "All Categories",
-        "General Consultation",
-        "Senior Citizen",
-        "Pregnant Patient",
-        "Immunization",
-      ],
+      key: "classification",
+      label: "Patient Classification",
+      value: filters.classification,
+      options: classificationOptions,
     },
     {
       key: "sex",
       label: "Sex",
-      value: filterSex,
-      options: ["All Sex", "Female", "Male"],
+      value: filters.sex,
+      options: ["All", "Male", "Female"],
     },
     {
       key: "ageGroup",
       label: "Age Group",
-      value: filterAgeGroup,
+      value: filters.ageGroup,
       options: ["All Age Groups", "Child", "Adult", "Senior"],
     },
     {
       key: "civilStatus",
       label: "Civil Status",
-      value: filterCivilStatus,
+      value: filters.civilStatus,
       options: civilStatusOptions,
     },
     {
       key: "status",
       label: "Status",
-      value: filterStatus,
+      value: filters.status,
       options: [
         "All Status",
         "Active",
         "For Referral",
         "For Monitoring",
         "Completed",
+        "Received",
       ],
     },
     {
       key: "dateRegistered",
       label: "Date Registered",
-      value: filterDateRegistered,
+      value: filters.dateRegistered,
       type: "date",
     },
   ];
 
   const activeFilters = [
-    searchQuery && { key: "search", label: `Search: ${searchQuery}` },
-    filterAssignedBhc !== "All BHCs" && {
-      key: "assignedBhc",
-      label: filterAssignedBhc,
+    filters.search && { key: "search", label: `Search: ${filters.search}` },
+    filters.classification !== "All Classifications" && {
+      key: "classification",
+      label: filters.classification,
     },
-    filterCategory !== "All Categories" && {
-      key: "category",
-      label: filterCategory,
-    },
-    filterSex !== "All Sex" && { key: "sex", label: filterSex },
-    filterAgeGroup !== "All Age Groups" && {
+    filters.sex !== "All" && { key: "sex", label: filters.sex },
+    filters.ageGroup !== "All Age Groups" && {
       key: "ageGroup",
-      label: filterAgeGroup,
+      label: filters.ageGroup,
     },
-    filterCivilStatus !== "All Civil Status" && {
+    filters.civilStatus !== "All Civil Status" && {
       key: "civilStatus",
-      label: filterCivilStatus,
+      label: filters.civilStatus,
     },
-    filterStatus !== "All Status" && { key: "status", label: filterStatus },
-    filterDateRegistered && {
+    filters.status !== "All Status" && {
+      key: "status",
+      label: filters.status,
+    },
+    filters.dateRegistered && {
       key: "dateRegistered",
-      label: filterDateRegistered,
+      label: filters.dateRegistered,
     },
   ].filter(Boolean);
 
@@ -335,221 +409,282 @@ export default function Patients() {
     (filter) => filter.key !== "search",
   ).length;
 
-  function applyToolbarFilters(nextFilters) {
-    setFilterAssignedBhc(nextFilters.assignedBhc);
-    setFilterCategory(nextFilters.category);
-    setFilterSex(nextFilters.sex);
-    setFilterAgeGroup(nextFilters.ageGroup);
-    setFilterCivilStatus(nextFilters.civilStatus);
-    setFilterStatus(nextFilters.status);
-    setFilterDateRegistered(nextFilters.dateRegistered);
-  }
-
   return (
     <DashboardLayout role="rhu" title="Patients">
-      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 md:px-8">
-        {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-light tracking-tight text-slate-900">
-              Patients
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Master registry for patient profiles and demographics.
-            </p>
-          </div>
-        </div>
+      <ListToolbar
+        searchValue={filters.search}
+        onSearchChange={(value) =>
+          setFilters((prev) => ({ ...prev, search: value }))
+        }
+        searchPlaceholder="Search by name, ID, contact, or classification..."
+        chip={`● ${filteredPatients.length.toLocaleString()} Patients`}
+        filters={dropdownFilters}
+        activeFilterCount={activeFilterCount}
+        activeFilters={activeFilters}
+        onApplyFilters={applyDropdownFilters}
+        onClearFilters={clearFilters}
+        onRemoveFilter={removeFilter}
+        actions={
+          <Link
+            to="/rhu/patients/add"
+            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347] active:bg-[#071D3A]"
+          >
+            <Plus size={14} strokeWidth={2.5} />
+            New Patient
+          </Link>
+        }
+      />
 
-        <ListToolbar
-          searchValue={searchQuery}
-          onSearchChange={setSearchQuery}
-          searchPlaceholder="Search by name, ID, or assigned BHC..."
-          chip={`● ${currentPatients.length.toLocaleString()} Patients`}
-          filters={toolbarFilters}
-          activeFilterCount={activeFilterCount}
-          activeFilters={activeFilters}
-          onApplyFilters={applyToolbarFilters}
-          onClearFilters={clearAllFilters}
-          onRemoveFilter={removeFilter}
-          actions={
-            <Link
-              to="/rhu/patients/add"
-              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-[#092347]"
-            >
-              <Plus size={14} strokeWidth={2.5} />
-              New Patient
-            </Link>
-          }
-        />
-
-        {/* Table Area */}
-        <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
-          <div className="flex items-center justify-between border-b border-slate-50 px-6 py-3 bg-slate-50/30">
-            <h2 className="text-sm font-semibold text-slate-700">
-              Patient Records
-            </h2>
-            <span className="text-xs text-slate-400">
-              Showing {currentPatients.length} records
-            </span>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                  <SortableHeader
-                    label="ID"
-                    sortKey="id"
-                    currentSort={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                    className="px-6 py-4"
-                  />
-                  <SortableHeader
-                    label="Patient Name"
-                    sortKey="name"
-                    currentSort={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                    className="px-4 py-4"
-                  />
-                  <th className="px-4 py-4">Age / Sex</th>
-                  <SortableHeader
-                    label="Barangay"
-                    sortKey="barangay"
-                    currentSort={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                    className="px-4 py-4"
-                  />
-                  <th className="px-4 py-4">Contact</th>
-                  <th className="px-4 py-4">Classification</th>
-                  <SortableHeader
-                    label="Last Visit"
-                    sortKey="lastVisit"
-                    currentSort={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                    className="px-4 py-4"
-                  />
-                  <SortableHeader
-                    label="Status"
-                    sortKey="status"
-                    currentSort={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                    className="px-4 py-4"
-                  />
-                  <th className="px-6 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {pagedPatients.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={9}
-                      className="px-6 py-12 text-center text-sm text-slate-400"
-                    >
-                      No patients found. Try adjusting filters or add a new
-                      patient.
-                    </td>
-                  </tr>
-                ) : (
-                  pagedPatients.map((patient) => (
-                    <tr
-                      key={patient.id}
-                      className="group transition-colors hover:bg-slate-50/30"
-                    >
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <span className="font-mono text-xs font-medium text-slate-500">
-                          {patient.id}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-4">
-                        <span className="text-sm font-semibold text-slate-900">
-                          {patient.name}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-4 text-sm text-slate-500">
-                        {patient.ageSex || "-"}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-4 text-sm font-medium text-slate-600">
-                        {patient.barangay || "-"}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-4 font-mono text-xs text-slate-400">
-                        {patient.contact || "-"}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-4">
-                        <CategoryTag category={patient.category} />
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-4 text-sm text-slate-500">
-                        {patient.lastVisit || "-"}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-4">
-                        <StatusBadge status={patient.status} />
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-right">
-                        <ActionMenu
-                          patientId={patient.id}
-                          patientName={patient.name}
-                        />
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4 bg-slate-50/30">
-              <p className="text-xs text-slate-500">
-                Showing {startRecord} to {endRecord} of {currentPatients.length}{" "}
-                records
-              </p>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition hover:bg-white hover:border-slate-300 hover:text-slate-600 disabled:opacity-30 disabled:hover:bg-transparent"
-                >
-                  <ChevronLeft size={14} />
-                </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                  (p) => (
-                    <button
-                      key={p}
-                      onClick={() => setPage(p)}
-                      className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition ${
-                        p === page
-                          ? "bg-slate-900 text-white shadow-sm"
-                          : "text-slate-600 hover:bg-slate-100"
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ),
-                )}
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition hover:bg-white hover:border-slate-300 hover:text-slate-600 disabled:opacity-30 disabled:hover:bg-transparent"
-                >
-                  <ChevronRight size={14} />
-                </button>
+      <div className="min-w-0">
+        {paginatedPatients.length === 0 && !loading ? (
+          <div className="rounded-xl border border-[#E2E8F0] bg-white px-6 py-24 text-center shadow-sm">
+            <div className="flex flex-col items-center justify-center">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
+                <Users size={20} className="text-[#94A3B8]" />
               </div>
+
+              <p className="text-[13px] font-semibold text-[#334155]">
+                No Matching Patients
+              </p>
+
+              <p className="mt-1 text-[11.5px] text-[#94A3B8]">
+                Try adjusting your search or filter criteria.
+              </p>
+
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="mt-4 text-[11px] font-semibold text-[#0B2E59] hover:underline"
+              >
+                Clear current filters
+              </button>
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <RHUPatientsTable
+            patients={paginatedPatients}
+            loading={loading}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            setCurrentPage={setCurrentPage}
+            filteredCount={filteredPatients.length}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={handleSort}
+          />
+        )}
       </div>
     </DashboardLayout>
   );
 }
 
-/* ─────────────────────────────────────────────
-   SUB-COMPONENTS
-──────────────────────────────────────────── */
+function RHUPatientsTable({
+  patients,
+  loading,
+  currentPage,
+  totalPages,
+  setCurrentPage,
+  filteredCount,
+  sortKey,
+  sortDir,
+  onSort,
+}) {
+  const startRecord =
+    filteredCount === 0 ? 0 : (currentPage - 1) * PER_PAGE + 1;
+  const endRecord = Math.min(currentPage * PER_PAGE, filteredCount);
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[900px] text-left">
+          <thead>
+            <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC] text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+              <SortableHeader
+                label="ID"
+                sortKey="id"
+                currentSort={sortKey}
+                currentDir={sortDir}
+                onSort={onSort}
+                className="w-[120px] px-6 py-4"
+              />
+
+              <SortableHeader
+                label="Patient"
+                sortKey="name"
+                currentSort={sortKey}
+                currentDir={sortDir}
+                onSort={onSort}
+                className="w-[220px] px-4 py-4"
+              />
+
+              <th className="w-[110px] px-4 py-4">Age / Sex</th>
+
+              <SortableHeader
+                label="Contact"
+                sortKey="contact"
+                currentSort={sortKey}
+                currentDir={sortDir}
+                onSort={onSort}
+                className="w-[140px] px-4 py-4"
+              />
+
+              <SortableHeader
+                label="Classification"
+                sortKey="classification"
+                currentSort={sortKey}
+                currentDir={sortDir}
+                onSort={onSort}
+                className="w-[170px] px-4 py-4"
+              />
+
+              <SortableHeader
+                label="Latest RHU Record"
+                sortKey="latestRhuRecord"
+                currentSort={sortKey}
+                currentDir={sortDir}
+                onSort={onSort}
+                className="w-[180px] px-4 py-4"
+              />
+
+              <SortableHeader
+                label="Status"
+                sortKey="status"
+                currentSort={sortKey}
+                currentDir={sortDir}
+                onSort={onSort}
+                className="w-[120px] px-4 py-4"
+              />
+
+              <th className="w-[90px] px-6 py-4 text-right">Actions</th>
+            </tr>
+          </thead>
+
+          <tbody className="divide-y divide-[#F1F5F9]">
+            {loading ? (
+              <tr>
+                <td
+                  colSpan={8}
+                  className="px-6 py-12 text-center text-sm text-[#94A3B8]"
+                >
+                  Loading patients...
+                </td>
+              </tr>
+            ) : (
+              patients.map((patient) => {
+                const latestRhuRecord = getLatestRhuRecord(patient);
+                const classification = getPatientClassification(patient);
+                const contact = getPatientContact(patient);
+
+                return (
+                  <tr
+                    key={patient.id}
+                    className="group transition-colors hover:bg-[#F8FAFC]"
+                  >
+                    <td className="whitespace-nowrap px-6 py-4">
+                      <span className="font-mono text-xs font-medium text-[#64748B]">
+                        {patient.id}
+                      </span>
+                    </td>
+
+                    <td className="whitespace-nowrap px-4 py-4">
+                      <p className="text-sm font-semibold text-[#0F172A]">
+                        {patient.name || patient.fullName || "Unnamed Patient"}
+                      </p>
+                    </td>
+
+                    <td className="whitespace-nowrap px-4 py-4 text-sm text-[#64748B]">
+                      {patient.ageSex ||
+                        [patient.age, getPatientSex(patient)]
+                          .filter(Boolean)
+                          .join(" / ") ||
+                        "-"}
+                    </td>
+
+                    <td className="whitespace-nowrap px-4 py-4 text-sm text-[#64748B]">
+                      {contact || "-"}
+                    </td>
+
+                    <td className="whitespace-nowrap px-4 py-4">
+                      <ClassificationBadge label={classification} />
+                    </td>
+
+                    <td className="whitespace-nowrap px-4 py-4">
+                      <LatestRecordBadge record={latestRhuRecord} />
+                    </td>
+
+                    <td className="whitespace-nowrap px-4 py-4">
+                      <StatusBadge status={patient.status} />
+                    </td>
+
+                    <td className="whitespace-nowrap px-6 py-4 text-right">
+                      <ActionMenu
+                        patientId={patient.id}
+                        patientName={patient.name || patient.fullName}
+                      />
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {totalPages > 1 && (
+        <div className="flex flex-col gap-3 border-t border-[#E2E8F0] bg-[#F8FAFC] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-[#64748B]">
+            Showing{" "}
+            <span className="font-medium text-[#0F172A]">{startRecord}</span> to{" "}
+            <span className="font-medium text-[#0F172A]">{endRecord}</span> of{" "}
+            <span className="font-medium text-[#0F172A]">{filteredCount}</span>{" "}
+            records
+          </p>
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+              disabled={currentPage === 1}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#94A3B8] transition hover:border-[#94A3B8] hover:text-[#475569] disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Previous page"
+            >
+              <ChevronLeft size={14} />
+            </button>
+
+            {Array.from({ length: totalPages }, (_, index) => index + 1).map(
+              (pageNumber) => (
+                <button
+                  key={pageNumber}
+                  type="button"
+                  onClick={() => setCurrentPage(pageNumber)}
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition ${
+                    pageNumber === currentPage
+                      ? "bg-[#0B2E59] text-white shadow-sm"
+                      : "text-[#475569] hover:bg-white"
+                  }`}
+                >
+                  {pageNumber}
+                </button>
+              ),
+            )}
+
+            <button
+              type="button"
+              onClick={() =>
+                setCurrentPage((page) => Math.min(totalPages, page + 1))
+              }
+              disabled={currentPage === totalPages}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#94A3B8] transition hover:border-[#94A3B8] hover:text-[#475569] disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Next page"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function SortableHeader({
   label,
@@ -560,16 +695,17 @@ function SortableHeader({
   className = "px-4 py-4",
 }) {
   const isActive = currentSort === sortKey;
+
   return (
     <th
-      className={`${className} cursor-pointer select-none transition-colors hover:text-slate-600`}
+      className={`${className} cursor-pointer select-none transition-colors hover:text-[#334155]`}
       onClick={() => onSort(sortKey)}
     >
       <div className="flex items-center gap-2">
         {label}
         <span
           className={`text-[10px] ${
-            isActive ? "text-slate-900" : "text-slate-300"
+            isActive ? "text-[#0F172A]" : "text-[#CBD5E1]"
           }`}
         >
           {isActive ? (currentDir === "asc" ? "↑" : "↓") : "↕"}
@@ -579,20 +715,26 @@ function SortableHeader({
   );
 }
 
-function CategoryTag({ category }) {
-  const map = {
-    "Pregnant Patient": "bg-pink-50 text-pink-700 border-pink-200",
-    "Senior Citizen": "bg-violet-50 text-violet-700 border-violet-200",
-    "General Consultation": "bg-blue-50 text-blue-700 border-blue-200",
-    Immunization: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  };
+function ClassificationBadge({ label }) {
   return (
-    <span
-      className={`inline-block whitespace-nowrap rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-        map[category] || "bg-slate-50 text-slate-600 border-slate-200"
-      }`}
-    >
-      {category}
+    <span className="inline-flex max-w-[160px] items-center truncate rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
+      {label || "General Consultation"}
+    </span>
+  );
+}
+
+function LatestRecordBadge({ record }) {
+  if (record.empty) {
+    return (
+      <span className="inline-flex max-w-[170px] items-center truncate rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+        No RHU record yet
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex max-w-[170px] items-center truncate rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+      {record.label}
     </span>
   );
 }
@@ -603,14 +745,16 @@ function StatusBadge({ status }) {
     "For Referral": "bg-orange-50 text-orange-700 border-orange-200",
     "For Monitoring": "bg-amber-50 text-amber-700 border-amber-200",
     Completed: "bg-slate-100 text-slate-600 border-slate-200",
+    Received: "bg-blue-50 text-blue-700 border-blue-200",
   };
+
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
         map[status] || map.Active
       }`}
     >
-      {status}
+      {status || "Active"}
     </span>
   );
 }
@@ -623,41 +767,52 @@ function ActionMenu({ patientId, patientName }) {
 
   function updatePosition() {
     if (!btnRef.current) return;
+
     const rect = btnRef.current.getBoundingClientRect();
     const menuWidth = 192;
     const menuHeight = 150;
     const padding = 12;
+
     let top = rect.bottom + 8;
     let left = rect.right - menuWidth;
 
     if (left < padding) left = padding;
+
     if (left + menuWidth > window.innerWidth - padding) {
       left = window.innerWidth - menuWidth - padding;
     }
+
     if (top + menuHeight > window.innerHeight - padding) {
       top = rect.top - menuHeight - 8;
     }
+
     if (top < padding) top = padding;
 
     setPosition({ top, left });
   }
 
   useEffect(() => {
-    if (!open) return;
-    function handleOutside(e) {
+    if (!open) return undefined;
+
+    function handleOutside(event) {
       if (
-        btnRef.current?.contains(e.target) ||
-        menuRef.current?.contains(e.target)
-      )
+        btnRef.current?.contains(event.target) ||
+        menuRef.current?.contains(event.target)
+      ) {
         return;
+      }
+
       setOpen(false);
     }
+
     function handleWindowChange() {
       setOpen(false);
     }
+
     document.addEventListener("mousedown", handleOutside);
     window.addEventListener("scroll", handleWindowChange, true);
     window.addEventListener("resize", handleWindowChange);
+
     return () => {
       document.removeEventListener("mousedown", handleOutside);
       window.removeEventListener("scroll", handleWindowChange, true);
@@ -665,57 +820,65 @@ function ActionMenu({ patientId, patientName }) {
     };
   }, [open]);
 
-  const menu = open &&
+  const displayName = patientName || "Patient";
+
+  const menu =
+    open &&
     createPortal(
-    <div
-      ref={menuRef}
-      className="fixed z-[9999] w-48 origin-top-right overflow-hidden rounded-xl border border-slate-100 bg-white shadow-lg ring-1 ring-black/5 focus:outline-none"
-      style={{
-        top: position.top,
-        left: position.left,
-        minWidth: "180px",
-      }}
-    >
-      <div className="py-1">
-        <div className="px-4 py-2 border-b border-slate-50">
-          <p className="text-xs font-semibold text-slate-900 truncate">
-            {patientName}
-          </p>
-          <p className="font-mono text-[10px] text-slate-400">{patientId}</p>
+      <div
+        ref={menuRef}
+        className="fixed z-[9999] w-48 origin-top-right overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-lg ring-1 ring-black/5 focus:outline-none"
+        style={{
+          top: position.top,
+          left: position.left,
+          minWidth: "180px",
+        }}
+      >
+        <div className="py-1">
+          <div className="border-b border-[#F1F5F9] px-4 py-2">
+            <p className="truncate text-xs font-semibold text-[#0F172A]">
+              {displayName}
+            </p>
+            <p className="font-mono text-[10px] text-[#94A3B8]">{patientId}</p>
+          </div>
+
+          <Link
+            to={`/rhu/patients/${patientId}`}
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-[#475569] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A]"
+          >
+            <Eye size={14} className="text-[#94A3B8]" />
+            View Details
+          </Link>
+
+          <Link
+            to={`/rhu/health-records/add?patientId=${patientId}`}
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-[#475569] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A]"
+          >
+            <FilePlus2 size={14} className="text-[#94A3B8]" />
+            Add RHU Health Record
+          </Link>
         </div>
-        <Link
-          to={`/rhu/patients/${patientId}`}
-          onClick={() => setOpen(false)}
-          className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
-        >
-          <Eye size={14} className="text-slate-400" />
-          View Details
-        </Link>
-        <Link
-          to={`/rhu/health-records/add?patientId=${patientId}`}
-          onClick={() => setOpen(false)}
-          className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
-        >
-          <FilePlus2 size={14} className="text-slate-400" />
-          Add Health Record
-        </Link>
-      </div>
-    </div>,
-    document.body,
-  );
+      </div>,
+      document.body,
+    );
 
   return (
     <div className="relative inline-block text-left">
       <button
         ref={btnRef}
+        type="button"
         onClick={() => {
           if (!open) updatePosition();
-          setOpen(!open);
+          setOpen((current) => !current);
         }}
-        className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+        className="flex h-8 w-8 items-center justify-center rounded-full text-[#94A3B8] transition hover:bg-[#F1F5F9] hover:text-[#475569]"
+        aria-label={`Open actions for ${displayName}`}
       >
         <MoreHorizontal size={16} />
       </button>
+
       {menu}
     </div>
   );

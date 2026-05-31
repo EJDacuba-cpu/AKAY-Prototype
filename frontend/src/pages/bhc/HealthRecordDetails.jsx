@@ -10,6 +10,7 @@ import {
   X,
   Check,
   HeartPulse,
+  Syringe,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -35,6 +36,56 @@ import FormTextarea from "../../components/common/forms/FormTextarea";
 import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
 import SuccessModal from "../../components/common/modals/SuccessModal";
 
+const VACCINE_TIMELINE = [
+  {
+    id: "birth",
+    label: "At Birth",
+    vaccines: [
+      { field: "bcg_vaccine", label: "BCG Vaccine" },
+      { field: "hepb_birth", label: "Hep B Birth Dose" },
+    ],
+  },
+  {
+    id: "week6",
+    label: "6 Weeks",
+    vaccines: [
+      { field: "pentavalent_dose1", label: "Pentavalent Dose 1" },
+      { field: "opv_dose1", label: "OPV Dose 1" },
+      { field: "pcv_dose1", label: "PCV Dose 1" },
+      { field: "ipv_dose1", label: "IPV Dose 1" },
+    ],
+  },
+  {
+    id: "week10",
+    label: "10 Weeks",
+    vaccines: [
+      { field: "pentavalent_dose2", label: "Pentavalent Dose 2" },
+      { field: "opv_dose2", label: "OPV Dose 2" },
+      { field: "pcv_dose2", label: "PCV Dose 2" },
+    ],
+  },
+  {
+    id: "week14",
+    label: "14 Weeks",
+    vaccines: [
+      { field: "pentavalent_dose3", label: "Pentavalent Dose 3" },
+      { field: "opv_dose3", label: "OPV Dose 3" },
+      { field: "pcv_dose3", label: "PCV Dose 3" },
+      { field: "ipv_dose2", label: "IPV Dose 2" },
+    ],
+  },
+  {
+    id: "month9",
+    label: "9 Months",
+    vaccines: [{ field: "mmr_dose1", label: "MMR Dose 1" }],
+  },
+  {
+    id: "month12",
+    label: "12-15 Months",
+    vaccines: [{ field: "mmr_dose2", label: "MMR Dose 2" }],
+  },
+];
+
 export default function HealthRecordDetails() {
   const { recordId } = useParams();
   const navigate = useNavigate();
@@ -45,7 +96,9 @@ export default function HealthRecordDetails() {
   const [linkedReferral, setLinkedReferral] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(
+    Boolean(location.state?.startInEditMode),
+  );
   const [openConfirm, setOpenConfirm] = useState(false);
   const [openSuccess, setOpenSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -84,13 +137,7 @@ export default function HealthRecordDetails() {
     fetchData();
   }, [recordId]);
 
-  useEffect(() => {
-    if (location.state?.startInEditMode && record) {
-      setIsEditing(true);
-    }
-  }, [location.state, record]);
-
-  const initializeForm = (data) => {
+  function initializeForm(data) {
     setForm({
       diagnosis: data.diagnosis || "",
       chiefComplaint: data.chiefComplaint || "",
@@ -103,7 +150,7 @@ export default function HealthRecordDetails() {
       aog: data.aog || "",
       expectedDeliveryDate: data.expectedDeliveryDate || "",
     });
-  };
+  }
 
   function handleChange(e) {
     const { name, value } = e.target;
@@ -164,6 +211,8 @@ export default function HealthRecordDetails() {
   const isFollowUp =
     record.followUpStatus === "Follow-up After 2 Days" ||
     record.followUpStatus === "Under Observation";
+  const isImmunizationRecord = isImmunizationClassification(record, patient);
+  const immunizationGroups = getImmunizationGroups(record);
 
   return (
     <>
@@ -288,7 +337,7 @@ export default function HealthRecordDetails() {
         {/* ─── Main Content ─── */}
         <div className="grid gap-6 lg:grid-cols-3">
           {/* ═══ Clinical Record — Single Card ═══ */}
-          <div className="lg:col-span-2">
+          <div className="space-y-6 lg:col-span-2">
             <SideCard title="Clinical Record" icon={<HeartPulse size={14} />}>
               {isEditing ? (
                 /* ── Edit Mode ── */
@@ -461,6 +510,75 @@ export default function HealthRecordDetails() {
                 </div>
               )}
             </SideCard>
+
+            {isImmunizationRecord && (
+              <SideCard
+                title="Immunization Details"
+                icon={<Syringe size={14} />}
+              >
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-semibold text-[#0B2E59]">
+                      Vaccine Schedule
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Vaccines recorded during this visit.
+                    </p>
+                  </div>
+
+                  {immunizationGroups.length > 0 ? (
+                    <div className="space-y-3">
+                      {immunizationGroups.map((group) => (
+                        <div
+                          key={group.id}
+                          className="rounded-xl border border-slate-100 bg-slate-50/40 p-4"
+                        >
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                              {group.label}
+                            </h3>
+                            <span className="text-[11px] font-medium text-slate-400">
+                              {group.administeredCount}/{group.vaccines.length}{" "}
+                              administered
+                            </span>
+                          </div>
+
+                          <div className="divide-y divide-slate-100">
+                            {group.vaccines.map((vaccine) => (
+                              <div
+                                key={vaccine.field}
+                                className="flex flex-col gap-2 py-2 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+                              >
+                                <div>
+                                  <p className="text-sm font-medium text-slate-700">
+                                    {vaccine.label}
+                                  </p>
+                                  {vaccine.dateAdministered && (
+                                    <p className="mt-0.5 text-[11px] text-slate-400">
+                                      Date administered:{" "}
+                                      {vaccine.dateAdministered}
+                                    </p>
+                                  )}
+                                </div>
+                                <VaccineStatusBadge
+                                  administered={vaccine.administered}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/30 px-4 py-5 text-center">
+                      <p className="text-xs text-slate-400">
+                        No immunization details recorded for this visit.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </SideCard>
+            )}
           </div>
 
           {/* ═══ Sidebar ═══ */}
@@ -538,6 +656,59 @@ function SectionDivider({ label }) {
       </span>
       <div className="h-px flex-1 bg-slate-100" />
     </div>
+  );
+}
+
+function isImmunizationClassification(record = {}, patient = {}) {
+  return [
+    record.classification,
+    record.category,
+    record.recordType,
+    record.patientClassification,
+    patient?.category,
+    patient?.patientClassification,
+  ].some((value) => String(value || "").toLowerCase() === "immunization");
+}
+
+function getImmunizationGroups(record = {}) {
+  const data = record.immunizationData;
+  if (!data || typeof data !== "object") return [];
+
+  return VACCINE_TIMELINE.map((group) => {
+    const vaccines = group.vaccines.map((vaccine) => {
+      const dateAdministered =
+        data[`${vaccine.field}_date`] ||
+        data[`${vaccine.field}Date`] ||
+        data[`${vaccine.field}_date_administered`] ||
+        "";
+
+      return {
+        ...vaccine,
+        administered: Boolean(data[vaccine.field]),
+        dateAdministered,
+      };
+    });
+
+    return {
+      ...group,
+      vaccines,
+      administeredCount: vaccines.filter((vaccine) => vaccine.administered)
+        .length,
+    };
+  });
+}
+
+function VaccineStatusBadge({ administered }) {
+  return (
+    <span
+      className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+        administered
+          ? "bg-emerald-50 text-emerald-700"
+          : "bg-slate-100 text-slate-500"
+      }`}
+    >
+      {administered ? "Administered" : "Not Administered"}
+    </span>
   );
 }
 

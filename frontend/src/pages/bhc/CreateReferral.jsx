@@ -69,7 +69,7 @@ export default function CreateReferral() {
   const [form, setForm] = useState({
     dateOfReferral: today,
     timeOfReferral: currentTime,
-    referredFacility: DEFAULT_RECEIVING_FACILITY,
+    receivingFacility: DEFAULT_RECEIVING_FACILITY,
     preferredVisitDate: "",
     preferredVisitTime: "",
     urgencyLevel: "Non-Urgent",
@@ -308,9 +308,10 @@ export default function CreateReferral() {
       referringFacility: REFERRING_HCI,
       referringHci: REFERRING_HCI,
 
-      // Receiving / destination facility.
-      referredFacility: form.referredFacility,
-      destinationFacility: form.referredFacility,
+      // Receiving facility for the BHC → RHU referral.
+      receivingFacility: form.receivingFacility,
+      referredFacility: form.receivingFacility, // backward compatibility
+      destinationFacility: form.receivingFacility,
 
       // Category is based on patient classification/category.
       referralCategory: patientClassification,
@@ -485,8 +486,8 @@ export default function CreateReferral() {
               <Info label="Tracking ID" value={generatedTrackingId} mono />
               <Info label="Patient" value={patient?.name || "—"} highlight />
               <Info
-                label="Destination Facility"
-                value={form.referredFacility}
+                label="Receiving Facility"
+                value={form.receivingFacility}
                 highlight
               />
               <Info label="Urgency" value={form.urgencyLevel} />
@@ -569,7 +570,10 @@ export default function CreateReferral() {
                     (patient?.age ? `${patient.age} yrs / ${patient.sex}` : "—")
                   }
                 />
-                <Info label="Destination" value={form.referredFacility} />
+                <Info
+                  label="Receiving Facility"
+                  value={form.receivingFacility}
+                />
                 <Info label="Urgency" value={form.urgencyLevel} highlight />
                 <Info
                   label="Preferred RHU Doctor"
@@ -741,12 +745,12 @@ export default function CreateReferral() {
               <MetaField label="Time of Referral" value={form.timeOfReferral} />
             </div>
 
-            <SectionDivider label="Destination & RHU Coordination" />
+            <SectionDivider label="Receiving Facility & RHU Coordination" />
             <div className="grid gap-4 pt-3 pb-1 lg:grid-cols-2">
               <FieldInput
-                label="Referred Facility"
-                name="referredFacility"
-                value={form.referredFacility}
+                label="Receiving Facility"
+                name="receivingFacility"
+                value={form.receivingFacility}
                 onChange={handleChange}
                 required
               />
