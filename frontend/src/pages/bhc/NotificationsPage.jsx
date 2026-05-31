@@ -102,7 +102,7 @@ export default function NotificationsPage() {
                           : "font-medium text-gray-600"
                       }`}
                     >
-                      {notif.sender || "System"}
+                      {notif.sender || "AKAY"}
                     </h2>
                     <span className="text-[11px] text-gray-400 whitespace-nowrap">
                       {notif.timestamp}

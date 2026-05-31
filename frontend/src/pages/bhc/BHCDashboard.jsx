@@ -721,7 +721,7 @@ function ReferralStatusBadge({ status }) {
     Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
     Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
     "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    "No-Show": "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
+    "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
     Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
   };
 

@@ -136,7 +136,7 @@ function normalizeMedicineAlerts(notifications) {
   return normalized.length > 0 ? normalized.slice(0, 5) : [];
 }
 
-// Dashboard Analytics
+// Dashboard summary data
 export async function getDashboardStats() {
   await delay();
 

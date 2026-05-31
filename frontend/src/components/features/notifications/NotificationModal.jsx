@@ -175,7 +175,7 @@ export default function NotificationModal({
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 border-b border-dashed border-gray-200 pb-3">
               <span className="flex items-center gap-1.5 font-medium">
                 <User size={12} className="text-gray-400" />
-                {notification.sender || "System"}
+                {notification.sender || "AKAY"}
               </span>
               <span className="flex items-center gap-1.5">
                 <CalendarClock size={12} className="text-gray-400" />

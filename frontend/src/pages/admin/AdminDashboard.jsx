@@ -20,8 +20,11 @@ import {
   getDoctorAvailability,
   listenDoctorAvailabilityUpdates,
 } from "../../services/doctorAvailability";
+import { getAdminAccounts } from "../../services/adminAccountsService";
+import { getCurrentUser } from "../../utils/auth";
 
 export default function AdminDashboard() {
+  const [now, setNow] = useState(() => new Date());
   const [doctorAvailability, setDoctorAvailability] = useState(() =>
     getDoctorAvailability(),
   );
@@ -29,6 +32,23 @@ export default function AdminDashboard() {
   useEffect(() => {
     return listenDoctorAvailabilityUpdates(setDoctorAvailability);
   }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const accounts = getAdminAccounts();
+  const activeAccounts = accounts.filter(
+    (account) => account.status === "Active",
+  ).length;
+  const inactiveAccounts = accounts.filter(
+    (account) => account.status === "Inactive",
+  ).length;
+  const bhcUsers = accounts.filter((account) => account.role === "BHC").length;
+  const rhuUsers = accounts.filter((account) => account.role === "RHU").length;
+  const userName = getDashboardFirstName("MHO");
 
   const recentActivities = [
     {
@@ -50,7 +70,7 @@ export default function AdminDashboard() {
       type: "Inventory",
     },
     {
-      action: "New BHC user account created",
+      action: "New BHC user account added",
       user: "MHO Admin",
       time: "2 hours ago",
       type: "Account",
@@ -65,48 +85,74 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <DashboardLayout role="admin" title="Admin Dashboard">
-      <div className="mb-8">
-        <h1 className="text-xl font-bold tracking-tight text-[#0F172A]">
-          MHO / Admin Dashboard
-        </h1>
-        <p className="mt-1 text-sm text-[#6B7280]">
-          Monitor users, referrals, RHU activity, doctor availability, medicine
-          alerts, and system activity.
-        </p>
-      </div>
+    <DashboardLayout role="admin" title="Dashboard">
+      <div className="mx-auto w-full max-w-[1500px] space-y-4">
+      <section className="anim-fade-up">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#B91C1C]">
+              <span>{formatDashboardDate(now)}</span>
+              <span className="h-1 w-1 rounded-full bg-[#FCA5A5]" />
+              <span>{formatDashboardTime(now)}</span>
+            </div>
 
-      <div className="mb-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            <h1 className="text-2xl font-black tracking-tight text-[#0F172A] md:text-3xl">
+              {getGreeting(now)}, {userName}
+            </h1>
+
+            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[#64748B]">
+              Manage user accounts, role and facility assignments, account
+              status, and accountability records for AKAY.
+            </p>
+          </div>
+
+          <Link
+            to="/admin/users/add"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-xs font-bold text-white shadow-sm transition hover:bg-[#991B1B]"
+          >
+            <UserCheck size={14} />
+            Add User Account
+          </Link>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <StatCard
-          title="Total System Users"
-          value="38"
+          title="Total Users"
+          value={accounts.length}
           icon={<Users size={17} />}
           color="navy"
         />
         <StatCard
-          title="Total Referrals"
-          value="124"
-          icon={<ClipboardList size={17} />}
-          color="blue"
+          title="Active Accounts"
+          value={activeAccounts}
+          icon={<UserCheck size={17} />}
+          color="green"
         />
         <StatCard
-          title="Patients Monitoring"
-          value="18"
+          title="Inactive Accounts"
+          value={inactiveAccounts}
+          icon={<AlertTriangle size={17} />}
+          color="slate"
+        />
+        <StatCard
+          title="BHC Users"
+          value={bhcUsers}
           icon={<HeartPulse size={17} />}
           color="amber"
         />
         <StatCard
-          title="Medicine Alerts"
-          value="3"
-          icon={<AlertTriangle size={17} />}
-          color="red"
+          title="RHU Users"
+          value={rhuUsers}
+          icon={<ClipboardList size={17} />}
+          color="blue"
         />
       </div>
 
       <div className="mb-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         <QuickCard
-          title="User & Personnel Management"
-          description="Create and manage MHO, BHC, and RHU staff accounts."
+          title="Account Directory"
+          description="Add and manage MHO, BHC, and RHU staff accounts."
           icon={<UserCheck size={20} />}
           href="/admin/users"
         />
@@ -120,7 +166,7 @@ export default function AdminDashboard() {
 
         <QuickCard
           title="Reports"
-          description="View referral, barangay, RHU, and monitoring reports."
+          description="Review account, referral, facility, and activity reports."
           icon={<FileText size={20} />}
           href="/admin/reports"
         />
@@ -201,10 +247,10 @@ export default function AdminDashboard() {
             <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
               <div>
                 <h2 className="text-sm font-semibold text-[#0F172A]">
-                  Recent System Activities
+                  Recent Account Activity
                 </h2>
                 <p className="mt-1 text-xs text-[#9CA3AF]">
-                  Latest system events for monitoring and accountability.
+                  Latest account and referral actions for MHO review.
                 </p>
               </div>
 
@@ -212,7 +258,7 @@ export default function AdminDashboard() {
                 to="/admin/audit-logs"
                 className="text-xs font-semibold text-[#B91C1C] hover:text-[#7F1D1D] hover:underline"
               >
-                View Logs
+                View Audit Logs
               </Link>
             </div>
 
@@ -318,12 +364,13 @@ export default function AdminDashboard() {
           <section className="rounded-xl border border-red-100 bg-red-50/70 p-5">
             <p className="text-xs leading-relaxed text-[#4B5563]">
               <span className="font-semibold text-[#0F172A]">Note:</span> The
-              MHO/Admin dashboard is for system oversight. Admin can monitor
-              activities and manage accounts, but medical actions remain under
-              RHU personnel.
+              MHO/Admin dashboard is for account management and system
+              accountability. Medical referral actions remain under BHC and RHU
+              personnel.
             </p>
           </section>
         </aside>
+      </div>
       </div>
     </DashboardLayout>
   );
@@ -355,7 +402,9 @@ function StatCard({ title, value, icon, color = "navy" }) {
   const map = {
     navy: "border-t-[#B91C1C] text-[#0F172A] bg-red-50/60",
     blue: "border-t-slate-400 text-slate-700 bg-slate-50",
+    slate: "border-t-slate-300 text-slate-700 bg-slate-50",
     amber: "border-t-amber-400 text-amber-700 bg-amber-50",
+    green: "border-t-emerald-400 text-emerald-700 bg-emerald-50",
     red: "border-t-red-400 text-red-700 bg-red-50",
   };
 
@@ -440,5 +489,43 @@ function InventoryAlert({ item, status }) {
       </span>
     </div>
   );
+}
+
+function getDashboardFirstName(fallback) {
+  const user = getCurrentUser();
+  const name =
+    user?.fullName ||
+    user?.full_name ||
+    user?.name ||
+    user?.displayName ||
+    user?.profile?.name;
+
+  return String(name || fallback)
+    .trim()
+    .split(/\s+/)[0];
+}
+
+function getGreeting(date) {
+  const hour = date.getHours();
+
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function formatDashboardDate(date) {
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatDashboardTime(date) {
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 

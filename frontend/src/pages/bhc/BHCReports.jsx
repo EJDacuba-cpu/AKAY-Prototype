@@ -70,10 +70,10 @@ const smoothAnimation = {
 
 const REPORT_DATA = {
   weekly: {
-    label: "Weekly Report",
+    label: "Weekly Referrals Sent",
     shortLabel: "Weekly",
     description:
-      "Weekly summary focused on chief complaints and cases for BHC reporting and reconciliation.",
+      "Weekly summary of referrals sent, referral status, chief complaints, and RHU feedback.",
     logbook: [
       {
         trackingId: "AKY-257003",
@@ -132,10 +132,10 @@ const REPORT_DATA = {
     ],
   },
   monthly: {
-    label: "Monthly Report",
+    label: "Monthly Referrals Sent",
     shortLabel: "Monthly",
     description:
-      "Monthly summary focused on chief complaints and cases for end-of-month BHC reporting.",
+      "Monthly summary of referrals sent, completed outcomes, no-show cases, and RHU feedback.",
     logbook: [
       {
         trackingId: "AKY-257003",
@@ -400,9 +400,7 @@ export default function BHCReports() {
             setFilters((prev) => ({ ...prev, search: value }))
           }
           searchPlaceholder="Search patient, tracking ID, chief complaint, or status..."
-          chip={`● ${filteredReferralLogbook.length.toLocaleString()} ${
-            currentReport.shortLabel
-          } Record${filteredReferralLogbook.length === 1 ? "" : "s"}`}
+          chip={`${filteredReferralLogbook.length.toLocaleString()} ${currentReport.shortLabel} Referral${filteredReferralLogbook.length === 1 ? "" : "s"}`}
           filters={dropdownFilters}
           activeFilterCount={activeFilterCount}
           activeFilters={activeFilters}
@@ -426,19 +424,19 @@ export default function BHCReports() {
             tone="slate"
           />
           <StatCard
-            title="Cases Recorded"
+            title="Referral Cases"
             value={reportSummary.casesRecorded}
             icon={<SearchCheck size={16} />}
             tone="red"
           />
           <StatCard
-            title="Complaint Types"
+            title="Referral Categories"
             value={reportSummary.complaintTypes}
             icon={<BarChart3 size={16} />}
             tone="amber"
           />
           <StatCard
-            title="Completed"
+            title="Completed Outcomes"
             value={reportSummary.completedReferrals}
             icon={<SearchCheck size={16} />}
             tone="emerald"
@@ -448,9 +446,9 @@ export default function BHCReports() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
           <main className="min-w-0 space-y-4">
             <ReportChartCard
-              title="Chief Complaint Case Summary"
-              description={`${currentReport.shortLabel} case count with percentage share per chief complaint.`}
-              rightLabel="Mixed chart"
+              title="Referrals by Category"
+              description={`${currentReport.shortLabel} referral count and percentage share per chief complaint or case category.`}
+              rightLabel="Referral report"
             >
               <FixedChartBox height="h-[340px]">
                 {casesSummary.length === 0 ? (
@@ -484,10 +482,10 @@ export default function BHCReports() {
             />
 
             <ReportChartCard
-              title="Classification Mix"
-              description="Polar area chart showing cases by patient classification."
+              title="Referrals by Patient Classification"
+              description="Referral distribution by patient classification."
               icon={<UsersRound size={15} />}
-              rightLabel="Different chart"
+              rightLabel="Classification"
             >
               <FixedChartBox height="h-[280px]">
                 {classificationSummary.length === 0 ? (
@@ -590,7 +588,7 @@ function ReportModeCard({
         </span>
         <div className="min-w-0">
           <h2 className="text-sm font-black text-[#0F172A]">
-            Weekly and Monthly Reports
+            Referral Reporting Period
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-[#64748B]">
             {currentReport.description}
@@ -786,7 +784,7 @@ function ReferralStatusBadge({ status }) {
     Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
     "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
     Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-    "No-Show": "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
+    "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
   };
 
   return (
@@ -984,7 +982,7 @@ function getChiefComplaintComboOptions() {
           minRotation: 0,
           callback: function (value) {
             const label = this.getLabelForValue(value);
-            return label.length > 14 ? `${label.slice(0, 13)}…` : label;
+            return label.length > 14 ? `${label.slice(0, 13)}â€¦` : label;
           },
         },
       },

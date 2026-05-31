@@ -258,9 +258,7 @@ export default function RHUReports() {
             setFilters((prev) => ({ ...prev, search: value }))
           }
           searchPlaceholder="Search barangay, tracking ID, patient, category, status, or chief complaint..."
-          chip={`● ${stats.totalReferrals.toLocaleString()} Referral${
-            stats.totalReferrals === 1 ? "" : "s"
-          }`}
+          chip={`${stats.totalReferrals.toLocaleString()} Referral${stats.totalReferrals === 1 ? "" : "s"}`}
           filters={dropdownFilters}
           activeFilterCount={activeFilterCount}
           activeFilters={activeFilters}
@@ -306,9 +304,9 @@ export default function RHUReports() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
           <main className="min-w-0 space-y-4">
             <ReportChartCard
-              title="Monthly RHU Activity Trend"
-              description="Line chart using a logarithmic y-axis for referral, walk-in, and health record activity."
-              rightLabel="Log axis"
+              title="Patient Arrival Monitoring"
+              description="Monthly view of incoming referrals, walk-in patients, and RHU health record activity."
+              rightLabel="Monthly"
             >
               <FixedChartBox height="h-[300px]">
                 {hasAnyValue(monthlyTrend.map((item) => item.value)) ? (
@@ -320,7 +318,7 @@ export default function RHUReports() {
                 ) : (
                   <EmptyChartState
                     icon={<BarChart3 size={24} />}
-                    title="No monthly activity yet"
+                    title="No monthly referral activity yet"
                     message="Saved referrals, walk-ins, and health records will appear here."
                   />
                 )}
@@ -328,8 +326,8 @@ export default function RHUReports() {
             </ReportChartCard>
 
             <ReportChartCard
-              title="Referrals per Barangay"
-              description="Horizontal multi-series bar chart comparing total, completed, and monitoring referrals."
+              title="Incoming Referrals by Barangay"
+              description="Comparison of total, completed, and monitoring referrals by source barangay."
               rightLabel="Barangay summary"
             >
               <FixedChartBox height="h-[340px]">
@@ -540,7 +538,7 @@ function CategoryRankingCard({ categories, total }) {
             {topCategory.category}
           </p>
           <p className="mt-1 text-xs text-[#64748B]">
-            {topCategory.count} referral{topCategory.count === 1 ? "" : "s"} ·{" "}
+            {topCategory.count} referral{topCategory.count === 1 ? "" : "s"} Â·{" "}
             {topCategory.percent}% of current report
           </p>
         </div>
@@ -591,7 +589,7 @@ function ReportScopeCard({
 }) {
   return (
     <section className="rounded-xl border border-[#E8ECF0] bg-white p-4 shadow-sm">
-      <h2 className="text-sm font-black text-[#0F172A]">Report Scope</h2>
+      <h2 className="text-sm font-black text-[#0F172A]">Report Filters</h2>
       <p className="mt-1 text-xs leading-relaxed text-[#64748B]">
         Current report output after applying search and filters.
       </p>
@@ -722,7 +720,6 @@ function buildFilterOptions(source) {
         "Received",
         "Routine Monitoring",
         "Follow-up Required",
-        "Complete",
         "Completed",
         "No-Show",
       ]),
@@ -927,7 +924,7 @@ function buildMonthlyLogLineData(monthlyTrend) {
     labels: monthlyTrend.map((item) => item.label),
     datasets: [
       {
-        label: "Monthly RHU Activity",
+        label: "Patient Arrival Monitoring",
         data: monthlyTrend.map((item) => Math.max(Number(item.value || 0), 1)),
         actualData: monthlyTrend.map((item) => Number(item.value || 0)),
         borderColor: (context) =>
@@ -966,7 +963,7 @@ function monthlyLogLineOptions(monthlyTrend) {
               context.parsed?.y ??
               0;
 
-            return `${context.dataset?.label || "Activity"}: ${formatNumber(actualValue)} record(s)`;
+            return `${context.dataset?.label || "Referral activity"}: ${formatNumber(actualValue)} record(s)`;
           },
         },
       },
@@ -994,7 +991,7 @@ function monthlyLogLineOptions(monthlyTrend) {
         grid: { color: chartPalette.grid, drawBorder: false },
         title: {
           display: true,
-          text: "Activity count (log scale)",
+          text: "Referral count",
           color: chartPalette.muted,
           font: { size: 10, weight: "700" },
         },
@@ -1110,7 +1107,7 @@ const barangayChartOptions = {
         font: { size: 11, weight: "700" },
         callback: function (value) {
           const label = this.getLabelForValue(value);
-          return label.length > 16 ? `${label.slice(0, 15)}…` : label;
+          return label.length > 16 ? `${label.slice(0, 15)}â€¦` : label;
         },
       },
       grid: { display: false },
@@ -1425,7 +1422,7 @@ function normalizeStatus(status) {
 
   if (!value) return "Unspecified";
   if (normalized.includes("complete") || normalized.includes("closed")) {
-    return "Complete";
+    return "Completed";
   }
   if (normalized.includes("follow")) return "Follow-up Required";
   if (normalized.includes("monitor") || normalized.includes("routine")) {

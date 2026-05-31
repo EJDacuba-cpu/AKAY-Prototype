@@ -492,7 +492,7 @@ function WorkflowBadge({ status }) {
     Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
     "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
     Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-    "No-Show": "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
+    "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
   };
 
   return (

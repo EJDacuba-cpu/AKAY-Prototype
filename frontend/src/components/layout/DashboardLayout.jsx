@@ -36,10 +36,10 @@ const menuByRole = {
     },
     {
       section: "Management",
-      items: [{ label: "Accounts", path: "/admin/users", icon: Users }],
+      items: [{ label: "Account Directory", path: "/admin/users", icon: Users }],
     },
     {
-      section: "System",
+      section: "Accountability",
       items: [
         { label: "Reports", path: "/admin/reports", icon: FileText },
         { label: "Audit Logs", path: "/admin/audit-logs", icon: Activity },

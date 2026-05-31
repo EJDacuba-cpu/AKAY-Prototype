@@ -507,7 +507,7 @@ export default function FeedbackReturnSlip() {
             Return Slip Not Available
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            Create Return Slip is available only when a referral is Received or
+            Submit Return Slip is available only when a referral is Received or
             For Monitoring. Current status:{" "}
             <span className="font-medium text-slate-800">{selectedStatus}</span>
           </p>

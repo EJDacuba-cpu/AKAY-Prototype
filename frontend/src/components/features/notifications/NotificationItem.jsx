@@ -28,7 +28,7 @@ export default function NotificationItem({ notif, onSelect }) {
                 : "font-medium text-gray-600"
             }`}
           >
-            {notif.sender || "System"}
+            {notif.sender || "AKAY"}
           </h3>
           <span className="text-[11px] text-gray-400 whitespace-nowrap">
             {notif.timestamp}

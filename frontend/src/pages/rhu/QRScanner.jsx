@@ -391,7 +391,7 @@ export default function QRScanner() {
                     className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-[12px] font-semibold text-slate-600 transition-all duration-200 hover:bg-slate-100"
                   >
                     <QrCode size={14} />
-                    Simulate QR Scan (Demo)
+                    Use Saved Referral QR
                   </button>
                 )}
               </div>
@@ -848,10 +848,10 @@ function StatusBadge({ status }) {
       border: "#A7F3D0",
     },
     "No-Show": {
-      bg: "#FEF2F2",
-      text: "#B91C1C",
-      dot: "#EF4444",
-      border: "#FECACA",
+      bg: "#FFFBEB",
+      text: "#B45309",
+      dot: "#F59E0B",
+      border: "#FDE68A",
     },
   };
 

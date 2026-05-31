@@ -702,7 +702,7 @@ export default function AddHealthRecord() {
         </h1>
         <p className="mt-0.5 text-xs text-[#6B7280]">
           {isFollowUp
-            ? `Create a follow-up record for ${followUpRecord?.patientName || "this patient"}.`
+            ? `Add a follow-up record for ${followUpRecord?.patientName || "this patient"}.`
             : isEditingRecord
               ? "Correct or update details in this existing health record."
             : "Record a consultation, maternal record, immunization record, monitoring update, follow-up, or referral basis."}
@@ -1046,7 +1046,7 @@ export default function AddHealthRecord() {
               checked={needsReferral === "yes"}
               onChange={setNeedsReferral}
               icon={<Send size={18} />}
-              title="Create Referral"
+              title="Submit Referral"
               description="Forward patient case for further medical assessment."
               activeClass="border-amber-500 bg-amber-50"
               iconActiveClass="text-amber-600"

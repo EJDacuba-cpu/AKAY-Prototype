@@ -15,7 +15,7 @@ export default function ActionMenu({
 
   viewLabel = "View Details",
   editLabel = "Edit",
-  referralLabel = "Create Referral",
+  referralLabel = "Submit Referral",
   /* 2. BAGONG DEFAULT LABEL */
   editPatientLabel = "Edit Patient",
 }) {

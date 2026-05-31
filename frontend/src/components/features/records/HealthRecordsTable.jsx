@@ -263,7 +263,7 @@ export default function HealthRecordsTable({
                             referralLabel={
                               record.linkedReferralTrackingId
                                 ? "View Referral"
-                                : "Create Referral"
+                                : "Submit Referral"
                             }
                           />
                         </div>

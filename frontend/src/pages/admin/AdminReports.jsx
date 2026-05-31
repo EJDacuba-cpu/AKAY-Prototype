@@ -334,9 +334,7 @@ export default function AdminReports() {
             setFilters((prev) => ({ ...prev, search: value }))
           }
           searchPlaceholder="Search BHC, RHU, barangay, patient, tracking ID, status, or category..."
-          chip={`● ${formatNumber(stats.totalRecords)} System Record${
-            stats.totalRecords === 1 ? "" : "s"
-          }`}
+          chip={`${formatNumber(stats.totalRecords)} Account and Referral Record${stats.totalRecords === 1 ? "" : "s"}`}
           filters={dropdownFilters}
           activeFilterCount={activeFilterCount}
           activeFilters={activeFilters}
@@ -382,10 +380,10 @@ export default function AdminReports() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
           <main className="min-w-0 space-y-4">
             <ReportChartCard
-              title="AKAY System Activity"
-              description="Mixed Chart.js view of BHC and RHU records across patients, referrals, health records, medicines, users, and doctor availability."
+              title="System Usage Summary"
+              description="Summary of BHC, RHU, and MHO records across patients, referrals, health records, medicine availability, accounts, and doctor availability."
               icon={<BarChart3 size={15} />}
-              rightLabel="System-wide"
+              rightLabel="MHO view"
             >
               <FixedChartBox height="h-[330px]">
                 {hasAnyValue(moduleSummary.map((item) => item.value)) ? (
@@ -397,16 +395,16 @@ export default function AdminReports() {
                 ) : (
                   <EmptyChartState
                     icon={<BarChart3 size={24} />}
-                    title="No system activity yet"
-                    message="BHC and RHU records saved in localStorage will appear here."
+                    title="No activity records yet"
+                    message="BHC, RHU, and MHO records will appear here once users begin encoding data."
                   />
                 )}
               </FixedChartBox>
             </ReportChartCard>
 
             <ReportChartCard
-              title="Monthly System Trend"
-              description="Line chart showing the combined monthly activity from BHC referrals, RHU walk-ins, and health records."
+              title="Referral Activity Overview"
+              description="Monthly overview of BHC referrals, RHU walk-ins, and health record activity."
               icon={<SearchCheck size={15} />}
               rightLabel="Monthly"
             >
@@ -428,8 +426,8 @@ export default function AdminReports() {
             </ReportChartCard>
 
             <ReportChartCard
-              title="Referrals per Barangay"
-              description="Horizontal bar chart comparing referral, completed, and monitoring counts from BHC to RHU."
+              title="Referral Activity by Barangay"
+              description="Comparison of referral, completed, and monitoring counts from BHC to RHU."
               icon={<Building2 size={15} />}
               rightLabel="Barangay"
             >
@@ -454,8 +452,8 @@ export default function AdminReports() {
 
           <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
             <ReportChartCard
-              title="BHC and RHU Coverage"
-              description="Doughnut chart showing record distribution by module source."
+              title="Users and Records by Facility"
+              description="Distribution of AKAY records by BHC, RHU, and MHO source."
               icon={<Building2 size={15} />}
               rightLabel="Coverage"
             >
@@ -649,7 +647,7 @@ function CategoryRankingCard({ categories, total }) {
             {topCategory.category}
           </p>
           <p className="mt-1 text-xs text-[#64748B]">
-            {topCategory.count} referral{topCategory.count === 1 ? "" : "s"} ·{" "}
+            {topCategory.count} referral{topCategory.count === 1 ? "" : "s"} Â·{" "}
             {topCategory.percent}% of current report
           </p>
         </div>
@@ -707,7 +705,7 @@ function SystemResourceCard({
             RHU Resources and Users
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-[#64748B]">
-            System-wide resource status for admin monitoring.
+            RHU resource and account status for MHO monitoring.
           </p>
         </div>
         <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
@@ -798,9 +796,9 @@ function MedicineAlert({ item }) {
 function ReportScopeCard({ filters, stats, barangayCount, categoryCount }) {
   return (
     <section className="rounded-xl border border-[#E8ECF0] bg-white p-4 shadow-sm">
-      <h2 className="text-sm font-black text-[#0F172A]">Report Scope</h2>
+      <h2 className="text-sm font-black text-[#0F172A]">Report Filters</h2>
       <p className="mt-1 text-xs leading-relaxed text-[#64748B]">
-        Current system-wide output after applying filters.
+        Current MHO report output after applying search and filters.
       </p>
 
       <div className="mt-4 space-y-2 text-[11px] text-[#64748B]">
@@ -906,9 +904,9 @@ function BarangayReferralTable({ barangayReports }) {
   );
 }
 
-/* ─────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    REPORT DATA BUILDING
-───────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function buildFilterOptions(source) {
   const barangays = [
     ...source.referrals.map(getReferralBarangay),
@@ -939,7 +937,6 @@ function buildFilterOptions(source) {
         "Received",
         "Routine Monitoring",
         "Follow-up Required",
-        "Complete",
         "Completed",
         "No-Show",
         "Active",
@@ -1226,9 +1223,9 @@ function getLastMonths(count) {
   return months;
 }
 
-/* ─────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    CHARTS
-───────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function buildSystemActivityChartData(items) {
   const total = Math.max(
     items.reduce((sum, item) => sum + Number(item.value || 0), 0),
@@ -1346,7 +1343,7 @@ function buildMonthlyLineData(monthlyTrend) {
     labels: monthlyTrend.map((item) => item.label),
     datasets: [
       {
-        label: "System Activity",
+        label: "System Usage",
         data: monthlyTrend.map((item) => Number(item.value || 0)),
         borderColor: (context) =>
           getLineGradient(context, [chartPalette.red, chartPalette.redDark]),
@@ -1501,7 +1498,7 @@ const barangayChartOptions = {
         font: { size: 11, weight: "700" },
         callback: function (value) {
           const label = this.getLabelForValue(value);
-          return label.length > 16 ? `${label.slice(0, 15)}…` : label;
+          return label.length > 16 ? `${label.slice(0, 15)}â€¦` : label;
         },
       },
       grid: { display: false },
@@ -1676,9 +1673,9 @@ function buildTooltipOptions(suffix = "record(s)") {
   };
 }
 
-/* ─────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    LOCAL STORAGE HELPERS
-───────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function readStoredCollection(type) {
   if (typeof window === "undefined") return [];
 
@@ -1840,9 +1837,9 @@ function isDoctorLike(item) {
   );
 }
 
-/* ─────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    FIELD NORMALIZATION
-───────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function getSourceRole(item = {}) {
   const key = String(item._storageKey || "").toLowerCase();
   const raw = [
@@ -1942,7 +1939,7 @@ function normalizeStatus(status) {
 
   if (!value) return "Unspecified";
   if (normalized.includes("complete") || normalized.includes("closed")) {
-    return "Complete";
+    return "Completed";
   }
   if (normalized.includes("follow")) return "Follow-up Required";
   if (normalized.includes("monitor") || normalized.includes("routine")) {

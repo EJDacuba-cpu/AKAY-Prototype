@@ -368,7 +368,7 @@ export default function CreateReferral() {
 
   if (loading) {
     return (
-      <DashboardLayout role="bhc" title="Create Referral">
+      <DashboardLayout role="bhc" title="Submit Referral">
         <div className="flex h-[60vh] items-center justify-center">
           <p className="text-sm text-slate-500">Loading referral context...</p>
         </div>
@@ -379,7 +379,7 @@ export default function CreateReferral() {
   /* ─── Error: No Context ─── */
   if (!targetRecordId || !record) {
     return (
-      <DashboardLayout role="bhc" title="Create Referral">
+      <DashboardLayout role="bhc" title="Submit Referral">
         <style>{keyframes}</style>
         <div className="anim-fade-up mx-auto max-w-lg py-24 text-center">
           <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-500">
@@ -389,7 +389,7 @@ export default function CreateReferral() {
           <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-500 mx-auto">
             Referrals must be initiated from an existing Health Record
             consultation. Please go to a patient&apos;s Health Record details
-            and click &quot;Create Referral&quot;.
+            and click &quot;Submit Referral&quot;.
           </p>
           <Link
             to="/bhc/health-records"
@@ -514,7 +514,7 @@ export default function CreateReferral() {
 
   /* ─── Main Form ─── */
   return (
-    <DashboardLayout role="bhc" title="Create Referral">
+    <DashboardLayout role="bhc" title="Submit Referral">
       <style>{keyframes}</style>
 
       {/* ─── Confirm Modal ─── */}
@@ -692,7 +692,7 @@ export default function CreateReferral() {
           </Link>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <h1 className="text-xl font-bold text-[#B91C1C]">
-              Create Referral
+              Submit Referral
             </h1>
             <span className="inline-flex items-center gap-1.5 rounded-md bg-red-50 px-2.5 py-1">
               <ClipboardList size={11} className="text-[#B91C1C]/60" />
@@ -717,7 +717,7 @@ export default function CreateReferral() {
             icon={<Send size={14} />}
             delay={1}
           >
-            <SectionDivider label="System-Generated Metadata" />
+            <SectionDivider label="Referral Tracking Details" />
             <div className="grid grid-cols-2 gap-x-8 gap-y-1 pt-3 md:grid-cols-4">
               <MetaField label="Name Of Referring HCI" value={REFERRING_HCI} />
               <MetaField label="Referring Practitioner" value="Lorna Reyes" />

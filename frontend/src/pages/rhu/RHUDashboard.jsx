@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  Activity,
   AlertTriangle,
   ArrowRight,
   CalendarDays,
@@ -17,6 +16,7 @@ import { Link } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import PatientVolumeCard from "../../components/features/volume/PatientVolumeCard";
 import { getRhuVolumeSnapshot } from "../../services/volumeService";
+import { getCurrentUser } from "../../utils/auth";
 import {
   getDoctorAvailability,
   listenDoctorAvailabilityUpdates,
@@ -103,213 +103,251 @@ const monitoringPatients = [
 ];
 
 export default function RHUDashboard() {
+  const [now, setNow] = useState(() => new Date());
   const volumeSnapshot = getRhuVolumeSnapshot();
   const workloadCounts = volumeSnapshot.counts || {};
+  const volumeStatus = volumeSnapshot.status || "Low";
+  const pendingReferrals = incomingReferrals.filter(
+    (referral) => referral.status === "Pending",
+  ).length;
+  const receivedPatients = incomingReferrals.filter(
+    (referral) => referral.status === "Received",
+  ).length;
+  const forFeedback = incomingReferrals.filter((referral) =>
+    ["Received", "For Monitoring"].includes(referral.status),
+  ).length;
+  const completedCases = incomingReferrals.filter(
+    (referral) => referral.status === "Completed",
+  ).length;
+  const noShowCases = incomingReferrals.filter(
+    (referral) => referral.status === "No-Show",
+  ).length;
+  const userName = getDashboardFirstName("RHU Staff");
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+
+    return () => window.clearInterval(timer);
+  }, []);
 
   return (
     <DashboardLayout role="rhu" title="Dashboard">
       <style>{keyframes}</style>
 
-      <div
-        className="anim-fade-up mb-8 flex items-center gap-3.5"
-        style={stagger(0)}
-      >
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FEF2F2] text-[#B91C1C]">
-          <Activity size={20} />
-        </div>
+      <div className="mx-auto w-full max-w-[1500px] space-y-4">
+        <section className="anim-fade-up" style={stagger(0)}>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#B91C1C]">
+                <span>{formatDashboardDate(now)}</span>
+                <span className="h-1 w-1 rounded-full bg-[#FCA5A5]" />
+                <span>{formatDashboardTime(now)}</span>
+              </div>
 
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-[#0F172A]">
-            RHU Dashboard Overview
-          </h1>
-          <p className="mt-1 text-sm text-[#6B7280]">
-            Summary of incoming referrals, walk-in patients, monitoring cases,
-            doctor schedule, and medicine alerts.
-          </p>
-        </div>
-      </div>
+              <h1 className="text-2xl font-black tracking-tight text-[#0F172A] md:text-3xl">
+                {getGreeting(now)}, {userName}
+              </h1>
 
-      <div className="mb-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Incoming Referrals Today"
-          value={workloadCounts.incomingReferralsToday || 0}
-          subtitle="New BHC-to-RHU referrals"
-          icon={<ClipboardList size={17} />}
-          color="navy"
-          delay={1}
-        />
+              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[#64748B]">
+                Receive BHC referrals, confirm patient arrival, update referral
+                status, and submit return slip feedback from one RHU workboard.
+              </p>
+            </div>
 
-        <StatCard
-          title="High Priority Referrals"
-          value={workloadCounts.highPriorityReferrals || 0}
-          subtitle="Needs urgent review"
-          icon={<AlertTriangle size={17} />}
-          color="red"
-          delay={2}
-        />
+            <Link
+              to="/rhu/qr-scanner"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-xs font-bold text-white shadow-sm transition hover:bg-[#991B1B]"
+            >
+              <QrCode size={14} />
+              Find Referral
+            </Link>
+          </div>
+        </section>
 
-        <StatCard
-          title="Walk-in Patients Today"
-          value={workloadCounts.walkInPatientsToday || 0}
-          subtitle="Direct RHU visits"
-          icon={<Users size={17} />}
-          color="blue"
-          delay={3}
-        />
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+          <StatCard
+            title="Incoming Referrals"
+            value={
+              workloadCounts.incomingReferralsToday || incomingReferrals.length
+            }
+            subtitle="received today"
+            icon={<ClipboardList size={17} />}
+            color="navy"
+            delay={1}
+          />
 
-        <StatCard
-          title="Patients for Monitoring"
-          value={workloadCounts.patientsForMonitoring || 0}
-          subtitle="For observation or follow-up"
-          icon={<HeartPulse size={17} />}
-          color="amber"
-          delay={4}
-        />
-      </div>
+          <StatCard
+            title="Pending Referrals"
+            value={pendingReferrals}
+            subtitle="awaiting RHU action"
+            icon={<ClipboardList size={17} />}
+            color="slate"
+            delay={2}
+          />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="min-w-0 space-y-6">
-          <PatientVolumeCard delay={5} snapshot={volumeSnapshot} />
+          <StatCard
+            title="For Feedback"
+            value={forFeedback}
+            subtitle="return slip needed"
+            icon={<FileText size={17} />}
+            color="amber"
+            delay={4}
+          />
 
-          <SectionCard
-            title="Incoming Referral Queue"
-            subtitle="Recently submitted BHC-to-RHU referrals awaiting RHU action."
-            count={incomingReferrals.length}
-            linkTo="/rhu/incoming-referrals"
-            icon={<ClipboardList size={14} />}
+          <StatCard
+            title="No-Show Cases"
+            value={noShowCases}
+            subtitle="patient did not arrive"
+            icon={<AlertTriangle size={17} />}
+            color="amber"
             delay={6}
-          >
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[820px] text-left">
-                <thead>
-                  <tr className="border-b border-[#F3F4F6] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                    <th className="px-6 py-3">Tracking ID</th>
-                    <th className="px-4 py-3">Patient</th>
-                    <th className="px-4 py-3">Referring BHC</th>
-                    <th className="px-4 py-3">Category</th>
-                    <th className="px-4 py-3">Priority</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Action</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-[#F8FAFC]">
-                  {incomingReferrals.map((referral) => (
-                    <tr
-                      key={referral.trackingId}
-                      className="group transition-colors duration-150 hover:bg-[#FAFBFD]"
-                    >
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <span className="rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-2.5 py-1.5 font-mono text-[11px] font-semibold text-[#0F172A] transition-colors duration-200 group-hover:border-[#FECACA] group-hover:bg-[#FEF2F2]">
-                          {referral.trackingId}
-                        </span>
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4 text-[13px] font-semibold text-[#1A1A1A]">
-                        {referral.patient}
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4 text-[13px] text-[#6B7280]">
-                        {referral.bhc}
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4">
-                        <CategoryBadge category={referral.category} />
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4">
-                        <PriorityBadge priority={referral.priority} />
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4">
-                        <StatusBadge status={referral.status} />
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4 text-right">
-                        <Link
-                          to="/rhu/incoming-referrals"
-                          className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[#0F172A] transition-all duration-200 hover:bg-[#FEF2F2] active:scale-[0.96]"
-                        >
-                          Review
-                          <ArrowRight size={12} />
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </SectionCard>
-
-          <SectionCard
-            title="Patients for Monitoring"
-            subtitle="Patients requiring observation, follow-up, or continued monitoring."
-            count={monitoringPatients.length}
-            linkTo="/rhu/patient-monitoring"
-            icon={<HeartPulse size={14} />}
-            delay={7}
-          >
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[680px] text-left">
-                <thead>
-                  <tr className="border-b border-[#F3F4F6] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                    <th className="px-6 py-3">Patient</th>
-                    <th className="px-4 py-3">Source</th>
-                    <th className="px-4 py-3">Category</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Action</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-[#F8FAFC]">
-                  {monitoringPatients.map((item) => (
-                    <tr
-                      key={item.patient}
-                      className="group transition-colors duration-150 hover:bg-[#FAFBFD]"
-                    >
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <Avatar name={item.patient} />
-                          <span className="text-[13px] font-semibold text-[#1A1A1A]">
-                            {item.patient}
-                          </span>
-                        </div>
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4">
-                        <SourceBadge source={item.source} />
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4 text-[13px] text-[#6B7280]">
-                        {item.category}
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4">
-                        <StatusBadge status={item.status} />
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-4 text-right">
-                        <Link
-                          to="/rhu/patient-monitoring"
-                          className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[#0F172A] transition-all duration-200 hover:bg-[#FEF2F2] active:scale-[0.96]"
-                        >
-                          Monitor
-                          <ArrowRight size={12} />
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </SectionCard>
+          />
         </div>
 
-        <aside className="space-y-6">
-          <WorkflowPanel delay={8} />
-          <DoctorScheduleCard delay={13} />
-          <MedicineAlertCard delay={14} />
-        </aside>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="min-w-0 space-y-6">
+            <PatientVolumeCard delay={5} snapshot={volumeSnapshot} />
+
+            <SectionCard
+              title="Incoming Referral Queue"
+              subtitle="Recently submitted BHC-to-RHU referrals awaiting RHU action."
+              count={incomingReferrals.length}
+              linkTo="/rhu/incoming-referrals"
+              icon={<ClipboardList size={14} />}
+              delay={6}
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[820px] text-left">
+                  <thead>
+                    <tr className="border-b border-[#F3F4F6] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                      <th className="px-6 py-3">Tracking ID</th>
+                      <th className="px-4 py-3">Patient</th>
+                      <th className="px-4 py-3">Referring BHC</th>
+                      <th className="px-4 py-3">Category</th>
+                      <th className="px-4 py-3">Priority</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Action</th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-[#F8FAFC]">
+                    {incomingReferrals.map((referral) => (
+                      <tr
+                        key={referral.trackingId}
+                        className="group transition-colors duration-150 hover:bg-[#FAFBFD]"
+                      >
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <span className="rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-2.5 py-1.5 font-mono text-[11px] font-semibold text-[#0F172A] transition-colors duration-200 group-hover:border-[#FECACA] group-hover:bg-[#FEF2F2]">
+                            {referral.trackingId}
+                          </span>
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-4 text-[13px] font-semibold text-[#1A1A1A]">
+                          {referral.patient}
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-4 text-[13px] text-[#6B7280]">
+                          {referral.bhc}
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-4">
+                          <CategoryBadge category={referral.category} />
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-4">
+                          <PriorityBadge priority={referral.priority} />
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-4">
+                          <StatusBadge status={referral.status} />
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-4 text-right">
+                          <Link
+                            to="/rhu/incoming-referrals"
+                            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[#0F172A] transition-all duration-200 hover:bg-[#FEF2F2] active:scale-[0.96]"
+                          >
+                            Review
+                            <ArrowRight size={12} />
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Patients for Monitoring"
+              subtitle="Patients requiring observation, follow-up, or continued monitoring."
+              count={monitoringPatients.length}
+              linkTo="/rhu/patient-monitoring"
+              icon={<HeartPulse size={14} />}
+              delay={7}
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[680px] text-left">
+                  <thead>
+                    <tr className="border-b border-[#F3F4F6] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                      <th className="px-6 py-3">Patient</th>
+                      <th className="px-4 py-3">Source</th>
+                      <th className="px-4 py-3">Category</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Action</th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-[#F8FAFC]">
+                    {monitoringPatients.map((item) => (
+                      <tr
+                        key={item.patient}
+                        className="group transition-colors duration-150 hover:bg-[#FAFBFD]"
+                      >
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <Avatar name={item.patient} />
+                            <span className="text-[13px] font-semibold text-[#1A1A1A]">
+                              {item.patient}
+                            </span>
+                          </div>
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-4">
+                          <SourceBadge source={item.source} />
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-4 text-[13px] text-[#6B7280]">
+                          {item.category}
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-4">
+                          <StatusBadge status={item.status} />
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-4 text-right">
+                          <Link
+                            to="/rhu/patient-monitoring"
+                            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[#0F172A] transition-all duration-200 hover:bg-[#FEF2F2] active:scale-[0.96]"
+                          >
+                            Monitor
+                            <ArrowRight size={12} />
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </SectionCard>
+          </div>
+
+          <aside className="space-y-6">
+            <WorkflowPanel delay={8} />
+            <DoctorScheduleCard delay={13} />
+            <MedicineAlertCard delay={14} />
+          </aside>
+        </div>
       </div>
     </DashboardLayout>
   );
@@ -538,40 +576,42 @@ function DoctorScheduleCard({ delay = 0 }) {
           <div className="rounded-xl border border-dashed border-[#F3F4F6] bg-[#FAFBFC] p-4 text-xs text-[#9CA3AF]">
             No doctors encoded yet.
           </div>
-        ) : doctors.map((doctor) => (
-          <div
-            key={doctor.doctorId || doctor.id}
-            className="rounded-xl border border-[#F3F4F6] bg-[#FAFBFC] p-4 transition-all duration-200 hover:border-[#FECACA] hover:bg-white hover:shadow-sm"
-          >
-            <div className="flex items-start gap-3">
-              <div className="rounded-lg bg-[#FEF2F2] p-2 text-[#B91C1C]">
-                <Stethoscope size={14} />
-              </div>
+        ) : (
+          doctors.map((doctor) => (
+            <div
+              key={doctor.doctorId || doctor.id}
+              className="rounded-xl border border-[#F3F4F6] bg-[#FAFBFC] p-4 transition-all duration-200 hover:border-[#FECACA] hover:bg-white hover:shadow-sm"
+            >
+              <div className="flex items-start gap-3">
+                <div className="rounded-lg bg-[#FEF2F2] p-2 text-[#B91C1C]">
+                  <Stethoscope size={14} />
+                </div>
 
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-bold text-[#0F172A]">
-                  {doctor.doctorName || doctor.name}
-                </p>
-
-                <p className="mt-1 text-[11px] text-[#6B7280]">
-                  {doctor.doctorType || doctor.role}
-                </p>
-
-                {doctor.availabilityNote && (
-                  <p className="mt-1 text-[10px] text-[#9CA3AF]">
-                    {doctor.availabilityNote}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-bold text-[#0F172A]">
+                    {doctor.doctorName || doctor.name}
                   </p>
-                )}
 
-                <div className="mt-2">
-                  <DoctorBadge
-                    status={doctor.availabilityStatus || doctor.status}
-                  />
+                  <p className="mt-1 text-[11px] text-[#6B7280]">
+                    {doctor.doctorType || doctor.role}
+                  </p>
+
+                  {doctor.availabilityNote && (
+                    <p className="mt-1 text-[10px] text-[#9CA3AF]">
+                      {doctor.availabilityNote}
+                    </p>
+                  )}
+
+                  <div className="mt-2">
+                    <DoctorBadge
+                      status={doctor.availabilityStatus || doctor.status}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
       <Link
@@ -626,7 +666,9 @@ function StatCard({ title, value, subtitle, icon, color = "navy", delay = 0 }) {
   const map = {
     navy: { border: "#B91C1C", iconBg: "#FEF2F2", iconColor: "#B91C1C" },
     blue: { border: "#64748B", iconBg: "#F8FAFC", iconColor: "#64748B" },
+    slate: { border: "#CBD5E1", iconBg: "#F8FAFC", iconColor: "#64748B" },
     amber: { border: "#D97706", iconBg: "#FFFBEB", iconColor: "#D97706" },
+    green: { border: "#10B981", iconBg: "#ECFDF5", iconColor: "#047857" },
     red: { border: "#DC2626", iconBg: "#FEF2F2", iconColor: "#DC2626" },
   };
 
@@ -682,12 +724,42 @@ function Avatar({ name }) {
 
 function StatusBadge({ status }) {
   const map = {
-    Pending: { bg: "#F1F5F9", text: "#475569", border: "#CBD5E1", dot: "#94A3B8" },
-    Received: { bg: "#EFF6FF", text: "#1D4ED8", border: "#BFDBFE", dot: "#3B82F6" },
-    "For Monitoring": { bg: "#FFFBEB", text: "#B45309", border: "#FDE68A", dot: "#F59E0B" },
-    "Follow-up Required": { bg: "#FFFBEB", text: "#B45309", border: "#FDE68A", dot: "#EAB308" },
-    "Under Observation": { bg: "#FFFBEB", text: "#B45309", border: "#FDE68A", dot: "#F59E0B" },
-    Completed: { bg: "#ECFDF5", text: "#047857", border: "#A7F3D0", dot: "#10B981" },
+    Pending: {
+      bg: "#F1F5F9",
+      text: "#475569",
+      border: "#CBD5E1",
+      dot: "#94A3B8",
+    },
+    Received: {
+      bg: "#EFF6FF",
+      text: "#1D4ED8",
+      border: "#BFDBFE",
+      dot: "#3B82F6",
+    },
+    "For Monitoring": {
+      bg: "#FFFBEB",
+      text: "#B45309",
+      border: "#FDE68A",
+      dot: "#F59E0B",
+    },
+    "Follow-up Required": {
+      bg: "#FFFBEB",
+      text: "#B45309",
+      border: "#FDE68A",
+      dot: "#EAB308",
+    },
+    "Under Observation": {
+      bg: "#FFFBEB",
+      text: "#B45309",
+      border: "#FDE68A",
+      dot: "#F59E0B",
+    },
+    Completed: {
+      bg: "#ECFDF5",
+      text: "#047857",
+      border: "#A7F3D0",
+      dot: "#10B981",
+    },
   };
 
   const s = map[status] || map.Pending;
@@ -821,4 +893,40 @@ function MedicineAlert({ item, status }) {
   );
 }
 
+function getDashboardFirstName(fallback) {
+  const user = getCurrentUser();
+  const name =
+    user?.fullName ||
+    user?.full_name ||
+    user?.name ||
+    user?.displayName ||
+    user?.profile?.name;
 
+  return String(name || fallback)
+    .trim()
+    .split(/\s+/)[0];
+}
+
+function getGreeting(date) {
+  const hour = date.getHours();
+
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function formatDashboardDate(date) {
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatDashboardTime(date) {
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}

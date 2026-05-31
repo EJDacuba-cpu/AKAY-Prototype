@@ -231,7 +231,7 @@ function normalizePatientStatus(status) {
   }
 
   if (["Completed", "Complete", "Recovered", "Closed"].includes(value)) {
-    return "Complete";
+    return "Completed";
   }
 
   if (
@@ -730,7 +730,7 @@ export default function AddHealthRecord() {
         </h1>
         <p className="mt-0.5 text-xs text-[#6B7280]">
           {isFollowUp
-            ? `Create a follow-up record for ${followUpRecord?.patientName || "this patient"}.`
+            ? `Add a follow-up record for ${followUpRecord?.patientName || "this patient"}.`
             : isEditingRecord
               ? "Correct or update details in this existing RHU health record."
               : "Record a consultation, maternal record, immunization record, monitoring update, or follow-up for RHU patients."}
@@ -1016,7 +1016,7 @@ export default function AddHealthRecord() {
             >
               <option>Routine Monitoring</option>
               <option>Follow-up Required</option>
-              <option>Complete</option>
+              <option>Completed</option>
             </FieldSelect>
             {followUpStatus === "Follow-up Required" && (
               <FieldInput

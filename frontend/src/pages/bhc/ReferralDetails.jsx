@@ -516,7 +516,7 @@ function SystemReference({ referral }) {
     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-4 border-b border-slate-100 pb-3">
         <h2 className="text-[13px] font-bold text-slate-800">
-          System Reference
+          Referral Tracking Details
         </h2>
         <p className="text-[10.5px] text-slate-400">QR code and tracking ID</p>
       </div>
@@ -683,7 +683,7 @@ function StatusBadge({ status }) {
     Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
     "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
     Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-    "No-Show": "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
+    "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
   };
 
   return (

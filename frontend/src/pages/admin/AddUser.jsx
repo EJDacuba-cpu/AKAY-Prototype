@@ -115,7 +115,7 @@ export default function AddUser() {
       } else {
         createAdminAccount(payload);
         setSuccessModal({
-          title: "Account Created Successfully",
+          title: "Account Added Successfully",
           message: "The account has been created successfully.",
         });
       }
@@ -195,7 +195,7 @@ export default function AddUser() {
               <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-[#6B7280]">
                 {isEditMode
                   ? "Update the account role, position, and facility assignment. Password changes are handled separately by Admin/MHO from the account directory."
-                  : "Create an authorized account for Barangay Health Center workers or Rural Health Unit staff."}
+                  : "Add an authorized account for Barangay Health Center workers or Rural Health Unit staff."}
               </p>
             </div>
           </div>

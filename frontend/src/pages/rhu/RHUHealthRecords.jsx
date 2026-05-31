@@ -184,7 +184,7 @@ export default function RHUHealthRecords() {
         { value: "", label: "All Status" },
         { value: "Routine Monitoring", label: "Routine Monitoring" },
         { value: "Follow-up Required", label: "Follow-up Required" },
-        { value: "Complete", label: "Complete" },
+        { value: "Completed", label: "Completed" },
       ],
     },
     {
@@ -446,7 +446,7 @@ function StatusBadge({ status }) {
   const toneMap = {
     "Routine Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
     "Follow-up Required": "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
-    Complete: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
   };
 
   return (
@@ -621,7 +621,7 @@ function normalizeHealthRecordStatus(status) {
   }
 
   if (["Completed", "Complete", "Recovered", "Closed"].includes(value)) {
-    return "Complete";
+    return "Completed";
   }
 
   if (

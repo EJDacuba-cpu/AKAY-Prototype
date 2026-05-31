@@ -230,7 +230,7 @@ export default function UserManagement() {
   const countLabel = "Accounts";
 
   return (
-    <DashboardLayout role="admin" title="User & Personnel Management">
+    <DashboardLayout role="admin" title="Account Directory">
       <div className="space-y-6">
         <ListToolbar
           searchValue={filters.search}
@@ -238,7 +238,7 @@ export default function UserManagement() {
             setFilters((prev) => ({ ...prev, search: value }))
           }
           searchPlaceholder="Search name, email, role, or facility..."
-          chip={`● ${visibleUsers.length.toLocaleString()} ${countLabel}`}
+          chip={`${visibleUsers.length.toLocaleString()} ${countLabel}`}
           filters={toolbarFilters}
           activeFilterCount={activeFilterCount}
           activeFilters={activeFilters}
@@ -286,8 +286,8 @@ function AccountsTable({ users, onChangePassword, onUpdateStatus }) {
   return (
     <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
       <TableHeader
-        title="User Accounts"
-        description="MHO/Admin can update passwords, activate, and deactivate accounts."
+        title="Account Directory"
+        description="MHO/Admin can update passwords, manage account status, and review role and facility assignments."
         count={users.length}
       />
 
@@ -371,7 +371,7 @@ function TableHeader({ title, description, count }) {
       </div>
 
       <div className="flex w-fit items-center gap-2 rounded-md bg-[#F3F4F6] px-2 py-1 text-[10px] font-semibold text-[#6B7280]">
-        {count} records
+        {count} account{count === 1 ? "" : "s"}
       </div>
     </div>
   );
@@ -390,7 +390,6 @@ function EmptyRow({ colSpan, message }) {
   );
 }
 
-// ... Rest of your code (AccountActions, ChangePasswordModal, RoleBadge, StatusBadge, getDisplayName) remains completely untouched
 function AccountActions({ user, onChangePassword, onUpdateStatus }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });

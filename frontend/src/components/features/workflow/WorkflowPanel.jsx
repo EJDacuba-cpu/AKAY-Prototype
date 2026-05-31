@@ -40,7 +40,7 @@ export default function WorkflowPanel({ delay = 0 }) {
           icon={<UserPlus size={16} />}
           label="Register"
           title="New Patient Visit"
-          description="Create profile for first-time patient"
+          description="Add profile for first-time patient"
         />
 
         <WorkflowShortcut
@@ -55,7 +55,7 @@ export default function WorkflowPanel({ delay = 0 }) {
           href="/bhc/referrals"
           icon={<ClipboardList size={16} />}
           label="Refer"
-          title="Create Referral"
+          title="Submit Referral"
           description="Send official BHC-to-RHU referral"
         />
 

@@ -13,11 +13,11 @@ export default function AuditLogs() {
     {
       id: "LOG-001",
       action: "User account created",
-      module: "User Management",
+      module: "Account Directory",
       performedBy: "Admin MHO",
       role: "Admin",
-      details: "Created BHC account for Pitpitan Health Center.",
-      dateTime: "May 14, 2026 · 9:20 AM",
+      details: "Added BHC account for Pitpitan Health Center.",
+      dateTime: "May 14, 2026 - 9:20 AM",
       level: "Account",
     },
     {
@@ -27,7 +27,7 @@ export default function AuditLogs() {
       performedBy: "Lorna Reyes",
       role: "BHC",
       details: "Submitted referral AKY-2026-002 for Maria Rosa.",
-      dateTime: "May 14, 2026 · 10:30 AM",
+      dateTime: "May 14, 2026 - 10:30 AM",
       level: "Referral",
     },
     {
@@ -37,7 +37,7 @@ export default function AuditLogs() {
       performedBy: "Joshua Pio",
       role: "RHU",
       details: "Updated referral AKY-2026-002 status to Received.",
-      dateTime: "May 14, 2026 · 11:05 AM",
+      dateTime: "May 14, 2026 - 11:05 AM",
       level: "Status Update",
     },
     {
@@ -47,7 +47,7 @@ export default function AuditLogs() {
       performedBy: "RHU Staff",
       role: "RHU",
       details: "Submitted feedback for referral AKY-2026-002.",
-      dateTime: "May 14, 2026 · 11:40 AM",
+      dateTime: "May 14, 2026 - 11:40 AM",
       level: "Feedback",
     },
     {
@@ -57,17 +57,17 @@ export default function AuditLogs() {
       performedBy: "RHU Inventory Staff",
       role: "RHU",
       details: "Updated Amoxicillin status to Low Stock.",
-      dateTime: "May 14, 2026 · 1:15 PM",
+      dateTime: "May 14, 2026 - 1:15 PM",
       level: "Inventory",
     },
     {
       id: "LOG-006",
       action: "Account deactivated",
-      module: "User Management",
+      module: "Account Directory",
       performedBy: "Admin MHO",
       role: "Admin",
       details: "Deactivated inactive BHC staff account.",
-      dateTime: "May 14, 2026 · 2:00 PM",
+      dateTime: "May 14, 2026 - 2:00 PM",
       level: "Security",
     },
   ];
@@ -91,7 +91,7 @@ export default function AuditLogs() {
 
           <FilterSelect label="Module">
             <option>All Modules</option>
-            <option>User Management</option>
+            <option>Account Directory</option>
             <option>Referrals</option>
             <option>Incoming Referrals</option>
             <option>Feedback / Return Slip</option>
@@ -121,10 +121,10 @@ export default function AuditLogs() {
         <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
           <div>
             <h2 className="text-sm font-semibold text-[#0F172A]">
-              System Activity Logs
+              Activity Logs
             </h2>
             <p className="mt-1 text-xs text-[#9CA3AF]">
-              Records of significant user and system activities.
+              Records of significant account, referral, and RHU feedback actions.
             </p>
           </div>
 

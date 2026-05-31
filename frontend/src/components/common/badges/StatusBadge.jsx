@@ -7,7 +7,7 @@ export default function StatusBadge({ status }) {
     "For Referral": { bg: "#FFFBEB", text: "#B45309", border: "#FDE68A", dot: "#F59E0B" },
     Referred: { bg: "#F1F5F9", text: "#475569", border: "#CBD5E1", dot: "#64748B" },
     "For Monitoring": { bg: "#FFFBEB", text: "#B45309", border: "#FDE68A", dot: "#F59E0B" },
-    "No-Show": { bg: "#FEF2F2", text: "#B91C1C", border: "#FECACA", dot: "#DC2626" },
+    "No-Show": { bg: "#FFFBEB", text: "#B45309", border: "#FDE68A", dot: "#F59E0B" },
     Cancelled: { bg: "#FEF2F2", text: "#B91C1C", border: "#FECACA", dot: "#DC2626" },
     Inactive: { bg: "#FEF2F2", text: "#B91C1C", border: "#FECACA", dot: "#DC2626" },
     "Low Stock": { bg: "#FFFBEB", text: "#B45309", border: "#FDE68A", dot: "#F59E0B" },

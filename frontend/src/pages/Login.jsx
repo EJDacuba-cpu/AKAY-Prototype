@@ -176,7 +176,7 @@ export default function Login() {
           </button>
 
           <button className="text-[11px] font-semibold text-[#6B7280] transition-colors hover:text-[#B91C1C]">
-            System status
+            AKAY service status
           </button>
         </div>
 

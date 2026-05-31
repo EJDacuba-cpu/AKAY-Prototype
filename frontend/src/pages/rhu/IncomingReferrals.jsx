@@ -287,10 +287,10 @@ function StatusBadge({ status, animate = false }) {
       dot: "#10B981",
     },
     "No-Show": {
-      bg: "#FEF2F2",
-      text: "#B91C1C",
-      border: "#FECACA",
-      dot: "#EF4444",
+      bg: "#FFFBEB",
+      text: "#B45309",
+      border: "#FDE68A",
+      dot: "#F59E0B",
     },
   };
 

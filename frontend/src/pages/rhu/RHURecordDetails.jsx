@@ -59,7 +59,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-004",
     patient: "Pedro Dela Cruz",
     concern: "Persistent cough",
-    status: "Complete",
+    status: "Completed",
     date: "May 12, 2026",
     recordedBy: "Joshua Pio",
   },
@@ -86,7 +86,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-007",
     patient: "Rosa Mendoza",
     concern: "Skin rash",
-    status: "Complete",
+    status: "Completed",
     date: "May 10, 2026",
     recordedBy: "Grace Navalta",
   },
@@ -122,7 +122,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-011",
     patient: "Sofia Villanueva",
     concern: "Child immunization",
-    status: "Complete",
+    status: "Completed",
     date: "May 8, 2026",
     recordedBy: "Grace Navalta",
   },
@@ -140,7 +140,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-013",
     patient: "Isabelle Reyes",
     concern: "Urinary tract infection",
-    status: "Complete",
+    status: "Completed",
     date: "May 7, 2026",
     recordedBy: "Grace Navalta",
   },
@@ -453,7 +453,7 @@ function normalizeHealthRecordStatus(status) {
     return "Follow-up Required";
   }
   if (["Completed", "Complete", "Recovered", "Closed"].includes(value)) {
-    return "Complete";
+    return "Completed";
   }
   if (
     ["For Monitoring", "Active", "Monitoring", "For Referral"].includes(value)
@@ -469,7 +469,7 @@ function HealthRecordStatusBadge({ status }) {
   const styles = {
     "Routine Monitoring": "border-slate-200 bg-slate-50 text-slate-700",
     "Follow-up Required": "border-amber-200 bg-amber-50 text-amber-800",
-    Complete: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
   };
 
   return (
