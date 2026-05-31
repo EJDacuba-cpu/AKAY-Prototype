@@ -194,7 +194,7 @@ export default function DashboardLayout({
   };
 
   return (
-    <div className="relative h-screen overflow-hidden bg-[#F8FAFC] text-[#1F2937]">
+    <div className="relative h-screen overflow-hidden bg-[#F8FAFC] text-[#0F172A]">
       <style>
         {`
           .akay-sidebar-scroll {
@@ -257,37 +257,37 @@ export default function DashboardLayout({
 
       <main
         className={`flex h-screen min-w-0 flex-col transition-[margin] duration-300 ease-in-out ${
-          hideSidebar ? "" : sidebarExpanded ? "md:ml-60" : "md:ml-[68px]"
+          hideSidebar ? "" : sidebarExpanded ? "md:ml-60" : "md:ml-[72px]"
         }`}
       >
         <header className="relative z-30 flex-shrink-0 border-b border-[#E5E7EB] bg-white/95 backdrop-blur-xl">
-          <div className="flex h-14 items-center justify-between px-4 sm:px-5">
+          <div className="flex h-[54px] items-center justify-between px-4 sm:px-5">
             <div className="flex min-w-0 items-center gap-3">
               {!hideSidebar && (
                 <button
                   type="button"
                   onClick={() => setMobileDrawerOpen(true)}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white text-[#B91C1C] shadow-sm transition hover:bg-[#F9FAFB] md:hidden"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#B91C1C] shadow-sm transition hover:bg-[#FEF2F2] md:hidden"
                   aria-label="Open sidebar"
                 >
                   <Menu size={17} />
                 </button>
               )}
 
-              <h2 className="truncate text-base font-bold tracking-tight text-[#1F2937] sm:text-lg">
+              <h2 className="truncate text-[15px] font-bold tracking-tight text-[#0F172A] sm:text-base">
                 {title}
               </h2>
             </div>
 
             <div className="flex items-center gap-2">
-              <div className="hidden items-center gap-1.5 rounded-xl border border-[#E5E7EB] bg-white px-2.5 py-1.5 shadow-sm sm:flex">
+              <div className="hidden h-8 items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 shadow-sm sm:flex">
                 <MapPin size={12} className="text-[#B91C1C]" />
                 <span className="max-w-[140px] truncate text-[10px] font-semibold text-[#4B5563]">
                   {user.facility}
                 </span>
               </div>
 
-              <span className="hidden rounded-xl border border-[#E5E7EB] bg-white px-2.5 py-1.5 text-[10px] font-medium text-[#6B7280] shadow-sm md:inline-block">
+              <span className="hidden h-8 items-center rounded-lg border border-[#E5E7EB] bg-white px-2.5 py-2 text-[10px] font-semibold text-[#64748B] shadow-sm md:inline-flex">
                 {roleLabel[role]}
               </span>
 
@@ -295,7 +295,7 @@ export default function DashboardLayout({
                 <button
                   type="button"
                   onClick={() => setIsNotifOpen((prev) => !prev)}
-                  className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white text-[#6B7280] shadow-sm transition hover:bg-[#F9FAFB] hover:text-[#B91C1C]"
+                  className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] shadow-sm transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
                   aria-label="Notifications"
                 >
                   <Bell size={15} />
@@ -344,7 +344,7 @@ function LogoMark({ size = "md" }) {
   const imageSize = size === "sm" ? "h-8 w-8" : "h-9 w-9";
 
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[#FECACA] bg-white shadow-sm">
       <img
         src={LOGO_SRC}
         alt="AKAY Logo"
@@ -366,11 +366,11 @@ function DesktopSidebar({
   return (
     <aside
       className={`fixed left-0 top-0 z-40 hidden h-full flex-col overflow-hidden border-r border-[#E5E7EB] bg-white shadow-sm transition-[width] duration-300 ease-in-out md:flex ${
-        expanded ? "w-60" : "w-[68px]"
+        expanded ? "w-60" : "w-[72px]"
       }`}
     >
       <div
-        className={`flex h-16 shrink-0 items-center border-b border-[#E5E7EB] transition-all duration-300 ${
+        className={`flex h-[62px] shrink-0 items-center border-b border-[#E5E7EB] transition-all duration-300 ${
           expanded ? "px-3" : "justify-center px-0"
         }`}
       >
@@ -383,7 +383,7 @@ function DesktopSidebar({
               : "ml-0 max-w-0 opacity-0"
           }`}
         >
-          <p className="text-sm font-bold tracking-tight text-[#B91C1C]">
+            <p className="text-sm font-black tracking-tight text-[#B91C1C]">
             AKAY
           </p>
           <p className="mt-0.5 whitespace-nowrap text-[8px] uppercase tracking-[0.16em] text-[#9CA3AF]">
@@ -395,7 +395,7 @@ function DesktopSidebar({
           <button
             type="button"
             onClick={onToggle}
-            className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#6B7280] transition hover:bg-[#F9FAFB] hover:text-[#B91C1C]"
+            className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#64748B] transition hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
             aria-label="Collapse sidebar"
             title="Collapse sidebar"
           >
@@ -409,7 +409,7 @@ function DesktopSidebar({
           <button
             type="button"
             onClick={onToggle}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white text-[#6B7280] transition hover:bg-[#F9FAFB] hover:text-[#B91C1C]"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
             aria-label="Expand sidebar"
             title="Expand sidebar"
           >
@@ -418,11 +418,11 @@ function DesktopSidebar({
         </div>
       )}
 
-      <nav className="akay-sidebar-scroll flex-1 overflow-y-auto px-2 py-4">
+      <nav className="akay-sidebar-scroll flex-1 overflow-y-auto px-2 py-3">
         {menuSections.map((section) => (
           <div key={section.section} className="mb-4">
             <p
-              className={`mb-1 overflow-hidden whitespace-nowrap px-2 text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF] transition-all duration-200 ${
+              className={`mb-1.5 overflow-hidden whitespace-nowrap px-2 text-[9px] font-bold uppercase tracking-[0.18em] text-[#94A3B8] transition-all duration-200 ${
                 expanded ? "max-h-6 opacity-100" : "max-h-0 opacity-0"
               }`}
             >
@@ -440,16 +440,16 @@ function DesktopSidebar({
                     to={item.path}
                     title={!expanded ? item.label : undefined}
                     aria-label={item.label}
-                    className={`group relative flex h-11 w-full items-center rounded-xl transition-all duration-200 ${
+                    className={`group relative flex h-10 w-full items-center rounded-lg transition-all duration-200 ${
                       expanded ? "px-3" : "justify-center px-0"
                     } ${
                       active
-                        ? "bg-[#FEF2F2] text-[#B91C1C]"
-                        : "text-[#6B7280] hover:bg-[#F9FAFB] hover:text-[#B91C1C]"
+                        ? "bg-[#FEF2F2] text-[#B91C1C] shadow-sm"
+                        : "text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
                     }`}
                   >
                     {active && (
-                      <span className="absolute left-0 top-2 h-7 w-1 rounded-r-full bg-[#B91C1C]" />
+                      <span className="absolute left-0 top-2 h-6 w-1 rounded-r-full bg-[#B91C1C]" />
                     )}
 
                     <Icon
@@ -459,7 +459,7 @@ function DesktopSidebar({
                     />
 
                     <span
-                      className={`ml-3 overflow-hidden whitespace-nowrap text-sm font-medium transition-all duration-200 ${
+                      className={`ml-3 overflow-hidden whitespace-nowrap text-[13px] font-semibold transition-all duration-200 ${
                         expanded
                           ? "max-w-[150px] opacity-100 delay-75"
                           : "max-w-0 opacity-0"
@@ -483,8 +483,8 @@ function DesktopSidebar({
               : "mb-0 max-h-0 opacity-0"
           }`}
         >
-          <div className="rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2">
-            <p className="truncate text-xs font-semibold text-[#1F2937]">
+          <div className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2">
+            <p className="truncate text-xs font-semibold text-[#0F172A]">
               {user.name}
             </p>
             <p className="mt-0.5 truncate text-[10px] text-[#9CA3AF]">
@@ -498,7 +498,7 @@ function DesktopSidebar({
           onClick={onLogout}
           title="Sign out"
           aria-label="Sign out"
-          className={`flex h-10 w-full items-center rounded-xl border border-[#E5E7EB] bg-white text-[#B91C1C] transition hover:bg-[#F9FAFB] ${
+          className={`flex h-10 w-full items-center rounded-lg border border-[#E5E7EB] bg-white text-[#B91C1C] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] ${
             expanded ? "gap-2 px-3" : "justify-center px-0"
           }`}
         >
@@ -550,7 +550,7 @@ function MobileSidebarDrawer({
         <button
           type="button"
           onClick={onClose}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-[#6B7280] transition hover:bg-[#F9FAFB] hover:text-[#B91C1C]"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-[#64748B] transition hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
           aria-label="Close sidebar"
         >
           <X size={17} />
@@ -587,10 +587,10 @@ function FullSidebarNav({ menuSections, isMenuActive, onNavigate }) {
                   key={`${section.section}-${item.label}`}
                   to={item.path}
                   onClick={onNavigate}
-                  className={`group relative flex h-10 items-center gap-2.5 rounded-xl px-3 text-[12px] font-semibold transition-all duration-200 ${
+                  className={`group relative flex h-10 items-center gap-2.5 rounded-lg px-3 text-[12px] font-semibold transition-all duration-200 ${
                     active
                       ? "bg-[#FEF2F2] text-[#B91C1C]"
-                      : "text-[#4B5563] hover:bg-[#F9FAFB] hover:text-[#B91C1C]"
+                      : "text-[#4B5563] hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
                   }`}
                 >
                   {active && (
@@ -617,7 +617,7 @@ function FullSidebarNav({ menuSections, isMenuActive, onNavigate }) {
 function SidebarUserFooter({ user, onLogout }) {
   return (
     <div className="border-t border-[#E5E7EB] p-3">
-      <div className="rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2.5">
+      <div className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2.5">
         <p className="truncate text-[12px] font-semibold text-[#1F2937]">
           {user.name}
         </p>
@@ -629,7 +629,7 @@ function SidebarUserFooter({ user, onLogout }) {
       <button
         type="button"
         onClick={onLogout}
-        className="mt-2.5 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white text-[11px] font-semibold text-[#B91C1C] transition hover:bg-[#F9FAFB]"
+        className="mt-2.5 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[#E5E7EB] bg-white text-[11px] font-semibold text-[#B91C1C] transition hover:border-[#FECACA] hover:bg-[#FEF2F2]"
       >
         <LogOut size={14} />
         Sign out

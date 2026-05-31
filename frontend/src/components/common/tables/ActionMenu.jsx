@@ -109,7 +109,7 @@ export default function ActionMenu({
     createPortal(
       <div
         ref={menuRef}
-        className={`fixed z-[9999] w-52 origin-top-right rounded-xl border border-[#E8ECF0] bg-white p-1.5 shadow-xl shadow-black/[0.08] ${
+        className={`fixed z-[9999] w-52 origin-top-right rounded-xl border border-[#E5E7EB] bg-white p-1.5 shadow-xl shadow-black/[0.08] ${
           closing ? "menu-close" : "menu-open"
         }`}
         style={{
@@ -118,8 +118,8 @@ export default function ActionMenu({
         }}
       >
         {/* Header */}
-        <div className="mb-1.5 border-b border-[#F3F4F6] px-2.5 pb-2">
-          <p className="text-[11px] font-semibold text-[#0B2E59]">{title}</p>
+        <div className="mb-1.5 border-b border-[#F1F5F9] px-2.5 pb-2">
+          <p className="text-[11px] font-bold text-[#0F172A]">{title}</p>
           {subtitle && (
             <p className="mt-0.5 font-mono text-[10px] text-[#BCC3CD]">
               {subtitle}
@@ -132,7 +132,7 @@ export default function ActionMenu({
           <Link
             to={viewLink}
             onClick={closeMenu}
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-medium text-[#1A1A1A] transition-all duration-150 hover:bg-[#F8FAFC] active:scale-[0.98]"
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-semibold text-[#334155] transition-all duration-150 hover:bg-[#FEF2F2] hover:text-[#B91C1C] active:scale-[0.98]"
           >
             {viewLabel}
           </Link>
@@ -144,7 +144,7 @@ export default function ActionMenu({
             to={editPatientLink}
             state={{ startInEditMode: true }} // <--- Ipinapasa ang instruction dito
             onClick={closeMenu}
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-medium text-[#1A1A1A] transition-all duration-150 hover:bg-[#F8FAFC] active:scale-[0.98]"
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-semibold text-[#334155] transition-all duration-150 hover:bg-[#FEF2F2] hover:text-[#B91C1C] active:scale-[0.98]"
           >
             {editPatientLabel}
           </Link>
@@ -156,7 +156,7 @@ export default function ActionMenu({
             to={editLink}
             state={{ startInEditMode: true }} // <--- Idagdag ito
             onClick={closeMenu}
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-medium text-[#1A1A1A] transition-all duration-150 hover:bg-[#F8FAFC] active:scale-[0.98]"
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-semibold text-[#334155] transition-all duration-150 hover:bg-[#FEF2F2] hover:text-[#B91C1C] active:scale-[0.98]"
           >
             {editLabel}
           </Link>
@@ -167,7 +167,7 @@ export default function ActionMenu({
           <Link
             to={referralLink}
             onClick={closeMenu}
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-medium text-[#1A1A1A] transition-all duration-150 hover:bg-[#F8FAFC] active:scale-[0.98]"
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-semibold text-[#334155] transition-all duration-150 hover:bg-[#FEF2F2] hover:text-[#B91C1C] active:scale-[0.98]"
           >
             {referralLabel}
           </Link>
@@ -184,8 +184,8 @@ export default function ActionMenu({
         onClick={() => (open ? closeMenu() : openMenu())}
         className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-all duration-200 active:scale-[0.92] ${
           open
-            ? "border-[#2563EB] bg-[#EFF6FF] text-[#2563EB]"
-            : "border-[#E8ECF0] bg-white text-[#9CA3AF] hover:border-[#D1D5DB] hover:bg-[#F8FAFC] hover:text-[#6B7280]"
+            ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]"
+            : "border-[#E5E7EB] bg-white text-[#94A3B8] hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
         }`}
       >
         <MoreHorizontal size={15} />

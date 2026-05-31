@@ -2,16 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import {
-  Eye,
-  FilePlus2,
-  HeartPulse,
-  MoreHorizontal,
-  Plus,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Activity,
-  ClipboardList,
+  Eye,
+  FilePlus2,
+  FileText,
+  MoreHorizontal,
+  Plus,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -20,448 +17,445 @@ import { getRhuHealthRecords } from "../../services/healthRecordService";
 
 const STORAGE_KEY = "akay_rhu_health_records";
 const LEGACY_STORAGE_KEY = "rhu_health_records";
-const PER_PAGE = 6;
+const PER_PAGE = 8;
+
+const DEFAULT_FILTERS = {
+  search: "",
+  status: "",
+  classification: "",
+  date: "",
+};
 
 export default function RHUHealthRecords() {
-  const [allRecords, setAllRecords] = useState([]);
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterStatus, setFilterStatus] = useState("All Status");
-  const [filterClassification, setFilterClassification] = useState(
-    "All Classifications",
-  );
-  const [filterDate, setFilterDate] = useState("");
-  const [sortKey, setSortKey] = useState("date");
-  const [sortDir, setSortDir] = useState("desc");
-  const [page, setPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
   const [openMenuId, setOpenMenuId] = useState(null);
 
   useEffect(() => {
-    const loadRecords = async () => {
+    let active = true;
+
+    async function fetchRecords() {
       try {
-        const parsed = await getRhuHealthRecords();
-        setAllRecords(Array.isArray(parsed) ? parsed : []);
+        setLoading(true);
+        const data = await getRhuHealthRecords();
+        const rawData = Array.isArray(data) ? data : [];
+
+        const normalizedRecords = rawData.map((record) => {
+          const recordId =
+            record.id ||
+            record.recordId ||
+            record._id ||
+            record.trackingId ||
+            `RHU-HR-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+          return {
+            ...record,
+            id: recordId,
+            trackingId: record.trackingId || recordId,
+            patientName:
+              record.patientName ||
+              record.patient ||
+              record.patient?.name ||
+              [record.firstName, record.lastName].filter(Boolean).join(" ") ||
+              "Unnamed Patient",
+            classification:
+              record.patientClassification ||
+              record.classification ||
+              record.category ||
+              inferClassification(record),
+            concern:
+              record.chiefComplaint ||
+              record.concern ||
+              record.summaryOfPresentIllness ||
+              record.diagnosis ||
+              "General Consultation",
+            status: normalizeHealthRecordStatus(
+              record.followUpStatus || record.status || record.recordStatus,
+            ),
+            followUp: record.followUpDate || "No Follow-up",
+            date:
+              record.dateOfVisit ||
+              record.visitDate ||
+              record.date ||
+              record.createdAt ||
+              "No Date",
+            provider:
+              record.attendingStaff ||
+              record.recordedBy ||
+              record.provider ||
+              record.practitioner ||
+              "RHU Staff",
+          };
+        });
+
+        if (active) setRecords(normalizedRecords.reverse());
       } catch (error) {
-        console.error("Failed to load health records:", error);
+        console.error("Failed to fetch RHU health records:", error);
+        if (active) setRecords([]);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
-    };
+    }
 
-    loadRecords();
+    fetchRecords();
 
-    const handleStorageChange = (e) => {
-      if (e.key === STORAGE_KEY || e.key === LEGACY_STORAGE_KEY) {
-        loadRecords();
+    function handleStorageChange(event) {
+      if (
+        !event.key ||
+        event.key === STORAGE_KEY ||
+        event.key === LEGACY_STORAGE_KEY
+      ) {
+        fetchRecords();
       }
-    };
+    }
 
     window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("akay:rhu-health-records-updated", fetchRecords);
+    window.addEventListener("akay:health-records-updated", fetchRecords);
 
-    return () => window.removeEventListener("storage", handleStorageChange);
+    return () => {
+      active = false;
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener(
+        "akay:rhu-health-records-updated",
+        fetchRecords,
+      );
+      window.removeEventListener("akay:health-records-updated", fetchRecords);
+    };
   }, []);
 
-  function inferClassification(record) {
-    if (!record) return "General Consultation";
-
-    const concern = (record.concern || "").toLowerCase();
-
-    if (concern.includes("prenatal") || concern.includes("pregnan")) {
-      return "Maternal";
-    }
-
-    if (concern.includes("immunization") || concern.includes("vaccine")) {
-      return "Immunization";
-    }
-
-    if (concern.includes("hypertension") || concern.includes("diabetes")) {
-      return "Senior Citizen";
-    }
-
-    return "General Consultation";
-  }
-
-  const currentRecords = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-
-    const filtered = allRecords.filter((record) => {
-      const matchesSearch =
-        !query ||
-        (record.patient || "").toLowerCase().includes(query) ||
-        (record.id || "").toLowerCase().includes(query) ||
-        (record.concern || "").toLowerCase().includes(query);
-
-      const matchesStatus =
-        filterStatus === "All Status" || record.status === filterStatus;
-
-      const matchesClassification =
-        filterClassification === "All Classifications" ||
-        inferClassification(record) === filterClassification;
-
-      const matchesDate = !filterDate || record.date === filterDate;
-
-      return (
-        matchesSearch && matchesStatus && matchesClassification && matchesDate
-      );
-    });
-
-    return filtered.sort((a, b) => {
-      const aVal = String(a[sortKey] || "");
-      const bVal = String(b[sortKey] || "");
-      const compareValue = aVal.localeCompare(bVal);
-
-      return sortDir === "asc" ? compareValue : -compareValue;
-    });
-  }, [
-    allRecords,
-    searchQuery,
-    filterStatus,
-    filterClassification,
-    filterDate,
-    sortKey,
-    sortDir,
-  ]);
-
-  const totalPages = Math.max(1, Math.ceil(currentRecords.length / PER_PAGE));
-  const pagedRecords = currentRecords.slice(
-    (page - 1) * PER_PAGE,
-    page * PER_PAGE,
-  );
-
-  function handleSort(key) {
-    if (sortKey === key) {
-      setSortDir((current) => (current === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
-  }
-
-  function clearFilter(key) {
-    if (key === "search") setSearchQuery("");
-    if (key === "status") setFilterStatus("All Status");
-    if (key === "classification") {
-      setFilterClassification("All Classifications");
-    }
-    if (key === "date") setFilterDate("");
-  }
-
-  function clearAllFilters() {
-    setSearchQuery("");
-    setFilterStatus("All Status");
-    setFilterClassification("All Classifications");
-    setFilterDate("");
-  }
-
-  function applyToolbarFilters(nextFilters) {
-    setFilterStatus(nextFilters.status);
-    setFilterClassification(nextFilters.classification);
-    setFilterDate(nextFilters.date);
-  }
-
-  useEffect(() => {
-    setPage(1);
-  }, [searchQuery, filterStatus, filterClassification, filterDate]);
-
-  if (loading) {
-    return (
-      <DashboardLayout role="rhu" title="Health Records">
-        <div className="flex h-64 items-center justify-center text-slate-400">
-          Loading records...
-        </div>
-      </DashboardLayout>
+  const filteredRecords = records.filter((record) => {
+    const searchLower = filters.search.trim().toLowerCase();
+    const patientWords = record.patientName?.toLowerCase().split(" ") || [];
+    const matchesPatientName = patientWords.some((word) =>
+      word.startsWith(searchLower),
     );
-  }
+
+    const searchText = [
+      record.id,
+      record.trackingId,
+      record.patientName,
+      record.classification,
+      record.concern,
+      record.status,
+      record.provider,
+      record.date,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    const matchesSearch =
+      !searchLower || matchesPatientName || searchText.includes(searchLower);
+    const matchesStatus = !filters.status || record.status === filters.status;
+    const matchesClassification =
+      !filters.classification ||
+      record.classification === filters.classification;
+    const matchesDate =
+      !filters.date || normalizeDate(record.date) === filters.date;
+
+    return (
+      matchesSearch && matchesStatus && matchesClassification && matchesDate
+    );
+  });
 
   const activeFilters = [
-    searchQuery && { key: "search", label: `Search: ${searchQuery}` },
-    filterStatus !== "All Status" && { key: "status", label: filterStatus },
-    filterClassification !== "All Classifications" && {
+    filters.search && { key: "search", label: `Search: ${filters.search}` },
+    filters.status && { key: "status", label: filters.status },
+    filters.classification && {
       key: "classification",
-      label: filterClassification,
+      label: filters.classification,
     },
-    filterDate && { key: "date", label: filterDate },
+    filters.date && { key: "date", label: filters.date },
   ].filter(Boolean);
 
-  const toolbarFilters = [
+  const activeFilterCount = activeFilters.filter(
+    (filter) => filter.key !== "search",
+  ).length;
+
+  const dropdownFilters = [
     {
       key: "status",
       label: "Record Type / Status",
-      value: filterStatus,
-      options: ["All Status", "Active", "For Monitoring", "Completed"],
+      value: filters.status,
+      options: [
+        { value: "", label: "All Status" },
+        { value: "Routine Monitoring", label: "Routine Monitoring" },
+        { value: "Follow-up Required", label: "Follow-up Required" },
+        { value: "Complete", label: "Complete" },
+      ],
     },
     {
       key: "classification",
       label: "Patient Classification",
-      value: filterClassification,
+      value: filters.classification,
       options: [
-        "All Classifications",
-        "General Consultation",
-        "Maternal",
-        "Immunization",
-        "Senior Citizen",
+        { value: "", label: "All Classifications" },
+        { value: "General Consultation", label: "General Consultation" },
+        { value: "Maternal", label: "Maternal" },
+        { value: "Immunization", label: "Immunization" },
+        { value: "Senior Citizen", label: "Senior Citizen" },
       ],
     },
     {
       key: "date",
       label: "Date of Visit",
-      value: filterDate,
+      value: filters.date,
       type: "date",
     },
   ];
 
-  return (
-    <DashboardLayout role="rhu" title="Health Records">
-      <div className="space-y-6">
-        <ListToolbar
-          searchValue={searchQuery}
-          onSearchChange={setSearchQuery}
-          searchPlaceholder="Search by patient name, record ID, or concern..."
-          chip={`● ${currentRecords.length.toLocaleString()} Records`}
-          filters={toolbarFilters}
-          activeFilterCount={
-            activeFilters.filter((filter) => filter.key !== "search").length
-          }
-          activeFilters={activeFilters}
-          onApplyFilters={applyToolbarFilters}
-          onClearFilters={clearAllFilters}
-          onRemoveFilter={clearFilter}
-          actions={
-            <Link
-              to="/rhu/health-records/add"
-              className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
-            >
-              <Plus size={14} strokeWidth={2.5} />
-              Add Health Record
-            </Link>
-          }
-        />
+  function updateFilter(key, value) {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+    setCurrentPage(1);
+  }
 
-        <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
-          <div className="border-b border-[#E8ECF0] px-6 py-4">
-            <h2 className="text-sm font-semibold text-[#0B2E59]">
-              RHU Health Records
-            </h2>
-            <p className="mt-1 text-xs text-[#9CA3AF]">
-              Records of patient visits, monitoring, and completed health
-              services.
+  function applyDropdownFilters(nextFilters) {
+    setFilters((prev) => ({ ...prev, ...nextFilters }));
+    setCurrentPage(1);
+  }
+
+  function clearFilters() {
+    setFilters(DEFAULT_FILTERS);
+    setCurrentPage(1);
+  }
+
+  function removeFilter(key) {
+    updateFilter(key, "");
+  }
+
+  if (loading) {
+    return (
+      <DashboardLayout role="rhu" title="Health Records">
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-7 w-7 animate-spin rounded-full border-2 border-slate-200 border-t-[#B91C1C]" />
+            <p className="text-[12px] font-medium text-slate-400">
+              Loading health records...
             </p>
           </div>
-
-          <div className="w-full overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left">
-              <thead>
-                <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  <SortableHeader
-                    label="ID"
-                    sortKey="id"
-                    currentSort={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                    className="w-[130px] px-6 py-3"
-                  />
-                  <SortableHeader
-                    label="Patient Name"
-                    sortKey="patient"
-                    currentSort={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                    className="w-[220px] px-4 py-3"
-                  />
-                  <th className="w-[180px] px-4 py-3">Classification</th>
-                  <th className="px-4 py-3">Concern</th>
-                  <SortableHeader
-                    label="Status"
-                    sortKey="status"
-                    currentSort={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                    className="w-[150px] px-4 py-3"
-                  />
-                  <SortableHeader
-                    label="Date"
-                    sortKey="date"
-                    currentSort={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                    className="w-[130px] px-4 py-3"
-                  />
-                  <th className="w-[90px] px-6 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-[#F3F4F6]">
-                {pagedRecords.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={7}
-                      className="px-6 py-12 text-center text-sm text-[#9CA3AF]"
-                    >
-                      No records found. Try adjusting your filters or add a new
-                      health record.
-                    </td>
-                  </tr>
-                ) : (
-                  pagedRecords.map((record) => (
-                    <tr
-                      key={record.id}
-                      className="transition-colors hover:bg-[#F9FAFB]"
-                    >
-                      <td className="whitespace-nowrap px-6 py-3.5">
-                        <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0B2E59]">
-                          {record.id}
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        <p className="truncate text-sm font-semibold text-[#111827]">
-                          {record.patient}
-                        </p>
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        <span className="inline-flex items-center rounded-md border border-[#E5E7EB] bg-[#F9FAFB] px-2 py-1 text-xs font-medium text-[#6B7280]">
-                          {inferClassification(record)}
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-3.5 text-sm text-[#6B7280]">
-                        <p className="line-clamp-2">{record.concern}</p>
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-3.5">
-                        <StatusBadge status={record.status} />
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
-                        {record.date}
-                      </td>
-
-                      <td className="whitespace-nowrap px-6 py-3.5 text-right">
-                        <ActionMenu
-                          record={record}
-                          open={openMenuId === record.id}
-                          onToggle={() =>
-                            setOpenMenuId(
-                              openMenuId === record.id ? null : record.id,
-                            )
-                          }
-                          onClose={() => setOpenMenuId(null)}
-                        />
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {totalPages > 1 && (
-            <div className="flex flex-col gap-3 border-t border-[#E8ECF0] bg-[#F9FAFB] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-[#6B7280]">
-                Showing{" "}
-                <span className="font-medium text-[#111827]">
-                  {(page - 1) * PER_PAGE + 1}
-                </span>{" "}
-                to{" "}
-                <span className="font-medium text-[#111827]">
-                  {Math.min(page * PER_PAGE, currentRecords.length)}
-                </span>{" "}
-                of{" "}
-                <span className="font-medium text-[#111827]">
-                  {currentRecords.length}
-                </span>{" "}
-                results
-              </p>
-
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  disabled={page === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#9CA3AF] transition hover:text-[#4B5563] disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label="Previous page"
-                >
-                  <ChevronLeft size={14} />
-                </button>
-
-                {Array.from(
-                  { length: totalPages },
-                  (_, index) => index + 1,
-                ).map((pageNumber) => (
-                  <button
-                    key={pageNumber}
-                    type="button"
-                    onClick={() => setPage(pageNumber)}
-                    className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold transition ${
-                      pageNumber === page
-                        ? "bg-[#B91C1C] text-white shadow-sm"
-                        : "text-[#6B7280] hover:bg-white"
-                    }`}
-                  >
-                    {pageNumber}
-                  </button>
-                ))}
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setPage((current) => Math.min(totalPages, current + 1))
-                  }
-                  disabled={page === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#9CA3AF] transition hover:text-[#4B5563] disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label="Next page"
-                >
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-            </div>
-          )}
         </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout role="rhu" title="Health Records">
+      <ListToolbar
+        searchValue={filters.search}
+        onSearchChange={(value) => updateFilter("search", value)}
+        searchPlaceholder="Search by patient name or record type..."
+        chip={`● ${filteredRecords.length.toLocaleString()} Records`}
+        filters={dropdownFilters}
+        activeFilterCount={activeFilterCount}
+        activeFilters={activeFilters}
+        onApplyFilters={applyDropdownFilters}
+        onClearFilters={clearFilters}
+        onRemoveFilter={removeFilter}
+        actions={
+          <Link
+            to="/rhu/health-records/add"
+            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
+          >
+            <Plus size={14} strokeWidth={2.5} />
+            Add Health Record
+          </Link>
+        }
+      />
+
+      <div className="min-w-0">
+        {filteredRecords.length === 0 ? (
+          <div className="rounded-xl border border-[#E2E8F0] bg-white px-6 py-24 text-center shadow-sm">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
+              <FileText size={20} className="text-[#94A3B8]" />
+            </div>
+            <p className="text-[13px] font-semibold text-[#334155]">
+              No Matching Records
+            </p>
+            <p className="mt-1 text-[11.5px] text-[#94A3B8]">
+              Try adjusting your search or filter criteria.
+            </p>
+          </div>
+        ) : (
+          <RHUHealthRecordsTable
+            records={filteredRecords}
+            currentPage={currentPage}
+            setCurrentPage={setCurrentPage}
+            openMenuId={openMenuId}
+            setOpenMenuId={setOpenMenuId}
+          />
+        )}
       </div>
     </DashboardLayout>
   );
 }
 
-function SortableHeader({
-  label,
-  sortKey,
-  currentSort,
-  currentDir,
-  onSort,
-  className = "px-4 py-3",
+function RHUHealthRecordsTable({
+  records,
+  currentPage,
+  setCurrentPage,
+  openMenuId,
+  setOpenMenuId,
 }) {
-  const isActive = currentSort === sortKey;
+  const totalPages = Math.max(1, Math.ceil(records.length / PER_PAGE));
+  const startRecord =
+    records.length === 0 ? 0 : (currentPage - 1) * PER_PAGE + 1;
+  const endRecord = Math.min(currentPage * PER_PAGE, records.length);
+  const paginatedRecords = records.slice(
+    (currentPage - 1) * PER_PAGE,
+    currentPage * PER_PAGE,
+  );
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, setCurrentPage, totalPages]);
 
   return (
-    <th
-      className={`${className} cursor-pointer select-none transition-colors hover:text-[#6B7280]`}
-      onClick={() => onSort(sortKey)}
-    >
-      <div className="flex items-center gap-2">
-        {label}
-        <span className={isActive ? "text-[#111827]" : "text-[#CBD5E1]"}>
-          {isActive ? (currentDir === "asc" ? "↑" : "↓") : "↕"}
-        </span>
+    <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[860px] text-left text-[13px]">
+          <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+            <tr>
+              <th className="whitespace-nowrap px-4 py-3">Record ID</th>
+              <th className="whitespace-nowrap px-4 py-3">Patient</th>
+              <th className="whitespace-nowrap px-4 py-3">Record Type</th>
+              <th className="whitespace-nowrap px-4 py-3">Date of Visit</th>
+              <th className="whitespace-nowrap px-4 py-3">Provider</th>
+              <th className="whitespace-nowrap px-4 py-3">Status</th>
+              <th className="whitespace-nowrap px-4 py-3 text-right">
+                Actions
+              </th>
+            </tr>
+          </thead>
+
+          <tbody className="divide-y divide-[#F3F4F6]">
+            {paginatedRecords.map((record) => (
+              <tr
+                key={record.id}
+                className="transition-colors hover:bg-[#F9FAFB]"
+              >
+                <td className="whitespace-nowrap px-4 py-3">
+                  <span className="font-mono text-[11px] font-semibold text-[#B91C1C]">
+                    {record.trackingId || record.id}
+                  </span>
+                </td>
+
+                <td className="whitespace-nowrap px-4 py-3 font-medium text-[#1F2937]">
+                  <Link
+                    to={`/rhu/health-records/${record.id}`}
+                    className="transition-colors hover:text-[#B91C1C]"
+                  >
+                    {record.patientName}
+                  </Link>
+                </td>
+
+                <td className="whitespace-nowrap px-4 py-3">
+                  <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
+                    {record.classification}
+                  </span>
+                </td>
+
+                <td className="whitespace-nowrap px-4 py-3 text-[#6B7280]">
+                  {formatDisplayDate(record.date)}
+                </td>
+
+                <td className="max-w-[190px] truncate px-4 py-3 text-[#6B7280]">
+                  {record.provider || "RHU Staff"}
+                </td>
+
+                <td className="whitespace-nowrap px-4 py-3">
+                  <StatusBadge status={record.status} />
+                </td>
+
+                <td className="whitespace-nowrap px-4 py-3 text-right">
+                  <ActionMenu
+                    record={record}
+                    open={openMenuId === record.id}
+                    onToggle={() =>
+                      setOpenMenuId(openMenuId === record.id ? null : record.id)
+                    }
+                    onClose={() => setOpenMenuId(null)}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-    </th>
+
+      {totalPages > 1 && (
+        <div className="flex flex-col gap-3 border-t border-[#E2E8F0] bg-[#F8FAFC] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-[#64748B]">
+            Showing{" "}
+            <span className="font-medium text-[#0F172A]">{startRecord}</span> to{" "}
+            <span className="font-medium text-[#0F172A]">{endRecord}</span> of{" "}
+            <span className="font-medium text-[#0F172A]">{records.length}</span>{" "}
+            records
+          </p>
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+              disabled={currentPage === 1}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#94A3B8] transition hover:border-[#94A3B8] hover:text-[#475569] disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Previous page"
+            >
+              <ChevronLeft size={14} />
+            </button>
+
+            {Array.from({ length: totalPages }, (_, index) => index + 1).map(
+              (pageNumber) => (
+                <button
+                  key={pageNumber}
+                  type="button"
+                  onClick={() => setCurrentPage(pageNumber)}
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition ${
+                    pageNumber === currentPage
+                      ? "bg-[#B91C1C] text-white shadow-sm"
+                      : "text-[#475569] hover:bg-white"
+                  }`}
+                >
+                  {pageNumber}
+                </button>
+              ),
+            )}
+
+            <button
+              type="button"
+              onClick={() =>
+                setCurrentPage((page) => Math.min(totalPages, page + 1))
+              }
+              disabled={currentPage === totalPages}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#94A3B8] transition hover:border-[#94A3B8] hover:text-[#475569] disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Next page"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
 function StatusBadge({ status }) {
-  const map = {
-    Active: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    "For Monitoring": "border-amber-200 bg-amber-50 text-amber-700",
-    Completed: "border-slate-200 bg-slate-100 text-slate-600",
+  const normalized = normalizeHealthRecordStatus(status);
+  const toneMap = {
+    "Routine Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    "Follow-up Required": "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
+    Complete: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
   };
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-        map[status] || map.Active
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide shadow-sm ${
+        toneMap[normalized] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
       }`}
     >
-      {status}
+      {normalized}
     </span>
   );
 }
@@ -476,7 +470,7 @@ function ActionMenu({ record, open, onToggle, onClose }) {
 
     const rect = btnRef.current.getBoundingClientRect();
     const menuWidth = 192;
-    const menuHeight = 110;
+    const menuHeight = 112;
     const padding = 12;
 
     let top = rect.bottom + 8;
@@ -536,7 +530,7 @@ function ActionMenu({ record, open, onToggle, onClose }) {
           onToggle();
         }}
         className="flex h-8 w-8 items-center justify-center rounded-full text-[#9CA3AF] transition hover:bg-[#F3F4F6] hover:text-[#4B5563]"
-        aria-label={`Open actions for ${record.patient}`}
+        aria-label={`Open actions for ${record.patientName}`}
       >
         <MoreHorizontal size={16} />
       </button>
@@ -572,4 +566,93 @@ function ActionMenu({ record, open, onToggle, onClose }) {
         )}
     </div>
   );
+}
+
+function inferClassification(record) {
+  if (!record) return "General Consultation";
+
+  const source = [
+    record.patientClassification,
+    record.classification,
+    record.category,
+    record.concern,
+    record.chiefComplaint,
+    record.summaryOfPresentIllness,
+    record.diagnosis,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (
+    source.includes("maternal") ||
+    source.includes("prenatal") ||
+    source.includes("pregnan")
+  ) {
+    return "Maternal";
+  }
+
+  if (
+    source.includes("immunization") ||
+    source.includes("vaccine") ||
+    source.includes("vaccination")
+  ) {
+    return "Immunization";
+  }
+
+  if (
+    source.includes("senior") ||
+    source.includes("hypertension") ||
+    source.includes("diabetes")
+  ) {
+    return "Senior Citizen";
+  }
+
+  return "General Consultation";
+}
+
+function normalizeHealthRecordStatus(status) {
+  const value = String(status || "").trim();
+
+  if (!value) return "Routine Monitoring";
+
+  if (["Follow-up", "Follow Up", "Follow-up Required"].includes(value)) {
+    return "Follow-up Required";
+  }
+
+  if (["Completed", "Complete", "Recovered", "Closed"].includes(value)) {
+    return "Complete";
+  }
+
+  if (
+    ["For Monitoring", "Active", "Monitoring", "For Referral"].includes(value)
+  ) {
+    return "Routine Monitoring";
+  }
+
+  return value;
+}
+
+function normalizeDate(value) {
+  if (!value) return "";
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  return parsed.toISOString().slice(0, 10);
+}
+
+function formatDisplayDate(value) {
+  if (!value || value === "No Date") return "No Date";
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) return value;
+
+  return parsed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }

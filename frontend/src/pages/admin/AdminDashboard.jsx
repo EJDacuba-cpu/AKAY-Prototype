@@ -67,7 +67,7 @@ export default function AdminDashboard() {
   return (
     <DashboardLayout role="admin" title="Admin Dashboard">
       <div className="mb-8">
-        <h1 className="text-xl font-bold tracking-tight text-[#0B2E59]">
+        <h1 className="text-xl font-bold tracking-tight text-[#0F172A]">
           MHO / Admin Dashboard
         </h1>
         <p className="mt-1 text-sm text-[#6B7280]">
@@ -138,7 +138,7 @@ export default function AdminDashboard() {
           <section className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
             <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
               <div>
-                <h2 className="text-sm font-semibold text-[#0B2E59]">
+                <h2 className="text-sm font-semibold text-[#0F172A]">
                   Barangay Referral Summary
                 </h2>
                 <p className="mt-1 text-xs text-[#9CA3AF]">
@@ -185,7 +185,7 @@ export default function AdminDashboard() {
                       <td className="px-4 py-3.5">
                         <div className="h-2 w-full overflow-hidden rounded-full bg-[#E8ECF0]">
                           <div
-                            className="h-full rounded-full bg-[#0B2E59]"
+                            className="h-full rounded-full bg-[#B91C1C]"
                             style={{ width: `${item.referrals * 7}%` }}
                           />
                         </div>
@@ -200,7 +200,7 @@ export default function AdminDashboard() {
           <section className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
             <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
               <div>
-                <h2 className="text-sm font-semibold text-[#0B2E59]">
+                <h2 className="text-sm font-semibold text-[#0F172A]">
                   Recent System Activities
                 </h2>
                 <p className="mt-1 text-xs text-[#9CA3AF]">
@@ -210,7 +210,7 @@ export default function AdminDashboard() {
 
               <Link
                 to="/admin/audit-logs"
-                className="text-xs font-semibold text-[#0B2E59] hover:underline"
+                className="text-xs font-semibold text-[#B91C1C] hover:text-[#7F1D1D] hover:underline"
               >
                 View Logs
               </Link>
@@ -222,7 +222,7 @@ export default function AdminDashboard() {
                   key={`${activity.action}-${activity.time}`}
                   className="flex items-start gap-4 px-6 py-4 hover:bg-[#F9FAFB]"
                 >
-                  <div className="mt-0.5 rounded-lg bg-[#0B2E59]/[0.06] p-2 text-[#0B2E59]">
+                  <div className="mt-0.5 rounded-lg bg-[#FEF2F2] p-2 text-[#B91C1C]">
                     <Activity size={15} />
                   </div>
 
@@ -236,7 +236,7 @@ export default function AdminDashboard() {
                   </div>
 
                   <div className="text-right">
-                    <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
                       {activity.type}
                     </span>
                     <p className="mt-1 text-[10px] text-[#9CA3AF]">
@@ -252,12 +252,12 @@ export default function AdminDashboard() {
         <aside className="space-y-6">
           <section className="rounded-xl border border-[#E8ECF0] bg-white p-6">
             <div className="mb-5 flex items-center gap-3">
-              <div className="rounded-xl bg-[#0B2E59]/[0.06] p-3 text-[#0B2E59]">
+              <div className="rounded-xl bg-[#FEF2F2] p-3 text-[#B91C1C]">
                 <Stethoscope size={20} />
               </div>
 
               <div>
-                <h2 className="text-sm font-semibold text-[#0B2E59]">
+                <h2 className="text-sm font-semibold text-[#0F172A]">
                   Doctor Availability
                 </h2>
                 <p className="text-xs text-[#9CA3AF]">
@@ -276,7 +276,7 @@ export default function AdminDashboard() {
                   key={doctor.doctorId || doctor.id}
                   className="rounded-lg border border-[#E8ECF0] bg-[#F8FAFC] p-4"
                 >
-                  <p className="text-sm font-semibold text-[#0B2E59]">
+                  <p className="text-sm font-semibold text-[#0F172A]">
                     {doctor.doctorName || doctor.name}
                   </p>
                   <p className="mt-1 text-xs text-[#6B7280]">
@@ -299,7 +299,7 @@ export default function AdminDashboard() {
               </div>
 
               <div>
-                <h2 className="text-sm font-semibold text-[#0B2E59]">
+                <h2 className="text-sm font-semibold text-[#0F172A]">
                   Inventory Alerts
                 </h2>
                 <p className="text-xs text-[#9CA3AF]">
@@ -315,9 +315,9 @@ export default function AdminDashboard() {
             </div>
           </section>
 
-          <section className="rounded-xl border border-blue-100 bg-blue-50 p-5">
+          <section className="rounded-xl border border-red-100 bg-red-50/70 p-5">
             <p className="text-xs leading-relaxed text-[#4B5563]">
-              <span className="font-semibold text-[#0B2E59]">Note:</span> The
+              <span className="font-semibold text-[#0F172A]">Note:</span> The
               MHO/Admin dashboard is for system oversight. Admin can monitor
               activities and manage accounts, but medical actions remain under
               RHU personnel.
@@ -336,12 +336,12 @@ function QuickCard({ title, description, icon, href }) {
       className="group rounded-xl border border-[#E8ECF0] bg-white p-5 transition-all hover:-translate-y-0.5 hover:shadow-md"
     >
       <div className="flex items-start gap-4">
-        <div className="rounded-xl bg-[#0B2E59]/[0.06] p-3 text-[#0B2E59] transition-colors group-hover:bg-[#0B2E59] group-hover:text-white">
+        <div className="rounded-xl bg-[#FEF2F2] p-3 text-[#B91C1C] transition-colors group-hover:bg-[#B91C1C] group-hover:text-white">
           {icon}
         </div>
 
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-[#0B2E59]">{title}</h2>
+          <h2 className="text-sm font-semibold text-[#0F172A]">{title}</h2>
           <p className="mt-1 text-xs leading-relaxed text-[#6B7280]">
             {description}
           </p>
@@ -353,8 +353,8 @@ function QuickCard({ title, description, icon, href }) {
 
 function StatCard({ title, value, icon, color = "navy" }) {
   const map = {
-    navy: "border-t-[#0B2E59] text-[#0B2E59] bg-blue-50",
-    blue: "border-t-blue-500 text-blue-700 bg-blue-50",
+    navy: "border-t-[#B91C1C] text-[#0F172A] bg-red-50/60",
+    blue: "border-t-slate-400 text-slate-700 bg-slate-50",
     amber: "border-t-amber-400 text-amber-700 bg-amber-50",
     red: "border-t-red-400 text-red-700 bg-red-50",
   };
@@ -378,7 +378,7 @@ function StatCard({ title, value, icon, color = "navy" }) {
         </div>
       </div>
 
-      <p className="mt-4 text-2xl font-bold tracking-tight text-[#0B2E59]">
+      <p className="mt-4 text-2xl font-bold tracking-tight text-[#0F172A]">
         {value}
       </p>
     </div>
@@ -386,8 +386,17 @@ function StatCard({ title, value, icon, color = "navy" }) {
 }
 
 function StatusBadge({ status }) {
+  const map = {
+    Active: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    Inactive: "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
+  };
+
   return (
-    <span className="inline-block whitespace-nowrap rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+    <span
+      className={`inline-block whitespace-nowrap rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+        map[status] || map.Active
+      }`}
+    >
       {status}
     </span>
   );
@@ -395,16 +404,16 @@ function StatusBadge({ status }) {
 
 function DoctorStatusBadge({ status }) {
   const map = {
-    Available: "bg-emerald-50 text-emerald-700",
-    "On Duty": "bg-blue-50 text-blue-700",
-    "Fully Booked": "bg-amber-50 text-amber-700",
-    "On Leave": "bg-red-50 text-red-700",
+    Available: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    "On Duty": "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    "Fully Booked": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    "On Leave": "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
   };
 
   return (
     <span
-      className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-        map[status] || "bg-slate-100 text-slate-600"
+      className={`inline-block rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+        map[status] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
       }`}
     >
       {status}
@@ -415,8 +424,8 @@ function DoctorStatusBadge({ status }) {
 function InventoryAlert({ item, status }) {
   const color =
     status === "Unavailable"
-      ? "bg-red-50 text-red-700"
-      : "bg-amber-50 text-amber-700";
+      ? "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]"
+      : "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]";
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg bg-[#F8FAFC] px-3 py-2">
@@ -425,7 +434,7 @@ function InventoryAlert({ item, status }) {
       </p>
 
       <span
-        className={`flex-shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold ${color}`}
+        className={`flex-shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${color}`}
       >
         {status}
       </span>

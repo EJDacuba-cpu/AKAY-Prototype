@@ -14,14 +14,13 @@ import { stagger } from "../../../utils/animation";
 export default function WorkflowPanel({ delay = 0 }) {
   return (
     <section
-      className="anim-fade-up rounded-2xl border border-[#E8ECF0] bg-white shadow-sm shadow-black/[0.02]"
+      className="anim-fade-up rounded-xl border border-[#E5E7EB] bg-white shadow-sm"
       style={stagger(delay)}
     >
-      {/* Header */}
-      <div className="border-b border-[#F3F4F6] px-5 pt-5 pb-4">
+      <div className="border-b border-[#F3F4F6] px-4 pb-3 pt-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold text-[#1A1A1A]">
+            <h2 className="text-sm font-semibold text-[#0F172A]">
               Quick Actions
             </h2>
             <p className="mt-0.5 text-[11px] text-[#9CA3AF]">
@@ -35,7 +34,6 @@ export default function WorkflowPanel({ delay = 0 }) {
         </div>
       </div>
 
-      {/* Shortcuts */}
       <div className="divide-y divide-[#F5F5F5] p-2">
         <WorkflowShortcut
           href="/bhc/patients/add"
@@ -77,14 +75,12 @@ function WorkflowShortcut({ href, icon, label, title, description }) {
   return (
     <Link
       to={href}
-      className="group flex items-center gap-3.5 rounded-xl px-3 py-3 transition-all duration-200 hover:bg-[#FEF2F2]/60 active:scale-[0.99]"
+      className="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-200 hover:bg-[#FEF2F2]/70 active:scale-[0.99]"
     >
-      {/* Icon — always subtle red, scales on hover */}
-      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#FAFAFA] text-[#9CA3AF] transition-all duration-200 group-hover:bg-red-50 group-hover:text-[#B91C1C] group-hover:shadow-sm group-hover:shadow-red-100">
+      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#FAFAFA] text-[#9CA3AF] transition-all duration-200 group-hover:bg-red-50 group-hover:text-[#B91C1C] group-hover:shadow-sm">
         {icon}
       </div>
 
-      {/* Content */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="text-xs font-semibold text-[#1F2937] group-hover:text-[#1A1A1A]">
@@ -96,12 +92,10 @@ function WorkflowShortcut({ href, icon, label, title, description }) {
         </p>
       </div>
 
-      {/* Label pill — red accent */}
       <span className="flex-shrink-0 rounded-md bg-[#FAFAFA] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#BFBFBF] transition-all duration-200 group-hover:bg-red-50 group-hover:text-[#991B1B]">
         {label}
       </span>
 
-      {/* Arrow — appears on hover */}
       <ArrowRight
         size={14}
         className="flex-shrink-0 text-transparent transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-[#B91C1C]"

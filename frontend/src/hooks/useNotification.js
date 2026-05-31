@@ -16,7 +16,7 @@ export default function useNotification() {
     show: (message) => {
       return toast(message, {
         style: {
-          background: "#0B2E59",
+          background: "#B91C1C",
           color: "#fff",
           borderRadius: "8px",
         },
@@ -43,7 +43,7 @@ export default function useNotification() {
     info: (message) => {
       return toast(message, {
         style: {
-          background: "#0B2E59",
+          background: "#B91C1C",
           color: "#fff",
           borderRadius: "8px",
         },

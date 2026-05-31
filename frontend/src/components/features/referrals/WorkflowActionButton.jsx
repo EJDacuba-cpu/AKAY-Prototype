@@ -2,24 +2,20 @@ import { Link } from "react-router";
 
 const palette = {
   blue: {
-    base: "bg-blue-50 border-blue-200 text-blue-700",
-    hover:
-      "hover:bg-blue-100 hover:border-blue-300 hover:shadow-sm hover:shadow-blue-100",
+    base: "bg-red-50 border-red-100 text-[#B91C1C]",
+    hover: "hover:bg-red-100 hover:border-red-200",
   },
   red: {
     base: "bg-red-50 border-red-200 text-red-700",
-    hover:
-      "hover:bg-red-100 hover:border-red-300 hover:shadow-sm hover:shadow-red-100",
+    hover: "hover:bg-red-100 hover:border-red-300",
   },
   amber: {
     base: "bg-amber-50 border-amber-200 text-amber-700",
-    hover:
-      "hover:bg-amber-100 hover:border-amber-300 hover:shadow-sm hover:shadow-amber-100",
+    hover: "hover:bg-amber-100 hover:border-amber-300",
   },
   emerald: {
     base: "bg-emerald-50 border-emerald-200 text-emerald-700",
-    hover:
-      "hover:bg-emerald-100 hover:border-emerald-300 hover:shadow-sm hover:shadow-emerald-100",
+    hover: "hover:bg-emerald-100 hover:border-emerald-300",
   },
   gray: {
     base: "bg-gray-50 border-gray-200 text-gray-600",

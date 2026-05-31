@@ -194,12 +194,12 @@ export default function HealthRecordDetails() {
     return (
       <DashboardLayout role="bhc" title="Health Record Details">
         <div className="mx-auto max-w-md rounded-2xl border border-slate-100 bg-white p-10 text-center shadow-sm">
-          <h1 className="text-xl font-bold text-[#0B2E59]">
+          <h1 className="text-xl font-bold text-[#0F172A]">
             Health record not found
           </h1>
           <button
             onClick={() => navigate(-1)}
-            className="mt-4 inline-block rounded-xl bg-[#0B2E59] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#071f3d]"
+            className="mt-4 inline-block rounded-xl bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#7F1D1D]"
           >
             Go Back
           </button>
@@ -221,7 +221,7 @@ export default function HealthRecordDetails() {
         <div className="mb-6">
           <button
             onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition hover:text-[#0B2E59]"
+            className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition hover:text-[#0F172A]"
           >
             <ArrowLeft size={15} /> Back to Health Records
           </button>
@@ -229,12 +229,12 @@ export default function HealthRecordDetails() {
           <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2.5">
-                <h1 className="text-xl font-bold text-[#0B2E59]">
+                <h1 className="text-xl font-bold text-[#0F172A]">
                   {record.diagnosis || "Medical Consultation"}
                 </h1>
                 <StatusBadge status={record.followUpStatus || "Consultation"} />
                 {isFollowUp && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#B45309]">
                     <CalendarDays size={12} />
                     Requires Follow-up
                   </span>
@@ -256,7 +256,7 @@ export default function HealthRecordDetails() {
                       Patient:{" "}
                       <Link
                         to={`/bhc/patients/${patient.id || patient._id}`}
-                        className="font-semibold text-[#0B2E59] hover:underline"
+                        className="font-semibold text-[#B91C1C] hover:text-[#7F1D1D] hover:underline"
                       >
                         {patient.name ||
                           `${patient.firstName} ${patient.lastName}`}
@@ -284,7 +284,7 @@ export default function HealthRecordDetails() {
                   <button
                     type="button"
                     onClick={() => setOpenConfirm(true)}
-                    className="flex items-center gap-2 rounded-xl bg-[#0B2E59] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#092347]"
+                    className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
                   >
                     <Check size={14} />
                     Save Changes
@@ -294,14 +294,14 @@ export default function HealthRecordDetails() {
                 <>
                   <Link
                     to={`/bhc/health-records/add?recordId=${record.id || record._id}&mode=edit`}
-                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0B2E59] shadow-sm transition hover:bg-slate-50"
+                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
                   >
                     <Pencil size={14} />
                     Edit Record
                   </Link>
                   <Link
                     to={`/bhc/health-records/add?recordId=${record.id || record._id}&mode=follow-up`}
-                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0B2E59] shadow-sm transition hover:bg-slate-50"
+                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
                   >
                     <FilePlus2 size={14} />
                     Add Follow-up Record
@@ -518,7 +518,7 @@ export default function HealthRecordDetails() {
               >
                 <div className="space-y-4">
                   <div>
-                    <p className="text-sm font-semibold text-[#0B2E59]">
+                    <p className="text-sm font-semibold text-[#0F172A]">
                       Vaccine Schedule
                     </p>
                     <p className="mt-1 text-xs text-slate-400">
@@ -607,7 +607,7 @@ export default function HealthRecordDetails() {
                   <div className="mt-5 border-t border-slate-100 pt-4">
                     <Link
                       to={`/bhc/patients/${patient.id || patient._id}`}
-                      className="flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white py-2.5 text-center text-xs font-semibold text-[#0B2E59] shadow-sm transition hover:bg-slate-50"
+                      className="flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white py-2.5 text-center text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
                     >
                       View Full Patient Profile
                     </Link>
@@ -701,10 +701,10 @@ function getImmunizationGroups(record = {}) {
 function VaccineStatusBadge({ administered }) {
   return (
     <span
-      className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+      className={`inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
         administered
-          ? "bg-emerald-50 text-emerald-700"
-          : "bg-slate-100 text-slate-500"
+          ? "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"
+          : "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
       }`}
     >
       {administered ? "Administered" : "Not Administered"}

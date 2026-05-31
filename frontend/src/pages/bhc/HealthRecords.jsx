@@ -191,7 +191,7 @@ export default function HealthRecords() {
       <DashboardLayout role="bhc" title="Health Records">
         <div className="flex min-h-[60vh] items-center justify-center">
           <div className="flex flex-col items-center gap-3">
-            <div className="h-7 w-7 animate-spin rounded-full border-2 border-slate-200 border-t-[#0B2E59]" />
+            <div className="h-7 w-7 animate-spin rounded-full border-2 border-slate-200 border-t-[#B91C1C]" />
             <p className="text-[12px] font-medium text-slate-400">
               Loading health records...
             </p>
@@ -217,7 +217,7 @@ export default function HealthRecords() {
         actions={
           <Link
             to="/bhc/health-records/add"
-            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347] active:bg-[#071D3A]"
+            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
           >
             <Plus size={14} strokeWidth={2.5} />
             Add Health Record

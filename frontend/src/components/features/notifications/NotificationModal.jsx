@@ -16,9 +16,9 @@ import {
 const typeConfig = {
   referral: {
     label: "REFERRAL RECORD",
-    color: "text-blue-700",
-    bg: "bg-blue-50",
-    border: "border-blue-200",
+    color: "text-red-700",
+    bg: "bg-red-50",
+    border: "border-red-200",
     icon: ClipboardList,
   },
   feedback: {
@@ -37,9 +37,9 @@ const typeConfig = {
   },
   status: {
     label: "REFERRAL STATUS",
-    color: "text-blue-700",
-    bg: "bg-blue-50",
-    border: "border-blue-200",
+    color: "text-red-700",
+    bg: "bg-red-50",
+    border: "border-red-200",
     icon: CheckCircle2,
   },
   followup: {
@@ -65,9 +65,9 @@ const typeConfig = {
   },
   doctor: {
     label: "DOCTOR AVAILABILITY",
-    color: "text-blue-700",
-    bg: "bg-blue-50",
-    border: "border-blue-200",
+    color: "text-slate-700",
+    bg: "bg-slate-50",
+    border: "border-slate-200",
     icon: User,
   },
   account: {
@@ -205,7 +205,7 @@ export default function NotificationModal({
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">
                   Reference ID
                 </p>
-                <p className="font-mono text-sm font-bold text-[#0B2E59]">
+                <p className="font-mono text-sm font-bold text-[#B91C1C]">
                   {notification.referralId}
                 </p>
               </div>
@@ -249,7 +249,7 @@ export default function NotificationModal({
                   onViewRecord(notification);
                   onClose();
                 }}
-                className="flex items-center gap-1.5 rounded-md bg-[#0B2E59] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#092347]"
+                className="flex items-center gap-1.5 rounded-md bg-[#B91C1C] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#991B1B]"
               >
                 <ExternalLink size={12} />
                 {notification.linkLabel || "View Record"}

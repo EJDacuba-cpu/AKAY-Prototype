@@ -51,13 +51,13 @@ export default function NotificationDropdown({
         <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50/50 px-4 py-2.5">
           <button
             onClick={onSeeAll}
-            className="text-[11px] font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+            className="text-[11px] font-medium text-[#B91C1C] hover:text-[#7F1D1D] hover:underline transition-colors"
           >
             See all notifications
           </button>
           <button
             onClick={markAllAsRead}
-            className="text-[11px] font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+            className="text-[11px] font-medium text-[#B91C1C] hover:text-[#7F1D1D] hover:underline transition-colors"
           >
             Mark all as read
           </button>

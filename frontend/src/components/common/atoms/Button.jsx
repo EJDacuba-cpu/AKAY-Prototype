@@ -34,7 +34,7 @@ export default function Button({
   };
 
   const variantClasses = {
-    primary: "bg-[#0B2E59] text-white hover:bg-[#082147] active:bg-[#051530]",
+    primary: "bg-[#B91C1C] text-white hover:bg-[#991B1B] active:bg-[#7F1D1D]",
     secondary:
       "bg-slate-100 text-slate-900 hover:bg-slate-200 active:bg-slate-300",
     danger: "bg-red-600 text-white hover:bg-red-700 active:bg-red-800",

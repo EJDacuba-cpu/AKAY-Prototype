@@ -16,8 +16,8 @@ export default function PatientsTable({
         relative
         z-0
         overflow-visible
-        rounded-2xl
-        border border-[#E8ECF0]
+        rounded-xl
+        border border-[#E5E7EB]
         bg-white
         shadow-sm
         shadow-black/[0.02]
@@ -28,8 +28,8 @@ export default function PatientsTable({
         className="
           flex items-center
           justify-between
-          border-b border-[#F3F4F6]
-          px-6 py-4
+          border-b border-[#F1F5F9]
+          px-4 py-3
         "
       >
         <div
@@ -37,13 +37,13 @@ export default function PatientsTable({
             flex items-center gap-2
           "
         >
-          <Users size={16} className="text-[#2563EB]" />
+          <Users size={16} className="text-[#B91C1C]" />
 
           <h2
             className="
               text-sm
               font-semibold
-              text-[#0B2E59]
+              text-[#0F172A]
             "
           >
             Patient Records
@@ -51,12 +51,13 @@ export default function PatientsTable({
 
           <span
             className="
-              rounded-lg
-              bg-[#F3F4F6]
+              rounded-md
+              border border-[#E5E7EB]
+              bg-[#F8FAFC]
               px-2 py-1
               text-[10px]
               font-semibold
-              text-[#6B7280]
+              text-[#64748B]
             "
           >
             {patients.length}
@@ -91,7 +92,7 @@ export default function PatientsTable({
               overflow-x-auto
               overflow-y-visible
               scroll-smooth
-              px-1 pb-3
+              px-1 pb-2
               [&::-webkit-scrollbar]:h-2
               [&::-webkit-scrollbar-track]:rounded-full
               [&::-webkit-scrollbar-track]:bg-[#F8FAFC]
@@ -114,34 +115,34 @@ export default function PatientsTable({
               <thead>
                 <tr
                   className="
-                    bg-[#F9FAFB]
+                    bg-[#F8FAFC]
                     text-[10px]
                     font-semibold
                     uppercase
                     tracking-wider
-                    text-[#9CA3AF]
+                    text-[#94A3B8]
                   "
                 >
                   {/* Eksaktong lapad sa bawat kolum para may breathing room sila */}
-                  <th className="px-6 py-4 whitespace-nowrap w-[150px]">ID</th>
-                  <th className="px-6 py-4 whitespace-nowrap w-[220px]">
+                  <th className="px-4 py-3 whitespace-nowrap w-[150px]">ID</th>
+                  <th className="px-4 py-3 whitespace-nowrap w-[220px]">
                     Patient Name
                   </th>
 
-                  <th className="px-6 py-4 whitespace-nowrap w-[150px]">
+                  <th className="px-4 py-3 whitespace-nowrap w-[150px]">
                     Contact
                   </th>
-                  <th className="px-6 py-4 whitespace-nowrap w-[150px]">
+                  <th className="px-4 py-3 whitespace-nowrap w-[150px]">
                     Classification
                   </th>
-                  <th className="px-6 py-4 whitespace-nowrap w-[130px]">
+                  <th className="px-4 py-3 whitespace-nowrap w-[130px]">
                     Last Visit
                   </th>
                   <th
                     className="
-                      border-l border-[#F3F4F6]
-                      bg-[#F9FAFB]
-                      px-6 py-4
+                      border-l border-[#F1F5F9]
+                      bg-[#F8FAFC]
+                      px-4 py-3
                       text-right
                       w-[110px]
                     "
@@ -155,7 +156,7 @@ export default function PatientsTable({
               <tbody className="divide-y divide-[#F8FAFC]">
                 {patients.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-16">
+                  <td colSpan={7} className="px-4 py-12">
                       <div
                         className="
                           flex flex-col
@@ -170,7 +171,7 @@ export default function PatientsTable({
                             flex h-14 w-14
                             items-center
                             justify-center
-                            rounded-2xl
+                            rounded-xl
                             bg-[#F8FAFC]
                           "
                         >
@@ -181,7 +182,7 @@ export default function PatientsTable({
                           className="
                             text-sm
                             font-semibold
-                            text-[#0B2E59]
+                            text-[#0F172A]
                           "
                         >
                           No patients found
@@ -210,18 +211,18 @@ export default function PatientsTable({
                       "
                     >
                       {/* ID */}
-                      <td className="px-6 py-5 whitespace-nowrap">
+                      <td className="px-4 py-3.5 whitespace-nowrap">
                         <span
                           className="
                             inline-flex
                             rounded-lg
-                            border border-[#E8ECF0]
-                            bg-[#FAFBFC]
+                            border border-[#E5E7EB]
+                            bg-[#F8FAFC]
                             px-2.5 py-1.5
                             font-mono
                             text-[11px]
                             font-semibold
-                            text-[#0B2E59]
+                            text-[#B91C1C]
                           "
                         >
                           {patient.id}
@@ -229,13 +230,13 @@ export default function PatientsTable({
                       </td>
 
                       {/* Name */}
-                      <td className="px-6 py-5 whitespace-nowrap">
+                      <td className="px-4 py-3.5 whitespace-nowrap">
                         <span
                           className="
                             block truncate
                             text-[13px]
                             font-semibold
-                            text-[#1A1A1A]
+                            text-[#0F172A]
                           "
                         >
                           {patient.name}
@@ -243,7 +244,7 @@ export default function PatientsTable({
                       </td>
 
                       {/* Contact */}
-                      <td className="px-6 py-5 whitespace-nowrap">
+                      <td className="px-4 py-3.5 whitespace-nowrap">
                         <span
                           className="
                             inline-flex
@@ -259,11 +260,11 @@ export default function PatientsTable({
                       </td>
 
                       {/* Classification */}
-                      <td className="px-6 py-5 whitespace-nowrap">
+                      <td className="px-4 py-3.5 whitespace-nowrap">
                         <span
                           className="
                             inline-flex
-                            rounded-full
+                            rounded-md
                             bg-slate-100
                             px-2.5 py-1
                             text-[11px]
@@ -278,7 +279,7 @@ export default function PatientsTable({
                       {/* Last Visit */}
                       <td
                         className="
-                          px-6 py-5
+                          px-4 py-3.5
                           whitespace-nowrap
                           text-[13px]
                           text-[#6B7280]
@@ -288,7 +289,7 @@ export default function PatientsTable({
                       </td>
 
                       {/* Actions */}
-                      <td className="border-l border-[#F3F4F6] bg-white px-6 py-5 text-right group-hover:bg-[#FAFBFD]">
+                      <td className="border-l border-[#F1F5F9] bg-white px-4 py-3.5 text-right group-hover:bg-[#FAFBFD]">
                         <div className="relative flex justify-end">
                           <ActionMenu
                             title={patient.name}

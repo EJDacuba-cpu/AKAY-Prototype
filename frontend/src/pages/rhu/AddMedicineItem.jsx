@@ -48,7 +48,7 @@ export default function AddMedicineItem() {
   return (
     <DashboardLayout role="rhu" title="Add Medicine Item">
       <div className="mb-8">
-        <h1 className="text-xl font-bold tracking-tight text-[#0B2E59]">
+        <h1 className="text-xl font-bold tracking-tight text-[#0F172A]">
           Add Medicine / Resource Item
         </h1>
         <p className="mt-1 text-sm text-[#6B7280]">
@@ -59,7 +59,7 @@ export default function AddMedicineItem() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <section className="rounded-xl border border-[#E8ECF0] bg-white p-6">
-          <h2 className="text-sm font-semibold text-[#0B2E59]">
+          <h2 className="text-sm font-semibold text-[#0F172A]">
             Item Information
           </h2>
 
@@ -144,7 +144,7 @@ export default function AddMedicineItem() {
         </section>
 
         <section className="rounded-xl border border-[#E8ECF0] bg-white p-6">
-          <h2 className="text-sm font-semibold text-[#0B2E59]">
+          <h2 className="text-sm font-semibold text-[#0F172A]">
             Availability Status
           </h2>
           <p className="mt-1 text-xs text-[#6B7280]">
@@ -178,22 +178,22 @@ export default function AddMedicineItem() {
         </section>
 
         <section className="rounded-xl border border-[#E8ECF0] bg-white p-6">
-          <h2 className="text-sm font-semibold text-[#0B2E59]">Notes</h2>
+          <h2 className="text-sm font-semibold text-[#0F172A]">Notes</h2>
 
           <div className="mt-5">
             <textarea
               name="notes"
               value={form.notes}
               onChange={handleChange}
-              className="min-h-28 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 py-3 text-sm outline-none focus:border-[#0B2E59]/20 focus:bg-white focus:ring-4 focus:ring-[#0B2E59]/[0.04]"
+              className="min-h-28 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 py-3 text-sm outline-none focus:border-[#B91C1C]/20 focus:bg-white focus:ring-4 focus:ring-[#B91C1C]/[0.04]"
               placeholder="Example: Available for fever cases, limited supply, for referral-related use only..."
             />
           </div>
         </section>
 
-        <section className="rounded-xl border border-blue-100 bg-blue-50 p-5">
+        <section className="rounded-xl border border-red-100 bg-red-50/70 p-5">
           <p className="text-xs leading-relaxed text-[#4B5563]">
-            <span className="font-semibold text-[#0B2E59]">Note:</span> This
+            <span className="font-semibold text-[#0F172A]">Note:</span> This
             module tracks medicine and resource availability only. It does not
             handle pharmacy dispensing, billing, or prescription transactions.
           </p>
@@ -210,7 +210,7 @@ export default function AddMedicineItem() {
 
           <button
             type="submit"
-            className="rounded-lg bg-[#0B2E59] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#092347]"
+            className="rounded-lg bg-[#B91C1C] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#991B1B]"
           >
             Save Item
           </button>
@@ -241,7 +241,7 @@ function FieldInput({
         onChange={onChange}
         placeholder={placeholder}
         required={required}
-        className="h-10 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 text-sm outline-none focus:border-[#0B2E59]/20 focus:bg-white focus:ring-4 focus:ring-[#0B2E59]/[0.04]"
+        className="h-10 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 text-sm outline-none focus:border-[#B91C1C]/20 focus:bg-white focus:ring-4 focus:ring-[#B91C1C]/[0.04]"
       />
     </div>
   );
@@ -258,7 +258,7 @@ function FieldSelect({ label, name, value, onChange, children, required }) {
         value={value}
         onChange={onChange}
         required={required}
-        className="h-10 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 text-sm outline-none focus:border-[#0B2E59]/20 focus:bg-white focus:ring-4 focus:ring-[#0B2E59]/[0.04]"
+        className="h-10 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 text-sm outline-none focus:border-[#B91C1C]/20 focus:bg-white focus:ring-4 focus:ring-[#B91C1C]/[0.04]"
       >
         {children}
       </select>
@@ -268,20 +268,19 @@ function FieldSelect({ label, name, value, onChange, children, required }) {
 
 function StatusBadge({ status }) {
   const map = {
-    Available: "bg-emerald-50 text-emerald-700",
-    "Low Stock": "bg-amber-50 text-amber-700",
-    Unavailable: "bg-red-50 text-red-700",
-    "Not Set": "bg-slate-100 text-slate-600",
+    Available: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    "Low Stock": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    Unavailable: "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
+    "Not Set": "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
   };
 
   return (
     <span
-      className={`inline-block rounded-md px-3 py-1 text-xs font-semibold ${
-        map[status] || "bg-slate-100 text-slate-600"
+      className={`inline-block rounded-md border px-3 py-1 text-[11px] font-bold uppercase tracking-wide ${
+        map[status] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
       }`}
     >
       {status}
     </span>
   );
 }
-

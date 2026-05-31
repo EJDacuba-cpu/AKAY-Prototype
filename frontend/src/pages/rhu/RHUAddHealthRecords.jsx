@@ -223,6 +223,26 @@ function getImmunizationStats(data) {
   return { completed, remaining, total, pct };
 }
 
+function normalizePatientStatus(status) {
+  const value = String(status || "").trim();
+
+  if (["Follow-up", "Follow Up", "Follow-up Required"].includes(value)) {
+    return "Follow-up Required";
+  }
+
+  if (["Completed", "Complete", "Recovered", "Closed"].includes(value)) {
+    return "Complete";
+  }
+
+  if (
+    ["For Monitoring", "Active", "Monitoring", "For Referral"].includes(value)
+  ) {
+    return "Routine Monitoring";
+  }
+
+  return value || "Routine Monitoring";
+}
+
 function getTimelineNodeStatus(group, data) {
   const statuses = group.vaccines.map((vaccine) =>
     getVaccineStatus(vaccine.field, data),
@@ -248,9 +268,9 @@ export default function AddHealthRecord() {
   const recordId = searchParams.get("recordId");
   const preselectedPatientId = searchParams.get("patientId") || "";
   const linkedTrackingId = searchParams.get("trackingId") || "";
-  const mode = searchParams.get("mode") || (recordId ? "edit" : "create");
+  const mode = searchParams.get("mode") || "";
   const isFollowUp = !!recordId && mode === "follow-up";
-  const isEditingRecord = !!recordId && mode === "edit";
+  const isEditingRecord = !!recordId && !isFollowUp;
 
   const [patients, setPatients] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -308,12 +328,6 @@ export default function AddHealthRecord() {
     feeding_status: "",
   });
 
-  function normalizePatientStatus(status) {
-    if (status === "Follow-up") return "Follow-up Required";
-    if (status === "For Referral") return "Routine Monitoring";
-    return status || "Routine Monitoring";
-  }
-
   useEffect(() => {
     async function loadPatients() {
       const parsedPatients = await getPatientDetailsListByRole("rhu");
@@ -338,8 +352,6 @@ export default function AddHealthRecord() {
       if (!found || !active) return;
 
       setSelectedPatientId(found.patientId || "");
-      if (!isEditingRecord) return;
-
       setDateOfVisit(
         found.dateOfVisit || new Date().toISOString().split("T")[0],
       );
@@ -359,7 +371,9 @@ export default function AddHealthRecord() {
       setPulse(found.pulseRate || found.pulse || "");
       setWeight(found.weight || "");
       setHeight(found.height || "");
-      setFollowUpStatus(normalizePatientStatus(found.followUpStatus));
+      setFollowUpStatus(
+        normalizePatientStatus(found.followUpStatus || found.status),
+      );
       setFollowUpDate(found.followUpDate || "");
       setMonitoringNotes(found.monitoringNotes || "");
       setPatientCondition(found.patientCondition || "Improving");
@@ -373,7 +387,7 @@ export default function AddHealthRecord() {
     return () => {
       active = false;
     };
-  }, [recordId, isEditingRecord]);
+  }, [recordId]);
 
   useEffect(() => {
     async function loadFollowUpPreview() {
@@ -592,8 +606,10 @@ export default function AddHealthRecord() {
   }
 
   function handlePatientStatusChange(value) {
-    setFollowUpStatus(value);
-    if (value !== "Follow-up Required") {
+    const normalizedStatus = normalizePatientStatus(value);
+    setFollowUpStatus(normalizedStatus);
+
+    if (normalizedStatus !== "Follow-up Required") {
       setFollowUpDate("");
     }
   }
@@ -617,6 +633,7 @@ export default function AddHealthRecord() {
     const vitalSigns = `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | Pulse: ${
       pulse || "N/A"
     } bpm | Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
+    const finalPatientStatus = normalizePatientStatus(followUpStatus);
 
     try {
       const records = await getRhuHealthRecords();
@@ -651,7 +668,7 @@ export default function AddHealthRecord() {
         initialActionsTaken: medication,
         attendingStaff,
         consultationNotes,
-        followUpStatus: normalizePatientStatus(followUpStatus),
+        followUpStatus: finalPatientStatus,
         followUpDate,
         monitoringNotes,
         patientCondition,
@@ -664,13 +681,9 @@ export default function AddHealthRecord() {
         expectedDeliveryDate,
         aog,
         immunizationData,
-        linkedTrackingId:
-          linkedTrackingId ||
-          (isFollowUp ? followUpRecord?.linkedTrackingId || "" : ""),
+        linkedTrackingId,
         previousRecordId: isFollowUp ? recordId : "",
-        recordType: isFollowUp ? "Follow-up" : existingRecord?.recordType,
-        isFollowUp,
-        status: followUpStatus === "Completed" ? "Completed" : "Active",
+        status: finalPatientStatus,
         recordedBy: attendingStaff || "RHU Staff",
         createdByRole: "rhu",
         updatedAt: now,
@@ -748,7 +761,7 @@ export default function AddHealthRecord() {
             <PatientSearchDropdown
               inputRef={inputRef}
               dropdownRef={dropdownRef}
-              disabled={isFollowUp || isEditingRecord}
+              disabled={isFollowUp}
               dropdownOpen={dropdownOpen}
               selectedPatientId={selectedPatientId}
               selectedPatient={selectedPatient}
@@ -758,15 +771,13 @@ export default function AddHealthRecord() {
               highlightIndex={highlightIndex}
               onSearchChange={handlePatientSearchChange}
               onOpen={() => {
-                if (isFollowUp || isEditingRecord) return;
+                if (isFollowUp) return;
                 setSearchTerm("");
                 setDropdownOpen(true);
               }}
               onClear={clearSelectedPatient}
               onSelect={selectPatient}
               onHighlight={setHighlightIndex}
-              noResultsTitle="No RHU patients found."
-              noResultsDescription="RHU patients appear here after direct RHU registration or after an incoming referral is marked as received."
             />
           </FormSection>
         </div>
@@ -999,11 +1010,13 @@ export default function AddHealthRecord() {
             <FieldSelect
               label="Patient Status"
               value={followUpStatus}
-              onChange={(event) => handlePatientStatusChange(event.target.value)}
+              onChange={(event) =>
+                handlePatientStatusChange(event.target.value)
+              }
             >
               <option>Routine Monitoring</option>
               <option>Follow-up Required</option>
-              <option>Completed</option>
+              <option>Complete</option>
             </FieldSelect>
             {followUpStatus === "Follow-up Required" && (
               <FieldInput
@@ -1085,8 +1098,6 @@ function PatientSearchDropdown({
   onClear,
   onSelect,
   onHighlight,
-  noResultsTitle = "No patients found",
-  noResultsDescription = "Try a different name, ID, contact number, or barangay.",
 }) {
   return (
     <div className="relative z-[9999]">
@@ -1155,10 +1166,10 @@ function PatientSearchDropdown({
             <div className="px-3.5 py-8 text-center">
               <Search size={20} className="mx-auto mb-2 text-[#D4D4D4]" />
               <p className="text-xs font-medium text-[#9CA3AF]">
-                {noResultsTitle}
+                No patients found
               </p>
               <p className="mt-0.5 text-[10px] text-[#D4D4D4]">
-                {noResultsDescription}
+                Try a different name, ID, contact number, or barangay.
               </p>
             </div>
           ) : (

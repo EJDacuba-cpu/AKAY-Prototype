@@ -169,59 +169,6 @@ export default function MedicineAvailability() {
 
   return (
     <DashboardLayout role="bhc" title="Medicine Availability">
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-[#0B2E59]">
-            Medicine Availability
-          </h1>
-          <p className="mt-1 text-sm text-[#6B7280]">
-            Manage BHC stock and view RHU medicine availability for referral
-            coordination.
-          </p>
-        </div>
-
-        <div className="flex w-fit items-center gap-1.5 rounded-lg bg-[#F1F5F9] p-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab("bhc")}
-            className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-[11.5px] font-medium transition-all ${
-              activeTab === "bhc"
-                ? "bg-white text-[#0F172A] shadow-sm"
-                : "text-[#64748B] hover:text-[#0F172A]"
-            }`}
-          >
-            <Package
-              size={13}
-              className={activeTab === "bhc" ? "text-[#0B2E59]" : ""}
-            />
-            BHC Inventory
-            {lowStockCount > 0 && (
-              <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#FEF3C7] px-1 text-[9px] font-bold text-[#B45309]">
-                {lowStockCount}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("rhu")}
-            className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-[11.5px] font-medium transition-all ${
-              activeTab === "rhu"
-                ? "bg-white text-[#0F172A] shadow-sm"
-                : "text-[#64748B] hover:text-[#0F172A]"
-            }`}
-          >
-            <Eye
-              size={13}
-              className={activeTab === "rhu" ? "text-[#0B2E59]" : ""}
-            />
-            RHU Availability
-            <span className="rounded-md bg-[#EFF6FF] px-1.5 py-0.5 text-[9px] font-bold text-[#2563EB]">
-              View-only
-            </span>
-          </button>
-        </div>
-      </div>
-
       <ListToolbar
         searchValue={filters.search}
         onSearchChange={(value) => updateFilter("search", value)}
@@ -242,7 +189,7 @@ export default function MedicineAvailability() {
             <button
               type="button"
               onClick={openAddModal}
-              className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347]"
+              className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
             >
               <Plus size={15} />
               Add Medicine
@@ -251,19 +198,53 @@ export default function MedicineAvailability() {
         }
       />
 
-      {activeTab === "rhu" && (
-        <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
-          <p className="text-xs leading-relaxed text-[#4B5563]">
-            RHU medicine availability is updated by RHU staff and shown here for
-            referral coordination.
-          </p>
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex w-fit items-center gap-1.5 rounded-lg bg-[#F1F5F9] p-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab("bhc")}
+            className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-[11.5px] font-medium transition-all ${
+              activeTab === "bhc"
+                ? "bg-white text-[#0F172A] shadow-sm"
+                : "text-[#64748B] hover:text-[#0F172A]"
+            }`}
+          >
+            <Package
+              size={13}
+              className={activeTab === "bhc" ? "text-[#0F172A]" : ""}
+            />
+            BHC Inventory
+            {lowStockCount > 0 && (
+              <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#FEF3C7] px-1 text-[9px] font-bold text-[#B45309]">
+                {lowStockCount}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("rhu")}
+            className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-[11.5px] font-medium transition-all ${
+              activeTab === "rhu"
+                ? "bg-white text-[#0F172A] shadow-sm"
+                : "text-[#64748B] hover:text-[#0F172A]"
+            }`}
+          >
+            <Eye
+              size={13}
+              className={activeTab === "rhu" ? "text-[#0F172A]" : ""}
+            />
+            RHU Availability
+            <span className="rounded-md bg-[#FEF2F2] px-1.5 py-0.5 text-[9px] font-bold text-[#B91C1C]">
+              View-only
+            </span>
+          </button>
         </div>
-      )}
+      </div>
 
       <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
         <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
           <div>
-            <h2 className="text-sm font-semibold text-[#0B2E59]">
+            <h2 className="text-sm font-semibold text-[#0F172A]">
               {activeTab === "bhc"
                 ? "BHC Medicine Inventory"
                 : "RHU Medicine Availability"}
@@ -330,14 +311,11 @@ function MedicineTable({
         <tbody className="divide-y divide-[#F3F4F6]">
           {items.length === 0 ? (
             <tr>
-              <td
-                colSpan={editable ? 9 : 8}
-                className="px-6 py-20 text-center"
-              >
+              <td colSpan={editable ? 9 : 8} className="px-6 py-20 text-center">
                 <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F3F4F6]">
                   <Boxes size={20} className="text-[#9CA3AF]" />
                 </div>
-                <p className="text-sm font-semibold text-[#0B2E59]">
+                <p className="text-sm font-semibold text-[#0F172A]">
                   No medicines found
                 </p>
                 <p className="mt-1 text-xs text-[#9CA3AF]">
@@ -352,7 +330,7 @@ function MedicineTable({
                 className="transition-colors hover:bg-[#F9FAFB]"
               >
                 <td className="whitespace-nowrap px-6 py-3.5">
-                  <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0B2E59]">
+                  <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0F172A]">
                     {item.id}
                   </span>
                 </td>
@@ -509,7 +487,7 @@ function ActionMenu({ item, open, onToggle, onClose, onEdit, onDelete }) {
           if (!open) updatePosition();
           onToggle();
         }}
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E8ECF0] bg-white text-[#9CA3AF] transition hover:bg-[#F9FAFB] hover:text-[#0B2E59]"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E8ECF0] bg-white text-[#9CA3AF] transition hover:bg-[#F9FAFB] hover:text-[#0F172A]"
         aria-label={`Actions for ${item.name}`}
       >
         <MoreVertical size={15} />
@@ -517,51 +495,51 @@ function ActionMenu({ item, open, onToggle, onClose, onEdit, onDelete }) {
 
       {open &&
         createPortal(
-        <div
-          ref={menuRef}
-          className="fixed z-[9999] w-44 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-lg"
-          style={{ top: position.top, left: position.left }}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              onEdit();
-              onClose();
-            }}
-            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#0B2E59]"
+          <div
+            ref={menuRef}
+            className="fixed z-[9999] w-44 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-lg"
+            style={{ top: position.top, left: position.left }}
           >
-            <Edit3 size={14} className="text-[#9CA3AF]" />
-            Edit
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              onDelete();
-              onClose();
-            }}
-            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-red-700 transition hover:bg-red-50"
-          >
-            <Trash2 size={14} />
-            Delete
-          </button>
-        </div>,
-        document.body,
-      )}
+            <button
+              type="button"
+              onClick={() => {
+                onEdit();
+                onClose();
+              }}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#0F172A]"
+            >
+              <Edit3 size={14} className="text-[#9CA3AF]" />
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onDelete();
+                onClose();
+              }}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-red-700 transition hover:bg-red-50"
+            >
+              <Trash2 size={14} />
+              Delete
+            </button>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
 
 function StatusBadge({ status }) {
   const map = {
-    Available: "bg-emerald-50 text-emerald-700",
-    "Low Stock": "bg-amber-50 text-amber-700",
-    Unavailable: "bg-red-50 text-red-700",
+    Available: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    "Low Stock": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    Unavailable: "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
   };
 
   return (
     <span
-      className={`inline-block whitespace-nowrap rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-        map[status] || "bg-slate-100 text-slate-600"
+      className={`inline-block whitespace-nowrap rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+        map[status] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
       }`}
     >
       {status}
@@ -571,7 +549,7 @@ function StatusBadge({ status }) {
 
 function CategoryBadge({ category }) {
   const map = {
-    "Basic Medicines": "bg-blue-50 text-blue-700",
+    "Basic Medicines": "bg-slate-100 text-slate-700",
     Vaccines: "bg-violet-50 text-violet-700",
     "Medical Supplies": "bg-slate-100 text-slate-600",
     "Maternal Care Supplies": "bg-rose-50 text-rose-700",
@@ -592,14 +570,14 @@ function CategoryBadge({ category }) {
 
 function ExpiryBadge({ status }) {
   const map = {
-    Valid: "bg-emerald-50 text-emerald-700",
-    "Expiring Soon": "bg-amber-50 text-amber-700",
-    Expired: "bg-red-50 text-red-700",
+    Valid: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    "Expiring Soon": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    Expired: "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
   };
 
   return (
     <span
-      className={`w-fit rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+      className={`w-fit rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
         map[status] || map.Valid
       }`}
     >

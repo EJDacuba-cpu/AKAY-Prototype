@@ -1,13 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
-import {
-  KeyRound,
-  MoreHorizontal,
-  Plus,
-  UserCheck,
-  UserX,
-} from "lucide-react";
+import { KeyRound, MoreHorizontal, Plus, UserCheck, UserX } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ListToolbar from "../../components/common/list/ListToolbar";
@@ -263,7 +257,7 @@ export default function UserManagement() {
         />
 
         {noticeMessage && (
-          <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs font-medium leading-relaxed text-[#0B2E59]">
+          <div className="rounded-xl border border-red-100 bg-red-50/70 px-4 py-3 text-xs font-medium leading-relaxed text-[#0F172A]">
             {noticeMessage}
           </div>
         )}
@@ -303,7 +297,7 @@ function AccountsTable({ users, onChangePassword, onUpdateStatus }) {
             <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
               <th className="w-[120px] px-6 py-3">User ID</th>
               <th className="w-[260px] px-4 py-3">Account</th>
-              <th className="w-[190px] px-4 py-3">Role / Position</th>
+              <th className="w-[140px] px-4 py-3">Role</th>
               <th className="px-4 py-3">Facility</th>
               <th className="w-[120px] px-4 py-3">Status</th>
               <th className="w-[90px] px-6 py-3 text-right">Actions</th>
@@ -323,7 +317,7 @@ function AccountsTable({ users, onChangePassword, onUpdateStatus }) {
                   className="transition-colors hover:bg-[#F9FAFB]"
                 >
                   <td className="whitespace-nowrap px-6 py-3.5 align-middle">
-                    <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0B2E59]">
+                    <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0F172A]">
                       {user.id}
                     </span>
                   </td>
@@ -338,12 +332,7 @@ function AccountsTable({ users, onChangePassword, onUpdateStatus }) {
                   </td>
 
                   <td className="px-4 py-3.5 align-middle">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <RoleBadge role={user.role} />
-                      <span className="max-w-[130px] truncate text-xs font-medium text-[#6B7280]">
-                        {user.position || "Unassigned"}
-                      </span>
-                    </div>
+                    <RoleBadge role={user.role} />
                   </td>
 
                   <td className="px-4 py-3.5 align-middle">
@@ -377,7 +366,7 @@ function TableHeader({ title, description, count }) {
   return (
     <div className="flex flex-col gap-2 border-b border-[#E8ECF0] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <h2 className="text-sm font-semibold text-[#0B2E59]">{title}</h2>
+        <h2 className="text-sm font-semibold text-[#0F172A]">{title}</h2>
         <p className="mt-1 text-xs text-[#9CA3AF]">{description}</p>
       </div>
 
@@ -401,6 +390,7 @@ function EmptyRow({ colSpan, message }) {
   );
 }
 
+// ... Rest of your code (AccountActions, ChangePasswordModal, RoleBadge, StatusBadge, getDisplayName) remains completely untouched
 function AccountActions({ user, onChangePassword, onUpdateStatus }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -572,7 +562,7 @@ function ChangePasswordModal({ user, onClose, onSubmit }) {
           <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
             Admin Password Update
           </p>
-          <h2 className="mt-1 text-lg font-bold text-[#0B2E59]">
+          <h2 className="mt-1 text-lg font-bold text-[#0F172A]">
             Change Password
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-[#6B7280]">
@@ -640,7 +630,7 @@ function ChangePasswordModal({ user, onClose, onSubmit }) {
 function RoleBadge({ role }) {
   const map = {
     Admin: "bg-purple-50 text-purple-700 border-purple-200",
-    BHC: "bg-blue-50 text-blue-700 border-blue-200",
+    BHC: "bg-red-50 text-red-700 border-red-200",
     RHU: "bg-emerald-50 text-emerald-700 border-emerald-200",
   };
 
@@ -657,14 +647,14 @@ function RoleBadge({ role }) {
 
 function StatusBadge({ status }) {
   const map = {
-    Active: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    Inactive: "bg-red-50 text-red-700 border-red-200",
+    Active: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    Inactive: "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
   };
 
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-        map[status] || "border-slate-200 bg-slate-50 text-slate-600"
+        map[status] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
       }`}
     >
       {status || "Active"}

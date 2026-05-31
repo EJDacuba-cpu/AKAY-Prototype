@@ -63,7 +63,7 @@ function Unauthorized() {
         </p>
         <a
           href="/login"
-          className="mt-6 inline-block rounded-xl bg-[#0B2E59] px-4 py-2 font-semibold text-white"
+          className="mt-6 inline-block rounded-xl bg-[#B91C1C] px-4 py-2 font-semibold text-white"
         >
           Back to Login
         </a>

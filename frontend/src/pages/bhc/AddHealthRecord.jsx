@@ -1189,7 +1189,7 @@ function PatientSearchDropdown({
                     onClick={() => onSelect(patient.id)}
                     className={`flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors duration-100 ${
                       isHighlighted
-                        ? "bg-[#B91C1C]/[0.06]"
+                        ? "bg-[#FEF2F2]"
                         : isSelected
                           ? "bg-red-50"
                           : "hover:bg-[#FAFBFC]"
@@ -1217,7 +1217,7 @@ function PatientSearchDropdown({
                           {display.name}
                         </p>
                         {(patient.id || patient.patientId) && (
-                          <span className="shrink-0 rounded-md border border-[#E8ECF0] bg-[#F8FAFC] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-[#0B2E59]">
+                          <span className="shrink-0 rounded-md border border-[#E8ECF0] bg-[#F8FAFC] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-[#0F172A]">
                             {patient.patientId || patient.id}
                           </span>
                         )}
@@ -1293,7 +1293,7 @@ function SelectedPatientPreview({ patient }) {
       {(patient.patientId || patient.id) && (
         <>
           <span className="text-slate-300">•</span>
-          <span className="font-mono text-[10px] font-semibold text-[#0B2E59]">
+          <span className="font-mono text-[10px] font-semibold text-[#0F172A]">
             {patient.patientId || patient.id}
           </span>
         </>
@@ -1477,26 +1477,30 @@ function StatusChip({ status, compact }) {
   const map = {
     administered: {
       label: "Administered",
-      bg: "bg-emerald-50",
-      text: "text-emerald-700",
+      bg: "bg-[#ECFDF5]",
+      text: "text-[#047857]",
+      border: "border-[#A7F3D0]",
       icon: <Check size={compact ? 8 : 9} strokeWidth={3} />,
     },
     upcoming: {
       label: "Upcoming",
-      bg: "bg-amber-50",
-      text: "text-amber-700",
+      bg: "bg-[#FFFBEB]",
+      text: "text-[#B45309]",
+      border: "border-[#FDE68A]",
       icon: <Clock size={compact ? 8 : 9} />,
     },
     behind: {
       label: "Behind Schedule",
-      bg: "bg-red-50",
-      text: "text-red-600",
+      bg: "bg-[#FEF2F2]",
+      text: "text-[#B91C1C]",
+      border: "border-[#FECACA]",
       icon: <X size={compact ? 8 : 9} strokeWidth={3} />,
     },
     locked: {
       label: "Not Yet Available",
-      bg: "bg-gray-100",
-      text: "text-gray-400",
+      bg: "bg-[#F1F5F9]",
+      text: "text-[#475569]",
+      border: "border-[#CBD5E1]",
       icon: <Lock size={compact ? 8 : 9} />,
     },
   };
@@ -1507,7 +1511,7 @@ function StatusChip({ status, compact }) {
     : "rounded-lg px-2 py-0.5 text-[10px]";
   return (
     <span
-      className={`inline-flex items-center gap-1 whitespace-nowrap font-semibold ${config.bg} ${config.text} ${size}`}
+      className={`inline-flex items-center gap-1 whitespace-nowrap border font-bold uppercase tracking-wide ${config.bg} ${config.text} ${config.border} ${size}`}
     >
       {config.icon}
       {config.label}
@@ -1718,15 +1722,22 @@ function VaccineTimelineNode({ group, data, nextField, onChange }) {
   const nodeChip = {
     completed: {
       label: "Completed",
-      bg: "bg-emerald-50",
-      text: "text-emerald-700",
+      bg: "bg-[#ECFDF5]",
+      text: "text-[#047857]",
+      border: "border-[#A7F3D0]",
     },
     "in-progress": {
       label: `${doneCount}/${totalCount}`,
-      bg: "bg-amber-50",
-      text: "text-amber-700",
+      bg: "bg-[#FFFBEB]",
+      text: "text-[#B45309]",
+      border: "border-[#FDE68A]",
     },
-    pending: { label: "Pending", bg: "bg-gray-100", text: "text-gray-400" },
+    pending: {
+      label: "Pending",
+      bg: "bg-[#F1F5F9]",
+      text: "text-[#475569]",
+      border: "border-[#CBD5E1]",
+    },
   };
   const chip = nodeChip[nodeStatus];
 
@@ -1743,7 +1754,7 @@ function VaccineTimelineNode({ group, data, nextField, onChange }) {
           {group.sublabel}
         </span>
         <span
-          className={`ml-auto rounded-lg px-2 py-0.5 text-[10px] font-semibold ${chip.bg} ${chip.text}`}
+          className={`ml-auto rounded-lg border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${chip.bg} ${chip.text} ${chip.border}`}
         >
           {chip.label}
         </span>

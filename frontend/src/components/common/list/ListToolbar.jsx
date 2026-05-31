@@ -79,7 +79,7 @@ export default function ListToolbar({
   }
 
   return (
-    <div className="mb-4 rounded-xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
+    <div className="mb-4 rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm sm:p-4">
       <div ref={rootRef} className="relative">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
           <div className="relative min-w-0 flex-1">
@@ -92,13 +92,13 @@ export default function ListToolbar({
               value={searchValue}
               onChange={(event) => onSearchChange?.(event.target.value)}
               placeholder={searchPlaceholder}
-              className="h-11 w-full rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] pl-9 pr-3 text-[13px] text-[#0F172A] outline-none transition-all placeholder:text-[#94A3B8] focus:border-[#CBD5E1] focus:bg-white focus:ring-1"
+              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] pl-9 pr-3 text-[13px] text-[#0F172A] outline-none transition-all placeholder:text-[#94A3B8] focus:border-[#FCA5A5] focus:bg-white focus:ring-2"
               style={{ "--tw-ring-color": `${accent}1A` }}
             />
           </div>
 
           {chip && (
-            <div className="inline-flex h-11 shrink-0 items-center rounded-lg border border-[#E2E8F0] bg-[#FAFBFC] px-3 text-[11px] font-semibold text-[#475569]">
+            <div className="inline-flex h-10 shrink-0 items-center rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 text-[11px] font-semibold text-[#475569]">
               {chip}
             </div>
           )}
@@ -107,7 +107,7 @@ export default function ListToolbar({
             <button
               type="button"
               onClick={toggleFilters}
-              className={`flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition-colors ${
+              className={`flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition-colors ${
                 open || activeFilterCount > 0
                   ? "border-red-100 bg-red-50 text-[#B91C1C]"
                   : "border-[#E2E8F0] bg-white text-[#64748B] hover:border-red-100 hover:bg-red-50/40 hover:text-[#B91C1C]"
@@ -127,7 +127,7 @@ export default function ListToolbar({
         </div>
 
         {open && (
-          <div className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-full max-w-[340px] rounded-xl border border-[#E2E8F0] bg-white p-4 shadow-xl shadow-black/[0.08]">
+          <div className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-full max-w-[340px] rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-xl shadow-black/[0.08]">
             <div className="space-y-3">
               {filters.map((field) => (
                 <div key={field.key}>
@@ -142,7 +142,7 @@ export default function ListToolbar({
                       onChange={(event) =>
                         updateDraft(field.key, event.target.value)
                       }
-                      className="h-10 w-full rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#B91C1C]/10"
+                      className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#FCA5A5] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10"
                     />
                   ) : (
                     <select
@@ -150,7 +150,7 @@ export default function ListToolbar({
                       onChange={(event) =>
                         updateDraft(field.key, event.target.value)
                       }
-                      className="h-10 w-full appearance-none rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#B91C1C]/10"
+                      className="h-10 w-full appearance-none rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#FCA5A5] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10"
                     >
                       {field.options?.map((option) => {
                         const item = formatOption(option);

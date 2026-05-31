@@ -202,12 +202,12 @@ export default function PatientDetails() {
     return (
       <DashboardLayout role="bhc" title="Patient Details">
         <div className="mx-auto max-w-md rounded-3xl border border-slate-100 bg-white p-10 text-center shadow-sm">
-          <h1 className="text-xl font-bold text-[#0B2E59]">
+          <h1 className="text-xl font-bold text-[#0F172A]">
             Patient not found
           </h1>
           <Link
             to="/bhc/patients"
-            className="mt-4 inline-block rounded-xl bg-[#0B2E59] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#071f3d]"
+            className="mt-4 inline-block rounded-xl bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#7F1D1D]"
           >
             Back to Patients
           </Link>
@@ -230,7 +230,7 @@ export default function PatientDetails() {
         <div className="mb-6">
           <Link
             to="/bhc/patients"
-            className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#0B2E59]"
+            className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#0F172A]"
           >
             <ArrowLeft size={16} />
             Back to Patients
@@ -239,11 +239,11 @@ export default function PatientDetails() {
           <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-start">
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-3xl font-bold tracking-tight text-[#0B2E59]">
+                <h1 className="text-3xl font-bold tracking-tight text-[#0F172A]">
                   {patient.name || `${patient.firstName} ${patient.lastName}`}
                 </h1>
                 {isUnderMonitoring && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#B45309]">
                     <CalendarDays size={12} />
                     Under Monitoring
                   </span>
@@ -264,14 +264,14 @@ export default function PatientDetails() {
                   <Phone size={12} className="text-slate-400" />
                   {patient.contact || "—"}
                 </span>
-                <span className="inline-flex items-center gap-1.5 rounded-lg bg-[#0B2E59]/5 px-3 py-1.5 text-xs font-semibold text-[#0B2E59]">
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-[#FEF2F2] px-3 py-1.5 text-xs font-semibold text-[#0F172A]">
                   {patient.category || "General"}
                 </span>
               </div>
 
               <p className="text-sm text-slate-500">
                 Latest Consultation:{" "}
-                <span className="font-semibold text-[#0B2E59]">
+                <span className="font-semibold text-[#0F172A]">
                   {safeRecords[0]?.chiefComplaint || "No record yet"}
                 </span>
               </p>
@@ -295,7 +295,7 @@ export default function PatientDetails() {
                       <button
                         type="button"
                         onClick={() => setOpenConfirm(true)}
-                        className="flex items-center gap-2 rounded-xl bg-[#0B2E59] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#092347]"
+                        className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
                       >
                         <Check size={14} /> Save Changes
                       </button>
@@ -304,7 +304,7 @@ export default function PatientDetails() {
                     <button
                       type="button"
                       onClick={() => setIsEditing(true)}
-                      className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-semibold text-[#0B2E59] shadow-sm transition hover:bg-slate-50"
+                      className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
                     >
                       <Pencil size={14} /> Edit Profile
                     </button>
@@ -316,7 +316,7 @@ export default function PatientDetails() {
               {activeTab === "records" && (
                 <Link
                   to={`/bhc/health-records/add?patientId=${patient.id || patientId}`}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#0B2E59] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#092347]"
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
                 >
                   <Plus size={14} />
                   Add Health Record
@@ -330,21 +330,21 @@ export default function PatientDetails() {
           <button
             type="button"
             onClick={() => handleTabChange("patient")}
-            className={`border-b-2 px-5 py-3 text-sm font-semibold transition-all duration-150 ${activeTab === "patient" ? "border-b-2 border-[#0B2E59] text-[#0B2E59]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+            className={`border-b-2 px-5 py-3 text-sm font-semibold transition-all duration-150 ${activeTab === "patient" ? "border-b-2 border-[#B91C1C] text-[#B91C1C]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
           >
             Patient Information
           </button>
           <button
             type="button"
             onClick={() => handleTabChange("records")}
-            className={`border-b-2 px-5 py-3 text-sm font-semibold transition-all duration-150 ${activeTab === "records" ? "border-b-2 border-[#0B2E59] text-[#0B2E59]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+            className={`border-b-2 px-5 py-3 text-sm font-semibold transition-all duration-150 ${activeTab === "records" ? "border-b-2 border-[#B91C1C] text-[#B91C1C]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
           >
             Health Records ({safeRecords.length})
           </button>
           <button
             type="button"
             onClick={() => handleTabChange("referrals")}
-            className={`border-b-2 px-5 py-3 text-sm font-semibold transition-all duration-150 ${activeTab === "referrals" ? "border-b-2 border-[#0B2E59] text-[#0B2E59]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+            className={`border-b-2 px-5 py-3 text-sm font-semibold transition-all duration-150 ${activeTab === "referrals" ? "border-b-2 border-[#B91C1C] text-[#B91C1C]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
           >
             Referral History ({safeReferrals.length})
           </button>
@@ -366,7 +366,7 @@ export default function PatientDetails() {
                   {isEditing ? (
                     <div className="space-y-8 mt-6">
                       <div>
-                        <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0B2E59]">
+                        <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0F172A]">
                           General Information
                         </h3>
                         <div className="grid gap-5 md:grid-cols-2">
@@ -536,7 +536,7 @@ export default function PatientDetails() {
                         </div>
                       )}
                       <div>
-                        <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0B2E59]">
+                        <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0F172A]">
                           Clinical Notes
                         </h3>
                         <FormTextarea
@@ -550,7 +550,7 @@ export default function PatientDetails() {
                   ) : (
                     <div className="space-y-8 mt-6">
                       <div>
-                        <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0B2E59]">
+                        <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0F172A]">
                           General Information
                         </h3>
                         <div className="grid gap-x-8 gap-y-1 md:grid-cols-2">
@@ -675,7 +675,7 @@ export default function PatientDetails() {
                         </div>
                       )}
                       <div>
-                        <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0B2E59]">
+                        <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0F172A]">
                           Clinical Notes
                         </h3>
                         <PatientDetailItem
@@ -763,7 +763,7 @@ export default function PatientDetails() {
           {activeTab === "records" && (
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
               <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
-                <h2 className="text-sm font-bold text-[#0B2E59]">
+                <h2 className="text-sm font-bold text-[#0F172A]">
                   Health Record History
                 </h2>
                 <p className="text-xs text-slate-400">
@@ -802,14 +802,14 @@ export default function PatientDetails() {
                                 {record.timeOfVisit || "—"}
                               </div>
                             </td>
-                            <td className="px-6 py-4 text-[#0B2E59] font-semibold">
+                            <td className="px-6 py-4 text-[#0F172A] font-semibold">
                               {record.chiefComplaint ||
                                 "No Chief Complaint Noted"}
                             </td>
                             <td className="whitespace-nowrap px-6 py-4">
-                              <span className="inline-flex rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
-                                {record.followUpStatus || "Consultation"}
-                              </span>
+                              <RecordStatusBadge
+                                status={record.followUpStatus || "Consultation"}
+                              />
                             </td>
                             <td className="whitespace-nowrap px-6 py-4 text-right">
                               <button
@@ -817,7 +817,7 @@ export default function PatientDetails() {
                                 onClick={() =>
                                   navigate(`/bhc/health-records/${currentId}`)
                                 }
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-[#0B2E59] shadow-sm transition hover:bg-slate-50 hover:text-[#092347]"
+                                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-[#0F172A] shadow-sm transition hover:bg-slate-50 hover:text-[#991B1B]"
                               >
                                 <Eye size={12} /> View Full Record
                               </button>
@@ -835,7 +835,7 @@ export default function PatientDetails() {
           {activeTab === "referrals" && (
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
               <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
-                <h2 className="text-sm font-bold text-[#0B2E59]">
+                <h2 className="text-sm font-bold text-[#0F172A]">
                   Referral Tracking Logs
                 </h2>
                 <p className="text-xs text-slate-400">
@@ -870,7 +870,7 @@ export default function PatientDetails() {
                           className="transition-colors hover:bg-slate-50/80"
                         >
                           <td className="whitespace-nowrap px-6 py-4">
-                            <span className="font-mono text-xs font-bold text-[#0B2E59]">
+                            <span className="font-mono text-xs font-bold text-[#0F172A]">
                               {ref.trackingId || ref.id}
                             </span>
                           </td>
@@ -900,7 +900,7 @@ export default function PatientDetails() {
                                   `/bhc/referrals/${ref.trackingId || ref.id}`,
                                 )
                               }
-                              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0B2E59] shadow-sm transition hover:bg-slate-50"
+                              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
                             >
                               <Eye size={12} /> View Details
                             </button>
@@ -941,13 +941,34 @@ function ReturnSlipIndicator({ referral }) {
 
   return (
     <span
-      className={`inline-flex rounded-md px-2.5 py-1 text-[11px] font-semibold ${
+      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
         hasReturnSlip
-          ? "bg-emerald-50 text-emerald-700"
-          : "bg-amber-50 text-amber-700"
+          ? "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"
+          : "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]"
       }`}
     >
       {hasReturnSlip ? "Return Slip Available" : "Awaiting RHU Feedback"}
+    </span>
+  );
+}
+
+function RecordStatusBadge({ status }) {
+  const map = {
+    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    Active: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    "Follow-up Required": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    "Routine Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    Consultation: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
+  };
+
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+        map[status] || map.Consultation
+      }`}
+    >
+      {status}
     </span>
   );
 }

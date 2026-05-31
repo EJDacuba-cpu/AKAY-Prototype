@@ -129,7 +129,7 @@ export default function RHUPatientDetails() {
         <div className="rounded-2xl border border-[#E8ECF0] bg-white p-8 shadow-sm">
           <Link
             to="/rhu/patients"
-            className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition hover:text-[#0B2E59]"
+            className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition hover:text-[#0F172A]"
           >
             <ArrowLeft size={15} /> Back to Patients
           </Link>
@@ -151,14 +151,14 @@ export default function RHUPatientDetails() {
       <div className="mb-6">
         <Link
           to="/rhu/patients"
-          className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition hover:text-[#0B2E59]"
+          className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition hover:text-[#0F172A]"
         >
           <ArrowLeft size={15} /> Back to Patients
         </Link>
 
         <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <h1 className="text-xl font-bold text-[#0B2E59]">{patientName}</h1>
+            <h1 className="text-xl font-bold text-[#0F172A]">{patientName}</h1>
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <InfoChip label={patient.id || patientId} />
@@ -171,7 +171,7 @@ export default function RHUPatientDetails() {
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-              <span className="font-semibold text-[#0B2E59]">
+              <span className="font-semibold text-[#0F172A]">
                 Latest RHU Record:
               </span>
               <span>{latestSummary}</span>
@@ -181,7 +181,7 @@ export default function RHUPatientDetails() {
           {activeTab === "records" && (
             <Link
               to={`/rhu/health-records/add?patientId=${patient.id || patientId}`}
-              className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#0B2E59] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#092347]"
+              className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
             >
               <Plus size={14} />
               Add Health Record
@@ -206,7 +206,7 @@ export default function RHUPatientDetails() {
               onClick={() => setActiveTab(tab.key)}
               className={`whitespace-nowrap border-b-2 px-5 py-3 text-sm font-semibold transition-all duration-150 ${
                 activeTab === tab.key
-                  ? "border-[#0B2E59] text-[#0B2E59]"
+                  ? "border-[#B91C1C] text-[#B91C1C]"
                   : "border-transparent text-slate-500 hover:text-slate-800"
               }`}
             >
@@ -244,7 +244,7 @@ function PatientInformationTab({ patient, classification }) {
         >
           <div className="mt-6 space-y-8">
             <div>
-              <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0B2E59]">
+              <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0F172A]">
                 General Information
               </h3>
               <div className="grid gap-x-8 gap-y-1 md:grid-cols-2">
@@ -282,7 +282,7 @@ function PatientInformationTab({ patient, classification }) {
             </div>
 
             <div>
-              <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0B2E59]">
+              <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0F172A]">
                 Clinical Notes
               </h3>
               <PatientDetailItem
@@ -329,7 +329,7 @@ function RhuRecordsTab({ records }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
-        <h2 className="text-sm font-bold text-[#0B2E59]">RHU Record History</h2>
+        <h2 className="text-sm font-bold text-[#0F172A]">RHU Record History</h2>
         <p className="text-xs text-slate-400">
           RHU health records linked to this patient.
         </p>
@@ -366,7 +366,7 @@ function RhuRecordsTab({ records }) {
                         {getRecordTime(record)}
                       </div>
                     </td>
-                    <td className="px-6 py-4 font-semibold text-[#0B2E59]">
+                    <td className="px-6 py-4 font-semibold text-[#0F172A]">
                       {getRecordConcern(record)}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4">
@@ -387,7 +387,7 @@ function RhuRecordsTab({ records }) {
                     <td className="whitespace-nowrap px-6 py-4 text-right">
                       <Link
                         to={`/rhu/health-records/${recordId}`}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-[#0B2E59] shadow-sm transition hover:bg-slate-50 hover:text-[#092347]"
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-[#0F172A] shadow-sm transition hover:bg-slate-50 hover:text-[#991B1B]"
                       >
                         <Eye size={12} /> View Full Record
                       </Link>
@@ -407,7 +407,7 @@ function ReferralHistoryTab({ referrals }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
-        <h2 className="text-sm font-bold text-[#0B2E59]">Referral History</h2>
+        <h2 className="text-sm font-bold text-[#0F172A]">Referral History</h2>
         <p className="text-xs text-slate-400">
           Referrals from BHC facilities connected to this patient.
         </p>
@@ -438,7 +438,7 @@ function ReferralHistoryTab({ referrals }) {
                   className="transition-colors hover:bg-slate-50/80"
                 >
                   <td className="whitespace-nowrap px-6 py-4">
-                    <span className="font-mono text-xs font-bold text-[#0B2E59]">
+                    <span className="font-mono text-xs font-bold text-[#0F172A]">
                       {referral.trackingId || referral.id}
                     </span>
                   </td>
@@ -450,7 +450,7 @@ function ReferralHistoryTab({ referrals }) {
                   <td className="whitespace-nowrap px-6 py-4 text-slate-500">
                     {getReferralDate(referral)}
                   </td>
-                  <td className="px-6 py-4 font-semibold text-[#0B2E59]">
+                  <td className="px-6 py-4 font-semibold text-[#0F172A]">
                     {referral.referralReason ||
                       referral.chiefComplaint ||
                       referral.concern ||
@@ -462,7 +462,7 @@ function ReferralHistoryTab({ referrals }) {
                   <td className="whitespace-nowrap px-6 py-4 text-right">
                     <Link
                       to={`/rhu/referrals/${referral.trackingId || referral.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-[#0B2E59] shadow-sm transition hover:bg-slate-50 hover:text-[#092347]"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-[#0F172A] shadow-sm transition hover:bg-slate-50 hover:text-[#991B1B]"
                     >
                       <Eye size={12} /> View Referral
                     </Link>
@@ -488,16 +488,16 @@ function InfoChip({ icon, label }) {
 
 function WorkflowBadge({ status }) {
   const map = {
-    Pending: "bg-slate-50 text-slate-600 border-slate-200",
-    Received: "bg-blue-50 text-blue-700 border-blue-200",
-    "For Monitoring": "bg-amber-50 text-amber-700 border-amber-200",
-    Completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    "No-Show": "bg-red-50 text-red-700 border-red-200",
+    Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
+    Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
+    "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    "No-Show": "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
   };
 
   return (
     <span
-      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-semibold ${
+      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
         map[status] || map.Pending
       }`}
     >

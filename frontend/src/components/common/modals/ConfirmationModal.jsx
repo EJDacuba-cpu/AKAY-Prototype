@@ -28,8 +28,8 @@ export default function ConfirmationModal({
         className="
           anim-content-in
           relative w-full max-w-sm
-          overflow-hidden rounded-2xl
-          border border-slate-100/80
+          overflow-hidden rounded-xl
+          border border-[#E5E7EB]
           bg-white
           shadow-xl shadow-slate-900/10
         "
@@ -42,7 +42,7 @@ export default function ConfirmationModal({
           className="
             absolute right-3 top-3
             flex h-7 w-7 items-center justify-center
-            rounded-md
+            rounded-lg
             text-slate-300
             transition-all duration-150
             hover:bg-slate-50
@@ -56,7 +56,7 @@ export default function ConfirmationModal({
         {/* Content */}
         <div className="px-6 pt-6 pb-6">
           {/* Icon */}
-          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 border border-amber-100/50">
+          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-amber-50 border border-amber-100/50">
             <AlertTriangle
               size={20}
               className="text-amber-500"
@@ -65,7 +65,7 @@ export default function ConfirmationModal({
           </div>
 
           {/* Text */}
-          <h2 className="text-[15px] font-semibold text-slate-800 leading-snug">
+          <h2 className="text-[15px] font-bold text-[#0F172A] leading-snug">
             {title}
           </h2>
 
@@ -102,12 +102,12 @@ export default function ConfirmationModal({
                 press-scale
                 flex h-9.5 items-center justify-center gap-2
                 rounded-lg
-                bg-slate-800
+                bg-[#B91C1C]
                 px-4
                 text-[13px] font-medium text-white
                 transition-all duration-150
-                hover:bg-slate-900
-                active:bg-slate-950
+                hover:bg-[#991B1B]
+                active:bg-[#7F1D1D]
                 disabled:cursor-not-allowed disabled:opacity-60
               "
             >

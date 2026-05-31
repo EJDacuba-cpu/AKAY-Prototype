@@ -8,7 +8,6 @@ import {
   Camera,
   CheckCircle2,
   ClipboardList,
-  Copy,
   ExternalLink,
   FileText,
   MonitorPlay,
@@ -245,11 +244,11 @@ export default function QRScanner() {
               onClick={() => setActiveTab(tab.key)}
               className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[12px] font-semibold transition-all duration-200 ${
                 isActive
-                  ? "bg-white text-[#0B2E59] shadow-sm"
+                  ? "bg-white text-[#0F172A] shadow-sm"
                   : "text-slate-400 hover:text-slate-600"
               }`}
             >
-              <Icon size={14} className={isActive ? "text-[#0B2E59]" : ""} />
+              <Icon size={14} className={isActive ? "text-[#0F172A]" : ""} />
               {tab.label}
             </button>
           );
@@ -269,7 +268,7 @@ export default function QRScanner() {
         <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
           {/* Panel Header */}
           <div className="flex items-center gap-2.5 border-b border-slate-100 px-5 py-3.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0B2E59]/5 text-[#0B2E59]">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B91C1C]">
               {activeTab === "camera" ? (
                 <MonitorPlay size={15} />
               ) : (
@@ -280,8 +279,8 @@ export default function QRScanner() {
               {activeTab === "camera" ? "Webcam" : "Manual Input"}
             </h2>
             {isScanning && (
-              <span className="ml-auto flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-600">
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 pulse-ring" />
+              <span className="ml-auto flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#B91C1C]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#B91C1C] pulse-ring" />
                 Scanning
               </span>
             )}
@@ -295,7 +294,7 @@ export default function QRScanner() {
                 {/* Camera Selector */}
                 <div className="flex items-center gap-3">
                   <div className="relative flex-1">
-                    <select className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-8 text-[12px] text-slate-500 outline-none transition-colors focus:border-[#0B2E59]/40 focus:bg-white">
+                    <select className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-8 text-[12px] text-slate-500 outline-none transition-colors focus:border-[#B91C1C]/40 focus:bg-white">
                       <option>Camera list (permission needed)</option>
                     </select>
                     <ChevronDown
@@ -319,7 +318,7 @@ export default function QRScanner() {
                     className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-[12px] font-semibold transition-all duration-200 ${
                       cameraOpen && !isScanning
                         ? "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
-                        : "bg-[#0B2E59] text-white hover:bg-[#092347] disabled:opacity-60"
+                        : "bg-[#B91C1C] text-white hover:bg-[#991B1B] disabled:opacity-60"
                     }`}
                   >
                     {cameraOpen && !isScanning ? (
@@ -338,25 +337,25 @@ export default function QRScanner() {
                 <div className="relative overflow-hidden rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50">
                   <div className="relative mx-auto h-[300px] w-full max-w-[100%] bg-gradient-to-b from-slate-100/80 to-slate-50/50">
                     {/* Corner brackets */}
-                    <div className="absolute left-4 top-4 h-5 w-5 border-l-[3px] border-t-[3px] border-[#0B2E59] rounded-tl-md" />
-                    <div className="absolute right-4 top-4 h-5 w-5 border-r-[3px] border-t-[3px] border-[#0B2E59] rounded-tr-md" />
-                    <div className="absolute bottom-4 left-4 h-5 w-5 border-b-[3px] border-l-[3px] border-[#0B2E59] rounded-bl-md" />
-                    <div className="absolute bottom-4 right-4 h-5 w-5 border-b-[3px] border-r-[3px] border-[#0B2E59] rounded-br-md" />
+                    <div className="absolute left-4 top-4 h-5 w-5 border-l-[3px] border-t-[3px] border-[#B91C1C] rounded-tl-md" />
+                    <div className="absolute right-4 top-4 h-5 w-5 border-r-[3px] border-t-[3px] border-[#B91C1C] rounded-tr-md" />
+                    <div className="absolute bottom-4 left-4 h-5 w-5 border-b-[3px] border-l-[3px] border-[#B91C1C] rounded-bl-md" />
+                    <div className="absolute bottom-4 right-4 h-5 w-5 border-b-[3px] border-r-[3px] border-[#B91C1C] rounded-br-md" />
 
                     {/* Scan beam */}
                     {cameraOpen && (
-                      <div className="scan-beam absolute left-4 right-4 h-0.5 rounded-full bg-gradient-to-r from-transparent via-[#0B2E59] to-transparent shadow-lg shadow-[#0B2E59]/30" />
+                      <div className="scan-beam absolute left-4 right-4 h-0.5 rounded-full bg-gradient-to-r from-transparent via-[#B91C1C] to-transparent shadow-lg shadow-[#B91C1C]/30" />
                     )}
 
                     {/* Center content */}
                     <div className="flex h-full flex-col items-center justify-center">
                       {isScanning ? (
-                        <div className="float-anim flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0B2E59]/10 to-blue-50 text-[#0B2E59]">
+                        <div className="float-anim flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[#B91C1C]/10 to-red-50 text-[#0F172A]">
                           <ScanLine size={32} className="stroke-[1.5]" />
                         </div>
                       ) : cameraOpen ? (
                         <div className="text-center">
-                          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/80 text-[#0B2E59]/40 shadow-sm">
+                          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/80 text-[#0F172A]/40 shadow-sm">
                             <ScanLine size={28} className="stroke-[1.2]" />
                           </div>
                           <p className="text-[12px] font-semibold text-slate-400">
@@ -399,10 +398,10 @@ export default function QRScanner() {
             ) : (
               /* ── MANUAL INPUT VIEW ── */
               <div className="space-y-4">
-                <div className="relative flex items-center rounded-lg border border-slate-200 bg-slate-50/50 px-3 transition-all duration-200 focus-within:border-[#0B2E59]/40 focus-within:bg-white focus-within:shadow-sm focus-within:shadow-[#0B2E59]/5">
+                <div className="relative flex items-center rounded-lg border border-slate-200 bg-slate-50/50 px-3 transition-all duration-200 focus-within:border-[#B91C1C]/40 focus-within:bg-white focus-within:shadow-sm focus-within:shadow-[#B91C1C]/5">
                   <Search
                     size={15}
-                    className="text-slate-300 transition-colors focus-within:text-[#0B2E59]/50"
+                    className="text-slate-300 transition-colors focus-within:text-[#0F172A]/50"
                   />
 
                   <input
@@ -439,7 +438,7 @@ export default function QRScanner() {
                 <button
                   type="button"
                   onClick={() => verifyTrackingId(trackingInput)}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#0B2E59] px-4 py-2.5 text-[12px] font-semibold text-white transition-all duration-200 hover:bg-[#092347]"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 py-2.5 text-[12px] font-semibold text-white transition-all duration-200 hover:bg-[#991B1B]"
                 >
                   <Search size={14} />
                   Verify Tracking ID
@@ -487,7 +486,7 @@ export default function QRScanner() {
                             setTrackingInput(r.trackingId);
                             verifyTrackingId(r.trackingId);
                           }}
-                          className="flex w-full items-center gap-2.5 rounded-md border border-slate-100 bg-white px-3 py-2 text-left transition-colors hover:border-[#0B2E59]/20 hover:bg-[#0B2E59]/[0.02]"
+                          className="flex w-full items-center gap-2.5 rounded-md border border-slate-100 bg-white px-3 py-2 text-left transition-colors hover:border-[#B91C1C]/20 hover:bg-[#B91C1C]/[0.02]"
                         >
                           <QrCode
                             size={12}
@@ -568,13 +567,6 @@ export default function QRScanner() {
                 {/* Patient card */}
                 <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4">
                   <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#0B2E59] to-[#1a4a7a] text-[10px] font-extrabold tracking-wide text-white shadow-md shadow-[#0B2E59]/20">
-                      {getInitials(
-                        selectedReferral.patientName ||
-                          selectedReferral.patient ||
-                          "Patient",
-                      )}
-                    </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] font-bold text-slate-800">
                         {selectedReferral.patientName ||
@@ -627,7 +619,7 @@ export default function QRScanner() {
                         ...action,
                       });
                     }}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#0B2E59] px-4 py-2.5 text-[12px] font-semibold text-white transition-all duration-200 hover:bg-[#092347]"
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 py-2.5 text-[12px] font-semibold text-white transition-all duration-200 hover:bg-[#991B1B]"
                   >
                     {getPrimaryAction(selectedReferral).buttonIcon}
                     {getPrimaryAction(selectedReferral).buttonLabel}
@@ -647,20 +639,6 @@ export default function QRScanner() {
 
           {/* Bottom Action Bar */}
           <div className="flex items-center gap-2 border-t border-slate-100 px-5 py-3">
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedReferral) {
-                  navigator.clipboard?.writeText(selectedReferral.trackingId);
-                }
-              }}
-              disabled={!selectedReferral}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-500 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white"
-            >
-              <Copy size={12} />
-              Copy Results
-            </button>
-
             <button
               type="button"
               onClick={() => {
@@ -697,13 +675,13 @@ export default function QRScanner() {
 function getPrimaryAction(referral) {
   if (referral.status === "Pending") {
     return {
-      title: "Ready for patient arrival",
+      title: "Ready for check-in",
       description: "Confirm patient identity and check in.",
-      buttonLabel: "Confirm Patient Arrival",
+      buttonLabel: "Check In Patient",
       buttonIcon: <UserCheck size={14} />,
       icon: <UserCheck size={15} />,
-      iconBg: "#EFF6FF",
-      iconColor: "#2563EB",
+      iconBg: "#FEF2F2",
+      iconColor: "#B91C1C",
     };
   }
 
@@ -761,20 +739,17 @@ function ConfirmationModal({ action, onCancel, onConfirm }) {
   if (!action) return null;
 
   return createPortal(
-    <div className="anim-fade-in fixed inset-0 z-[10000] flex items-center justify-center bg-[#0B2E59]/20 px-4 backdrop-blur-sm">
+    <div className="anim-fade-in fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/35 px-4">
       <div className="modal-pop w-full max-w-md overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xl shadow-slate-900/10">
         {/* Modal Header */}
-        <div className="bg-gradient-to-r from-[#0B2E59] to-[#103d6b] px-6 py-5">
+        <div className="border-b border-slate-100 bg-white px-6 py-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 text-white">
-              <UserCheck size={18} />
-            </div>
             <div>
-              <h2 className="text-[15px] font-bold text-white">
-                Confirm Patient Arrival
+              <h2 className="text-[15px] font-bold text-slate-900">
+                Check In Patient
               </h2>
-              <p className="mt-0.5 text-[11px] text-white/60">
-                Proceed to referral details workspace
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                Proceed to referral check-in
               </p>
             </div>
           </div>
@@ -783,22 +758,16 @@ function ConfirmationModal({ action, onCancel, onConfirm }) {
         {/* Modal Body */}
         <div className="px-6 py-5">
           <p className="text-[12.5px] leading-relaxed text-slate-500">
-            You are about to open the referral processing workspace. Verify the
-            patient details below before proceeding.
+            Verify the patient details below before checking in this referral.
           </p>
 
           <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0B2E59] text-[10px] font-extrabold text-white">
-                {getInitials(
-                  action.referral.patient || action.referral.patientName,
-                )}
-              </div>
               <div>
                 <p className="text-[13px] font-bold text-slate-800">
                   {action.referral.patientName || action.referral.patient}
                 </p>
-                <p className="mt-0.5 font-mono text-[11px] font-semibold text-[#0B2E59]/60">
+                <p className="mt-0.5 font-mono text-[11px] font-semibold text-[#0F172A]/60">
                   {action.referral.trackingId}
                 </p>
               </div>
@@ -827,9 +796,9 @@ function ConfirmationModal({ action, onCancel, onConfirm }) {
           <button
             type="button"
             onClick={onConfirm}
-            className="flex-1 rounded-xl bg-gradient-to-r from-[#0B2E59] to-[#103d6b] px-4 py-2.5 text-[12px] font-bold text-white shadow-md shadow-[#0B2E59]/20 transition-all duration-200 hover:shadow-lg hover:shadow-[#0B2E59]/30"
+            className="flex-1 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition-all duration-200 hover:bg-[#991B1B]"
           >
-            Confirm
+            Check In
           </button>
         </div>
       </div>
@@ -855,10 +824,10 @@ function ResultRow({ label, value }) {
 function StatusBadge({ status }) {
   const map = {
     Pending: {
-      bg: "#F8FAFC",
+      bg: "#F1F5F9",
       text: "#475569",
       dot: "#94A3B8",
-      border: "#E2E8F0",
+      border: "#CBD5E1",
     },
     Received: {
       bg: "#EFF6FF",
@@ -890,7 +859,7 @@ function StatusBadge({ status }) {
 
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[10px] font-bold"
+      className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
       style={{
         backgroundColor: s.bg,
         color: s.text,
@@ -904,13 +873,4 @@ function StatusBadge({ status }) {
       {status}
     </span>
   );
-}
-
-function getInitials(name) {
-  return (name || "")
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2);
 }

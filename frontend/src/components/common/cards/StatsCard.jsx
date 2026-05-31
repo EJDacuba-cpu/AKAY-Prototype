@@ -10,15 +10,21 @@ export default function StatCard({
 }) {
   const map = {
     navy: {
-      border: "#0B2E59",
-      iconBg: "#EFF6FF",
-      iconColor: "#2563EB",
+      border: "#B91C1C",
+      iconBg: "#FEF2F2",
+      iconColor: "#B91C1C",
+    },
+
+    red: {
+      border: "#B91C1C",
+      iconBg: "#FEF2F2",
+      iconColor: "#B91C1C",
     },
 
     blue: {
-      border: "#2563EB",
-      iconBg: "#EFF6FF",
-      iconColor: "#2563EB",
+      border: "#64748B",
+      iconBg: "#F8FAFC",
+      iconColor: "#64748B",
     },
 
     slate: {
@@ -32,13 +38,19 @@ export default function StatCard({
       iconBg: "#FFFBEB",
       iconColor: "#D97706",
     },
+
+    emerald: {
+      border: "#059669",
+      iconBg: "#ECFDF5",
+      iconColor: "#047857",
+    },
   };
 
   const c = map[color] || map.navy;
 
   return (
     <div
-      className="anim-fade-up group relative overflow-hidden rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/[0.04]"
+      className="anim-fade-up group relative overflow-hidden rounded-xl border border-[#E5E7EB] border-t-2 bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#FECACA] hover:shadow-md hover:shadow-black/[0.04]"
       style={{
         borderTopColor: c.border,
         ...stagger(delay),
@@ -51,13 +63,13 @@ export default function StatCard({
         }}
       />
 
-      <div className="relative flex items-start justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
+      <div className="relative flex items-start justify-between gap-3">
+        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#94A3B8]">
           {title}
         </p>
 
         <div
-          className="rounded-lg p-2.5 transition-transform duration-300 group-hover:scale-110"
+          className="rounded-lg p-2 transition-transform duration-200 group-hover:scale-105"
           style={{
             backgroundColor: c.iconBg,
             color: c.iconColor,
@@ -68,13 +80,17 @@ export default function StatCard({
       </div>
 
       <p
-        className="anim-count relative mt-4 text-2xl font-bold leading-none tracking-tight text-[#0B2E59]"
+        className="anim-count relative mt-3 text-2xl font-black leading-none tracking-tight text-[#0F172A]"
         style={stagger(delay + 2)}
       >
         {value}
       </p>
 
-      <p className="relative mt-1 text-xs text-[#9CA3AF]">{subtitle}</p>
+      {subtitle && (
+        <p className="relative mt-1 text-xs font-medium text-[#64748B]">
+          {subtitle}
+        </p>
+      )}
     </div>
   );
 }

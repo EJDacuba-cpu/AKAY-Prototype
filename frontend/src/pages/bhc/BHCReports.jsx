@@ -8,22 +8,38 @@ import {
   Printer,
   RefreshCw,
   SearchCheck,
+  UsersRound,
 } from "lucide-react";
 import {
+  ArcElement,
   BarElement,
   CategoryScale,
   Chart as ChartJS,
+  Filler,
   Legend,
   LinearScale,
+  LineElement,
+  PointElement,
+  RadialLinearScale,
   Tooltip,
 } from "chart.js";
-import { Bar } from "react-chartjs-2";
+import { Chart, PolarArea } from "react-chartjs-2";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import StatCard from "../../components/common/cards/StatsCard";
 import ListToolbar from "../../components/common/list/ListToolbar";
 
-ChartJS.register(BarElement, CategoryScale, Legend, LinearScale, Tooltip);
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  RadialLinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  ArcElement,
+  Filler,
+  Tooltip,
+  Legend,
+);
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -33,13 +49,18 @@ const DEFAULT_FILTERS = {
 };
 
 const chartPalette = {
-  primary: "#B91C1C",
-  primaryDark: "#7F1D1D",
-  primaryMid: "#DC2626",
-  primarySoft: "#FEE2E2",
+  red: "#B91C1C",
+  redDark: "#7F1D1D",
+  redSoft: "#FEE2E2",
+  redMid: "#DC2626",
+  slate: "#64748B",
+  slateLight: "#CBD5E1",
+  amber: "#F59E0B",
+  emerald: "#10B981",
+  blue: "#3B82F6",
   text: "#334155",
-  mutedText: "#64748B",
-  grid: "rgba(226, 232, 240, 0.85)",
+  muted: "#94A3B8",
+  grid: "#E2E8F0",
 };
 
 const smoothAnimation = {
@@ -52,7 +73,7 @@ const REPORT_DATA = {
     label: "Weekly Report",
     shortLabel: "Weekly",
     description:
-      "Weekly summary focused on chief complaints/cases for BHC reporting and reconciliation.",
+      "Weekly summary focused on chief complaints and cases for BHC reporting and reconciliation.",
     logbook: [
       {
         trackingId: "AKY-257003",
@@ -114,7 +135,7 @@ const REPORT_DATA = {
     label: "Monthly Report",
     shortLabel: "Monthly",
     description:
-      "Monthly summary focused on chief complaints/cases for end-of-month BHC reporting.",
+      "Monthly summary focused on chief complaints and cases for end-of-month BHC reporting.",
     logbook: [
       {
         trackingId: "AKY-257003",
@@ -210,33 +231,10 @@ const REPORT_DATA = {
   },
 };
 
-function normalizeDate(value) {
-  if (!value) return "";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return "";
-
-  return date.toISOString().slice(0, 10);
-}
-
-function createHorizontalGradient(ctx, chartArea, stops) {
-  if (!chartArea) return stops[0]?.color || chartPalette.primary;
-
-  const gradient = ctx.createLinearGradient(
-    chartArea.left,
-    0,
-    chartArea.right,
-    0,
-  );
-
-  stops.forEach((stop) => gradient.addColorStop(stop.offset, stop.color));
-  return gradient;
-}
-
 export default function BHCReports() {
   const [reportMode, setReportMode] = useState("weekly");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [generatedAt, setGeneratedAt] = useState(new Date());
 
   const currentReport = REPORT_DATA[reportMode];
 
@@ -278,9 +276,19 @@ export default function BHCReports() {
     [filteredReferralLogbook],
   );
 
+  const classificationSummary = useMemo(
+    () => buildClassificationSummary(filteredReferralLogbook),
+    [filteredReferralLogbook],
+  );
+
+  const statusSummary = useMemo(
+    () => buildStatusSummary(filteredReferralLogbook),
+    [filteredReferralLogbook],
+  );
+
   const reportSummary = useMemo(() => {
     const completed = filteredReferralLogbook.filter(
-      (log) => log.status === "Completed",
+      (log) => normalizeStatus(log.status) === "Completed",
     ).length;
 
     return {
@@ -291,6 +299,16 @@ export default function BHCReports() {
       topCase: casesSummary[0]?.label || "No data",
     };
   }, [casesSummary, filteredReferralLogbook]);
+
+  const casesChartData = useMemo(
+    () => buildChiefComplaintComboData(casesSummary.slice(0, 8)),
+    [casesSummary],
+  );
+
+  const classificationChartData = useMemo(
+    () => buildClassificationPolarData(classificationSummary),
+    [classificationSummary],
+  );
 
   const dropdownFilters = [
     {
@@ -346,33 +364,6 @@ export default function BHCReports() {
     (filter) => filter.key !== "search",
   ).length;
 
-  const casesChartData = useMemo(() => {
-    const visibleCases = casesSummary.slice(0, 8);
-
-    return {
-      labels: visibleCases.map((item) => item.label),
-      datasets: [
-        {
-          label: "Cases",
-          data: visibleCases.map((item) => item.value),
-          backgroundColor: (context) => {
-            const { ctx, chartArea } = context.chart;
-            return createHorizontalGradient(ctx, chartArea, [
-              { offset: 0, color: "rgba(254, 226, 226, 0.96)" },
-              { offset: 0.48, color: "rgba(220, 38, 38, 0.84)" },
-              { offset: 1, color: chartPalette.primary },
-            ]);
-          },
-          borderColor: "rgba(185, 28, 28, 0.22)",
-          borderWidth: 1,
-          borderRadius: 10,
-          borderSkipped: false,
-          barThickness: 24,
-        },
-      ],
-    };
-  }, [casesSummary]);
-
   function applyDropdownFilters(nextFilters) {
     setFilters((prev) => ({ ...prev, ...nextFilters }));
   }
@@ -392,15 +383,17 @@ export default function BHCReports() {
     setFilters((prev) => ({ ...prev, [key]: resetValues[key] }));
   }
 
+  function refreshReport() {
+    setGeneratedAt(new Date());
+  }
+
+  function printAsPdf() {
+    window.print();
+  }
+
   return (
     <DashboardLayout role="bhc" title="Reports">
       <div className="space-y-4">
-        <ReportHeader
-          reportMode={reportMode}
-          setReportMode={setReportMode}
-          currentReport={currentReport}
-        />
-
         <ListToolbar
           searchValue={filters.search}
           onSearchChange={(value) =>
@@ -416,7 +409,13 @@ export default function BHCReports() {
           onApplyFilters={applyDropdownFilters}
           onClearFilters={clearFilters}
           onRemoveFilter={removeFilter}
-          actions={<ReportActionButtons />}
+          actions={
+            <ReportActionButtons
+              onGenerate={refreshReport}
+              onPdf={printAsPdf}
+              onPrint={printAsPdf}
+            />
+          }
         />
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -424,138 +423,230 @@ export default function BHCReports() {
             title={`${currentReport.shortLabel} Referrals`}
             value={reportSummary.totalReferrals}
             icon={<ClipboardList size={16} />}
-            color="slate"
+            tone="slate"
           />
           <StatCard
             title="Cases Recorded"
             value={reportSummary.casesRecorded}
             icon={<SearchCheck size={16} />}
-            color="red"
+            tone="red"
           />
           <StatCard
             title="Complaint Types"
             value={reportSummary.complaintTypes}
             icon={<BarChart3 size={16} />}
-            color="blue"
+            tone="amber"
           />
           <StatCard
             title="Completed"
             value={reportSummary.completedReferrals}
             icon={<SearchCheck size={16} />}
-            color="emerald"
+            tone="emerald"
           />
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_380px]">
-          <ReportChartCard
-            title="Chief Complaint Summary"
-            description={`${currentReport.shortLabel} case count grouped by chief complaint.`}
-            icon={<BarChart3 size={15} />}
-            rightLabel="Primary report"
-          >
-            {casesSummary.length === 0 ? (
-              <EmptyState message="No chief complaint records match the current filters." />
-            ) : (
-              <div className="h-[390px]">
-                <Bar data={casesChartData} options={getCasesBarOptions()} />
-              </div>
-            )}
-          </ReportChartCard>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <main className="min-w-0 space-y-4">
+            <ReportChartCard
+              title="Chief Complaint Case Summary"
+              description={`${currentReport.shortLabel} case count with percentage share per chief complaint.`}
+              rightLabel="Mixed chart"
+            >
+              <FixedChartBox height="h-[340px]">
+                {casesSummary.length === 0 ? (
+                  <EmptyChartState
+                    icon={<BarChart3 size={24} />}
+                    title="No case records"
+                    message="No chief complaint records match the current filters."
+                  />
+                ) : (
+                  <Chart
+                    type="bar"
+                    data={casesChartData}
+                    options={getChiefComplaintComboOptions()}
+                  />
+                )}
+              </FixedChartBox>
+            </ReportChartCard>
 
-          <CaseRankingCard
-            cases={casesSummary}
-            title={`${currentReport.shortLabel} Case Ranking`}
-            total={filteredReferralLogbook.length}
-          />
+            <ReferralLogbookTable
+              records={filteredReferralLogbook}
+              reportLabel={currentReport.shortLabel}
+            />
+          </main>
+
+          <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+            <ReportModeCard
+              reportMode={reportMode}
+              setReportMode={setReportMode}
+              currentReport={currentReport}
+              generatedAt={generatedAt}
+            />
+
+            <ReportChartCard
+              title="Classification Mix"
+              description="Polar area chart showing cases by patient classification."
+              icon={<UsersRound size={15} />}
+              rightLabel="Different chart"
+            >
+              <FixedChartBox height="h-[280px]">
+                {classificationSummary.length === 0 ? (
+                  <EmptyChartState
+                    icon={<UsersRound size={24} />}
+                    title="No classification data"
+                    message="Filtered records will show classification mix here."
+                  />
+                ) : (
+                  <PolarArea
+                    data={classificationChartData}
+                    options={classificationPolarOptions}
+                  />
+                )}
+              </FixedChartBox>
+            </ReportChartCard>
+          </aside>
         </div>
-
-        <ReferralLogbookTable
-          records={filteredReferralLogbook}
-          reportLabel={currentReport.shortLabel}
-        />
       </div>
     </DashboardLayout>
   );
 }
 
-function ReportHeader({ reportMode, setReportMode, currentReport }) {
-  return (
-    <section className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
-            <CalendarDays size={18} />
-          </span>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight text-[#0F172A]">
-              Weekly and Monthly Case Reports
-            </h1>
-            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[#64748B]">
-              {currentReport.description} Main output is the summary of chief
-              complaints/cases.
-            </p>
-          </div>
-        </div>
-
-        <div className="inline-flex rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] p-1">
-          {[
-            { key: "weekly", label: "Weekly Report" },
-            { key: "monthly", label: "Monthly Report" },
-          ].map((item) => {
-            const isActive = reportMode === item.key;
-
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => setReportMode(item.key)}
-                className={`h-9 rounded-lg px-3 text-xs font-bold transition-all ${
-                  isActive
-                    ? "bg-[#B91C1C] text-white shadow-sm"
-                    : "text-[#64748B] hover:bg-white hover:text-[#B91C1C]"
-                }`}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ReportActionButtons() {
+function ReportActionButtons({ onGenerate, onPdf, onPrint }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <button className="inline-flex h-11 items-center gap-1.5 rounded-lg bg-[#B91C1C] px-3 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]">
-        <RefreshCw size={12} /> Generate
+      <button
+        type="button"
+        onClick={onGenerate}
+        className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#B91C1C] px-3 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
+      >
+        <RefreshCw size={12} />
+        Generate
       </button>
-      <button className="inline-flex h-11 items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-3 text-[11px] font-semibold text-[#374151] transition-colors hover:bg-[#F8FAFC]">
-        <FileText size={12} className="text-red-600" /> PDF
+      <button
+        type="button"
+        onClick={onPdf}
+        className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-3 text-[11px] font-semibold text-[#374151] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
+      >
+        <FileText size={12} className="text-red-600" />
+        PDF
       </button>
-      <button className="inline-flex h-11 items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-3 text-[11px] font-semibold text-[#374151] transition-colors hover:bg-[#F8FAFC]">
-        <Printer size={12} /> Print
+      <button
+        type="button"
+        onClick={onPrint}
+        className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-3 text-[11px] font-semibold text-[#374151] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
+      >
+        <Printer size={12} />
+        Print
       </button>
     </div>
   );
 }
 
+function StatCard({ title, value, icon, tone = "red" }) {
+  const map = {
+    red: "border-t-[#B91C1C] bg-[#FEF2F2] text-[#B91C1C]",
+    slate: "border-t-slate-300 bg-slate-50 text-slate-700",
+    amber: "border-t-amber-400 bg-amber-50 text-amber-700",
+    emerald: "border-t-emerald-400 bg-emerald-50 text-emerald-700",
+  };
+
+  const selected = map[tone] || map.red;
+  const [borderClass, bgClass, textClass] = selected.split(" ");
+
+  return (
+    <div
+      className={`rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-5 shadow-sm ${borderClass}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
+          {title}
+        </p>
+
+        <div
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${bgClass} ${textClass}`}
+        >
+          {icon}
+        </div>
+      </div>
+
+      <p className="mt-4 text-2xl font-bold tracking-tight text-[#0F172A]">
+        {formatNumber(value)}
+      </p>
+    </div>
+  );
+}
+
+function ReportModeCard({
+  reportMode,
+  setReportMode,
+  currentReport,
+  generatedAt,
+}) {
+  return (
+    <section className="rounded-xl border border-[#E8ECF0] bg-white p-4 shadow-sm">
+      <div className="mb-4 flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-[#B91C1C]">
+          <CalendarDays size={16} />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-sm font-black text-[#0F172A]">
+            Weekly and Monthly Reports
+          </h2>
+          <p className="mt-1 text-xs leading-relaxed text-[#64748B]">
+            {currentReport.description}
+          </p>
+        </div>
+      </div>
+
+      <div className="inline-flex w-full rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] p-1">
+        {[
+          { key: "weekly", label: "Weekly" },
+          { key: "monthly", label: "Monthly" },
+        ].map((item) => {
+          const isActive = reportMode === item.key;
+
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setReportMode(item.key)}
+              className={`h-9 flex-1 rounded-lg px-3 text-xs font-bold transition-all ${
+                isActive
+                  ? "bg-[#B91C1C] text-white shadow-sm"
+                  : "text-[#64748B] hover:bg-white hover:text-[#B91C1C]"
+              }`}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 rounded-lg border border-[#F1F5F9] bg-[#F8FAFC] px-3 py-2 text-[11px] text-[#64748B]">
+        <span className="font-semibold text-[#0F172A]">Last generated:</span>{" "}
+        {formatDateTime(generatedAt)}
+      </div>
+    </section>
+  );
+}
+
 function ReportChartCard({ title, description, icon, rightLabel, children }) {
   return (
-    <div className="rounded-xl border border-[#E5E7EB] bg-white p-5 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:shadow-md">
-      <div className="mb-4 flex items-start justify-between gap-3">
+    <section className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-red-100 hover:shadow-md">
+      <div className="flex items-start justify-between gap-3 border-b border-[#E8ECF0] bg-white px-5 py-4">
         <div className="flex min-w-0 items-start gap-2">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-50 text-[#B91C1C]">
-            {icon}
-          </span>
+          {icon && (
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-50 text-[#B91C1C]">
+              {icon}
+            </span>
+          )}
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-[#1E293B]">{title}</h2>
-            {description && (
-              <p className="mt-0.5 text-[11px] leading-relaxed text-[#94A3B8]">
-                {description}
-              </p>
-            )}
+            <h2 className="truncate text-sm font-black text-[#0F172A]">
+              {title}
+            </h2>
+            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[#64748B]">
+              {description}
+            </p>
           </div>
         </div>
 
@@ -565,106 +656,80 @@ function ReportChartCard({ title, description, icon, rightLabel, children }) {
           </span>
         )}
       </div>
+      <div className="p-5">{children}</div>
+    </section>
+  );
+}
 
+function FixedChartBox({ height = "h-[300px]", children }) {
+  return (
+    <div
+      className={`relative ${height} w-full overflow-hidden rounded-xl border border-[#F1F5F9] bg-white p-3`}
+    >
       {children}
     </div>
   );
 }
 
-function CaseRankingCard({ title, cases, total }) {
-  const topCase = cases[0];
-
+function EmptyChartState({ icon, title, message }) {
   return (
-    <div className="rounded-xl border border-[#E5E7EB] bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-[#1E293B]">{title}</h2>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-[#94A3B8]">
-            Ranked chief complaints from the selected report period.
-          </p>
-        </div>
-        <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
-          {total} cases
-        </span>
+    <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+      <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[#F1F5F9] text-[#94A3B8]">
+        {icon}
       </div>
+      <p className="text-sm font-bold text-[#334155]">{title}</p>
+      <p className="mt-1 max-w-xs text-xs leading-relaxed text-[#94A3B8]">
+        {message}
+      </p>
+    </div>
+  );
+}
 
-      {topCase ? (
-        <div className="mb-4 rounded-xl border border-red-100 bg-gradient-to-br from-red-50 via-white to-white p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-            Most Common Case
-          </p>
-          <p className="mt-2 text-base font-bold text-[#B91C1C]">
-            {topCase.label}
-          </p>
-          <p className="mt-1 text-xs text-[#64748B]">
-            {topCase.value} record{topCase.value === 1 ? "" : "s"} ·{" "}
-            {topCase.percent}% of current report
-          </p>
-        </div>
-      ) : (
-        <EmptyState message="No case records to rank yet." compact />
-      )}
-
-      <div className="space-y-2.5">
-        {cases.slice(0, 7).map((item, index) => (
-          <div
-            key={item.label}
-            className="rounded-lg border border-[#F1F5F9] bg-[#F8FAFC] px-3 py-2.5"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-[10px] font-bold text-[#B91C1C] shadow-sm">
-                  {index + 1}
-                </span>
-                <p className="truncate text-xs font-semibold text-[#334155]">
-                  {item.label}
-                </p>
-              </div>
-              <span className="text-xs font-bold tabular-nums text-[#B91C1C]">
-                {item.value}
-              </span>
-            </div>
-
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#E5E7EB]">
-              <div
-                className="h-full rounded-full bg-[#B91C1C] transition-all duration-700"
-                style={{ width: `${item.percent}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
+function ScopeRow({ label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-[#F1F5F9] bg-[#F8FAFC] px-3 py-2">
+      <span>{label}</span>
+      <span className="max-w-[170px] truncate text-right font-semibold text-[#0F172A]">
+        {value}
+      </span>
     </div>
   );
 }
 
 function ReferralLogbookTable({ records, reportLabel }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-[#E5E7EB] px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <BookOpen size={14} className="text-[#B91C1C]" />
-          <h2 className="text-sm font-semibold text-[#B91C1C]">
-            {reportLabel} Referral Logbook
-          </h2>
+    <section className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-sm">
+      <div className="border-b border-[#E8ECF0] bg-[#FFF7F7] px-5 py-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <BookOpen size={14} className="shrink-0 text-[#B91C1C]" />
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-black text-[#0F172A]">
+                {reportLabel} Referral Logbook
+              </h2>
+              <p className="mt-1 text-xs text-[#64748B]">
+                Supporting records for the selected BHC report.
+              </p>
+            </div>
+          </div>
+          <span className="shrink-0 rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+            Supporting records
+          </span>
         </div>
-        <span className="rounded bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
-          Supporting records
-        </span>
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[900px] text-left text-[13px]">
           <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
             <tr>
-              <th className="whitespace-nowrap px-4 py-2">Tracking ID</th>
-              <th className="whitespace-nowrap px-4 py-2">Patient Name</th>
-              <th className="whitespace-nowrap px-4 py-2">
+              <th className="whitespace-nowrap px-4 py-3">Tracking ID</th>
+              <th className="whitespace-nowrap px-4 py-3">Patient Name</th>
+              <th className="whitespace-nowrap px-4 py-3">
                 Chief Complaint / Case
               </th>
-              <th className="whitespace-nowrap px-4 py-2">Classification</th>
-              <th className="whitespace-nowrap px-4 py-2">Date Referred</th>
-              <th className="whitespace-nowrap px-4 py-2">Status</th>
+              <th className="whitespace-nowrap px-4 py-3">Classification</th>
+              <th className="whitespace-nowrap px-4 py-3">Date Referred</th>
+              <th className="whitespace-nowrap px-4 py-3">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#F3F4F6]">
@@ -711,40 +776,50 @@ function ReferralLogbookTable({ records, reportLabel }) {
           </tbody>
         </table>
       </div>
-    </div>
-  );
-}
-
-function EmptyState({ message, compact = false }) {
-  return (
-    <div
-      className={`flex items-center justify-center rounded-xl border border-dashed border-[#E5E7EB] bg-[#F8FAFC] text-center ${
-        compact ? "px-4 py-7" : "h-[300px] px-4"
-      }`}
-    >
-      <p className="text-xs font-medium text-[#94A3B8]">{message}</p>
-    </div>
+    </section>
   );
 }
 
 function ReferralStatusBadge({ status }) {
   const toneMap = {
-    Pending: "border-slate-200 bg-slate-50 text-slate-600",
-    Received: "border-sky-200 bg-sky-50 text-sky-700",
-    "For Monitoring": "border-amber-200 bg-amber-50 text-amber-700",
-    Completed: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    "No-Show": "border-red-200 bg-red-50 text-red-700",
+    Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
+    Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
+    "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    "No-Show": "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
   };
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-wide shadow-sm ${
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide shadow-sm ${
         toneMap[status] || toneMap.Pending
       }`}
     >
       {status}
     </span>
   );
+}
+
+function normalizeDate(value) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  return date.toISOString().slice(0, 10);
+}
+
+function normalizeStatus(status) {
+  const value = String(status || "").trim();
+  const normalized = value.toLowerCase();
+
+  if (normalized.includes("complete")) return "Completed";
+  if (normalized.includes("monitor")) return "For Monitoring";
+  if (normalized.includes("receive")) return "Received";
+  if (normalized.includes("no-show")) return "No-Show";
+  if (normalized.includes("pending")) return "Pending";
+  return value || "Pending";
 }
 
 function normalizeComplaintLabel(value) {
@@ -794,93 +869,316 @@ function buildChiefComplaintSummary(records) {
     .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
 }
 
-function getBaseChartOptions() {
+function buildClassificationSummary(records) {
+  const total = Math.max(records.length, 1);
+  const counts = records.reduce((acc, record) => {
+    const key = record.classification || "Unclassified";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.entries(counts)
+    .map(([label, value]) => ({
+      label,
+      value,
+      percent: Math.round((value / total) * 100),
+    }))
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+}
+
+function buildStatusSummary(records) {
+  const total = Math.max(records.length, 1);
+  const counts = records.reduce((acc, record) => {
+    const key = normalizeStatus(record.status);
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.entries(counts)
+    .map(([label, value]) => ({
+      label,
+      value,
+      percent: Math.round((value / total) * 100),
+    }))
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+}
+
+function buildChiefComplaintComboData(cases) {
   return {
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: smoothAnimation,
-    transitions: {
-      active: {
-        animation: {
-          duration: 220,
-          easing: "easeOutQuart",
-        },
+    labels: cases.map((item) => item.label),
+    datasets: [
+      {
+        type: "bar",
+        label: "Cases",
+        data: cases.map((item) => item.value),
+        yAxisID: "y",
+        backgroundColor: (context) =>
+          getChartGradient(
+            context,
+            ["rgba(254, 226, 226, 0.96)", chartPalette.red],
+            "vertical",
+          ),
+        borderColor: "rgba(185, 28, 28, 0.22)",
+        borderWidth: 1,
+        borderRadius: 10,
+        borderSkipped: false,
+        maxBarThickness: 42,
       },
-      resize: {
-        animation: {
-          duration: 350,
-          easing: "easeOutQuart",
-        },
+      {
+        type: "line",
+        label: "Share",
+        data: cases.map((item) => item.percent),
+        yAxisID: "y1",
+        borderColor: chartPalette.redDark,
+        backgroundColor: "rgba(185, 28, 28, 0.08)",
+        pointBackgroundColor: "#FFFFFF",
+        pointBorderColor: chartPalette.redDark,
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 5,
+        tension: 0.35,
+        fill: true,
       },
-    },
-    plugins: {
-      legend: {
-        display: false,
-      },
-      tooltip: {
-        backgroundColor: "#1E293B",
-        titleColor: "#FFFFFF",
-        bodyColor: "#E2E8F0",
-        padding: 12,
-        cornerRadius: 10,
-        displayColors: true,
-        boxPadding: 5,
-        titleFont: { size: 13, weight: "600", family: "Inter, sans-serif" },
-        bodyFont: { size: 12, family: "Inter, sans-serif" },
-        usePointStyle: true,
-      },
-    },
-    interaction: {
-      mode: "index",
-      intersect: false,
-    },
+    ],
   };
 }
 
-function getCasesBarOptions() {
+function getChiefComplaintComboOptions() {
   return {
-    ...getBaseChartOptions(),
-    indexAxis: "y",
-    scales: {
-      x: {
-        beginAtZero: true,
-        grid: {
-          color: chartPalette.grid,
-          borderDash: [4, 4],
-          drawBorder: false,
-        },
-        ticks: {
-          color: chartPalette.mutedText,
-          font: { size: 11 },
-          precision: 0,
-        },
-      },
-      y: {
-        grid: {
-          display: false,
-          drawBorder: false,
-        },
-        ticks: {
-          color: chartPalette.text,
-          font: { size: 12, weight: "600" },
-        },
-      },
-    },
-    elements: {
-      bar: {
-        borderRadius: 10,
-      },
-    },
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    animation: smoothAnimation,
     plugins: {
-      ...getBaseChartOptions().plugins,
+      legend: {
+        position: "bottom",
+        labels: {
+          usePointStyle: true,
+          boxWidth: 8,
+          color: chartPalette.slate,
+          font: { size: 11, weight: "700" },
+        },
+      },
       tooltip: {
-        ...getBaseChartOptions().plugins.tooltip,
+        ...buildTooltipOptions(),
         callbacks: {
-          label(context) {
-            return ` ${context.raw} case(s)`;
+          label: (context) => {
+            const value = context.parsed?.y ?? 0;
+
+            if (context.dataset?.label === "Share") {
+              return `Share: ${value}%`;
+            }
+
+            return `Cases: ${formatNumber(value)} record(s)`;
           },
         },
       },
     },
+    scales: {
+      x: {
+        grid: { display: false },
+        ticks: {
+          color: chartPalette.slate,
+          font: { size: 11, weight: "700" },
+          maxRotation: 0,
+          minRotation: 0,
+          callback: function (value) {
+            const label = this.getLabelForValue(value);
+            return label.length > 14 ? `${label.slice(0, 13)}…` : label;
+          },
+        },
+      },
+      y: {
+        type: "linear",
+        position: "left",
+        beginAtZero: true,
+        ticks: {
+          precision: 0,
+          color: chartPalette.slate,
+          font: { size: 11, weight: "700" },
+        },
+        grid: { color: chartPalette.grid, drawBorder: false },
+        title: {
+          display: true,
+          text: "Case count",
+          color: chartPalette.muted,
+          font: { size: 10, weight: "700" },
+        },
+      },
+      y1: {
+        type: "linear",
+        position: "right",
+        beginAtZero: true,
+        max: 100,
+        ticks: {
+          callback: (value) => `${value}%`,
+          color: chartPalette.slate,
+          font: { size: 11, weight: "700" },
+        },
+        grid: { drawOnChartArea: false },
+        title: {
+          display: true,
+          text: "Share",
+          color: chartPalette.muted,
+          font: { size: 10, weight: "700" },
+        },
+      },
+    },
   };
+}
+
+function buildClassificationPolarData(items) {
+  return {
+    labels: items.map((item) => item.label),
+    datasets: [
+      {
+        label: "Cases",
+        data: items.map((item) => item.value),
+        backgroundColor: (context) => getPolarGradient(context),
+        borderColor: "#FFFFFF",
+        borderWidth: 3,
+        hoverBorderWidth: 4,
+      },
+    ],
+  };
+}
+
+const classificationPolarOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: {
+    animateRotate: true,
+    animateScale: true,
+    duration: 850,
+    easing: "easeOutQuart",
+  },
+  scales: {
+    r: {
+      beginAtZero: true,
+      ticks: {
+        display: false,
+        precision: 0,
+      },
+      grid: {
+        color: "rgba(226, 232, 240, 0.8)",
+      },
+      angleLines: {
+        color: "rgba(226, 232, 240, 0.75)",
+      },
+      pointLabels: {
+        color: chartPalette.slate,
+        font: { size: 10, weight: "700" },
+      },
+    },
+  },
+  plugins: {
+    legend: {
+      position: "bottom",
+      labels: {
+        usePointStyle: true,
+        boxWidth: 8,
+        color: chartPalette.slate,
+        font: { size: 11, weight: "700" },
+      },
+    },
+    tooltip: buildTooltipOptions("case(s)"),
+  },
+};
+
+function getChartGradient(context, colors, direction = "vertical") {
+  const { chart } = context;
+  const { ctx, chartArea } = chart;
+
+  if (!chartArea) return colors[colors.length - 1];
+
+  const gradient =
+    direction === "horizontal"
+      ? ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0)
+      : ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+
+  colors.forEach((color, index) => {
+    gradient.addColorStop(index / Math.max(colors.length - 1, 1), color);
+  });
+
+  return gradient;
+}
+
+function getPolarGradient(context) {
+  const { chart, dataIndex } = context;
+  const { ctx, chartArea } = chart;
+
+  const fallbackColors = [
+    chartPalette.red,
+    chartPalette.amber,
+    chartPalette.emerald,
+    chartPalette.slate,
+    chartPalette.blue,
+    chartPalette.redMid,
+  ];
+
+  if (!chartArea) return fallbackColors[dataIndex % fallbackColors.length];
+
+  const gradientSets = [
+    ["#FEE2E2", chartPalette.red],
+    ["#FFEDD5", chartPalette.amber],
+    ["#D1FAE5", chartPalette.emerald],
+    ["#E2E8F0", chartPalette.slate],
+    ["#DBEAFE", chartPalette.blue],
+    ["#FECACA", chartPalette.redMid],
+  ];
+
+  const [startColor, endColor] = gradientSets[dataIndex % gradientSets.length];
+  const gradient = ctx.createLinearGradient(
+    chartArea.left,
+    chartArea.top,
+    chartArea.right,
+    chartArea.bottom,
+  );
+  gradient.addColorStop(0, startColor);
+  gradient.addColorStop(1, endColor);
+
+  return gradient;
+}
+
+function buildTooltipOptions(suffix = "record(s)") {
+  return {
+    backgroundColor: "#0F172A",
+    titleColor: "#FFFFFF",
+    bodyColor: "#E2E8F0",
+    padding: 12,
+    cornerRadius: 8,
+    displayColors: false,
+    callbacks: {
+      label: (context) => {
+        const value =
+          context.parsed?.y ??
+          context.parsed?.x ??
+          context.parsed?.r ??
+          context.parsed ??
+          context.raw ??
+          0;
+
+        return `${context.dataset?.label || "Total"}: ${formatNumber(value)} ${suffix}`;
+      },
+    },
+  };
+}
+
+function formatNumber(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return "0";
+  return parsed.toLocaleString();
+}
+
+function formatDateTime(value) {
+  const parsed = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) return "just now";
+
+  return parsed.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }

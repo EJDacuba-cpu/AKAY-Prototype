@@ -70,7 +70,7 @@ export default function ReferralQRCode() {
     return (
       <DashboardLayout role="bhc" title="Referral QR Code">
         <div className="rounded-xl border border-[#E8ECF0] bg-white p-8 text-center">
-          <h1 className="text-xl font-bold text-[#0B2E59]">
+          <h1 className="text-xl font-bold text-[#0F172A]">
             QR code not found
           </h1>
           <p className="mt-2 text-sm text-[#6B7280]">
@@ -79,7 +79,7 @@ export default function ReferralQRCode() {
 
           <Link
             to="/bhc/referrals"
-            className="mt-5 inline-flex rounded-lg bg-[#0B2E59] px-4 py-2 text-xs font-semibold text-white hover:bg-[#092347]"
+            className="mt-5 inline-flex rounded-lg bg-[#B91C1C] px-4 py-2 text-xs font-semibold text-white hover:bg-[#991B1B]"
           >
             Back to Referrals
           </Link>
@@ -104,7 +104,7 @@ export default function ReferralQRCode() {
       <div className="anim-fade-up mb-8">
         <Link
           to="/bhc/referrals"
-          className="mb-4 inline-flex items-center gap-2 text-[13px] font-semibold text-[#0B2E59] transition-all hover:gap-2.5 hover:text-[#092347]"
+          className="mb-4 inline-flex items-center gap-2 text-[13px] font-semibold text-[#0F172A] transition-all hover:gap-2.5 hover:text-[#991B1B]"
         >
           <ArrowLeft size={16} />
           Back to Referrals
@@ -112,12 +112,12 @@ export default function ReferralQRCode() {
 
         <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
           <div className="flex items-center gap-3.5">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#0B2E59] text-white shadow-md shadow-[#0B2E59]/20">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#B91C1C] text-white shadow-md shadow-[#B91C1C]/20">
               <QrCode size={24} />
             </div>
 
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-[#0B2E59]">
+              <h1 className="text-xl font-bold tracking-tight text-[#0F172A]">
                 Referral QR Code
               </h1>
               <p className="mt-1 text-sm text-[#6B7280]">
@@ -127,12 +127,12 @@ export default function ReferralQRCode() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button className="inline-flex items-center gap-2 rounded-lg border border-[#E8ECF0] bg-white px-4 py-2 text-xs font-semibold text-[#0B2E59] hover:bg-[#F8FAFC]">
+            <button className="inline-flex items-center gap-2 rounded-lg border border-[#E8ECF0] bg-white px-4 py-2 text-xs font-semibold text-[#0F172A] hover:bg-[#F8FAFC]">
               <Printer size={14} />
               Print
             </button>
 
-            <button className="inline-flex items-center gap-2 rounded-lg bg-[#0B2E59] px-4 py-2 text-xs font-semibold text-white hover:bg-[#092347]">
+            <button className="inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-4 py-2 text-xs font-semibold text-white hover:bg-[#991B1B]">
               <Download size={14} />
               Download
             </button>
@@ -149,14 +149,14 @@ export default function ReferralQRCode() {
                   <div
                     key={index}
                     className={`rounded-[2px] ${
-                      cell ? "bg-[#0B2E59]" : "bg-transparent"
+                      cell ? "bg-[#B91C1C]" : "bg-transparent"
                     }`}
                   />
                 ))}
               </div>
             </div>
 
-            <p className="mt-5 font-mono text-sm font-bold text-[#0B2E59]">
+            <p className="mt-5 font-mono text-sm font-bold text-[#0F172A]">
               {referral.trackingId}
             </p>
 
@@ -170,12 +170,12 @@ export default function ReferralQRCode() {
         <aside className="space-y-6">
           <section className="rounded-2xl border border-[#E8ECF0] bg-white p-6 shadow-sm">
             <div className="mb-5 flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#EFF6FF] text-[#2563EB]">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B91C1C]">
                 <ClipboardList size={15} />
               </div>
 
               <div>
-                <h2 className="text-sm font-bold text-[#0B2E59]">
+                <h2 className="text-sm font-bold text-[#0F172A]">
                   Referral Details
                 </h2>
                 <p className="text-xs text-[#9CA3AF]">
@@ -197,9 +197,9 @@ export default function ReferralQRCode() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-blue-100 bg-blue-50/60 p-5">
+          <section className="rounded-2xl border border-red-100 bg-red-50/60 p-5">
             <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
+              <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-700">
                 <ShieldCheck size={14} />
               </div>
 

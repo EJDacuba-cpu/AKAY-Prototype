@@ -27,20 +27,20 @@ export default function SearchInput({
         className="
           flex items-center
 
-          rounded-xl
+          rounded-lg
 
-          border border-[#E8ECF0]
+          border border-[#E5E7EB]
 
-          bg-[#FAFBFC]
+          bg-[#F8FAFC]
 
           px-3
 
           transition-all duration-200
 
-          focus-within:border-[#2563EB]
+          focus-within:border-[#FCA5A5]
           focus-within:bg-white
           focus-within:ring-2
-          focus-within:ring-[#2563EB]/10
+          focus-within:ring-[#B91C1C]/10
         "
       >
         <Search size={14} className="text-[#BCC3CD]" />
@@ -58,7 +58,7 @@ export default function SearchInput({
             px-2
 
             text-sm
-            text-[#1A1A1A]
+            text-[#0F172A]
 
             outline-none
 

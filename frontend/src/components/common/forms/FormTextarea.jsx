@@ -19,18 +19,18 @@ export default function FormTextarea({
         className="
           min-h-[100px]
           w-full resize-none
-          rounded-lg border border-[#E8ECF0]
-          bg-[#FAFBFC]
+          rounded-lg border border-[#E5E7EB]
+          bg-[#F8FAFC]
           px-3 py-3 text-sm
-          leading-relaxed text-[#1A1A1A]
+          leading-relaxed text-[#0F172A]
           outline-none transition-all duration-200
 
           placeholder:text-[#BCC3CD]
 
-          focus:border-[#0B2E59]/20
+          focus:border-[#FCA5A5]
           focus:bg-white
-          focus:ring-4
-          focus:ring-[#0B2E59]/[0.04]
+          focus:ring-3
+          focus:ring-[#B91C1C]/[0.08]
         "
       />
     </div>

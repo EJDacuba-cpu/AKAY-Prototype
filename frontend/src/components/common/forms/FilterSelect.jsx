@@ -32,25 +32,25 @@ export default function FilterSelect({
 
           appearance-none
 
-          rounded-xl
+          rounded-lg
 
-          border border-[#E8ECF0]
+          border border-[#E5E7EB]
 
-          bg-[#FAFBFC]
+          bg-[#F8FAFC]
 
           px-3
 
           text-sm
-          text-[#1A1A1A]
+          text-[#0F172A]
 
           outline-none
 
           transition-all duration-200
 
-          focus:border-[#2563EB]
+          focus:border-[#FCA5A5]
           focus:bg-white
           focus:ring-2
-          focus:ring-[#2563EB]/10
+          focus:ring-[#B91C1C]/10
         "
       >
         {children}

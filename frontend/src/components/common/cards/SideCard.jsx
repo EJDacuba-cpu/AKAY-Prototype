@@ -10,13 +10,13 @@ export default function SideCard({
   delay = 0,
 }) {
   const badgeStyles = {
-    default: "bg-[#F3F4F6] text-[#6B7280]",
+    default: "bg-[#F8FAFC] text-[#64748B] border border-[#E5E7EB]",
 
-    danger: "bg-red-100 text-red-700",
+    danger: "bg-red-50 text-red-700 border border-red-100",
 
-    success: "bg-emerald-100 text-emerald-700",
+    success: "bg-emerald-50 text-emerald-700 border border-emerald-100",
 
-    warning: "bg-amber-100 text-amber-700",
+    warning: "bg-amber-50 text-amber-700 border border-amber-100",
   };
 
   return (
@@ -26,13 +26,13 @@ export default function SideCard({
 
         overflow-hidden
 
-        rounded-2xl
+        rounded-xl
 
-        border border-[#E8ECF0]
+        border border-[#E5E7EB]
 
         bg-white
 
-        p-5
+        p-4
 
         shadow-sm
         shadow-black/[0.02]
@@ -40,7 +40,7 @@ export default function SideCard({
       style={stagger(delay)}
     >
       {/* Header */}
-      <div className="mb-5 flex items-start justify-between gap-3">
+      <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2.5">
             {icon && (
@@ -51,9 +51,9 @@ export default function SideCard({
 
                   rounded-lg
 
-                  bg-[#EFF6FF]
+                  bg-[#FEF2F2]
 
-                  text-[#2563EB]
+                  text-[#B91C1C]
                 "
               >
                 {icon}
@@ -64,7 +64,7 @@ export default function SideCard({
               className="
                 text-sm
                 font-semibold
-                text-[#0B2E59]
+                text-[#0F172A]
               "
             >
               {title}
@@ -73,7 +73,7 @@ export default function SideCard({
             {badge && (
               <span
                 className={`
-                  rounded-lg
+                  rounded-md
                   px-2.5 py-1
 
                   text-[10px]
@@ -94,7 +94,7 @@ export default function SideCard({
 
                 text-xs
                 leading-relaxed
-                text-[#9CA3AF]
+                text-[#64748B]
               "
             >
               {subtitle}

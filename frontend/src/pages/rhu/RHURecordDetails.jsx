@@ -12,7 +12,6 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import SideCard from "../../components/common/cards/SideCard";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
-import StatusBadge from "../../components/common/badges/StatusBadge";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
   getPatientDetailsListByRole,
@@ -33,7 +32,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-001",
     patient: "Maria Rosa",
     concern: "Abdominal pain",
-    status: "For Monitoring",
+    status: "Follow-up Required",
     date: "May 13, 2026",
     recordedBy: "Joshua Pio",
   },
@@ -42,7 +41,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-002",
     patient: "Juan Reyes",
     concern: "Hypertension",
-    status: "Active",
+    status: "Routine Monitoring",
     date: "May 13, 2026",
     recordedBy: "Joshua Pio",
   },
@@ -51,7 +50,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-003",
     patient: "Carmen Santos",
     concern: "Prenatal checkup",
-    status: "Active",
+    status: "Routine Monitoring",
     date: "May 12, 2026",
     recordedBy: "Grace Navalta",
   },
@@ -60,7 +59,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-004",
     patient: "Pedro Dela Cruz",
     concern: "Persistent cough",
-    status: "Completed",
+    status: "Complete",
     date: "May 12, 2026",
     recordedBy: "Joshua Pio",
   },
@@ -69,7 +68,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-005",
     patient: "Ana Lim",
     concern: "Fever and headache",
-    status: "Active",
+    status: "Routine Monitoring",
     date: "May 11, 2026",
     recordedBy: "Grace Navalta",
   },
@@ -78,7 +77,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-006",
     patient: "Luis Garcia",
     concern: "Diabetes follow-up",
-    status: "For Monitoring",
+    status: "Follow-up Required",
     date: "May 11, 2026",
     recordedBy: "Joshua Pio",
   },
@@ -87,7 +86,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-007",
     patient: "Rosa Mendoza",
     concern: "Skin rash",
-    status: "Completed",
+    status: "Complete",
     date: "May 10, 2026",
     recordedBy: "Grace Navalta",
   },
@@ -96,7 +95,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-008",
     patient: "Miguel Torres",
     concern: "Back pain",
-    status: "Active",
+    status: "Routine Monitoring",
     date: "May 10, 2026",
     recordedBy: "Joshua Pio",
   },
@@ -105,7 +104,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-009",
     patient: "Elena Flores",
     concern: "Prenatal checkup",
-    status: "Active",
+    status: "Routine Monitoring",
     date: "May 9, 2026",
     recordedBy: "Grace Navalta",
   },
@@ -114,7 +113,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-010",
     patient: "Ricardo Ramos",
     concern: "High blood pressure",
-    status: "For Monitoring",
+    status: "Follow-up Required",
     date: "May 9, 2026",
     recordedBy: "Joshua Pio",
   },
@@ -123,7 +122,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-011",
     patient: "Sofia Villanueva",
     concern: "Child immunization",
-    status: "Completed",
+    status: "Complete",
     date: "May 8, 2026",
     recordedBy: "Grace Navalta",
   },
@@ -132,7 +131,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-012",
     patient: "Andres Cruz",
     concern: "Chest tightness",
-    status: "Active",
+    status: "Routine Monitoring",
     date: "May 8, 2026",
     recordedBy: "Joshua Pio",
   },
@@ -141,7 +140,7 @@ const FALLBACK_RHU_RECORDS = [
     patientId: "P-013",
     patient: "Isabelle Reyes",
     concern: "Urinary tract infection",
-    status: "Completed",
+    status: "Complete",
     date: "May 7, 2026",
     recordedBy: "Grace Navalta",
   },
@@ -215,7 +214,7 @@ export default function RHURecordDetails() {
         <div className="rounded-2xl border border-[#E8ECF0] bg-white p-8 shadow-sm">
           <Link
             to="/rhu/health-records"
-            className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition hover:text-[#0B2E59]"
+            className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition hover:text-[#0F172A]"
           >
             <ArrowLeft size={15} /> Back to Health Records
           </Link>
@@ -227,12 +226,12 @@ export default function RHURecordDetails() {
     );
   }
 
-  const status = record.status || record.followUpStatus || "Active";
+  const status = normalizeHealthRecordStatus(
+    record.followUpStatus || record.status || "Routine Monitoring",
+  );
   const patientId = patient?.id || record.patientId;
   const patientName = getPatientName(patient) || getRecordPatientName(record);
-  const isFollowUp =
-    String(status).toLowerCase().includes("follow") ||
-    String(status).toLowerCase().includes("monitor");
+  const isFollowUp = status === "Follow-up Required";
 
   return (
     <DashboardLayout role="rhu" title="Health Record Details">
@@ -241,7 +240,7 @@ export default function RHURecordDetails() {
       <div className="mb-6">
         <Link
           to="/rhu/health-records"
-          className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition hover:text-[#0B2E59]"
+          className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition hover:text-[#0F172A]"
         >
           <ArrowLeft size={15} /> Back to Health Records
         </Link>
@@ -249,14 +248,14 @@ export default function RHURecordDetails() {
         <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-xl font-bold text-[#0B2E59]">
+              <h1 className="text-xl font-bold text-[#0F172A]">
                 {record.diagnosis || "Medical Consultation"}
               </h1>
-              <StatusBadge status={status} />
+              <HealthRecordStatusBadge status={status} />
               {isFollowUp && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#B45309]">
                   <CalendarDays size={12} />
-                  Follow-up / Monitoring
+                  Follow-up Required
                 </span>
               )}
             </div>
@@ -276,7 +275,7 @@ export default function RHURecordDetails() {
                     Patient:{" "}
                     <Link
                       to={`/rhu/patients/${patientId}`}
-                      className="font-semibold text-[#0B2E59] hover:underline"
+                      className="font-semibold text-[#B91C1C] hover:text-[#7F1D1D] hover:underline"
                     >
                       {patientName}
                     </Link>
@@ -289,14 +288,14 @@ export default function RHURecordDetails() {
           <div className="flex shrink-0 flex-wrap gap-2">
             <Link
               to={`/rhu/health-records/add?recordId=${getRecordId(record)}&mode=edit`}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0B2E59] shadow-sm transition hover:bg-slate-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
             >
               <Pencil size={14} />
               Edit Record
             </Link>
             <Link
               to={`/rhu/health-records/add?recordId=${getRecordId(record)}&mode=follow-up`}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#0B2E59] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#092347]"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
             >
               <FilePlus2 size={14} />
               Add Follow-up Record
@@ -427,7 +426,7 @@ export default function RHURecordDetails() {
                   <div className="mt-5 border-t border-slate-100 pt-4">
                     <Link
                       to={`/rhu/patients/${patientId}`}
-                      className="flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white py-2.5 text-center text-xs font-semibold text-[#0B2E59] shadow-sm transition hover:bg-slate-50"
+                      className="flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white py-2.5 text-center text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
                     >
                       View Full Patient Profile
                     </Link>
@@ -443,6 +442,44 @@ export default function RHURecordDetails() {
         </aside>
       </div>
     </DashboardLayout>
+  );
+}
+
+function normalizeHealthRecordStatus(status) {
+  const value = String(status || "").trim();
+
+  if (!value) return "Routine Monitoring";
+  if (["Follow-up", "Follow Up", "Follow-up Required"].includes(value)) {
+    return "Follow-up Required";
+  }
+  if (["Completed", "Complete", "Recovered", "Closed"].includes(value)) {
+    return "Complete";
+  }
+  if (
+    ["For Monitoring", "Active", "Monitoring", "For Referral"].includes(value)
+  ) {
+    return "Routine Monitoring";
+  }
+
+  return value;
+}
+
+function HealthRecordStatusBadge({ status }) {
+  const normalizedStatus = normalizeHealthRecordStatus(status);
+  const styles = {
+    "Routine Monitoring": "border-slate-200 bg-slate-50 text-slate-700",
+    "Follow-up Required": "border-amber-200 bg-amber-50 text-amber-800",
+    Complete: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+        styles[normalizedStatus] || styles["Routine Monitoring"]
+      }`}
+    >
+      {normalizedStatus}
+    </span>
   );
 }
 

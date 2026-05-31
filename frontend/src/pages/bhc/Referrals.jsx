@@ -303,7 +303,7 @@ export default function Referrals() {
                     className="group transition-colors duration-150 hover:bg-slate-50/80"
                   >
                     <td className="px-6 py-4">
-                      <span className="font-mono text-xs font-semibold text-[#0B2E59]">
+                      <span className="font-mono text-xs font-semibold text-[#0F172A]">
                         {referral.trackingId}
                       </span>
                     </td>
@@ -383,20 +383,20 @@ export default function Referrals() {
 
 function StatusBadge({ status }) {
   const map = {
-    "Pending RHU Review": "bg-slate-100 text-slate-700",
-    Pending: "bg-slate-100 text-slate-700",
-    "For Monitoring": "bg-amber-50 text-amber-700",
-    Received: "bg-blue-50 text-blue-700",
-    "Received by RHU": "bg-blue-50 text-blue-700",
-    "Under Assessment": "bg-amber-50 text-amber-700",
-    Completed: "bg-emerald-50 text-emerald-700",
-    "No-Show": "bg-red-50 text-red-700",
+    "Pending RHU Review": "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
+    Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
+    "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
+    "Received by RHU": "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
+    "Under Assessment": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    "No-Show": "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
   };
 
   return (
     <span
-      className={`inline-flex rounded-md px-2.5 py-1 text-[11px] font-semibold ${
-        map[status] || "bg-slate-100 text-slate-700"
+      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
+        map[status] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
       }`}
     >
       {status}
@@ -406,7 +406,7 @@ function StatusBadge({ status }) {
 
 function ClassificationBadge({ classification }) {
   const map = {
-    "General Consultation": "bg-blue-50 text-blue-700",
+    "General Consultation": "bg-slate-100 text-slate-700",
     "Maternal Care": "bg-pink-50 text-pink-700",
     Maternal: "bg-pink-50 text-pink-700",
     Immunization: "bg-emerald-50 text-emerald-700",
@@ -425,15 +425,15 @@ function ClassificationBadge({ classification }) {
 
 function UrgencyBadge({ urgency }) {
   const map = {
-    Emergency: "bg-red-50 text-red-700",
-    Urgent: "bg-amber-50 text-amber-700",
-    "Non-Urgent": "bg-slate-100 text-slate-700",
+    Emergency: "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
+    Urgent: "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    "Non-Urgent": "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
   };
 
   return (
     <span
-      className={`inline-flex rounded-md px-2.5 py-1 text-[11px] font-semibold ${
-        map[urgency] || "bg-slate-100 text-slate-700"
+      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-semibold ${
+        map[urgency] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
       }`}
     >
       {urgency}

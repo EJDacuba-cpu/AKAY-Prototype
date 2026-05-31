@@ -31,8 +31,8 @@ export default function HealthRecordsTable({
         relative
         z-0
         overflow-visible
-        rounded-2xl
-        border border-[#E8ECF0]
+        rounded-xl
+        border border-[#E5E7EB]
         bg-white
         shadow-sm
         shadow-black/[0.02]
@@ -43,8 +43,8 @@ export default function HealthRecordsTable({
       <div
         className="
           flex items-center justify-between
-          border-b border-[#F3F4F6]
-          px-5 py-4
+          border-b border-[#F1F5F9]
+          px-4 py-3
         "
       >
         <div>
@@ -53,7 +53,7 @@ export default function HealthRecordsTable({
               className="
                 text-sm
                 font-semibold
-                text-[#0B2E59]
+                text-[#0F172A]
               "
             >
               Recent Health Records
@@ -62,12 +62,13 @@ export default function HealthRecordsTable({
             {!loading && (
               <span
                 className="
-                  rounded-lg
-                  bg-[#F3F4F6]
+                  rounded-md
+                  border border-[#E5E7EB]
+                  bg-[#F8FAFC]
                   px-2 py-1
                   text-[10px]
                   font-semibold
-                  text-[#6B7280]
+                  text-[#64748B]
                 "
               >
                 {records.length}
@@ -101,7 +102,7 @@ export default function HealthRecordsTable({
               overflow-x-auto
               overflow-y-visible
               scroll-smooth
-              px-1 pb-3
+              px-1 pb-2
               [&::-webkit-scrollbar]:h-2
               [&::-webkit-scrollbar-track]:rounded-full
               [&::-webkit-scrollbar-track]:bg-[#F8FAFC]
@@ -124,8 +125,8 @@ export default function HealthRecordsTable({
               <thead>
                 <tr
                   className="
-                    border-b border-[#F3F4F6]
-                    bg-[#FAFBFC]
+                    border-b border-[#F1F5F9]
+                    bg-[#F8FAFC]
                     text-[10px]
                     font-semibold
                     uppercase
@@ -133,18 +134,18 @@ export default function HealthRecordsTable({
                     text-[#9CA3AF]
                   "
                 >
-                  <th className="px-5 py-3 whitespace-nowrap">Record</th>
-                  <th className="px-5 py-3 whitespace-nowrap">Patient</th>
-                  <th className="px-5 py-3 whitespace-nowrap">
+                  <th className="px-4 py-3 whitespace-nowrap">Record</th>
+                  <th className="px-4 py-3 whitespace-nowrap">Patient</th>
+                  <th className="px-4 py-3 whitespace-nowrap">
                     Classification
                   </th>
-                  <th className="px-5 py-3 whitespace-nowrap">
+                  <th className="px-4 py-3 whitespace-nowrap">
                     Chief Complaint
                   </th>
-                  <th className="px-5 py-3 whitespace-nowrap">Status</th>
-                  <th className="px-5 py-3 whitespace-nowrap">Follow-up</th>
-                  <th className="px-5 py-3 whitespace-nowrap">Date</th>
-                  <th className="px-5 py-3 text-right whitespace-nowrap">
+                  <th className="px-4 py-3 whitespace-nowrap">Status</th>
+                  <th className="px-4 py-3 whitespace-nowrap">Follow-up</th>
+                  <th className="px-4 py-3 whitespace-nowrap">Date</th>
+                  <th className="px-4 py-3 text-right whitespace-nowrap">
                     Actions
                   </th>
                 </tr>
@@ -157,7 +158,7 @@ export default function HealthRecordsTable({
                     <td
                       colSpan={8}
                       className="
-                        px-5 py-14
+                        px-4 py-12
                         text-center
                         text-sm
                         text-[#9CA3AF]
@@ -177,19 +178,19 @@ export default function HealthRecordsTable({
                       "
                     >
                       {/* Record ID */}
-                      <td className="whitespace-nowrap px-5 py-4">
+                      <td className="whitespace-nowrap px-4 py-3.5">
                         <span
                           className="
                             rounded-lg
-                            border border-[#E8ECF0]
-                            bg-[#FAFBFC]
+                            border border-[#E5E7EB]
+                            bg-[#F8FAFC]
                             px-2.5 py-1.5
                             font-mono text-[11px]
                             font-semibold
-                            text-[#0B2E59]
+                            text-[#B91C1C]
                             transition-colors duration-200
-                            group-hover:border-[#DBEAFE]
-                            group-hover:bg-[#EFF6FF]
+                            group-hover:border-[#FECACA]
+                            group-hover:bg-[#FEF2F2]
                           "
                         >
                           {record.id}
@@ -197,7 +198,7 @@ export default function HealthRecordsTable({
                       </td>
 
                       {/* Patient Details */}
-                      <td className="px-5 py-4 whitespace-nowrap">
+                      <td className="px-4 py-3.5 whitespace-nowrap">
                         <div>
                           <p
                             className="
@@ -221,32 +222,32 @@ export default function HealthRecordsTable({
                       </td>
 
                       {/* Visit Type / Classification */}
-                      <td className="px-5 py-4 text-[13px] text-[#6B7280] whitespace-nowrap">
+                      <td className="px-4 py-3.5 text-[13px] text-[#6B7280] whitespace-nowrap">
                         {record.classification}
                       </td>
 
                       {/* Chief Complaint / Concern */}
-                      <td className="px-5 py-4 text-[13px] text-[#6B7280] whitespace-nowrap">
+                      <td className="px-4 py-3.5 text-[13px] text-[#6B7280] whitespace-nowrap">
                         {record.concern}
                       </td>
 
                       {/* Status Badge */}
-                      <td className="whitespace-nowrap px-5 py-4">
+                      <td className="whitespace-nowrap px-4 py-3.5">
                         <StatusBadge status={record.status} />
                       </td>
 
                       {/* Follow-up Info */}
-                      <td className="whitespace-nowrap px-5 py-4 text-[13px] text-[#9CA3AF]">
+                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#9CA3AF]">
                         {record.followUp}
                       </td>
 
                       {/* Date of Visit */}
-                      <td className="whitespace-nowrap px-5 py-4 text-[13px] text-[#9CA3AF]">
+                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#9CA3AF]">
                         {record.date}
                       </td>
 
                       {/* Actions ActionMenu Button */}
-                      <td className="px-5 py-4 text-right whitespace-nowrap">
+                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
                         <div className="relative flex justify-end">
                           <ActionMenu
                             title={record.patientName || record.patient}

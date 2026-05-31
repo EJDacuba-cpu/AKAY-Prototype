@@ -17,10 +17,7 @@ import {
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 
-import {
-  getReferrals,
-  submitReturnSlip,
-} from "../../services/referrals";
+import { getReferrals, submitReturnSlip } from "../../services/referrals";
 import {
   getDoctorAvailability,
   listenDoctorAvailabilityUpdates,
@@ -512,9 +509,7 @@ export default function FeedbackReturnSlip() {
           <p className="mt-2 text-sm text-slate-500">
             Create Return Slip is available only when a referral is Received or
             For Monitoring. Current status:{" "}
-            <span className="font-medium text-slate-800">
-              {selectedStatus}
-            </span>
+            <span className="font-medium text-slate-800">{selectedStatus}</span>
           </p>
           <Link
             to={`/rhu/referrals/${selectedReferral.trackingId}`}
@@ -741,24 +736,6 @@ export default function FeedbackReturnSlip() {
                   />
                 </div>
               </section>
-
-              <section className="rounded-xl border border-slate-200 bg-slate-50 p-5">
-                <div className="flex gap-3">
-                  <FileText
-                    size={16}
-                    className="mt-0.5 flex-shrink-0 text-slate-400"
-                  />
-                  <p className="text-xs leading-relaxed text-slate-500">
-                    <span className="font-medium text-slate-700">
-                      Clinical Note:
-                    </span>{" "}
-                    Submitting this form saves the return slip for the referring
-                    BHC and marks this referral as Completed. If the patient
-                    still needs RHU monitoring, use Start Monitoring from
-                    Referral Details before creating the return slip.
-                  </p>
-                </div>
-              </section>
             </>
           )}
 
@@ -779,17 +756,8 @@ export default function FeedbackReturnSlip() {
         </form>
 
         {selectedReferral && (
-          <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <p className="font-mono text-xs font-semibold text-slate-800">
-                  {selectedReferral.trackingId}
-                </p>
-                <p className="mt-0.5 truncate text-xs text-slate-500">
-                  {getPatientName(selectedReferral)}
-                </p>
-              </div>
-
+          <div className="mt-6 ">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
               <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
                 <Link
                   to={`/rhu/referrals/${selectedReferral.trackingId}`}
@@ -841,7 +809,7 @@ function CompletedReturnSlip({ referral, feedback }) {
                 Completed RHU return slip for this referral.
               </p>
             </div>
-            <span className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">
+            <span className="rounded-md border border-[#A7F3D0] bg-[#ECFDF5] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[#047857]">
               Completed
             </span>
           </div>
@@ -931,7 +899,9 @@ function Info({ label, value }) {
 }
 
 function shouldShowFollowUpDate(outcome) {
-  return outcome === "Follow-up Required" || outcome === "Coordinated Follow-up";
+  return (
+    outcome === "Follow-up Required" || outcome === "Coordinated Follow-up"
+  );
 }
 
 function getOfficialStatus(status) {
@@ -979,9 +949,7 @@ function getReferringHci(referral = {}) {
   if (valid) return valid;
 
   const barangay =
-    referral.referringBarangay ||
-    referral.patientBarangay ||
-    referral.barangay;
+    referral.referringBarangay || referral.patientBarangay || referral.barangay;
 
   return barangay
     ? `Barangay ${cleanBarangayName(barangay)} Health Center`

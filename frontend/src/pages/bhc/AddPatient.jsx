@@ -1,100 +1,102 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-
 import {
   ArrowLeft,
   UserPlus,
-  MapPin,
-  HeartPulse,
+  MapPinHouse,
   FileText,
   Baby,
-  Activity,
-} from "lucide-react";
+  HeartPulse,
+} from "lucide-react"; // FIXED: Added missing icons
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
+import SuccessModal from "../../components/common/modals/SuccessModal";
 
+// Import extracted utils and components
+import {
+  calculateAge,
+  normalizePhilippineContact,
+  formatFullName,
+  formatTpal,
+} from "../../utils/patientUtils";
+import {
+  SectionHeader,
+  PhilippineContactInput,
+  TpalScoreGrid,
+  THEME,
+} from "../../components/features/patients/PatientFormComponents";
+
+// Import existing reusable inputs
 import FormInput from "../../components/common/forms/FormInput";
 import FormSelect from "../../components/common/forms/FormSelect";
 import FormTextarea from "../../components/common/forms/FormTextarea";
 
-import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
-import SuccessModal from "../../components/common/modals/SuccessModal";
-
 import { createBhcPatient } from "../../services/patientService";
 
-/* Stagger Animation */
+// Animation Utility
 const stagger = (i) => ({
   animationDelay: `${i * 80}ms`,
 });
 
-/* Calculate Age */
-function calculateAge(birthDate) {
-  if (!birthDate) return "";
-
-  const today = new Date();
-  const dob = new Date(birthDate);
-
-  let age = today.getFullYear() - dob.getFullYear();
-  const monthDifference = today.getMonth() - dob.getMonth();
-  const dayDifference = today.getDate() - dob.getDate();
-
-  if (monthDifference < 0 || (monthDifference === 0 && dayDifference < 0)) {
-    age--;
-  }
-
-  return age;
-}
+// Initial State Definition
+const INITIAL_FORM_STATE = {
+  firstName: "",
+  middleName: "",
+  lastName: "",
+  birthDate: "",
+  age: "",
+  sex: "",
+  civilStatus: "",
+  contactNumber: "",
+  streetAddress: "",
+  barangay: "",
+  municipality: "Bulakan",
+  patientClassification: "",
+  notes: "",
+  // Immunization
+  guardianName: "",
+  guardianRelationship: "",
+  guardianContact: "",
+  birthWeight: "",
+  feedingStatus: "",
+  childAgeGroup: "",
+  // Maternal
+  lmp: "",
+  pmp: "",
+  cycleDuration: "",
+  gravida: "",
+  para: "",
+  term: "",
+  preterm: "",
+  abortion: "",
+  living: "",
+};
 
 export default function AddPatient() {
   const navigate = useNavigate();
 
-  /* Modal States */
-  const [openConfirm, setOpenConfirm] = useState(false);
-  const [openSuccess, setOpenSuccess] = useState(false);
+  // Unified State Management
+  const [modals, setModals] = useState({
+    confirm: false,
+    success: false,
+  });
   const [saving, setSaving] = useState(false);
   const [createdPatientId, setCreatedPatientId] = useState("");
+  const [form, setForm] = useState(INITIAL_FORM_STATE);
 
-  /* Form State */
-  const [form, setForm] = useState({
-    firstName: "",
-    middleName: "",
-    lastName: "",
-    birthDate: "",
-    age: "",
-    sex: "",
-    civilStatus: "",
-    contactNumber: "",
-    streetAddress: "",
-    barangay: "",
-    municipality: "Bulakan",
-    patientClassification: "",
-    notes: "",
+  // --- HANDLERS ---
 
-    // Child/Immunization Specific State Fields
-    guardianName: "",
-    guardianRelationship: "",
-    guardianContact: "",
-    birthWeight: "",
-    feedingStatus: "",
-    childAgeGroup: "",
-
-    // Maternal Specific State Fields
-    lmp: "",
-    pmp: "",
-    cycleDuration: "",
-    gravida: "",
-    para: "",
-    term: "", // Added T
-    preterm: "", // Added P
-    abortion: "", // Added A
-    living: "", // Added L
-  });
-
-  /* Handle Change */
-  function handleChange(e) {
+  const handleChange = (e) => {
     const { name, value } = e.target;
 
     setForm((prev) => {
+      // Phone Normalization
+      if (name === "contactNumber" || name === "guardianContact") {
+        return { ...prev, [name]: normalizePhilippineContact(value) };
+      }
+
+      // Age Calculation
       if (name === "birthDate") {
         return {
           ...prev,
@@ -103,129 +105,120 @@ export default function AddPatient() {
         };
       }
 
-      // Reset fields kapag nagpalit ng classification
+      // Dynamic Field Reset based on Classification
       if (name === "patientClassification") {
+        const isMaternal = value === "Maternal";
+        const isImmunization = value === "Immunization";
+
         return {
           ...prev,
           patientClassification: value,
-          ...(value !== "Maternal" && {
-            lmp: "",
-            pmp: "",
-            cycleDuration: "",
-            gravida: "",
-            para: "",
-            term: "",
-            preterm: "",
-            abortion: "",
-            living: "",
-          }),
-          ...(value !== "Immunization" && {
-            guardianName: "",
-            guardianRelationship: "",
-            guardianContact: "",
-            birthWeight: "",
-            feedingStatus: "",
-          }),
+          // Reset Maternal fields if not Maternal
+          ...(isMaternal
+            ? {}
+            : {
+                lmp: "",
+                pmp: "",
+                cycleDuration: "",
+                gravida: "",
+                para: "",
+                term: "",
+                preterm: "",
+                abortion: "",
+                living: "",
+              }),
+          // Reset Immunization fields if not Immunization
+          ...(isImmunization
+            ? {}
+            : {
+                guardianName: "",
+                guardianRelationship: "",
+                guardianContact: "",
+                birthWeight: "",
+                feedingStatus: "",
+              }),
         };
       }
 
-      return {
-        ...prev,
-        [name]: value,
-      };
+      return { ...prev, [name]: value };
     });
-  }
+  };
 
-  /* Submit */
-  async function handleSubmit() {
+  const handleSubmit = async () => {
     try {
       setSaving(true);
 
-      // Pagsasama-samahin ang T-P-A-L bago i-save sa database
-      const tpalCombined =
-        form.patientClassification === "Maternal"
-          ? `${form.term || 0}-${form.preterm || 0}-${form.abortion || 0}-${form.living || 0}`
-          : "";
-
-      const patientDataToSave = {
+      const patientData = {
         ...form,
         id: Date.now().toString(),
-        name: `${form.firstName} ${form.middleName ? form.middleName + " " : ""}${form.lastName}`.trim(),
+        name: formatFullName(form.firstName, form.middleName, form.lastName),
         category: form.patientClassification,
         ageSex: `${form.age || calculateAge(form.birthDate)} / ${form.sex}`,
-        tpal: tpalCombined, // I-papasa ang combined format sa service
+        tpal:
+          form.patientClassification === "Maternal"
+            ? formatTpal(form.term, form.preterm, form.abortion, form.living)
+            : "",
       };
 
-      const created = await createBhcPatient(patientDataToSave);
-      const nextPatientId =
-        created?.details?.id || created?.patient?.id || patientDataToSave.id;
+      const created = await createBhcPatient(patientData);
+      const nextId =
+        created?.details?.id || created?.patient?.id || patientData.id;
 
-      setOpenConfirm(false);
-      setCreatedPatientId(nextPatientId);
-      setOpenSuccess(true);
+      setCreatedPatientId(nextId);
+      setModals({ ...modals, confirm: false, success: true });
     } catch (error) {
-      console.error("Failed to create patient:", error);
+      console.error("Submission failed:", error);
     } finally {
       setSaving(false);
     }
-  }
+  };
+
+  // --- RENDER ---
 
   return (
     <>
       <DashboardLayout role="bhc" title="Add Patient">
         {/* Header */}
         <div className="anim-fade-up mb-8" style={stagger(0)}>
-          <Link
-            to="/bhc/patients"
-            className="mb-4 inline-flex items-center gap-2 text-[13px] font-semibold text-[#0B2E59] transition-all duration-200 hover:gap-2.5 hover:text-[#092347]"
-          >
-            <ArrowLeft size={16} />
-            Back to Patients
-          </Link>
-
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0B2E59]/[0.06]">
-              <UserPlus size={20} className="text-[#0B2E59]" />
-            </div>
+          <div className="flex flex-col gap-2">
+            <Link
+              to="/bhc/patients"
+              className="inline-flex w-fit items-center gap-2 text-xs font-semibold text-gray-500 transition-colors hover:text-[#B91C1C]"
+            >
+              <ArrowLeft size={14} />
+              Back to Patients
+            </Link>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-[#0B2E59]">
-                Add Patient
+              <h1 className="text-2xl font-bold tracking-tight text-gray-900">
+                Add New Patient
               </h1>
-              <p className="mt-0.5 text-sm text-[#6B7280]">
-                Register the patient's basic profile information.
+              <p className="mt-1 text-sm text-gray-500">
+                Register a new patient profile into the Barangay Health Center
+                system.
               </p>
             </div>
           </div>
         </div>
 
-        {/* Form */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            setOpenConfirm(true);
+            setModals({ ...modals, confirm: true });
           }}
           className="space-y-6"
         >
-          {/* Basic Information */}
+          {/* SECTION 1: BASIC INFO */}
           <section
-            className="anim-fade-up rounded-xl border border-[#E8ECF0] border-t-2 border-t-[#0B2E59] bg-white p-6"
+            className="anim-fade-up rounded-xl border border-gray-200 border-t-4 border-t-[#B91C1C] bg-white p-6 shadow-sm"
             style={stagger(1)}
           >
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0B2E59]/[0.06]">
-                <HeartPulse size={16} className="text-[#0B2E59]" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-[#0B2E59]">
-                  Basic Information
-                </h2>
-                <p className="text-[11px] text-[#9CA3AF]">
-                  Register the patient's personal profile details.
-                </p>
-              </div>
-            </div>
+            <SectionHeader
+              icon={UserPlus}
+              title="Basic Information"
+              description="Personal identity and demographic details."
+            />
 
-            <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
               <FormInput
                 label="First Name"
                 name="firstName"
@@ -246,6 +239,7 @@ export default function AddPatient() {
                 onChange={handleChange}
                 required
               />
+
               <FormInput
                 label="Date of Birth"
                 name="birthDate"
@@ -260,6 +254,7 @@ export default function AddPatient() {
                 type="text"
                 value={form.age ? `${form.age} years old` : ""}
                 readOnly
+                className="bg-gray-50"
               />
               <FormSelect
                 label="Sex"
@@ -272,6 +267,7 @@ export default function AddPatient() {
                 <option>Male</option>
                 <option>Female</option>
               </FormSelect>
+
               <FormSelect
                 label="Civil Status"
                 name="civilStatus"
@@ -282,40 +278,31 @@ export default function AddPatient() {
                 <option value="">Select Civil Status</option>
                 <option>Single</option>
                 <option>Married</option>
-                <option>Widowed</option>
-                <option>Separated</option>
-                <option>Live-in</option>
               </FormSelect>
-              <FormInput
-                label="Contact Number"
-                name="contactNumber"
-                value={form.contactNumber}
-                onChange={handleChange}
-                placeholder="09XXXXXXXXX"
-              />
+
+              <div className="lg:col-span-2">
+                <PhilippineContactInput
+                  label="Contact Number"
+                  name="contactNumber"
+                  value={form.contactNumber}
+                  onChange={handleChange}
+                />
+              </div>
             </div>
           </section>
 
-          {/* Address Information */}
+          {/* SECTION 2: ADDRESS */}
           <section
-            className="anim-fade-up rounded-xl border border-[#E8ECF0] border-t-2 border-t-[#0B2E59] bg-white p-6"
+            className="anim-fade-up rounded-xl border border-gray-200 border-t-4 border-t-[#B91C1C] bg-white p-6 shadow-sm"
             style={stagger(2)}
           >
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0B2E59]/[0.06]">
-                <MapPin size={16} className="text-[#0B2E59]" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-[#0B2E59]">
-                  Address Information
-                </h2>
-                <p className="text-[11px] text-[#9CA3AF]">
-                  Current residential address.
-                </p>
-              </div>
-            </div>
+            <SectionHeader
+              icon={MapPinHouse}
+              title="Address Information"
+              description="Current residential address details."
+            />
 
-            <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
               <FormInput
                 label="Street Address"
                 name="streetAddress"
@@ -324,59 +311,57 @@ export default function AddPatient() {
                 placeholder="House No., Purok, Street"
                 required
               />
-              <FormSelect
-                label="Barangay"
-                name="barangay"
-                value={form.barangay}
-                onChange={handleChange}
-                required
-              >
-                <option value="">Select barangay</option>
-                <option>Bagumbayan</option>
-                <option>Balubad</option>
-                <option>Bambang</option>
-                <option>Matungao</option>
-                <option>Maysantol</option>
-                <option>Perez</option>
-                <option>Pitpitan</option>
-                <option>San Francisco</option>
-                <option>San Jose</option>
-                <option>San Nicolas</option>
-                <option>Santa Ana</option>
-                <option>Santa Ines</option>
-                <option>Taliptip</option>
-                <option>Tibig</option>
-              </FormSelect>
-              <FormInput
-                label="Municipality"
-                name="municipality"
-                value={form.municipality}
-                readOnly
-              />
+
+              <div className="lg:col-span-2">
+                <div className="grid gap-5 md:grid-cols-2">
+                  <FormSelect
+                    label="Barangay"
+                    name="barangay"
+                    value={form.barangay}
+                    onChange={handleChange}
+                    required
+                  >
+                    <option value="">Select barangay</option>
+                    {/* Options */}
+                    <option>Bagumbayan</option>
+                    <option>Balubad</option>
+                    <option>Bambang</option>
+                    <option>Matungao</option>
+                    <option>Maysantol</option>
+                    <option>Perez</option>
+                    <option>Pitpitan</option>
+                    <option>San Francisco</option>
+                    <option>San Jose</option>
+                    <option>San Nicolas</option>
+                    <option>Santa Ana</option>
+                    <option>Santa Ines</option>
+                    <option>Taliptip</option>
+                    <option>Tibig</option>
+                  </FormSelect>
+                  <FormInput
+                    label="Municipality"
+                    name="municipality"
+                    value={form.municipality}
+                    readOnly
+                    className="bg-gray-50"
+                  />
+                </div>
+              </div>
             </div>
           </section>
 
-          {/* Patient Classification */}
+          {/* SECTION 3: CLASSIFICATION */}
           <section
-            className="anim-fade-up rounded-xl border border-[#E8ECF0] border-t-2 border-t-[#0B2E59] bg-white p-6"
+            className="anim-fade-up rounded-xl border border-gray-200 border-t-4 border-t-[#B91C1C] bg-white p-6 shadow-sm"
             style={stagger(3)}
           >
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0B2E59]/[0.06]">
-                <FileText size={16} className="text-[#0B2E59]" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-[#0B2E59]">
-                  Patient Classification
-                </h2>
-                <p className="text-[11px] text-[#9CA3AF]">
-                  Consultation and visit records are managed under Health
-                  Records.
-                </p>
-              </div>
-            </div>
+            <SectionHeader
+              icon={FileText}
+              title="Patient Classification"
+              description="Select the primary classification for health record management."
+            />
 
-            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-5 md:grid-cols-2">
               <FormSelect
                 label="Patient Classification"
                 name="patientClassification"
@@ -398,32 +383,24 @@ export default function AddPatient() {
                 name="notes"
                 value={form.notes}
                 onChange={handleChange}
-                placeholder="Optional notes about the patient profile..."
+                placeholder="Optional notes..."
               />
             </div>
           </section>
 
-          {/* DYNAMIC SECTION: IMMUNIZATION FIELDS */}
+          {/* DYNAMIC: IMMUNIZATION */}
           {form.patientClassification === "Immunization" && (
             <section
-              className="anim-fade-up rounded-xl border border-[#E8ECF0] border-t-2 border-t-[#0B2E59] bg-white p-6"
+              className="anim-fade-up rounded-xl border border-gray-200 border-t-4 border-t-[#B91C1C] bg-white p-6 shadow-sm"
               style={stagger(4)}
             >
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0B2E59]/[0.06]">
-                  <Baby size={16} className="text-[#0B2E59]" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-semibold text-[#0B2E59]">
-                    Immunization / Child Information
-                  </h2>
-                  <p className="text-[11px] text-[#9CA3AF]">
-                    Fill out child specific tracking data.
-                  </p>
-                </div>
-              </div>
+              <SectionHeader
+                icon={Baby}
+                title="Immunization / Child Information"
+                description="Fill out child specific tracking data."
+              />
 
-              <div className="mt-5 grid gap-4 lg:grid-cols-3">
+              <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
                 <FormInput
                   label="Guardian Name"
                   name="guardianName"
@@ -432,14 +409,14 @@ export default function AddPatient() {
                   required
                 />
                 <FormInput
-                  label="Relationship to Child"
+                  label="Relationship"
                   name="guardianRelationship"
                   value={form.guardianRelationship}
                   onChange={handleChange}
                   required
                 />
-                <FormInput
-                  label="Guardian Contact No."
+                <PhilippineContactInput
+                  label="Guardian Contact"
                   name="guardianContact"
                   value={form.guardianContact}
                   onChange={handleChange}
@@ -466,41 +443,33 @@ export default function AddPatient() {
             </section>
           )}
 
-          {/* DYNAMIC SECTION: MATERNAL FIELDS */}
+          {/* DYNAMIC: MATERNAL */}
           {form.patientClassification === "Maternal" && (
             <section
-              className="anim-fade-up mt-6 rounded-xl border border-[#E8ECF0] border-t-2 border-t-pink-600 bg-white p-6"
+              className="anim-fade-up rounded-xl border border-gray-200 border-t-4 border-t-[#B91C1C] bg-white p-6 shadow-sm"
               style={stagger(4)}
             >
-              <div className="mb-6 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-50">
-                  <Activity size={20} className="text-pink-600" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-bold text-pink-900">
-                    Maternal / Obstetric History
-                  </h2>
-                  <p className="text-xs text-pink-500">
-                    Provide complete pregnancy and menstrual tracking data.
-                  </p>
-                </div>
-              </div>
+              <SectionHeader
+                icon={HeartPulse}
+                title="Maternal / Obstetric History"
+                description="Provide complete pregnancy and menstrual tracking data."
+              />
 
               {/* Menstrual History */}
               <div className="mb-8">
-                <h3 className="mb-4 text-[10px] font-bold uppercase tracking-wider text-pink-600">
+                <h3 className="mb-4 text-[10px] font-bold uppercase tracking-wider text-gray-900">
                   Menstrual History
                 </h3>
-                <div className="grid gap-4 lg:grid-cols-3">
+                <div className="grid gap-5 md:grid-cols-3">
                   <FormInput
-                    label="LMP (Last Menstrual Period)"
+                    label="LMP"
                     name="lmp"
                     type="date"
                     value={form.lmp}
                     onChange={handleChange}
                   />
                   <FormInput
-                    label="PMP (Previous Menstrual Period)"
+                    label="PMP"
                     name="pmp"
                     type="date"
                     value={form.pmp}
@@ -519,11 +488,11 @@ export default function AddPatient() {
 
               {/* Obstetric Score */}
               <div className="mb-8">
-                <h3 className="mb-4 text-[10px] font-bold uppercase tracking-wider text-pink-600">
+                <h3 className="mb-4 text-[10px] font-bold uppercase tracking-wider text-gray-900">
                   Obstetric Score (GTPAL)
                 </h3>
 
-                <div className="grid gap-4 lg:grid-cols-2 mb-4">
+                <div className="grid gap-5 lg:grid-cols-2 mb-6">
                   <FormInput
                     label="Gravida (G)"
                     name="gravida"
@@ -542,80 +511,37 @@ export default function AddPatient() {
                   />
                 </div>
 
-                {/* TPAL Organized Box */}
-                <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 p-5 rounded-xl border border-pink-100 bg-pink-50/40">
-                  <FormInput
-                    label="Term (T)"
-                    name="term"
-                    type="number"
-                    value={form.term}
-                    onChange={handleChange}
-                    placeholder="0"
-                  />
-                  <FormInput
-                    label="Preterm (P)"
-                    name="preterm"
-                    type="number"
-                    value={form.preterm}
-                    onChange={handleChange}
-                    placeholder="0"
-                  />
-                  <FormInput
-                    label="Abortion (A)"
-                    name="abortion"
-                    type="number"
-                    value={form.abortion}
-                    onChange={handleChange}
-                    placeholder="0"
-                  />
-                  <FormInput
-                    label="Living (L)"
-                    name="living"
-                    type="number"
-                    value={form.living}
-                    onChange={handleChange}
-                    placeholder="0"
-                  />
-                </div>
+                <TpalScoreGrid form={form} onChange={handleChange} />
               </div>
-
-              {/* Notes */}
-              <FormTextarea
-                label="Obstetric Notes / Concerns"
-                name="notes"
-                value={form.notes}
-                onChange={handleChange}
-                placeholder="E.g., previous complications, specific health alerts..."
-              />
             </section>
           )}
 
-          {/* Actions */}
+          {/* ACTIONS */}
           <div
-            className="anim-fade-up flex items-center justify-end gap-3 pt-2"
+            className="anim-fade-up flex items-center justify-end gap-4 pt-4"
             style={stagger(5)}
           >
             <button
               type="button"
               onClick={() => navigate("/bhc/patients")}
-              className="rounded-lg border border-[#E8ECF0] bg-white px-5 py-2.5 text-xs font-semibold text-[#6B7280] transition-all duration-200 hover:bg-[#F9FAFB] hover:shadow-sm active:scale-[0.98]"
+              className="rounded-lg border border-gray-300 bg-white px-6 py-2.5 text-xs font-semibold text-gray-700 transition-all hover:bg-gray-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex items-center gap-2 rounded-lg bg-[#0B2E59] px-5 py-2.5 text-xs font-semibold text-white shadow-sm shadow-[#0B2E59]/10 transition-all duration-200 hover:bg-[#092347] hover:shadow-md hover:shadow-[#0B2E59]/20 active:scale-[0.98]"
+              className="flex items-center gap-2 rounded-lg bg-[#B91C1C] px-6 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-[#991B1B]"
             >
               <UserPlus size={14} />
-              Save Patient Profile
+              Save Profile
             </button>
           </div>
         </form>
       </DashboardLayout>
 
-      {/* Success and Confirmation Modals */}
+      {/* Modals */}
       <SuccessModal
-        open={openSuccess}
+        open={modals.success}
         title="Patient Successfully Added"
         description="The patient profile has been successfully saved to the system."
         buttonText="Back to Patients"
@@ -626,16 +552,15 @@ export default function AddPatient() {
         }
       />
       <ConfirmationModal
-        open={openConfirm}
+        open={modals.confirm}
         title="Save Patient Profile?"
         description="Please confirm that the patient information entered is accurate before saving."
         confirmText="Save Patient"
         cancelText="Cancel"
         onConfirm={handleSubmit}
-        onCancel={() => setOpenConfirm(false)}
+        onCancel={() => setModals({ ...modals, confirm: false })}
         loading={saving}
       />
     </>
   );
 }
-

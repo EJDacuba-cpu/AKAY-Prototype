@@ -23,6 +23,60 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+:root {
+  --akay-primary: #b91c1c;
+  --akay-primary-dark: #7f1d1d;
+  --akay-primary-soft: #fee2e2;
+  --akay-bg: #f8fafc;
+  --akay-surface: #ffffff;
+  --akay-text: #0f172a;
+  --akay-muted: #64748b;
+  --akay-border: #e5e7eb;
+}
+
+.akay-card {
+  border: 1px solid var(--akay-border);
+  border-radius: 0.75rem;
+  background: var(--akay-surface);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.akay-card-hover {
+  transition:
+    transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.akay-card-hover:hover {
+  transform: translateY(-1px);
+  border-color: #fecaca;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.akay-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+
+.akay-scrollbar::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+.akay-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.akay-scrollbar::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 999px;
+}
+
+.akay-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: #b6c0cc;
+}
+
 /* --- Scrollbar Utilities --- */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;

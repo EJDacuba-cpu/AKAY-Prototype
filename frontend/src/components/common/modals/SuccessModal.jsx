@@ -33,9 +33,9 @@ export default function SuccessModal({
           relative w-full max-w-sm
 
           overflow-hidden
-          rounded-2xl
+          rounded-xl
 
-          border border-slate-100/80
+          border border-[#E5E7EB]
           bg-white
 
           shadow-xl shadow-slate-900/10
@@ -72,7 +72,7 @@ export default function SuccessModal({
               mb-4 flex h-11 w-11
               items-center justify-center
 
-              rounded-xl
+              rounded-lg
 
               border border-emerald-100/50
               bg-emerald-50
@@ -91,7 +91,7 @@ export default function SuccessModal({
               text-[15px]
               font-semibold
               leading-snug
-              text-slate-800
+              text-[#0F172A]
             "
           >
             {title}
@@ -152,7 +152,7 @@ export default function SuccessModal({
 
                 rounded-lg
 
-                bg-emerald-600
+                bg-[#B91C1C]
 
                 px-4
 
@@ -162,8 +162,8 @@ export default function SuccessModal({
 
                 transition-all duration-150
 
-                hover:bg-emerald-700
-                active:bg-emerald-800
+                hover:bg-[#991B1B]
+                active:bg-[#7F1D1D]
               "
             >
               {buttonText}

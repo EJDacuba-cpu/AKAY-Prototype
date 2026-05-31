@@ -26,19 +26,19 @@ export default function FormInput({
         readOnly={readOnly}
         className={`
           h-10 w-full rounded-lg
-          border border-[#E8ECF0]
-          px-3 text-sm text-[#1A1A1A]
+          border border-[#E5E7EB]
+          px-3 text-sm text-[#0F172A]
           outline-none transition-all duration-200
 
-          focus:border-[#0B2E59]/20
+          focus:border-[#FCA5A5]
           focus:bg-white
-          focus:ring-4
-          focus:ring-[#0B2E59]/[0.04]
+          focus:ring-3
+          focus:ring-[#B91C1C]/[0.08]
 
           ${
             readOnly
-              ? "cursor-not-allowed border-[#E8ECF0] bg-[#F3F4F6] text-[#6B7280]"
-              : "bg-[#FAFBFC] hover:border-[#BCC3CD]"
+              ? "cursor-not-allowed border-[#E5E7EB] bg-[#F1F5F9] text-[#64748B]"
+              : "bg-[#F8FAFC] hover:border-[#CBD5E1]"
           }
         `}
       />

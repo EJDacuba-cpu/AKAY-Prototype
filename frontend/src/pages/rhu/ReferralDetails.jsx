@@ -155,7 +155,7 @@ export default function RHUReferralDetails() {
           </p>
           <Link
             to="/rhu/incoming-referrals"
-            className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#0B2E59] px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#092347]"
+            className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
           >
             <ArrowLeft size={15} />
             Back to Incoming Referrals
@@ -172,7 +172,7 @@ export default function RHUReferralDetails() {
       <div className="anim-fade-up mb-3" style={stagger(0)}>
         <Link
           to="/rhu/incoming-referrals"
-          className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 hover:text-[#0B2E59]"
+          className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 hover:text-[#0F172A]"
         >
           <ArrowLeft size={15} />
           Back to Incoming Referrals
@@ -186,7 +186,7 @@ export default function RHUReferralDetails() {
         style={stagger(2)}
       >
         <div className="-mb-px flex overflow-x-auto">
-          <div className="flex items-center gap-2 whitespace-nowrap border-b-2 border-[#0B2E59] px-4 py-3 text-xs font-semibold text-[#0B2E59]">
+          <div className="flex items-center gap-2 whitespace-nowrap border-b-2 border-[#B91C1C] px-4 py-3 text-xs font-semibold text-[#0F172A]">
             <ClipboardList size={14} />
             Referral Record
           </div>
@@ -230,7 +230,7 @@ function ReferralHeader({ referral, patient }) {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-2xl font-bold tracking-tight text-[#0B2E59]">
+            <h1 className="text-2xl font-bold tracking-tight text-[#0F172A]">
               {getPatientName(referral, patient)}
             </h1>
             <StatusBadge status={referral.status} />
@@ -292,7 +292,7 @@ function HeaderDetail({ label, value, mono }) {
       </p>
       <p
         className={`mt-1 truncate text-sm font-semibold text-slate-700 ${
-          mono ? "font-mono text-[#0B2E59]" : ""
+          mono ? "font-mono text-[#0F172A]" : ""
         }`}
         title={value || "Not recorded"}
       >
@@ -420,10 +420,10 @@ function SystemReference({ referral }) {
         </h2>
         <p className="text-[10.5px] text-slate-400">QR code and tracking ID</p>
       </div>
-      <div className="mx-auto mb-3 flex h-28 w-28 items-center justify-center rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/50">
-        <QrCode size={56} className="text-[#0B2E59]/60" />
+      <div className="mx-auto mb-3 flex h-28 w-28 items-center justify-center rounded-xl border-2 border-dashed border-red-200 bg-red-50/50">
+        <QrCode size={56} className="text-[#0F172A]/60" />
       </div>
-      <p className="text-center font-mono text-xs font-bold text-[#0B2E59]">
+      <p className="text-center font-mono text-xs font-bold text-[#0F172A]">
         {referral.trackingId}
       </p>
     </section>
@@ -443,7 +443,7 @@ function PatientProfileShortcut({ patient }) {
       </p>
       <Link
         to={`/rhu/patients/${patientId}`}
-        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0B2E59] hover:bg-slate-50"
+        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0F172A] hover:bg-slate-50"
       >
         <User size={14} />
         View Patient Profile
@@ -474,7 +474,7 @@ function ReferralActions({ referral, busy, onStatusChange }) {
                   receivedAt: new Date().toISOString(),
                 })
               }
-              className={`${button} bg-[#0B2E59] text-white hover:bg-[#092347]`}
+              className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
             >
               <UserCheck size={14} />
               Receive Patient
@@ -507,7 +507,7 @@ function ReferralActions({ referral, busy, onStatusChange }) {
                 receivedAt: new Date().toISOString(),
               })
             }
-            className={`${button} bg-[#0B2E59] text-white hover:bg-[#092347]`}
+            className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
           >
             <UserCheck size={14} />
             Receive Late Arrival
@@ -524,7 +524,7 @@ function ReferralActions({ referral, busy, onStatusChange }) {
                   monitoringStartedAt: new Date().toISOString(),
                 })
               }
-              className={`${button} bg-[#0B2E59] text-white hover:bg-[#092347]`}
+              className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
             >
               <Activity size={14} />
               Start Monitoring
@@ -542,7 +542,7 @@ function ReferralActions({ referral, busy, onStatusChange }) {
         {status === "For Monitoring" && (
           <Link
             to={`/rhu/feedback/${referral.trackingId}`}
-            className={`${button} bg-[#0B2E59] text-white hover:bg-[#092347]`}
+            className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
           >
             <FileText size={14} />
             Complete Monitoring / Create Return Slip
@@ -591,7 +591,7 @@ function StatusHistory({ referral }) {
           <div key={label} className="flex items-start gap-3">
             <span
               className={`mt-1 h-2.5 w-2.5 rounded-full ${
-                value ? "bg-[#0B2E59]" : "bg-slate-200"
+                value ? "bg-[#B91C1C]" : "bg-slate-200"
               }`}
             />
             <div>
@@ -613,7 +613,7 @@ function RecordSection({ title, description, icon, children }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-start gap-2.5 border-b border-slate-100 pb-3">
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[#EFF6FF] text-[#2563EB]">
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B91C1C]">
           {icon}
         </div>
         <div>
@@ -685,16 +685,16 @@ function InfoChip({ icon, value }) {
 function StatusBadge({ status }) {
   const officialStatus = getOfficialStatus(status);
   const map = {
-    Pending: "bg-slate-100 text-slate-700",
-    Received: "bg-blue-100 text-blue-700",
-    "For Monitoring": "bg-amber-100 text-amber-700",
-    Completed: "bg-emerald-100 text-emerald-700",
-    "No-Show": "bg-red-100 text-red-700",
+    Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
+    Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
+    "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    "No-Show": "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
   };
 
   return (
     <span
-      className={`inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-semibold ${
+      className={`inline-flex items-center rounded-lg border px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide ${
         map[officialStatus] || map.Pending
       }`}
     >
@@ -705,8 +705,8 @@ function StatusBadge({ status }) {
 
 function ClassBadge({ value }) {
   const map = {
-    A1: "bg-blue-100 text-blue-700",
-    A2: "bg-blue-100 text-blue-700",
+    A1: "bg-slate-100 text-slate-700",
+    A2: "bg-slate-100 text-slate-700",
     B1: "bg-amber-100 text-amber-700",
     B2: "bg-amber-100 text-amber-700",
     C1: "bg-red-100 text-red-700",
@@ -715,7 +715,7 @@ function ClassBadge({ value }) {
     Maternal: "bg-pink-100 text-pink-700",
     Immunization: "bg-emerald-100 text-emerald-700",
     "Senior Citizen": "bg-violet-100 text-violet-700",
-    "General Consultation": "bg-blue-100 text-blue-700",
+    "General Consultation": "bg-slate-100 text-slate-700",
   };
 
   return (

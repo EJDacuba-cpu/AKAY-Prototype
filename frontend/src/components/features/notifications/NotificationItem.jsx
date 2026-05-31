@@ -3,7 +3,7 @@ export default function NotificationItem({ notif, onSelect }) {
     <button
       onClick={() => onSelect(notif)}
       className={`group flex w-full items-start gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-gray-50 ${
-        !notif.read ? "border-l-[3px] border-l-blue-400 bg-blue-50/30" : ""
+        !notif.read ? "border-l-[3px] border-l-[#B91C1C] bg-red-50/40" : ""
       }`}
     >
       {/* Icon Circle */}

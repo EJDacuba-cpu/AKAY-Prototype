@@ -74,49 +74,6 @@ export default function AuditLogs() {
 
   return (
     <DashboardLayout role="admin" title="Audit Logs">
-      <div className="mb-8 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0B2E59]/[0.06] text-[#0B2E59]">
-          <ShieldCheck size={20} />
-        </div>
-
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-[#0B2E59]">
-            Audit Logs
-          </h1>
-          <p className="mt-1 text-sm text-[#6B7280]">
-            Track important actions for accountability, security, and system
-            monitoring.
-          </p>
-        </div>
-      </div>
-
-      <div className="mb-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Total Logs Today"
-          value="24"
-          icon={<Activity size={17} />}
-          color="navy"
-        />
-        <StatCard
-          title="Account Actions"
-          value="6"
-          icon={<UserCheck size={17} />}
-          color="blue"
-        />
-        <StatCard
-          title="Referral Updates"
-          value="11"
-          icon={<ClipboardList size={17} />}
-          color="amber"
-        />
-        <StatCard
-          title="Security Events"
-          value="3"
-          icon={<ShieldCheck size={17} />}
-          color="red"
-        />
-      </div>
-
       <div className="mb-6 rounded-xl border border-[#E8ECF0] bg-white p-5">
         <div className="grid gap-4 xl:grid-cols-4">
           <div>
@@ -163,7 +120,7 @@ export default function AuditLogs() {
       <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
         <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
           <div>
-            <h2 className="text-sm font-semibold text-[#0B2E59]">
+            <h2 className="text-sm font-semibold text-[#0F172A]">
               System Activity Logs
             </h2>
             <p className="mt-1 text-xs text-[#9CA3AF]">
@@ -199,7 +156,7 @@ export default function AuditLogs() {
                   className="transition-colors hover:bg-[#F9FAFB]"
                 >
                   <td className="whitespace-nowrap px-6 py-3.5">
-                    <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0B2E59]">
+                    <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0F172A]">
                       {log.id}
                     </span>
                   </td>
@@ -237,15 +194,6 @@ export default function AuditLogs() {
           </table>
         </div>
       </div>
-
-      <div className="mt-6 rounded-lg border border-blue-100 bg-blue-50 px-5 py-4">
-        <p className="text-xs leading-relaxed text-[#4B5563]">
-          <span className="font-semibold text-[#0B2E59]">Note:</span> Audit Logs
-          help the MHO/Admin review important activities such as account
-          changes, referral updates, feedback submission, and medicine updates.
-          This supports accountability and Data Privacy Act-aligned monitoring.
-        </p>
-      </div>
     </DashboardLayout>
   );
 }
@@ -265,8 +213,8 @@ function FilterSelect({ label, children }) {
 
 function StatCard({ title, value, icon, color = "navy" }) {
   const map = {
-    navy: "border-t-[#0B2E59] text-[#0B2E59] bg-blue-50",
-    blue: "border-t-blue-500 text-blue-700 bg-blue-50",
+    navy: "border-t-[#B91C1C] text-[#0F172A] bg-red-50/60",
+    blue: "border-t-slate-400 text-slate-700 bg-slate-50",
     amber: "border-t-amber-400 text-amber-700 bg-amber-50",
     red: "border-t-red-400 text-red-700 bg-red-50",
   };
@@ -290,7 +238,7 @@ function StatCard({ title, value, icon, color = "navy" }) {
         </div>
       </div>
 
-      <p className="mt-4 text-2xl font-bold tracking-tight text-[#0B2E59]">
+      <p className="mt-4 text-2xl font-bold tracking-tight text-[#0F172A]">
         {value}
       </p>
     </div>
@@ -300,7 +248,7 @@ function StatCard({ title, value, icon, color = "navy" }) {
 function RoleBadge({ role }) {
   const map = {
     Admin: "bg-purple-50 text-purple-700",
-    BHC: "bg-blue-50 text-blue-700",
+    BHC: "bg-red-50 text-red-700",
     RHU: "bg-emerald-50 text-emerald-700",
   };
 
@@ -318,7 +266,7 @@ function RoleBadge({ role }) {
 function TypeBadge({ type }) {
   const map = {
     Account: "bg-purple-50 text-purple-700",
-    Referral: "bg-blue-50 text-blue-700",
+    Referral: "bg-red-50 text-red-700",
     "Status Update": "bg-amber-50 text-amber-700",
     Feedback: "bg-emerald-50 text-emerald-700",
     Inventory: "bg-orange-50 text-orange-700",
@@ -335,4 +283,3 @@ function TypeBadge({ type }) {
     </span>
   );
 }
-

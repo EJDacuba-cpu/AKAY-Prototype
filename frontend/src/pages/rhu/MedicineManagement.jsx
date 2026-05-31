@@ -168,17 +168,6 @@ export default function MedicineManagement() {
 
   return (
     <DashboardLayout role="rhu" title="Medicine Management">
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-[#0B2E59]">
-            Medicine Management
-          </h1>
-          <p className="mt-1 text-sm text-[#6B7280]">
-            Update RHU medicine and referral-related resource availability.
-          </p>
-        </div>
-      </div>
-
       <ListToolbar
         searchValue={filters.search}
         onSearchChange={(value) => updateFilter("search", value)}
@@ -198,7 +187,7 @@ export default function MedicineManagement() {
           <button
             type="button"
             onClick={openAddModal}
-            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347]"
+            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
           >
             <PackagePlus size={15} />
             Add Medicine
@@ -222,12 +211,12 @@ export default function MedicineManagement() {
                   : "text-slate-500 hover:bg-slate-200/50 hover:text-slate-700"
               }`}
             >
-              <Icon size={12} className={isActive ? "text-[#0B2E59]" : ""} />
+              <Icon size={12} className={isActive ? "text-[#0F172A]" : ""} />
               {tab.label}
               <span
                 className={`rounded-full px-1.5 py-px text-[9px] font-bold leading-none ${
                   isActive
-                    ? "bg-[#0B2E59]/10 text-[#0B2E59]"
+                    ? "bg-[#FEF2F2] text-[#B91C1C]"
                     : "bg-slate-300/70 text-slate-600"
                 }`}
               >
@@ -241,7 +230,7 @@ export default function MedicineManagement() {
       <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
         <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
           <div>
-            <h2 className="text-sm font-semibold text-[#0B2E59]">
+            <h2 className="text-sm font-semibold text-[#0F172A]">
               Medicine and Resource Inventory
             </h2>
             <p className="mt-1 text-xs text-[#9CA3AF]">
@@ -278,7 +267,7 @@ export default function MedicineManagement() {
                     <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F3F4F6]">
                       <Boxes size={20} className="text-[#9CA3AF]" />
                     </div>
-                    <p className="text-sm font-semibold text-[#0B2E59]">
+                    <p className="text-sm font-semibold text-[#0F172A]">
                       No medicines found
                     </p>
                     <p className="mt-1 text-xs text-[#9CA3AF]">
@@ -293,7 +282,7 @@ export default function MedicineManagement() {
                     className="transition-colors hover:bg-[#F9FAFB]"
                   >
                     <td className="whitespace-nowrap px-6 py-3.5">
-                      <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0B2E59]">
+                      <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0F172A]">
                         {item.id}
                       </span>
                     </td>
@@ -354,15 +343,6 @@ export default function MedicineManagement() {
             </tbody>
           </table>
         </div>
-      </div>
-
-      <div className="mt-6 rounded-lg border border-blue-100 bg-blue-50 px-5 py-4">
-        <p className="text-xs leading-relaxed text-[#4B5563]">
-          <span className="font-semibold text-[#0B2E59]">Note:</span> Medicine
-          Management is for RHU availability tracking only. It supports referral
-          coordination but does not handle pharmacy dispensing, billing, or
-          prescription transactions.
-        </p>
       </div>
 
       <MedicineFormModal
@@ -468,7 +448,7 @@ function ActionMenu({ item, open, onToggle, onClose, onEdit, onDelete }) {
           if (!open) updatePosition();
           onToggle();
         }}
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E8ECF0] bg-white text-[#9CA3AF] transition hover:bg-[#F9FAFB] hover:text-[#0B2E59]"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E8ECF0] bg-white text-[#9CA3AF] transition hover:bg-[#F9FAFB] hover:text-[#0F172A]"
         aria-label={`Actions for ${item.name}`}
       >
         <MoreVertical size={15} />
@@ -476,51 +456,51 @@ function ActionMenu({ item, open, onToggle, onClose, onEdit, onDelete }) {
 
       {open &&
         createPortal(
-        <div
-          ref={menuRef}
-          className="fixed z-[9999] w-44 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-lg"
-          style={{ top: position.top, left: position.left }}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              onEdit();
-              onClose();
-            }}
-            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#0B2E59]"
+          <div
+            ref={menuRef}
+            className="fixed z-[9999] w-44 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-lg"
+            style={{ top: position.top, left: position.left }}
           >
-            <Edit3 size={14} className="text-[#9CA3AF]" />
-            Edit
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              onDelete();
-              onClose();
-            }}
-            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-red-700 transition hover:bg-red-50"
-          >
-            <Trash2 size={14} />
-            Delete
-          </button>
-        </div>,
-        document.body,
-      )}
+            <button
+              type="button"
+              onClick={() => {
+                onEdit();
+                onClose();
+              }}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#0F172A]"
+            >
+              <Edit3 size={14} className="text-[#9CA3AF]" />
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onDelete();
+                onClose();
+              }}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-red-700 transition hover:bg-red-50"
+            >
+              <Trash2 size={14} />
+              Delete
+            </button>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
 
 function StatusBadge({ status }) {
   const map = {
-    Available: "bg-emerald-50 text-emerald-700",
-    "Low Stock": "bg-amber-50 text-amber-700",
-    Unavailable: "bg-red-50 text-red-700",
+    Available: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    "Low Stock": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    Unavailable: "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
   };
 
   return (
     <span
-      className={`inline-block whitespace-nowrap rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-        map[status] || "bg-slate-100 text-slate-600"
+      className={`inline-block whitespace-nowrap rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+        map[status] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
       }`}
     >
       {status}
@@ -530,7 +510,7 @@ function StatusBadge({ status }) {
 
 function CategoryBadge({ category }) {
   const map = {
-    "Basic Medicines": "bg-blue-50 text-blue-700",
+    "Basic Medicines": "bg-slate-100 text-slate-700",
     Vaccines: "bg-violet-50 text-violet-700",
     "Medical Supplies": "bg-slate-100 text-slate-600",
     "Maternal Care Supplies": "bg-rose-50 text-rose-700",
@@ -551,14 +531,14 @@ function CategoryBadge({ category }) {
 
 function ExpiryBadge({ status }) {
   const map = {
-    Valid: "bg-emerald-50 text-emerald-700",
-    "Expiring Soon": "bg-amber-50 text-amber-700",
-    Expired: "bg-red-50 text-red-700",
+    Valid: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    "Expiring Soon": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    Expired: "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
   };
 
   return (
     <span
-      className={`w-fit rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+      className={`w-fit rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
         map[status] || map.Valid
       }`}
     >

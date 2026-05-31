@@ -73,11 +73,11 @@ export default function MedicineFormModal({
 
       <form
         onSubmit={handleSubmit}
-        className="relative flex max-h-[calc(100vh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-2xl shadow-black/10"
+        className="relative flex max-h-[calc(100vh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-2xl shadow-black/10"
       >
         <div className="flex shrink-0 items-center justify-between border-b border-[#F3F4F6] px-5 py-4">
           <div>
-            <h2 className="text-sm font-bold text-[#0B2E59]">
+            <h2 className="text-sm font-bold text-[#0F172A]">
               {title || (mode === "edit" ? "Edit Medicine" : "Add Medicine")}
             </h2>
             <p className="mt-0.5 text-xs text-[#9CA3AF]">
@@ -88,7 +88,7 @@ export default function MedicineFormModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[#9CA3AF] transition-colors hover:bg-[#F3F4F6] hover:text-[#6B7280]"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-[#9CA3AF] transition-colors hover:bg-red-50 hover:text-[#B91C1C]"
           >
             <X size={16} />
           </button>
@@ -170,11 +170,11 @@ export default function MedicineFormModal({
               />
             </Field>
 
-            <div className="rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 py-2.5">
+            <div className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2.5">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
                 Computed Status
               </p>
-              <p className="mt-1 text-sm font-semibold text-[#0B2E59]">
+              <p className="mt-1 text-sm font-semibold text-[#B91C1C]">
                 {previewStatus}
               </p>
             </div>
@@ -195,7 +195,7 @@ export default function MedicineFormModal({
           <button
             type="button"
             onClick={onClose}
-            className="h-9 rounded-lg border border-[#E8ECF0] bg-white px-4 text-xs font-semibold text-[#6B7280] transition-colors hover:bg-[#F9FAFB]"
+            className="h-9 rounded-lg border border-[#E5E7EB] bg-white px-4 text-xs font-semibold text-[#6B7280] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
           >
             Cancel
           </button>
@@ -224,4 +224,4 @@ function Field({ label, required = false, className = "", children }) {
 }
 
 const inputClass =
-  "h-10 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 text-sm text-[#1F2937] outline-none transition-all placeholder:text-[#BCC3CD] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10";
+  "h-10 w-full rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 text-sm text-[#1F2937] outline-none transition-all placeholder:text-[#BCC3CD] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10";

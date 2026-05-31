@@ -23,7 +23,6 @@ const DEFAULT_FILTERS = {
   sex: "All",
   ageGroup: "All Age Groups",
   civilStatus: "All Civil Status",
-  status: "All Status",
   dateRegistered: "",
 };
 
@@ -48,7 +47,7 @@ function normalizeDate(value) {
 function formatDate(value) {
   const normalized = normalizeDate(value);
 
-  if (!normalized) return "";
+  if (!normalized) return "-";
 
   return normalized;
 }
@@ -94,69 +93,11 @@ function getPatientClassification(patient) {
 
 function getRegisteredDate(patient) {
   return normalizeDate(
-    patient.dateRegistered || patient.createdAt || patient.registeredAt,
+    patient.dateRegistered ||
+      patient.date_registered ||
+      patient.createdAt ||
+      patient.registeredAt,
   );
-}
-
-function getLatestRhuRecord(patient) {
-  const records =
-    patient.rhuRecords ||
-    patient.rhuHealthRecords ||
-    patient.healthRecords ||
-    [];
-
-  if (Array.isArray(records) && records.length > 0) {
-    const sorted = [...records].sort((a, b) => {
-      const aDate = new Date(a.date || a.visitDate || a.createdAt || 0);
-      const bDate = new Date(b.date || b.visitDate || b.createdAt || 0);
-
-      return bDate - aDate;
-    });
-
-    const latest = sorted[0];
-    const label =
-      latest.date ||
-      latest.visitDate ||
-      latest.createdAt ||
-      latest.type ||
-      latest.recordType ||
-      "RHU record available";
-
-    return {
-      label: formatDate(label) || String(label),
-      empty: false,
-      sortValue: normalizeDate(label) || String(label),
-    };
-  }
-
-  const explicitRecord =
-    patient.latestRhuRecord ||
-    patient.latestRhuRecordDate ||
-    patient.rhuRecordDate ||
-    patient.latestHealthRecord ||
-    patient.latestHealthRecordDate;
-
-  if (explicitRecord) {
-    return {
-      label: formatDate(explicitRecord) || explicitRecord,
-      empty: false,
-      sortValue: normalizeDate(explicitRecord) || String(explicitRecord),
-    };
-  }
-
-  if (patient.hasHealthRecord && patient.lastVisit) {
-    return {
-      label: formatDate(patient.lastVisit) || patient.lastVisit,
-      empty: false,
-      sortValue: normalizeDate(patient.lastVisit) || String(patient.lastVisit),
-    };
-  }
-
-  return {
-    label: "No RHU record yet",
-    empty: true,
-    sortValue: "",
-  };
 }
 
 export default function Patients() {
@@ -208,7 +149,6 @@ export default function Patients() {
     const query = filters.search.trim().toLowerCase();
 
     const filtered = allPatients.filter((patient) => {
-      const latestRhuRecord = getLatestRhuRecord(patient);
       const sex = getPatientSex(patient);
       const age = getPatientAge(patient);
       const contact = getPatientContact(patient);
@@ -223,9 +163,7 @@ export default function Patients() {
         patient.email,
         classification,
         patient.civilStatus,
-        patient.status,
         registeredDate,
-        latestRhuRecord.label,
       ]
         .filter(Boolean)
         .join(" ")
@@ -252,9 +190,6 @@ export default function Patients() {
         filters.civilStatus === "All Civil Status" ||
         patient.civilStatus === filters.civilStatus;
 
-      const matchesStatus =
-        filters.status === "All Status" || patient.status === filters.status;
-
       const matchesDate =
         !filters.dateRegistered || registeredDate === filters.dateRegistered;
 
@@ -264,19 +199,16 @@ export default function Patients() {
         matchesSex &&
         matchesAgeGroup &&
         matchesCivilStatus &&
-        matchesStatus &&
         matchesDate
       );
     });
 
     return filtered.sort((a, b) => {
       const getValue = (patient) => {
-        if (sortKey === "classification")
+        if (sortKey === "classification") {
           return getPatientClassification(patient);
-        if (sortKey === "contact") return getPatientContact(patient);
-        if (sortKey === "latestRhuRecord") {
-          return getLatestRhuRecord(patient).sortValue;
         }
+        if (sortKey === "contact") return getPatientContact(patient);
         if (sortKey === "registeredDate") return getRegisteredDate(patient);
         if (sortKey === "sex") return getPatientSex(patient);
 
@@ -327,7 +259,6 @@ export default function Patients() {
       sex: "All",
       ageGroup: "All Age Groups",
       civilStatus: "All Civil Status",
-      status: "All Status",
       dateRegistered: "",
     };
 
@@ -360,19 +291,6 @@ export default function Patients() {
       options: civilStatusOptions,
     },
     {
-      key: "status",
-      label: "Status",
-      value: filters.status,
-      options: [
-        "All Status",
-        "Active",
-        "For Referral",
-        "For Monitoring",
-        "Completed",
-        "Received",
-      ],
-    },
-    {
       key: "dateRegistered",
       label: "Date Registered",
       value: filters.dateRegistered,
@@ -394,10 +312,6 @@ export default function Patients() {
     filters.civilStatus !== "All Civil Status" && {
       key: "civilStatus",
       label: filters.civilStatus,
-    },
-    filters.status !== "All Status" && {
-      key: "status",
-      label: filters.status,
     },
     filters.dateRegistered && {
       key: "dateRegistered",
@@ -427,7 +341,7 @@ export default function Patients() {
         actions={
           <Link
             to="/rhu/patients/add"
-            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347] active:bg-[#071D3A]"
+            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
           >
             <Plus size={14} strokeWidth={2.5} />
             New Patient
@@ -454,7 +368,7 @@ export default function Patients() {
               <button
                 type="button"
                 onClick={clearFilters}
-                className="mt-4 text-[11px] font-semibold text-[#0B2E59] hover:underline"
+                className="mt-4 text-[11px] font-semibold text-[#B91C1C] hover:text-[#7F1D1D] hover:underline"
               >
                 Clear current filters
               </button>
@@ -496,7 +410,7 @@ function RHUPatientsTable({
   return (
     <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] text-left">
+        <table className="w-full min-w-[780px] text-left">
           <thead>
             <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC] text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
               <SortableHeader
@@ -514,7 +428,7 @@ function RHUPatientsTable({
                 currentSort={sortKey}
                 currentDir={sortDir}
                 onSort={onSort}
-                className="w-[220px] px-4 py-4"
+                className="w-[240px] px-4 py-4"
               />
 
               <th className="w-[110px] px-4 py-4">Age / Sex</th>
@@ -525,7 +439,7 @@ function RHUPatientsTable({
                 currentSort={sortKey}
                 currentDir={sortDir}
                 onSort={onSort}
-                className="w-[140px] px-4 py-4"
+                className="w-[150px] px-4 py-4"
               />
 
               <SortableHeader
@@ -534,25 +448,16 @@ function RHUPatientsTable({
                 currentSort={sortKey}
                 currentDir={sortDir}
                 onSort={onSort}
-                className="w-[170px] px-4 py-4"
-              />
-
-              <SortableHeader
-                label="Latest RHU Record"
-                sortKey="latestRhuRecord"
-                currentSort={sortKey}
-                currentDir={sortDir}
-                onSort={onSort}
                 className="w-[180px] px-4 py-4"
               />
 
               <SortableHeader
-                label="Status"
-                sortKey="status"
+                label="Date Registered"
+                sortKey="registeredDate"
                 currentSort={sortKey}
                 currentDir={sortDir}
                 onSort={onSort}
-                className="w-[120px] px-4 py-4"
+                className="w-[140px] px-4 py-4"
               />
 
               <th className="w-[90px] px-6 py-4 text-right">Actions</th>
@@ -563,7 +468,7 @@ function RHUPatientsTable({
             {loading ? (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={7}
                   className="px-6 py-12 text-center text-sm text-[#94A3B8]"
                 >
                   Loading patients...
@@ -571,9 +476,9 @@ function RHUPatientsTable({
               </tr>
             ) : (
               patients.map((patient) => {
-                const latestRhuRecord = getLatestRhuRecord(patient);
                 const classification = getPatientClassification(patient);
                 const contact = getPatientContact(patient);
+                const registeredDate = getRegisteredDate(patient);
 
                 return (
                   <tr
@@ -608,12 +513,8 @@ function RHUPatientsTable({
                       <ClassificationBadge label={classification} />
                     </td>
 
-                    <td className="whitespace-nowrap px-4 py-4">
-                      <LatestRecordBadge record={latestRhuRecord} />
-                    </td>
-
-                    <td className="whitespace-nowrap px-4 py-4">
-                      <StatusBadge status={patient.status} />
+                    <td className="whitespace-nowrap px-4 py-4 text-sm text-[#64748B]">
+                      {formatDate(registeredDate)}
                     </td>
 
                     <td className="whitespace-nowrap px-6 py-4 text-right">
@@ -659,7 +560,7 @@ function RHUPatientsTable({
                   onClick={() => setCurrentPage(pageNumber)}
                   className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition ${
                     pageNumber === currentPage
-                      ? "bg-[#0B2E59] text-white shadow-sm"
+                      ? "bg-[#B91C1C] text-white shadow-sm"
                       : "text-[#475569] hover:bg-white"
                   }`}
                 >
@@ -717,44 +618,8 @@ function SortableHeader({
 
 function ClassificationBadge({ label }) {
   return (
-    <span className="inline-flex max-w-[160px] items-center truncate rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
+    <span className="inline-flex max-w-[160px] items-center truncate rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-700">
       {label || "General Consultation"}
-    </span>
-  );
-}
-
-function LatestRecordBadge({ record }) {
-  if (record.empty) {
-    return (
-      <span className="inline-flex max-w-[170px] items-center truncate rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-        No RHU record yet
-      </span>
-    );
-  }
-
-  return (
-    <span className="inline-flex max-w-[170px] items-center truncate rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
-      {record.label}
-    </span>
-  );
-}
-
-function StatusBadge({ status }) {
-  const map = {
-    Active: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    "For Referral": "bg-orange-50 text-orange-700 border-orange-200",
-    "For Monitoring": "bg-amber-50 text-amber-700 border-amber-200",
-    Completed: "bg-slate-100 text-slate-600 border-slate-200",
-    Received: "bg-blue-50 text-blue-700 border-blue-200",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-        map[status] || map.Active
-      }`}
-    >
-      {status || "Active"}
     </span>
   );
 }

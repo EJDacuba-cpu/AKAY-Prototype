@@ -1,15 +1,14 @@
-import { useEffect, useState } from "react";
 import { HeartPulse } from "lucide-react";
 
 import { stagger } from "../../../utils/animation";
-import {
-  getRhuPatientVolume,
-  getRhuPatientVolumeUpdatedTime,
-} from "../../../services/volumeService";
-export default function PatientVolumeCard({ delay = 0 }) {
+import { getRhuVolumeSnapshot } from "../../../services/volumeService";
+
+export default function PatientVolumeCard({ delay = 0, snapshot }) {
+  const volumeSnapshot = snapshot || getRhuVolumeSnapshot();
+  const counts = volumeSnapshot.counts || {};
   const volumeMap = {
     Low: {
-      percent: "18%",
+      percent: `${volumeSnapshot.percent || 18}%`,
       title: "Low Volume",
       description:
         "RHU currently has manageable patient flow and can accommodate referrals efficiently.",
@@ -19,8 +18,7 @@ export default function PatientVolumeCard({ delay = 0 }) {
 
       bar: "from-emerald-400 to-emerald-500",
 
-      container:
-        "border-emerald-100 bg-gradient-to-br from-emerald-50 to-white",
+      container: "border-emerald-100 bg-emerald-50/60",
 
       badge: "bg-emerald-100 text-emerald-700",
 
@@ -28,7 +26,7 @@ export default function PatientVolumeCard({ delay = 0 }) {
     },
 
     Normal: {
-      percent: "48%",
+      percent: `${volumeSnapshot.percent || 48}%`,
       title: "Normal Volume",
 
       description:
@@ -37,17 +35,17 @@ export default function PatientVolumeCard({ delay = 0 }) {
       expectedWait: "Moderate",
       referralTiming: "Allowed",
 
-      bar: "from-blue-400 to-blue-500",
+      bar: "from-slate-400 to-slate-500",
 
-      container: "border-blue-100 bg-gradient-to-br from-blue-50 to-white",
+      container: "border-slate-200 bg-slate-50/80",
 
-      badge: "bg-blue-100 text-blue-700",
+      badge: "bg-slate-100 text-slate-700",
 
-      pulse: "bg-blue-500",
+      pulse: "bg-slate-500",
     },
 
     High: {
-      percent: "82%",
+      percent: `${volumeSnapshot.percent || 82}%`,
       title: "High Volume",
 
       description:
@@ -58,7 +56,7 @@ export default function PatientVolumeCard({ delay = 0 }) {
 
       bar: "from-amber-400 to-amber-500",
 
-      container: "border-amber-100 bg-gradient-to-br from-amber-50 to-white",
+      container: "border-amber-100 bg-amber-50/70",
 
       badge: "bg-amber-100 text-amber-700",
 
@@ -66,52 +64,21 @@ export default function PatientVolumeCard({ delay = 0 }) {
     },
   };
 
-  const [volume, setVolume] = useState("Normal");
-  const [lastUpdated, setLastUpdated] = useState("Not updated");
-
-  useEffect(() => {
-    function syncVolume() {
-      const savedVolume = getRhuPatientVolume();
-      const savedUpdatedTime = getRhuPatientVolumeUpdatedTime("Not updated");
-
-      if (savedVolume && volumeMap[savedVolume]) {
-        setVolume(savedVolume);
-      }
-
-      if (savedUpdatedTime) {
-        setLastUpdated(savedUpdatedTime);
-      }
-    }
-
-    syncVolume();
-
-    window.addEventListener("storage", syncVolume);
-
-    window.addEventListener("akay-rhu-volume-updated", syncVolume);
-
-    return () => {
-      window.removeEventListener("storage", syncVolume);
-
-      window.removeEventListener("akay-rhu-volume-updated", syncVolume);
-    };
-  }, []);
-
-  const selected = volumeMap[volume] || volumeMap.Normal;
+  const selected = volumeMap[volumeSnapshot.status] || volumeMap.Normal;
 
   return (
     <section
-      className="anim-fade-up overflow-hidden rounded-2xl border border-[#E8ECF0] bg-white shadow-sm"
+      className="anim-fade-up overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm"
       style={stagger(delay)}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-[#F3F4F6] px-6 py-5">
+      <div className="flex items-center justify-between border-b border-[#F3F4F6] px-4 py-3">
         <div>
-          <h2 className="text-sm font-bold text-[#0B2E59]">
+          <h2 className="text-sm font-bold text-[#0F172A]">
             RHU Patient Volume
           </h2>
 
-          <p className="mt-1 text-xs text-[#9CA3AF]">
-            Live RHU receiving capacity for referral coordination.
+          <p className="mt-0.5 text-[11px] text-[#94A3B8]">
+            Automatically based on today&apos;s RHU workload.
           </p>
         </div>
 
@@ -131,13 +98,11 @@ export default function PatientVolumeCard({ delay = 0 }) {
         </div>
       </div>
 
-      {/* Body */}
-      <div className="grid gap-3 p-6 xl:grid-cols-[250px_minmax(0,1fr)]">
-        {/* Left Status Card */}
-        <div className={`rounded-2xl border p-5 ${selected.container}`}>
+      <div className="grid gap-3 p-4 xl:grid-cols-[230px_minmax(0,1fr)]">
+        <div className={`rounded-lg border p-4 ${selected.container}`}>
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-sm">
-              <HeartPulse size={24} className="text-[#0B2E59]" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-white text-[#B91C1C] shadow-sm">
+              <HeartPulse size={21} />
             </div>
 
             <div>
@@ -145,40 +110,38 @@ export default function PatientVolumeCard({ delay = 0 }) {
                 Current Status
               </p>
 
-              <h3 className="mt-1 text-2xl font-bold tracking-tight text-[#0B2E59]">
+              <h3 className="mt-1 text-xl font-bold tracking-tight text-[#0F172A]">
                 {selected.title}
               </h3>
             </div>
           </div>
 
-          <p className="mt-5 text-sm leading-relaxed text-[#4B5563]">
+          <p className="mt-4 text-xs leading-relaxed text-[#4B5563]">
             {selected.description}
           </p>
 
-          <div className="mt-5 rounded-xl border border-white/70 bg-white/70 px-4 py-3">
+          <div className="mt-4 rounded-lg border border-white/70 bg-white/75 px-3 py-2.5">
             <p className="text-[11px] font-medium text-[#6B7280]">
-              Last RHU update
+              Workload score
             </p>
 
-            <p className="mt-1 text-xs font-semibold text-[#0B2E59]">
-              {lastUpdated}
+            <p className="mt-1 text-xs font-semibold text-[#0F172A]">
+              {formatScore(volumeSnapshot.workloadScore)}
             </p>
           </div>
         </div>
 
-        {/* Right Metrics */}
-        <div className="flex flex-col justify-center rounded-2xl border border-[#E8ECF0] bg-[#FAFBFC] p-5">
+        <div className="flex flex-col justify-center rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] p-4">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-[#4B5563]">
               Capacity Indicator
             </p>
 
-            <p className="text-[11px] font-bold text-[#0B2E59]">
+            <p className="text-[11px] font-bold text-[#B91C1C]">
               {selected.percent}
             </p>
           </div>
 
-          {/* Progress */}
           <div className="mt-3 h-3 overflow-hidden rounded-full bg-[#E5E7EB]">
             <div
               className={`h-full rounded-full bg-gradient-to-r ${selected.bar}`}
@@ -194,19 +157,36 @@ export default function PatientVolumeCard({ delay = 0 }) {
             <span>High</span>
           </div>
 
-          {/* Metrics */}
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
             <VolumeInfoCard
-              label="Expected Wait"
-              value={selected.expectedWait}
+              label="Incoming Today"
+              value={counts.incomingReferralsToday || 0}
             />
 
             <VolumeInfoCard
-              label="Referral Timing"
-              value={selected.referralTiming}
+              label="Walk-ins Today"
+              value={counts.walkInPatientsToday || 0}
             />
 
-            <VolumeInfoCard label="Managed By" value="RHU" />
+            <VolumeInfoCard
+              label="High Priority"
+              value={counts.highPriorityReferrals || 0}
+            />
+
+            <VolumeInfoCard
+              label="For Monitoring"
+              value={counts.patientsForMonitoring || 0}
+            />
+
+            <VolumeInfoCard
+              label="Received Today"
+              value={counts.receivedReferralsToday || 0}
+            />
+
+            <VolumeInfoCard
+              label="Pending"
+              value={counts.pendingReferrals || 0}
+            />
           </div>
         </div>
       </div>
@@ -214,14 +194,19 @@ export default function PatientVolumeCard({ delay = 0 }) {
   );
 }
 
+function formatScore(value) {
+  const score = Number(value || 0);
+  return Number.isInteger(score) ? String(score) : score.toFixed(1);
+}
+
 function VolumeInfoCard({ label, value }) {
   return (
-    <div className="rounded-xl border border-[#E8ECF0] bg-white p-4">
+    <div className="rounded-lg border border-[#E5E7EB] bg-white p-3">
       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#9CA3AF]">
         {label}
       </p>
 
-      <p className="mt-2 text-sm font-bold text-[#0B2E59]">{value}</p>
+      <p className="mt-2 text-sm font-bold text-[#0F172A]">{value}</p>
     </div>
   );
 }

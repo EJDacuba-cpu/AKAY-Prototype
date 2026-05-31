@@ -45,7 +45,7 @@ export default function PatientFilters({ filters, setFilters, action = null }) {
                 setFilters((prev) => ({ ...prev, search: e.target.value }))
               }
               placeholder="Search patient name, ID, or contact number..."
-              className="h-10 w-full rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] pl-8 pr-3 text-[13px] text-[#0F172A] outline-none transition-all placeholder:text-[#94A3B8] focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
+              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] pl-8 pr-3 text-[13px] text-[#0F172A] outline-none transition-all placeholder:text-[#94A3B8] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10"
             />
           </div>
         </div>
@@ -60,7 +60,7 @@ export default function PatientFilters({ filters, setFilters, action = null }) {
             onChange={(e) =>
               setFilters((prev) => ({ ...prev, sex: e.target.value }))
             }
-            className="h-10 w-full appearance-none rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-2.5 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#CBD5E1] focus:bg-white focus:ring-1 focus:ring-[#0B2E59]/10"
+            className="h-10 w-full appearance-none rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10"
           >
             <option value="All">All Sex</option>
             <option value="Male">Male</option>
@@ -78,7 +78,7 @@ export default function PatientFilters({ filters, setFilters, action = null }) {
               key={filter.key}
               type="button"
               onClick={() => removeFilter(filter.key)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#DBEAFE] bg-[#EFF6FF] px-2.5 py-1 text-[11px] font-medium text-[#1D4ED8] transition-colors hover:bg-[#DBEAFE]"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-100 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-[#B91C1C] transition-colors hover:bg-red-100"
             >
               {filter.label}
               <X size={10} />
@@ -89,7 +89,7 @@ export default function PatientFilters({ filters, setFilters, action = null }) {
             <button
               type="button"
               onClick={clearFilters}
-              className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#64748B] transition-colors hover:text-[#0B2E59]"
+              className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#64748B] transition-colors hover:text-[#B91C1C]"
             >
               <RotateCcw size={11} />
               Clear all

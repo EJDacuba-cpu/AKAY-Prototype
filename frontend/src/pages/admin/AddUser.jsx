@@ -43,33 +43,20 @@ const BHC_FACILITIES = [
 
 const ACCOUNT_ROLES = [
   {
-    value: "admin_mho",
-    label: "Admin / Municipal Health Officer",
-    accessRole: "Admin",
-    facilities: ["Municipality of Bulakan"],
-    description:
-      "Admin/MHO users can manage system accounts, reports, and municipal-level oversight features.",
-  },
-  {
     value: "bhc_worker",
     label: "Barangay Health Center Worker",
     accessRole: "BHC",
     facilities: BHC_FACILITIES,
-    description:
-      "Barangay Health Center workers can manage barangay-level patient records, health records, referrals, and referral tracking for their assigned health center.",
   },
   {
     value: "rhu_staff",
     label: "Rural Health Unit Staff",
     accessRole: "RHU",
     facilities: ["Rural Health Unit Bulakan"],
-    description:
-      "Rural Health Unit staff can manage incoming referrals, receive patients, update referral status, create return slips, and coordinate RHU records.",
   },
 ];
 
 const POSITION_BY_ACCOUNT_ROLE = {
-  admin_mho: ["Municipal Health Officer", "Acting Admin"],
   bhc_worker: ["Barangay Health Worker", "Midwife", "BHC Staff"],
   rhu_staff: ["RHU Staff", "Encoder", "Nurse", "Receiving Staff"],
 };
@@ -194,7 +181,7 @@ export default function AddUser() {
           <button
             type="button"
             onClick={() => navigate("/admin/users")}
-            className="mb-2 inline-flex items-center gap-2 text-[13px] font-semibold text-[#0B2E59] transition-all duration-200 hover:gap-2.5 hover:text-[#092347]"
+            className="mb-2 inline-flex items-center gap-2 text-[13px] font-semibold text-[#0F172A] transition-all duration-200 hover:gap-2.5 hover:text-[#991B1B]"
           >
             <ArrowLeft size={16} />
             Back to Account Directory
@@ -210,10 +197,6 @@ export default function AddUser() {
                   ? "Update the account role, position, and facility assignment. Password changes are handled separately by Admin/MHO from the account directory."
                   : "Create an authorized account for Barangay Health Center workers or Rural Health Unit staff."}
               </p>
-            </div>
-
-            <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0B2E59]/[0.06] text-[#0B2E59] sm:flex">
-              <UserPlus size={20} />
             </div>
           </div>
         </div>
@@ -294,25 +277,6 @@ export default function AddUser() {
               </FormGroup>
 
               <FormGroup
-                label="Position / Designation"
-                error={form.errors.position}
-                required
-              >
-                <Select
-                  name="position"
-                  value={form.values.position}
-                  onChange={handleAccountChange}
-                  options={[
-                    { value: "", label: "Select position" },
-                    ...availablePositions.map((position) => ({
-                      value: position,
-                      label: position,
-                    })),
-                  ]}
-                />
-              </FormGroup>
-
-              <FormGroup
                 label="Facility / Assignment"
                 error={form.errors.facility}
                 required
@@ -356,7 +320,7 @@ export default function AddUser() {
             <button
               type="submit"
               disabled={form.isSubmitting}
-              className="flex h-10 items-center gap-2 rounded-lg bg-[#0B2E59] px-6 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347] disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex h-10 items-center gap-2 rounded-lg bg-[#B91C1C] px-6 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
             >
               <UserPlus size={14} strokeWidth={2.5} />
               {isEditMode ? "Save Changes" : "Save User Account"}
@@ -378,11 +342,11 @@ export default function AddUser() {
 function FormSection({ title, subtitle, icon, children, delay = 0 }) {
   return (
     <section
-      className="anim-fade-up rounded-2xl border border-slate-200/80 border-t-2 border-t-[#0B2E59] bg-white shadow-sm"
+      className="anim-fade-up rounded-2xl border border-slate-200/80 border-t-2 border-t-[#B91C1C] bg-white shadow-sm"
       style={stagger(delay)}
     >
       <div className="flex items-center gap-3 border-b border-slate-100 px-6 py-4">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#0B2E59]/[0.06] text-[#0B2E59]">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#FEF2F2] text-[#B91C1C]">
           {icon}
         </div>
         <div>
@@ -398,10 +362,10 @@ function FormSection({ title, subtitle, icon, children, delay = 0 }) {
 function InfoNotice({ children, className = "", icon }) {
   return (
     <div
-      className={`rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 ${className}`}
+      className={`rounded-xl border border-red-100 bg-red-50/70 px-4 py-3 ${className}`}
     >
       <div className="flex gap-3">
-        <span className="mt-0.5 shrink-0 text-[#0B2E59]">
+        <span className="mt-0.5 shrink-0 text-[#0F172A]">
           {icon || <ShieldCheck size={16} />}
         </span>
         <p className="text-xs leading-relaxed text-slate-600">{children}</p>
@@ -428,7 +392,7 @@ function SuccessModal({ modal, onClose }) {
           <button
             type="button"
             onClick={onClose}
-            className="w-full rounded-lg bg-[#0B2E59] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#092347]"
+            className="w-full rounded-lg bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
           >
             Back to Account Directory
           </button>

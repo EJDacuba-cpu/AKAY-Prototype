@@ -49,7 +49,7 @@ export default function NotificationsPage() {
         {notifications.length > 0 && (
           <div className="flex items-center justify-between gap-4">
             <p className="text-xs text-gray-500">
-              <span className="font-bold text-[#0B2E59]">
+              <span className="font-bold text-[#0F172A]">
                 {unreadCount} unread
               </span>{" "}
               notification{unreadCount !== 1 ? "s" : ""} remaining
@@ -82,7 +82,7 @@ export default function NotificationsPage() {
                 key={notif.id}
                 className={`group flex items-start gap-4 px-5 py-4 transition-colors duration-150 hover:bg-gray-50/50 ${
                   !notif.read
-                    ? "border-l-[3px] border-l-blue-400 bg-blue-50/20"
+                    ? "border-l-[3px] border-l-[#B91C1C] bg-red-50/40"
                     : ""
                 }`}
               >
@@ -90,7 +90,7 @@ export default function NotificationsPage() {
                   onClick={() => handleViewNotification(notif)}
                   className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-400"
                 >
-                  <Eye size={14} className="group-hover:text-[#0B2E59]" />
+                  <Eye size={14} className="group-hover:text-[#0F172A]" />
                 </button>
 
                 <div className="flex-1 min-w-0 pt-0.5">

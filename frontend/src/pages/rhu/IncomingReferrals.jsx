@@ -76,7 +76,7 @@ function ActionMenu({ referral }) {
       key: "view",
       label: "View Details",
       icon: <Eye size={15} />,
-      color: "#0B2E59",
+      color: "#B91C1C",
     },
     {
       key: "copy",
@@ -197,7 +197,7 @@ function ActionMenu({ referral }) {
         }}
         className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-all duration-200 active:scale-[0.97] ${
           open
-            ? "border-blue-200 bg-blue-50 text-blue-600"
+            ? "border-red-200 bg-red-50 text-[#B91C1C]"
             : "border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-600"
         }`}
         aria-haspopup="true"
@@ -217,7 +217,7 @@ function ActionMenu({ referral }) {
             role="menu"
           >
             <div className="mb-1.5 border-b border-slate-100 px-2.5 pb-2">
-              <p className="font-mono text-[11px] font-semibold text-[#0B2E59]">
+              <p className="font-mono text-[11px] font-semibold text-[#0F172A]">
                 {referral.trackingId}
               </p>
               <p className="mt-0.5 truncate text-[10px] text-slate-400">
@@ -262,21 +262,46 @@ function ActionMenu({ referral }) {
 
 function StatusBadge({ status, animate = false }) {
   const map = {
-    Pending: { bg: "#F8FAFC", text: "#475569", dot: "#94A3B8" },
-    Received: { bg: "#EFF6FF", text: "#1D4ED8", dot: "#3B82F6" },
-    "For Monitoring": { bg: "#FFFBEB", text: "#B45309", dot: "#F59E0B" },
-    Completed: { bg: "#ECFDF5", text: "#047857", dot: "#10B981" },
-    "No-Show": { bg: "#FEF2F2", text: "#B91C1C", dot: "#EF4444" },
+    Pending: {
+      bg: "#F1F5F9",
+      text: "#475569",
+      border: "#CBD5E1",
+      dot: "#94A3B8",
+    },
+    Received: {
+      bg: "#EFF6FF",
+      text: "#1D4ED8",
+      border: "#BFDBFE",
+      dot: "#3B82F6",
+    },
+    "For Monitoring": {
+      bg: "#FFFBEB",
+      text: "#B45309",
+      border: "#FDE68A",
+      dot: "#F59E0B",
+    },
+    Completed: {
+      bg: "#ECFDF5",
+      text: "#047857",
+      border: "#A7F3D0",
+      dot: "#10B981",
+    },
+    "No-Show": {
+      bg: "#FEF2F2",
+      text: "#B91C1C",
+      border: "#FECACA",
+      dot: "#EF4444",
+    },
   };
 
   const s = map[status] || map.Pending;
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[10px] font-semibold ${
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
         animate ? "anim-status-pop" : ""
       }`}
-      style={{ backgroundColor: s.bg, color: s.text }}
+      style={{ backgroundColor: s.bg, borderColor: s.border, color: s.text }}
     >
       <span
         className="inline-block h-1.5 w-1.5 rounded-full"
@@ -505,7 +530,7 @@ function matchesDateFilter(referral, filter) {
 
 function CategoryBadge({ category }) {
   return (
-    <span className="inline-flex items-center rounded-md border border-blue-100 bg-blue-50 px-2 py-0.5 font-mono text-[10px] font-bold text-blue-700">
+    <span className="inline-flex items-center rounded-md border border-red-100 bg-red-50/70 px-2 py-0.5 font-mono text-[10px] font-bold text-[#B91C1C]">
       {category}
     </span>
   );
@@ -735,7 +760,7 @@ export default function IncomingReferrals() {
         actions={
           <Link
             to="/rhu/qr-scanner"
-            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#0B2E59] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#092347] active:bg-[#071D3A]"
+            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
           >
             <QrCode size={14} strokeWidth={2.5} />
             QR Scan
@@ -747,10 +772,6 @@ export default function IncomingReferrals() {
         <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-                <Stethoscope size={16} />
-              </div>
-
               <div>
                 <h2 className="text-[13px] font-bold text-slate-900">
                   Referral Queue
@@ -803,7 +824,7 @@ export default function IncomingReferrals() {
                         <button
                           type="button"
                           onClick={clearFilters}
-                          className="mt-3 text-[11px] font-semibold text-[#0B2E59] hover:underline"
+                          className="mt-3 text-[11px] font-semibold text-[#B91C1C] hover:text-[#7F1D1D] hover:underline"
                         >
                           Clear all filters
                         </button>
@@ -832,7 +853,7 @@ export default function IncomingReferrals() {
                         </td>
 
                         <td className="whitespace-nowrap px-6 py-4">
-                          <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-[11px] font-semibold text-[#0B2E59]">
+                          <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-[11px] font-semibold text-[#0F172A]">
                             {referral.trackingId}
                           </span>
                         </td>

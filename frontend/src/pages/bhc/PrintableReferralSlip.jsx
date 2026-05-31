@@ -28,7 +28,7 @@ export default function PrintableReferralSlip() {
       <div className="mb-6 flex items-center justify-between print:hidden">
         <Link
           to="/bhc/referrals"
-          className="flex items-center gap-2 text-sm font-semibold text-[#0B2E59] hover:underline"
+          className="flex items-center gap-2 text-sm font-semibold text-[#B91C1C] hover:text-[#7F1D1D] hover:underline"
         >
           <ArrowLeft size={16} />
           Back to Referrals
@@ -36,7 +36,7 @@ export default function PrintableReferralSlip() {
 
         <button
           onClick={handlePrint}
-          className="flex items-center gap-2 rounded-lg bg-[#0B2E59] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#092347]"
+          className="flex items-center gap-2 rounded-lg bg-[#B91C1C] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#991B1B]"
         >
           <Printer size={16} />
           Print Slip
@@ -45,7 +45,7 @@ export default function PrintableReferralSlip() {
 
       <div className="mx-auto max-w-4xl rounded-xl border border-[#E8ECF0] bg-white p-8 shadow-sm print:border-0 print:shadow-none">
         <div className="border-b border-[#E8ECF0] pb-5 text-center">
-          <h1 className="text-2xl font-bold text-[#0B2E59]">AKAY</h1>
+          <h1 className="text-2xl font-bold text-[#0F172A]">AKAY</h1>
           <p className="mt-1 text-sm font-semibold text-[#1A1A1A]">
             Healthcare Coordination and Patient Monitoring System
           </p>
@@ -56,7 +56,7 @@ export default function PrintableReferralSlip() {
 
         <div className="mt-6 grid gap-6 md:grid-cols-[1fr_160px]">
           <div>
-            <h2 className="text-sm font-bold text-[#0B2E59]">
+            <h2 className="text-sm font-bold text-[#0F172A]">
               Referral Information
             </h2>
 
@@ -73,7 +73,7 @@ export default function PrintableReferralSlip() {
             </div>
           </div>
 
-          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#0B2E59] bg-blue-50 p-4 text-[#0B2E59]">
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#B91C1C] bg-red-50/60 p-4 text-[#B91C1C]">
             <QrCode size={82} />
             <p className="mt-2 text-center text-[10px] font-semibold uppercase tracking-wide">
               QR Verification
@@ -82,7 +82,7 @@ export default function PrintableReferralSlip() {
         </div>
 
         <div className="mt-8 rounded-xl bg-[#F8FAFC] p-5">
-          <h2 className="text-sm font-bold text-[#0B2E59]">
+          <h2 className="text-sm font-bold text-[#0F172A]">
             Patient Information
           </h2>
 
@@ -98,7 +98,7 @@ export default function PrintableReferralSlip() {
         </div>
 
         <div className="mt-8 rounded-xl bg-[#F8FAFC] p-5">
-          <h2 className="text-sm font-bold text-[#0B2E59]">
+          <h2 className="text-sm font-bold text-[#0F172A]">
             Referring Facility
           </h2>
 
@@ -112,7 +112,7 @@ export default function PrintableReferralSlip() {
         </div>
 
         <div className="mt-8 rounded-xl bg-[#F8FAFC] p-5">
-          <h2 className="text-sm font-bold text-[#0B2E59]">RHU Destination</h2>
+          <h2 className="text-sm font-bold text-[#0F172A]">RHU Destination</h2>
 
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <Info label="RHU Destination" value={referral.rhuDestination} />
@@ -120,8 +120,8 @@ export default function PrintableReferralSlip() {
           </div>
         </div>
 
-        <div className="mt-8 rounded-xl border border-blue-100 bg-blue-50 p-5">
-          <p className="text-sm font-semibold text-[#0B2E59]">Reminder</p>
+        <div className="mt-8 rounded-xl border border-red-100 bg-red-50/70 p-5">
+          <p className="text-sm font-semibold text-[#0F172A]">Reminder</p>
           <p className="mt-1 text-sm text-[#6B7280]">
             Please proceed to the Rural Health Unit of Bulakan on the indicated
             referral date. Present this slip or the QR code for verification.

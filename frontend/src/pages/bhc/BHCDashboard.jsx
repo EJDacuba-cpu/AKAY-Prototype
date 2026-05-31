@@ -1,17 +1,10 @@
 import {
-  Activity,
   ArrowRight,
-  BellRing,
   CalendarCheck2,
-  ClipboardCheck,
   ClipboardList,
-  Clock3,
   FileText,
   HeartPulse,
-  Hospital,
-  ListChecks,
   Pill,
-  PlusCircle,
   Stethoscope,
   UserPlus,
   Users,
@@ -19,6 +12,15 @@ import {
 
 import { Link } from "react-router";
 import { useEffect, useMemo, useState } from "react";
+import {
+  BarElement,
+  CategoryScale,
+  Chart as ChartJS,
+  Legend,
+  LinearScale,
+  Tooltip,
+} from "chart.js";
+import { Bar } from "react-chartjs-2";
 
 /* Layout */
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -27,14 +29,10 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import SideCard from "../../components/common/cards/SideCard";
 import MedicineAlert from "../../components/common/cards/MedicineAlert";
 
-/* Tables */
-import RecentHealthRecordsTable from "../../components/features/records/RecentHealthRecordsTable";
-
 /* Services */
 import {
   getDashboardStats,
   getMedicineAlerts,
-  getRecentHealthRecords,
   getRecentReferrals,
 } from "../../services/dashboardService";
 import {
@@ -43,6 +41,9 @@ import {
   getDoctorAvailability,
   listenDoctorAvailabilityUpdates,
 } from "../../services/doctorAvailability";
+import { getRhuVolumeSnapshot } from "../../services/volumeService";
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
 const ACTIVE_REFERRAL_STATUSES = new Set([
   "Pending",
@@ -51,12 +52,25 @@ const ACTIVE_REFERRAL_STATUSES = new Set([
   "No-Show",
 ]);
 
-const REFERRAL_STAGE_ORDER = [
-  "Pending",
-  "Received",
-  "For Monitoring",
-  "No-Show",
-];
+function getTopChiefComplaints(referrals) {
+  if (!Array.isArray(referrals) || referrals.length === 0) return [];
+
+  const counts = referrals.reduce((acc, referral) => {
+    const complaint = getReferralConcern(referral);
+    if (!complaint || complaint === "No chief complaint recorded") return acc;
+
+    const key = String(complaint).trim();
+    if (!key) return acc;
+
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.entries(counts)
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5);
+}
 
 const stagger = (index) => ({
   animationDelay: `${index * 65}ms`,
@@ -64,29 +78,32 @@ const stagger = (index) => ({
 
 export default function BHCDashboard() {
   const [stats, setStats] = useState(null);
-  const [records, setRecords] = useState([]);
   const [referrals, setReferrals] = useState([]);
   const [medicineAlerts, setMedicineAlerts] = useState([]);
   const [doctorAvailability, setDoctorAvailability] = useState(() =>
     getDoctorAvailability(),
   );
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     async function fetchDashboard() {
       try {
         setLoading(true);
 
-        const [statsData, recordsData, referralsData, medicineData] =
-          await Promise.all([
-            getDashboardStats(),
-            getRecentHealthRecords(),
-            getRecentReferrals(),
-            getMedicineAlerts(),
-          ]);
+        const [statsData, referralsData, medicineData] = await Promise.all([
+          getDashboardStats(),
+          getRecentReferrals(),
+          getMedicineAlerts(),
+        ]);
 
         setStats(statsData || {});
-        setRecords(Array.isArray(recordsData) ? recordsData : []);
         setReferrals(Array.isArray(referralsData) ? referralsData : []);
         setMedicineAlerts(Array.isArray(medicineData) ? medicineData : []);
       } catch (error) {
@@ -108,6 +125,9 @@ export default function BHCDashboard() {
     [referrals],
   );
 
+  const rhuVolumeSnapshot = getRhuVolumeSnapshot();
+  const userName = useMemo(() => getCurrentUserDisplayName(), []);
+
   const activeReferrals = useMemo(() => {
     return uniqueReferrals
       .filter((referral) =>
@@ -115,15 +135,6 @@ export default function BHCDashboard() {
       )
       .sort(sortByReferralDateDesc)
       .slice(0, 6);
-  }, [uniqueReferrals]);
-
-  const statusCounts = useMemo(() => {
-    return REFERRAL_STAGE_ORDER.reduce((acc, status) => {
-      acc[status] = uniqueReferrals.filter(
-        (referral) => getReferralStatus(referral) === status,
-      ).length;
-      return acc;
-    }, {});
   }, [uniqueReferrals]);
 
   const followUpItems = useMemo(() => {
@@ -136,38 +147,11 @@ export default function BHCDashboard() {
       .slice(0, 4);
   }, [activeReferrals]);
 
-  const todaysFocus = useMemo(
-    () => [
-      {
-        label: "Pending handoffs",
-        value: safeNumber(stats?.pendingReferrals, statusCounts.Pending),
-        detail: "waiting for RHU check-in",
-        icon: <ClipboardList size={16} />,
-      },
-      {
-        label: "For monitoring",
-        value: safeNumber(
-          stats?.monitoringPatients,
-          statusCounts["For Monitoring"],
-        ),
-        detail: "needs follow-up watch",
-        icon: <HeartPulse size={16} />,
-      },
-      {
-        label: "No-show watch",
-        value: statusCounts["No-Show"] || 0,
-        detail: "needs confirmation",
-        icon: <Clock3 size={16} />,
-      },
-    ],
-    [stats, statusCounts],
-  );
-
   if (loading || !stats) {
     return (
       <DashboardLayout role="bhc" title="Dashboard">
         <div className="flex min-h-[60vh] items-center justify-center">
-          <div className="rounded-2xl border border-[#FEE2E2] bg-white px-5 py-4 shadow-sm">
+          <div className="rounded-xl border border-[#FEE2E2] bg-white px-5 py-4 shadow-sm">
             <p className="text-sm font-semibold text-[#B91C1C]">
               Loading BHC workboard...
             </p>
@@ -180,22 +164,18 @@ export default function BHCDashboard() {
   return (
     <DashboardLayout role="bhc" title="Dashboard">
       <div className="mx-auto w-full max-w-[1500px] space-y-4">
-        <BHCWorkboardHeader todaysFocus={todaysFocus} />
+        <BHCWorkboardHeader userName={userName} now={now} />
 
         <CareSnapshot stats={stats} />
 
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <RhuVolumeWorkloadPanel snapshot={rhuVolumeSnapshot} />
+
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="min-w-0 space-y-4">
-            <ReferralLoopPanel statusCounts={statusCounts} />
-
-            <div className="grid gap-4 2xl:grid-cols-[330px_minmax(0,1fr)]">
-              <DailyActionDock />
-              <ActiveReferralBoard referrals={activeReferrals} />
-            </div>
-
-            <div className="rounded-2xl border border-[#E5E7EB] bg-white p-1 shadow-sm">
-              <RecentHealthRecordsTable records={records} delay={7} />
-            </div>
+            <ChiefComplaintSummaryCard
+              activeCount={activeReferrals.length}
+              referrals={activeReferrals}
+            />
           </div>
 
           <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
@@ -203,8 +183,6 @@ export default function BHCDashboard() {
               availability={doctorAvailability}
               medicineAlerts={medicineAlerts}
             />
-
-            <FollowUpTimeline items={followUpItems} />
 
             <MedicineAvailabilityCard medicineAlerts={medicineAlerts} />
           </aside>
@@ -214,95 +192,38 @@ export default function BHCDashboard() {
   );
 }
 
-function BHCWorkboardHeader({ todaysFocus }) {
-  const today = new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
+function BHCWorkboardHeader({ userName, now }) {
+  const greeting = getGreeting(now);
+  const today = formatToday(now);
+  const currentTime = formatCurrentTime(now);
 
   return (
-    <section
-      className="anim-fade-up overflow-hidden rounded-3xl border border-[#FEE2E2] bg-white shadow-sm"
-      style={stagger(0)}
-    >
-      <div className="relative isolate grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_390px]">
-        <div className="absolute inset-y-0 left-0 w-1.5 bg-[#B91C1C]" />
-        <div className="absolute -right-16 -top-20 h-56 w-56 rounded-full bg-[#FEE2E2]/70 blur-3xl" />
-        <div className="absolute right-32 top-8 h-20 w-20 rounded-full bg-[#B91C1C]/10 blur-2xl" />
-
-        <div className="relative min-w-0 pl-2">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FEF2F2] px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-[#B91C1C]">
-              <Activity size={12} /> BHC Workboard
-            </span>
-            <span className="rounded-full bg-[#F8FAFC] px-3 py-1 text-[11px] font-semibold text-[#64748B]">
-              {today}
-            </span>
+    <section className="anim-fade-up" style={stagger(0)}>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#B91C1C]">
+            <span>{today}</span>
+            <span className="h-1 w-1 rounded-full bg-[#FCA5A5]" />
+            <span>{currentTime}</span>
           </div>
 
-          <h1 className="max-w-3xl text-2xl font-extrabold tracking-tight text-[#0F172A] md:text-3xl">
-            Today&apos;s patient and referral handoff board
+          <h1 className="text-2xl font-black tracking-tight text-[#0F172A] md:text-3xl">
+            {greeting}, {userName}
           </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[#64748B]">
-            Built for daily BHC work: register patients, record visits, send
-            referrals, and watch RHU feedback without jumping through multiple
-            screens.
-          </p>
 
-          <div className="mt-5 flex flex-wrap gap-2">
-            <HeaderAction
-              to="/bhc/patients/add"
-              icon={<UserPlus size={14} />}
-              label="Register Patient"
-              primary
-            />
-            <HeaderAction
-              to="/bhc/health-records"
-              icon={<PlusCircle size={14} />}
-              label="Record Visit"
-            />
-            <HeaderAction
-              to="/bhc/referrals"
-              icon={<ClipboardList size={14} />}
-              label="Track Referrals"
-            />
-          </div>
+          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[#64748B]">
+            Monitor today&apos;s BHC referral status, RHU workload, follow-up
+            watchlist, and medicine/doctor readiness in one clean view.
+          </p>
         </div>
 
-        <div className="relative rounded-2xl border border-[#FEE2E2] bg-[#FFF7F7]/80 p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-wide text-[#991B1B]">
-              Today&apos;s attention
-            </p>
-            <BellRing size={14} className="text-[#B91C1C]" />
-          </div>
-
-          <div className="space-y-2">
-            {todaysFocus.map((item) => (
-              <div
-                key={item.label}
-                className="flex items-center justify-between gap-3 rounded-xl border border-white bg-white px-3 py-2 shadow-sm"
-              >
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B91C1C]">
-                    {item.icon}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-bold text-[#0F172A]">
-                      {item.label}
-                    </p>
-                    <p className="truncate text-[11px] text-[#64748B]">
-                      {item.detail}
-                    </p>
-                  </div>
-                </div>
-                <span className="text-lg font-black tabular-nums text-[#B91C1C]">
-                  {item.value}
-                </span>
-              </div>
-            ))}
-          </div>
+        <div className="flex flex-wrap gap-2">
+          <HeaderAction
+            to="/bhc/patients/add"
+            icon={<UserPlus size={14} />}
+            label="Register Patient"
+            primary
+          />
         </div>
       </div>
     </section>
@@ -315,7 +236,7 @@ function HeaderAction({ to, icon, label, primary = false }) {
       to={to}
       className={`inline-flex h-10 items-center gap-2 rounded-xl px-4 text-xs font-bold transition-all ${
         primary
-          ? "bg-[#B91C1C] text-white shadow-sm shadow-red-900/10 hover:-translate-y-0.5 hover:bg-[#991B1B]"
+          ? "bg-[#B91C1C] text-white shadow-sm hover:-translate-y-0.5 hover:bg-[#991B1B]"
           : "border border-[#FECACA] bg-white text-[#991B1B] hover:-translate-y-0.5 hover:bg-[#FEF2F2]"
       }`}
     >
@@ -337,21 +258,21 @@ function CareSnapshot({ stats }) {
     {
       title: "Health Records",
       value: safeNumber(stats.healthRecords),
-      description: "visit records this week",
+      description: "saved visit records",
       icon: <FileText size={17} />,
-      tone: "blue",
+      tone: "slate",
     },
     {
       title: "Pending Referrals",
       value: safeNumber(stats.pendingReferrals),
-      description: "sent to RHU",
+      description: "waiting for RHU",
       icon: <ClipboardList size={17} />,
       tone: "slate",
     },
     {
       title: "For Monitoring",
       value: safeNumber(stats.monitoringPatients),
-      description: "needs follow-up",
+      description: "needs follow-up watch",
       icon: <HeartPulse size={17} />,
       tone: "amber",
     },
@@ -362,19 +283,19 @@ function CareSnapshot({ stats }) {
       {cards.map((card, index) => (
         <div
           key={card.title}
-          className="anim-fade-up group relative overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#FECACA] hover:shadow-md"
+          className="anim-fade-up group relative overflow-hidden rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#FECACA] hover:shadow-md"
           style={stagger(index + 1)}
         >
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#B91C1C] via-[#EF4444] to-[#FCA5A5] opacity-0 transition-opacity group-hover:opacity-100" />
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#B91C1C] via-[#DC2626] to-[#FCA5A5] opacity-0 transition-opacity group-hover:opacity-100" />
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#94A3B8]">
+            <div className="min-w-0">
+              <p className="truncate text-[10px] font-bold uppercase tracking-[0.18em] text-[#94A3B8]">
                 {card.title}
               </p>
-              <p className="mt-3 text-2xl font-black tabular-nums text-[#0F172A]">
+              <p className="mt-3 text-xl font-black tabular-nums text-[#0F172A]">
                 {card.value}
               </p>
-              <p className="mt-1 text-[11px] font-medium text-[#64748B]">
+              <p className="mt-1 truncate text-[11px] font-medium text-[#64748B]">
                 {card.description}
               </p>
             </div>
@@ -390,231 +311,288 @@ function CareSnapshot({ stats }) {
   );
 }
 
-function DailyActionDock() {
-  const tasks = [
-    {
-      label: "Add Patient",
-      note: "Register walk-in or new profile",
-      to: "/bhc/patients/add",
-      icon: <UserPlus size={16} />,
+function ChiefComplaintSummaryCard({ activeCount, referrals }) {
+  const topComplaints = getTopChiefComplaints(referrals);
+  const chartData = {
+    labels: topComplaints.map((item) => item.label),
+    datasets: [
+      {
+        label: "Cases",
+        data: topComplaints.map((item) => item.value),
+        backgroundColor: (context) => {
+          const { ctx, chartArea } = context.chart;
+          if (!chartArea) return "rgba(185, 28, 28, 0.82)";
+
+          const gradient = ctx.createLinearGradient(0, 0, chartArea.right, 0);
+          gradient.addColorStop(0, "rgba(254, 226, 226, 0.95)");
+          gradient.addColorStop(0.55, "rgba(220, 38, 38, 0.82)");
+          gradient.addColorStop(1, "rgba(185, 28, 28, 0.96)");
+          return gradient;
+        },
+        borderColor: "#B91C1C",
+        borderWidth: 1,
+        borderRadius: 10,
+        borderSkipped: false,
+        barThickness: 24,
+        maxBarThickness: 28,
+      },
+    ],
+  };
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: {
+      duration: 700,
+      easing: "easeOutQuart",
     },
-    {
-      label: "Record Visit",
-      note: "Consultation, immunization, maternal, follow-up",
-      to: "/bhc/health-records",
-      icon: <FileText size={16} />,
+    indexAxis: "y",
+    layout: {
+      padding: {
+        top: 4,
+        right: 10,
+        bottom: 4,
+        left: 0,
+      },
     },
-    {
-      label: "Create Referral",
-      note: "Start from saved health record",
-      to: "/bhc/health-records",
-      icon: <ClipboardCheck size={16} />,
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        backgroundColor: "#0F172A",
+        titleColor: "#FFFFFF",
+        bodyColor: "#E2E8F0",
+        displayColors: false,
+        padding: 10,
+        cornerRadius: 10,
+        callbacks: {
+          label: (context) => `${context.parsed.x || 0} case(s)`,
+        },
+      },
     },
-    {
-      label: "Review Feedback",
-      note: "Check RHU status and return slip",
-      to: "/bhc/referrals",
-      icon: <ListChecks size={16} />,
+    scales: {
+      x: {
+        beginAtZero: true,
+        grace: "15%",
+        ticks: {
+          precision: 0,
+          color: "#64748B",
+          font: {
+            size: 11,
+            weight: 700,
+          },
+        },
+        grid: {
+          color: "rgba(226, 232, 240, 0.9)",
+          drawBorder: false,
+        },
+        border: {
+          display: false,
+        },
+      },
+      y: {
+        ticks: {
+          color: "#334155",
+          font: {
+            size: 11,
+            weight: 800,
+          },
+          callback: function (value) {
+            const label = this.getLabelForValue(value);
+            return label.length > 22 ? `${label.slice(0, 22)}...` : label;
+          },
+        },
+        grid: {
+          display: false,
+          drawBorder: false,
+        },
+        border: {
+          display: false,
+        },
+      },
     },
-  ];
+  };
 
   return (
-    <div className="rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-black text-[#0F172A]">Daily task dock</h2>
-          <p className="mt-0.5 text-xs text-[#94A3B8]">
-            Shortcuts arranged by BHC workflow.
-          </p>
-        </div>
-      </div>
-
-      <div className="space-y-2.5">
-        {tasks.map((task, index) => (
-          <Link
-            key={task.label}
-            to={task.to}
-            className="group flex items-center gap-3 rounded-xl border border-[#F1F5F9] bg-[#F8FAFC]/70 p-3 transition-all hover:-translate-y-0.5 hover:border-[#FECACA] hover:bg-white hover:shadow-sm"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#FEF2F2] text-[#B91C1C] transition group-hover:bg-[#B91C1C] group-hover:text-white">
-              {task.icon}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black text-[#B91C1C]">
-                  0{index + 1}
-                </span>
-                <p className="truncate text-xs font-bold text-[#0F172A]">
-                  {task.label}
-                </p>
-              </div>
-              <p className="mt-0.5 truncate text-[11px] text-[#64748B]">
-                {task.note}
-              </p>
-            </div>
-            <ArrowRight
-              size={13}
-              className="shrink-0 text-[#CBD5E1] transition group-hover:text-[#B91C1C]"
-            />
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ReferralLoopPanel({ statusCounts }) {
-  const stages = [
-    {
-      label: "Sent to RHU",
-      status: "Pending",
-      description: "Waiting for RHU arrival/check-in",
-      count: statusCounts.Pending || 0,
-    },
-    {
-      label: "RHU Received",
-      status: "Received",
-      description: "Patient already checked in",
-      count: statusCounts.Received || 0,
-    },
-    {
-      label: "Under Monitoring",
-      status: "For Monitoring",
-      description: "RHU still observing case",
-      count: statusCounts["For Monitoring"] || 0,
-    },
-    {
-      label: "Needs Follow-up",
-      status: "No-Show",
-      description: "Patient did not arrive yet",
-      count: statusCounts["No-Show"] || 0,
-    },
-  ];
-
-  return (
-    <div className="rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
-      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-sm font-black text-[#0F172A]">
-            Referral handoff loop
-          </h2>
-          <p className="mt-0.5 text-xs text-[#94A3B8]">
-            A quick view of where BHC referrals are in the RHU coordination
-            loop.
-          </p>
-        </div>
-        <Link
-          to="/bhc/referrals"
-          className="inline-flex items-center gap-1.5 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs font-bold text-[#B91C1C] transition hover:bg-white"
-        >
-          Open tracking
-          <ArrowRight size={13} />
-        </Link>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-4">
-        {stages.map((stage, index) => (
-          <div
-            key={stage.status}
-            className="relative rounded-2xl border border-[#F1F5F9] bg-[#F8FAFC]/70 p-3"
-          >
-            {index !== stages.length - 1 && (
-              <div className="absolute -right-2 top-1/2 hidden h-px w-4 bg-[#E5E7EB] md:block" />
-            )}
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <ReferralStatusBadge status={stage.status} />
-              <span className="text-xl font-black tabular-nums text-[#0F172A]">
-                {stage.count}
-              </span>
-            </div>
-            <p className="text-xs font-bold text-[#0F172A]">{stage.label}</p>
-            <p className="mt-1 text-[11px] leading-relaxed text-[#64748B]">
-              {stage.description}
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ActiveReferralBoard({ referrals }) {
-  return (
-    <div className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+    <section className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
       <div className="flex flex-col gap-2 border-b border-[#F1F5F9] bg-[#FFF7F7] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-sm font-black text-[#0F172A]">
-            Active referral board
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-black text-[#0F172A]">
+            Chief Complaint Summary
           </h2>
-          <p className="mt-0.5 text-xs text-[#94A3B8]">
-            Live cases that still need RHU feedback or BHC follow-up.
+          <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-[#94A3B8]">
+            Top reported complaints from active BHC referrals that still need
+            tracking.
           </p>
         </div>
 
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[#B91C1C] shadow-sm">
+        <span className="inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[#B91C1C] shadow-sm">
           <span className="h-1.5 w-1.5 rounded-full bg-[#B91C1C]" />
-          {referrals.length} active
+          {activeCount} active
         </span>
       </div>
 
-      {referrals.length === 0 ? (
-        <div className="px-4 py-10 text-center">
-          <ClipboardList className="mx-auto mb-3 text-[#CBD5E1]" size={32} />
-          <p className="text-sm font-bold text-[#334155]">
-            No active referrals
-          </p>
-          <p className="mt-1 text-xs text-[#94A3B8]">
-            New submitted referrals will appear here.
+      <div className="p-4">
+        {topComplaints.length === 0 ? (
+          <div className="flex h-[260px] items-center justify-center rounded-xl border border-dashed border-[#E5E7EB] bg-[#F8FAFC] px-4 text-center">
+            <div>
+              <ClipboardList
+                className="mx-auto mb-2 text-[#CBD5E1]"
+                size={28}
+              />
+              <p className="text-sm font-bold text-[#334155]">
+                No chief complaints to summarize
+              </p>
+              <p className="mt-1 text-xs text-[#94A3B8]">
+                Active referrals with chief complaints will appear in this
+                chart.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="relative h-[260px] w-full overflow-hidden rounded-xl border border-[#F1F5F9] bg-[#F8FAFC]/60 p-3">
+            <Bar data={chartData} options={chartOptions} />
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function RhuVolumeWorkloadPanel({ snapshot }) {
+  const status = getVolumeStatus(snapshot);
+  const score = getVolumeScore(snapshot);
+  const percent = getVolumePercent(snapshot, score);
+  const tone = getVolumeTone(status);
+  const counts = [
+    {
+      label: "Incoming referrals",
+      value: getVolumeCount(snapshot, [
+        "incomingReferralsToday",
+        "incomingReferrals",
+        "referralsToday",
+      ]),
+    },
+    {
+      label: "Priority cases",
+      value: getVolumeCount(snapshot, [
+        "highPriorityReferrals",
+        "urgentReferrals",
+        "priorityReferrals",
+      ]),
+    },
+    {
+      label: "Walk-in patients",
+      value: getVolumeCount(snapshot, [
+        "walkInPatientsToday",
+        "walkInsToday",
+        "walkIns",
+      ]),
+    },
+    {
+      label: "For monitoring",
+      value: getVolumeCount(snapshot, [
+        "patientsForMonitoring",
+        "monitoringPatients",
+        "forMonitoring",
+      ]),
+    },
+  ];
+
+  return (
+    <section
+      className="anim-fade-up overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm"
+      style={stagger(5)}
+    >
+      <div className="flex flex-col gap-2 border-b border-[#F1F5F9] bg-[#FFF7F7] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-black text-[#0F172A]">
+            RHU Patient Volume
+          </h2>
+          <p className="mt-0.5 text-xs text-[#94A3B8]">
+            Based on today&apos;s RHU workload before sending referrals.
           </p>
         </div>
-      ) : (
-        <div className="divide-y divide-[#F1F5F9]">
-          {referrals.map((referral, index) => {
-            const trackingId = getReferralTrackingId(referral);
-            const status = getReferralStatus(referral);
 
-            return (
-              <Link
-                key={trackingId}
-                to={`/bhc/referrals/${trackingId}`}
-                className="group grid gap-3 px-4 py-3 transition hover:bg-[#F8FAFC] sm:grid-cols-[54px_minmax(0,1fr)_130px] sm:items-center"
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-[#B91C1C] shadow-sm">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          Live workload
+        </span>
+      </div>
+
+      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(240px,300px)_minmax(0,1fr)]">
+        <div className={`rounded-xl border p-4 ${tone.panel}`}>
+          <div className="flex items-start gap-3">
+            <span
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tone.icon}`}
+            >
+              <HeartPulse size={18} />
+            </span>
+
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#94A3B8]">
+                Current status
+              </p>
+              <p className="mt-1 text-2xl font-black tracking-tight text-[#0F172A]">
+                {status} Volume
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-[#64748B]">
+                {getVolumeMessage(status)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-3">
+          <div className="rounded-xl border border-[#F1F5F9] bg-[#F8FAFC]/70 p-4">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#94A3B8]">
+                  Workload score
+                </p>
+                <p className="mt-1 text-xs text-[#64748B]">
+                  Based on referrals, walk-ins, priority cases, and monitoring.
+                </p>
+              </div>
+
+              <span className="text-2xl font-black tabular-nums text-[#0F172A]">
+                {score}
+              </span>
+            </div>
+
+            <div className="h-2.5 overflow-hidden rounded-full bg-white ring-1 ring-[#E5E7EB]">
+              <div
+                className={`h-full rounded-full ${tone.bar}`}
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+
+            <div className="mt-2 flex justify-between text-[10px] font-bold uppercase tracking-wide text-[#94A3B8]">
+              <span>Low</span>
+              <span>Normal</span>
+              <span>High</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            {counts.map((item) => (
+              <div
+                key={item.label}
+                className="min-w-0 rounded-xl border border-[#F1F5F9] bg-white px-3 py-3 shadow-sm"
               >
-                <div className="flex items-center gap-2 sm:block">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#FEF2F2] text-xs font-black text-[#B91C1C]">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <span className="font-mono text-[11px] font-bold text-[#64748B] sm:mt-1 sm:block">
-                    {trackingId}
-                  </span>
-                </div>
-
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="truncate text-sm font-black text-[#0F172A]">
-                      {getReferralPatientName(referral)}
-                    </p>
-                    <ReferralStatusBadge status={status} />
-                  </div>
-                  <p className="mt-1 truncate text-xs text-[#64748B]">
-                    {getReferralConcern(referral)}
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between gap-2 sm:justify-end">
-                  <p className="text-[11px] font-semibold text-[#94A3B8]">
-                    {formatReferralDate(referral)}
-                  </p>
-                  <ArrowRight
-                    size={14}
-                    className="text-[#CBD5E1] transition group-hover:translate-x-0.5 group-hover:text-[#B91C1C]"
-                  />
-                </div>
-              </Link>
-            );
-          })}
+                <p className="truncate text-[10px] font-bold uppercase tracking-wide text-[#94A3B8]">
+                  {item.label}
+                </p>
+                <p className="mt-1 text-xl font-black tabular-nums text-[#0F172A]">
+                  {item.value}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
-      )}
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -628,7 +606,7 @@ function RHUReadinessCard({ availability, medicineAlerts }) {
   return (
     <SideCard title="RHU Readiness" badge="coordination">
       <div className="space-y-3">
-        <div className="rounded-2xl border border-[#F1F5F9] bg-[#F8FAFC] p-3">
+        <div className="rounded-xl border border-[#F1F5F9] bg-[#F8FAFC] p-3">
           <div className="flex items-start gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#FEF2F2] text-[#B91C1C]">
               <Stethoscope size={17} />
@@ -636,10 +614,10 @@ function RHUReadinessCard({ availability, medicineAlerts }) {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span
-                  className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                  className={`rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
                     availability.status === "Not Available"
-                      ? "bg-red-50 text-red-700"
-                      : "bg-emerald-50 text-emerald-700"
+                      ? "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]"
+                      : "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"
                   }`}
                 >
                   {availability.status}
@@ -666,9 +644,9 @@ function RHUReadinessCard({ availability, medicineAlerts }) {
             icon={<Pill size={14} />}
           />
           <MiniReadinessMetric
-            label="Unavailable"
+            label="Unavailable meds"
             value={unavailableMedicines}
-            icon={<Hospital size={14} />}
+            icon={<Pill size={14} />}
           />
         </div>
 
@@ -694,51 +672,6 @@ function MiniReadinessMetric({ label, value, icon }) {
         {label}
       </p>
     </div>
-  );
-}
-
-function FollowUpTimeline({ items }) {
-  return (
-    <SideCard title="Follow-up Timeline" badge={`${items.length} watch`}>
-      {items.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-[#E5E7EB] bg-[#F8FAFC] px-4 py-6 text-center">
-          <CalendarCheck2 className="mx-auto mb-2 text-[#CBD5E1]" size={26} />
-          <p className="text-xs font-semibold text-[#64748B]">
-            No follow-up items right now
-          </p>
-        </div>
-      ) : (
-        <div className="relative space-y-3 pl-4 before:absolute before:left-1.5 before:top-2 before:h-[calc(100%-16px)] before:w-px before:bg-[#FECACA]">
-          {items.map((item) => (
-            <div key={getReferralTrackingId(item)} className="relative">
-              <span className="absolute -left-[17px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-[#B91C1C] shadow-sm" />
-              <Link
-                to={`/bhc/referrals/${getReferralTrackingId(item)}`}
-                className="block rounded-xl border border-[#F1F5F9] bg-[#F8FAFC]/70 px-3 py-2.5 transition hover:border-[#FECACA] hover:bg-white"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <p className="truncate text-xs font-bold text-[#0F172A]">
-                    {getReferralPatientName(item)}
-                  </p>
-                  <ReferralStatusBadge status={getReferralStatus(item)} />
-                </div>
-                <p className="mt-1 truncate text-[11px] text-[#64748B]">
-                  {getReferralConcern(item)}
-                </p>
-              </Link>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <Link
-        to="/bhc/referrals"
-        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#FECACA] bg-white px-4 py-2.5 text-xs font-bold text-[#B91C1C] transition hover:bg-[#FEF2F2]"
-      >
-        Open Referral Tracking
-        <ArrowRight size={13} />
-      </Link>
-    </SideCard>
   );
 }
 
@@ -774,7 +707,7 @@ function MedicineAvailabilityCard({ medicineAlerts }) {
 
       <Link
         to="/bhc/medicine-availability"
-        className="mt-5 flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-bold text-white shadow-sm shadow-red-900/10 transition-all hover:bg-[#991B1B]"
+        className="mt-5 flex items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#991B1B]"
       >
         View Medicine Availability
         <ArrowRight size={13} />
@@ -785,11 +718,11 @@ function MedicineAvailabilityCard({ medicineAlerts }) {
 
 function ReferralStatusBadge({ status }) {
   const map = {
-    Pending: "border-slate-200 bg-slate-50 text-slate-600",
-    Received: "border-blue-200 bg-blue-50 text-blue-700",
-    "For Monitoring": "border-amber-200 bg-amber-50 text-amber-700",
-    "No-Show": "border-red-200 bg-red-50 text-red-700",
-    Completed: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
+    Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
+    "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    "No-Show": "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
+    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
   };
 
   return (
@@ -803,10 +736,155 @@ function ReferralStatusBadge({ status }) {
   );
 }
 
+function getCurrentUserDisplayName() {
+  if (typeof window === "undefined") return "BHC Worker";
+
+  const possibleKeys = ["akay_user", "user", "currentUser", "authUser"];
+
+  for (const key of possibleKeys) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+
+      const user = JSON.parse(raw);
+      const name =
+        user?.fullName ||
+        user?.full_name ||
+        user?.name ||
+        user?.displayName ||
+        user?.profile?.name ||
+        user?.profile?.fullName;
+
+      if (name) return firstNameOnly(name);
+    } catch {
+      // Ignore malformed localStorage entries and use the default label.
+    }
+  }
+
+  return "BHC Worker";
+}
+
+function firstNameOnly(name) {
+  return String(name).trim().split(/\s+/)[0] || "BHC Worker";
+}
+
+function getGreeting(date) {
+  const hour = date.getHours();
+
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function formatToday(date) {
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatCurrentTime(date) {
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function getVolumeStatus(snapshot) {
+  const raw =
+    snapshot?.status ||
+    snapshot?.volumeStatus ||
+    snapshot?.currentStatus ||
+    snapshot?.level ||
+    "Low";
+  const normalized = String(raw).trim().toLowerCase();
+
+  if (normalized.includes("high")) return "High";
+  if (normalized.includes("normal") || normalized.includes("moderate")) {
+    return "Normal";
+  }
+  return "Low";
+}
+
+function getVolumeScore(snapshot) {
+  const value =
+    snapshot?.workloadScore ??
+    snapshot?.score ??
+    snapshot?.loadScore ??
+    snapshot?.capacityScore ??
+    0;
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) return 0;
+  return Number.isInteger(parsed) ? parsed : Number(parsed.toFixed(1));
+}
+
+function getVolumePercent(snapshot, score) {
+  const value =
+    snapshot?.capacityPercent ??
+    snapshot?.percent ??
+    snapshot?.usagePercent ??
+    (score / 25) * 100;
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.min(100, Math.round(parsed)));
+}
+
+function getVolumeCount(snapshot, keys) {
+  for (const key of keys) {
+    const directValue = snapshot?.[key];
+    const nestedValue = snapshot?.counts?.[key] ?? snapshot?.components?.[key];
+    const value = directValue ?? nestedValue;
+    const parsed = Number(value);
+
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return 0;
+}
+
+function getVolumeMessage(status) {
+  const map = {
+    Low: "RHU currently has manageable patient flow and can accommodate referrals efficiently.",
+    Normal:
+      "RHU has moderate activity. Referrals can proceed, but BHC should monitor updates.",
+    High: "RHU workload is high. BHC should prioritize urgent referrals and check availability first.",
+  };
+
+  return map[status] || map.Low;
+}
+
+function getVolumeTone(status) {
+  const map = {
+    Low: {
+      panel: "border-emerald-100 bg-emerald-50/55",
+      icon: "bg-white text-[#B91C1C] ring-1 ring-emerald-100",
+      badge: "bg-emerald-100 text-emerald-700",
+      bar: "bg-emerald-500",
+    },
+    Normal: {
+      panel: "border-[#FEE2E2] bg-[#FEF2F2]/70",
+      icon: "bg-white text-[#B91C1C] ring-1 ring-[#FECACA]",
+      badge: "bg-[#FEE2E2] text-[#991B1B]",
+      bar: "bg-[#B91C1C]",
+    },
+    High: {
+      panel: "border-amber-100 bg-amber-50/70",
+      icon: "bg-white text-amber-700 ring-1 ring-amber-100",
+      badge: "bg-amber-100 text-amber-800",
+      bar: "bg-amber-500",
+    },
+  };
+
+  return map[status] || map.Low;
+}
+
 function getMetricTone(tone) {
   const map = {
     red: "bg-[#FEF2F2] text-[#B91C1C]",
-    blue: "bg-blue-50 text-blue-700",
     slate: "bg-slate-100 text-slate-600",
     amber: "bg-amber-50 text-amber-700",
   };
