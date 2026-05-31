@@ -21,6 +21,10 @@ import {
   getReferrals,
   submitReturnSlip,
 } from "../../services/referrals";
+import {
+  getDoctorAvailability,
+  listenDoctorAvailabilityUpdates,
+} from "../../services/doctorAvailability";
 
 const OUTCOME_OPTIONS = [
   "Managed at RHU",
@@ -191,6 +195,7 @@ function FieldInput({
   onChange,
   type = "text",
   placeholder,
+  list,
   required,
 }) {
   return (
@@ -205,6 +210,7 @@ function FieldInput({
         value={value}
         onChange={onChange}
         placeholder={placeholder}
+        list={list}
         required={required}
         className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all duration-200 placeholder:text-slate-300 focus:border-slate-300 focus:bg-white focus:ring-2 focus:ring-slate-100"
       />
@@ -343,6 +349,17 @@ export default function FeedbackReturnSlip() {
     recommendation: "",
     remarks: "",
   });
+  const [doctorAvailability, setDoctorAvailability] = useState(() =>
+    getDoctorAvailability(),
+  );
+
+  useEffect(() => {
+    return listenDoctorAvailabilityUpdates(setDoctorAvailability);
+  }, []);
+
+  const rhuDoctors = Array.isArray(doctorAvailability?.doctors)
+    ? doctorAvailability.doctors
+    : [];
 
   function handleChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -631,12 +648,21 @@ export default function FeedbackReturnSlip() {
                     required
                   />
                   <FieldInput
-                    label="Receiving Personnel"
+                    label="Receiving Practitioner"
                     name="receivingPersonnel"
                     value={form.receivingPersonnel}
                     onChange={handleChange}
+                    list="rhu-doctor-options"
                     required
                   />
+                  <datalist id="rhu-doctor-options">
+                    {rhuDoctors.map((doctor) => (
+                      <option
+                        key={doctor.doctorId || doctor.id}
+                        value={doctor.doctorName || doctor.name}
+                      />
+                    ))}
+                  </datalist>
                 </div>
               </section>
 

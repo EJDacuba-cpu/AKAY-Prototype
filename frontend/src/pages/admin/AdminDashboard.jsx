@@ -1,4 +1,8 @@
 import {
+  useEffect,
+  useState,
+} from "react";
+import {
   Activity,
   AlertTriangle,
   Boxes,
@@ -12,8 +16,20 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import {
+  getDoctorAvailability,
+  listenDoctorAvailabilityUpdates,
+} from "../../services/doctorAvailability";
 
 export default function AdminDashboard() {
+  const [doctorAvailability, setDoctorAvailability] = useState(() =>
+    getDoctorAvailability(),
+  );
+
+  useEffect(() => {
+    return listenDoctorAvailabilityUpdates(setDoctorAvailability);
+  }, []);
+
   const recentActivities = [
     {
       action: "New referral submitted",
@@ -46,24 +62,6 @@ export default function AdminDashboard() {
     { barangay: "Taliptip", referrals: 9, monitoring: 2, status: "Active" },
     { barangay: "San Jose", referrals: 7, monitoring: 1, status: "Active" },
     { barangay: "Bagumbayan", referrals: 6, monitoring: 2, status: "Active" },
-  ];
-
-  const doctorAvailability = [
-    {
-      doctor: "Dr. Maria Santos",
-      specialization: "Maternal Care",
-      status: "Available",
-    },
-    {
-      doctor: "Dr. Jose Cruz",
-      specialization: "Pediatrics",
-      status: "On Duty",
-    },
-    {
-      doctor: "Dr. Ana Reyes",
-      specialization: "General Consultation",
-      status: "Fully Booked",
-    },
   ];
 
   return (
@@ -108,16 +106,16 @@ export default function AdminDashboard() {
       <div className="mb-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         <QuickCard
           title="User & Personnel Management"
-          description="Create and manage MHO, BHC, RHU, and doctor accounts."
+          description="Create and manage MHO, BHC, and RHU staff accounts."
           icon={<UserCheck size={20} />}
           href="/admin/users"
         />
 
         <QuickCard
-          title="RHU Doctors"
-          description="View RHU doctor accounts and default schedules."
+          title="Doctor Availability"
+          description="View RHU-managed doctor availability records."
           icon={<Stethoscope size={20} />}
-          href="/admin/doctors"
+          href="/rhu/doctor-schedule"
         />
 
         <QuickCard
@@ -269,19 +267,25 @@ export default function AdminDashboard() {
             </div>
 
             <div className="space-y-3">
-              {doctorAvailability.map((doctor) => (
+              {doctorAvailability.doctors.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-[#E8ECF0] bg-[#F8FAFC] p-4 text-xs text-[#9CA3AF]">
+                  No doctor records encoded yet.
+                </div>
+              ) : doctorAvailability.doctors.map((doctor) => (
                 <div
-                  key={doctor.doctor}
+                  key={doctor.doctorId || doctor.id}
                   className="rounded-lg border border-[#E8ECF0] bg-[#F8FAFC] p-4"
                 >
                   <p className="text-sm font-semibold text-[#0B2E59]">
-                    {doctor.doctor}
+                    {doctor.doctorName || doctor.name}
                   </p>
                   <p className="mt-1 text-xs text-[#6B7280]">
-                    {doctor.specialization}
+                    {doctor.doctorType || doctor.role}
                   </p>
                   <div className="mt-3">
-                    <DoctorStatusBadge status={doctor.status} />
+                    <DoctorStatusBadge
+                      status={doctor.availabilityStatus || doctor.status}
+                    />
                   </div>
                 </div>
               ))}

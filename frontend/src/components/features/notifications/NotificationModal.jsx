@@ -28,12 +28,61 @@ const typeConfig = {
     border: "border-emerald-200",
     icon: MessageSquare,
   },
+  "return-slip": {
+    label: "RHU RETURN SLIP",
+    color: "text-emerald-700",
+    bg: "bg-emerald-50",
+    border: "border-emerald-200",
+    icon: MessageSquare,
+  },
+  status: {
+    label: "REFERRAL STATUS",
+    color: "text-blue-700",
+    bg: "bg-blue-50",
+    border: "border-blue-200",
+    icon: CheckCircle2,
+  },
   followup: {
     label: "FOLLOW-UP SCHEDULE",
     color: "text-amber-700",
     bg: "bg-amber-50",
     border: "border-amber-200",
     icon: CalendarClock,
+  },
+  "follow-up": {
+    label: "FOLLOW-UP SCHEDULE",
+    color: "text-amber-700",
+    bg: "bg-amber-50",
+    border: "border-amber-200",
+    icon: CalendarClock,
+  },
+  medicine: {
+    label: "MEDICINE AVAILABILITY",
+    color: "text-red-700",
+    bg: "bg-red-50",
+    border: "border-red-200",
+    icon: AlertTriangle,
+  },
+  doctor: {
+    label: "DOCTOR AVAILABILITY",
+    color: "text-blue-700",
+    bg: "bg-blue-50",
+    border: "border-blue-200",
+    icon: User,
+  },
+  account: {
+    label: "ACCOUNT UPDATE",
+    color: "text-gray-700",
+    bg: "bg-gray-100",
+    border: "border-gray-200",
+    icon: Shield,
+  },
+  audit: {
+    label: "AUDIT LOG",
+    color: "text-gray-700",
+    bg: "bg-gray-100",
+    border: "border-gray-200",
+    icon: Shield,
   },
   alert: {
     label: "SYSTEM ALERT",
@@ -102,7 +151,7 @@ export default function NotificationModal({
             </div>
             <div>
               <h4 className="text-[10px] font-bold uppercase tracking-[0.1em] text-gray-500">
-                Barangay Health Center
+                AKAY Notification
               </h4>
               <h2 className={`text-sm font-bold tracking-wide ${config.color}`}>
                 {config.label}

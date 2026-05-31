@@ -101,7 +101,7 @@ const menuByRole = {
           icon: FileText,
         },
         {
-          label: "Doctor Schedule",
+          label: "Doctor Availability",
           path: "/rhu/doctor-schedule",
           icon: CalendarDays,
         },
@@ -174,9 +174,13 @@ export default function DashboardLayout({
 
   const handleDropdownSelect = (notif) => {
     markAsRead(notif.id);
+    setIsNotifOpen(false);
+    if (notif?.link) {
+      navigate(notif.link);
+      return;
+    }
     setSelectedNotif(notif);
     setIsModalOpen(true);
-    setIsNotifOpen(false);
   };
 
   const handleSeeAll = () => {

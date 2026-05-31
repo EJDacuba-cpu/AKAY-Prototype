@@ -2,15 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import {
-  Activity,
-  HeartPulse,
   KeyRound,
   MoreHorizontal,
   Plus,
-  ShieldCheck,
   UserCheck,
   UserX,
-  Users,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -19,11 +15,7 @@ import {
   getAdminAccounts,
   updateAdminAccountStatus,
 } from "../../services/adminAccountsService";
-
-const TABS = [
-  { key: "all", label: "All Accounts", icon: Users },
-  { key: "doctors", label: "RHU Doctors", icon: HeartPulse },
-];
+import { createRoleNotification } from "../../services/notificationService";
 
 const FILTER_OPTIONS = {
   role: ["All Roles", "Admin", "BHC", "RHU"],
@@ -37,7 +29,7 @@ const FILTER_OPTIONS = {
     "RHU Staff",
     "Encoder",
     "Nurse",
-    "Doctor",
+    "Receiving Staff",
   ],
   facility: [
     "All Facilities",
@@ -71,8 +63,7 @@ function persistAdminAccounts(accounts) {
   }
 }
 
-export default function UserManagement({ initialTab = "all" }) {
-  const [activeTab, setActiveTab] = useState(initialTab);
+export default function UserManagement() {
   const [users, setUsers] = useState(() => getAdminAccounts());
   const [noticeMessage, setNoticeMessage] = useState("");
   const [passwordTarget, setPasswordTarget] = useState(null);
@@ -107,6 +98,14 @@ export default function UserManagement({ initialTab = "all" }) {
     );
 
     persistAdminAccounts(updatedUsers);
+    createRoleNotification("admin", {
+      title: "Password updated",
+      message: `Password was changed for ${getDisplayName(user)}.`,
+      type: "account",
+      referenceId: `${user.id}-password-${updatedAt}`,
+      link: "/admin/users",
+      sender: "Admin/MHO",
+    });
     setUsers(updatedUsers);
     setPasswordTarget(null);
     setNoticeMessage(
@@ -146,27 +145,10 @@ export default function UserManagement({ initialTab = "all" }) {
     }));
   }
 
-  const rhuDoctors = useMemo(
-    () =>
-      users.filter((user) => user.role === "RHU" && user.position === "Doctor"),
-    [users],
-  );
-
-  const activeUsers = useMemo(
-    () => users.filter((user) => user.status === "Active"),
-    [users],
-  );
-
-  const inactiveUsers = useMemo(
-    () => users.filter((user) => user.status === "Inactive"),
-    [users],
-  );
-
   const visibleUsers = useMemo(() => {
     const query = filters.search.trim().toLowerCase();
-    const source = activeTab === "doctors" ? rhuDoctors : users;
 
-    return source.filter((user) => {
+    return users.filter((user) => {
       const searchText = [
         user.id,
         user.fullName || user.name,
@@ -175,8 +157,6 @@ export default function UserManagement({ initialTab = "all" }) {
         user.position,
         user.facility,
         user.accountRoleLabel,
-        user.doctorProfile?.doctorId,
-        user.doctorProfile?.doctorType,
       ]
         .filter(Boolean)
         .join(" ")
@@ -203,7 +183,7 @@ export default function UserManagement({ initialTab = "all" }) {
         matchesStatus
       );
     });
-  }, [activeTab, filters, rhuDoctors, users]);
+  }, [filters, users]);
 
   const toolbarFilters = [
     {
@@ -253,47 +233,11 @@ export default function UserManagement({ initialTab = "all" }) {
     (filter) => filter.key !== "search",
   ).length;
 
-  const countLabel = activeTab === "doctors" ? "Doctors" : "Accounts";
+  const countLabel = "Accounts";
 
   return (
     <DashboardLayout role="admin" title="User & Personnel Management">
       <div className="space-y-6">
-        <div className="rounded-xl border border-[#E8ECF0] bg-white p-1">
-          <div className="flex items-center gap-1 overflow-x-auto">
-            {TABS.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.key;
-              const count =
-                tab.key === "doctors" ? rhuDoctors.length : users.length;
-
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`flex h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-[12px] font-semibold transition-all ${
-                    isActive
-                      ? "bg-[#FEF2F2] text-[#B91C1C]"
-                      : "text-[#6B7280] hover:bg-[#F9FAFB] hover:text-[#111827]"
-                  }`}
-                >
-                  <Icon size={14} />
-                  {tab.label}
-                  <span
-                    className={`rounded-full px-1.5 py-px text-[10px] font-bold leading-none ${
-                      isActive
-                        ? "bg-white text-[#B91C1C]"
-                        : "bg-[#F3F4F6] text-[#6B7280]"
-                    }`}
-                  >
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         <ListToolbar
           searchValue={filters.search}
           onSearchChange={(value) =>
@@ -324,19 +268,11 @@ export default function UserManagement({ initialTab = "all" }) {
           </div>
         )}
 
-        {activeTab === "doctors" ? (
-          <DoctorsTable
-            doctors={visibleUsers}
-            onChangePassword={setPasswordTarget}
-            onUpdateStatus={updateStatus}
-          />
-        ) : (
-          <AccountsTable
-            users={visibleUsers}
-            onChangePassword={setPasswordTarget}
-            onUpdateStatus={updateStatus}
-          />
-        )}
+        <AccountsTable
+          users={visibleUsers}
+          onChangePassword={setPasswordTarget}
+          onUpdateStatus={updateStatus}
+        />
 
         {passwordTarget && (
           <ChangePasswordModal
@@ -437,91 +373,6 @@ function AccountsTable({ users, onChangePassword, onUpdateStatus }) {
   );
 }
 
-function DoctorsTable({ doctors, onChangePassword, onUpdateStatus }) {
-  return (
-    <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
-      <TableHeader
-        title="RHU Doctor Accounts"
-        description="Doctors are RHU user accounts. Daily availability is updated by RHU staff."
-        count={doctors.length}
-      />
-
-      <div className="w-full overflow-x-auto">
-        <table className="w-full min-w-[920px] text-left">
-          <thead>
-            <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              <th className="w-[130px] px-6 py-3">Doctor ID</th>
-              <th className="w-[280px] px-4 py-3">Doctor Account</th>
-              <th className="w-[190px] px-4 py-3">Doctor Type</th>
-              <th className="px-4 py-3">Facility</th>
-              <th className="w-[120px] px-4 py-3">Status</th>
-              <th className="w-[90px] px-6 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-[#F3F4F6]">
-            {doctors.length === 0 ? (
-              <EmptyRow
-                colSpan={6}
-                message="No RHU doctor accounts match the current filters."
-              />
-            ) : (
-              doctors.map((doctor) => (
-                <tr
-                  key={doctor.id}
-                  className="transition-colors hover:bg-[#F9FAFB]"
-                >
-                  <td className="whitespace-nowrap px-6 py-3.5 align-middle">
-                    <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0B2E59]">
-                      {doctor.doctorProfile?.doctorId || doctor.id}
-                    </span>
-                  </td>
-
-                  <td className="px-4 py-3.5 align-middle">
-                    <p className="truncate text-sm font-semibold text-[#111827]">
-                      {getDisplayName(doctor)}
-                    </p>
-                    <p className="mt-0.5 truncate text-xs text-[#9CA3AF]">
-                      {doctor.email || "No email recorded"}
-                    </p>
-                  </td>
-
-                  <td className="whitespace-nowrap px-4 py-3.5 align-middle">
-                    <DoctorTypeBadge
-                      label={
-                        doctor.doctorProfile?.doctorType ||
-                        "General Practitioner"
-                      }
-                    />
-                  </td>
-
-                  <td className="px-4 py-3.5 align-middle">
-                    <p className="truncate text-sm text-[#6B7280]">
-                      {doctor.facility || "Rural Health Unit Bulakan"}
-                    </p>
-                  </td>
-
-                  <td className="whitespace-nowrap px-4 py-3.5 align-middle">
-                    <StatusBadge status={doctor.status} />
-                  </td>
-
-                  <td className="whitespace-nowrap px-6 py-3.5 text-right align-middle">
-                    <AccountActions
-                      user={doctor}
-                      onChangePassword={onChangePassword}
-                      onUpdateStatus={onUpdateStatus}
-                    />
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 function TableHeader({ title, description, count }) {
   return (
     <div className="flex flex-col gap-2 border-b border-[#E8ECF0] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -533,38 +384,6 @@ function TableHeader({ title, description, count }) {
       <div className="flex w-fit items-center gap-2 rounded-md bg-[#F3F4F6] px-2 py-1 text-[10px] font-semibold text-[#6B7280]">
         {count} records
       </div>
-    </div>
-  );
-}
-
-function SummaryCard({ title, value, icon, color = "red" }) {
-  const map = {
-    red: "border-t-[#B91C1C] text-[#B91C1C] bg-[#FEF2F2]",
-    green: "border-t-emerald-500 text-emerald-700 bg-emerald-50",
-    blue: "border-t-blue-500 text-blue-700 bg-blue-50",
-    amber: "border-t-amber-400 text-amber-700 bg-amber-50",
-  };
-
-  const selected = map[color] || map.red;
-  const parts = selected.split(" ");
-  const border = parts[0];
-  const iconStyle = parts.slice(1).join(" ");
-
-  return (
-    <div
-      className={`rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-5 ${border}`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
-          {title}
-        </p>
-
-        <div className={`shrink-0 rounded-lg p-2 ${iconStyle}`}>{icon}</div>
-      </div>
-
-      <p className="mt-4 text-2xl font-bold tracking-tight text-[#0B2E59]">
-        {value}
-      </p>
     </div>
   );
 }
@@ -832,14 +651,6 @@ function RoleBadge({ role }) {
       }`}
     >
       {role || "Unassigned"}
-    </span>
-  );
-}
-
-function DoctorTypeBadge({ label }) {
-  return (
-    <span className="inline-block whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
-      {label || "General Practitioner"}
     </span>
   );
 }

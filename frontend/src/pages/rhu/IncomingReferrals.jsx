@@ -406,17 +406,68 @@ function getReferringHci(referral) {
 }
 
 function getReferralDate(referral) {
-  const raw =
-    referral?.preferredVisitDate ||
-    referral?.dateOfReferral ||
-    referral?.referralDate ||
-    referral?.dateSubmitted ||
-    referral?.date ||
-    referral?.createdAt;
+  return getReferralSubmittedAt(referral);
+}
 
-  if (!raw) return null;
-  const date = new Date(raw);
+function parseReferralDate(value) {
+  if (!value) return null;
+  const normalized = String(value).replace("·", " ");
+  const date = new Date(normalized);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getReferralSubmittedAt(referral = {}) {
+  const directDate =
+    parseReferralDate(referral.createdAt) ||
+    parseReferralDate(referral.submittedAt) ||
+    parseReferralDate(referral.dateSubmitted);
+
+  if (directDate) return directDate;
+
+  if (referral.dateOfReferral) {
+    return (
+      parseReferralDate(
+        referral.timeOfReferral
+          ? `${referral.dateOfReferral}T${referral.timeOfReferral}`
+          : referral.dateOfReferral,
+      ) ||
+      parseReferralDate(
+        [referral.dateOfReferral, referral.timeOfReferral]
+          .filter(Boolean)
+          .join(" "),
+      )
+    );
+  }
+
+  return null;
+}
+
+function getReferralSubmittedTime(referral) {
+  const date = getReferralSubmittedAt(referral);
+  return date ? date.getTime() : Number.MAX_SAFE_INTEGER;
+}
+
+function compareReferralQueueOrder(a, b) {
+  const timeDiff = getReferralSubmittedTime(a) - getReferralSubmittedTime(b);
+  if (timeDiff !== 0) return timeDiff;
+
+  return String(a.trackingId || a.id || "").localeCompare(
+    String(b.trackingId || b.id || ""),
+  );
+}
+
+function formatReferralSubmittedAt(referral) {
+  const date = getReferralSubmittedAt(referral);
+  if (!date) return "No date recorded";
+
+  return `${date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  })} · ${date.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
 }
 
 function isSameDay(a, b) {
@@ -621,10 +672,15 @@ export default function IncomingReferrals() {
     });
   }, [referrals, filters]);
 
-  const filtered = baseFiltered.filter(
-    (referral) =>
-      filters.status === "All Status" || referral.status === filters.status,
-  );
+  const filtered = useMemo(() => {
+    const statusFiltered = baseFiltered.filter(
+      (referral) =>
+        filters.status === "All Status" || referral.status === filters.status,
+    );
+
+    // RHU queue follows first-referred, first-shown ordering based on BHC submission time.
+    return statusFiltered.slice().sort(compareReferralQueueOrder);
+  }, [baseFiltered, filters.status]);
 
   const toolbarFilters = [
     {
@@ -711,10 +767,12 @@ export default function IncomingReferrals() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1220px] text-left">
+            <table className="w-full min-w-[1360px] text-left">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  <th className="px-6 py-3">Queue No.</th>
                   <th className="px-6 py-3">Tracking ID</th>
+                  <th className="px-4 py-3">Date / Time Referred</th>
                   <th className="px-4 py-3">Patient</th>
                   <th className="px-4 py-3">Name of Referring HCI</th>
                   <th className="px-4 py-3">{categoryColumnLabel}</th>
@@ -728,7 +786,7 @@ export default function IncomingReferrals() {
               <tbody className="divide-y divide-slate-50">
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-24 text-center">
+                    <td colSpan={10} className="px-6 py-24 text-center">
                       <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
                         <Search size={20} className="text-slate-400" />
                       </div>
@@ -753,7 +811,7 @@ export default function IncomingReferrals() {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((referral) => {
+                  filtered.map((referral, index) => {
                     const animated = animatedIds.has(referral.trackingId);
                     const isTerminal = referral.status === "Completed";
 
@@ -768,9 +826,19 @@ export default function IncomingReferrals() {
                         }`}
                       >
                         <td className="whitespace-nowrap px-6 py-4">
+                          <span className="text-[12px] font-bold text-slate-500">
+                            #{index + 1}
+                          </span>
+                        </td>
+
+                        <td className="whitespace-nowrap px-6 py-4">
                           <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-[11px] font-semibold text-[#0B2E59]">
                             {referral.trackingId}
                           </span>
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-4 text-[12px] text-slate-600">
+                          {formatReferralSubmittedAt(referral)}
                         </td>
 
                         <td className="whitespace-nowrap px-4 py-4">

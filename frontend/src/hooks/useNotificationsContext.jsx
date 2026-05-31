@@ -1,106 +1,88 @@
-import { createContext, useContext, useState, useMemo, useEffect } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+  useEffect,
+} from "react";
+/* eslint-disable react-refresh/only-export-components */
+import { getCurrentUser } from "../utils/auth";
+import {
+  clearNotificationsForUser,
+  deleteNotification as deleteStoredNotification,
+  getNotificationsForUser,
+  markAllNotificationsAsRead,
+  markNotificationAsRead,
+  normalizeFacilityId,
+  normalizeRole,
+  subscribeToNotifications,
+} from "../services/notificationService";
 
 const NotificationContext = createContext(null);
 
-const STORAGE_KEY = "akay_notifications";
+function getNotificationUserContext() {
+  const user = getCurrentUser() || {};
+  const role = normalizeRole(user.role || "bhc");
+  const facilityId = normalizeFacilityId(user.facility, role);
 
-const seedNotifications = [
-  {
-    id: "notif-1",
-    type: "referral",
-    sender: "Dr. Reyes (RHU)",
-    title: "RHU Feedback: Juan Dela Cruz (REF-2024-085)",
-    description: "Feedback has been submitted.",
-    fullMessage:
-      "The attending physician at the Rural Health Unit has provided clinical feedback regarding the referred patient. The return slip is now available for viewing and printing at the BHC.",
-    timestamp: "May 26, 8:00 AM",
-    read: false,
-    referralId: "REF-2024-085",
-    link: "/bhc/referrals",
-    linkLabel: "View Feedback Slip",
-  },
-  {
-    id: "notif-2",
-    type: "alert",
-    sender: "Inventory System",
-    title: "Medicine Stock Alert: Paracetamol 500mg",
-    description: "Stock has fallen below minimum level.",
-    fullMessage:
-      "Inventory check indicates that Paracetamol 500mg is running critically low. Current stock is unable to meet the projected demand for the next 14 days. Immediate resupply request is recommended.",
-    timestamp: "May 23, 2:30 PM",
-    read: false,
-    link: "/bhc/medicine-availability",
-    linkLabel: "Check Inventory",
-  },
-  {
-    id: "notif-3",
-    type: "followup",
-    sender: "System Reminder",
-    title: "Follow-up scheduled for Ana Reyes today",
-    description: "Patient is due for a follow-up checkup.",
-    fullMessage:
-      "Automated reminder: Patient Ana Reyes is due for a follow-up checkup today based on the previous health record filed last week.",
-    timestamp: "May 24, 9:00 AM",
-    read: true,
-    link: "/bhc/health-records",
-    linkLabel: "View Health Record",
-  },
-  {
-    id: "notif-4",
-    type: "referral",
-    sender: "BHC Malolos",
-    title: "New Referral Received for Maria Santos",
-    description: "Referral has been received.",
-    fullMessage:
-      "A new referral request has been formally transmitted to your facility. The patient is scheduled for assessment.",
-    timestamp: "May 22, 10:08 PM",
-    read: true,
-    referralId: "REF-2024-089",
-    link: "/rhu/incoming-referrals",
-    linkLabel: "View Referral",
-  },
-];
+  return { role, facilityId };
+}
 
 export function NotificationProvider({ children }) {
-  const [notifications, setNotifications] = useState(() => {
-    try {
-      const data = localStorage.getItem(STORAGE_KEY);
-      if (data) return JSON.parse(data);
-    } catch (e) {
-      console.error("Failed to read notifications", e);
-    }
-    return seedNotifications;
-  });
-
+  const [userContext, setUserContext] = useState(getNotificationUserContext);
+  const [notifications, setNotifications] = useState(() =>
+    getNotificationsForUser(userContext.role, userContext.facilityId),
+  );
   const [selectedNotif, setSelectedNotif] = useState(null);
 
+  const refreshNotifications = useCallback(() => {
+    const nextContext = getNotificationUserContext();
+    setUserContext(nextContext);
+    setNotifications(
+      getNotificationsForUser(nextContext.role, nextContext.facilityId),
+    );
+  }, []);
+
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications));
-    } catch (e) {
-      console.error("Failed to save notifications", e);
-    }
-  }, [notifications]);
+    return subscribeToNotifications(refreshNotifications);
+  }, [refreshNotifications]);
 
   const unreadCount = useMemo(
-    () => notifications.filter((n) => !n.read).length,
+    () => notifications.filter((notification) => !notification.isRead).length,
     [notifications],
   );
 
-  const getLatestNotifications = () => notifications.slice(0, 5);
+  const getLatestNotifications = useCallback(
+    () => notifications.slice(0, 5),
+    [notifications],
+  );
 
-  const markAsRead = (id) =>
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
-    );
+  const markAsRead = useCallback(
+    (id) => {
+      markNotificationAsRead(id);
+      refreshNotifications();
+    },
+    [refreshNotifications],
+  );
 
-  const markAllAsRead = () =>
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  const markAllAsRead = useCallback(() => {
+    markAllNotificationsAsRead(userContext.role, userContext.facilityId);
+    refreshNotifications();
+  }, [refreshNotifications, userContext.facilityId, userContext.role]);
 
-  const deleteNotification = (id) =>
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  const deleteNotification = useCallback(
+    (id) => {
+      deleteStoredNotification(id);
+      refreshNotifications();
+    },
+    [refreshNotifications],
+  );
 
-  const clearAll = () => setNotifications([]);
+  const clearAll = useCallback(() => {
+    clearNotificationsForUser(userContext.role, userContext.facilityId);
+    refreshNotifications();
+  }, [refreshNotifications, userContext.facilityId, userContext.role]);
 
   return (
     <NotificationContext.Provider
@@ -123,9 +105,10 @@ export function NotificationProvider({ children }) {
 
 export function useNotifications() {
   const ctx = useContext(NotificationContext);
-  if (!ctx)
+  if (!ctx) {
     throw new Error(
       "useNotifications must be used within NotificationProvider",
     );
+  }
   return ctx;
 }

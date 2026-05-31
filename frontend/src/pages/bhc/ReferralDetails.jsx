@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import {
   Activity,
-  AlertCircle,
   AlertTriangle,
   ArrowLeft,
   Building2,
@@ -328,7 +327,11 @@ function ReferralRecord({ referral, patient }) {
           />
           <Detail
             label="Preferred RHU Doctor"
-            value={referral.preferredDoctor || referral.doctorType}
+            value={
+              referral.preferredRhuDoctorName ||
+              referral.preferredDoctor ||
+              "RHU to assign"
+            }
           />
         </div>
       </RecordSection>

@@ -1,5 +1,5 @@
-import UserManagement from "./UserManagement";
+import { Navigate } from "react-router";
 
 export default function DoctorManagement() {
-  return <UserManagement initialTab="doctors" />;
+  return <Navigate to="/rhu/doctor-schedule" replace />;
 }

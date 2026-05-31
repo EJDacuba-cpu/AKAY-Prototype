@@ -29,7 +29,7 @@ export default function AdminReports() {
     { label: "Active BHCs", value: 13 },
     { label: "Active RHU", value: 1 },
     { label: "Total Users", value: 38 },
-    { label: "Doctor Profiles", value: 4 },
+    { label: "Doctor Records", value: 4 },
   ];
 
   const medicineAlerts = [
@@ -51,7 +51,7 @@ export default function AdminReports() {
           </h1>
           <p className="mt-1 text-sm text-[#6B7280]">
             System-wide summary for referrals, facilities, monitoring, users,
-            doctors, and inventory alerts.
+            doctor availability, and inventory alerts.
           </p>
         </div>
       </div>

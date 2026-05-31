@@ -34,7 +34,7 @@ export default function NotificationDropdown({
         {latestNotifs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-center px-4">
             <Inbox size={24} className="text-gray-300 mb-1" />
-            <p className="text-xs text-gray-400">No new notifications</p>
+            <p className="text-xs text-gray-400">No notifications yet.</p>
           </div>
         ) : (
           latestNotifs.map((notif) => (

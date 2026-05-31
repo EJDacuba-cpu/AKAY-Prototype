@@ -1,575 +1,886 @@
+import { useMemo, useState } from "react";
 import {
-  ClipboardList,
-  HeartPulse,
-  Printer,
-  Users,
+  BarChart3,
   BookOpen,
-  FileSpreadsheet,
+  CalendarDays,
+  ClipboardList,
   FileText,
-  AlertTriangle,
+  Printer,
   RefreshCw,
-  CheckCircle2, // Added missing import
-  XCircle, // Added missing import
+  SearchCheck,
 } from "lucide-react";
+import {
+  BarElement,
+  CategoryScale,
+  Chart as ChartJS,
+  Legend,
+  LinearScale,
+  Tooltip,
+} from "chart.js";
+import { Bar } from "react-chartjs-2";
+
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import StatCard from "../../components/common/cards/StatsCard";
+import ListToolbar from "../../components/common/list/ListToolbar";
+
+ChartJS.register(BarElement, CategoryScale, Legend, LinearScale, Tooltip);
+
+const DEFAULT_FILTERS = {
+  search: "",
+  classification: "All Classifications",
+  referralStatus: "All Referral Status",
+  dateReferred: "",
+};
+
+const chartPalette = {
+  primary: "#B91C1C",
+  primaryDark: "#7F1D1D",
+  primaryMid: "#DC2626",
+  primarySoft: "#FEE2E2",
+  text: "#334155",
+  mutedText: "#64748B",
+  grid: "rgba(226, 232, 240, 0.85)",
+};
+
+const smoothAnimation = {
+  duration: 850,
+  easing: "easeOutQuart",
+};
+
+const REPORT_DATA = {
+  weekly: {
+    label: "Weekly Report",
+    shortLabel: "Weekly",
+    description:
+      "Weekly summary focused on chief complaints/cases for BHC reporting and reconciliation.",
+    logbook: [
+      {
+        trackingId: "AKY-257003",
+        name: "Maria Santos",
+        classification: "Maternal",
+        chiefComplaint: "Pregnancy-related concern",
+        status: "Completed",
+        date: "May 13, 2026",
+        feedback: "Managed at RHU",
+      },
+      {
+        trackingId: "AKY-197393",
+        name: "Juan Dela Cruz",
+        classification: "General Consultation",
+        chiefComplaint: "Hypertension check",
+        status: "Pending",
+        date: "May 12, 2026",
+        feedback: "Awaiting RHU check-in",
+      },
+      {
+        trackingId: "AKY-748385",
+        name: "Ana Reyes",
+        classification: "Maternal",
+        chiefComplaint: "Headache and swelling",
+        status: "For Monitoring",
+        date: "May 12, 2026",
+        feedback: "RHU monitoring ongoing",
+      },
+      {
+        trackingId: "AKY-626573",
+        name: "Pedro Lopez",
+        classification: "Senior Citizen",
+        chiefComplaint: "Diabetes maintenance",
+        status: "Received",
+        date: "May 11, 2026",
+        feedback: "Patient received by RHU",
+      },
+      {
+        trackingId: "AKY-547819",
+        name: "Rosa Garcia",
+        classification: "General Consultation",
+        chiefComplaint: "Fever and cough",
+        status: "Completed",
+        date: "May 10, 2026",
+        feedback: "Return slip received",
+      },
+      {
+        trackingId: "AKY-703945",
+        name: "Carlos Mendoza",
+        classification: "General Consultation",
+        chiefComplaint: "Chest discomfort",
+        status: "Pending",
+        date: "May 10, 2026",
+        feedback: "Awaiting RHU check-in",
+      },
+    ],
+  },
+  monthly: {
+    label: "Monthly Report",
+    shortLabel: "Monthly",
+    description:
+      "Monthly summary focused on chief complaints/cases for end-of-month BHC reporting.",
+    logbook: [
+      {
+        trackingId: "AKY-257003",
+        name: "Maria Santos",
+        classification: "Maternal",
+        chiefComplaint: "Pregnancy-related concern",
+        status: "Completed",
+        date: "May 13, 2026",
+        feedback: "Managed at RHU",
+      },
+      {
+        trackingId: "AKY-197393",
+        name: "Juan Dela Cruz",
+        classification: "General Consultation",
+        chiefComplaint: "Hypertension check",
+        status: "Pending",
+        date: "May 12, 2026",
+        feedback: "Awaiting RHU check-in",
+      },
+      {
+        trackingId: "AKY-748385",
+        name: "Ana Reyes",
+        classification: "Maternal",
+        chiefComplaint: "Headache and swelling",
+        status: "For Monitoring",
+        date: "May 12, 2026",
+        feedback: "RHU monitoring ongoing",
+      },
+      {
+        trackingId: "AKY-626573",
+        name: "Pedro Lopez",
+        classification: "Senior Citizen",
+        chiefComplaint: "Diabetes maintenance",
+        status: "Received",
+        date: "May 11, 2026",
+        feedback: "Patient received by RHU",
+      },
+      {
+        trackingId: "AKY-547819",
+        name: "Rosa Garcia",
+        classification: "General Consultation",
+        chiefComplaint: "Fever and cough",
+        status: "Completed",
+        date: "May 10, 2026",
+        feedback: "Return slip received",
+      },
+      {
+        trackingId: "AKY-703945",
+        name: "Carlos Mendoza",
+        classification: "General Consultation",
+        chiefComplaint: "Chest discomfort",
+        status: "Pending",
+        date: "May 10, 2026",
+        feedback: "Awaiting RHU check-in",
+      },
+      {
+        trackingId: "AKY-118204",
+        name: "Elena Bautista",
+        classification: "Immunization",
+        chiefComplaint: "Vaccination visit",
+        status: "Completed",
+        date: "May 8, 2026",
+        feedback: "Vaccine schedule reviewed",
+      },
+      {
+        trackingId: "AKY-882410",
+        name: "Lito Fernandez",
+        classification: "General Consultation",
+        chiefComplaint: "Fever and cough",
+        status: "Completed",
+        date: "May 7, 2026",
+        feedback: "Return slip received",
+      },
+      {
+        trackingId: "AKY-441927",
+        name: "Carmen Flores",
+        classification: "Senior Citizen",
+        chiefComplaint: "Hypertension check",
+        status: "No-Show",
+        date: "May 6, 2026",
+        feedback: "Patient did not arrive at RHU",
+      },
+      {
+        trackingId: "AKY-672819",
+        name: "Nora Villanueva",
+        classification: "Maternal",
+        chiefComplaint: "Maternal concern",
+        status: "Completed",
+        date: "May 5, 2026",
+        feedback: "Managed at RHU",
+      },
+    ],
+  },
+};
+
+function normalizeDate(value) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  return date.toISOString().slice(0, 10);
+}
+
+function createHorizontalGradient(ctx, chartArea, stops) {
+  if (!chartArea) return stops[0]?.color || chartPalette.primary;
+
+  const gradient = ctx.createLinearGradient(
+    chartArea.left,
+    0,
+    chartArea.right,
+    0,
+  );
+
+  stops.forEach((stop) => gradient.addColorStop(stop.offset, stop.color));
+  return gradient;
+}
 
 export default function BHCReports() {
-  const referralStatus = [
-    { label: "Pending", value: 12, percent: 26, tone: "slate" },
-    { label: "Received", value: 8, percent: 17, tone: "blue" },
-    { label: "For Monitoring", value: 6, percent: 13, tone: "amber" },
-    { label: "Completed", value: 18, percent: 38, tone: "emerald" },
-    { label: "No-Show", value: 3, percent: 6, tone: "red" },
-  ];
+  const [reportMode, setReportMode] = useState("weekly");
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
 
-  const referralCategories = [
-    {
-      label: "Maternal Cases",
-      value: 8,
-      monthly: 32,
-      percent: 19,
-      tone: "pink",
-    },
-    {
-      label: "Senior Citizen Cases",
-      value: 4,
-      monthly: 16,
-      percent: 10,
-      tone: "slate",
-    },
-    { label: "A1 Cases", value: 6, monthly: 24, percent: 14, tone: "red" },
-    { label: "A2 Cases", value: 4, monthly: 16, percent: 10, tone: "orange" },
-    { label: "B1 Cases", value: 12, monthly: 48, percent: 29, tone: "blue" },
-    { label: "B2 Cases", value: 5, monthly: 20, percent: 12, tone: "blue" },
-    {
-      label: "High-Risk Cases",
-      value: 4,
-      monthly: 16,
-      percent: 10,
-      tone: "red",
-    },
-    {
-      label: "Monitoring Cases",
-      value: 6,
-      monthly: 24,
-      percent: 14,
-      tone: "amber",
-    },
-  ];
+  const currentReport = REPORT_DATA[reportMode];
 
-  const referralLogbook = [
+  const filteredReferralLogbook = useMemo(() => {
+    return currentReport.logbook.filter((log) => {
+      const query = filters.search.trim().toLowerCase();
+      const searchText = [
+        log.trackingId,
+        log.name,
+        log.classification,
+        log.chiefComplaint,
+        log.status,
+        log.feedback,
+        log.date,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const matchesSearch = !query || searchText.includes(query);
+      const matchesClassification =
+        filters.classification === "All Classifications" ||
+        log.classification === filters.classification;
+      const matchesStatus =
+        filters.referralStatus === "All Referral Status" ||
+        log.status === filters.referralStatus;
+      const matchesDate =
+        !filters.dateReferred ||
+        normalizeDate(log.date) === filters.dateReferred;
+
+      return (
+        matchesSearch && matchesClassification && matchesStatus && matchesDate
+      );
+    });
+  }, [currentReport.logbook, filters]);
+
+  const casesSummary = useMemo(
+    () => buildChiefComplaintSummary(filteredReferralLogbook),
+    [filteredReferralLogbook],
+  );
+
+  const reportSummary = useMemo(() => {
+    const completed = filteredReferralLogbook.filter(
+      (log) => log.status === "Completed",
+    ).length;
+
+    return {
+      totalReferrals: filteredReferralLogbook.length,
+      casesRecorded: filteredReferralLogbook.length,
+      complaintTypes: casesSummary.length,
+      completedReferrals: completed,
+      topCase: casesSummary[0]?.label || "No data",
+    };
+  }, [casesSummary, filteredReferralLogbook]);
+
+  const dropdownFilters = [
     {
-      name: "Maria Santos",
-      category: "A1",
-      status: "Completed",
-      date: "May 13, 2026",
-      rhu: "RHU Central",
-      monitoring: "Stable",
-      followUp: "May 20, 2026",
-      remarks: "Normal delivery",
+      key: "classification",
+      label: "Classification",
+      value: filters.classification,
+      options: [
+        "All Classifications",
+        "General Consultation",
+        "Maternal",
+        "Immunization",
+        "Senior Citizen",
+      ],
     },
     {
-      name: "Juan Dela Cruz",
-      category: "B1",
-      status: "Pending",
-      date: "May 12, 2026",
-      rhu: "RHU North",
-      monitoring: "For Follow-up",
-      followUp: "May 19, 2026",
-      remarks: "Hypertension check",
+      key: "referralStatus",
+      label: "Referral Status",
+      value: filters.referralStatus,
+      options: [
+        "All Referral Status",
+        "Pending",
+        "Received",
+        "For Monitoring",
+        "Completed",
+        "No-Show",
+      ],
     },
     {
-      name: "Ana Reyes",
-      category: "Maternal",
-      status: "For Monitoring",
-      date: "May 12, 2026",
-      rhu: "RHU Central",
-      monitoring: "High Risk",
-      followUp: "May 15, 2026",
-      remarks: "Pre-eclampsia risk",
-    },
-    {
-      name: "Pedro Lopez",
-      category: "B2",
-      status: "Received",
-      date: "May 11, 2026",
-      rhu: "RHU South",
-      monitoring: "Routine",
-      followUp: "June 11, 2026",
-      remarks: "Diabetes maintenance",
-    },
-    {
-      name: "Rosa Garcia",
-      category: "Senior Citizen",
-      status: "Completed",
-      date: "May 10, 2026",
-      rhu: "RHU North",
-      monitoring: "Stable",
-      followUp: "Aug 10, 2026",
-      remarks: "Follow-up clear",
-    },
-    {
-      name: "Carlos Mendoza",
-      category: "A2",
-      status: "Pending",
-      date: "May 10, 2026",
-      rhu: "RHU Central",
-      monitoring: "Urgent",
-      followUp: "May 13, 2026",
-      remarks: "Chest pain evaluation",
+      key: "dateReferred",
+      label: "Date Referred",
+      value: filters.dateReferred,
+      type: "date",
     },
   ];
 
-  const weeklyReconciliation = [
-    { label: "Total Weekly Referrals", value: 33 },
-    { label: "Completed Referrals", value: 18 },
-    { label: "Pending Referrals", value: 12 },
-    { label: "Monitoring Cases", value: 6 },
-    { label: "No-Show Cases", value: 3 },
-    { label: "Completion Rate", value: "54.5%", isRate: true },
-  ];
+  const activeFilters = [
+    filters.search && { key: "search", label: `Search: ${filters.search}` },
+    filters.classification !== "All Classifications" && {
+      key: "classification",
+      label: filters.classification,
+    },
+    filters.referralStatus !== "All Referral Status" && {
+      key: "referralStatus",
+      label: filters.referralStatus,
+    },
+    filters.dateReferred && {
+      key: "dateReferred",
+      label: filters.dateReferred,
+    },
+  ].filter(Boolean);
 
-  const weeklyReferrals = [
-    { day: "Mon", value: 4 },
-    { day: "Tue", value: 7 },
-    { day: "Wed", value: 5 },
-    { day: "Thu", value: 9 },
-    { day: "Fri", value: 6 },
-    { day: "Sat", value: 2 },
-  ];
+  const activeFilterCount = activeFilters.filter(
+    (filter) => filter.key !== "search",
+  ).length;
+
+  const casesChartData = useMemo(() => {
+    const visibleCases = casesSummary.slice(0, 8);
+
+    return {
+      labels: visibleCases.map((item) => item.label),
+      datasets: [
+        {
+          label: "Cases",
+          data: visibleCases.map((item) => item.value),
+          backgroundColor: (context) => {
+            const { ctx, chartArea } = context.chart;
+            return createHorizontalGradient(ctx, chartArea, [
+              { offset: 0, color: "rgba(254, 226, 226, 0.96)" },
+              { offset: 0.48, color: "rgba(220, 38, 38, 0.84)" },
+              { offset: 1, color: chartPalette.primary },
+            ]);
+          },
+          borderColor: "rgba(185, 28, 28, 0.22)",
+          borderWidth: 1,
+          borderRadius: 10,
+          borderSkipped: false,
+          barThickness: 24,
+        },
+      ],
+    };
+  }, [casesSummary]);
+
+  function applyDropdownFilters(nextFilters) {
+    setFilters((prev) => ({ ...prev, ...nextFilters }));
+  }
+
+  function clearFilters() {
+    setFilters(DEFAULT_FILTERS);
+  }
+
+  function removeFilter(key) {
+    const resetValues = {
+      search: "",
+      classification: "All Classifications",
+      referralStatus: "All Referral Status",
+      dateReferred: "",
+    };
+
+    setFilters((prev) => ({ ...prev, [key]: resetValues[key] }));
+  }
 
   return (
     <DashboardLayout role="bhc" title="Reports">
       <div className="space-y-4">
-        {/* Unified Filters & Actions Toolbar */}
-        <div className="rounded-lg border border-[#E5E7EB] bg-white shadow-sm">
-          {/* Smart Filters */}
-          <div className="grid grid-cols-2 gap-2 p-3 md:grid-cols-3 lg:grid-cols-6 border-b border-[#F3F4F6]">
-            <select className="h-8 w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-2.5 text-[13px] text-[#1F2937] outline-none focus:border-[#9CA3AF]">
-              <option>This Month</option>
-              <option>This Week</option>
-              <option>Last Month</option>
-              <option>Custom Range</option>
-            </select>
-            <select className="h-8 w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-2.5 text-[13px] text-[#1F2937] outline-none focus:border-[#9CA3AF]">
-              <option>All Categories</option>
-              <option>Maternal</option>
-              <option>Senior Citizen</option>
-              <option>A1</option>
-              <option>A2</option>
-              <option>B1</option>
-              <option>B2</option>
-            </select>
-            <select className="h-8 w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-2.5 text-[13px] text-[#1F2937] outline-none focus:border-[#9CA3AF]">
-              <option>All Status</option>
-              <option>Pending</option>
-              <option>Received</option>
-              <option>For Monitoring</option>
-              <option>Completed</option>
-              <option>No-Show</option>
-            </select>
-            <select className="h-8 w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-2.5 text-[13px] text-[#1F2937] outline-none focus:border-[#9CA3AF]">
-              <option>All Barangays</option>
-              <option>Barangay 1</option>
-              <option>Barangay 2</option>
-              <option>Barangay 3</option>
-            </select>
-            <select className="h-8 w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-2.5 text-[13px] text-[#1F2937] outline-none focus:border-[#9CA3AF]">
-              <option>All Midwives</option>
-              <option>Midwife Cruz</option>
-              <option>Midwife Reyes</option>
-            </select>
-            <select className="h-8 w-full appearance-none rounded-md border border-[#E5E7EB] bg-white px-2.5 text-[13px] text-[#1F2937] outline-none focus:border-[#9CA3AF]">
-              <option>All RHU Branches</option>
-              <option>RHU Central</option>
-              <option>RHU North</option>
-              <option>RHU South</option>
-            </select>
-          </div>
+        <ReportHeader
+          reportMode={reportMode}
+          setReportMode={setReportMode}
+          currentReport={currentReport}
+        />
 
-          {/* Automated Report Generation Actions */}
-          <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 bg-[#F9FAFB]">
-            <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Generate:
-            </span>
-            <button className="inline-flex items-center gap-1 rounded-md bg-[#0B2E59] px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-[#092347]">
-              <RefreshCw size={11} /> Weekly Report
-            </button>
-            <button className="inline-flex items-center gap-1 rounded-md bg-[#0B2E59] px-2.5 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-[#092347]">
-              <RefreshCw size={11} /> Monthly Report
-            </button>
-            <button className="inline-flex items-center gap-1 rounded-md border border-[#E5E7EB] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#374151] transition-colors hover:bg-[#F3F4F6]">
-              Referral Summary
-            </button>
-            <button className="inline-flex items-center gap-1 rounded-md border border-[#E5E7EB] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#374151] transition-colors hover:bg-[#F3F4F6]">
-              Monitoring Report
-            </button>
+        <ListToolbar
+          searchValue={filters.search}
+          onSearchChange={(value) =>
+            setFilters((prev) => ({ ...prev, search: value }))
+          }
+          searchPlaceholder="Search patient, tracking ID, chief complaint, or status..."
+          chip={`● ${filteredReferralLogbook.length.toLocaleString()} ${
+            currentReport.shortLabel
+          } Record${filteredReferralLogbook.length === 1 ? "" : "s"}`}
+          filters={dropdownFilters}
+          activeFilterCount={activeFilterCount}
+          activeFilters={activeFilters}
+          onApplyFilters={applyDropdownFilters}
+          onClearFilters={clearFilters}
+          onRemoveFilter={removeFilter}
+          actions={<ReportActionButtons />}
+        />
 
-            <div className="mx-1 h-4 w-px bg-[#E5E7EB]"></div>
-
-            <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Export:
-            </span>
-            <button className="inline-flex items-center gap-1 rounded-md border border-[#E5E7EB] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#374151] transition-colors hover:bg-[#F3F4F6]">
-              <FileText size={11} className="text-red-500" /> PDF
-            </button>
-            <button className="inline-flex items-center gap-1 rounded-md border border-[#E5E7EB] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#374151] transition-colors hover:bg-[#F3F4F6]">
-              <FileSpreadsheet size={11} className="text-emerald-600" /> Excel
-            </button>
-            <button className="inline-flex items-center gap-1 rounded-md border border-[#E5E7EB] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#374151] transition-colors hover:bg-[#F3F4F6]">
-              <Printer size={11} /> Print
-            </button>
-          </div>
-        </div>
-
-        {/* Summary Statistics */}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard
-            title="Total Patients"
-            value="128"
-            icon={<Users size={16} />}
-            color="navy"
-          />
-          <StatCard
-            title="Total Referrals"
-            value="47"
+            title={`${currentReport.shortLabel} Referrals`}
+            value={reportSummary.totalReferrals}
             icon={<ClipboardList size={16} />}
             color="slate"
           />
           <StatCard
+            title="Cases Recorded"
+            value={reportSummary.casesRecorded}
+            icon={<SearchCheck size={16} />}
+            color="red"
+          />
+          <StatCard
+            title="Complaint Types"
+            value={reportSummary.complaintTypes}
+            icon={<BarChart3 size={16} />}
+            color="blue"
+          />
+          <StatCard
             title="Completed"
-            value="18"
-            icon={<CheckCircle2 size={16} />}
+            value={reportSummary.completedReferrals}
+            icon={<SearchCheck size={16} />}
             color="emerald"
           />
-          <StatCard
-            title="Monitoring"
-            value="6"
-            icon={<HeartPulse size={16} />}
-            color="amber"
-          />
-          <StatCard
-            title="No-Show"
-            value="3"
-            icon={<XCircle size={16} />}
-            color="red"
-          />
-          <StatCard
-            title="High-Risk"
-            value="4"
-            icon={<AlertTriangle size={16} />}
-            color="red"
-          />
         </div>
 
-        {/* Main Analytics Grid */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          {/* Referral Status Overview */}
-          <div className="rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-[#0B2E59]">
-                Referral Status Overview
-              </h2>
-              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                47 total cases
-              </span>
-            </div>
-            <div className="space-y-2.5">
-              {referralStatus.map((item) => (
-                <StatusProgress key={item.label} item={item} />
-              ))}
-            </div>
-          </div>
-
-          {/* Automated Case Categories */}
-          <div className="rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-[#0B2E59]">
-                Automated Case Categories
-              </h2>
-              <div className="flex items-center gap-2 text-[10px] font-medium text-[#9CA3AF]">
-                <span>Weekly</span> / <span>Monthly</span>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_380px]">
+          <ReportChartCard
+            title="Chief Complaint Summary"
+            description={`${currentReport.shortLabel} case count grouped by chief complaint.`}
+            icon={<BarChart3 size={15} />}
+            rightLabel="Primary report"
+          >
+            {casesSummary.length === 0 ? (
+              <EmptyState message="No chief complaint records match the current filters." />
+            ) : (
+              <div className="h-[390px]">
+                <Bar data={casesChartData} options={getCasesBarOptions()} />
               </div>
-            </div>
-            <div className="space-y-2">
-              {referralCategories.map((item) => (
-                <CaseCategoryCard key={item.label} item={item} />
-              ))}
-            </div>
-          </div>
+            )}
+          </ReportChartCard>
+
+          <CaseRankingCard
+            cases={casesSummary}
+            title={`${currentReport.shortLabel} Case Ranking`}
+            total={filteredReferralLogbook.length}
+          />
         </div>
 
-        {/* Digital Referral Logbook Table */}
-        <div className="overflow-hidden rounded-lg border border-[#E5E7EB] bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-[#E5E7EB] px-4 py-2.5">
-            <div className="flex items-center gap-2">
-              <BookOpen size={14} className="text-[#0B2E59]" />
-              <h2 className="text-sm font-semibold text-[#0B2E59]">
-                Digital Referral Logbook
-              </h2>
-            </div>
-            <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">
-              Automated Entry
-            </span>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left text-[13px]">
-              <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                <tr>
-                  <th className="px-4 py-2 whitespace-nowrap">Patient Name</th>
-                  <th className="px-4 py-2 whitespace-nowrap">Category</th>
-                  <th className="px-4 py-2 whitespace-nowrap">Status</th>
-                  <th className="px-4 py-2 whitespace-nowrap">Date Referred</th>
-                  <th className="px-4 py-2 whitespace-nowrap">Assigned RHU</th>
-                  <th className="px-4 py-2 whitespace-nowrap">Monitoring</th>
-                  <th className="px-4 py-2 whitespace-nowrap">
-                    Follow-Up Schedule
-                  </th>
-                  <th className="px-4 py-2 whitespace-nowrap">Remarks</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F3F4F6]">
-                {referralLogbook.map((log) => (
-                  <tr
-                    key={log.name}
-                    className="transition-colors hover:bg-[#F9FAFB]"
-                  >
-                    <td className="px-4 py-2.5 whitespace-nowrap font-medium text-[#1F2937]">
-                      {log.name}
-                    </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">
-                      <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
-                        {log.category}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-[#6B7280]">
-                      {log.status}
-                    </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-[#6B7280]">
-                      {log.date}
-                    </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-[#6B7280]">
-                      {log.rhu}
-                    </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">
-                      <span
-                        className={`text-[11px] font-medium ${
-                          log.monitoring === "Stable" ||
-                          log.monitoring === "Routine"
-                            ? "text-emerald-600"
-                            : log.monitoring === "For Follow-up"
-                              ? "text-amber-600"
-                              : "text-red-600"
-                        }`}
-                      >
-                        {log.monitoring}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-[#6B7280]">
-                      {log.followUp}
-                    </td>
-                    <td className="max-w-[150px] truncate px-4 py-2.5 whitespace-nowrap text-[11px] text-[#9CA3AF]">
-                      {log.remarks}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Bottom Grid: Activity & Reconciliation */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          {/* Weekly Activity */}
-          <div className="rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm">
-            <h2 className="mb-4 text-sm font-semibold text-[#0B2E59]">
-              Weekly Referral Activity
-            </h2>
-            <WeeklyLineChart data={weeklyReferrals} />
-          </div>
-
-          {/* Automated Reconciliation */}
-          <div className="rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm">
-            <h2 className="mb-4 text-sm font-semibold text-[#0B2E59]">
-              Automated Weekly Reconciliation
-            </h2>
-            <div className="overflow-hidden rounded-md border border-[#E5E7EB]">
-              {weeklyReconciliation.map((item, index) => (
-                <div
-                  key={item.label}
-                  className={`flex items-center justify-between px-4 py-3 ${index !== weeklyReconciliation.length - 1 ? "border-b border-[#F3F4F6]" : ""} ${
-                    item.isRate ? "bg-[#F9FAFB]" : ""
-                  }`}
-                >
-                  <p className="text-xs text-[#374151]">{item.label}</p>
-                  {item.isRate ? (
-                    <div className="flex items-center gap-2">
-                      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-[#E5E7EB]">
-                        <div className="h-full w-[54.5%] rounded-full bg-[#0B2E59]" />
-                      </div>
-                      <span className="text-xs font-bold tabular-nums text-[#0B2E59]">
-                        {item.value}
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-sm font-bold tabular-nums text-[#0B2E59]">
-                      {item.value}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-            <p className="mt-3 text-[11px] leading-relaxed text-[#9CA3AF]">
-              Auto-generated summary replacing manual weekly logbook counting
-              for midwife sign-off.
-            </p>
-          </div>
-        </div>
+        <ReferralLogbookTable
+          records={filteredReferralLogbook}
+          reportLabel={currentReport.shortLabel}
+        />
       </div>
     </DashboardLayout>
   );
 }
 
-/* ── Helper Components ── */
-
-function StatusProgress({ item }) {
-  const toneMap = {
-    slate: { bar: "bg-slate-500", bg: "bg-slate-100", text: "text-slate-600" },
-    blue: { bar: "bg-blue-600", bg: "bg-blue-50", text: "text-blue-700" },
-    amber: { bar: "bg-amber-500", bg: "bg-amber-50", text: "text-amber-700" },
-    emerald: {
-      bar: "bg-emerald-600",
-      bg: "bg-emerald-50",
-      text: "text-emerald-700",
-    },
-    red: { bar: "bg-red-600", bg: "bg-red-50", text: "text-red-700" },
-  };
-  const tone = toneMap[item.tone] || toneMap.slate;
-
+function ReportHeader({ reportMode, setReportMode, currentReport }) {
   return (
-    <div className="flex items-center gap-3 rounded-md border border-[#F3F4F6] px-3 py-2.5">
-      <div className="min-w-0 flex-1">
-        <div className="mb-1.5 flex items-center justify-between gap-2">
-          <p className="text-xs font-medium text-[#374151]">{item.label}</p>
-          <span
-            className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${tone.bg} ${tone.text}`}
-          >
-            {item.value}
+    <section className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
+            <CalendarDays size={18} />
           </span>
-        </div>
-        <div className="h-1.5 overflow-hidden rounded-full bg-[#F3F4F6]">
-          <div
-            className={`h-full rounded-full ${tone.bar}`}
-            style={{ width: `${item.percent}%` }}
-          />
-        </div>
-      </div>
-      <span className="w-8 text-right text-[11px] tabular-nums text-[#9CA3AF]">
-        {item.percent}%
-      </span>
-    </div>
-  );
-}
-
-function CaseCategoryCard({ item }) {
-  const toneMap = {
-    red: "bg-red-500",
-    orange: "bg-orange-500",
-    blue: "bg-blue-600",
-    slate: "bg-slate-500",
-    pink: "bg-pink-500",
-    amber: "bg-amber-500",
-  };
-  const barColor = toneMap[item.tone] || "bg-slate-500";
-
-  return (
-    <div className="flex items-center gap-3 rounded-md border border-[#F3F4F6] px-3 py-2">
-      <div className="min-w-0 flex-1">
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <p className="text-xs font-medium text-[#374151]">{item.label}</p>
-          <div className="flex items-center gap-2 text-[11px]">
-            <span className="font-semibold text-[#0B2E59]">
-              {item.value} <span className="font-normal text-[#9CA3AF]">W</span>
-            </span>
-            <span className="font-medium text-[#6B7280]">
-              {item.monthly}{" "}
-              <span className="font-normal text-[#9CA3AF]">M</span>
-            </span>
+          <div>
+            <h1 className="text-lg font-bold tracking-tight text-[#0F172A]">
+              Weekly and Monthly Case Reports
+            </h1>
+            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[#64748B]">
+              {currentReport.description} Main output is the summary of chief
+              complaints/cases.
+            </p>
           </div>
         </div>
-        <div className="h-1.5 overflow-hidden rounded-full bg-[#F3F4F6]">
-          <div
-            className={`h-full rounded-full ${barColor}`}
-            style={{ width: `${item.percent}%` }}
-          />
+
+        <div className="inline-flex rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] p-1">
+          {[
+            { key: "weekly", label: "Weekly Report" },
+            { key: "monthly", label: "Monthly Report" },
+          ].map((item) => {
+            const isActive = reportMode === item.key;
+
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setReportMode(item.key)}
+                className={`h-9 rounded-lg px-3 text-xs font-bold transition-all ${
+                  isActive
+                    ? "bg-[#B91C1C] text-white shadow-sm"
+                    : "text-[#64748B] hover:bg-white hover:text-[#B91C1C]"
+                }`}
+              >
+                {item.label}
+              </button>
+            );
+          })}
         </div>
       </div>
-      <span className="w-8 text-right text-[11px] tabular-nums text-[#9CA3AF]">
-        {item.percent}%
-      </span>
+    </section>
+  );
+}
+
+function ReportActionButtons() {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button className="inline-flex h-11 items-center gap-1.5 rounded-lg bg-[#B91C1C] px-3 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]">
+        <RefreshCw size={12} /> Generate
+      </button>
+      <button className="inline-flex h-11 items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-3 text-[11px] font-semibold text-[#374151] transition-colors hover:bg-[#F8FAFC]">
+        <FileText size={12} className="text-red-600" /> PDF
+      </button>
+      <button className="inline-flex h-11 items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-3 text-[11px] font-semibold text-[#374151] transition-colors hover:bg-[#F8FAFC]">
+        <Printer size={12} /> Print
+      </button>
     </div>
   );
 }
 
-function WeeklyLineChart({ data }) {
-  const maxValue = Math.max(...data.map((item) => item.value));
-  const width = 280;
-  const height = 120;
-  const chartTop = 10;
-  const chartBottom = 95;
-  const chartLeft = 10;
-  const chartRight = 270;
+function ReportChartCard({ title, description, icon, rightLabel, children }) {
+  return (
+    <div className="rounded-xl border border-[#E5E7EB] bg-white p-5 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:shadow-md">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-50 text-[#B91C1C]">
+            {icon}
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-[#1E293B]">{title}</h2>
+            {description && (
+              <p className="mt-0.5 text-[11px] leading-relaxed text-[#94A3B8]">
+                {description}
+              </p>
+            )}
+          </div>
+        </div>
 
-  const points = data.map((item, index) => {
-    const x =
-      chartLeft + (index / (data.length - 1)) * (chartRight - chartLeft);
-    const y = chartBottom - (item.value / maxValue) * (chartBottom - chartTop);
-    return { ...item, x, y };
-  });
+        {rightLabel && (
+          <span className="shrink-0 rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+            {rightLabel}
+          </span>
+        )}
+      </div>
 
-  const pointString = points.map((point) => `${point.x},${point.y}`).join(" ");
+      {children}
+    </div>
+  );
+}
+
+function CaseRankingCard({ title, cases, total }) {
+  const topCase = cases[0];
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full">
-      <line x1="10" y1="95" x2="270" y2="95" stroke="#F3F4F6" />
-      <polyline
-        points={pointString}
-        fill="none"
-        stroke="#0B2E59"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {points.map((point) => (
-        <g key={point.day}>
-          <circle
-            cx={point.x}
-            cy={point.y}
-            r="3"
-            fill="#FFFFFF"
-            stroke="#0B2E59"
-            strokeWidth="2"
-          />
-          <text
-            x={point.x}
-            y={point.y - 8}
-            textAnchor="middle"
-            className="fill-[#0B2E59] text-[8px] font-semibold"
+    <div className="rounded-xl border border-[#E5E7EB] bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-[#1E293B]">{title}</h2>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-[#94A3B8]">
+            Ranked chief complaints from the selected report period.
+          </p>
+        </div>
+        <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+          {total} cases
+        </span>
+      </div>
+
+      {topCase ? (
+        <div className="mb-4 rounded-xl border border-red-100 bg-gradient-to-br from-red-50 via-white to-white p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
+            Most Common Case
+          </p>
+          <p className="mt-2 text-base font-bold text-[#B91C1C]">
+            {topCase.label}
+          </p>
+          <p className="mt-1 text-xs text-[#64748B]">
+            {topCase.value} record{topCase.value === 1 ? "" : "s"} ·{" "}
+            {topCase.percent}% of current report
+          </p>
+        </div>
+      ) : (
+        <EmptyState message="No case records to rank yet." compact />
+      )}
+
+      <div className="space-y-2.5">
+        {cases.slice(0, 7).map((item, index) => (
+          <div
+            key={item.label}
+            className="rounded-lg border border-[#F1F5F9] bg-[#F8FAFC] px-3 py-2.5"
           >
-            {point.value}
-          </text>
-          <text
-            x={point.x}
-            y="110"
-            textAnchor="middle"
-            className="fill-[#9CA3AF] text-[8px]"
-          >
-            {point.day}
-          </text>
-        </g>
-      ))}
-    </svg>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-[10px] font-bold text-[#B91C1C] shadow-sm">
+                  {index + 1}
+                </span>
+                <p className="truncate text-xs font-semibold text-[#334155]">
+                  {item.label}
+                </p>
+              </div>
+              <span className="text-xs font-bold tabular-nums text-[#B91C1C]">
+                {item.value}
+              </span>
+            </div>
+
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#E5E7EB]">
+              <div
+                className="h-full rounded-full bg-[#B91C1C] transition-all duration-700"
+                style={{ width: `${item.percent}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
+}
+
+function ReferralLogbookTable({ records, reportLabel }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-[#E5E7EB] px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <BookOpen size={14} className="text-[#B91C1C]" />
+          <h2 className="text-sm font-semibold text-[#B91C1C]">
+            {reportLabel} Referral Logbook
+          </h2>
+        </div>
+        <span className="rounded bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
+          Supporting records
+        </span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[900px] text-left text-[13px]">
+          <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+            <tr>
+              <th className="whitespace-nowrap px-4 py-2">Tracking ID</th>
+              <th className="whitespace-nowrap px-4 py-2">Patient Name</th>
+              <th className="whitespace-nowrap px-4 py-2">
+                Chief Complaint / Case
+              </th>
+              <th className="whitespace-nowrap px-4 py-2">Classification</th>
+              <th className="whitespace-nowrap px-4 py-2">Date Referred</th>
+              <th className="whitespace-nowrap px-4 py-2">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#F3F4F6]">
+            {records.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={6}
+                  className="px-4 py-10 text-center text-xs text-[#94A3B8]"
+                >
+                  No report records match the current search or filters.
+                </td>
+              </tr>
+            ) : (
+              records.map((log) => (
+                <tr
+                  key={log.trackingId}
+                  className="transition-colors hover:bg-[#F9FAFB]"
+                >
+                  <td className="whitespace-nowrap px-4 py-2.5">
+                    <span className="font-mono text-[11px] font-semibold text-[#B91C1C]">
+                      {log.trackingId}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2.5 font-medium text-[#1F2937]">
+                    {log.name}
+                  </td>
+                  <td className="max-w-[260px] truncate px-4 py-2.5 font-medium text-[#374151]">
+                    {log.chiefComplaint}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2.5">
+                    <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
+                      {log.classification}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-[#6B7280]">
+                    {log.date}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2.5">
+                    <ReferralStatusBadge status={log.status} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ message, compact = false }) {
+  return (
+    <div
+      className={`flex items-center justify-center rounded-xl border border-dashed border-[#E5E7EB] bg-[#F8FAFC] text-center ${
+        compact ? "px-4 py-7" : "h-[300px] px-4"
+      }`}
+    >
+      <p className="text-xs font-medium text-[#94A3B8]">{message}</p>
+    </div>
+  );
+}
+
+function ReferralStatusBadge({ status }) {
+  const toneMap = {
+    Pending: "border-slate-200 bg-slate-50 text-slate-600",
+    Received: "border-sky-200 bg-sky-50 text-sky-700",
+    "For Monitoring": "border-amber-200 bg-amber-50 text-amber-700",
+    Completed: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    "No-Show": "border-red-200 bg-red-50 text-red-700",
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-wide shadow-sm ${
+        toneMap[status] || toneMap.Pending
+      }`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function normalizeComplaintLabel(value) {
+  const label = value?.trim() || "Not specified";
+  const lowerLabel = label.toLowerCase();
+
+  if (lowerLabel.includes("fever") || lowerLabel.includes("cough")) {
+    return "Fever / Cough";
+  }
+
+  if (lowerLabel.includes("hypertension")) {
+    return "Hypertension Check";
+  }
+
+  if (lowerLabel.includes("pregnancy") || lowerLabel.includes("maternal")) {
+    return "Maternal Concern";
+  }
+
+  if (lowerLabel.includes("vaccine") || lowerLabel.includes("vaccination")) {
+    return "Vaccination Visit";
+  }
+
+  if (lowerLabel.includes("diabetes")) {
+    return "Diabetes Monitoring";
+  }
+
+  return label;
+}
+
+function buildChiefComplaintSummary(records) {
+  const total = records.length;
+
+  if (!total) return [];
+
+  const counts = records.reduce((acc, record) => {
+    const key = normalizeComplaintLabel(record.chiefComplaint);
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.entries(counts)
+    .map(([label, value]) => ({
+      label,
+      value,
+      percent: Math.round((value / total) * 100),
+    }))
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+}
+
+function getBaseChartOptions() {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: smoothAnimation,
+    transitions: {
+      active: {
+        animation: {
+          duration: 220,
+          easing: "easeOutQuart",
+        },
+      },
+      resize: {
+        animation: {
+          duration: 350,
+          easing: "easeOutQuart",
+        },
+      },
+    },
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        backgroundColor: "#1E293B",
+        titleColor: "#FFFFFF",
+        bodyColor: "#E2E8F0",
+        padding: 12,
+        cornerRadius: 10,
+        displayColors: true,
+        boxPadding: 5,
+        titleFont: { size: 13, weight: "600", family: "Inter, sans-serif" },
+        bodyFont: { size: 12, family: "Inter, sans-serif" },
+        usePointStyle: true,
+      },
+    },
+    interaction: {
+      mode: "index",
+      intersect: false,
+    },
+  };
+}
+
+function getCasesBarOptions() {
+  return {
+    ...getBaseChartOptions(),
+    indexAxis: "y",
+    scales: {
+      x: {
+        beginAtZero: true,
+        grid: {
+          color: chartPalette.grid,
+          borderDash: [4, 4],
+          drawBorder: false,
+        },
+        ticks: {
+          color: chartPalette.mutedText,
+          font: { size: 11 },
+          precision: 0,
+        },
+      },
+      y: {
+        grid: {
+          display: false,
+          drawBorder: false,
+        },
+        ticks: {
+          color: chartPalette.text,
+          font: { size: 12, weight: "600" },
+        },
+      },
+    },
+    elements: {
+      bar: {
+        borderRadius: 10,
+      },
+    },
+    plugins: {
+      ...getBaseChartOptions().plugins,
+      tooltip: {
+        ...getBaseChartOptions().plugins.tooltip,
+        callbacks: {
+          label(context) {
+            return ` ${context.raw} case(s)`;
+          },
+        },
+      },
+    },
+  };
 }

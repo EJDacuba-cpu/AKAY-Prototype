@@ -181,42 +181,20 @@ export default function CreateReferral() {
       ? rhuDoctorAvailability.doctors
       : [];
 
-    if (rawDoctors.length > 0) {
-      return rawDoctors.slice(0, 2).map((doctor, index) => ({
-        id: doctor.id || `DOC-00${index + 1}`,
-        name: doctor.name || `Doctor ${index + 1}`,
-        role: doctor.role || "General Practitioner",
-        status:
-          doctor.status === "Not Available" ? "Not Available" : "Available",
-        note: doctor.note || "",
-        updatedAt: doctor.updatedAt || rhuDoctorAvailability?.updatedAt || null,
-      }));
-    }
-
-    const total = rhuDoctorAvailability?.totalDoctorCount || 2;
-    const inferredAvailableCount =
-      typeof rhuDoctorAvailability?.availableDoctorCount === "number"
-        ? rhuDoctorAvailability.availableDoctorCount
-        : rhuDoctorAvailability?.status === "Not Available"
-          ? 0
-          : total;
-
-    return Array.from({ length: total })
-      .slice(0, 2)
-      .map((_, index) => ({
-        id: `DOC-00${index + 1}`,
-        name: `Doctor ${index + 1}`,
-        role: rhuDoctorAvailability?.doctorType || "General Practitioner",
-        status: index < inferredAvailableCount ? "Available" : "Not Available",
-        note:
-          index < inferredAvailableCount
-            ? ""
-            : rhuDoctorAvailability?.note || "No note provided.",
-        updatedAt: rhuDoctorAvailability?.updatedAt || null,
-      }));
+    return rawDoctors.map((doctor, index) => ({
+      id: doctor.doctorId || doctor.id || `DOC-${String(index + 1).padStart(3, "0")}`,
+      name: doctor.doctorName || doctor.name || `Doctor ${index + 1}`,
+      role: doctor.doctorType || doctor.role || "General Practitioner",
+      status:
+        (doctor.availabilityStatus || doctor.status) === "Not Available"
+          ? "Not Available"
+          : "Available",
+      note: doctor.availabilityNote || doctor.note || "",
+      updatedAt: doctor.updatedAt || rhuDoctorAvailability?.updatedAt || null,
+    }));
   }, [rhuDoctorAvailability]);
 
-  const totalDoctorCount = rhuDoctors.length || 2;
+  const totalDoctorCount = rhuDoctors.length;
   const availableDoctorCount = rhuDoctors.filter(
     (doctor) => doctor.status === "Available",
   ).length;
@@ -301,6 +279,8 @@ export default function CreateReferral() {
       patientName: patient?.name,
       ageSex:
         patient?.ageSex || `${patient?.age || ""} / ${patient?.sex || ""}`,
+      dateOfReferral: form.dateOfReferral,
+      timeOfReferral: form.timeOfReferral,
 
       // Correct BHC → RHU facility direction.
       // Referring facility must be the Barangay Health Center.

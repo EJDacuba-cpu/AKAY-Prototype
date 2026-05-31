@@ -1,3 +1,5 @@
+import { createRoleNotification } from "./notificationService";
+
 const RHU_STORAGE_KEY = "akay_rhu_medicines";
 const BHC_STORAGE_KEY = "akay_bhc_medicines";
 const RHU_UPDATE_EVENT = "akay_rhu_medicines_updated";
@@ -230,6 +232,23 @@ function createMedicinePayload(data, source, id) {
   );
 }
 
+function shouldNotifyMedicineStatus(status) {
+  return status === "Low Stock" || status === "Unavailable";
+}
+
+function notifyBhcMedicineAvailability(item) {
+  if (!shouldNotifyMedicineStatus(item.status)) return;
+
+  createRoleNotification("bhc", {
+    title: "Medicine availability updated",
+    message: `${item.name} is now ${item.status}.`,
+    type: "medicine",
+    referenceId: `${item.id}-${item.status}`,
+    link: "/bhc/medicine-availability",
+    sender: "RHU Medicine Management",
+  });
+}
+
 export function getRhuMedicines() {
   return getStorageItems(RHU_STORAGE_KEY, DEFAULT_RHU_MEDICINES, "RHU");
 }
@@ -241,16 +260,28 @@ export function saveRhuMedicines(items) {
 export function addRhuMedicine(data) {
   const items = getRhuMedicines();
   const next = createMedicinePayload(data, "RHU", createNextId(items, "MED"));
-  return saveRhuMedicines([next, ...items]);
+  const saved = saveRhuMedicines([next, ...items]);
+  notifyBhcMedicineAvailability(next);
+  return saved;
 }
 
 export function updateRhuMedicine(id, data) {
   const items = getRhuMedicines();
-  return saveRhuMedicines(
-    items.map((item) =>
-      item.id === id ? createMedicinePayload(data, "RHU", id) : item,
-    ),
+  const previous = items.find((item) => item.id === id);
+  let updatedItem = null;
+  const saved = saveRhuMedicines(
+    items.map((item) => {
+      if (item.id !== id) return item;
+      updatedItem = createMedicinePayload(data, "RHU", id);
+      return updatedItem;
+    }),
   );
+
+  if (updatedItem && updatedItem.status !== previous?.status) {
+    notifyBhcMedicineAvailability(updatedItem);
+  }
+
+  return saved;
 }
 
 export function deleteRhuMedicine(id) {

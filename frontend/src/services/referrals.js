@@ -1,4 +1,8 @@
 import { getAllReferrals, setAllReferrals } from "./localStorageDataService";
+import {
+  createFacilityNotification,
+  normalizeFacilityId,
+} from "./notificationService";
 
 const delay = () => new Promise((resolve) => setTimeout(resolve, 300));
 
@@ -127,6 +131,117 @@ function getNoShowCutoff(referral) {
 
 function getReferralKey(referral = {}) {
   return referral.trackingId || referral.id || "";
+}
+
+function isRhuFacility(value = "") {
+  return /rhu|rural health unit/i.test(String(value));
+}
+
+function cleanBarangayName(value = "") {
+  return String(value)
+    .replace(/^barangay\s+/i, "")
+    .trim();
+}
+
+function getReferringHci(referral = {}) {
+  const candidates = [
+    referral.referringHealthCenter,
+    referral.referringBHC,
+    referral.bhcName,
+    referral.sourceFacility,
+    referral.referringFacility,
+    referral.bhc,
+    referral.referringHci,
+  ].filter(Boolean);
+
+  const valid = candidates.find((value) => !isRhuFacility(value));
+  if (valid) return valid;
+
+  const barangay =
+    referral.referringBarangay ||
+    referral.patientBarangay ||
+    referral.barangay;
+
+  return barangay
+    ? `Barangay ${cleanBarangayName(barangay)} Health Center`
+    : "Barangay Health Center";
+}
+
+function getReferralPatientLabel(referral = {}) {
+  return getReferralPatientName(referral) || "the patient";
+}
+
+function getReferralBhcFacilityId(referral = {}) {
+  return normalizeFacilityId(getReferringHci(referral), "bhc");
+}
+
+function notifyRhuNewReferral(referral = {}) {
+  const urgency = String(
+    referral.urgency || referral.urgencyLevel || referral.priority || "",
+  ).toLowerCase();
+  const urgent = urgency === "urgent" || urgency === "emergency";
+  const trackingId = referral.trackingId || referral.id;
+  const bhcName = getReferringHci(referral);
+  const patientName = getReferralPatientLabel(referral);
+
+  createFacilityNotification("rhu", "rhu-bulakan", {
+    title: urgent ? "Urgent referral received" : "New referral received",
+    message: urgent
+      ? `Urgent referral ${trackingId} was submitted by ${bhcName} for ${patientName}.`
+      : `${bhcName} submitted a referral for ${patientName}.`,
+    type: "referral",
+    referenceId: trackingId,
+    link: `/rhu/referrals/${trackingId}`,
+    sender: bhcName,
+    patientName,
+  });
+}
+
+function notifyBhcReferralStatus(referral = {}, status) {
+  const trackingId = referral.trackingId || referral.id;
+  const patientName = getReferralPatientLabel(referral);
+  const facilityId = getReferralBhcFacilityId(referral);
+  const statusCopy = {
+    Received: {
+      title: "Referral received by RHU",
+      message: `Referral ${trackingId} for ${patientName} has been received by RHU.`,
+    },
+    "No-Show": {
+      title: "Patient marked as No-Show",
+      message: `Referral ${trackingId} for ${patientName} was marked No-Show by RHU.`,
+    },
+    "For Monitoring": {
+      title: "Patient under RHU monitoring",
+      message: `Referral ${trackingId} is currently being monitored at RHU.`,
+    },
+  };
+  const copy = statusCopy[status];
+  if (!copy || !trackingId) return;
+
+  createFacilityNotification("bhc", facilityId, {
+    ...copy,
+    type: "status",
+    referenceId: `${trackingId}-${status}`,
+    link: `/bhc/referrals/${trackingId}`,
+    sender: "RHU Staff",
+    patientName,
+    status,
+  });
+}
+
+function notifyBhcReturnSlip(referral = {}) {
+  const trackingId = referral.trackingId || referral.id;
+  if (!trackingId) return;
+
+  createFacilityNotification("bhc", getReferralBhcFacilityId(referral), {
+    title: "RHU feedback available",
+    message: `Return slip is now available for referral ${trackingId}.`,
+    type: "return-slip",
+    referenceId: `${trackingId}-Completed`,
+    link: `/bhc/referrals/${trackingId}`,
+    sender: "RHU Staff",
+    patientName: getReferralPatientLabel(referral),
+  });
 }
 
 function normalizeReferral(referral = {}) {
@@ -293,6 +408,7 @@ export async function createReferral(referralData) {
   });
 
   saveReferrals([newReferral, ...referrals]);
+  notifyRhuNewReferral(newReferral);
 
   return newReferral;
 }
@@ -323,6 +439,9 @@ export async function updateReferralStatus(referralId, status, changes = {}) {
   });
 
   saveReferrals(updated);
+  if (updatedReferral) {
+    notifyBhcReferralStatus(updatedReferral, updatedReferral.status);
+  }
 
   return updatedReferral;
 }
@@ -364,6 +483,9 @@ export async function updateReferralByTrackingId(trackingId, changes) {
   });
 
   saveReferrals(updated);
+  if (updatedReferral) {
+    notifyBhcReferralStatus(updatedReferral, updatedReferral.status);
+  }
 
   return updatedReferral;
 }
@@ -371,7 +493,7 @@ export async function updateReferralByTrackingId(trackingId, changes) {
 export async function submitReturnSlip(trackingId, feedbackData = {}) {
   const now = new Date().toISOString();
 
-  return updateReferralByTrackingId(trackingId, (referral) => {
+  const updated = await updateReferralByTrackingId(trackingId, (referral) => {
     const feedback = {
       ...feedbackData,
       dateOfReceipt:
@@ -421,6 +543,9 @@ export async function submitReturnSlip(trackingId, feedbackData = {}) {
       }),
     };
   });
+
+  if (updated) notifyBhcReturnSlip(updated);
+  return updated;
 }
 
 export async function autoMarkNoShowReferrals() {
@@ -434,7 +559,7 @@ export async function autoMarkNoShowReferrals() {
       cutoff &&
       cutoff < now
     ) {
-      return normalizeReferral({
+      const nextReferral = normalizeReferral({
         ...referral,
         status: "No-Show",
         noShowAt: referral.noShowAt || now.toISOString(),
@@ -445,6 +570,8 @@ export async function autoMarkNoShowReferrals() {
               timestamp: now.toISOString(),
             }),
       });
+      notifyBhcReferralStatus(nextReferral, "No-Show");
+      return nextReferral;
     }
 
     return referral;

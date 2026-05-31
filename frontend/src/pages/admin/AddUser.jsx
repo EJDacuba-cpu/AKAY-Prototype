@@ -43,6 +43,14 @@ const BHC_FACILITIES = [
 
 const ACCOUNT_ROLES = [
   {
+    value: "admin_mho",
+    label: "Admin / Municipal Health Officer",
+    accessRole: "Admin",
+    facilities: ["Municipality of Bulakan"],
+    description:
+      "Admin/MHO users can manage system accounts, reports, and municipal-level oversight features.",
+  },
+  {
     value: "bhc_worker",
     label: "Barangay Health Center Worker",
     accessRole: "BHC",
@@ -63,7 +71,7 @@ const ACCOUNT_ROLES = [
 const POSITION_BY_ACCOUNT_ROLE = {
   admin_mho: ["Municipal Health Officer", "Acting Admin"],
   bhc_worker: ["Barangay Health Worker", "Midwife", "BHC Staff"],
-  rhu_staff: ["RHU Staff", "Encoder", "Nurse", "Doctor"],
+  rhu_staff: ["RHU Staff", "Encoder", "Nurse", "Receiving Staff"],
 };
 
 const keyframes = `
@@ -97,8 +105,6 @@ export default function AddUser() {
     getInitialValues(existingUser),
     async (values) => {
       const accountRole = getAccountRole(values.accountRole);
-      const isDoctor =
-        accountRole?.value === "rhu_staff" && values.position === "Doctor";
 
       const payload = {
         fullName: values.fullName,
@@ -111,12 +117,6 @@ export default function AddUser() {
         position: values.position,
         facility: values.facility,
         status: existingUser?.status || "Active",
-        doctorProfile: isDoctor
-          ? {
-              doctorType: "General Practitioner",
-              profileStatus: existingUser?.status || "Active",
-            }
-          : undefined,
       };
 
       if (isEditMode) {
@@ -337,10 +337,6 @@ export default function AddUser() {
                 {selectedAccountRole.description}
                 {form.values.position
                   ? ` Position selected: ${form.values.position}.`
-                  : ""}
-                {form.values.accountRole === "rhu_staff" &&
-                form.values.position === "Doctor"
-                  ? " Doctor accounts are recorded as RHU personnel and are automatically classified as General Practitioner; no separate schedule or consultation room is required in this form."
                   : ""}
               </InfoNotice>
             )}

@@ -1,4 +1,9 @@
 import { getItem, setItem } from "./storageService";
+import { getCurrentUser } from "../utils/auth";
+import {
+  createFacilityNotification,
+  normalizeFacilityId,
+} from "./notificationService";
 import {
   getBhcPatients,
   getPatientDetailsListByRole,
@@ -76,6 +81,37 @@ function getPatientName(patient = {}) {
     [patient.firstName, patient.middleName, patient.lastName]
       .filter(Boolean)
       .join(" ")
+  );
+}
+
+function isTodayDate(value) {
+  if (!value) return false;
+  const today = new Date().toISOString().split("T")[0];
+  return String(value).slice(0, 10) === today;
+}
+
+function notifyBhcFollowUpReminder(record = {}) {
+  if (!isTodayDate(record.followUpDate)) return;
+
+  const currentUser = getCurrentUser() || {};
+  const role = String(currentUser.role || record.createdByRole || "").toLowerCase();
+  if (role !== "bhc") return;
+
+  const recordId = record.id || record._id;
+  if (!recordId) return;
+
+  createFacilityNotification(
+    "bhc",
+    normalizeFacilityId(currentUser.facility, "bhc"),
+    {
+      title: "Follow-up reminder",
+      message: `Follow-up scheduled for ${record.patientName || record.patient || "patient"} today.`,
+      type: "follow-up",
+      referenceId: `${recordId}-${record.followUpDate}`,
+      link: `/bhc/health-records/${recordId}`,
+      sender: "AKAY System",
+      patientName: record.patientName || record.patient || "",
+    },
   );
 }
 
@@ -226,6 +262,7 @@ export async function createHealthRecord(recordData, role = "bhc") {
 
   if (normalizedRole === "bhc") {
     await updateBhcPatientLatestRecord(recordData, newRecord);
+    notifyBhcFollowUpReminder(newRecord);
   }
 
   return {
@@ -279,6 +316,7 @@ export async function updateHealthRecordById(recordId, recordData, role = "bhc")
 
   if (normalizedRole === "bhc") {
     await updateBhcPatientLatestRecord(updatedRecord, updatedRecord);
+    notifyBhcFollowUpReminder(updatedRecord);
   }
 
   return updatedRecord;

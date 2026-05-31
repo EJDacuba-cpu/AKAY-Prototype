@@ -8,13 +8,9 @@ import {
   Camera,
   CheckCircle2,
   ClipboardList,
-  ClipboardPaste,
   Copy,
   ExternalLink,
   FileText,
-  Image,
-  Info,
-  Lightbulb,
   MonitorPlay,
   QrCode,
   ScanLine,
@@ -32,6 +28,7 @@ import {
   autoMarkNoShowReferrals,
   getReferrals,
 } from "../../services/referrals";
+import { createFacilityNotification } from "../../services/notificationService";
 
 /* ─────────────────────────────────────────────
    ANIMATIONS
@@ -173,6 +170,14 @@ export default function QRScanner() {
     setSelectedReferral(found);
     setError("");
     setSuccess("Referral record retrieved successfully.");
+    createFacilityNotification("rhu", "rhu-bulakan", {
+      title: "Referral verified",
+      message: `Referral ${found.trackingId} was verified through QR scanning.`,
+      type: "system",
+      referenceId: `${found.trackingId}-qr-verified`,
+      link: `/rhu/referrals/${found.trackingId}`,
+      sender: "RHU QR Scanner",
+    });
   }
 
   function simulateQRScan() {
@@ -843,15 +848,6 @@ function ResultRow({ label, value }) {
         {label}
       </p>
       <p className="flex-1 text-[12px] font-semibold text-slate-700">{value}</p>
-    </div>
-  );
-}
-
-function TipItem({ text }) {
-  return (
-    <div className="flex items-start gap-2">
-      <span className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-blue-300" />
-      <p className="text-[11px] leading-relaxed text-blue-800/60">{text}</p>
     </div>
   );
 }
