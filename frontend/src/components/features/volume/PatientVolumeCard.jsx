@@ -15,8 +15,7 @@ export default function PatientVolumeCard({
   const volumeMap = {
     Low: {
       label: "Low",
-      description:
-        "RHU currently has manageable patient flow and can accommodate referrals efficiently.",
+      helper: "Manageable patient flow",
       border: "#10B981",
       iconBg: "#ECFDF5",
       iconColor: "#047857",
@@ -25,8 +24,7 @@ export default function PatientVolumeCard({
     },
     Normal: {
       label: "Normal",
-      description:
-        "Standard patient activity detected. Referral processing remains stable.",
+      helper: "Stable patient activity",
       border: "#3B82F6",
       iconBg: "#EFF6FF",
       iconColor: "#1D4ED8",
@@ -35,8 +33,7 @@ export default function PatientVolumeCard({
     },
     High: {
       label: "High",
-      description:
-        "RHU is currently handling high patient volume. Non-urgent referrals may experience delays.",
+      helper: "Heavy patient workload",
       border: "#D97706",
       iconBg: "#FFFBEB",
       iconColor: "#B45309",
@@ -51,7 +48,7 @@ export default function PatientVolumeCard({
 
   return (
     <div
-      className="anim-fade-up group relative overflow-hidden rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/[0.04]"
+      className="anim-fade-up group relative h-full min-h-[116px] overflow-hidden rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/[0.04]"
       style={{ borderTopColor: selected.border, ...stagger(delay) }}
     >
       <div
@@ -62,39 +59,39 @@ export default function PatientVolumeCard({
       />
 
       <div className="relative flex items-start justify-between gap-3">
-        <p className="min-w-0 text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
+        <p className="min-w-0 truncate text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
           {title}
         </p>
         <div
-          className="rounded-lg p-2.5 transition-transform duration-300 group-hover:scale-110"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-transform duration-300 group-hover:scale-110"
           style={{ backgroundColor: selected.iconBg, color: selected.iconColor }}
         >
-          <HeartPulse size={17} />
+          <HeartPulse size={15} />
         </div>
       </div>
 
-      <div className="relative mt-4 flex flex-wrap items-center gap-2">
-        <p className="text-2xl font-bold leading-none tracking-tight text-[#0F172A]">
+      <div className="relative mt-2 flex min-w-0 items-center gap-2">
+        <p className="min-w-0 truncate text-xl font-bold leading-tight tracking-tight text-[#0F172A]">
           {statusLabel}
         </p>
         <span
-          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${selected.badge}`}
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${selected.badge}`}
         >
           <span className={`h-1.5 w-1.5 rounded-full ${selected.pulse}`} />
           Live
         </span>
       </div>
 
-      <p className="relative mt-2 line-clamp-3 text-xs leading-relaxed text-[#64748B]">
-        {selected.description || subtitle}
+      <p className="relative mt-1 truncate text-[11px] font-medium leading-snug text-[#64748B]">
+        {selected.helper || subtitle}
       </p>
 
-      <div className="relative mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#F3F4F6] pt-3">
-        <p className="text-[10px] font-semibold text-[#9CA3AF]">
+      <div className="relative mt-2 flex min-w-0 items-center justify-between gap-2">
+        <p className="min-w-0 truncate text-[10px] font-semibold text-[#9CA3AF]">
           Updated {updatedLabel}
         </p>
-        <p className="rounded-lg bg-[#F8FAFC] px-2.5 py-1 text-[10px] font-bold text-[#64748B]">
-          Score {formatScore(volumeSnapshot.workloadScore)}
+        <p className="shrink-0 rounded-md bg-[#F8FAFC] px-2 py-0.5 text-[10px] font-bold text-[#64748B]">
+          Load {formatLoadValue(volumeSnapshot.workloadScore)}
         </p>
       </div>
     </div>
@@ -114,7 +111,7 @@ function normalizeVolumeStatus(value) {
   return "Low";
 }
 
-function formatScore(value) {
-  const score = Number(value || 0);
-  return Number.isInteger(score) ? String(score) : score.toFixed(1);
+function formatLoadValue(value) {
+  const loadValue = Number(value || 0);
+  return Number.isInteger(loadValue) ? String(loadValue) : loadValue.toFixed(1);
 }

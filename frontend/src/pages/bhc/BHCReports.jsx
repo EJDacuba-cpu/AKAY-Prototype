@@ -1,12 +1,9 @@
 import { useMemo, useState } from "react";
 import {
   BarChart3,
-  BookOpen,
-  CalendarDays,
   ClipboardList,
   FileText,
   Printer,
-  RefreshCw,
   SearchCheck,
   UsersRound,
 } from "lucide-react";
@@ -43,6 +40,7 @@ ChartJS.register(
 
 const DEFAULT_FILTERS = {
   search: "",
+  reportPeriod: "Weekly",
   classification: "All Classifications",
   referralStatus: "All Referral Status",
   dateReferred: "",
@@ -70,10 +68,10 @@ const smoothAnimation = {
 
 const REPORT_DATA = {
   weekly: {
-    label: "Weekly Referrals Sent",
+    label: "Weekly Referrals",
     shortLabel: "Weekly",
     description:
-      "Weekly summary of referrals sent, referral status, chief complaints, and RHU feedback.",
+      "Weekly summary of referrals, case records, referral status, and RHU feedback.",
     logbook: [
       {
         trackingId: "AKY-257003",
@@ -132,10 +130,10 @@ const REPORT_DATA = {
     ],
   },
   monthly: {
-    label: "Monthly Referrals Sent",
+    label: "Monthly Referrals",
     shortLabel: "Monthly",
     description:
-      "Monthly summary of referrals sent, completed outcomes, no-show cases, and RHU feedback.",
+      "Monthly summary of referrals, case records, completed cases, no-show cases, and RHU feedback.",
     logbook: [
       {
         trackingId: "AKY-257003",
@@ -232,11 +230,10 @@ const REPORT_DATA = {
 };
 
 export default function BHCReports() {
-  const [reportMode, setReportMode] = useState("weekly");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [generatedAt, setGeneratedAt] = useState(new Date());
 
-  const currentReport = REPORT_DATA[reportMode];
+  const currentReportKey = getReportModeKey(filters.reportPeriod);
+  const currentReport = REPORT_DATA[currentReportKey] || REPORT_DATA.weekly;
 
   const filteredReferralLogbook = useMemo(() => {
     return currentReport.logbook.filter((log) => {
@@ -255,12 +252,15 @@ export default function BHCReports() {
         .toLowerCase();
 
       const matchesSearch = !query || searchText.includes(query);
+
       const matchesClassification =
         filters.classification === "All Classifications" ||
         log.classification === filters.classification;
+
       const matchesStatus =
         filters.referralStatus === "All Referral Status" ||
         log.status === filters.referralStatus;
+
       const matchesDate =
         !filters.dateReferred ||
         normalizeDate(log.date) === filters.dateReferred;
@@ -281,21 +281,26 @@ export default function BHCReports() {
     [filteredReferralLogbook],
   );
 
-  const statusSummary = useMemo(
-    () => buildStatusSummary(filteredReferralLogbook),
-    [filteredReferralLogbook],
-  );
-
   const reportSummary = useMemo(() => {
     const completed = filteredReferralLogbook.filter(
       (log) => normalizeStatus(log.status) === "Completed",
     ).length;
 
+    const totalRegisteredPatients = new Set(
+      filteredReferralLogbook
+        .map((log) =>
+          String(log.name || "")
+            .trim()
+            .toLowerCase(),
+        )
+        .filter(Boolean),
+    ).size;
+
     return {
+      totalRegisteredPatients,
       totalReferrals: filteredReferralLogbook.length,
-      casesRecorded: filteredReferralLogbook.length,
-      complaintTypes: casesSummary.length,
-      completedReferrals: completed,
+      referralsByCases: casesSummary.length,
+      completedCases: completed,
       topCase: casesSummary[0]?.label || "No data",
     };
   }, [casesSummary, filteredReferralLogbook]);
@@ -311,6 +316,12 @@ export default function BHCReports() {
   );
 
   const dropdownFilters = [
+    {
+      key: "reportPeriod",
+      label: "Reporting Period",
+      value: filters.reportPeriod,
+      options: ["Weekly", "Monthly"],
+    },
     {
       key: "classification",
       label: "Classification",
@@ -346,6 +357,10 @@ export default function BHCReports() {
 
   const activeFilters = [
     filters.search && { key: "search", label: `Search: ${filters.search}` },
+    filters.reportPeriod !== DEFAULT_FILTERS.reportPeriod && {
+      key: "reportPeriod",
+      label: `Period: ${filters.reportPeriod}`,
+    },
     filters.classification !== "All Classifications" && {
       key: "classification",
       label: filters.classification,
@@ -375,16 +390,13 @@ export default function BHCReports() {
   function removeFilter(key) {
     const resetValues = {
       search: "",
+      reportPeriod: DEFAULT_FILTERS.reportPeriod,
       classification: "All Classifications",
       referralStatus: "All Referral Status",
       dateReferred: "",
     };
 
     setFilters((prev) => ({ ...prev, [key]: resetValues[key] }));
-  }
-
-  function refreshReport() {
-    setGeneratedAt(new Date());
   }
 
   function printAsPdf() {
@@ -400,7 +412,9 @@ export default function BHCReports() {
             setFilters((prev) => ({ ...prev, search: value }))
           }
           searchPlaceholder="Search patient, tracking ID, chief complaint, or status..."
-          chip={`${filteredReferralLogbook.length.toLocaleString()} ${currentReport.shortLabel} Referral${filteredReferralLogbook.length === 1 ? "" : "s"}`}
+          chip={`${filteredReferralLogbook.length.toLocaleString()} ${currentReport.shortLabel} Referral${
+            filteredReferralLogbook.length === 1 ? "" : "s"
+          }`}
           filters={dropdownFilters}
           activeFilterCount={activeFilterCount}
           activeFilters={activeFilters}
@@ -408,36 +422,35 @@ export default function BHCReports() {
           onClearFilters={clearFilters}
           onRemoveFilter={removeFilter}
           actions={
-            <ReportActionButtons
-              onGenerate={refreshReport}
-              onPdf={printAsPdf}
-              onPrint={printAsPdf}
-            />
+            <ReportActionButtons onPdf={printAsPdf} onPrint={printAsPdf} />
           }
         />
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard
-            title={`${currentReport.shortLabel} Referrals`}
-            value={reportSummary.totalReferrals}
-            icon={<ClipboardList size={16} />}
+            title="Total Registered Patients"
+            value={reportSummary.totalRegisteredPatients}
+            icon={<UsersRound size={16} />}
             tone="slate"
           />
+
           <StatCard
-            title="Referral Cases"
-            value={reportSummary.casesRecorded}
-            icon={<SearchCheck size={16} />}
+            title="Total Referrals"
+            value={reportSummary.totalReferrals}
+            icon={<ClipboardList size={16} />}
             tone="red"
           />
+
           <StatCard
-            title="Referral Categories"
-            value={reportSummary.complaintTypes}
+            title="Referrals by Cases"
+            value={reportSummary.referralsByCases}
             icon={<BarChart3 size={16} />}
             tone="amber"
           />
+
           <StatCard
-            title="Completed Outcomes"
-            value={reportSummary.completedReferrals}
+            title="Completed Cases"
+            value={reportSummary.completedCases}
             icon={<SearchCheck size={16} />}
             tone="emerald"
           />
@@ -446,9 +459,10 @@ export default function BHCReports() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
           <main className="min-w-0 space-y-4">
             <ReportChartCard
-              title="Referrals by Category"
-              description={`${currentReport.shortLabel} referral count and percentage share per chief complaint or case category.`}
-              rightLabel="Referral report"
+              title="Referrals by Cases"
+              description={`${currentReport.shortLabel} referral count grouped by chief complaint or case.`}
+              icon={<BarChart3 size={15} />}
+              rightLabel="Case count"
             >
               <FixedChartBox height="h-[340px]">
                 {casesSummary.length === 0 ? (
@@ -466,24 +480,12 @@ export default function BHCReports() {
                 )}
               </FixedChartBox>
             </ReportChartCard>
-
-            <ReferralLogbookTable
-              records={filteredReferralLogbook}
-              reportLabel={currentReport.shortLabel}
-            />
           </main>
 
           <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
-            <ReportModeCard
-              reportMode={reportMode}
-              setReportMode={setReportMode}
-              currentReport={currentReport}
-              generatedAt={generatedAt}
-            />
-
             <ReportChartCard
               title="Referrals by Patient Classification"
-              description="Referral distribution by patient classification."
+              description="Referral count by patient classification."
               icon={<UsersRound size={15} />}
               rightLabel="Classification"
             >
@@ -492,7 +494,7 @@ export default function BHCReports() {
                   <EmptyChartState
                     icon={<UsersRound size={24} />}
                     title="No classification data"
-                    message="Filtered records will show classification mix here."
+                    message="Filtered records will show classification counts here."
                   />
                 ) : (
                   <PolarArea
@@ -509,17 +511,9 @@ export default function BHCReports() {
   );
 }
 
-function ReportActionButtons({ onGenerate, onPdf, onPrint }) {
+function ReportActionButtons({ onPdf, onPrint }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <button
-        type="button"
-        onClick={onGenerate}
-        className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#B91C1C] px-3 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
-      >
-        <RefreshCw size={12} />
-        Generate
-      </button>
       <button
         type="button"
         onClick={onPdf}
@@ -528,6 +522,7 @@ function ReportActionButtons({ onGenerate, onPdf, onPrint }) {
         <FileText size={12} className="text-red-600" />
         PDF
       </button>
+
       <button
         type="button"
         onClick={onPrint}
@@ -574,60 +569,6 @@ function StatCard({ title, value, icon, tone = "red" }) {
   );
 }
 
-function ReportModeCard({
-  reportMode,
-  setReportMode,
-  currentReport,
-  generatedAt,
-}) {
-  return (
-    <section className="rounded-xl border border-[#E8ECF0] bg-white p-4 shadow-sm">
-      <div className="mb-4 flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-[#B91C1C]">
-          <CalendarDays size={16} />
-        </span>
-        <div className="min-w-0">
-          <h2 className="text-sm font-black text-[#0F172A]">
-            Referral Reporting Period
-          </h2>
-          <p className="mt-1 text-xs leading-relaxed text-[#64748B]">
-            {currentReport.description}
-          </p>
-        </div>
-      </div>
-
-      <div className="inline-flex w-full rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] p-1">
-        {[
-          { key: "weekly", label: "Weekly" },
-          { key: "monthly", label: "Monthly" },
-        ].map((item) => {
-          const isActive = reportMode === item.key;
-
-          return (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => setReportMode(item.key)}
-              className={`h-9 flex-1 rounded-lg px-3 text-xs font-bold transition-all ${
-                isActive
-                  ? "bg-[#B91C1C] text-white shadow-sm"
-                  : "text-[#64748B] hover:bg-white hover:text-[#B91C1C]"
-              }`}
-            >
-              {item.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="mt-4 rounded-lg border border-[#F1F5F9] bg-[#F8FAFC] px-3 py-2 text-[11px] text-[#64748B]">
-        <span className="font-semibold text-[#0F172A]">Last generated:</span>{" "}
-        {formatDateTime(generatedAt)}
-      </div>
-    </section>
-  );
-}
-
 function ReportChartCard({ title, description, icon, rightLabel, children }) {
   return (
     <section className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-red-100 hover:shadow-md">
@@ -638,6 +579,7 @@ function ReportChartCard({ title, description, icon, rightLabel, children }) {
               {icon}
             </span>
           )}
+
           <div className="min-w-0">
             <h2 className="truncate text-sm font-black text-[#0F172A]">
               {title}
@@ -654,6 +596,7 @@ function ReportChartCard({ title, description, icon, rightLabel, children }) {
           </span>
         )}
       </div>
+
       <div className="p-5">{children}</div>
     </section>
   );
@@ -675,126 +618,13 @@ function EmptyChartState({ icon, title, message }) {
       <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[#F1F5F9] text-[#94A3B8]">
         {icon}
       </div>
+
       <p className="text-sm font-bold text-[#334155]">{title}</p>
+
       <p className="mt-1 max-w-xs text-xs leading-relaxed text-[#94A3B8]">
         {message}
       </p>
     </div>
-  );
-}
-
-function ScopeRow({ label, value }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-[#F1F5F9] bg-[#F8FAFC] px-3 py-2">
-      <span>{label}</span>
-      <span className="max-w-[170px] truncate text-right font-semibold text-[#0F172A]">
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function ReferralLogbookTable({ records, reportLabel }) {
-  return (
-    <section className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-sm">
-      <div className="border-b border-[#E8ECF0] bg-[#FFF7F7] px-5 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <BookOpen size={14} className="shrink-0 text-[#B91C1C]" />
-            <div className="min-w-0">
-              <h2 className="truncate text-sm font-black text-[#0F172A]">
-                {reportLabel} Referral Logbook
-              </h2>
-              <p className="mt-1 text-xs text-[#64748B]">
-                Supporting records for the selected BHC report.
-              </p>
-            </div>
-          </div>
-          <span className="shrink-0 rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
-            Supporting records
-          </span>
-        </div>
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] text-left text-[13px]">
-          <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-            <tr>
-              <th className="whitespace-nowrap px-4 py-3">Tracking ID</th>
-              <th className="whitespace-nowrap px-4 py-3">Patient Name</th>
-              <th className="whitespace-nowrap px-4 py-3">
-                Chief Complaint / Case
-              </th>
-              <th className="whitespace-nowrap px-4 py-3">Classification</th>
-              <th className="whitespace-nowrap px-4 py-3">Date Referred</th>
-              <th className="whitespace-nowrap px-4 py-3">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#F3F4F6]">
-            {records.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={6}
-                  className="px-4 py-10 text-center text-xs text-[#94A3B8]"
-                >
-                  No report records match the current search or filters.
-                </td>
-              </tr>
-            ) : (
-              records.map((log) => (
-                <tr
-                  key={log.trackingId}
-                  className="transition-colors hover:bg-[#F9FAFB]"
-                >
-                  <td className="whitespace-nowrap px-4 py-2.5">
-                    <span className="font-mono text-[11px] font-semibold text-[#B91C1C]">
-                      {log.trackingId}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-2.5 font-medium text-[#1F2937]">
-                    {log.name}
-                  </td>
-                  <td className="max-w-[260px] truncate px-4 py-2.5 font-medium text-[#374151]">
-                    {log.chiefComplaint}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-2.5">
-                    <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
-                      {log.classification}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-2.5 text-[#6B7280]">
-                    {log.date}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-2.5">
-                    <ReferralStatusBadge status={log.status} />
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-function ReferralStatusBadge({ status }) {
-  const toneMap = {
-    Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
-    Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
-    "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-    "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide shadow-sm ${
-        toneMap[status] || toneMap.Pending
-      }`}
-    >
-      {status}
-    </span>
   );
 }
 
@@ -817,6 +647,7 @@ function normalizeStatus(status) {
   if (normalized.includes("receive")) return "Received";
   if (normalized.includes("no-show")) return "No-Show";
   if (normalized.includes("pending")) return "Pending";
+
   return value || "Pending";
 }
 
@@ -848,9 +679,7 @@ function normalizeComplaintLabel(value) {
 }
 
 function buildChiefComplaintSummary(records) {
-  const total = records.length;
-
-  if (!total) return [];
+  if (!records.length) return [];
 
   const counts = records.reduce((acc, record) => {
     const key = normalizeComplaintLabel(record.chiefComplaint);
@@ -862,13 +691,11 @@ function buildChiefComplaintSummary(records) {
     .map(([label, value]) => ({
       label,
       value,
-      percent: Math.round((value / total) * 100),
     }))
     .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
 }
 
 function buildClassificationSummary(records) {
-  const total = Math.max(records.length, 1);
   const counts = records.reduce((acc, record) => {
     const key = record.classification || "Unclassified";
     acc[key] = (acc[key] || 0) + 1;
@@ -879,24 +706,6 @@ function buildClassificationSummary(records) {
     .map(([label, value]) => ({
       label,
       value,
-      percent: Math.round((value / total) * 100),
-    }))
-    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
-}
-
-function buildStatusSummary(records) {
-  const total = Math.max(records.length, 1);
-  const counts = records.reduce((acc, record) => {
-    const key = normalizeStatus(record.status);
-    acc[key] = (acc[key] || 0) + 1;
-    return acc;
-  }, {});
-
-  return Object.entries(counts)
-    .map(([label, value]) => ({
-      label,
-      value,
-      percent: Math.round((value / total) * 100),
     }))
     .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
 }
@@ -921,21 +730,6 @@ function buildChiefComplaintComboData(cases) {
         borderRadius: 10,
         borderSkipped: false,
         maxBarThickness: 42,
-      },
-      {
-        type: "line",
-        label: "Share",
-        data: cases.map((item) => item.percent),
-        yAxisID: "y1",
-        borderColor: chartPalette.redDark,
-        backgroundColor: "rgba(185, 28, 28, 0.08)",
-        pointBackgroundColor: "#FFFFFF",
-        pointBorderColor: chartPalette.redDark,
-        pointBorderWidth: 2,
-        pointRadius: 4,
-        pointHoverRadius: 5,
-        tension: 0.35,
-        fill: true,
       },
     ],
   };
@@ -962,11 +756,6 @@ function getChiefComplaintComboOptions() {
         callbacks: {
           label: (context) => {
             const value = context.parsed?.y ?? 0;
-
-            if (context.dataset?.label === "Share") {
-              return `Share: ${value}%`;
-            }
-
             return `Cases: ${formatNumber(value)} record(s)`;
           },
         },
@@ -982,7 +771,7 @@ function getChiefComplaintComboOptions() {
           minRotation: 0,
           callback: function (value) {
             const label = this.getLabelForValue(value);
-            return label.length > 14 ? `${label.slice(0, 13)}â€¦` : label;
+            return label.length > 14 ? `${label.slice(0, 13)}…` : label;
           },
         },
       },
@@ -999,24 +788,6 @@ function getChiefComplaintComboOptions() {
         title: {
           display: true,
           text: "Case count",
-          color: chartPalette.muted,
-          font: { size: 10, weight: "700" },
-        },
-      },
-      y1: {
-        type: "linear",
-        position: "right",
-        beginAtZero: true,
-        max: 100,
-        ticks: {
-          callback: (value) => `${value}%`,
-          color: chartPalette.slate,
-          font: { size: 11, weight: "700" },
-        },
-        grid: { drawOnChartArea: false },
-        title: {
-          display: true,
-          text: "Share",
           color: chartPalette.muted,
           font: { size: 10, weight: "700" },
         },
@@ -1126,12 +897,14 @@ function getPolarGradient(context) {
   ];
 
   const [startColor, endColor] = gradientSets[dataIndex % gradientSets.length];
+
   const gradient = ctx.createLinearGradient(
     chartArea.left,
     chartArea.top,
     chartArea.right,
     chartArea.bottom,
   );
+
   gradient.addColorStop(0, startColor);
   gradient.addColorStop(1, endColor);
 
@@ -1156,27 +929,24 @@ function buildTooltipOptions(suffix = "record(s)") {
           context.raw ??
           0;
 
-        return `${context.dataset?.label || "Total"}: ${formatNumber(value)} ${suffix}`;
+        return `${context.dataset?.label || "Total"}: ${formatNumber(
+          value,
+        )} ${suffix}`;
       },
     },
   };
+}
+
+function getReportModeKey(value) {
+  const normalized = String(value || "").toLowerCase();
+
+  if (normalized.includes("month")) return "monthly";
+
+  return "weekly";
 }
 
 function formatNumber(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return "0";
   return parsed.toLocaleString();
-}
-
-function formatDateTime(value) {
-  const parsed = value instanceof Date ? value : new Date(value);
-
-  if (Number.isNaN(parsed.getTime())) return "just now";
-
-  return parsed.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }

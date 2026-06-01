@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   BarChart3,
-  Boxes,
   Building2,
   ClipboardList,
   FileText,
@@ -51,6 +50,23 @@ const DEFAULT_FILTERS = {
   status: "All Status",
   date: "",
 };
+
+const BULAKAN_BARANGAYS = [
+  "Bagumbayan",
+  "Balubad",
+  "Bambang",
+  "Matungao",
+  "Maysantol",
+  "Perez",
+  "Pitpitan",
+  "San Francisco",
+  "San Jose",
+  "San Nicolas",
+  "Santa Ana",
+  "Santa Ines",
+  "Taliptip",
+  "Tibig",
+];
 
 const STORAGE_LOOKUP = {
   referrals: {
@@ -209,6 +225,8 @@ export default function AdminReports() {
   }, []);
 
   const reportSource = useMemo(() => {
+    void dataVersion;
+
     return {
       referrals: readStoredCollection("referrals"),
       patients: readStoredCollection("patients"),
@@ -240,8 +258,8 @@ export default function AdminReports() {
 
   const {
     stats,
-    moduleSummary,
     monthlyTrend,
+    barangayReferralActivity,
     barangayReports,
     categoryReports,
     categoryRanking,
@@ -334,7 +352,9 @@ export default function AdminReports() {
             setFilters((prev) => ({ ...prev, search: value }))
           }
           searchPlaceholder="Search BHC, RHU, barangay, patient, tracking ID, status, or category..."
-          chip={`${formatNumber(stats.totalRecords)} Account and Referral Record${stats.totalRecords === 1 ? "" : "s"}`}
+          chip={`● ${formatNumber(stats.totalRecords)} System Record${
+            stats.totalRecords === 1 ? "" : "s"
+          }`}
           filters={dropdownFilters}
           activeFilterCount={activeFilterCount}
           activeFilters={activeFilters}
@@ -380,31 +400,38 @@ export default function AdminReports() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
           <main className="min-w-0 space-y-4">
             <ReportChartCard
-              title="System Usage Summary"
-              description="Summary of BHC, RHU, and MHO records across patients, referrals, health records, medicine availability, accounts, and doctor availability."
-              icon={<BarChart3 size={15} />}
-              rightLabel="MHO view"
+              title="Referral Activity by 14 Barangays"
+              description="Grouped Chart.js bar chart showing referrals, completed cases, and monitoring cases across all 14 barangays."
+              icon={<Building2 size={15} />}
+              rightLabel="14 barangays"
             >
-              <FixedChartBox height="h-[330px]">
-                {hasAnyValue(moduleSummary.map((item) => item.value)) ? (
-                  <Chart
-                    type="bar"
-                    data={buildSystemActivityChartData(moduleSummary)}
-                    options={systemActivityChartOptions}
+              <FixedChartBox height="h-[360px]">
+                {hasAnyValue(
+                  barangayReferralActivity.flatMap((item) => [
+                    item.referrals,
+                    item.completed,
+                    item.monitoring,
+                  ]),
+                ) ? (
+                  <Bar
+                    data={buildFourteenBarangayChartData(
+                      barangayReferralActivity,
+                    )}
+                    options={fourteenBarangayChartOptions}
                   />
                 ) : (
                   <EmptyChartState
-                    icon={<BarChart3 size={24} />}
-                    title="No activity records yet"
-                    message="BHC, RHU, and MHO records will appear here once users begin encoding data."
+                    icon={<Building2 size={24} />}
+                    title="No barangay referral activity yet"
+                    message="The 14 barangays will appear here once BHC referrals are encoded."
                   />
                 )}
               </FixedChartBox>
             </ReportChartCard>
 
             <ReportChartCard
-              title="Referral Activity Overview"
-              description="Monthly overview of BHC referrals, RHU walk-ins, and health record activity."
+              title="Monthly Activity Summary"
+              description="Line chart showing the combined monthly activity from BHC referrals, RHU walk-ins, and health records."
               icon={<SearchCheck size={15} />}
               rightLabel="Monthly"
             >
@@ -426,8 +453,8 @@ export default function AdminReports() {
             </ReportChartCard>
 
             <ReportChartCard
-              title="Referral Activity by Barangay"
-              description="Comparison of referral, completed, and monitoring counts from BHC to RHU."
+              title="Referrals per Barangay"
+              description="Horizontal bar chart comparing referral, completed, and monitoring counts from BHC to RHU."
               icon={<Building2 size={15} />}
               rightLabel="Barangay"
             >
@@ -452,10 +479,10 @@ export default function AdminReports() {
 
           <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
             <ReportChartCard
-              title="Users and Records by Facility"
-              description="Distribution of AKAY records by BHC, RHU, and MHO source."
+              title="BHC and RHU Records"
+              description="Doughnut chart showing record counts by module source."
               icon={<Building2 size={15} />}
-              rightLabel="Coverage"
+              rightLabel="Records"
             >
               <FixedChartBox height="h-[280px]">
                 {hasAnyValue(facilitySummary.map((item) => item.value)) ? (
@@ -466,7 +493,7 @@ export default function AdminReports() {
                 ) : (
                   <EmptyChartState
                     icon={<Building2 size={24} />}
-                    title="No coverage data"
+                    title="No record summary data"
                     message="BHC and RHU records will be summarized here."
                   />
                 )}
@@ -647,8 +674,8 @@ function CategoryRankingCard({ categories, total }) {
             {topCategory.category}
           </p>
           <p className="mt-1 text-xs text-[#64748B]">
-            {topCategory.count} referral{topCategory.count === 1 ? "" : "s"} Â·{" "}
-            {topCategory.percent}% of current report
+            {formatNumber(topCategory.count)} referral
+            {topCategory.count === 1 ? "" : "s"} in the current report
           </p>
         </div>
       ) : (
@@ -705,7 +732,7 @@ function SystemResourceCard({
             RHU Resources and Users
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-[#64748B]">
-            RHU resource and account status for MHO monitoring.
+            System-wide resource status for admin monitoring.
           </p>
         </div>
         <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
@@ -796,9 +823,9 @@ function MedicineAlert({ item }) {
 function ReportScopeCard({ filters, stats, barangayCount, categoryCount }) {
   return (
     <section className="rounded-xl border border-[#E8ECF0] bg-white p-4 shadow-sm">
-      <h2 className="text-sm font-black text-[#0F172A]">Report Filters</h2>
+      <h2 className="text-sm font-black text-[#0F172A]">Report Scope</h2>
       <p className="mt-1 text-xs leading-relaxed text-[#64748B]">
-        Current MHO report output after applying search and filters.
+        Current system-wide output after applying filters.
       </p>
 
       <div className="mt-4 space-y-2 text-[11px] text-[#64748B]">
@@ -852,7 +879,7 @@ function BarangayReferralTable({ barangayReports }) {
               <th className="px-4 py-3">Referrals</th>
               <th className="px-4 py-3">Completed</th>
               <th className="px-4 py-3">Monitoring</th>
-              <th className="px-4 py-3">Share</th>
+              <th className="px-4 py-3">Case Count</th>
             </tr>
           </thead>
 
@@ -890,7 +917,7 @@ function BarangayReferralTable({ barangayReports }) {
                         />
                       </div>
                       <span className="w-9 text-right text-[11px] font-bold text-[#64748B]">
-                        {item.share}%
+                        {formatNumber(item.totalCases)}
                       </span>
                     </div>
                   </td>
@@ -904,9 +931,9 @@ function BarangayReferralTable({ barangayReports }) {
   );
 }
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/* ─────────────────────────────────────────────
    REPORT DATA BUILDING
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+───────────────────────────────────────────── */
 function buildFilterOptions(source) {
   const barangays = [
     ...source.referrals.map(getReferralBarangay),
@@ -927,7 +954,10 @@ function buildFilterOptions(source) {
   ].filter(Boolean);
 
   return {
-    barangays: ["All Barangays", ...sortUnique(barangays)],
+    barangays: [
+      "All Barangays",
+      ...sortUnique([...BULAKAN_BARANGAYS, ...barangays]),
+    ],
     categories: ["All Categories", ...sortUnique(categories)],
     statuses: [
       "All Status",
@@ -937,6 +967,7 @@ function buildFilterOptions(source) {
         "Received",
         "Routine Monitoring",
         "Follow-up Required",
+        "Complete",
         "Completed",
         "No-Show",
         "Active",
@@ -1081,15 +1112,6 @@ function buildReportSummary(source) {
     totalDoctors: doctors.length,
   };
 
-  const moduleSummary = [
-    { label: "BHC Patients", value: bhcPatients.length, group: "BHC" },
-    { label: "RHU Patients", value: rhuPatients.length, group: "RHU" },
-    { label: "BHC Records", value: bhcHealthRecords.length, group: "BHC" },
-    { label: "RHU Records", value: rhuHealthRecords.length, group: "RHU" },
-    { label: "Referrals", value: referrals.length, group: "Referral" },
-    { label: "Medicine Alerts", value: medicineAlerts.length, group: "RHU" },
-  ];
-
   const facilitySummary = [
     {
       label: "BHC Records",
@@ -1109,6 +1131,7 @@ function buildReportSummary(source) {
     },
   ];
 
+  const barangayReferralActivity = buildBarangayReferralActivity(referrals);
   const barangayReports = buildBarangayReports(referrals);
   const categoryReports = buildCategoryReports(referrals);
   const categoryRanking = buildCategoryRanking(
@@ -1119,14 +1142,39 @@ function buildReportSummary(source) {
 
   return {
     stats,
-    moduleSummary,
     monthlyTrend,
+    barangayReferralActivity,
     barangayReports,
     categoryReports,
     categoryRanking,
     medicineAlerts,
     facilitySummary,
   };
+}
+
+function buildBarangayReferralActivity(referrals) {
+  const groups = new Map(
+    BULAKAN_BARANGAYS.map((barangay) => [
+      barangay.toLowerCase(),
+      { barangay, referrals: 0, completed: 0, monitoring: 0 },
+    ]),
+  );
+
+  referrals.forEach((referral) => {
+    const matchedBarangay = findBulakanBarangay(getReferralBarangay(referral));
+    if (!matchedBarangay) return;
+
+    const current = groups.get(matchedBarangay.toLowerCase());
+    const status = getRecordStatus(referral);
+
+    current.referrals += 1;
+    if (isCompleteStatus(status)) current.completed += 1;
+    if (isMonitoringStatus(status)) current.monitoring += 1;
+  });
+
+  return BULAKAN_BARANGAYS.map((barangay) =>
+    groups.get(barangay.toLowerCase()),
+  );
 }
 
 function buildBarangayReports(referrals) {
@@ -1223,57 +1271,63 @@ function getLastMonths(count) {
   return months;
 }
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/* ─────────────────────────────────────────────
    CHARTS
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-function buildSystemActivityChartData(items) {
-  const total = Math.max(
-    items.reduce((sum, item) => sum + Number(item.value || 0), 0),
-    1,
-  );
-
+───────────────────────────────────────────── */
+function buildFourteenBarangayChartData(items) {
   return {
-    labels: items.map((item) => item.label),
+    labels: items.map((item) => item.barangay),
     datasets: [
       {
-        type: "bar",
-        label: "Records",
-        data: items.map((item) => item.value),
-        yAxisID: "y",
+        label: "Referrals",
+        data: items.map((item) => item.referrals),
         backgroundColor: (context) =>
           getChartGradient(
             context,
             ["rgba(254, 226, 226, 0.94)", chartPalette.red],
             "vertical",
           ),
-        borderColor: "rgba(185, 28, 28, 0.22)",
+        borderColor: chartPalette.red,
         borderWidth: 1,
-        borderRadius: 10,
+        borderRadius: 8,
         borderSkipped: false,
-        maxBarThickness: 42,
+        maxBarThickness: 24,
       },
       {
-        type: "line",
-        label: "Share",
-        data: items.map((item) =>
-          Math.round((Number(item.value || 0) / total) * 100),
-        ),
-        yAxisID: "y1",
-        borderColor: chartPalette.redDark,
-        backgroundColor: "rgba(185, 28, 28, 0.08)",
-        pointBackgroundColor: "#FFFFFF",
-        pointBorderColor: chartPalette.redDark,
-        pointBorderWidth: 2,
-        pointRadius: 4,
-        pointHoverRadius: 5,
-        tension: 0.35,
-        fill: true,
+        label: "Completed",
+        data: items.map((item) => item.completed),
+        backgroundColor: (context) =>
+          getChartGradient(
+            context,
+            ["rgba(209, 250, 229, 0.95)", chartPalette.emerald],
+            "vertical",
+          ),
+        borderColor: chartPalette.emerald,
+        borderWidth: 1,
+        borderRadius: 8,
+        borderSkipped: false,
+        maxBarThickness: 24,
+      },
+      {
+        label: "Monitoring",
+        data: items.map((item) => item.monitoring),
+        backgroundColor: (context) =>
+          getChartGradient(
+            context,
+            ["rgba(254, 243, 199, 0.95)", chartPalette.amber],
+            "vertical",
+          ),
+        borderColor: chartPalette.amber,
+        borderWidth: 1,
+        borderRadius: 8,
+        borderSkipped: false,
+        maxBarThickness: 24,
       },
     ],
   };
 }
 
-const systemActivityChartOptions = {
+const fourteenBarangayChartOptions = {
   responsive: true,
   maintainAspectRatio: false,
   interaction: { mode: "index", intersect: false },
@@ -1295,14 +1349,12 @@ const systemActivityChartOptions = {
       grid: { display: false },
       ticks: {
         color: chartPalette.slate,
-        font: { size: 11, weight: "700" },
-        maxRotation: 0,
+        font: { size: 10, weight: "700" },
+        maxRotation: 45,
         minRotation: 0,
       },
     },
     y: {
-      type: "linear",
-      position: "left",
       beginAtZero: true,
       ticks: {
         precision: 0,
@@ -1312,25 +1364,7 @@ const systemActivityChartOptions = {
       grid: { color: chartPalette.grid, drawBorder: false },
       title: {
         display: true,
-        text: "Count",
-        color: chartPalette.muted,
-        font: { size: 10, weight: "700" },
-      },
-    },
-    y1: {
-      type: "linear",
-      position: "right",
-      beginAtZero: true,
-      max: 100,
-      ticks: {
-        callback: (value) => `${value}%`,
-        color: chartPalette.slate,
-        font: { size: 11, weight: "700" },
-      },
-      grid: { drawOnChartArea: false },
-      title: {
-        display: true,
-        text: "Share",
+        text: "Referral activity count",
         color: chartPalette.muted,
         font: { size: 10, weight: "700" },
       },
@@ -1343,7 +1377,7 @@ function buildMonthlyLineData(monthlyTrend) {
     labels: monthlyTrend.map((item) => item.label),
     datasets: [
       {
-        label: "System Usage",
+        label: "System Activity",
         data: monthlyTrend.map((item) => Number(item.value || 0)),
         borderColor: (context) =>
           getLineGradient(context, [chartPalette.red, chartPalette.redDark]),
@@ -1498,7 +1532,7 @@ const barangayChartOptions = {
         font: { size: 11, weight: "700" },
         callback: function (value) {
           const label = this.getLabelForValue(value);
-          return label.length > 16 ? `${label.slice(0, 15)}â€¦` : label;
+          return label.length > 16 ? `${label.slice(0, 15)}…` : label;
         },
       },
       grid: { display: false },
@@ -1663,19 +1697,15 @@ function buildTooltipOptions(suffix = "record(s)") {
           context.raw ??
           0;
 
-        if (context.dataset?.label === "Share") {
-          return `${context.dataset.label}: ${formatNumber(value)}%`;
-        }
-
         return `${context.dataset?.label || "Total"}: ${formatNumber(value)} ${suffix}`;
       },
     },
   };
 }
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/* ─────────────────────────────────────────────
    LOCAL STORAGE HELPERS
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+───────────────────────────────────────────── */
 function readStoredCollection(type) {
   if (typeof window === "undefined") return [];
 
@@ -1837,9 +1867,9 @@ function isDoctorLike(item) {
   );
 }
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/* ─────────────────────────────────────────────
    FIELD NORMALIZATION
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+───────────────────────────────────────────── */
 function getSourceRole(item = {}) {
   const key = String(item._storageKey || "").toLowerCase();
   const raw = [
@@ -1939,7 +1969,7 @@ function normalizeStatus(status) {
 
   if (!value) return "Unspecified";
   if (normalized.includes("complete") || normalized.includes("closed")) {
-    return "Completed";
+    return "Complete";
   }
   if (normalized.includes("follow")) return "Follow-up Required";
   if (normalized.includes("monitor") || normalized.includes("routine")) {
@@ -2014,6 +2044,28 @@ function getPatientBarangay(item = {}) {
     item.originBarangay ||
     cleanupFacilityName(item.facilityName || item.sourceFacility) ||
     "Unspecified"
+  );
+}
+
+function findBulakanBarangay(value) {
+  const cleaned = String(value || "")
+    .replace(/barangay health center/gi, "")
+    .replace(/barangay/gi, "")
+    .replace(/brgy\.?/gi, "")
+    .replace(/bgy\.?/gi, "")
+    .replace(/\bBHC\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+  if (!cleaned) return "";
+
+  return (
+    BULAKAN_BARANGAYS.find((barangay) => barangay.toLowerCase() === cleaned) ||
+    BULAKAN_BARANGAYS.find((barangay) =>
+      cleaned.includes(barangay.toLowerCase()),
+    ) ||
+    ""
   );
 }
 

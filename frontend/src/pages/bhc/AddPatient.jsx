@@ -23,8 +23,7 @@ import {
 import {
   SectionHeader,
   PhilippineContactInput,
-  TpalScoreGrid,
-  THEME,
+  TpalHistoryGrid,
 } from "../../components/features/patients/PatientFormComponents";
 
 // Import existing reusable inputs
@@ -84,6 +83,7 @@ export default function AddPatient() {
   const [saving, setSaving] = useState(false);
   const [createdPatientId, setCreatedPatientId] = useState("");
   const [form, setForm] = useState(INITIAL_FORM_STATE);
+  const isImmunization = form.patientClassification === "Immunization";
 
   // --- HANDLERS ---
 
@@ -113,6 +113,12 @@ export default function AddPatient() {
         return {
           ...prev,
           patientClassification: value,
+          ...(isImmunization
+            ? {
+                civilStatus: "",
+                contactNumber: "",
+              }
+            : {}),
           // Reset Maternal fields if not Maternal
           ...(isMaternal
             ? {}
@@ -268,26 +274,30 @@ export default function AddPatient() {
                 <option>Female</option>
               </FormSelect>
 
-              <FormSelect
-                label="Civil Status"
-                name="civilStatus"
-                value={form.civilStatus}
-                onChange={handleChange}
-                required
-              >
-                <option value="">Select Civil Status</option>
-                <option>Single</option>
-                <option>Married</option>
-              </FormSelect>
+              {!isImmunization && (
+                <>
+                  <FormSelect
+                    label="Civil Status"
+                    name="civilStatus"
+                    value={form.civilStatus}
+                    onChange={handleChange}
+                    required
+                  >
+                    <option value="">Select Civil Status</option>
+                    <option>Single</option>
+                    <option>Married</option>
+                  </FormSelect>
 
-              <div className="lg:col-span-2">
-                <PhilippineContactInput
-                  label="Contact Number"
-                  name="contactNumber"
-                  value={form.contactNumber}
-                  onChange={handleChange}
-                />
-              </div>
+                  <div className="lg:col-span-2">
+                    <PhilippineContactInput
+                      label="Contact Number"
+                      name="contactNumber"
+                      value={form.contactNumber}
+                      onChange={handleChange}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </section>
 
@@ -389,7 +399,7 @@ export default function AddPatient() {
           </section>
 
           {/* DYNAMIC: IMMUNIZATION */}
-          {form.patientClassification === "Immunization" && (
+          {isImmunization && (
             <section
               className="anim-fade-up rounded-xl border border-gray-200 border-t-4 border-t-[#B91C1C] bg-white p-6 shadow-sm"
               style={stagger(4)}
@@ -486,10 +496,10 @@ export default function AddPatient() {
                 </div>
               </div>
 
-              {/* Obstetric Score */}
+              {/* Obstetric History */}
               <div className="mb-8">
                 <h3 className="mb-4 text-[10px] font-bold uppercase tracking-wider text-gray-900">
-                  Obstetric Score (GTPAL)
+                  Obstetric History (GTPAL)
                 </h3>
 
                 <div className="grid gap-5 lg:grid-cols-2 mb-6">
@@ -511,7 +521,7 @@ export default function AddPatient() {
                   />
                 </div>
 
-                <TpalScoreGrid form={form} onChange={handleChange} />
+                <TpalHistoryGrid form={form} onChange={handleChange} />
               </div>
             </section>
           )}

@@ -4,8 +4,10 @@ import {
   ArrowLeft,
   Building2,
   CheckCircle2,
-  Info,
-  ShieldCheck,
+  ChevronLeft,
+  Eye,
+  EyeOff,
+  Hospital,
   UserPlus,
 } from "lucide-react";
 
@@ -41,24 +43,37 @@ const BHC_FACILITIES = [
   "Tibig Health Center",
 ];
 
+const RHU_FACILITIES = ["Rural Health Unit Bulakan"];
+const DEFAULT_RHU_FACILITY = RHU_FACILITIES[0];
+
 const ACCOUNT_ROLES = [
   {
     value: "bhc_worker",
-    label: "Barangay Health Center Worker",
+    label: "BHC Account",
+    roleLabel: "Barangay Health Center Worker",
+    subtitle: "Barangay Health Center",
     accessRole: "BHC",
     facilities: BHC_FACILITIES,
+    workflowTitle: "BHC to RHU referral workflow",
+    workflowDescription:
+      "This account can encode BHC patients, create health records, and send referrals to the assigned Rural Health Unit.",
   },
   {
     value: "rhu_staff",
-    label: "Rural Health Unit Staff",
+    label: "RHU Account",
+    roleLabel: "Rural Health Unit Staff",
+    subtitle: "Rural Health Unit",
     accessRole: "RHU",
-    facilities: ["Rural Health Unit Bulakan"],
+    facilities: RHU_FACILITIES,
+    workflowTitle: "RHU receiving and processing workflow",
+    workflowDescription:
+      "This account can receive referrals, check in patients, manage RHU records, and submit feedback/return slips.",
   },
 ];
 
 const POSITION_BY_ACCOUNT_ROLE = {
-  bhc_worker: ["Barangay Health Worker", "Midwife", "BHC Staff"],
-  rhu_staff: ["RHU Staff", "Encoder", "Nurse", "Receiving Staff"],
+  bhc_worker: "Barangay Health Worker",
+  rhu_staff: "RHU Staff",
 };
 
 const keyframes = `
@@ -77,7 +92,12 @@ const stagger = (index) => ({ animationDelay: `${index * 55}ms` });
 export default function AddUser() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
+  const [currentStep, setCurrentStep] = useState(1);
+  const [showPassword, setShowPassword] = useState(false);
+  const [stepErrors, setStepErrors] = useState({});
   const [successModal, setSuccessModal] = useState(null);
+
   const mode = searchParams.get("mode");
   const userId = searchParams.get("userId");
 
@@ -92,31 +112,47 @@ export default function AddUser() {
     getInitialValues(existingUser),
     async (values) => {
       const accountRole = getAccountRole(values.accountRole);
+      const isBhcAccount = values.accountRole === "bhc_worker";
+      const isRhuAccount = values.accountRole === "rhu_staff";
+      const selectedFacility = isBhcAccount
+        ? values.bhcFacility
+        : isRhuAccount
+          ? values.rhuFacility
+          : "";
 
       const payload = {
-        fullName: values.fullName,
-        name: values.fullName,
-        email: values.email,
-        contactNumber: values.contactNumber,
+        fullName: values.fullName.trim(),
+        name: values.fullName.trim(),
+        email: values.email.trim(),
+        contactNumber: values.contactNumber || "",
         role: accountRole?.accessRole || "",
         accountRole: accountRole?.value || "",
-        accountRoleLabel: accountRole?.label || "",
-        position: values.position,
-        facility: values.facility,
+        accountRoleLabel: accountRole?.roleLabel || "",
+        position: POSITION_BY_ACCOUNT_ROLE[values.accountRole] || "",
+        facility: selectedFacility,
+        bhcFacility: isBhcAccount ? values.bhcFacility : "",
+        rhuFacility: isBhcAccount || isRhuAccount ? values.rhuFacility : "",
+        assignedBarangayHealthCenter: isBhcAccount ? values.bhcFacility : "",
+        assignedRuralHealthUnit:
+          isBhcAccount || isRhuAccount ? values.rhuFacility : "",
         status: existingUser?.status || "Active",
       };
+
+      if (!isEditMode || values.password) {
+        payload.password = values.password;
+      }
 
       if (isEditMode) {
         updateAdminAccount(existingUser.id, payload);
         setSuccessModal({
           title: "Account Updated Successfully",
-          message: "The account has been updated successfully.",
+          message: "The account information has been updated successfully.",
         });
       } else {
         createAdminAccount(payload);
         setSuccessModal({
           title: "Account Added Successfully",
-          message: "The account has been created successfully.",
+          message: "The new account has been created successfully.",
         });
       }
     },
@@ -124,56 +160,182 @@ export default function AddUser() {
       fullName: validators.required,
       email: validators.email,
       accountRole: validators.required,
-      position: validators.required,
-      facility: validators.required,
     },
   );
 
   const selectedAccountRole = getAccountRole(form.values.accountRole);
+  const isBhcAccount = form.values.accountRole === "bhc_worker";
+  const isRhuAccount = form.values.accountRole === "rhu_staff";
 
-  const availablePositions = useMemo(() => {
-    return POSITION_BY_ACCOUNT_ROLE[form.values.accountRole] || [];
-  }, [form.values.accountRole]);
+  const pageTitle = isEditMode ? "Edit User Account" : "Add User Account";
 
-  const availableFacilities = useMemo(() => {
-    return selectedAccountRole?.facilities || [];
-  }, [selectedAccountRole]);
+  function clearFieldError(name) {
+    setStepErrors((prev) => {
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+  }
+
+  function clearMultipleErrors(names) {
+    setStepErrors((prev) => {
+      const next = { ...prev };
+      names.forEach((name) => delete next[name]);
+      return next;
+    });
+  }
 
   function handleAccountChange(event) {
     const { name, value } = event.target;
 
+    clearFieldError(name);
+
     form.setValues((prev) => {
       const next = { ...prev, [name]: value };
 
-      if (name === "accountRole") {
-        const selected = getAccountRole(value);
-        const facilities = selected?.facilities || [];
-        const positions = POSITION_BY_ACCOUNT_ROLE[value] || [];
+      if (name === "bhcFacility" && prev.accountRole === "bhc_worker") {
+        next.facility = value;
+      }
 
-        next.position =
-          positions.length === 1
-            ? positions[0]
-            : positions.includes(prev.position)
-              ? prev.position
-              : "";
-
-        next.facility =
-          facilities.length === 1
-            ? facilities[0]
-            : facilities.includes(prev.facility)
-              ? prev.facility
-              : "";
+      if (name === "rhuFacility" && prev.accountRole === "rhu_staff") {
+        next.facility = value;
       }
 
       return next;
     });
   }
 
+  function handleRoleSelect(roleValue) {
+    clearMultipleErrors([
+      "accountRole",
+      "bhcFacility",
+      "rhuFacility",
+      "facility",
+    ]);
+
+    form.setValues((prev) => {
+      const isBhc = roleValue === "bhc_worker";
+      const isRhu = roleValue === "rhu_staff";
+      const safeBhcFacility = BHC_FACILITIES.includes(prev.bhcFacility)
+        ? prev.bhcFacility
+        : "";
+      const safeRhuFacility = RHU_FACILITIES.includes(prev.rhuFacility)
+        ? prev.rhuFacility
+        : DEFAULT_RHU_FACILITY;
+
+      return {
+        ...prev,
+        accountRole: roleValue,
+        position: POSITION_BY_ACCOUNT_ROLE[roleValue] || "",
+        bhcFacility: isBhc ? safeBhcFacility : "",
+        rhuFacility: isBhc || isRhu ? safeRhuFacility : "",
+        facility: isBhc ? safeBhcFacility : isRhu ? safeRhuFacility : "",
+      };
+    });
+  }
+
+  function getStepOneErrors() {
+    const errors = {};
+
+    if (!form.values.fullName?.trim()) {
+      errors.fullName = "Full name is required.";
+    }
+
+    if (!form.values.email?.trim()) {
+      errors.email = "Email address is required.";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.values.email)) {
+      errors.email = "Enter a valid email address.";
+    }
+
+    if (!isEditMode && !form.values.password?.trim()) {
+      errors.password = "Password is required.";
+    } else if (form.values.password && form.values.password.length < 6) {
+      errors.password = "Password must be at least 6 characters.";
+    }
+
+    if (!form.values.accountRole) {
+      errors.accountRole = "Select a user role.";
+    }
+
+    return errors;
+  }
+
+  function getStepTwoErrors() {
+    const errors = {};
+
+    if (!form.values.accountRole) {
+      errors.accountRole = "Select a user role first.";
+      return errors;
+    }
+
+    if (form.values.accountRole === "bhc_worker") {
+      if (!form.values.bhcFacility) {
+        errors.bhcFacility = "Assigned Barangay Health Center is required.";
+      }
+
+      if (!form.values.rhuFacility) {
+        errors.rhuFacility = "Assigned Rural Health Unit is required.";
+      }
+    }
+
+    if (form.values.accountRole === "rhu_staff") {
+      if (!form.values.rhuFacility) {
+        errors.rhuFacility = "Assigned Rural Health Unit is required.";
+      }
+    }
+
+    return errors;
+  }
+
+  function handleNextStep() {
+    const errors = getStepOneErrors();
+    setStepErrors(errors);
+
+    if (Object.keys(errors).length > 0) return;
+
+    setCurrentStep(2);
+
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+
+  function handleBackStep() {
+    setCurrentStep(1);
+
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+
+  function handleFinalSubmit(event) {
+    event.preventDefault();
+
+    const stepOneErrors = getStepOneErrors();
+    const stepTwoErrors = getStepTwoErrors();
+    const errors = { ...stepOneErrors, ...stepTwoErrors };
+
+    setStepErrors(errors);
+
+    if (Object.keys(stepOneErrors).length > 0) {
+      setCurrentStep(1);
+      return;
+    }
+
+    if (Object.keys(stepTwoErrors).length > 0) {
+      setCurrentStep(2);
+      return;
+    }
+
+    form.handleSubmit(event);
+  }
+
+  function getError(name) {
+    return stepErrors[name] || form.errors[name];
+  }
+
   return (
-    <DashboardLayout
-      role="admin"
-      title={isEditMode ? "Edit User Account" : "Add User Account"}
-    >
+    <DashboardLayout role="admin" title={pageTitle}>
       <style>{keyframes}</style>
 
       <div className="mx-auto max-w-5xl pb-4">
@@ -190,142 +352,236 @@ export default function AddUser() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h1 className="text-lg font-bold tracking-tight text-[#1A1A1A]">
-                {isEditMode ? "Edit User Account" : "Add User Account"}
+                {pageTitle}
               </h1>
               <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-[#6B7280]">
                 {isEditMode
-                  ? "Update the account role, position, and facility assignment. Password changes are handled separately by Admin/MHO from the account directory."
-                  : "Add an authorized account for Barangay Health Center workers or Rural Health Unit staff."}
+                  ? "Update the account profile, role, and facility assignment."
+                  : "Create an authorized account for Barangay Health Center or Rural Health Unit staff."}
               </p>
             </div>
           </div>
         </div>
 
-        <form onSubmit={form.handleSubmit} className="space-y-5 pb-4">
-          <FormSection
-            title="Account Information"
-            subtitle="Enter the staff member's basic account details."
-            icon={<UserPlus size={14} />}
-            delay={1}
-          >
-            <div className="grid gap-4 lg:grid-cols-3">
-              <FormGroup
-                label="Full Name"
-                error={form.errors.fullName}
-                required
-              >
-                <Input
-                  name="fullName"
-                  value={form.values.fullName}
-                  onChange={handleAccountChange}
-                  placeholder="Example: Juan Dela Cruz"
-                />
-              </FormGroup>
+        <form onSubmit={handleFinalSubmit} className="space-y-5 pb-4">
+          <StepProgress currentStep={currentStep} />
 
-              <FormGroup
-                label="Email Address"
-                error={form.errors.email}
-                required
-              >
-                <Input
-                  name="email"
-                  type="email"
-                  value={form.values.email}
-                  onChange={handleAccountChange}
-                  placeholder="example@akay.local"
-                />
-              </FormGroup>
-
-              <FormGroup
-                label="Contact Number"
-                error={form.errors.contactNumber}
-              >
-                <Input
-                  name="contactNumber"
-                  value={form.values.contactNumber}
-                  onChange={handleAccountChange}
-                  placeholder="09XXXXXXXXX"
-                />
-              </FormGroup>
-            </div>
-          </FormSection>
-
-          <FormSection
-            title="Role and Assignment"
-            subtitle="Select the account role first, then choose the matching position and facility assignment."
-            icon={<Building2 size={14} />}
-            delay={2}
-          >
-            <div className="grid gap-4 lg:grid-cols-3">
-              <FormGroup
-                label="Account Role"
-                error={form.errors.accountRole}
-                required
-              >
-                <Select
-                  name="accountRole"
-                  value={form.values.accountRole}
-                  onChange={handleAccountChange}
-                  options={[
-                    { value: "", label: "Select account role" },
-                    ...ACCOUNT_ROLES.map((role) => ({
-                      value: role.value,
-                      label: role.label,
-                    })),
-                  ]}
-                />
-              </FormGroup>
-
-              <FormGroup
-                label="Facility / Assignment"
-                error={form.errors.facility}
-                required
-              >
-                <Select
-                  name="facility"
-                  value={form.values.facility}
-                  onChange={handleAccountChange}
-                  options={[
-                    { value: "", label: "Select facility" },
-                    ...availableFacilities.map((facility) => ({
-                      value: facility,
-                      label: facility,
-                    })),
-                  ]}
-                />
-              </FormGroup>
-            </div>
-
-            {selectedAccountRole?.description && (
-              <InfoNotice className="mt-5" icon={<Info size={16} />}>
-                {selectedAccountRole.description}
-                {form.values.position
-                  ? ` Position selected: ${form.values.position}.`
-                  : ""}
-              </InfoNotice>
-            )}
-          </FormSection>
-
-          <div
-            className="anim-fade-up flex items-center justify-end gap-3 pt-1"
-            style={stagger(5)}
-          >
-            <button
-              type="button"
-              onClick={() => navigate("/admin/users")}
-              className="h-10 rounded-lg border border-[#E8ECF0] bg-white px-5 text-[12px] font-semibold text-[#6B7280] transition-colors hover:bg-[#F9FAFB]"
+          {currentStep === 1 && (
+            <FormSection
+              title="Basic Profile"
+              subtitle="Enter identity details and choose the correct system role."
+              icon={<UserPlus size={14} />}
+              delay={1}
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={form.isSubmitting}
-              className="flex h-10 items-center gap-2 rounded-lg bg-[#B91C1C] px-6 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <UserPlus size={14} strokeWidth={2.5} />
-              {isEditMode ? "Save Changes" : "Save User Account"}
-            </button>
-          </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormGroup
+                  label="Full Name"
+                  error={getError("fullName")}
+                  required
+                >
+                  <Input
+                    name="fullName"
+                    value={form.values.fullName}
+                    onChange={handleAccountChange}
+                    placeholder="Example: Maria Divina Santos"
+                  />
+                </FormGroup>
+
+                <FormGroup
+                  label="Email Address"
+                  error={getError("email")}
+                  required
+                >
+                  <Input
+                    name="email"
+                    type="email"
+                    value={form.values.email}
+                    onChange={handleAccountChange}
+                    placeholder="example@akay.local"
+                  />
+                </FormGroup>
+
+                <FormGroup
+                  label={isEditMode ? "New Password" : "Password"}
+                  error={getError("password")}
+                  required={!isEditMode}
+                >
+                  <PasswordInput
+                    name="password"
+                    value={form.values.password}
+                    onChange={handleAccountChange}
+                    showPassword={showPassword}
+                    setShowPassword={setShowPassword}
+                    placeholder={
+                      isEditMode
+                        ? "Leave blank to keep current password"
+                        : "Enter account password"
+                    }
+                  />
+                </FormGroup>
+              </div>
+
+              <div className="mt-6">
+                <div className="mb-3">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">
+                    Select User Role
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    The next step will change based on the selected role.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {ACCOUNT_ROLES.map((role) => (
+                    <RoleCard
+                      key={role.value}
+                      role={role}
+                      selected={form.values.accountRole === role.value}
+                      onClick={() => handleRoleSelect(role.value)}
+                    />
+                  ))}
+                </div>
+
+                {getError("accountRole") && (
+                  <p className="mt-2 text-[11px] font-medium text-red-600">
+                    {getError("accountRole")}
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleNextStep}
+                  className="flex h-10 items-center gap-2 rounded-lg bg-[#B91C1C] px-6 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
+                >
+                  Next
+                  <ArrowLeft
+                    size={14}
+                    strokeWidth={2.5}
+                    className="rotate-180"
+                  />
+                </button>
+              </div>
+            </FormSection>
+          )}
+
+          {currentStep === 2 && (
+            <>
+              <RoleWorkflowCard
+                selectedAccountRole={selectedAccountRole}
+                isBhcAccount={isBhcAccount}
+                isRhuAccount={isRhuAccount}
+              />
+
+              <FormSection
+                title={
+                  isBhcAccount
+                    ? "BHC Facility Assignment"
+                    : "RHU Facility Assignment"
+                }
+                subtitle={
+                  isBhcAccount
+                    ? "Assign the account to one Barangay Health Center and its connected Rural Health Unit."
+                    : "Assign the account to the Rural Health Unit workspace."
+                }
+                icon={<Building2 size={14} />}
+                delay={2}
+              >
+                {isBhcAccount && (
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <FormGroup
+                      label="Assigned Barangay Health Center"
+                      error={getError("bhcFacility")}
+                      required
+                    >
+                      <Select
+                        name="bhcFacility"
+                        value={form.values.bhcFacility}
+                        onChange={handleAccountChange}
+                        options={[
+                          {
+                            value: "",
+                            label: "Select Barangay Health Center",
+                          },
+                          ...BHC_FACILITIES.map((facility) => ({
+                            value: facility,
+                            label: facility,
+                          })),
+                        ]}
+                      />
+                    </FormGroup>
+
+                    <FormGroup
+                      label="Connected Rural Health Unit"
+                      error={getError("rhuFacility")}
+                      required
+                    >
+                      <Select
+                        name="rhuFacility"
+                        value={form.values.rhuFacility}
+                        onChange={handleAccountChange}
+                        options={RHU_FACILITIES.map((facility) => ({
+                          value: facility,
+                          label: facility,
+                        }))}
+                      />
+                    </FormGroup>
+                  </div>
+                )}
+
+                {isRhuAccount && (
+                  <div className="grid gap-4 lg:grid-cols-1">
+                    <FormGroup
+                      label="Assigned Rural Health Unit"
+                      error={getError("rhuFacility")}
+                      required
+                    >
+                      <Select
+                        name="rhuFacility"
+                        value={form.values.rhuFacility}
+                        onChange={handleAccountChange}
+                        options={RHU_FACILITIES.map((facility) => ({
+                          value: facility,
+                          label: facility,
+                        }))}
+                      />
+                    </FormGroup>
+                  </div>
+                )}
+              </FormSection>
+
+              <AccountSummary
+                values={form.values}
+                selectedAccountRole={selectedAccountRole}
+                isBhcAccount={isBhcAccount}
+                isRhuAccount={isRhuAccount}
+              />
+
+              <div
+                className="anim-fade-up flex items-center justify-between gap-3 pt-1"
+                style={stagger(4)}
+              >
+                <button
+                  type="button"
+                  onClick={handleBackStep}
+                  className="flex h-10 items-center gap-2 rounded-lg border border-[#E8ECF0] bg-white px-5 text-[12px] font-semibold text-[#6B7280] transition-colors hover:bg-[#F9FAFB]"
+                >
+                  <ChevronLeft size={14} strokeWidth={2.5} />
+                  Back
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={form.isSubmitting}
+                  className="flex h-10 items-center gap-2 rounded-lg bg-[#B91C1C] px-6 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <UserPlus size={14} strokeWidth={2.5} />
+                  {isEditMode ? "Save Changes" : "Create Account"}
+                </button>
+              </div>
+            </>
+          )}
         </form>
       </div>
 
@@ -336,6 +592,31 @@ export default function AddUser() {
         />
       )}
     </DashboardLayout>
+  );
+}
+
+function StepProgress({ currentStep }) {
+  return (
+    <div className="anim-fade-up rounded-2xl border border-slate-200/80 bg-white px-6 py-5 shadow-sm">
+      <div className="flex items-center gap-3">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+          <div
+            className="h-full rounded-full bg-[#B91C1C] transition-all duration-300"
+            style={{ width: currentStep === 1 ? "50%" : "100%" }}
+          />
+        </div>
+
+        <span className="whitespace-nowrap text-[11px] font-semibold text-[#0F172A]">
+          Step {currentStep} of 2
+        </span>
+      </div>
+
+      <p className="mt-3 text-xs leading-relaxed text-slate-500">
+        {currentStep === 1
+          ? "Please provide the identity details and select the account role."
+          : "Complete the facility assignment based on the selected role."}
+      </p>
+    </div>
   );
 }
 
@@ -354,22 +635,191 @@ function FormSection({ title, subtitle, icon, children, delay = 0 }) {
           {subtitle && <p className="text-[11px] text-slate-500">{subtitle}</p>}
         </div>
       </div>
+
       <div className="p-6">{children}</div>
     </section>
   );
 }
 
-function InfoNotice({ children, className = "", icon }) {
+function PasswordInput({
+  name,
+  value,
+  onChange,
+  showPassword,
+  setShowPassword,
+  placeholder,
+}) {
   return (
-    <div
-      className={`rounded-xl border border-red-100 bg-red-50/70 px-4 py-3 ${className}`}
+    <div className="relative">
+      <input
+        name={name}
+        type={showPassword ? "text" : "password"}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 pr-11 text-[13px] text-[#111827] outline-none transition placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+      />
+
+      <button
+        type="button"
+        onClick={() => setShowPassword((prev) => !prev)}
+        className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center justify-center text-slate-400 transition hover:text-[#B91C1C]"
+        aria-label={showPassword ? "Hide password" : "Show password"}
+      >
+        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
+  );
+}
+
+function RoleCard({ role, selected, onClick }) {
+  const Icon = role.value === "bhc_worker" ? Building2 : Hospital;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group flex min-h-[86px] items-center gap-4 rounded-xl border px-5 py-4 text-left transition-all duration-200 ${
+        selected
+          ? "border-[#B91C1C] bg-[#FEF2F2] shadow-sm"
+          : "border-slate-200 bg-white hover:border-[#B91C1C]/40 hover:bg-slate-50"
+      }`}
     >
-      <div className="flex gap-3">
-        <span className="mt-0.5 shrink-0 text-[#0F172A]">
-          {icon || <ShieldCheck size={16} />}
-        </span>
-        <p className="text-xs leading-relaxed text-slate-600">{children}</p>
+      <div
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors ${
+          selected
+            ? "bg-white text-[#B91C1C]"
+            : "bg-slate-100 text-slate-500 group-hover:text-[#B91C1C]"
+        }`}
+      >
+        <Icon size={18} />
       </div>
+
+      <div className="min-w-0">
+        <p
+          className={`text-[13px] font-bold ${
+            selected ? "text-[#991B1B]" : "text-slate-900"
+          }`}
+        >
+          {role.label}
+        </p>
+        <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+          {role.subtitle}
+        </p>
+        <p className="mt-1 text-[10px] text-slate-400">{role.roleLabel}</p>
+      </div>
+    </button>
+  );
+}
+
+function RoleWorkflowCard({ selectedAccountRole, isBhcAccount, isRhuAccount }) {
+  if (!selectedAccountRole) return null;
+
+  return (
+    <section
+      className="anim-fade-up rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm"
+      style={stagger(1)}
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
+            {isBhcAccount ? <Building2 size={18} /> : <Hospital size={18} />}
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">
+              {selectedAccountRole.workflowTitle}
+            </h2>
+            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">
+              {selectedAccountRole.workflowDescription}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2 text-[11px] font-bold text-slate-600">
+          {isBhcAccount && (
+            <>
+              <span className="rounded-lg border border-red-100 bg-red-50 px-3 py-1.5 text-[#B91C1C]">
+                BHC
+              </span>
+              <span className="text-slate-300">→</span>
+              <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-slate-700">
+                RHU
+              </span>
+            </>
+          )}
+
+          {isRhuAccount && (
+            <span className="rounded-lg border border-red-100 bg-red-50 px-3 py-1.5 text-[#B91C1C]">
+              RHU Workspace
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AccountSummary({
+  values,
+  selectedAccountRole,
+  isBhcAccount,
+  isRhuAccount,
+}) {
+  return (
+    <section
+      className="anim-fade-up rounded-2xl border border-slate-200/80 bg-white shadow-sm"
+      style={stagger(3)}
+    >
+      <div className="border-b border-slate-100 px-6 py-4">
+        <h2 className="text-[13px] font-bold text-slate-900">
+          Account Summary
+        </h2>
+        <p className="text-[11px] text-slate-500">
+          Confirm the role-based assignment before saving.
+        </p>
+      </div>
+
+      <div className="p-6">
+        <div className="space-y-3">
+          <SummaryRow label="Name" value={values.fullName || "Not provided"} />
+          <SummaryRow label="Email" value={values.email || "Not provided"} />
+          <SummaryRow
+            label="Role"
+            value={selectedAccountRole?.roleLabel || "Not selected"}
+          />
+
+          {isBhcAccount && (
+            <SummaryRow
+              label="Assigned Barangay Health Center"
+              value={values.bhcFacility || "Not selected"}
+            />
+          )}
+
+          {(isBhcAccount || isRhuAccount) && (
+            <SummaryRow
+              label={
+                isBhcAccount
+                  ? "Connected Rural Health Unit"
+                  : "Assigned Rural Health Unit"
+              }
+              value={values.rhuFacility || "Not selected"}
+            />
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SummaryRow({ label, value }) {
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-lg bg-slate-50 px-4 py-3">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+        {label}
+      </span>
+      <span className="max-w-[60%] text-right text-[12px] font-semibold text-slate-900">
+        {value}
+      </span>
     </div>
   );
 }
@@ -406,27 +856,38 @@ function getInitialValues(user) {
   const inferredAccountRole = getAccountRole(user?.accountRole)
     ? user.accountRole
     : getAccountRoleFromUser(user);
-  const accountRole = getAccountRole(inferredAccountRole);
-  const positions = POSITION_BY_ACCOUNT_ROLE[inferredAccountRole] || [];
-  const facilities = accountRole?.facilities || [];
+
+  const isBhcAccount = inferredAccountRole === "bhc_worker";
+  const isRhuAccount = inferredAccountRole === "rhu_staff";
+
+  const assignedBhc =
+    user?.bhcFacility ||
+    user?.assignedBarangayHealthCenter ||
+    (isBhcAccount ? user?.facility : "") ||
+    "";
+
+  const assignedRhu =
+    user?.rhuFacility ||
+    user?.assignedRuralHealthUnit ||
+    (isRhuAccount ? user?.facility : "") ||
+    DEFAULT_RHU_FACILITY;
 
   return {
     fullName: user?.fullName || user?.name || "",
     email: user?.email || "",
+    password: "",
     contactNumber: user?.contactNumber || "",
     accountRole: inferredAccountRole,
     position:
-      user?.position && positions.includes(user.position)
-        ? user.position
-        : positions.length === 1
-          ? positions[0]
-          : "",
-    facility:
-      user?.facility && facilities.includes(user.facility)
-        ? user.facility
-        : facilities.length === 1
-          ? facilities[0]
-          : "",
+      user?.position || POSITION_BY_ACCOUNT_ROLE[inferredAccountRole] || "",
+    facility: isBhcAccount
+      ? assignedBhc
+      : isRhuAccount
+        ? assignedRhu
+        : user?.facility || "",
+    bhcFacility: assignedBhc,
+    rhuFacility:
+      isBhcAccount || isRhuAccount ? assignedRhu : DEFAULT_RHU_FACILITY,
   };
 }
 
@@ -437,9 +898,24 @@ function getAccountRole(value) {
 function getAccountRoleFromUser(user) {
   if (!user) return "";
 
-  if (user.role === "Admin") return "admin_mho";
-  if (user.role === "BHC") return "bhc_worker";
-  if (user.role === "RHU") return "rhu_staff";
+  const roleText = [
+    user.accountRole,
+    user.accountRoleLabel,
+    user.role,
+    user.position,
+    user.facility,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (roleText.includes("bhc") || roleText.includes("barangay health")) {
+    return "bhc_worker";
+  }
+
+  if (roleText.includes("rhu") || roleText.includes("rural health")) {
+    return "rhu_staff";
+  }
 
   return "";
 }

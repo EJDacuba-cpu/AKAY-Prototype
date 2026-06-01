@@ -237,7 +237,7 @@ function HeaderAction({ to, icon, label, primary = false }) {
 function CareSnapshot({ stats, rhuVolumeSnapshot }) {
   const cards = [
     {
-      title: "Patients in Registry",
+      title: "Registered Patients",
       value: safeNumber(stats.totalPatients),
       description: "BHC patient profiles",
       icon: <Users size={17} />,
@@ -701,4 +701,3 @@ function getReferralDateValue(referral) {
 function sortByReferralDateDesc(a, b) {
   return getReferralDateValue(b) - getReferralDateValue(a);
 }
-

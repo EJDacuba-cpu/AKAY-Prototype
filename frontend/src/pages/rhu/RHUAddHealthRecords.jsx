@@ -784,8 +784,8 @@ export default function AddHealthRecord() {
 
         {isImmunization && (
           <FormSection
-            title="Smart Immunization Tracker"
-            subtitle="Digital immunization card with automated schedule tracking."
+            title="Immunization Record Tracker"
+            subtitle="Digital immunization card for documenting vaccine schedule entries."
             icon={<Syringe size={14} />}
             delay={2}
           >
@@ -798,7 +798,20 @@ export default function AddHealthRecord() {
               )}
             </div>
 
-            <div className="mb-6 max-w-xs">
+            <div className="mb-6 grid gap-4 lg:grid-cols-3">
+              <FieldInput
+                label="Date of Visit"
+                type="date"
+                required
+                value={dateOfVisit}
+                onChange={(event) => setDateOfVisit(event.target.value)}
+              />
+              <FieldInput
+                label="Time of Visit"
+                type="time"
+                value={timeOfVisit}
+                onChange={(event) => setTimeOfVisit(event.target.value)}
+              />
               <FieldSelect
                 label="Feeding Status"
                 value={immunizationData.feeding_status}
@@ -838,6 +851,16 @@ export default function AddHealthRecord() {
               Checking a higher dose automatically fills in previous doses in
               the same series.
             </p>
+
+            <div className="mt-5">
+              <FieldTextarea
+                label="Remarks / Notes"
+                value={consultationNotes}
+                onChange={(event) => setConsultationNotes(event.target.value)}
+                placeholder="Write immunization notes, guardian remarks, or post-vaccination observations..."
+                rows={3}
+              />
+            </div>
           </FormSection>
         )}
 
@@ -939,12 +962,14 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        <FormSection
-          title="Vital Signs"
-          subtitle="Record the patient's physiological measurements."
-          icon={<HeartPulse size={14} />}
-          delay={4}
-        >
+        {!isImmunization && (
+          <>
+            <FormSection
+              title="Vital Signs"
+              subtitle="Record the patient's physiological measurements."
+              icon={<HeartPulse size={14} />}
+              delay={4}
+            >
           <div className="grid gap-4 lg:grid-cols-3">
             <BpInputGroup
               systolic={systolicBp}
@@ -998,14 +1023,14 @@ export default function AddHealthRecord() {
               rows={3}
             />
           </div>
-        </FormSection>
+            </FormSection>
 
-        <FormSection
-          title="Patient Monitoring"
-          subtitle="Track patient progress and follow-up schedules."
-          icon={<HeartPulse size={14} />}
-          delay={5}
-        >
+            <FormSection
+              title="Patient Monitoring"
+              subtitle="Track patient progress and follow-up schedules."
+              icon={<HeartPulse size={14} />}
+              delay={5}
+            >
           <div className="grid gap-4 lg:grid-cols-2">
             <FieldSelect
               label="Patient Status"
@@ -1037,7 +1062,7 @@ export default function AddHealthRecord() {
               <option>Improving</option>
               <option>Stable</option>
               <option>No Improvement Observed</option>
-              <option>Needs Further Assessment</option>
+              <option>Needs Further Review</option>
               <option>Recovered</option>
             </FieldSelect>
           </div>
@@ -1050,7 +1075,9 @@ export default function AddHealthRecord() {
               rows={3}
             />
           </div>
-        </FormSection>
+            </FormSection>
+          </>
+        )}
 
         <div
           className="anim-fade-up flex items-center justify-end gap-3 pt-1 pb-4"
@@ -1483,7 +1510,7 @@ function ImmunizationSummaryCard({ data }) {
       <div className="flex items-start justify-between">
         <div className="min-w-0">
           <h3 className="text-sm font-bold text-[#1A1A1A]">
-            Immunization Coverage
+            Immunization Record Summary
           </h3>
           <p className="mt-0.5 text-xs text-[#6B7280]">
             <span className="font-semibold text-[#1F2937]">
@@ -1506,12 +1533,12 @@ function ImmunizationSummaryCard({ data }) {
       <div className="mt-4">
         <div className="mb-1.5 flex items-center justify-between">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-            Coverage
+            Vaccine Count
           </span>
           <span
             className={`text-sm font-bold tabular-nums ${fic ? "text-emerald-600" : "text-[#B91C1C]"}`}
           >
-            {stats.pct}%
+            {stats.completed} of {stats.total}
           </span>
         </div>
         <div className="h-2 w-full overflow-hidden rounded-full bg-[#F3F4F6]">

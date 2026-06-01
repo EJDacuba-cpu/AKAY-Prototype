@@ -86,8 +86,8 @@ export const PhilippineContactInput = ({
   );
 };
 
-// --- TPAL SCORE GRID (Maternal Specific) ---
-export const TpalScoreGrid = ({ form, onChange }) => {
+// --- TPAL HISTORY GRID (Maternal Specific) ---
+export const TpalHistoryGrid = ({ form, onChange }) => {
   const fields = [
     { label: "Term (T)", name: "term", placeholder: "0" },
     { label: "Preterm (P)", name: "preterm", placeholder: "0" },

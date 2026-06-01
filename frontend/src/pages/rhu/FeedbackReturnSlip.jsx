@@ -35,7 +35,7 @@ function StatusStepper({ currentStep }) {
   const steps = [
     { label: "BHC Referral", sub: "Referral sent to RHU" },
     { label: "RHU Received", sub: "Patient checked in" },
-    { label: "RHU Assessment", sub: "Assessment or monitoring" },
+    { label: "RHU Review", sub: "Return slip documentation" },
     { label: "Return Slip Sent", sub: "Final RHU response to BHC" },
   ];
 
@@ -462,7 +462,7 @@ export default function FeedbackReturnSlip() {
                 value={getReferringHci(selectedReferral)}
               />
               <Info
-                label="RHU Assessment Outcome"
+                label="RHU Return Slip Status"
                 value={form.assessmentOutcome}
               />
               <Info
@@ -690,13 +690,13 @@ export default function FeedbackReturnSlip() {
               <section className="rounded-xl border border-slate-200 bg-white p-6">
                 <SectionHeader
                   icon={<FileText size={18} />}
-                  title="RHU Assessment Outcome"
-                  description="This outcome is part of the return slip and does not change the official referral status."
+                  title="RHU Return Slip Status"
+                  description="This status is part of the return slip and does not change the official referral status."
                 />
                 <div className="space-y-4">
                   <div className="grid gap-4 lg:grid-cols-2">
                     <FieldSelect
-                      label="RHU Assessment Outcome"
+                      label="RHU Return Slip Status"
                       name="assessmentOutcome"
                       value={form.assessmentOutcome}
                       onChange={handleChange}
@@ -723,7 +723,7 @@ export default function FeedbackReturnSlip() {
                     name="recommendation"
                     value={form.recommendation}
                     onChange={handleChange}
-                    placeholder="Write recommendation, follow-up instructions, or BHC monitoring notes..."
+                    placeholder="Write follow-up instructions or BHC monitoring notes..."
                     required
                   />
                   <FieldTextarea
@@ -828,7 +828,7 @@ function CompletedReturnSlip({ referral, feedback }) {
               value={feedback?.receivingPractitioner}
             />
             <Info
-              label="RHU Assessment Outcome"
+              label="RHU Return Slip Status"
               value={feedback?.assessmentOutcome || feedback?.monitoringStatus}
             />
             <Info label="Follow-up Date" value={feedback?.followUpDate} />

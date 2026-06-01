@@ -440,7 +440,7 @@ function ReturnSlipTab({ referral }) {
       </RecordSection>
 
       <RecordSection
-        title="RHU Assessment Outcome / Recommendation"
+        title="RHU Return Slip Status / Instructions"
         icon={<FileText size={14} />}
       >
         <Narrative
@@ -451,7 +451,7 @@ function ReturnSlipTab({ referral }) {
           ]
             .filter(Boolean)
             .join("\n\n")}
-          empty="No RHU assessment outcome recorded."
+          empty="No RHU return slip status recorded."
         />
       </RecordSection>
 

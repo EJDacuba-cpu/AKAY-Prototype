@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
-  CalendarDays,
   ClipboardList,
   FileText,
   HeartPulse,
@@ -139,6 +138,8 @@ export default function RHUReports() {
   }, []);
 
   const reportSource = useMemo(() => {
+    void dataVersion;
+
     return {
       referrals: readStoredCollection("referrals"),
       patients: readStoredCollection("patients"),
@@ -538,8 +539,8 @@ function CategoryRankingCard({ categories, total }) {
             {topCategory.category}
           </p>
           <p className="mt-1 text-xs text-[#64748B]">
-            {topCategory.count} referral{topCategory.count === 1 ? "" : "s"} Â·{" "}
-            {topCategory.percent}% of current report
+            {formatNumber(topCategory.count)} referral
+            {topCategory.count === 1 ? "" : "s"} in the current report
           </p>
         </div>
       ) : (
@@ -641,7 +642,7 @@ function BarangayReferralTable({ barangayReports }) {
               <th className="px-4 py-3">Referrals</th>
               <th className="px-4 py-3">Completed</th>
               <th className="px-4 py-3">Monitoring</th>
-              <th className="px-4 py-3">Share</th>
+              <th className="px-4 py-3">Referral Count</th>
             </tr>
           </thead>
 
@@ -679,7 +680,7 @@ function BarangayReferralTable({ barangayReports }) {
                         />
                       </div>
                       <span className="w-9 text-right text-[11px] font-bold text-[#64748B]">
-                        {item.share}%
+                        {formatNumber(item.referrals)}
                       </span>
                     </div>
                   </td>
@@ -1573,15 +1574,3 @@ function formatNumber(value) {
   return parsed.toLocaleString();
 }
 
-function formatDateTime(value) {
-  const parsed = value instanceof Date ? value : new Date(value);
-
-  if (Number.isNaN(parsed.getTime())) return "just now";
-
-  return parsed.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
