@@ -3,213 +3,118 @@ import { HeartPulse } from "lucide-react";
 import { stagger } from "../../../utils/animation";
 import { getRhuVolumeSnapshot } from "../../../services/volumeService";
 
-export default function PatientVolumeCard({ delay = 0, snapshot }) {
+export default function PatientVolumeCard({
+  delay = 0,
+  snapshot,
+  title = "RHU Patient Volume",
+  subtitle = "Automatically based on today's RHU workload.",
+  statusSuffix = "Volume",
+}) {
   const volumeSnapshot = snapshot || getRhuVolumeSnapshot();
-  const counts = volumeSnapshot.counts || {};
+  const status = normalizeVolumeStatus(volumeSnapshot.status);
   const volumeMap = {
     Low: {
-      percent: `${volumeSnapshot.percent || 18}%`,
-      title: "Low Volume",
+      label: "Low",
       description:
         "RHU currently has manageable patient flow and can accommodate referrals efficiently.",
-
-      expectedWait: "Low",
-      referralTiming: "Recommended",
-
-      bar: "from-emerald-400 to-emerald-500",
-
-      container: "border-emerald-100 bg-emerald-50/60",
-
-      badge: "bg-emerald-100 text-emerald-700",
-
+      border: "#10B981",
+      iconBg: "#ECFDF5",
+      iconColor: "#047857",
+      badge: "border-emerald-100 bg-emerald-50 text-emerald-700",
       pulse: "bg-emerald-500",
     },
-
     Normal: {
-      percent: `${volumeSnapshot.percent || 48}%`,
-      title: "Normal Volume",
-
+      label: "Normal",
       description:
         "Standard patient activity detected. Referral processing remains stable.",
-
-      expectedWait: "Moderate",
-      referralTiming: "Allowed",
-
-      bar: "from-slate-400 to-slate-500",
-
-      container: "border-slate-200 bg-slate-50/80",
-
-      badge: "bg-slate-100 text-slate-700",
-
-      pulse: "bg-slate-500",
+      border: "#3B82F6",
+      iconBg: "#EFF6FF",
+      iconColor: "#1D4ED8",
+      badge: "border-blue-100 bg-blue-50 text-blue-700",
+      pulse: "bg-blue-500",
     },
-
     High: {
-      percent: `${volumeSnapshot.percent || 82}%`,
-      title: "High Volume",
-
+      label: "High",
       description:
         "RHU is currently handling high patient volume. Non-urgent referrals may experience delays.",
-
-      expectedWait: "Long",
-      referralTiming: "Urgent only",
-
-      bar: "from-amber-400 to-amber-500",
-
-      container: "border-amber-100 bg-amber-50/70",
-
-      badge: "bg-amber-100 text-amber-700",
-
+      border: "#D97706",
+      iconBg: "#FFFBEB",
+      iconColor: "#B45309",
+      badge: "border-amber-100 bg-amber-50 text-amber-700",
       pulse: "bg-amber-500",
     },
   };
 
-  const selected = volumeMap[volumeSnapshot.status] || volumeMap.Normal;
+  const selected = volumeMap[status] || volumeMap.Normal;
+  const statusLabel = [selected.label, statusSuffix].filter(Boolean).join(" ");
+  const updatedLabel = volumeSnapshot.updatedLabel || "now";
 
   return (
-    <section
-      className="anim-fade-up overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm"
-      style={stagger(delay)}
+    <div
+      className="anim-fade-up group relative overflow-hidden rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/[0.04]"
+      style={{ borderTopColor: selected.border, ...stagger(delay) }}
     >
-      <div className="flex items-center justify-between border-b border-[#F3F4F6] px-4 py-3">
-        <div>
-          <h2 className="text-sm font-bold text-[#0F172A]">
-            RHU Patient Volume
-          </h2>
+      <div
+        className="absolute inset-0 opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+        style={{
+          background: `linear-gradient(135deg, ${selected.iconBg} 0%, transparent 54%)`,
+        }}
+      />
 
-          <p className="mt-0.5 text-[11px] text-[#94A3B8]">
-            Automatically based on today&apos;s RHU workload.
-          </p>
-        </div>
-
+      <div className="relative flex items-start justify-between gap-3">
+        <p className="min-w-0 text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
+          {title}
+        </p>
         <div
-          className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-bold ${selected.badge}`}
+          className="rounded-lg p-2.5 transition-transform duration-300 group-hover:scale-110"
+          style={{ backgroundColor: selected.iconBg, color: selected.iconColor }}
         >
-          <span className="relative flex h-2 w-2">
-            <span
-              className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${selected.pulse}`}
-            />
-
-            <span
-              className={`relative inline-flex h-2 w-2 rounded-full ${selected.pulse}`}
-            />
-          </span>
-          LIVE
+          <HeartPulse size={17} />
         </div>
       </div>
 
-      <div className="grid gap-3 p-4 xl:grid-cols-[230px_minmax(0,1fr)]">
-        <div className={`rounded-lg border p-4 ${selected.container}`}>
-          <div className="flex items-center gap-4">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-white text-[#B91C1C] shadow-sm">
-              <HeartPulse size={21} />
-            </div>
-
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#6B7280]">
-                Current Status
-              </p>
-
-              <h3 className="mt-1 text-xl font-bold tracking-tight text-[#0F172A]">
-                {selected.title}
-              </h3>
-            </div>
-          </div>
-
-          <p className="mt-4 text-xs leading-relaxed text-[#4B5563]">
-            {selected.description}
-          </p>
-
-          <div className="mt-4 rounded-lg border border-white/70 bg-white/75 px-3 py-2.5">
-            <p className="text-[11px] font-medium text-[#6B7280]">
-              Workload score
-            </p>
-
-            <p className="mt-1 text-xs font-semibold text-[#0F172A]">
-              {formatScore(volumeSnapshot.workloadScore)}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-center rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] p-4">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-[#4B5563]">
-              Capacity Indicator
-            </p>
-
-            <p className="text-[11px] font-bold text-[#B91C1C]">
-              {selected.percent}
-            </p>
-          </div>
-
-          <div className="mt-3 h-3 overflow-hidden rounded-full bg-[#E5E7EB]">
-            <div
-              className={`h-full rounded-full bg-gradient-to-r ${selected.bar}`}
-              style={{
-                width: selected.percent,
-              }}
-            />
-          </div>
-
-          <div className="mt-2 flex justify-between text-[10px] font-semibold text-[#BCC3CD]">
-            <span>Low</span>
-            <span>Moderate</span>
-            <span>High</span>
-          </div>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <VolumeInfoCard
-              label="Incoming Today"
-              value={counts.incomingReferralsToday || 0}
-            />
-
-            <VolumeInfoCard
-              label="Walk-ins Today"
-              value={counts.walkInPatientsToday || 0}
-            />
-
-            <VolumeInfoCard
-              label="High Priority"
-              value={counts.highPriorityReferrals || 0}
-            />
-
-            <VolumeInfoCard
-              label="For Monitoring"
-              value={counts.patientsForMonitoring || 0}
-            />
-
-            <VolumeInfoCard
-              label="Received Today"
-              value={counts.receivedReferralsToday || 0}
-            />
-
-            <VolumeInfoCard
-              label="Pending"
-              value={counts.pendingReferrals || 0}
-            />
-          </div>
-        </div>
+      <div className="relative mt-4 flex flex-wrap items-center gap-2">
+        <p className="text-2xl font-bold leading-none tracking-tight text-[#0F172A]">
+          {statusLabel}
+        </p>
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${selected.badge}`}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${selected.pulse}`} />
+          Live
+        </span>
       </div>
-    </section>
+
+      <p className="relative mt-2 line-clamp-3 text-xs leading-relaxed text-[#64748B]">
+        {selected.description || subtitle}
+      </p>
+
+      <div className="relative mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#F3F4F6] pt-3">
+        <p className="text-[10px] font-semibold text-[#9CA3AF]">
+          Updated {updatedLabel}
+        </p>
+        <p className="rounded-lg bg-[#F8FAFC] px-2.5 py-1 text-[10px] font-bold text-[#64748B]">
+          Score {formatScore(volumeSnapshot.workloadScore)}
+        </p>
+      </div>
+    </div>
   );
+}
+
+function normalizeVolumeStatus(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+
+  if (normalized.includes("high")) return "High";
+  if (normalized.includes("normal") || normalized.includes("moderate")) {
+    return "Normal";
+  }
+
+  return "Low";
 }
 
 function formatScore(value) {
   const score = Number(value || 0);
   return Number.isInteger(score) ? String(score) : score.toFixed(1);
 }
-
-function VolumeInfoCard({ label, value }) {
-  return (
-    <div className="rounded-lg border border-[#E5E7EB] bg-white p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#9CA3AF]">
-        {label}
-      </p>
-
-      <p className="mt-2 text-sm font-bold text-[#0F172A]">{value}</p>
-    </div>
-  );
-}
-
-
-

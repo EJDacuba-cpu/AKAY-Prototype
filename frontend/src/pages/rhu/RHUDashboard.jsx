@@ -10,7 +10,6 @@ import {
   QrCode,
   Stethoscope,
   UserPlus,
-  Users,
 } from "lucide-react";
 import { Link } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -106,18 +105,11 @@ export default function RHUDashboard() {
   const [now, setNow] = useState(() => new Date());
   const volumeSnapshot = getRhuVolumeSnapshot();
   const workloadCounts = volumeSnapshot.counts || {};
-  const volumeStatus = volumeSnapshot.status || "Low";
   const pendingReferrals = incomingReferrals.filter(
     (referral) => referral.status === "Pending",
   ).length;
-  const receivedPatients = incomingReferrals.filter(
-    (referral) => referral.status === "Received",
-  ).length;
   const forFeedback = incomingReferrals.filter((referral) =>
     ["Received", "For Monitoring"].includes(referral.status),
-  ).length;
-  const completedCases = incomingReferrals.filter(
-    (referral) => referral.status === "Completed",
   ).length;
   const noShowCases = incomingReferrals.filter(
     (referral) => referral.status === "No-Show",
@@ -164,7 +156,7 @@ export default function RHUDashboard() {
           </div>
         </section>
 
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
           <StatCard
             title="Incoming Referrals"
             value={
@@ -176,13 +168,21 @@ export default function RHUDashboard() {
             delay={1}
           />
 
+          <PatientVolumeCard
+            delay={2}
+            snapshot={volumeSnapshot}
+            title="Current Patient Volume"
+            subtitle="Current RHU workload based on today's referrals and patients."
+            statusSuffix=""
+          />
+
           <StatCard
             title="Pending Referrals"
             value={pendingReferrals}
             subtitle="awaiting RHU action"
             icon={<ClipboardList size={17} />}
             color="slate"
-            delay={2}
+            delay={3}
           />
 
           <StatCard
@@ -200,14 +200,12 @@ export default function RHUDashboard() {
             subtitle="patient did not arrive"
             icon={<AlertTriangle size={17} />}
             color="amber"
-            delay={6}
+            delay={5}
           />
         </div>
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
           <div className="min-w-0 space-y-6">
-            <PatientVolumeCard delay={5} snapshot={volumeSnapshot} />
-
             <SectionCard
               title="Incoming Referral Queue"
               subtitle="Recently submitted BHC-to-RHU referrals awaiting RHU action."

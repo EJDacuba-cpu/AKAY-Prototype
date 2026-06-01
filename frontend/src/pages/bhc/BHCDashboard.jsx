@@ -1,6 +1,5 @@
 import {
   ArrowRight,
-  CalendarCheck2,
   ClipboardList,
   FileText,
   HeartPulse,
@@ -28,6 +27,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 /* Cards */
 import SideCard from "../../components/common/cards/SideCard";
 import MedicineAlert from "../../components/common/cards/MedicineAlert";
+import PatientVolumeCard from "../../components/features/volume/PatientVolumeCard";
 
 /* Services */
 import {
@@ -137,16 +137,6 @@ export default function BHCDashboard() {
       .slice(0, 6);
   }, [uniqueReferrals]);
 
-  const followUpItems = useMemo(() => {
-    return activeReferrals
-      .filter((referral) =>
-        ["Received", "For Monitoring", "No-Show"].includes(
-          getReferralStatus(referral),
-        ),
-      )
-      .slice(0, 4);
-  }, [activeReferrals]);
-
   if (loading || !stats) {
     return (
       <DashboardLayout role="bhc" title="Dashboard">
@@ -166,9 +156,7 @@ export default function BHCDashboard() {
       <div className="mx-auto w-full max-w-[1500px] space-y-4">
         <BHCWorkboardHeader userName={userName} now={now} />
 
-        <CareSnapshot stats={stats} />
-
-        <RhuVolumeWorkloadPanel snapshot={rhuVolumeSnapshot} />
+        <CareSnapshot stats={stats} rhuVolumeSnapshot={rhuVolumeSnapshot} />
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="min-w-0 space-y-4">
@@ -246,7 +234,7 @@ function HeaderAction({ to, icon, label, primary = false }) {
   );
 }
 
-function CareSnapshot({ stats }) {
+function CareSnapshot({ stats, rhuVolumeSnapshot }) {
   const cards = [
     {
       title: "Patients in Registry",
@@ -279,7 +267,7 @@ function CareSnapshot({ stats }) {
   ];
 
   return (
-    <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+    <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
       {cards.map((card, index) => (
         <div
           key={card.title}
@@ -307,6 +295,14 @@ function CareSnapshot({ stats }) {
           </div>
         </div>
       ))}
+
+      <PatientVolumeCard
+        delay={cards.length + 1}
+        snapshot={rhuVolumeSnapshot}
+        title="RHU Patient Volume"
+        subtitle="Read-only RHU workload before sending referrals."
+        statusSuffix="Volume"
+      />
     </section>
   );
 }
@@ -460,142 +456,6 @@ function ChiefComplaintSummaryCard({ activeCount, referrals }) {
   );
 }
 
-function RhuVolumeWorkloadPanel({ snapshot }) {
-  const status = getVolumeStatus(snapshot);
-  const score = getVolumeScore(snapshot);
-  const percent = getVolumePercent(snapshot, score);
-  const tone = getVolumeTone(status);
-  const counts = [
-    {
-      label: "Incoming referrals",
-      value: getVolumeCount(snapshot, [
-        "incomingReferralsToday",
-        "incomingReferrals",
-        "referralsToday",
-      ]),
-    },
-    {
-      label: "Priority cases",
-      value: getVolumeCount(snapshot, [
-        "highPriorityReferrals",
-        "urgentReferrals",
-        "priorityReferrals",
-      ]),
-    },
-    {
-      label: "Walk-in patients",
-      value: getVolumeCount(snapshot, [
-        "walkInPatientsToday",
-        "walkInsToday",
-        "walkIns",
-      ]),
-    },
-    {
-      label: "For monitoring",
-      value: getVolumeCount(snapshot, [
-        "patientsForMonitoring",
-        "monitoringPatients",
-        "forMonitoring",
-      ]),
-    },
-  ];
-
-  return (
-    <section
-      className="anim-fade-up overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm"
-      style={stagger(5)}
-    >
-      <div className="flex flex-col gap-2 border-b border-[#F1F5F9] bg-[#FFF7F7] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-sm font-black text-[#0F172A]">
-            RHU Patient Volume
-          </h2>
-          <p className="mt-0.5 text-xs text-[#94A3B8]">
-            Based on today&apos;s RHU workload before sending referrals.
-          </p>
-        </div>
-
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-[#B91C1C] shadow-sm">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          Live workload
-        </span>
-      </div>
-
-      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(240px,300px)_minmax(0,1fr)]">
-        <div className={`rounded-xl border p-4 ${tone.panel}`}>
-          <div className="flex items-start gap-3">
-            <span
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tone.icon}`}
-            >
-              <HeartPulse size={18} />
-            </span>
-
-            <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#94A3B8]">
-                Current status
-              </p>
-              <p className="mt-1 text-2xl font-black tracking-tight text-[#0F172A]">
-                {status} Volume
-              </p>
-              <p className="mt-2 text-xs leading-relaxed text-[#64748B]">
-                {getVolumeMessage(status)}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-3">
-          <div className="rounded-xl border border-[#F1F5F9] bg-[#F8FAFC]/70 p-4">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#94A3B8]">
-                  Workload score
-                </p>
-                <p className="mt-1 text-xs text-[#64748B]">
-                  Based on referrals, walk-ins, priority cases, and monitoring.
-                </p>
-              </div>
-
-              <span className="text-2xl font-black tabular-nums text-[#0F172A]">
-                {score}
-              </span>
-            </div>
-
-            <div className="h-2.5 overflow-hidden rounded-full bg-white ring-1 ring-[#E5E7EB]">
-              <div
-                className={`h-full rounded-full ${tone.bar}`}
-                style={{ width: `${percent}%` }}
-              />
-            </div>
-
-            <div className="mt-2 flex justify-between text-[10px] font-bold uppercase tracking-wide text-[#94A3B8]">
-              <span>Low</span>
-              <span>Normal</span>
-              <span>High</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-            {counts.map((item) => (
-              <div
-                key={item.label}
-                className="min-w-0 rounded-xl border border-[#F1F5F9] bg-white px-3 py-3 shadow-sm"
-              >
-                <p className="truncate text-[10px] font-bold uppercase tracking-wide text-[#94A3B8]">
-                  {item.label}
-                </p>
-                <p className="mt-1 text-xl font-black tabular-nums text-[#0F172A]">
-                  {item.value}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function RHUReadinessCard({ availability, medicineAlerts }) {
   const unavailableMedicines = medicineAlerts.filter((medicine) =>
     String(medicine.status || "")
@@ -716,26 +576,6 @@ function MedicineAvailabilityCard({ medicineAlerts }) {
   );
 }
 
-function ReferralStatusBadge({ status }) {
-  const map = {
-    Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
-    Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
-    "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-  };
-
-  return (
-    <span
-      className={`inline-flex rounded-md border px-2 py-1 text-[10px] font-black uppercase tracking-wide ${
-        map[status] || map.Pending
-      }`}
-    >
-      {status || "Pending"}
-    </span>
-  );
-}
-
 function getCurrentUserDisplayName() {
   if (typeof window === "undefined") return "BHC Worker";
 
@@ -792,96 +632,6 @@ function formatCurrentTime(date) {
   });
 }
 
-function getVolumeStatus(snapshot) {
-  const raw =
-    snapshot?.status ||
-    snapshot?.volumeStatus ||
-    snapshot?.currentStatus ||
-    snapshot?.level ||
-    "Low";
-  const normalized = String(raw).trim().toLowerCase();
-
-  if (normalized.includes("high")) return "High";
-  if (normalized.includes("normal") || normalized.includes("moderate")) {
-    return "Normal";
-  }
-  return "Low";
-}
-
-function getVolumeScore(snapshot) {
-  const value =
-    snapshot?.workloadScore ??
-    snapshot?.score ??
-    snapshot?.loadScore ??
-    snapshot?.capacityScore ??
-    0;
-  const parsed = Number(value);
-
-  if (!Number.isFinite(parsed)) return 0;
-  return Number.isInteger(parsed) ? parsed : Number(parsed.toFixed(1));
-}
-
-function getVolumePercent(snapshot, score) {
-  const value =
-    snapshot?.capacityPercent ??
-    snapshot?.percent ??
-    snapshot?.usagePercent ??
-    (score / 25) * 100;
-  const parsed = Number(value);
-
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, Math.min(100, Math.round(parsed)));
-}
-
-function getVolumeCount(snapshot, keys) {
-  for (const key of keys) {
-    const directValue = snapshot?.[key];
-    const nestedValue = snapshot?.counts?.[key] ?? snapshot?.components?.[key];
-    const value = directValue ?? nestedValue;
-    const parsed = Number(value);
-
-    if (Number.isFinite(parsed)) return parsed;
-  }
-
-  return 0;
-}
-
-function getVolumeMessage(status) {
-  const map = {
-    Low: "RHU currently has manageable patient flow and can accommodate referrals efficiently.",
-    Normal:
-      "RHU has moderate activity. Referrals can proceed, but BHC should monitor updates.",
-    High: "RHU workload is high. BHC should prioritize urgent referrals and check availability first.",
-  };
-
-  return map[status] || map.Low;
-}
-
-function getVolumeTone(status) {
-  const map = {
-    Low: {
-      panel: "border-emerald-100 bg-emerald-50/55",
-      icon: "bg-white text-[#B91C1C] ring-1 ring-emerald-100",
-      badge: "bg-emerald-100 text-emerald-700",
-      bar: "bg-emerald-500",
-    },
-    Normal: {
-      panel: "border-[#FEE2E2] bg-[#FEF2F2]/70",
-      icon: "bg-white text-[#B91C1C] ring-1 ring-[#FECACA]",
-      badge: "bg-[#FEE2E2] text-[#991B1B]",
-      bar: "bg-[#B91C1C]",
-    },
-    High: {
-      panel: "border-amber-100 bg-amber-50/70",
-      icon: "bg-white text-amber-700 ring-1 ring-amber-100",
-      badge: "bg-amber-100 text-amber-800",
-      bar: "bg-amber-500",
-    },
-  };
-
-  return map[status] || map.Low;
-}
-
 function getMetricTone(tone) {
   const map = {
     red: "bg-[#FEF2F2] text-[#B91C1C]",
@@ -919,23 +669,6 @@ function getReferralTrackingId(referral) {
   );
 }
 
-function getReferralPatientName(referral) {
-  if (!referral) return "Unnamed Patient";
-
-  if (typeof referral.patient === "string") return referral.patient;
-
-  return (
-    referral.patientName ||
-    referral.patient_name ||
-    referral.patient?.name ||
-    referral.name ||
-    [referral.patient?.firstName, referral.patient?.lastName]
-      .filter(Boolean)
-      .join(" ") ||
-    "Unnamed Patient"
-  );
-}
-
 function getReferralConcern(referral) {
   return (
     referral?.chiefComplaint ||
@@ -969,24 +702,3 @@ function sortByReferralDateDesc(a, b) {
   return getReferralDateValue(b) - getReferralDateValue(a);
 }
 
-function formatReferralDate(referral) {
-  const raw =
-    referral?.dateOfReferral ||
-    referral?.referralDate ||
-    referral?.createdAt ||
-    referral?.created_at ||
-    referral?.submittedAt ||
-    referral?.dateSubmitted ||
-    referral?.date;
-
-  if (!raw) return "No date";
-
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return raw;
-
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
