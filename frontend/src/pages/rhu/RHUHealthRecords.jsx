@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import {
@@ -14,9 +14,12 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ListToolbar from "../../components/common/list/ListToolbar";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
+import {
+  formatDisplayValue,
+  formatPatientName,
+  formatUserName,
+} from "../../utils/formatters";
 
-const STORAGE_KEY = "akay_rhu_health_records";
-const LEGACY_STORAGE_KEY = "rhu_health_records";
 const PER_PAGE = 8;
 
 const DEFAULT_FILTERS = {
@@ -54,23 +57,22 @@ export default function RHUHealthRecords() {
             ...record,
             id: recordId,
             trackingId: record.trackingId || recordId,
-            patientName:
-              record.patientName ||
-              record.patient ||
-              record.patient?.name ||
-              [record.firstName, record.lastName].filter(Boolean).join(" ") ||
+            patientName: formatPatientName(
+              record.patientName || record.patient || record,
               "Unnamed Patient",
+            ),
             classification:
               record.patientClassification ||
               record.classification ||
               record.category ||
               inferClassification(record),
-            concern:
+            concern: formatDisplayValue(
               record.chiefComplaint ||
-              record.concern ||
-              record.summaryOfPresentIllness ||
-              record.diagnosis ||
+                record.concern ||
+                record.summaryOfPresentIllness ||
+                record.diagnosis,
               "General Consultation",
+            ),
             status: normalizeHealthRecordStatus(
               record.followUpStatus || record.status || record.recordStatus,
             ),
@@ -81,12 +83,15 @@ export default function RHUHealthRecords() {
               record.date ||
               record.createdAt ||
               "No Date",
-            provider:
+            provider: formatUserName(
               record.attendingStaff ||
-              record.recordedBy ||
-              record.provider ||
-              record.practitioner ||
+                record.recordedBy ||
+                record.createdBy ||
+                record.created_by ||
+                record.provider ||
+                record.practitioner,
               "RHU Staff",
+            ),
           };
         });
 
@@ -101,23 +106,11 @@ export default function RHUHealthRecords() {
 
     fetchRecords();
 
-    function handleStorageChange(event) {
-      if (
-        !event.key ||
-        event.key === STORAGE_KEY ||
-        event.key === LEGACY_STORAGE_KEY
-      ) {
-        fetchRecords();
-      }
-    }
-
-    window.addEventListener("storage", handleStorageChange);
     window.addEventListener("akay:rhu-health-records-updated", fetchRecords);
     window.addEventListener("akay:health-records-updated", fetchRecords);
 
     return () => {
       active = false;
-      window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener(
         "akay:rhu-health-records-updated",
         fetchRecords,
@@ -347,7 +340,7 @@ function RHUHealthRecordsTable({
                     to={`/rhu/health-records/${record.id}`}
                     className="transition-colors hover:text-[#B91C1C]"
                   >
-                    {record.patientName}
+                    {formatPatientName(record.patientName, "Unnamed Patient")}
                   </Link>
                 </td>
 

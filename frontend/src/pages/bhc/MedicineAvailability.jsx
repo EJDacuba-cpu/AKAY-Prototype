@@ -58,12 +58,10 @@ export default function MedicineAvailability() {
 
     loadAllItems();
 
-    window.addEventListener("storage", loadAllItems);
     window.addEventListener(BHC_MEDICINES_UPDATED_EVENT, loadBhcItems);
     window.addEventListener(RHU_MEDICINES_UPDATED_EVENT, loadRhuItems);
 
     return () => {
-      window.removeEventListener("storage", loadAllItems);
       window.removeEventListener(BHC_MEDICINES_UPDATED_EVENT, loadBhcItems);
       window.removeEventListener(RHU_MEDICINES_UPDATED_EVENT, loadRhuItems);
     };

@@ -28,6 +28,11 @@ import { Bar, Chart, Doughnut } from "react-chartjs-2";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ListToolbar from "../../components/common/list/ListToolbar";
+import { refreshAdminAccounts } from "../../services/adminAccountsService";
+import { getHealthRecords } from "../../services/healthRecordService";
+import { refreshRhuMedicines } from "../../services/medicineService";
+import { getPatients } from "../../services/patientService";
+import { getReferrals } from "../../services/referrals";
 
 ChartJS.register(
   CategoryScale,
@@ -40,8 +45,6 @@ ChartJS.register(
   Tooltip,
   Legend,
 );
-
-const REPORT_CACHE_KEY = "akay_admin_reports_snapshot";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -68,96 +71,14 @@ const BULAKAN_BARANGAYS = [
   "Tibig",
 ];
 
-const STORAGE_LOOKUP = {
-  referrals: {
-    keys: [
-      "akay_referrals",
-      "referrals",
-      "rhu_referrals",
-      "akay_rhu_referrals",
-      "akay_incoming_referrals",
-      "incoming_referrals",
-      "akay_incoming_referrals_records",
-    ],
-    keyIncludes: ["referral"],
-    collectionKeys: ["referrals", "items", "data", "records"],
-    predicate: isReferralLike,
-  },
-  patients: {
-    keys: [
-      "akay_bhc_patients",
-      "bhc_patients",
-      "akay_rhu_patients",
-      "rhu_patients",
-      "patients",
-      "akay_patients",
-      "akay_patient_details",
-    ],
-    keyIncludes: ["patient"],
-    collectionKeys: ["patients", "items", "data", "records"],
-    predicate: isPatientLike,
-  },
-  healthRecords: {
-    keys: [
-      "akay_health_records",
-      "health_records",
-      "bhc_health_records",
-      "akay_bhc_health_records",
-      "akay_rhu_health_records",
-      "rhu_health_records",
-      "records",
-    ],
-    keyIncludes: ["health_record", "health-record"],
-    collectionKeys: ["records", "healthRecords", "items", "data"],
-    predicate: isHealthRecordLike,
-  },
-  medicines: {
-    keys: [
-      "akay_rhu_medicines",
-      "rhu_medicines",
-      "akay_medicine_inventory",
-      "medicine_inventory",
-      "medicines",
-      "rhu_medicine_availability",
-    ],
-    keyIncludes: ["medicine", "med"],
-    collectionKeys: ["medicines", "items", "inventory", "data", "records"],
-    predicate: isMedicineLike,
-  },
-  users: {
-    keys: [
-      "akay_users",
-      "users",
-      "user_profiles",
-      "akay_user_profiles",
-      "auth_users",
-      "akay_auth_users",
-    ],
-    keyIncludes: ["user"],
-    collectionKeys: [
-      "users",
-      "userProfiles",
-      "profiles",
-      "items",
-      "data",
-      "records",
-    ],
-    predicate: isUserLike,
-  },
-  doctors: {
-    keys: [
-      "akay_doctor_availability",
-      "doctor_availability",
-      "rhu_doctor_availability",
-      "akay_rhu_doctors",
-      "rhu_doctors",
-      "doctors",
-    ],
-    keyIncludes: ["doctor"],
-    collectionKeys: ["doctors", "items", "data", "records"],
-    predicate: isDoctorLike,
-  },
-};
+const EMPTY_REPORT_SOURCE = Object.freeze({
+  referrals: [],
+  patients: [],
+  healthRecords: [],
+  medicines: [],
+  users: [],
+  doctors: [],
+});
 
 const chartPalette = {
   red: "#B91C1C",
@@ -178,13 +99,14 @@ const chartPalette = {
 export default function AdminReports() {
   const [dataVersion, setDataVersion] = useState(0);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [reportSource, setReportSource] = useState(EMPTY_REPORT_SOURCE);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     function refreshReports() {
       setDataVersion((current) => current + 1);
     }
 
-    window.addEventListener("storage", refreshReports);
     window.addEventListener("akay:referrals-updated", refreshReports);
     window.addEventListener("akay:rhu-referrals-updated", refreshReports);
     window.addEventListener("akay:patients-updated", refreshReports);
@@ -193,13 +115,11 @@ export default function AdminReports() {
     window.addEventListener("akay:health-records-updated", refreshReports);
     window.addEventListener("akay:bhc-health-records-updated", refreshReports);
     window.addEventListener("akay:rhu-health-records-updated", refreshReports);
-    window.addEventListener("akay:medicines-updated", refreshReports);
-    window.addEventListener("akay:rhu-medicines-updated", refreshReports);
-    window.addEventListener("akay:users-updated", refreshReports);
-    window.addEventListener("akay:doctor-availability-updated", refreshReports);
+    window.addEventListener("akay_bhc_medicines_updated", refreshReports);
+    window.addEventListener("akay_rhu_medicines_updated", refreshReports);
+    window.addEventListener("akay:admin-accounts-updated", refreshReports);
 
     return () => {
-      window.removeEventListener("storage", refreshReports);
       window.removeEventListener("akay:referrals-updated", refreshReports);
       window.removeEventListener("akay:rhu-referrals-updated", refreshReports);
       window.removeEventListener("akay:patients-updated", refreshReports);
@@ -214,26 +134,53 @@ export default function AdminReports() {
         "akay:rhu-health-records-updated",
         refreshReports,
       );
-      window.removeEventListener("akay:medicines-updated", refreshReports);
-      window.removeEventListener("akay:rhu-medicines-updated", refreshReports);
-      window.removeEventListener("akay:users-updated", refreshReports);
-      window.removeEventListener(
-        "akay:doctor-availability-updated",
-        refreshReports,
-      );
+      window.removeEventListener("akay_bhc_medicines_updated", refreshReports);
+      window.removeEventListener("akay_rhu_medicines_updated", refreshReports);
+      window.removeEventListener("akay:admin-accounts-updated", refreshReports);
     };
   }, []);
 
-  const reportSource = useMemo(() => {
-    void dataVersion;
+  useEffect(() => {
+    let active = true;
 
-    return {
-      referrals: readStoredCollection("referrals"),
-      patients: readStoredCollection("patients"),
-      healthRecords: readStoredCollection("healthRecords"),
-      medicines: readStoredCollection("medicines"),
-      users: readStoredCollection("users"),
-      doctors: readStoredCollection("doctors"),
+    async function loadReportSource() {
+      try {
+        setLoadError("");
+
+        const [referrals, patients, healthRecords, medicines, users] =
+          await Promise.all([
+            getReferrals(),
+            getPatients(),
+            getHealthRecords("admin"),
+            refreshRhuMedicines(),
+            refreshAdminAccounts(),
+          ]);
+
+        if (!active) return;
+
+        const safeUsers = Array.isArray(users) ? users : [];
+
+        setReportSource({
+          referrals: Array.isArray(referrals) ? referrals : [],
+          patients: Array.isArray(patients) ? patients : [],
+          healthRecords: Array.isArray(healthRecords) ? healthRecords : [],
+          medicines: Array.isArray(medicines) ? medicines : [],
+          users: safeUsers,
+          doctors: safeUsers.filter((user) =>
+            String(user.position || "").toLowerCase().includes("doctor"),
+          ),
+        });
+      } catch (error) {
+        if (!active) return;
+        setLoadError(error?.message || "Unable to load report data.");
+        setReportSource(EMPTY_REPORT_SOURCE);
+      }
+    }
+
+    loadReportSource();
+
+    return () => {
+      active = false;
     };
   }, [dataVersion]);
 
@@ -251,10 +198,6 @@ export default function AdminReports() {
     () => buildReportSummary(filteredSource),
     [filteredSource],
   );
-
-  useEffect(() => {
-    saveReportSnapshot(reportSummary, filters);
-  }, [reportSummary, filters]);
 
   const {
     stats,
@@ -369,6 +312,12 @@ export default function AdminReports() {
             />
           }
         />
+
+        {loadError && (
+          <div className="rounded-lg border border-red-100 bg-red-50/70 px-4 py-3 text-sm font-semibold text-[#B91C1C]">
+            {loadError}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard
@@ -1706,175 +1655,29 @@ function buildTooltipOptions(suffix = "record(s)") {
 /* ─────────────────────────────────────────────
    LOCAL STORAGE HELPERS
 ───────────────────────────────────────────── */
-function readStoredCollection(type) {
-  if (typeof window === "undefined") return [];
-
-  const config = STORAGE_LOOKUP[type];
-  const matchedKeys = new Set(config.keys);
-
-  for (let index = 0; index < window.localStorage.length; index += 1) {
-    const key = window.localStorage.key(index);
-    if (!key) continue;
-
-    const normalizedKey = key.toLowerCase();
-
-    if (
-      config.keyIncludes.some((token) => normalizedKey.includes(token)) &&
-      !normalizedKey.includes("reports_snapshot")
-    ) {
-      matchedKeys.add(key);
-    }
-  }
-
-  const items = [];
-
-  matchedKeys.forEach((key) => {
-    const parsed = readJson(key);
-    items.push(
-      ...extractArrayItems(parsed, config.collectionKeys).map((item) => ({
-        ...item,
-        _storageKey: key,
-        _reportCollection: type,
-      })),
-    );
-  });
-
-  return dedupeItems(items.filter(config.predicate));
-}
-
-function readJson(key) {
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-function extractArrayItems(value, collectionKeys) {
-  if (!value) return [];
-  if (Array.isArray(value)) return value;
-  if (typeof value !== "object") return [];
-
-  const items = [];
-
-  collectionKeys.forEach((key) => {
-    if (Array.isArray(value[key])) items.push(...value[key]);
-  });
-
-  Object.values(value).forEach((entry) => {
-    if (Array.isArray(entry)) items.push(...entry);
-  });
-
-  return items;
-}
-
-function dedupeItems(items) {
-  const seen = new Set();
-
-  return items.filter((item, index) => {
-    const identifiers = [
-      item._reportCollection,
-      item.id,
-      item._id,
-      item.trackingId,
-      item.tracking_id,
-      item.referralId,
-      item.patientId,
-      item.email,
-      item.name,
-      item.doctorName,
-      item.medicineName,
-      item.item,
-    ].filter(Boolean);
-
-    const key =
-      identifiers.length > 1
-        ? identifiers.join("::")
-        : `${item._reportCollection || "item"}::index-${index}`;
-
-    if (seen.has(String(key))) return false;
-    seen.add(String(key));
-    return true;
-  });
-}
-
-function isReferralLike(item) {
-  if (!item || typeof item !== "object") return false;
-
-  return Boolean(
-    item.trackingId ||
-    item.tracking_id ||
-    item.referralId ||
-    item.referral_id ||
-    item.referralCategory ||
-    item.categoryCode ||
-    item.referringFacility ||
-    item.sourceFacility ||
-    item.receivingFacility ||
-    item.chiefComplaint ||
-    item.reasonForReferral,
-  );
-}
-
-function isPatientLike(item) {
-  if (!item || typeof item !== "object") return false;
-
-  return Boolean(
-    item.patientId ||
-    item.id ||
-    item.name ||
-    item.fullName ||
-    item.firstName ||
-    item.lastName,
-  );
-}
-
-function isHealthRecordLike(item) {
-  if (!item || typeof item !== "object") return false;
-
-  return Boolean(
-    item.dateOfVisit ||
-    item.visitDate ||
-    item.chiefComplaint ||
-    item.diagnosis ||
-    item.vitalSigns ||
-    item.followUpStatus ||
-    item.recordType,
-  );
-}
-
-function isMedicineLike(item) {
-  if (!item || typeof item !== "object") return false;
-
-  return Boolean(item.name || item.item || item.medicineName || item.category);
-}
-
-function isUserLike(item) {
-  if (!item || typeof item !== "object") return false;
-
-  return Boolean(
-    item.email || item.role || item.position || item.userId || item.id,
-  );
-}
-
-function isDoctorLike(item) {
-  if (!item || typeof item !== "object") return false;
-
-  return Boolean(
-    item.doctorName || item.name || item.doctorId || item.doctorType,
-  );
-}
-
 /* ─────────────────────────────────────────────
    FIELD NORMALIZATION
 ───────────────────────────────────────────── */
 function getSourceRole(item = {}) {
   const key = String(item._storageKey || "").toLowerCase();
+  const bhcId =
+    item.barangayHealthCenterId ||
+    item.barangay_health_center_id ||
+    item.barangay_health_center?.id ||
+    item.barangayHealthCenter?.id ||
+    item.patient?.barangayHealthCenterId ||
+    item.patient?.barangay_health_center_id;
+  const rhuId =
+    item.ruralHealthUnitId ||
+    item.rural_health_unit_id ||
+    item.rural_health_unit?.id ||
+    item.ruralHealthUnit?.id ||
+    item.patient?.ruralHealthUnitId ||
+    item.patient?.rural_health_unit_id;
   const raw = [
     item.createdByRole,
     item.role,
+    item.backendRole,
     item.facilityRole,
     item.facilityType,
     item.sourceType,
@@ -1886,10 +1689,15 @@ function getSourceRole(item = {}) {
     item.referringFacility,
     item.receivingFacility,
     item.facilityName,
+    item.facility,
+    item.patient?.facility,
   ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+
+  if (bhcId) return "BHC";
+  if (rhuId) return "RHU";
 
   if (key.includes("rhu") || raw.includes("rhu") || raw.includes("rural")) {
     return "RHU";
@@ -2204,23 +2012,6 @@ function sortUnique(values) {
 
 function hasAnyValue(values) {
   return values.some((value) => Number(value) > 0);
-}
-
-function saveReportSnapshot(summary, filters) {
-  if (typeof window === "undefined") return;
-
-  try {
-    window.localStorage.setItem(
-      REPORT_CACHE_KEY,
-      JSON.stringify({
-        ...summary,
-        filters,
-        updatedAt: new Date().toISOString(),
-      }),
-    );
-  } catch {
-    // localStorage quota errors should not block the report page.
-  }
 }
 
 function formatNumber(value) {

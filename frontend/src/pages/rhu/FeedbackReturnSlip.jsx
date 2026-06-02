@@ -158,7 +158,7 @@ function ReferralSummaryCard({ referral }) {
           <SummaryItem
             icon={<UserCheck size={13} />}
             label="Receiving Facility"
-            value="Rural Health Unit Bulakan"
+            value={getReceivingFacility(referral)}
           />
           <SummaryItem
             icon={<CalendarDays size={13} />}
@@ -370,7 +370,7 @@ export default function FeedbackReturnSlip() {
     const feedback = {
       dateOfReceipt: form.dateReceived,
       timeOfReceipt: form.timeReceived,
-      receivingFacility: "Rural Health Unit Bulakan",
+      receivingFacility: getReceivingFacility(selectedReferral),
       receivingPractitioner: form.receivingPersonnel,
       rhuDiagnosis: form.rhuDiagnosis,
       actionsTaken: form.actionsTaken,
@@ -821,7 +821,7 @@ function CompletedReturnSlip({ referral, feedback }) {
             <Info label="Age / Sex" value={referral.ageSex} />
             <Info
               label="Name of Health Care Institution"
-              value={feedback?.receivingFacility || "Rural Health Unit Bulakan"}
+              value={feedback?.receivingFacility || getReceivingFacility(referral)}
             />
             <Info
               label="Name and Signature of Receiving Practitioner"
@@ -954,6 +954,16 @@ function getReferringHci(referral = {}) {
   return barangay
     ? `Barangay ${cleanBarangayName(barangay)} Health Center`
     : "Barangay Health Center";
+}
+
+function getReceivingFacility(referral = {}) {
+  return (
+    referral.receivingFacility ||
+    referral.destinationFacility ||
+    referral.rural_health_unit?.name ||
+    referral.ruralHealthUnit?.name ||
+    ""
+  );
 }
 
 function getPatientName(referral = {}) {

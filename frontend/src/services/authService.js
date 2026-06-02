@@ -1,56 +1,36 @@
-import { getItem, removeItem, setItem } from "./storageService";
-
-const USER_KEY = "akay_user";
-
-const demoAccounts = [
-  {
-    email: "admin@akay.com",
-    password: "admin123",
-    role: "admin",
-    name: "Demo MHO",
-    position: "Municipal Health Officer",
-    facility: "RHU Bulakan",
-  },
-  {
-    email: "bhc@akay.com",
-    password: "bhc123",
-    role: "bhc",
-    name: "Demo Midwife",
-    position: "Barangay Health Worker",
-    facility: "Pitpitan Health Center",
-  },
-  {
-    email: "rhu@akay.com",
-    password: "rhu123",
-    role: "rhu",
-    name: "Demo RHU Staff",
-    position: "RHU Staff",
-    facility: "Rural Health Unit Bulakan",
-  },
-];
+import {
+  apiRequest,
+  clearAuthSession,
+  getStoredAuthUser,
+  normalizeUser,
+  storeAuthSession,
+} from "./apiClient";
 
 export function getUser() {
-  return getItem(USER_KEY, null);
+  return getStoredAuthUser();
 }
 
 export function saveUser(user) {
-  setItem(USER_KEY, user);
-  return user;
+  const normalized = normalizeUser(user);
+  storeAuthSession({ user: normalized });
+  return normalized;
 }
 
-export function logout() {
-  removeItem(USER_KEY);
-}
-
-export function loginUser(email, password) {
-  const user = demoAccounts.find(
-    (account) => account.email === email && account.password === password,
-  );
-
-  if (!user) {
-    return null;
+export async function logout() {
+  try {
+    await apiRequest("/auth/logout", { method: "POST" });
+  } finally {
+    clearAuthSession();
   }
+}
 
-  saveUser(user);
-  return user;
+export async function loginUser(email, password) {
+  const response = await apiRequest("/auth/login", {
+    method: "POST",
+    auth: false,
+    body: { email, password },
+  });
+
+  storeAuthSession({ token: response.token, user: response.user });
+  return normalizeUser(response.user);
 }

@@ -18,6 +18,11 @@ import {
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { getCurrentUser, logoutUser } from "../../utils/auth";
+import {
+  formatDisplayValue,
+  formatFacilityName,
+  formatUserName,
+} from "../../utils/formatters";
 import { useNotifications } from "../../hooks/useNotificationsContext";
 import NotificationDropdown from "../features/notifications/NotificationDropdown";
 import NotificationModal from "../features/notifications/NotificationModal";
@@ -156,6 +161,19 @@ export default function DashboardLayout({
     position: "Personnel",
     facility: "Bulakan, Bulacan",
   };
+  const displayUser = {
+    ...user,
+    name: formatUserName(user, "AKAY User"),
+    position: formatDisplayValue(user.position || user.role, "Personnel"),
+    facility: formatFacilityName(
+      user.facility ||
+        user.barangayHealthCenter ||
+        user.barangay_health_center ||
+        user.ruralHealthUnit ||
+        user.rural_health_unit,
+      "Bulakan, Bulacan",
+    ),
+  };
 
   useEffect(() => {
     sidebarExpandedMemory = sidebarExpanded;
@@ -231,7 +249,7 @@ export default function DashboardLayout({
           <DesktopSidebar
             expanded={sidebarExpanded}
             menuSections={menuSections}
-            user={user}
+            user={displayUser}
             isMenuActive={isMenuActive}
             onToggle={() => setSidebarExpanded((prev) => !prev)}
             onLogout={handleLogout}
@@ -247,7 +265,7 @@ export default function DashboardLayout({
           <MobileSidebarDrawer
             open={mobileDrawerOpen}
             menuSections={menuSections}
-            user={user}
+            user={displayUser}
             isMenuActive={isMenuActive}
             onClose={() => setMobileDrawerOpen(false)}
             onLogout={handleLogout}
@@ -283,7 +301,7 @@ export default function DashboardLayout({
               <div className="hidden h-8 items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 shadow-sm sm:flex">
                 <MapPin size={12} className="text-[#B91C1C]" />
                 <span className="max-w-[140px] truncate text-[10px] font-semibold text-[#4B5563]">
-                  {user.facility}
+                  {displayUser.facility}
                 </span>
               </div>
 

@@ -1,4 +1,8 @@
+import { formatDisplayValue } from "../../../utils/formatters";
+
 export default function PatientDetailItem({ label, value }) {
+  const displayValue = formatDisplayValue(value, "Not recorded");
+
   return (
     <div>
       <p
@@ -21,7 +25,7 @@ export default function PatientDetailItem({ label, value }) {
           text-[#0F172A]
         "
       >
-        {value || "—"}
+        {displayValue}
       </p>
     </div>
   );

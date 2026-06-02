@@ -21,6 +21,12 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { getReferralByTrackingId } from "../../services/referrals";
 import { getPatientById } from "../../services/patientService";
+import {
+  formatDisplayValue,
+  formatFacilityName,
+  formatPatientName,
+  formatUserName,
+} from "../../utils/formatters";
 
 const keyframes = `
   @keyframes fadeUp {
@@ -584,6 +590,8 @@ function BhcActionsPanel({ referral, onViewReturnSlip }) {
 }
 
 function HeaderDetail({ label, value, mono }) {
+  const displayValue = formatDisplayValue(value, "Not recorded");
+
   return (
     <div className="min-w-0">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
@@ -593,19 +601,21 @@ function HeaderDetail({ label, value, mono }) {
         className={`mt-1 truncate text-sm font-semibold text-slate-700 ${
           mono ? "font-mono text-[#0F172A]" : ""
         }`}
-        title={value || "Not recorded"}
+        title={displayValue}
       >
-        {value || "Not recorded"}
+        {displayValue}
       </p>
     </div>
   );
 }
 
 function InfoChip({ icon, value }) {
+  const displayValue = formatDisplayValue(value, "Not recorded");
+
   return (
     <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
       {icon}
-      {value || "Not recorded"}
+      {displayValue}
     </span>
   );
 }
@@ -632,6 +642,8 @@ function RecordSection({ title, description, icon, children }) {
 }
 
 function Detail({ label, value, icon, strong, mono, badge }) {
+  const displayValue = formatDisplayValue(value, "Not recorded");
+
   return (
     <div className="min-w-0">
       <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
@@ -639,7 +651,7 @@ function Detail({ label, value, icon, strong, mono, badge }) {
         {label}
       </p>
       {badge ? (
-        <ClassBadge value={value} />
+        <ClassBadge value={displayValue} />
       ) : (
         <p
           className={`mt-1 leading-relaxed ${
@@ -650,7 +662,7 @@ function Detail({ label, value, icon, strong, mono, badge }) {
                 : "text-sm text-slate-700"
           }`}
         >
-          {value || "Not recorded"}
+          {displayValue}
         </p>
       )}
     </div>
@@ -669,9 +681,11 @@ function NarrativeBlock({ label, value, empty }) {
 }
 
 function Narrative({ value, empty }) {
+  const displayValue = formatDisplayValue(value, empty);
+
   return (
     <div className="whitespace-pre-wrap rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3 text-sm leading-6 text-slate-700">
-      {value || empty}
+      {displayValue}
     </div>
   );
 }
@@ -698,6 +712,7 @@ function StatusBadge({ status }) {
 }
 
 function ClassBadge({ value }) {
+  const displayValue = formatDisplayValue(value, "Not recorded");
   const map = {
     A1: "bg-slate-100 text-slate-700",
     A2: "bg-slate-100 text-slate-700",
@@ -719,10 +734,10 @@ function ClassBadge({ value }) {
   return (
     <span
       className={`mt-1 inline-flex rounded-md px-2.5 py-1 text-[11px] font-semibold ${
-        map[value] || "bg-slate-100 text-slate-600"
+        map[displayValue] || "bg-slate-100 text-slate-600"
       }`}
     >
-      {value || "Not recorded"}
+      {displayValue}
     </span>
   );
 }
@@ -770,7 +785,11 @@ function getReferringHci(referral = {}, patient = null) {
     referral.referringFacility,
     referral.bhc,
     referral.referringHci,
-  ].filter(Boolean);
+    referral.barangayHealthCenter,
+    referral.barangay_health_center,
+  ]
+    .map((item) => formatFacilityName(item, ""))
+    .filter(Boolean);
 
   const valid = candidates.find((item) => !isRhuFacility(item));
   if (valid) return valid;
@@ -787,11 +806,13 @@ function getReferringHci(referral = {}, patient = null) {
 }
 
 function getDestinationFacility(referral = {}) {
-  return (
+  return formatFacilityName(
     referral.destinationFacility ||
-    referral.referredFacility ||
-    referral.receivingFacility ||
-    "Rural Health Unit Bulakan"
+      referral.referredFacility ||
+      referral.receivingFacility ||
+      referral.rural_health_unit ||
+      referral.ruralHealthUnit,
+    "",
   );
 }
 
@@ -836,12 +857,9 @@ function formatDateTime(value) {
 }
 
 function getPatientName(referral = {}, patient = null) {
-  return (
-    referral.patientName ||
-    referral.patient ||
-    patient?.name ||
-    [patient?.firstName, patient?.lastName].filter(Boolean).join(" ") ||
-    "Unknown Patient"
+  return formatPatientName(
+    referral.patientName || referral.patient || patient || referral,
+    "Unknown Patient",
   );
 }
 
@@ -863,29 +881,32 @@ function getAgeSexCivil(referral = {}, patient = null) {
 }
 
 function getContact(referral = {}, patient = null) {
-  return (
+  return formatDisplayValue(
     referral.contactNumber ||
-    referral.contact ||
-    referral.patientContact ||
-    patient?.contactNumber ||
-    patient?.contact ||
-    ""
+      referral.contact ||
+      referral.patientContact ||
+      patient?.contactNumber ||
+      patient?.contact,
+    "",
   );
 }
 
 function getPatientClassification(referral = {}, patient = null) {
-  return (
+  return formatDisplayValue(
     referral.patientClassification ||
-    referral.classification ||
-    patient?.patientClassification ||
-    patient?.category ||
-    referral.category ||
-    "General Consultation"
+      referral.classification ||
+      patient?.patientClassification ||
+      patient?.category ||
+      referral.category,
+    "General Consultation",
   );
 }
 
 function getReferralCategory(referral = {}) {
-  return referral.referralCategory || referral.category || "Unclassified";
+  return formatDisplayValue(
+    referral.referralCategory || referral.category,
+    "Unclassified",
+  );
 }
 
 function getReferralUrgency(referral = {}) {
@@ -901,7 +922,7 @@ function getReferralUrgency(referral = {}) {
     Normal: "Non-Urgent",
   };
 
-  return map[raw] || raw;
+  return formatDisplayValue(map[raw] || raw, "Non-Urgent");
 }
 
 function getBirthDate(referral = {}, patient = null) {
@@ -937,10 +958,12 @@ function getPhilHealth(referral = {}, patient = null) {
 }
 
 function getReferringPractitioner(referral = {}) {
-  return (
+  return formatUserName(
     referral.practitioner ||
-    referral.referringPractitioner ||
-    referral.attendingStaff ||
-    "BHC Staff"
+      referral.referringPractitioner ||
+      referral.attendingStaff ||
+      referral.createdBy ||
+      referral.created_by,
+    "BHC Staff",
   );
 }

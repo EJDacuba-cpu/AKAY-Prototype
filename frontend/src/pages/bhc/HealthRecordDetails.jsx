@@ -35,6 +35,10 @@ import FormTextarea from "../../components/common/forms/FormTextarea";
 
 import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
 import SuccessModal from "../../components/common/modals/SuccessModal";
+import {
+  formatDisplayValue,
+  formatPatientName,
+} from "../../utils/formatters";
 
 const VACCINE_TIMELINE = [
   {
@@ -213,6 +217,11 @@ export default function HealthRecordDetails() {
     record.followUpStatus === "Under Observation";
   const isImmunizationRecord = isImmunizationClassification(record, patient);
   const immunizationGroups = getImmunizationGroups(record);
+  const patientName = formatPatientName(patient, "Unnamed Patient");
+  const patientClassification = formatDisplayValue(
+    patient?.category || patient?.patientClassification,
+    "General",
+  );
 
   return (
     <>
@@ -258,8 +267,7 @@ export default function HealthRecordDetails() {
                         to={`/bhc/patients/${patient.id || patient._id}`}
                         className="font-semibold text-[#B91C1C] hover:text-[#7F1D1D] hover:underline"
                       >
-                        {patient.name ||
-                          `${patient.firstName} ${patient.lastName}`}
+                        {patientName}
                       </Link>
                     </span>
                   </>
@@ -407,7 +415,7 @@ export default function HealthRecordDetails() {
                     />
                   </div>
 
-                  {patient?.category === "Maternal" && (
+                  {patientClassification === "Maternal" && (
                     <>
                       <SectionDivider label="Maternal Parameters" />
                       <div className="grid gap-5 pt-3 md:grid-cols-2">
@@ -492,7 +500,7 @@ export default function HealthRecordDetails() {
                     />
                   </div>
 
-                  {patient?.category === "Maternal" && (
+                  {patientClassification === "Maternal" && (
                     <>
                       <SectionDivider label="Maternal Parameters" />
                       <div className="grid grid-cols-2 gap-x-8 gap-y-1 pt-3">
@@ -590,13 +598,12 @@ export default function HealthRecordDetails() {
                     <PatientDetailItem
                       label="Full Name"
                       value={
-                        patient.name ||
-                        `${patient.firstName} ${patient.lastName}`
+                        patientName
                       }
                     />
                     <PatientDetailItem
                       label="Classification"
-                      value={patient.category || "General"}
+                      value={formatDisplayValue(patient.category, "General")}
                     />
                     <PatientDetailItem
                       label="Age / Sex"

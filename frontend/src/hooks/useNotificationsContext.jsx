@@ -6,7 +6,6 @@ import {
   useState,
   useEffect,
 } from "react";
-/* eslint-disable react-refresh/only-export-components */
 import { getCurrentUser } from "../utils/auth";
 import {
   clearNotificationsForUser,

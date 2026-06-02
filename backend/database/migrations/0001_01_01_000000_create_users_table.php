@@ -17,6 +17,11 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
+            $table->string('role')->index();
+            $table->string('status')->default('active')->index();
+            $table->foreignId('barangay_health_center_id')->nullable()->index();
+            $table->foreignId('rural_health_unit_id')->nullable()->index();
+            $table->foreignId('created_by')->nullable()->index();
             $table->rememberToken();
             $table->timestamps();
         });

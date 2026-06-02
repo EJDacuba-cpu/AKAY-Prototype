@@ -1,11 +1,11 @@
 import {
   getUser,
-  loginUser as loginWithDemoAccounts,
+  loginUser as loginWithApi,
   logout,
 } from "../services/authService";
 
 export function loginUser(email, password) {
-  return loginWithDemoAccounts(email, password);
+  return loginWithApi(email, password);
 }
 
 export function getCurrentUser() {
@@ -13,5 +13,5 @@ export function getCurrentUser() {
 }
 
 export function logoutUser() {
-  logout();
+  return logout();
 }

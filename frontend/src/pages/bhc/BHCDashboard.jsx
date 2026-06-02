@@ -42,6 +42,7 @@ import {
   listenDoctorAvailabilityUpdates,
 } from "../../services/doctorAvailability";
 import { getRhuVolumeSnapshot } from "../../services/volumeService";
+import { getCurrentUser } from "../../utils/auth";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
@@ -577,29 +578,9 @@ function MedicineAvailabilityCard({ medicineAlerts }) {
 }
 
 function getCurrentUserDisplayName() {
-  if (typeof window === "undefined") return "BHC Worker";
-
-  const possibleKeys = ["akay_user", "user", "currentUser", "authUser"];
-
-  for (const key of possibleKeys) {
-    try {
-      const raw = window.localStorage.getItem(key);
-      if (!raw) continue;
-
-      const user = JSON.parse(raw);
-      const name =
-        user?.fullName ||
-        user?.full_name ||
-        user?.name ||
-        user?.displayName ||
-        user?.profile?.name ||
-        user?.profile?.fullName;
-
-      if (name) return firstNameOnly(name);
-    } catch {
-      // Ignore malformed localStorage entries and use the default label.
-    }
-  }
+  const user = getCurrentUser();
+  const name = user?.fullName || user?.full_name || user?.name || "";
+  if (name) return firstNameOnly(name);
 
   return "BHC Worker";
 }

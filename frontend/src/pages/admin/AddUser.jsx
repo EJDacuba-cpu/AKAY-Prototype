@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import {
   ArrowLeft,
@@ -21,30 +21,15 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   createAdminAccount,
   getAdminAccounts,
+  refreshAdminAccounts,
   updateAdminAccount,
 } from "../../services/adminAccountsService";
+import {
+  getBarangayHealthCenters,
+  getRuralHealthUnits,
+} from "../../services/facilityService";
 
 import { validators } from "../../utils/validators";
-
-const BHC_FACILITIES = [
-  "Pitpitan Health Center",
-  "Taliptip Health Center",
-  "San Jose Health Center",
-  "Bagumbayan Health Center",
-  "Bambang Health Center",
-  "Balubad Health Center",
-  "Matungao Health Center",
-  "Maysantol Health Center",
-  "Perez Health Center",
-  "San Francisco Health Center",
-  "San Nicolas Health Center",
-  "Santa Ana Health Center",
-  "Santa Ines Health Center",
-  "Tibig Health Center",
-];
-
-const RHU_FACILITIES = ["Rural Health Unit Bulakan"];
-const DEFAULT_RHU_FACILITY = RHU_FACILITIES[0];
 
 const ACCOUNT_ROLES = [
   {
@@ -53,7 +38,6 @@ const ACCOUNT_ROLES = [
     roleLabel: "Barangay Health Center Worker",
     subtitle: "Barangay Health Center",
     accessRole: "BHC",
-    facilities: BHC_FACILITIES,
     workflowTitle: "BHC to RHU referral workflow",
     workflowDescription:
       "This account can encode BHC patients, create health records, and send referrals to the assigned Rural Health Unit.",
@@ -64,7 +48,6 @@ const ACCOUNT_ROLES = [
     roleLabel: "Rural Health Unit Staff",
     subtitle: "Rural Health Unit",
     accessRole: "RHU",
-    facilities: RHU_FACILITIES,
     workflowTitle: "RHU receiving and processing workflow",
     workflowDescription:
       "This account can receive referrals, check in patients, manage RHU records, and submit feedback/return slips.",
@@ -97,14 +80,17 @@ export default function AddUser() {
   const [showPassword, setShowPassword] = useState(false);
   const [stepErrors, setStepErrors] = useState({});
   const [successModal, setSuccessModal] = useState(null);
+  const [accounts, setAccounts] = useState(() => getAdminAccounts());
+  const [facilities, setFacilities] = useState({ bhcs: [], rhus: [] });
+  const [facilityError, setFacilityError] = useState("");
 
   const mode = searchParams.get("mode");
   const userId = searchParams.get("userId");
 
   const existingUser = useMemo(() => {
     if (!userId) return null;
-    return getAdminAccounts().find((account) => account.id === userId) || null;
-  }, [userId]);
+    return accounts.find((account) => account.id === userId) || null;
+  }, [accounts, userId]);
 
   const isEditMode = mode === "edit" && !!existingUser;
 
@@ -132,6 +118,9 @@ export default function AddUser() {
         facility: selectedFacility,
         bhcFacility: isBhcAccount ? values.bhcFacility : "",
         rhuFacility: isBhcAccount || isRhuAccount ? values.rhuFacility : "",
+        barangayHealthCenterId: isBhcAccount ? values.bhcFacilityId : "",
+        ruralHealthUnitId:
+          isBhcAccount || isRhuAccount ? values.rhuFacilityId : "",
         assignedBarangayHealthCenter: isBhcAccount ? values.bhcFacility : "",
         assignedRuralHealthUnit:
           isBhcAccount || isRhuAccount ? values.rhuFacility : "",
@@ -143,13 +132,13 @@ export default function AddUser() {
       }
 
       if (isEditMode) {
-        updateAdminAccount(existingUser.id, payload);
+        await updateAdminAccount(existingUser.id, payload);
         setSuccessModal({
           title: "Account Updated Successfully",
           message: "The account information has been updated successfully.",
         });
       } else {
-        createAdminAccount(payload);
+        await createAdminAccount(payload);
         setSuccessModal({
           title: "Account Added Successfully",
           message: "The new account has been created successfully.",
@@ -166,8 +155,58 @@ export default function AddUser() {
   const selectedAccountRole = getAccountRole(form.values.accountRole);
   const isBhcAccount = form.values.accountRole === "bhc_worker";
   const isRhuAccount = form.values.accountRole === "rhu_staff";
+  const bhcFacilityOptions = useMemo(
+    () =>
+      facilities.bhcs.map((facility) => ({
+        value: facility.id,
+        label: facility.name,
+      })),
+    [facilities.bhcs],
+  );
+  const rhuFacilityOptions = useMemo(
+    () =>
+      facilities.rhus.map((facility) => ({
+        value: facility.id,
+        label: facility.name,
+      })),
+    [facilities.rhus],
+  );
 
   const pageTitle = isEditMode ? "Edit User Account" : "Add User Account";
+
+  useEffect(() => {
+    let active = true;
+
+    refreshAdminAccounts().then((items) => {
+      if (active) setAccounts(Array.isArray(items) ? items : []);
+    });
+
+    Promise.all([getBarangayHealthCenters(), getRuralHealthUnits()])
+      .then(([bhcs, rhus]) => {
+        if (!active) return;
+        setFacilities({
+          bhcs: Array.isArray(bhcs) ? bhcs : [],
+          rhus: Array.isArray(rhus) ? rhus : [],
+        });
+        setFacilityError("");
+      })
+      .catch((error) => {
+        if (!active) return;
+        setFacilities({ bhcs: [], rhus: [] });
+        setFacilityError(error?.message || "Unable to load facilities.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (existingUser) {
+      form.setValues(getInitialValues(existingUser));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingUser]);
 
   function clearFieldError(name) {
     setStepErrors((prev) => {
@@ -193,12 +232,20 @@ export default function AddUser() {
     form.setValues((prev) => {
       const next = { ...prev, [name]: value };
 
-      if (name === "bhcFacility" && prev.accountRole === "bhc_worker") {
-        next.facility = value;
+      if (name === "bhcFacilityId") {
+        const facility = facilities.bhcs.find((item) => item.id === value);
+        next.bhcFacility = facility?.name || "";
+        if (prev.accountRole === "bhc_worker") {
+          next.facility = facility?.name || "";
+        }
       }
 
-      if (name === "rhuFacility" && prev.accountRole === "rhu_staff") {
-        next.facility = value;
+      if (name === "rhuFacilityId") {
+        const facility = facilities.rhus.find((item) => item.id === value);
+        next.rhuFacility = facility?.name || "";
+        if (prev.accountRole === "rhu_staff") {
+          next.facility = facility?.name || "";
+        }
       }
 
       return next;
@@ -209,24 +256,38 @@ export default function AddUser() {
     clearMultipleErrors([
       "accountRole",
       "bhcFacility",
+      "bhcFacilityId",
       "rhuFacility",
+      "rhuFacilityId",
       "facility",
     ]);
 
     form.setValues((prev) => {
       const isBhc = roleValue === "bhc_worker";
       const isRhu = roleValue === "rhu_staff";
-      const safeBhcFacility = BHC_FACILITIES.includes(prev.bhcFacility)
-        ? prev.bhcFacility
+      const safeBhcId = facilities.bhcs.some(
+        (facility) => facility.id === prev.bhcFacilityId,
+      )
+        ? prev.bhcFacilityId
         : "";
-      const safeRhuFacility = RHU_FACILITIES.includes(prev.rhuFacility)
-        ? prev.rhuFacility
-        : DEFAULT_RHU_FACILITY;
+      const safeRhuId = facilities.rhus.some(
+        (facility) => facility.id === prev.rhuFacilityId,
+      )
+        ? prev.rhuFacilityId
+        : "";
+      const safeBhcFacility =
+        facilities.bhcs.find((facility) => facility.id === safeBhcId)?.name ||
+        "";
+      const safeRhuFacility =
+        facilities.rhus.find((facility) => facility.id === safeRhuId)?.name ||
+        "";
 
       return {
         ...prev,
         accountRole: roleValue,
         position: POSITION_BY_ACCOUNT_ROLE[roleValue] || "",
+        bhcFacilityId: isBhc ? safeBhcId : "",
+        rhuFacilityId: isBhc || isRhu ? safeRhuId : "",
         bhcFacility: isBhc ? safeBhcFacility : "",
         rhuFacility: isBhc || isRhu ? safeRhuFacility : "",
         facility: isBhc ? safeBhcFacility : isRhu ? safeRhuFacility : "",
@@ -249,8 +310,8 @@ export default function AddUser() {
 
     if (!isEditMode && !form.values.password?.trim()) {
       errors.password = "Password is required.";
-    } else if (form.values.password && form.values.password.length < 6) {
-      errors.password = "Password must be at least 6 characters.";
+    } else if (form.values.password && form.values.password.length < 8) {
+      errors.password = "Password must be at least 8 characters.";
     }
 
     if (!form.values.accountRole) {
@@ -269,18 +330,18 @@ export default function AddUser() {
     }
 
     if (form.values.accountRole === "bhc_worker") {
-      if (!form.values.bhcFacility) {
-        errors.bhcFacility = "Assigned Barangay Health Center is required.";
+      if (!form.values.bhcFacilityId) {
+        errors.bhcFacilityId = "Assigned Barangay Health Center is required.";
       }
 
-      if (!form.values.rhuFacility) {
-        errors.rhuFacility = "Assigned Rural Health Unit is required.";
+      if (!form.values.rhuFacilityId) {
+        errors.rhuFacilityId = "Assigned Rural Health Unit is required.";
       }
     }
 
     if (form.values.accountRole === "rhu_staff") {
-      if (!form.values.rhuFacility) {
-        errors.rhuFacility = "Assigned Rural Health Unit is required.";
+      if (!form.values.rhuFacilityId) {
+        errors.rhuFacilityId = "Assigned Rural Health Unit is required.";
       }
     }
 
@@ -488,43 +549,49 @@ export default function AddUser() {
                 icon={<Building2 size={14} />}
                 delay={2}
               >
+                {facilityError && (
+                  <div className="mb-4 rounded-lg border border-red-100 bg-red-50/70 px-4 py-3 text-sm font-semibold text-[#B91C1C]">
+                    {facilityError}
+                  </div>
+                )}
+
                 {isBhcAccount && (
                   <div className="grid gap-4 lg:grid-cols-2">
                     <FormGroup
                       label="Assigned Barangay Health Center"
-                      error={getError("bhcFacility")}
+                      error={getError("bhcFacilityId")}
                       required
                     >
                       <Select
-                        name="bhcFacility"
-                        value={form.values.bhcFacility}
+                        name="bhcFacilityId"
+                        value={form.values.bhcFacilityId}
                         onChange={handleAccountChange}
                         options={[
                           {
                             value: "",
                             label: "Select Barangay Health Center",
                           },
-                          ...BHC_FACILITIES.map((facility) => ({
-                            value: facility,
-                            label: facility,
-                          })),
+                          ...bhcFacilityOptions,
                         ]}
                       />
                     </FormGroup>
 
                     <FormGroup
                       label="Connected Rural Health Unit"
-                      error={getError("rhuFacility")}
+                      error={getError("rhuFacilityId")}
                       required
                     >
                       <Select
-                        name="rhuFacility"
-                        value={form.values.rhuFacility}
+                        name="rhuFacilityId"
+                        value={form.values.rhuFacilityId}
                         onChange={handleAccountChange}
-                        options={RHU_FACILITIES.map((facility) => ({
-                          value: facility,
-                          label: facility,
-                        }))}
+                        options={[
+                          {
+                            value: "",
+                            label: "Select Rural Health Unit",
+                          },
+                          ...rhuFacilityOptions,
+                        ]}
                       />
                     </FormGroup>
                   </div>
@@ -534,17 +601,20 @@ export default function AddUser() {
                   <div className="grid gap-4 lg:grid-cols-1">
                     <FormGroup
                       label="Assigned Rural Health Unit"
-                      error={getError("rhuFacility")}
+                      error={getError("rhuFacilityId")}
                       required
                     >
                       <Select
-                        name="rhuFacility"
-                        value={form.values.rhuFacility}
+                        name="rhuFacilityId"
+                        value={form.values.rhuFacilityId}
                         onChange={handleAccountChange}
-                        options={RHU_FACILITIES.map((facility) => ({
-                          value: facility,
-                          label: facility,
-                        }))}
+                        options={[
+                          {
+                            value: "",
+                            label: "Select Rural Health Unit",
+                          },
+                          ...rhuFacilityOptions,
+                        ]}
                       />
                     </FormGroup>
                   </div>
@@ -870,7 +940,7 @@ function getInitialValues(user) {
     user?.rhuFacility ||
     user?.assignedRuralHealthUnit ||
     (isRhuAccount ? user?.facility : "") ||
-    DEFAULT_RHU_FACILITY;
+    "";
 
   return {
     fullName: user?.fullName || user?.name || "",
@@ -880,14 +950,15 @@ function getInitialValues(user) {
     accountRole: inferredAccountRole,
     position:
       user?.position || POSITION_BY_ACCOUNT_ROLE[inferredAccountRole] || "",
+    bhcFacilityId: user?.barangayHealthCenterId || user?.bhcId || "",
+    rhuFacilityId: user?.ruralHealthUnitId || user?.rhuId || "",
     facility: isBhcAccount
       ? assignedBhc
       : isRhuAccount
         ? assignedRhu
         : user?.facility || "",
     bhcFacility: assignedBhc,
-    rhuFacility:
-      isBhcAccount || isRhuAccount ? assignedRhu : DEFAULT_RHU_FACILITY,
+    rhuFacility: isBhcAccount || isRhuAccount ? assignedRhu : "",
   };
 }
 

@@ -3,6 +3,10 @@ import { Link } from "react-router";
 
 import SectionCard from "../../common/cards/SectionCard";
 import StatusBadge from "../../common/badges/StatusBadge";
+import {
+  formatDisplayValue,
+  formatPatientName,
+} from "../../../utils/formatters";
 
 export default function RecentHealthRecordsTable({ records, delay = 0 }) {
   return (
@@ -30,25 +34,37 @@ export default function RecentHealthRecordsTable({ records, delay = 0 }) {
           </thead>
 
           <tbody className="divide-y divide-[#F8FAFC]">
-            {records.map((record) => (
+            {records.map((record) => {
+              const patientName = formatPatientName(
+                record.patientName || record.patient,
+                "Unnamed Patient",
+              );
+              const visitType = formatDisplayValue(
+                record.visitType,
+                "General Consultation",
+              );
+              const concern = formatDisplayValue(record.concern, "Not recorded");
+              const date = formatDisplayValue(record.date, "No Date");
+
+              return (
               <tr
-                key={`${record.patient}-${record.visitType}`}
+                key={`${patientName}-${visitType}`}
                 className="group transition-colors duration-150 hover:bg-[#FAFBFD]"
               >
                 <td className="px-4 py-3.5">
                   <div className="flex items-center gap-3">
                   <span className="text-[13px] font-semibold text-[#0F172A]">
-                      {record.patient}
+                      {patientName}
                     </span>
                   </div>
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#6B7280]">
-                  {record.visitType}
+                  {visitType}
                 </td>
 
                 <td className="px-4 py-3.5 text-[13px] text-[#6B7280]">
-                  {record.concern}
+                  {concern}
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3.5">
@@ -56,7 +72,7 @@ export default function RecentHealthRecordsTable({ records, delay = 0 }) {
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#9CA3AF]">
-                  {record.date}
+                  {date}
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3.5 text-right">
@@ -69,7 +85,8 @@ export default function RecentHealthRecordsTable({ records, delay = 0 }) {
                   </Link>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

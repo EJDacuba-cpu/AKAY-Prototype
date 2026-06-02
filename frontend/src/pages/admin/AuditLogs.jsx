@@ -1,76 +1,32 @@
 import {
-  Activity,
-  ClipboardList,
   Filter,
   Search,
-  ShieldCheck,
-  UserCheck,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import { apiRequest, unwrapList } from "../../services/apiClient";
 
 export default function AuditLogs() {
-  const logs = [
-    {
-      id: "LOG-001",
-      action: "User account created",
-      module: "Account Directory",
-      performedBy: "Admin MHO",
-      role: "Admin",
-      details: "Added BHC account for Pitpitan Health Center.",
-      dateTime: "May 14, 2026 - 9:20 AM",
-      level: "Account",
-    },
-    {
-      id: "LOG-002",
-      action: "Referral submitted",
-      module: "Referrals",
-      performedBy: "Lorna Reyes",
-      role: "BHC",
-      details: "Submitted referral AKY-2026-002 for Maria Rosa.",
-      dateTime: "May 14, 2026 - 10:30 AM",
-      level: "Referral",
-    },
-    {
-      id: "LOG-003",
-      action: "Patient checked-in",
-      module: "Incoming Referrals",
-      performedBy: "Joshua Pio",
-      role: "RHU",
-      details: "Updated referral AKY-2026-002 status to Received.",
-      dateTime: "May 14, 2026 - 11:05 AM",
-      level: "Status Update",
-    },
-    {
-      id: "LOG-004",
-      action: "RHU feedback submitted",
-      module: "Feedback / Return Slip",
-      performedBy: "RHU Staff",
-      role: "RHU",
-      details: "Submitted feedback for referral AKY-2026-002.",
-      dateTime: "May 14, 2026 - 11:40 AM",
-      level: "Feedback",
-    },
-    {
-      id: "LOG-005",
-      action: "Medicine availability updated",
-      module: "Medicine Management",
-      performedBy: "RHU Inventory Staff",
-      role: "RHU",
-      details: "Updated Amoxicillin status to Low Stock.",
-      dateTime: "May 14, 2026 - 1:15 PM",
-      level: "Inventory",
-    },
-    {
-      id: "LOG-006",
-      action: "Account deactivated",
-      module: "Account Directory",
-      performedBy: "Admin MHO",
-      role: "Admin",
-      details: "Deactivated inactive BHC staff account.",
-      dateTime: "May 14, 2026 - 2:00 PM",
-      level: "Security",
-    },
-  ];
+  const [logs, setLogs] = useState([]);
+
+  useEffect(() => {
+    apiRequest("/audit-logs")
+      .then((response) =>
+        setLogs(
+          unwrapList(response).map((log) => ({
+            id: `LOG-${String(log.id).padStart(3, "0")}`,
+            action: log.action,
+            module: log.module,
+            performedBy: log.user?.name || "System",
+            role: log.user?.role === "bhw" ? "BHC" : log.user?.role === "rhu_staff" ? "RHU" : "Admin",
+            details: log.description || "",
+            dateTime: log.created_at || "",
+            level: log.module,
+          })),
+        ),
+      )
+      .catch(() => setLogs([]));
+  }, []);
 
   return (
     <DashboardLayout role="admin" title="Audit Logs">
@@ -150,7 +106,13 @@ export default function AuditLogs() {
             </thead>
 
             <tbody className="divide-y divide-[#F3F4F6]">
-              {logs.map((log) => (
+              {logs.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-12 text-center text-sm text-[#9CA3AF]">
+                    No audit logs found.
+                  </td>
+                </tr>
+              ) : logs.map((log) => (
                 <tr
                   key={log.id}
                   className="transition-colors hover:bg-[#F9FAFB]"
@@ -207,40 +169,6 @@ function FilterSelect({ label, children }) {
       <select className="h-9 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 text-sm outline-none">
         {children}
       </select>
-    </div>
-  );
-}
-
-function StatCard({ title, value, icon, color = "navy" }) {
-  const map = {
-    navy: "border-t-[#B91C1C] text-[#0F172A] bg-red-50/60",
-    blue: "border-t-slate-400 text-slate-700 bg-slate-50",
-    amber: "border-t-amber-400 text-amber-700 bg-amber-50",
-    red: "border-t-red-400 text-red-700 bg-red-50",
-  };
-
-  const selected = map[color] || map.navy;
-  const parts = selected.split(" ");
-  const border = parts[0];
-  const iconStyle = parts.slice(1).join(" ");
-
-  return (
-    <div
-      className={`rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-5 ${border}`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
-          {title}
-        </p>
-
-        <div className={`flex-shrink-0 rounded-lg p-2 ${iconStyle}`}>
-          {icon}
-        </div>
-      </div>
-
-      <p className="mt-4 text-2xl font-bold tracking-tight text-[#0F172A]">
-        {value}
-      </p>
     </div>
   );
 }

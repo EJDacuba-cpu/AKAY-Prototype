@@ -20,6 +20,14 @@ import {
   getDoctorAvailability,
   listenDoctorAvailabilityUpdates,
 } from "../../services/doctorAvailability";
+import { getReferrals } from "../../services/referrals";
+import { getHealthRecords } from "../../services/healthRecordService";
+import { refreshRhuMedicines } from "../../services/medicineService";
+import {
+  formatDisplayValue,
+  formatFacilityName,
+  formatPatientName,
+} from "../../utils/formatters";
 
 const keyframes = `
   @keyframes fadeUp {
@@ -53,56 +61,11 @@ const keyframes = `
 
 const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 
-const incomingReferrals = [
-  {
-    trackingId: "AKY-2026-001",
-    patient: "Juan Reyes",
-    bhc: "Pitpitan Health Center",
-    category: "B1",
-    priority: "Medium",
-    status: "Pending",
-  },
-  {
-    trackingId: "AKY-2026-002",
-    patient: "Maria Rosa",
-    bhc: "Pitpitan Health Center",
-    category: "C2",
-    priority: "High",
-    status: "Received",
-  },
-  {
-    trackingId: "AKY-2026-005",
-    patient: "Antonio Santos",
-    bhc: "Taliptip Health Center",
-    category: "B1",
-    priority: "Medium",
-    status: "For Monitoring",
-  },
-];
-
-const monitoringPatients = [
-  {
-    patient: "Maria Rosa",
-    source: "Referral",
-    category: "Pregnant Patient",
-    status: "For Monitoring",
-  },
-  {
-    patient: "Juan Reyes",
-    source: "Referral",
-    category: "Senior Citizen",
-    status: "Follow-up Required",
-  },
-  {
-    patient: "Pedro Ramos",
-    source: "Walk-in",
-    category: "General Consultation",
-    status: "Under Observation",
-  },
-];
-
 export default function RHUDashboard() {
   const [now, setNow] = useState(() => new Date());
+  const [incomingReferrals, setIncomingReferrals] = useState([]);
+  const [monitoringPatients, setMonitoringPatients] = useState([]);
+  const [medicineAlerts, setMedicineAlerts] = useState([]);
   const volumeSnapshot = getRhuVolumeSnapshot();
   const workloadCounts = volumeSnapshot.counts || {};
   const pendingReferrals = incomingReferrals.filter(
@@ -120,6 +83,76 @@ export default function RHUDashboard() {
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
 
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    async function loadDashboardData() {
+      const [referrals, records, medicines] = await Promise.all([
+        getReferrals(),
+        getHealthRecords("rhu"),
+        refreshRhuMedicines(),
+      ]);
+
+      setIncomingReferrals(
+        referrals.map((referral) => ({
+          ...referral,
+          patient: formatPatientName(
+            referral.patientName || referral.patient || referral,
+            "Patient",
+          ),
+          bhc: formatFacilityName(
+            referral.referringHci ||
+              referral.barangayHealthCenter ||
+              referral.barangay_health_center ||
+              referral.bhc,
+            "Unassigned BHC",
+          ),
+          category: formatDisplayValue(
+            referral.category || referral.referralCategory,
+            "Referral",
+          ),
+          priority: formatDisplayValue(
+            referral.priority || referral.urgencyLevel,
+            "Normal",
+          ),
+        })),
+      );
+      setMonitoringPatients(
+        records
+          .filter((record) =>
+            ["For Monitoring", "Follow-up Required", "Under Observation"].includes(
+              record.status,
+            ),
+          )
+          .map((record) => ({
+            patient: formatPatientName(
+              record.patientName || record.patient || record,
+              "Patient",
+            ),
+            source: "Health Record",
+            category: formatDisplayValue(
+              record.category,
+              "General Consultation",
+            ),
+            status: formatDisplayValue(record.status, "For Monitoring"),
+          })),
+      );
+      setMedicineAlerts(
+        medicines
+          .filter((item) =>
+            ["Low Stock", "Unavailable", "Expired"].includes(
+              item.availabilityStatus || item.status,
+            ),
+          )
+          .slice(0, 3),
+      );
+    }
+
+    loadDashboardData().catch(() => {
+      setIncomingReferrals([]);
+      setMonitoringPatients([]);
+      setMedicineAlerts([]);
+    });
   }, []);
 
   return (
@@ -241,7 +274,7 @@ export default function RHUDashboard() {
                         </td>
 
                         <td className="whitespace-nowrap px-4 py-4 text-[13px] font-semibold text-[#1A1A1A]">
-                          {referral.patient}
+                          {formatDisplayValue(referral.patient, "Patient")}
                         </td>
 
                         <td className="whitespace-nowrap px-4 py-4 text-[13px] text-[#6B7280]">
@@ -306,7 +339,7 @@ export default function RHUDashboard() {
                           <div className="flex items-center gap-3">
                             <Avatar name={item.patient} />
                             <span className="text-[13px] font-semibold text-[#1A1A1A]">
-                              {item.patient}
+                              {formatDisplayValue(item.patient, "Patient")}
                             </span>
                           </div>
                         </td>
@@ -343,7 +376,7 @@ export default function RHUDashboard() {
           <aside className="space-y-6">
             <WorkflowPanel delay={8} />
             <DoctorScheduleCard delay={13} />
-            <MedicineAlertCard delay={14} />
+            <MedicineAlertCard alerts={medicineAlerts} delay={14} />
           </aside>
         </div>
       </div>
@@ -623,7 +656,7 @@ function DoctorScheduleCard({ delay = 0 }) {
   );
 }
 
-function MedicineAlertCard({ delay = 0 }) {
+function MedicineAlertCard({ alerts = [], delay = 0 }) {
   return (
     <section
       className="anim-fade-up rounded-2xl border border-[#E8ECF0] bg-white p-6 shadow-sm shadow-black/[0.02] transition-all duration-300 hover:shadow-lg hover:shadow-black/[0.03]"
@@ -638,14 +671,23 @@ function MedicineAlertCard({ delay = 0 }) {
         </div>
 
         <span className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1 text-[10px] font-bold text-red-600">
-          <AlertTriangle size={10} />3 alerts
+          <AlertTriangle size={10} />
+          {alerts.length} alert{alerts.length === 1 ? "" : "s"}
         </span>
       </div>
 
       <div className="space-y-2.5">
-        <MedicineAlert item="Amoxicillin" status="Low Stock" />
-        <MedicineAlert item="Tetanus Vaccine" status="Unavailable" />
-        <MedicineAlert item="Syringe" status="Low Stock" />
+        {alerts.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-[#E8ECF0] bg-[#F8FAFC] p-4 text-xs text-[#9CA3AF]">
+            No medicine alerts yet.
+          </div>
+        ) : alerts.map((item) => (
+          <MedicineAlert
+            key={item.id || item.name}
+            item={item.name}
+            status={item.availabilityStatus || item.status}
+          />
+        ))}
       </div>
 
       <Link
@@ -710,9 +752,11 @@ function StatCard({ title, value, subtitle, icon, color = "navy", delay = 0 }) {
 }
 
 function Avatar({ name }) {
+  const displayName = formatDisplayValue(name, "Patient");
+
   return (
     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F3F4F6] text-[10px] font-bold text-[#4B5563]">
-      {name
+      {displayName
         .split(" ")
         .map((part) => part[0])
         .join("")}
@@ -721,6 +765,7 @@ function Avatar({ name }) {
 }
 
 function StatusBadge({ status }) {
+  const displayStatus = formatDisplayValue(status, "Pending");
   const map = {
     Pending: {
       bg: "#F1F5F9",
@@ -760,7 +805,7 @@ function StatusBadge({ status }) {
     },
   };
 
-  const s = map[status] || map.Pending;
+  const s = map[displayStatus] || map.Pending;
 
   return (
     <span
@@ -771,19 +816,20 @@ function StatusBadge({ status }) {
         className="inline-block h-1.5 w-1.5 rounded-full"
         style={{ backgroundColor: s.dot }}
       />
-      {status}
+      {displayStatus}
     </span>
   );
 }
 
 function PriorityBadge({ priority }) {
+  const displayPriority = formatDisplayValue(priority, "Normal");
   const map = {
     High: { bg: "#FEF2F2", text: "#B91C1C", dot: "#EF4444" },
     Medium: { bg: "#FFFBEB", text: "#B45309", dot: "#F59E0B" },
     Normal: { bg: "#F8FAFC", text: "#475569", dot: "#10B981" },
   };
 
-  const s = map[priority] || map.Normal;
+  const s = map[displayPriority] || map.Normal;
 
   return (
     <span
@@ -794,20 +840,23 @@ function PriorityBadge({ priority }) {
         className="inline-block h-1.5 w-1.5 rounded-full"
         style={{ backgroundColor: s.dot }}
       />
-      {priority}
+      {displayPriority}
     </span>
   );
 }
 
 function CategoryBadge({ category }) {
+  const displayCategory = formatDisplayValue(category, "Referral");
+
   return (
     <span className="inline-block rounded-lg border border-red-100 bg-red-50/70 px-2.5 py-1 font-mono text-[10px] font-bold text-[#B91C1C]">
-      {category}
+      {displayCategory}
     </span>
   );
 }
 
 function SourceBadge({ source }) {
+  const displaySource = formatDisplayValue(source, "Health Record");
   const map = {
     Referral: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
     "Walk-in": "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
@@ -816,10 +865,10 @@ function SourceBadge({ source }) {
   return (
     <span
       className={`inline-block rounded-lg border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-        map[source] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
+        map[displaySource] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
       }`}
     >
-      {source}
+      {displaySource}
     </span>
   );
 }

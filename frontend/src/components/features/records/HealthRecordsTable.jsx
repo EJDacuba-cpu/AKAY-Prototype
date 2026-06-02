@@ -3,6 +3,10 @@ import StatusBadge from "../../common/badges/StatusBadge";
 import TablePagination from "../../common/pagination/TablePagination";
 
 import { stagger } from "../../../utils/animation";
+import {
+  formatDisplayValue,
+  formatPatientName,
+} from "../../../utils/formatters";
 
 export default function HealthRecordsTable({
   records = [],
@@ -168,7 +172,31 @@ export default function HealthRecordsTable({
                     </td>
                   </tr>
                 ) : (
-                  currentRecords.map((record) => (
+                  currentRecords.map((record) => {
+                    const recordId = formatDisplayValue(record.id, "");
+                    const patientName = formatPatientName(
+                      record.patientName || record.patient,
+                      "Unnamed Patient",
+                    );
+                    const patientId = formatDisplayValue(
+                      record.patientId || record.patient?.id,
+                      "Not linked",
+                    );
+                    const classification = formatDisplayValue(
+                      record.classification,
+                      "General Consultation",
+                    );
+                    const concern = formatDisplayValue(
+                      record.concern,
+                      "Not recorded",
+                    );
+                    const followUp = formatDisplayValue(
+                      record.followUp,
+                      "No Follow-up",
+                    );
+                    const date = formatDisplayValue(record.date, "No Date");
+
+                    return (
                     <tr
                       key={record.id}
                       className="
@@ -193,7 +221,7 @@ export default function HealthRecordsTable({
                             group-hover:bg-[#FEF2F2]
                           "
                         >
-                          {record.id}
+                          {recordId}
                         </span>
                       </td>
 
@@ -207,7 +235,7 @@ export default function HealthRecordsTable({
                               text-[#111827]
                             "
                           >
-                            {record.patient}
+                            {patientName}
                           </p>
                           <p
                             className="
@@ -216,19 +244,19 @@ export default function HealthRecordsTable({
                               text-[#9CA3AF]
                             "
                           >
-                            {record.patientId}
+                            {patientId}
                           </p>
                         </div>
                       </td>
 
                       {/* Visit Type / Classification */}
                       <td className="px-4 py-3.5 text-[13px] text-[#6B7280] whitespace-nowrap">
-                        {record.classification}
+                        {classification}
                       </td>
 
                       {/* Chief Complaint / Concern */}
                       <td className="px-4 py-3.5 text-[13px] text-[#6B7280] whitespace-nowrap">
-                        {record.concern}
+                        {concern}
                       </td>
 
                       {/* Status Badge */}
@@ -238,20 +266,20 @@ export default function HealthRecordsTable({
 
                       {/* Follow-up Info */}
                       <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#9CA3AF]">
-                        {record.followUp}
+                        {followUp}
                       </td>
 
                       {/* Date of Visit */}
                       <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#9CA3AF]">
-                        {record.date}
+                        {date}
                       </td>
 
                       {/* Actions ActionMenu Button */}
                       <td className="px-4 py-3.5 text-right whitespace-nowrap">
                         <div className="relative flex justify-end">
                           <ActionMenu
-                            title={record.patientName || record.patient}
-                            subtitle={record.id}
+                            title={patientName}
+                            subtitle={recordId}
                             viewLink={`/bhc/health-records/${record.id}`}
                             editLink={`/bhc/health-records/add?recordId=${record.id}&mode=edit`}
                             editLabel="Edit Record"
@@ -269,7 +297,8 @@ export default function HealthRecordsTable({
                         </div>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>

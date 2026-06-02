@@ -20,6 +20,7 @@ import {
   getMedicineExpiryStatus,
   getRhuMedicines,
   MEDICINE_CATEGORIES,
+  refreshRhuMedicines,
   RHU_MEDICINES_UPDATED_EVENT,
   updateRhuMedicine,
 } from "../../services/medicineService";
@@ -46,17 +47,16 @@ export default function MedicineManagement() {
   const [openMenuId, setOpenMenuId] = useState("");
 
   useEffect(() => {
-    function loadItems() {
+    async function loadItems() {
       setItems(getRhuMedicines());
+      setItems(await refreshRhuMedicines());
     }
 
     loadItems();
 
-    window.addEventListener("storage", loadItems);
     window.addEventListener(RHU_MEDICINES_UPDATED_EVENT, loadItems);
 
     return () => {
-      window.removeEventListener("storage", loadItems);
       window.removeEventListener(RHU_MEDICINES_UPDATED_EVENT, loadItems);
     };
   }, []);
@@ -149,21 +149,21 @@ export default function MedicineManagement() {
     setSelectedItem(null);
   }
 
-  function handleSubmit(payload) {
+  async function handleSubmit(payload) {
     const nextItems =
       modalMode === "edit" && selectedItem
-        ? updateRhuMedicine(selectedItem.id, payload)
-        : addRhuMedicine(payload);
+        ? await updateRhuMedicine(selectedItem.id, payload)
+        : await addRhuMedicine(payload);
 
     setItems(nextItems);
     closeModal();
   }
 
-  function handleDelete(item) {
+  async function handleDelete(item) {
     setOpenMenuId("");
     const confirmed = window.confirm(`Delete ${item.name} from RHU inventory?`);
     if (!confirmed) return;
-    setItems(deleteRhuMedicine(item.id));
+    setItems(await deleteRhuMedicine(item.id));
   }
 
   return (

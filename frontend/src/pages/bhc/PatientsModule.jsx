@@ -14,6 +14,10 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ListToolbar from "../../components/common/list/ListToolbar";
 import usePatients from "../../hooks/usePatients";
+import {
+  formatDisplayValue,
+  formatPatientName,
+} from "../../utils/formatters";
 
 const PER_PAGE = 8;
 
@@ -30,6 +34,7 @@ const DEFAULT_FILTERS = {
 function uniqueOptions(items, selectors, fallback) {
   const values = items
     .flatMap((item) => selectors.map((selector) => selector(item)))
+    .map((value) => formatDisplayValue(value, ""))
     .filter(Boolean);
 
   return [fallback, ...new Set(values)];
@@ -54,7 +59,7 @@ function formatDate(value) {
 }
 
 function getPatientSex(patient) {
-  if (patient.sex) return patient.sex;
+  if (patient.sex) return formatDisplayValue(patient.sex, "");
 
   const ageSex = (patient.ageSex || "").toLowerCase();
 
@@ -65,23 +70,23 @@ function getPatientSex(patient) {
 }
 
 function getPatientContact(patient) {
-  return (
+  return formatDisplayValue(
     patient.contact ||
-    patient.contactNumber ||
-    patient.phone ||
-    patient.mobileNumber ||
-    patient.guardianContact ||
-    ""
+      patient.contactNumber ||
+      patient.phone ||
+      patient.mobileNumber ||
+      patient.guardianContact,
+    "",
   );
 }
 
 function getPatientClassification(patient) {
-  return (
+  return formatDisplayValue(
     patient.patientClassification ||
-    patient.classification ||
-    patient.category ||
-    patient.patientCategory ||
-    "General Consultation"
+      patient.classification ||
+      patient.category ||
+      patient.patientCategory,
+    "General Consultation",
   );
 }
 
@@ -304,33 +309,41 @@ function BHCPatientsTable({
               </tr>
             ) : (
               patients.map((patient) => {
+                const patientId = formatDisplayValue(patient.id, "");
+                const patientName = formatPatientName(
+                  patient,
+                  "Unnamed Patient",
+                );
                 const classification = getPatientClassification(patient);
                 const contact = getPatientContact(patient);
                 const registeredDate = getRegisteredDate(patient);
+                const ageSex = formatDisplayValue(
+                  patient.ageSex ||
+                    [patient.age, getPatientSex(patient)]
+                      .filter(Boolean)
+                      .join(" / "),
+                  "-",
+                );
 
                 return (
                   <tr
-                    key={patient.id}
+                    key={patientId}
                     className="group transition-colors hover:bg-[#F8FAFC]"
                   >
                     <td className="whitespace-nowrap px-6 py-4">
                       <span className="font-mono text-xs font-medium text-[#64748B]">
-                        {patient.id}
+                        {patientId}
                       </span>
                     </td>
 
                     <td className="whitespace-nowrap px-4 py-4">
                       <p className="text-sm font-semibold text-[#0F172A]">
-                        {patient.name || patient.fullName || "Unnamed Patient"}
+                        {patientName}
                       </p>
                     </td>
 
                     <td className="whitespace-nowrap px-4 py-4 text-sm text-[#64748B]">
-                      {patient.ageSex ||
-                        [patient.age, getPatientSex(patient)]
-                          .filter(Boolean)
-                          .join(" / ") ||
-                        "-"}
+                      {ageSex}
                     </td>
 
                     <td className="whitespace-nowrap px-4 py-4 text-sm text-[#64748B]">
@@ -348,8 +361,8 @@ function BHCPatientsTable({
                     <td className="whitespace-nowrap px-6 py-4 text-right">
                       <ActionMenu
                         role="bhc"
-                        patientId={patient.id}
-                        patientName={patient.name || patient.fullName}
+                        patientId={patientId}
+                        patientName={patientName}
                       />
                     </td>
                   </tr>
@@ -425,9 +438,11 @@ function Pagination({ currentPage, totalPages, setCurrentPage }) {
 }
 
 function ClassificationBadge({ label }) {
+  const displayLabel = formatDisplayValue(label, "General Consultation");
+
   return (
     <span className="inline-flex max-w-[160px] items-center truncate rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-700">
-      {label || "General Consultation"}
+      {displayLabel}
     </span>
   );
 }
@@ -493,7 +508,8 @@ function ActionMenu({ role, patientId, patientName }) {
     };
   }, [open]);
 
-  const displayName = patientName || "Patient";
+  const displayName = formatDisplayValue(patientName, "Patient");
+  const displayPatientId = formatDisplayValue(patientId, "");
   const basePath = role === "rhu" ? "/rhu" : "/bhc";
   const healthRecordLabel =
     role === "rhu" ? "Add RHU Health Record" : "Add Health Record";
@@ -515,11 +531,13 @@ function ActionMenu({ role, patientId, patientName }) {
             <p className="truncate text-xs font-semibold text-[#0F172A]">
               {displayName}
             </p>
-            <p className="font-mono text-[10px] text-[#94A3B8]">{patientId}</p>
+            <p className="font-mono text-[10px] text-[#94A3B8]">
+              {displayPatientId}
+            </p>
           </div>
 
           <Link
-            to={`${basePath}/patients/${patientId}`}
+            to={`${basePath}/patients/${displayPatientId}`}
             onClick={() => setOpen(false)}
             className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-[#475569] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A]"
           >
@@ -528,7 +546,7 @@ function ActionMenu({ role, patientId, patientName }) {
           </Link>
 
           <Link
-            to={`${basePath}/health-records/add?patientId=${patientId}`}
+            to={`${basePath}/health-records/add?patientId=${displayPatientId}`}
             onClick={() => setOpen(false)}
             className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-[#475569] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A]"
           >

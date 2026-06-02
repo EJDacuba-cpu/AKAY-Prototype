@@ -1,252 +1,134 @@
-const STORAGE_KEY = "akay_notifications";
+import { apiRequest, unwrapList } from "./apiClient";
+
 const UPDATE_EVENT = "akay:notifications-updated";
+let notificationCache = [];
+let loadingPromise = null;
 
-const ROLE_WIDE_FACILITY = {
-  bhc: "all-bhc",
-  rhu: "all-rhu",
-  admin: "all-admin",
-};
+function emitUpdate() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(UPDATE_EVENT));
+  }
+}
 
-const ROLE_DEFAULT_FACILITY = {
-  bhc: "all-bhc",
-  rhu: "rhu-bulakan",
-  admin: "municipality-bulakan",
-};
-
-function ensureArray(value) {
-  return Array.isArray(value) ? value : [];
+function normalizeNotification(notification = {}) {
+  return {
+    ...notification,
+    id: notification.id ? String(notification.id) : "",
+    title: notification.title || "",
+    message: notification.message || notification.description || "",
+    description: notification.message || notification.description || "",
+    type: notification.type || "system",
+    isRead: Boolean(notification.is_read ?? notification.isRead),
+    createdAt: notification.created_at || notification.createdAt || "",
+    relatedReferralId: notification.related_referral_id || notification.relatedReferralId || "",
+  };
 }
 
 export function normalizeRole(role = "") {
   const value = String(role || "").toLowerCase();
-  if (value.includes("admin") || value.includes("mho")) return "admin";
+  if (value.includes("admin")) return "admin";
   if (value.includes("rhu")) return "rhu";
-  if (value.includes("bhc") || value.includes("barangay")) return "bhc";
-  return value || "bhc";
+  return "bhc";
 }
 
-export function normalizeFacilityId(facilityId, role = "") {
-  const normalizedRole = normalizeRole(role);
-  const raw = String(facilityId || "").trim();
-
-  if (!raw) return ROLE_DEFAULT_FACILITY[normalizedRole] || "";
-  if (Object.values(ROLE_WIDE_FACILITY).includes(raw)) return raw;
-  if (normalizedRole === "admin") return "municipality-bulakan";
-  if (normalizedRole === "rhu") return "rhu-bulakan";
-
-  return raw
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function getRoleWideFacility(role) {
-  return ROLE_WIDE_FACILITY[normalizeRole(role)] || "";
-}
-
-function formatTimestamp(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function createNotificationId(existing = []) {
-  const max = existing.reduce((highest, notification) => {
-    const value = parseInt(String(notification.id || "").replace(/\D/g, ""), 10);
-    return Number.isNaN(value) ? highest : Math.max(highest, value);
-  }, 0);
-
-  return `NOTIF-${String(max + 1).padStart(3, "0")}`;
-}
-
-function readNotifications() {
-  if (typeof window === "undefined") return [];
-
-  try {
-    return ensureArray(JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "[]"));
-  } catch {
-    return [];
-  }
-}
-
-function writeNotifications(notifications) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications));
-}
-
-function sortByNewest(notifications) {
-  return notifications.slice().sort((a, b) => {
-    const diff =
-      new Date(b.createdAt || 0).getTime() -
-      new Date(a.createdAt || 0).getTime();
-    if (diff !== 0) return diff;
-    return String(b.id || "").localeCompare(String(a.id || ""));
-  });
+export function normalizeFacilityId(facilityId) {
+  return String(facilityId || "").trim();
 }
 
 export function notifyNotificationChange() {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent(UPDATE_EVENT));
+  emitUpdate();
 }
 
-function normalizeNotification(notification = {}, existing = []) {
-  const recipientRole = normalizeRole(notification.recipientRole);
-  const recipientFacilityId = normalizeFacilityId(
-    notification.recipientFacilityId || getRoleWideFacility(recipientRole),
-    recipientRole,
-  );
-  const createdAt = notification.createdAt || new Date().toISOString();
-  const message = notification.message || notification.description || "";
+export async function refreshNotifications() {
+  loadingPromise = apiRequest("/notifications")
+    .then((response) => {
+      notificationCache = unwrapList(response).map(normalizeNotification);
+      emitUpdate();
+      return notificationCache;
+    })
+    .catch(() => {
+      notificationCache = [];
+      emitUpdate();
+      return notificationCache;
+    })
+    .finally(() => {
+      loadingPromise = null;
+    });
 
-  return {
-    id: notification.id || createNotificationId(existing),
-    recipientRole,
-    recipientFacilityId,
-    title: notification.title || "System notification",
-    message,
-    description: message,
-    fullMessage: notification.fullMessage || message,
-    type: notification.type || "system",
-    referenceId: notification.referenceId || notification.referralId || "",
-    link: notification.link || "",
-    linkLabel: notification.linkLabel || "View Record",
-    isRead: Boolean(notification.isRead ?? notification.read),
-    read: Boolean(notification.isRead ?? notification.read),
-    sender: notification.sender || "AKAY System",
-    patientName: notification.patientName || "",
-    status: notification.status || "",
-    createdAt,
-    timestamp: notification.timestamp || formatTimestamp(createdAt),
-  };
-}
-
-function isForUser(notification, role, facilityId) {
-  const normalizedRole = normalizeRole(role);
-  const normalizedFacility = normalizeFacilityId(facilityId, normalizedRole);
-  const roleWideFacility = getRoleWideFacility(normalizedRole);
-
-  return (
-    notification.recipientRole === normalizedRole &&
-    (notification.recipientFacilityId === normalizedFacility ||
-      notification.recipientFacilityId === roleWideFacility)
-  );
+  return loadingPromise;
 }
 
 export function getAllNotifications() {
-  return sortByNewest(readNotifications().map((item) => normalizeNotification(item)));
+  if (!loadingPromise) refreshNotifications();
+  return notificationCache;
 }
 
-export function getNotificationsForUser(role, facilityId) {
-  return getAllNotifications().filter((notification) =>
-    isForUser(notification, role, facilityId),
-  );
+export function getNotificationsForUser() {
+  return getAllNotifications();
 }
 
 export function createNotification(notification) {
-  const existing = readNotifications().map((item) => normalizeNotification(item));
-  const next = normalizeNotification(notification, existing);
-
-  if (next.referenceId) {
-    const duplicate = existing.find(
-      (item) =>
-        item.recipientRole === next.recipientRole &&
-        item.recipientFacilityId === next.recipientFacilityId &&
-        item.type === next.type &&
-        item.referenceId === next.referenceId,
-    );
-
-    if (duplicate) return duplicate;
-  }
-
-  const notifications = [next, ...existing];
-  writeNotifications(notifications);
-  notifyNotificationChange();
-  return next;
+  const normalized = normalizeNotification({
+    ...notification,
+    id: notification.id || `pending-${Date.now()}`,
+    createdAt: new Date().toISOString(),
+  });
+  notificationCache = [normalized, ...notificationCache];
+  emitUpdate();
+  return normalized;
 }
 
 export function createRoleNotification(role, notification) {
-  const normalizedRole = normalizeRole(role);
-  return createNotification({
-    ...notification,
-    recipientRole: normalizedRole,
-    recipientFacilityId: getRoleWideFacility(normalizedRole),
-  });
+  void role;
+  return createNotification(notification);
 }
 
 export function createFacilityNotification(role, facilityId, notification) {
-  return createNotification({
-    ...notification,
-    recipientRole: normalizeRole(role),
-    recipientFacilityId: normalizeFacilityId(facilityId, role),
-  });
+  void role;
+  void facilityId;
+  return createNotification(notification);
 }
 
 export function markNotificationAsRead(notificationId) {
-  const notifications = readNotifications().map((notification) =>
-    notification.id === notificationId
-      ? { ...notification, isRead: true, read: true }
+  notificationCache = notificationCache.map((notification) =>
+    notification.id === String(notificationId)
+      ? { ...notification, isRead: true }
       : notification,
   );
-  writeNotifications(notifications);
-  notifyNotificationChange();
-  return notifications.find((notification) => notification.id === notificationId);
+  emitUpdate();
+  apiRequest(`/notifications/${notificationId}/read`, { method: "PATCH" }).then(refreshNotifications).catch(() => {});
 }
 
-export function markAllNotificationsAsRead(role, facilityId) {
-  const notifications = readNotifications().map((notification) => {
-    const normalized = normalizeNotification(notification);
-    if (!isForUser(normalized, role, facilityId)) return notification;
-    return { ...notification, isRead: true, read: true };
-  });
-
-  writeNotifications(notifications);
-  notifyNotificationChange();
-  return getNotificationsForUser(role, facilityId);
+export function markAllNotificationsAsRead() {
+  notificationCache = notificationCache.map((notification) => ({ ...notification, isRead: true }));
+  emitUpdate();
+  apiRequest("/notifications/read-all", { method: "PATCH" }).then(refreshNotifications).catch(() => {});
+  return notificationCache;
 }
 
-export function getUnreadNotificationCount(role, facilityId) {
-  return getNotificationsForUser(role, facilityId).filter(
-    (notification) => !notification.isRead,
-  ).length;
+export function getUnreadNotificationCount() {
+  return getAllNotifications().filter((notification) => !notification.isRead).length;
 }
 
 export function deleteNotification(notificationId) {
-  const notifications = readNotifications().filter(
-    (notification) => notification.id !== notificationId,
-  );
-  writeNotifications(notifications);
-  notifyNotificationChange();
-  return notifications;
+  notificationCache = notificationCache.filter((notification) => notification.id !== String(notificationId));
+  emitUpdate();
+  apiRequest(`/notifications/${notificationId}`, { method: "DELETE" }).catch(() => {});
 }
 
-export function clearNotificationsForUser(role, facilityId) {
-  const notifications = readNotifications()
-    .map((item) => normalizeNotification(item))
-    .filter((notification) => !isForUser(notification, role, facilityId));
-
-  writeNotifications(notifications);
-  notifyNotificationChange();
-  return [];
+export function clearNotificationsForUser() {
+  notificationCache = [];
+  emitUpdate();
+  return notificationCache;
 }
 
 export function subscribeToNotifications(callback) {
   if (typeof window === "undefined") return () => {};
-
   const handler = () => callback();
   window.addEventListener(UPDATE_EVENT, handler);
-  window.addEventListener("storage", handler);
+  refreshNotifications();
 
-  return () => {
-    window.removeEventListener(UPDATE_EVENT, handler);
-    window.removeEventListener("storage", handler);
-  };
+  return () => window.removeEventListener(UPDATE_EVENT, handler);
 }
 
 export default {
@@ -258,9 +140,4 @@ export default {
   markAllNotificationsAsRead,
   getUnreadNotificationCount,
   subscribeToNotifications,
-  notifyNotificationChange,
-  deleteNotification,
-  clearNotificationsForUser,
-  normalizeRole,
-  normalizeFacilityId,
 };

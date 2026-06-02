@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
+import { formatDisplayValue } from "../../../utils/formatters";
 
 function getInitialValues(fields) {
   return fields.reduce((acc, field) => {
@@ -13,7 +14,11 @@ function formatOption(option) {
     return { value: option, label: option };
   }
 
-  return option;
+  return {
+    ...option,
+    value: formatDisplayValue(option?.value ?? option?.label, ""),
+    label: formatDisplayValue(option?.label ?? option?.value, "Not recorded"),
+  };
 }
 
 export default function ListToolbar({
@@ -197,7 +202,7 @@ export default function ListToolbar({
               onClick={() => onRemoveFilter?.(filter.key)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-red-100 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-[#B91C1C] transition-colors hover:bg-red-100/70"
             >
-              {filter.label}
+              {formatDisplayValue(filter.label, "Not recorded")}
               <X size={10} />
             </button>
           ))}

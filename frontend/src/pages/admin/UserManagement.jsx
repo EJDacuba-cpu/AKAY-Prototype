@@ -6,56 +6,22 @@ import { KeyRound, MoreHorizontal, Plus, UserCheck, UserX } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ListToolbar from "../../components/common/list/ListToolbar";
 import {
+  ADMIN_ACCOUNTS_UPDATED_EVENT,
   getAdminAccounts,
+  refreshAdminAccounts,
+  updateAdminAccount,
   updateAdminAccountStatus,
 } from "../../services/adminAccountsService";
-import { createRoleNotification } from "../../services/notificationService";
+import {
+  formatDisplayValue,
+  formatFacilityName,
+  formatUserName,
+} from "../../utils/formatters";
 
 const FILTER_OPTIONS = {
   role: ["All Roles", "Admin", "BHC", "RHU"],
-  position: [
-    "All Positions",
-    "Municipal Health Officer",
-    "Acting Admin",
-    "Barangay Health Worker",
-    "Midwife",
-    "BHC Staff",
-    "RHU Staff",
-    "Encoder",
-    "Nurse",
-    "Receiving Staff",
-  ],
-  facility: [
-    "All Facilities",
-    "Municipality of Bulakan",
-    "Rural Health Unit Bulakan",
-    "Barangay Health Centers",
-  ],
   status: ["All Status", "Active", "Inactive"],
 };
-
-const ADMIN_ACCOUNTS_STORAGE_KEYS = [
-  "akay_admin_accounts",
-  "admin_accounts",
-  "akay_users",
-];
-
-function persistAdminAccounts(accounts) {
-  if (typeof window === "undefined") return;
-
-  try {
-    const existingKey = ADMIN_ACCOUNTS_STORAGE_KEYS.find((key) =>
-      window.localStorage.getItem(key),
-    );
-
-    window.localStorage.setItem(
-      existingKey || ADMIN_ACCOUNTS_STORAGE_KEYS[0],
-      JSON.stringify(accounts),
-    );
-  } catch (error) {
-    console.error("Failed to persist admin account password update:", error);
-  }
-}
 
 export default function UserManagement() {
   const [users, setUsers] = useState(() => getAdminAccounts());
@@ -69,43 +35,31 @@ export default function UserManagement() {
     status: "All Status",
   });
 
-  function refreshUsers() {
-    setUsers(getAdminAccounts());
+  async function refreshUsers() {
+    setUsers(await refreshAdminAccounts());
   }
 
-  function updateStatus(id, newStatus) {
-    updateAdminAccountStatus(id, newStatus);
-    refreshUsers();
+  async function updateStatus(id, newStatus) {
+    await updateAdminAccountStatus(id, newStatus);
+    await refreshUsers();
   }
 
-  function handleChangePassword(user, newPassword) {
-    const updatedAt = new Date().toISOString();
-    const updatedUsers = users.map((account) =>
-      account.id === user.id
-        ? {
-            ...account,
-            password: newPassword,
-            passwordUpdatedAt: updatedAt,
-            passwordManagedBy: "Admin/MHO",
-          }
-        : account,
-    );
-
-    persistAdminAccounts(updatedUsers);
-    createRoleNotification("admin", {
-      title: "Password updated",
-      message: `Password was changed for ${getDisplayName(user)}.`,
-      type: "account",
-      referenceId: `${user.id}-password-${updatedAt}`,
-      link: "/admin/users",
-      sender: "Admin/MHO",
-    });
-    setUsers(updatedUsers);
+  async function handleChangePassword(user, newPassword) {
+    await updateAdminAccount(user.id, { ...user, password: newPassword });
+    await refreshUsers();
     setPasswordTarget(null);
     setNoticeMessage(
       `Password updated by Admin/MHO for ${getDisplayName(user)}.`,
     );
   }
+
+  useEffect(() => {
+    refreshUsers();
+    window.addEventListener(ADMIN_ACCOUNTS_UPDATED_EVENT, refreshUsers);
+
+    return () =>
+      window.removeEventListener(ADMIN_ACCOUNTS_UPDATED_EVENT, refreshUsers);
+  }, []);
 
   function removeFilter(key) {
     const defaults = {
@@ -143,13 +97,15 @@ export default function UserManagement() {
     const query = filters.search.trim().toLowerCase();
 
     return users.filter((user) => {
+      const facilityName = getFacilityName(user);
+      const position = formatDisplayValue(user.position, "Unassigned");
       const searchText = [
         user.id,
-        user.fullName || user.name,
+        getDisplayName(user),
         user.email,
         user.role,
-        user.position,
-        user.facility,
+        position,
+        facilityName,
         user.accountRoleLabel,
       ]
         .filter(Boolean)
@@ -161,11 +117,10 @@ export default function UserManagement() {
         filters.role === "All Roles" || user.role === filters.role;
       const matchesPosition =
         filters.position === "All Positions" ||
-        user.position === filters.position;
+        position === filters.position;
       const matchesFacility =
         filters.facility === "All Facilities" ||
-        user.facility === filters.facility ||
-        (filters.facility === "Barangay Health Centers" && user.role === "BHC");
+        facilityName === filters.facility;
       const matchesStatus =
         filters.status === "All Status" || user.status === filters.status;
 
@@ -179,6 +134,20 @@ export default function UserManagement() {
     });
   }, [filters, users]);
 
+  const positionOptions = useMemo(
+    () => [
+      "All Positions",
+      ...uniqueValues(
+        users.map((user) => formatDisplayValue(user.position, "")),
+      ),
+    ],
+    [users],
+  );
+  const facilityOptions = useMemo(
+    () => ["All Facilities", ...uniqueValues(users.map(getFacilityName))],
+    [users],
+  );
+
   const toolbarFilters = [
     {
       key: "role",
@@ -190,13 +159,13 @@ export default function UserManagement() {
       key: "position",
       label: "Position",
       value: filters.position,
-      options: FILTER_OPTIONS.position,
+      options: positionOptions,
     },
     {
       key: "facility",
       label: "Facility",
       value: filters.facility,
-      options: FILTER_OPTIONS.facility,
+      options: facilityOptions,
     },
     {
       key: "status",
@@ -311,7 +280,10 @@ function AccountsTable({ users, onChangePassword, onUpdateStatus }) {
                 message="No user accounts match the current filters."
               />
             ) : (
-              users.map((user) => (
+              users.map((user) => {
+                const facilityName = getFacilityName(user);
+
+                return (
                 <tr
                   key={user.id}
                   className="transition-colors hover:bg-[#F9FAFB]"
@@ -337,7 +309,7 @@ function AccountsTable({ users, onChangePassword, onUpdateStatus }) {
 
                   <td className="px-4 py-3.5 align-middle">
                     <p className="truncate text-sm text-[#6B7280]">
-                      {user.facility || "-"}
+                      {facilityName}
                     </p>
                   </td>
 
@@ -353,7 +325,8 @@ function AccountsTable({ users, onChangePassword, onUpdateStatus }) {
                     />
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
@@ -538,8 +511,8 @@ function ChangePasswordModal({ user, onClose, onSubmit }) {
     event.preventDefault();
     setError("");
 
-    if (newPassword.trim().length < 6) {
-      setError("Password must be at least 6 characters.");
+    if (newPassword.trim().length < 8) {
+      setError("Password must be at least 8 characters.");
       return;
     }
 
@@ -627,6 +600,7 @@ function ChangePasswordModal({ user, onClose, onSubmit }) {
 }
 
 function RoleBadge({ role }) {
+  const displayRole = formatDisplayValue(role, "Unassigned");
   const map = {
     Admin: "bg-purple-50 text-purple-700 border-purple-200",
     BHC: "bg-red-50 text-red-700 border-red-200",
@@ -636,15 +610,16 @@ function RoleBadge({ role }) {
   return (
     <span
       className={`inline-block whitespace-nowrap rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-        map[role] || "border-slate-200 bg-slate-50 text-slate-600"
+        map[displayRole] || "border-slate-200 bg-slate-50 text-slate-600"
       }`}
     >
-      {role || "Unassigned"}
+      {displayRole}
     </span>
   );
 }
 
 function StatusBadge({ status }) {
+  const displayStatus = formatDisplayValue(status, "Active");
   const map = {
     Active: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
     Inactive: "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
@@ -653,14 +628,31 @@ function StatusBadge({ status }) {
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-        map[status] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
+        map[displayStatus] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
       }`}
     >
-      {status || "Active"}
+      {displayStatus}
     </span>
   );
 }
 
 function getDisplayName(user) {
-  return user?.fullName || user?.name || "User Account";
+  return formatUserName(user, "User Account");
+}
+
+function getFacilityName(user) {
+  return formatFacilityName(
+    user?.facility ||
+      user?.barangayHealthCenter ||
+      user?.barangay_health_center ||
+      user?.ruralHealthUnit ||
+      user?.rural_health_unit,
+    "-",
+  );
+}
+
+function uniqueValues(values) {
+  return Array.from(new Set(values.filter(Boolean))).sort((a, b) =>
+    String(a).localeCompare(String(b)),
+  );
 }

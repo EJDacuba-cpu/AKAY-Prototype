@@ -2,6 +2,7 @@ import { MoreHorizontal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
+import { formatDisplayValue } from "../../../utils/formatters";
 
 export default function ActionMenu({
   title,
@@ -22,6 +23,8 @@ export default function ActionMenu({
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+  const displayTitle = formatDisplayValue(title, "Not recorded");
+  const displaySubtitle = subtitle ? formatDisplayValue(subtitle, "") : "";
 
   const btnRef = useRef(null);
   const menuRef = useRef(null);
@@ -119,10 +122,12 @@ export default function ActionMenu({
       >
         {/* Header */}
         <div className="mb-1.5 border-b border-[#F1F5F9] px-2.5 pb-2">
-          <p className="text-[11px] font-bold text-[#0F172A]">{title}</p>
-          {subtitle && (
+          <p className="text-[11px] font-bold text-[#0F172A]">
+            {displayTitle}
+          </p>
+          {displaySubtitle && (
             <p className="mt-0.5 font-mono text-[10px] text-[#BCC3CD]">
-              {subtitle}
+              {displaySubtitle}
             </p>
           )}
         </div>

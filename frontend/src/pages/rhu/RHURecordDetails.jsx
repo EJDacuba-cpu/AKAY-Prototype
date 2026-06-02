@@ -26,126 +26,6 @@ const keyframes = `
   .anim-fade-up { animation: fadeUp 0.55s cubic-bezier(0.22,1,0.36,1) both; }
 `;
 
-const FALLBACK_RHU_RECORDS = [
-  {
-    id: "HR-001",
-    patientId: "P-001",
-    patient: "Maria Rosa",
-    concern: "Abdominal pain",
-    status: "Follow-up Required",
-    date: "May 13, 2026",
-    recordedBy: "Joshua Pio",
-  },
-  {
-    id: "HR-002",
-    patientId: "P-002",
-    patient: "Juan Reyes",
-    concern: "Hypertension",
-    status: "Routine Monitoring",
-    date: "May 13, 2026",
-    recordedBy: "Joshua Pio",
-  },
-  {
-    id: "HR-003",
-    patientId: "P-003",
-    patient: "Carmen Santos",
-    concern: "Prenatal checkup",
-    status: "Routine Monitoring",
-    date: "May 12, 2026",
-    recordedBy: "Grace Navalta",
-  },
-  {
-    id: "HR-004",
-    patientId: "P-004",
-    patient: "Pedro Dela Cruz",
-    concern: "Persistent cough",
-    status: "Completed",
-    date: "May 12, 2026",
-    recordedBy: "Joshua Pio",
-  },
-  {
-    id: "HR-005",
-    patientId: "P-005",
-    patient: "Ana Lim",
-    concern: "Fever and headache",
-    status: "Routine Monitoring",
-    date: "May 11, 2026",
-    recordedBy: "Grace Navalta",
-  },
-  {
-    id: "HR-006",
-    patientId: "P-006",
-    patient: "Luis Garcia",
-    concern: "Diabetes follow-up",
-    status: "Follow-up Required",
-    date: "May 11, 2026",
-    recordedBy: "Joshua Pio",
-  },
-  {
-    id: "HR-007",
-    patientId: "P-007",
-    patient: "Rosa Mendoza",
-    concern: "Skin rash",
-    status: "Completed",
-    date: "May 10, 2026",
-    recordedBy: "Grace Navalta",
-  },
-  {
-    id: "HR-008",
-    patientId: "P-008",
-    patient: "Miguel Torres",
-    concern: "Back pain",
-    status: "Routine Monitoring",
-    date: "May 10, 2026",
-    recordedBy: "Joshua Pio",
-  },
-  {
-    id: "HR-009",
-    patientId: "P-009",
-    patient: "Elena Flores",
-    concern: "Prenatal checkup",
-    status: "Routine Monitoring",
-    date: "May 9, 2026",
-    recordedBy: "Grace Navalta",
-  },
-  {
-    id: "HR-010",
-    patientId: "P-010",
-    patient: "Ricardo Ramos",
-    concern: "High blood pressure",
-    status: "Follow-up Required",
-    date: "May 9, 2026",
-    recordedBy: "Joshua Pio",
-  },
-  {
-    id: "HR-011",
-    patientId: "P-011",
-    patient: "Sofia Villanueva",
-    concern: "Child immunization",
-    status: "Completed",
-    date: "May 8, 2026",
-    recordedBy: "Grace Navalta",
-  },
-  {
-    id: "HR-012",
-    patientId: "P-012",
-    patient: "Andres Cruz",
-    concern: "Chest tightness",
-    status: "Routine Monitoring",
-    date: "May 8, 2026",
-    recordedBy: "Joshua Pio",
-  },
-  {
-    id: "HR-013",
-    patientId: "P-013",
-    patient: "Isabelle Reyes",
-    concern: "Urinary tract infection",
-    status: "Completed",
-    date: "May 7, 2026",
-    recordedBy: "Grace Navalta",
-  },
-];
-
 export default function RHURecordDetails() {
   const { recordId } = useParams();
   const [loading, setLoading] = useState(true);
@@ -167,10 +47,7 @@ export default function RHURecordDetails() {
 
         if (!active) return;
 
-        const allRecords = [
-          ...(Array.isArray(rhuRecords) ? rhuRecords : []),
-          ...FALLBACK_RHU_RECORDS,
-        ];
+        const allRecords = Array.isArray(rhuRecords) ? rhuRecords : [];
 
         const foundRecord =
           allRecords.find((item) => getRecordId(item) === recordId) || null;

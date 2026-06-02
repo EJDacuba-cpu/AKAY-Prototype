@@ -28,6 +28,11 @@ import {
   getReferrals,
 } from "../../services/referrals";
 import { createFacilityNotification } from "../../services/notificationService";
+import {
+  formatDisplayValue,
+  formatFacilityName,
+  formatPatientName,
+} from "../../utils/formatters";
 
 /* ─────────────────────────────────────────────
    ANIMATIONS
@@ -180,10 +185,10 @@ export default function QRScanner() {
   }
 
   function simulateQRScan() {
-    const sample =
+    const referralToScan =
       referrals.find((item) => item.status === "Pending") || referrals[0];
 
-    if (!sample) {
+    if (!referralToScan) {
       setError("No referral records available to scan.");
       setSelectedReferral(null);
       setSuccess("");
@@ -196,9 +201,9 @@ export default function QRScanner() {
     setSuccess("");
 
     setTimeout(() => {
-      setTrackingInput(sample.trackingId);
+      setTrackingInput(referralToScan.trackingId);
       setIsScanning(false);
-      verifyTrackingId(sample.trackingId);
+      verifyTrackingId(referralToScan.trackingId);
     }, 2000);
   }
 
@@ -496,7 +501,7 @@ export default function QRScanner() {
                             {r.trackingId}
                           </span>
                           <span className="text-[10px] text-slate-400">
-                            {r.patientName || r.patient || "Patient"}
+                            {getReferralPatientName(r)}
                           </span>
                         </button>
                       ))}
@@ -569,12 +574,16 @@ export default function QRScanner() {
                   <div className="flex items-start gap-3">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] font-bold text-slate-800">
-                        {selectedReferral.patientName ||
-                          selectedReferral.patient ||
-                          "Patient"}
+                        {getReferralPatientName(selectedReferral)}
                       </p>
                       <p className="mt-0.5 text-[11px] text-slate-400">
+                        {formatDisplayValue(
+                          selectedReferral.ageSex,
+                          "Age / Sex not recorded",
+                        )}
+                        {/*
                         {selectedReferral.ageSex || "—"}
+                        */}
                       </p>
                     </div>
                     <StatusBadge status={selectedReferral.status} />
@@ -586,6 +595,7 @@ export default function QRScanner() {
                   <ResultRow
                     label="Referring BHC"
                     value={
+                      getReferralFacilityName(selectedReferral) ||
                       selectedReferral.referringFacility ||
                       selectedReferral.bhc ||
                       "—"
@@ -672,6 +682,23 @@ export default function QRScanner() {
 /* ─────────────────────────────────────────────
    PRIMARY ACTION
 ───────────────────────────────────────────── */
+function getReferralPatientName(referral) {
+  return formatPatientName(
+    referral?.patientName || referral?.patient || referral,
+    "Patient",
+  );
+}
+
+function getReferralFacilityName(referral) {
+  return formatFacilityName(
+    referral?.referringFacility ||
+      referral?.bhc ||
+      referral?.barangayHealthCenter ||
+      referral?.barangay_health_center,
+    "Not recorded",
+  );
+}
+
 function getPrimaryAction(referral) {
   if (referral.status === "Pending") {
     return {
@@ -765,7 +792,7 @@ function ConfirmationModal({ action, onCancel, onConfirm }) {
             <div className="flex items-center gap-3">
               <div>
                 <p className="text-[13px] font-bold text-slate-800">
-                  {action.referral.patientName || action.referral.patient}
+                  {getReferralPatientName(action.referral)}
                 </p>
                 <p className="mt-0.5 font-mono text-[11px] font-semibold text-[#0F172A]/60">
                   {action.referral.trackingId}
@@ -776,7 +803,10 @@ function ConfirmationModal({ action, onCancel, onConfirm }) {
             {action.referral.ageSex && (
               <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-3">
                 <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-                  {action.referral.ageSex}
+                  {formatDisplayValue(
+                    action.referral.ageSex,
+                    "Age / Sex not recorded",
+                  )}
                 </span>
                 <StatusBadge status={action.referral.status} />
               </div>
@@ -811,17 +841,22 @@ function ConfirmationModal({ action, onCancel, onConfirm }) {
    SMALL COMPONENTS
 ───────────────────────────────────────────── */
 function ResultRow({ label, value }) {
+  const displayValue = formatDisplayValue(value, "Not recorded");
+
   return (
     <div className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-3.5 py-2.5">
       <p className="w-28 flex-shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400">
         {label}
       </p>
-      <p className="flex-1 text-[12px] font-semibold text-slate-700">{value}</p>
+      <p className="flex-1 text-[12px] font-semibold text-slate-700">
+        {displayValue}
+      </p>
     </div>
   );
 }
 
 function StatusBadge({ status }) {
+  const displayStatus = formatDisplayValue(status, "Pending");
   const map = {
     Pending: {
       bg: "#F1F5F9",
@@ -855,7 +890,7 @@ function StatusBadge({ status }) {
     },
   };
 
-  const s = map[status] || map.Pending;
+  const s = map[displayStatus] || map.Pending;
 
   return (
     <span
@@ -870,7 +905,7 @@ function StatusBadge({ status }) {
         className="inline-block h-1.5 w-1.5 rounded-full"
         style={{ backgroundColor: s.dot }}
       />
-      {status}
+      {displayStatus}
     </span>
   );
 }

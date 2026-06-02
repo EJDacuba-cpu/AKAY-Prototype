@@ -31,6 +31,7 @@ import {
   getDoctorAvailability,
   listenDoctorAvailabilityUpdates,
 } from "../../services/doctorAvailability";
+import { getCurrentUser } from "../../utils/auth";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -45,13 +46,15 @@ const keyframes = `
 `;
 const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 
-const REFERRING_HCI = "Pitpitan Health Center";
-const DEFAULT_RECEIVING_FACILITY = "Rural Health Unit of Bulakan";
-
 export default function CreateReferral() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const targetRecordId = searchParams.get("recordId");
+  const currentUser = getCurrentUser();
+  const referringHci =
+    currentUser?.assignedBarangayHealthCenter || currentUser?.facility || "";
+  const referringPractitioner = currentUser?.fullName || currentUser?.name || "";
+  const assignedRhu = currentUser?.assignedRuralHealthUnit || "";
 
   const today = new Date().toISOString().split("T")[0];
   const currentTime = new Date().toLocaleTimeString([], {
@@ -69,7 +72,7 @@ export default function CreateReferral() {
   const [form, setForm] = useState({
     dateOfReferral: today,
     timeOfReferral: currentTime,
-    receivingFacility: DEFAULT_RECEIVING_FACILITY,
+    receivingFacility: assignedRhu,
     preferredVisitDate: "",
     preferredVisitTime: "",
     urgencyLevel: "Non-Urgent",
@@ -284,14 +287,16 @@ export default function CreateReferral() {
 
       // Correct BHC → RHU facility direction.
       // Referring facility must be the Barangay Health Center.
-      bhc: REFERRING_HCI,
-      referringFacility: REFERRING_HCI,
-      referringHci: REFERRING_HCI,
+      bhc: referringHci,
+      referringFacility: referringHci,
+      referringHci,
+      barangayHealthCenterId: currentUser?.barangayHealthCenterId || "",
 
       // Receiving facility for the BHC → RHU referral.
       receivingFacility: form.receivingFacility,
       referredFacility: form.receivingFacility, // backward compatibility
       destinationFacility: form.receivingFacility,
+      ruralHealthUnitId: currentUser?.ruralHealthUnitId || "",
 
       // Category is based on patient classification/category.
       referralCategory: patientClassification,
@@ -346,7 +351,7 @@ export default function CreateReferral() {
       summaryOfPresentIllness: record?.summaryOfPresentIllness,
       initialActionsTaken: record?.actiontaken || record?.medication,
       attendingStaff: record?.attendingStaff,
-      practitioner: "Lorna Reyes",
+      practitioner: referringPractitioner,
       suggestedSpecialization,
     });
 
@@ -719,8 +724,11 @@ export default function CreateReferral() {
           >
             <SectionDivider label="Referral Tracking Details" />
             <div className="grid grid-cols-2 gap-x-8 gap-y-1 pt-3 md:grid-cols-4">
-              <MetaField label="Name Of Referring HCI" value={REFERRING_HCI} />
-              <MetaField label="Referring Practitioner" value="Lorna Reyes" />
+              <MetaField label="Name Of Referring HCI" value={referringHci} />
+              <MetaField
+                label="Referring Practitioner"
+                value={referringPractitioner}
+              />
               <MetaField label="Date of Referral" value={form.dateOfReferral} />
               <MetaField label="Time of Referral" value={form.timeOfReferral} />
             </div>

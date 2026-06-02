@@ -1,16 +1,5 @@
-import {
-  FileText,
-  MapPinHouse,
-  UserPlus,
-  Activity,
-  Baby,
-  HeartPulse,
-} from "lucide-react";
-
 // CORRECTED IMPORTS: Import specific files directly instead of the directory
 import FormInput from "../../common/forms/FormInput";
-import FormSelect from "../../common/forms/FormSelect";
-import FormTextarea from "../../common/forms/FormTextarea";
 import { getPhilippineLocalNumber } from "../../../utils/patientUtils";
 
 // --- THEME CONSTANTS ---

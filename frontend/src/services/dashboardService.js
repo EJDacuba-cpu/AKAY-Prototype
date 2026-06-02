@@ -1,192 +1,96 @@
-import {
-  getAllHealthRecords,
-  getAllPatients,
-  getAllReferrals,
-  getAllNotifications,
-} from "./localStorageDataService";
+import { getHealthRecords } from "./healthRecordService";
+import { getBhcPatients } from "./patientService";
+import { getReferrals } from "./referrals";
+import { getAllNotifications } from "./notificationService";
 
-const delay = () => new Promise((resolve) => setTimeout(resolve, 300));
+function formatMaybeDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
 
-function formatMaybeDate(d) {
-  try {
-    if (!d) return "";
-    const dt = new Date(d);
-    if (Number.isNaN(dt.getTime())) return String(d);
-    // Keep a human readable format similar to existing mock.
-    return dt.toLocaleDateString(undefined, {
-      month: "short",
-      day: "2-digit",
-      year: "numeric",
-    });
-  } catch {
-    return String(d ?? "");
-  }
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  });
 }
 
 function normalizeRecentHealthRecords(records, patients) {
-  // Shape expected by RecentHealthRecordsTable:
-  // { patient, visitType, concern, status, date }
-  const patientById = new Map(patients.map((p) => [p.id, p]));
+  const patientById = new Map(patients.map((patient) => [String(patient.id), patient]));
 
-  return (records || [])
+  return records
     .slice()
-    .sort((a, b) => {
-      const ad = a?.dateCreated || a?.dateOfVisit || a?.date || a?.createdAt;
-      const bd = b?.dateCreated || b?.dateOfVisit || b?.date || b?.createdAt;
-      return new Date(bd ?? 0) - new Date(ad ?? 0);
-    })
+    .sort((a, b) => new Date(b.createdAt || b.dateRecorded || 0) - new Date(a.createdAt || a.dateRecorded || 0))
     .slice(0, 10)
     .map((record) => {
-      const patient = patientById.get(record.patientId) || null;
-      const visitType =
-        record.visitType ||
-        record.classification ||
-        record.patientClassification ||
-        record.category ||
-        "General Consultation";
-
-      const concern =
-        record.concern ||
-        record.chiefComplaint ||
-        record.diagnosis ||
-        record.assessment ||
-        "";
-
-      const status =
-        record.status || record.followUpStatus || record.needsReferral
-          ? "For Referral"
-          : "Completed";
-
-      const date = formatMaybeDate(
-        record.dateOfVisit ||
-          record.date ||
-          record.dateCreated ||
-          record.createdAt,
-      );
-
+      const patient = patientById.get(String(record.patientId)) || record.patient;
       return {
         id: record.id,
-        patient: patient?.name || record.patient || "Unknown",
+        patient: patient?.name || record.patientName || "Unknown",
         patientId: record.patientId,
-        visitType,
-        concern,
-        status,
-        date,
+        visitType: record.category || "General Consultation",
+        concern: record.chiefComplaint || record.diagnosis || "",
+        status: record.status || "Completed",
+        date: formatMaybeDate(record.dateOfVisit || record.createdAt),
       };
     });
 }
 
-function normalizeRecentReferrals(referrals, patients) {
-  // Shape expected by RecentReferralsTable:
-  // { patient, visitType?, concern?, status, date, trackingId }
-  // The table currently renders: patient, visitType, concern, status, date.
-  const patientById = new Map(patients.map((p) => [p.id, p]));
-
-  return (referrals || [])
+function normalizeRecentReferrals(referrals) {
+  return referrals
     .slice()
-    .sort((a, b) => new Date(b?.createdAt ?? 0) - new Date(a?.createdAt ?? 0))
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
     .slice(0, 10)
-    .map((referral) => {
-      const patient = patientById.get(referral.patientId) || null;
-      return {
-        id: referral.id,
-        trackingId: referral.trackingId || referral.id,
-        patient:
-          patient?.name ||
-          referral.patient ||
-          referral.patientName ||
-          "Unknown",
-        visitType:
-          referral.classification ||
-          referral.patientClassification ||
-          referral.category ||
-          "Referral",
-        concern:
-          referral.chiefComplaint ||
-          referral.diagnosis ||
-          referral.reasonForReferral ||
-          "",
-        status: referral.status || "Pending",
-        date: formatMaybeDate(
-          referral.createdAt || referral.dateOfReferral || referral.date,
-        ),
-      };
-    });
+    .map((referral) => ({
+      id: referral.id,
+      trackingId: referral.trackingId,
+      patient: referral.patientName || "Unknown",
+      visitType: referral.category || referral.referralCategory || "Referral",
+      concern: referral.chiefComplaint || referral.reasonForReferral || "",
+      status: referral.status || "Pending",
+      date: formatMaybeDate(referral.createdAt || referral.referralDateTime),
+    }));
 }
 
 function normalizeMedicineAlerts(notifications) {
-  // The sidebar expects: { name, status, qty }
-  // If notifications is already in that shape, pass through.
-  const arr = Array.isArray(notifications) ? notifications : [];
-  const normalized = arr
-    .map((n) => {
-      if (!n) return null;
-      if (typeof n === "string") {
-        return { name: n, status: "Attention", qty: "" };
-      }
-      return {
-        name: n.name || n.medicine || n.title || "Medicine",
-        status: n.status || n.type || "Alert",
-        qty: n.qty || n.quantity || "",
-      };
-    })
-    .filter(Boolean);
-
-  // Keep existing UI layout stable: always return an array.
-  return normalized.length > 0 ? normalized.slice(0, 5) : [];
+  return notifications
+    .filter((notification) => String(notification.type || "").includes("medicine"))
+    .slice(0, 5)
+    .map((notification) => ({
+      name: notification.title || "Medicine",
+      status: notification.message || "Alert",
+      qty: "",
+    }));
 }
 
-// Dashboard summary data
 export async function getDashboardStats() {
-  await delay();
-
-  const patients = getAllPatients();
-  const healthRecords = getAllHealthRecords();
-  const referrals = getAllReferrals();
-
-  const totalPatients = patients.length;
-  const healthRecordsThisWeek = healthRecords.length; // keep simple without time logic
-
-  const pendingReferrals = referrals.filter(
-    (r) =>
-      r.status === "Pending " ||
-      r.status === "Pending" ||
-      r.status === "Received",
-  ).length;
-
-  const monitoringPatients = healthRecords.filter(
-    (r) =>
-      (r.status || r.followUpStatus) === "For Monitoring" ||
-      r.followUpStatus === "Follow-Up",
-  ).length;
+  const [patients, healthRecords, referrals] = await Promise.all([
+    getBhcPatients(),
+    getHealthRecords(),
+    getReferrals(),
+  ]);
 
   return {
-    totalPatients,
-    healthRecords: healthRecordsThisWeek,
-    pendingReferrals,
-    monitoringPatients,
+    totalPatients: patients.length,
+    healthRecords: healthRecords.length,
+    pendingReferrals: referrals.filter((referral) =>
+      ["Pending", "Received"].includes(referral.status),
+    ).length,
+    monitoringPatients: healthRecords.filter((record) =>
+      ["For Monitoring", "Follow-up Required"].includes(record.status),
+    ).length,
   };
 }
 
-// Recent Health Records
 export async function getRecentHealthRecords() {
-  await delay();
-  const patients = getAllPatients();
-  const records = getAllHealthRecords();
+  const [records, patients] = await Promise.all([getHealthRecords(), getBhcPatients()]);
   return normalizeRecentHealthRecords(records, patients);
 }
 
-// Recent Referrals
 export async function getRecentReferrals() {
-  await delay();
-  const patients = getAllPatients();
-  const referrals = getAllReferrals();
-  return normalizeRecentReferrals(referrals, patients);
+  return normalizeRecentReferrals(await getReferrals());
 }
 
-// Medicine Alerts
 export async function getMedicineAlerts() {
-  await delay();
-  const notifications = getAllNotifications();
-  return normalizeMedicineAlerts(notifications);
+  return normalizeMedicineAlerts(getAllNotifications());
 }

@@ -1,4 +1,7 @@
+import { formatDisplayValue } from "../../../utils/formatters";
+
 export default function StatusBadge({ status }) {
+  const displayStatus = formatDisplayValue(status, "Pending");
   const map = {
     Active: { bg: "#ECFDF5", text: "#047857", border: "#A7F3D0", dot: "#10B981" },
     Completed: { bg: "#ECFDF5", text: "#047857", border: "#A7F3D0", dot: "#10B981" },
@@ -14,7 +17,7 @@ export default function StatusBadge({ status }) {
     Unavailable: { bg: "#FEF2F2", text: "#B91C1C", border: "#FECACA", dot: "#DC2626" },
   };
 
-  const s = map[status] || map.Pending;
+  const s = map[displayStatus] || map.Pending;
 
   return (
     <span
@@ -25,7 +28,7 @@ export default function StatusBadge({ status }) {
         className="inline-block h-1.5 w-1.5 rounded-full"
         style={{ backgroundColor: s.dot }}
       />
-      {status || "Pending"}
+      {displayStatus}
     </span>
   );
 }

@@ -152,6 +152,7 @@ export default function usePatients() {
         matchesDate
       );
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patients, filters]);
 
   /* ─────────────────────────────────────────────

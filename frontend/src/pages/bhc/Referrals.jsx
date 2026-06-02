@@ -8,6 +8,11 @@ import {
   getDoctorAvailability,
   listenDoctorAvailabilityUpdates,
 } from "../../services/doctorAvailability";
+import {
+  formatDisplayValue,
+  formatFacilityName,
+  formatPatientName,
+} from "../../utils/formatters";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -18,11 +23,9 @@ const DEFAULT_FILTERS = {
 };
 
 function getReferralClassification(referral) {
-  return (
-    referral.classification ||
-    referral.referralCategory ||
-    referral.category ||
-    "General Consultation"
+  return formatDisplayValue(
+    referral.classification || referral.referralCategory || referral.category,
+    "General Consultation",
   );
 }
 
@@ -39,7 +42,24 @@ function getReferralUrgency(referral) {
     Normal: "Non-Urgent",
   };
 
-  return mapLegacyToNew[raw] || raw;
+  return formatDisplayValue(mapLegacyToNew[raw] || raw, "Non-Urgent");
+}
+
+function getReferralPatientName(referral) {
+  return formatPatientName(
+    referral.patientName || referral.patient || referral,
+    "Unknown Patient",
+  );
+}
+
+function getReferralDestination(referral) {
+  return formatFacilityName(
+    referral.receivingFacility ||
+      referral.destinationFacility ||
+      referral.rural_health_unit ||
+      referral.ruralHealthUnit,
+    "Unassigned RHU",
+  );
 }
 
 function matchesReferralStatus(referralStatus, selectedStatus) {
@@ -136,10 +156,10 @@ export default function Referrals() {
   const filteredReferrals = useMemo(() => {
     return referrals.filter((referral) => {
       const searchTerm = filters.search.toLowerCase();
+      const patientName = getReferralPatientName(referral).toLowerCase();
       const matchesSearch =
         !filters.search ||
-        referral.patientName?.toLowerCase().includes(searchTerm) ||
-        referral.patient?.toLowerCase().includes(searchTerm) ||
+        patientName.includes(searchTerm) ||
         referral.trackingId?.toLowerCase().includes(searchTerm) ||
         referral.chiefComplaint?.toLowerCase().includes(searchTerm) ||
         referral.concern?.toLowerCase().includes(searchTerm);
@@ -297,7 +317,11 @@ export default function Referrals() {
 
             <tbody className="divide-y divide-[#F8FAFC]">
               {filteredReferrals.length > 0 ? (
-                filteredReferrals.map((referral) => (
+                filteredReferrals.map((referral) => {
+                  const patientName = getReferralPatientName(referral);
+                  const destinationFacility = getReferralDestination(referral);
+
+                  return (
                   <tr
                     key={referral.trackingId || referral.id}
                     className="group transition-colors duration-150 hover:bg-slate-50/80"
@@ -311,7 +335,7 @@ export default function Referrals() {
                     <td className="px-4 py-4">
                       <div className="min-w-0">
                         <p className="truncate text-[12.5px] font-semibold text-slate-800">
-                          {referral.patientName || referral.patient}
+                          {patientName}
                         </p>
                         <p className="text-[11px] text-slate-400">
                           {referral.ageSex}
@@ -320,9 +344,7 @@ export default function Referrals() {
                     </td>
 
                     <td className="px-4 py-4 text-[12px] text-slate-600">
-                      {referral.receivingFacility ||
-                        referral.destinationFacility ||
-                        "Rural Health Unit Bulakan"}
+                      {destinationFacility}
                     </td>
 
                     <td className="px-4 py-4">
@@ -345,7 +367,7 @@ export default function Referrals() {
 
                     <td className="px-4 py-4 text-right">
                       <ActionMenu
-                        title={referral.patientName || referral.patient}
+                        title={patientName}
                         subtitle={referral.trackingId}
                         viewLink={`/bhc/referrals/${
                           referral.trackingId || referral.id
@@ -356,7 +378,8 @@ export default function Referrals() {
                       />
                     </td>
                   </tr>
-                ))
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={8} className="px-6 py-24 text-center">

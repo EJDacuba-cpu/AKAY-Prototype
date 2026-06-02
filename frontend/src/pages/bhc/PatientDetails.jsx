@@ -35,6 +35,10 @@ import FormTextarea from "../../components/common/forms/FormTextarea";
 
 import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
 import SuccessModal from "../../components/common/modals/SuccessModal";
+import {
+  formatDisplayValue,
+  formatPatientName,
+} from "../../utils/formatters";
 
 export default function PatientDetails() {
   const { patientId } = useParams();
@@ -223,6 +227,23 @@ export default function PatientDetails() {
     (r) =>
       r.status === "Follow-up After 2 Days" || r.status === "Under Observation",
   );
+  const patientName = formatPatientName(patient, "Unnamed Patient");
+  const patientAgeSex = formatDisplayValue(
+    patient.ageSex ||
+      `${formatDisplayValue(patient.age, "Not recorded")} yrs old / ${formatDisplayValue(
+        patient.sex,
+        "Not recorded",
+      )}`,
+    "Not recorded",
+  );
+  const patientContact = formatDisplayValue(
+    patient.contact || patient.contactNumber,
+    "Not recorded",
+  );
+  const patientClassification = formatDisplayValue(
+    patient.category || patient.patientClassification,
+    "General",
+  );
 
   return (
     <>
@@ -240,7 +261,7 @@ export default function PatientDetails() {
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-3">
                 <h1 className="text-3xl font-bold tracking-tight text-[#0F172A]">
-                  {patient.name || `${patient.firstName} ${patient.lastName}`}
+                  {patientName}
                 </h1>
                 {isUnderMonitoring && (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#B45309]">
@@ -257,15 +278,21 @@ export default function PatientDetails() {
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">
                   <User size={12} className="text-slate-400" />
+                  {patientAgeSex}
+                  {/*
                   {patient.ageSex ||
                     `${patient.age || "—"} yrs old / ${patient.sex || "—"}`}
+                  */}
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">
                   <Phone size={12} className="text-slate-400" />
+                  {patientContact}
+                  {/*
                   {patient.contact || "—"}
+                  */}
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-lg bg-[#FEF2F2] px-3 py-1.5 text-xs font-semibold text-[#0F172A]">
-                  {patient.category || "General"}
+                  {patientClassification}
                 </span>
               </div>
 
@@ -590,8 +617,7 @@ export default function PatientDetails() {
                           />
                         </div>
                       </div>
-                      {(patient.category === "Immunization" ||
-                        patient.patientClassification === "Immunization") && (
+                      {patientClassification === "Immunization" && (
                         <div>
                           <h3 className="mb-4 border-b border-emerald-100 pb-2 text-xs font-bold uppercase tracking-wider text-emerald-700">
                             Child / Immunization Information
@@ -624,8 +650,7 @@ export default function PatientDetails() {
                           </div>
                         </div>
                       )}
-                      {(patient.category === "Maternal" ||
-                        patient.patientClassification === "Maternal") && (
+                      {patientClassification === "Maternal" && (
                         <div>
                           <h3 className="mb-4 border-b border-pink-100 pb-2 text-xs font-bold uppercase tracking-wider text-pink-700">
                             Maternal / Obstetric History
@@ -978,7 +1003,9 @@ function getReferralDestination(referral = {}) {
     referral.receivingFacility ||
     referral.destinationFacility ||
     referral.referredFacility ||
-    "Rural Health Unit Bulakan"
+    referral.rural_health_unit?.name ||
+    referral.ruralHealthUnit?.name ||
+    ""
   );
 }
 

@@ -7,6 +7,7 @@ import ListToolbar from "../../components/common/list/ListToolbar";
 import HealthRecordsTable from "../../components/features/records/HealthRecordsTable";
 import { getHealthRecords } from "../../services/healthRecordService";
 import { getReferrals } from "../../services/referrals";
+import { formatPatientName } from "../../utils/formatters";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -51,9 +52,7 @@ export default function HealthRecords() {
             ...record,
             id: recordId,
             trackingId: record.trackingId || record.id || "No Tracking ID",
-            patientName:
-              record.patientName ||
-              `${record.firstName || ""} ${record.lastName || ""}`.trim(),
+            patientName: formatPatientName(record.patientName || record.patient || record, "Unnamed Patient"),
             classification:
               record.patientClassification ||
               record.classification ||

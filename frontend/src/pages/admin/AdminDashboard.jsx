@@ -20,14 +20,23 @@ import {
   getDoctorAvailability,
   listenDoctorAvailabilityUpdates,
 } from "../../services/doctorAvailability";
-import { getAdminAccounts } from "../../services/adminAccountsService";
+import {
+  getAdminAccounts,
+  refreshAdminAccounts,
+} from "../../services/adminAccountsService";
+import { apiRequest, unwrapList } from "../../services/apiClient";
+import { refreshRhuMedicines } from "../../services/medicineService";
 import { getCurrentUser } from "../../utils/auth";
+import { formatDisplayValue, formatUserName } from "../../utils/formatters";
 
 export default function AdminDashboard() {
   const [now, setNow] = useState(() => new Date());
   const [doctorAvailability, setDoctorAvailability] = useState(() =>
     getDoctorAvailability(),
   );
+  const [accounts, setAccounts] = useState(() => getAdminAccounts());
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [medicineItems, setMedicineItems] = useState([]);
 
   useEffect(() => {
     return listenDoctorAvailabilityUpdates(setDoctorAvailability);
@@ -39,7 +48,40 @@ export default function AdminDashboard() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const accounts = getAdminAccounts();
+  useEffect(() => {
+    let active = true;
+
+    async function loadDashboardData() {
+      const [usersResponse, logsResponse, medicines] = await Promise.allSettled([
+        refreshAdminAccounts(),
+        apiRequest("/audit-logs"),
+        refreshRhuMedicines(),
+      ]);
+
+      if (!active) return;
+
+      setAccounts(
+        usersResponse.status === "fulfilled" && Array.isArray(usersResponse.value)
+          ? usersResponse.value
+          : [],
+      );
+      setAuditLogs(
+        logsResponse.status === "fulfilled" ? unwrapList(logsResponse.value) : [],
+      );
+      setMedicineItems(
+        medicines.status === "fulfilled" && Array.isArray(medicines.value)
+          ? medicines.value
+          : [],
+      );
+    }
+
+    loadDashboardData();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const activeAccounts = accounts.filter(
     (account) => account.status === "Active",
   ).length;
@@ -50,39 +92,32 @@ export default function AdminDashboard() {
   const rhuUsers = accounts.filter((account) => account.role === "RHU").length;
   const userName = getDashboardFirstName("MHO");
 
-  const recentActivities = [
-    {
-      action: "New referral submitted",
-      user: "Pitpitan Health Center",
-      time: "10 minutes ago",
-      type: "Referral",
-    },
-    {
-      action: "RHU feedback submitted",
-      user: "RHU Staff",
-      time: "25 minutes ago",
-      type: "Feedback",
-    },
-    {
-      action: "Medicine availability updated",
-      user: "RHU Inventory Staff",
-      time: "1 hour ago",
-      type: "Inventory",
-    },
-    {
-      action: "New BHC user account added",
-      user: "MHO Admin",
-      time: "2 hours ago",
-      type: "Account",
-    },
-  ];
+const recentActivities = auditLogs.slice(0, 4).map((log, index) => ({
+  id:
+    log.id ??
+    log.audit_log_id ??
+    log.auditLogId ??
+    `${log.created_at || log.createdAt || "activity"}-${index}`,
+  action: formatDisplayValue(
+    log.description || log.action,
+    "System activity",
+  ),
+  user: formatUserName(
+    log.user || log.createdBy || log.created_by || log.user_name,
+    "System",
+  ),
+  time: formatRelativeTime(log.created_at || log.createdAt),
+  type: formatDisplayValue(log.module, "Activity"),
+}));
 
-  const barangaySummary = [
-    { barangay: "Pitpitan", referrals: 12, monitoring: 3, status: "Active" },
-    { barangay: "Taliptip", referrals: 9, monitoring: 2, status: "Active" },
-    { barangay: "San Jose", referrals: 7, monitoring: 1, status: "Active" },
-    { barangay: "Bagumbayan", referrals: 6, monitoring: 2, status: "Active" },
-  ];
+  const barangaySummary = [];
+  const inventoryAlerts = medicineItems
+    .filter((item) =>
+      ["Low Stock", "Unavailable", "Expired"].includes(
+        item.availabilityStatus || item.status,
+      ),
+    )
+    .slice(0, 3);
 
   return (
     <DashboardLayout role="admin" title="Dashboard">
@@ -210,7 +245,16 @@ export default function AdminDashboard() {
                 </thead>
 
                 <tbody className="divide-y divide-[#F3F4F6]">
-                  {barangaySummary.map((item) => (
+                  {barangaySummary.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="px-6 py-8 text-center text-sm text-[#9CA3AF]"
+                      >
+                        No barangay referral activity yet.
+                      </td>
+                    </tr>
+                  ) : barangaySummary.map((item) => (
                     <tr key={item.barangay} className="hover:bg-[#F9FAFB]">
                       <td className="px-6 py-3.5 text-sm font-semibold text-[#1A1A1A]">
                         {item.barangay}
@@ -263,11 +307,15 @@ export default function AdminDashboard() {
             </div>
 
             <div className="divide-y divide-[#F3F4F6]">
-              {recentActivities.map((activity) => (
-                <div
-                  key={`${activity.action}-${activity.time}`}
-                  className="flex items-start gap-4 px-6 py-4 hover:bg-[#F9FAFB]"
-                >
+       {recentActivities.length === 0 ? (
+  <div className="px-6 py-8 text-center text-sm text-[#9CA3AF]">
+    No audit activity yet.
+  </div>
+) : recentActivities.map((activity, index) => (
+  <div
+    key={activity.id ?? `${activity.action}-${activity.time}-${index}`}
+    className="flex items-start gap-4 px-6 py-4 hover:bg-[#F9FAFB]"
+  >
                   <div className="mt-0.5 rounded-lg bg-[#FEF2F2] p-2 text-[#B91C1C]">
                     <Activity size={15} />
                   </div>
@@ -323,10 +371,13 @@ export default function AdminDashboard() {
                   className="rounded-lg border border-[#E8ECF0] bg-[#F8FAFC] p-4"
                 >
                   <p className="text-sm font-semibold text-[#0F172A]">
-                    {doctor.doctorName || doctor.name}
+                    {formatUserName(
+                      doctor.doctorName || doctor.name || doctor,
+                      "Doctor",
+                    )}
                   </p>
                   <p className="mt-1 text-xs text-[#6B7280]">
-                    {doctor.doctorType || doctor.role}
+                    {formatDisplayValue(doctor.doctorType || doctor.role, "RHU Doctor")}
                   </p>
                   <div className="mt-3">
                     <DoctorStatusBadge
@@ -355,9 +406,17 @@ export default function AdminDashboard() {
             </div>
 
             <div className="space-y-3">
-              <InventoryAlert item="Amoxicillin" status="Low Stock" />
-              <InventoryAlert item="Tetanus Vaccine" status="Unavailable" />
-              <InventoryAlert item="Syringe" status="Low Stock" />
+              {inventoryAlerts.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-[#E8ECF0] bg-[#F8FAFC] p-4 text-xs text-[#9CA3AF]">
+                  No inventory alerts yet.
+                </div>
+              ) : inventoryAlerts.map((item) => (
+                <InventoryAlert
+                  key={item.id || item.name}
+                  item={item.name}
+                  status={item.availabilityStatus || item.status}
+                />
+              ))}
             </div>
           </section>
 
@@ -435,6 +494,7 @@ function StatCard({ title, value, icon, color = "navy" }) {
 }
 
 function StatusBadge({ status }) {
+  const displayStatus = formatDisplayValue(status, "Active");
   const map = {
     Active: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
     Inactive: "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
@@ -443,15 +503,16 @@ function StatusBadge({ status }) {
   return (
     <span
       className={`inline-block whitespace-nowrap rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-        map[status] || map.Active
+        map[displayStatus] || map.Active
       }`}
     >
-      {status}
+      {displayStatus}
     </span>
   );
 }
 
 function DoctorStatusBadge({ status }) {
+  const displayStatus = formatDisplayValue(status, "Not Available");
   const map = {
     Available: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
     "On Duty": "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
@@ -462,30 +523,32 @@ function DoctorStatusBadge({ status }) {
   return (
     <span
       className={`inline-block rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-        map[status] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
+        map[displayStatus] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
       }`}
     >
-      {status}
+      {displayStatus}
     </span>
   );
 }
 
 function InventoryAlert({ item, status }) {
+  const displayItem = formatDisplayValue(item, "Medicine item");
+  const displayStatus = formatDisplayValue(status, "Low Stock");
   const color =
-    status === "Unavailable"
+    displayStatus === "Unavailable"
       ? "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]"
       : "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]";
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg bg-[#F8FAFC] px-3 py-2">
       <p className="min-w-0 truncate text-xs font-semibold text-[#4B5563]">
-        {item}
+        {displayItem}
       </p>
 
       <span
         className={`flex-shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${color}`}
       >
-        {status}
+        {displayStatus}
       </span>
     </div>
   );
@@ -511,6 +574,22 @@ function getGreeting(date) {
   if (hour < 12) return "Good morning";
   if (hour < 18) return "Good afternoon";
   return "Good evening";
+}
+
+function formatRelativeTime(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "Recently";
+
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.max(1, Math.round(diffMs / 60_000));
+
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
 function formatDashboardDate(date) {

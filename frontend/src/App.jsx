@@ -226,6 +226,14 @@ export default function App() {
         }
       />
       <Route
+        path="/bhc/referrals/:trackingId/print-slip"
+        element={
+          <ProtectedPage allowedRole="bhc">
+            <PrintableReferralSlip />
+          </ProtectedPage>
+        }
+      />
+      <Route
         path="/bhc/referrals/:trackingId"
         element={
           <ProtectedPage allowedRole="bhc">

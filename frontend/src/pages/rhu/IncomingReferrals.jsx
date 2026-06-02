@@ -9,7 +9,6 @@ import {
   Search,
   AlertCircle,
   Check,
-  Stethoscope,
   MoreVertical,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
@@ -19,6 +18,11 @@ import {
   autoMarkNoShowReferrals,
   getReferrals,
 } from "../../services/referrals";
+import {
+  formatDisplayValue,
+  formatFacilityName,
+  formatPatientName,
+} from "../../utils/formatters";
 
 const keyframes = `
   @keyframes fadeUp {
@@ -221,7 +225,11 @@ function ActionMenu({ referral }) {
                 {referral.trackingId}
               </p>
               <p className="mt-0.5 truncate text-[10px] text-slate-400">
+                {getReferralPatientName(referral)} /{" "}
+                {formatDisplayValue(referral.ageSex, "Age / Sex not recorded")}
+                {/*
                 {referral.patientName || referral.patient} · {referral.ageSex}
+                */}
               </p>
             </div>
 
@@ -261,6 +269,7 @@ function ActionMenu({ referral }) {
 }
 
 function StatusBadge({ status, animate = false }) {
+  const displayStatus = formatDisplayValue(status, "Pending");
   const map = {
     Pending: {
       bg: "#F1F5F9",
@@ -294,7 +303,7 @@ function StatusBadge({ status, animate = false }) {
     },
   };
 
-  const s = map[status] || map.Pending;
+  const s = map[displayStatus] || map.Pending;
 
   return (
     <span
@@ -307,12 +316,13 @@ function StatusBadge({ status, animate = false }) {
         className="inline-block h-1.5 w-1.5 rounded-full"
         style={{ backgroundColor: s.dot }}
       />
-      {status}
+      {displayStatus}
     </span>
   );
 }
 
 function UrgencyBadge({ urgency }) {
+  const displayUrgency = formatDisplayValue(urgency, "Non-Urgent");
   const map = {
     Emergency: {
       bg: "#FEF2F2",
@@ -346,7 +356,7 @@ function UrgencyBadge({ urgency }) {
     },
   };
 
-  const s = map[urgency] || map["Non-Urgent"];
+  const s = map[displayUrgency] || map["Non-Urgent"];
 
   return (
     <span
@@ -354,7 +364,7 @@ function UrgencyBadge({ urgency }) {
       style={{ backgroundColor: s.bg, color: s.text }}
     >
       {s.icon}
-      {urgency}
+      {displayUrgency}
     </span>
   );
 }
@@ -372,15 +382,20 @@ function getReferralUrgency(referral) {
     Normal: "Non-Urgent",
   };
 
-  return mapLegacyToNew[raw] || raw;
+  return formatDisplayValue(mapLegacyToNew[raw] || raw, "Non-Urgent");
 }
 
 function getReferralCategory(referral) {
-  return (
-    referral?.referralCategory ||
-    referral?.category ||
-    referral?.classification ||
-    "Uncategorized"
+  return formatDisplayValue(
+    referral?.referralCategory || referral?.category || referral?.classification,
+    "Uncategorized",
+  );
+}
+
+function getReferralPatientName(referral) {
+  return formatPatientName(
+    referral?.patientName || referral?.patient || referral,
+    "Unknown Patient",
   );
 }
 
@@ -415,7 +430,11 @@ function getReferringHci(referral) {
     referral?.referringFacility,
     referral?.bhc,
     referral?.referringHci,
-  ].filter(Boolean);
+    referral?.barangayHealthCenter,
+    referral?.barangay_health_center,
+  ]
+    .map((value) => formatFacilityName(value, ""))
+    .filter(Boolean);
 
   const valid = candidates.find((value) => !isRhuFacility(value));
   if (valid) return valid;
@@ -529,9 +548,11 @@ function matchesDateFilter(referral, filter) {
 }
 
 function CategoryBadge({ category }) {
+  const displayCategory = formatDisplayValue(category, "Uncategorized");
+
   return (
     <span className="inline-flex items-center rounded-md border border-red-100 bg-red-50/70 px-2 py-0.5 font-mono text-[10px] font-bold text-[#B91C1C]">
-      {category}
+      {displayCategory}
     </span>
   );
 }
@@ -566,23 +587,10 @@ export default function IncomingReferrals() {
 
     loadReferrals();
 
-    function handleStorageEvent(e) {
-      if (
-        !e ||
-        !["akay_referrals", "referrals", "bhc_referrals"].includes(e.key)
-      ) {
-        return;
-      }
-      loadReferrals();
-    }
-
-    window.addEventListener("storage", handleStorageEvent);
-
     const interval = setInterval(loadReferrals, 5000);
 
     return () => {
       isMounted = false;
-      window.removeEventListener("storage", handleStorageEvent);
       clearInterval(interval);
     };
   }, []);
@@ -664,8 +672,7 @@ export default function IncomingReferrals() {
     return referrals.filter((referral) => {
       const q = filters.search.toLowerCase();
 
-      const patientName =
-        referral.patientName || referral.patient || referral.name || "";
+      const patientName = getReferralPatientName(referral);
 
       const matchSearch =
         !filters.search ||
@@ -835,6 +842,15 @@ export default function IncomingReferrals() {
                   filtered.map((referral, index) => {
                     const animated = animatedIds.has(referral.trackingId);
                     const isTerminal = referral.status === "Completed";
+                    const patientName = getReferralPatientName(referral);
+                    const ageSex = formatDisplayValue(
+                      referral.ageSex,
+                      "Age / Sex not recorded",
+                    );
+                    const chiefComplaint = formatDisplayValue(
+                      referral.chiefComplaint || referral.concern,
+                      "Not recorded",
+                    );
 
                     return (
                       <tr
@@ -864,10 +880,10 @@ export default function IncomingReferrals() {
 
                         <td className="whitespace-nowrap px-4 py-4">
                           <p className="text-[12.5px] font-semibold text-slate-800">
-                            {referral.patientName || referral.patient}
+                            {patientName}
                           </p>
                           <p className="mt-0.5 text-[10.5px] text-slate-400">
-                            {referral.ageSex}
+                            {ageSex}
                           </p>
                         </td>
 
@@ -888,7 +904,7 @@ export default function IncomingReferrals() {
                         </td>
 
                         <td className="max-w-[180px] truncate px-4 py-4 text-[12px] text-slate-600">
-                          {referral.chiefComplaint || referral.concern}
+                          {chiefComplaint}
                         </td>
 
                         <td className="whitespace-nowrap px-4 py-4">

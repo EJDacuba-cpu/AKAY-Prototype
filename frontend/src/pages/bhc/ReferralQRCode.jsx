@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import {
   ArrowLeft,
@@ -8,49 +9,11 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-
-const referrals = [
-  {
-    trackingId: "AKY-2026-001",
-    patient: "Juan Reyes",
-    category: "B1",
-    priority: "Medium",
-    status: "Pending",
-    dateSubmitted: "May 13, 2026",
-  },
-  {
-    trackingId: "AKY-2026-002",
-    patient: "Maria Rosa",
-    category: "C2",
-    priority: "High",
-    status: "Received",
-    dateSubmitted: "May 13, 2026",
-  },
-  {
-    trackingId: "AKY-2026-003",
-    patient: "John Cruz",
-    category: "A1",
-    priority: "Normal",
-    status: "Completed",
-    dateSubmitted: "May 12, 2026",
-  },
-  {
-    trackingId: "AKY-2026-004",
-    patient: "David Perez",
-    category: "A2",
-    priority: "Normal",
-    status: "Completed",
-    dateSubmitted: "May 12, 2026",
-  },
-  {
-    trackingId: "AKY-2026-005",
-    patient: "Antonio Santos",
-    category: "B1",
-    priority: "Medium",
-    status: "For Monitoring",
-    dateSubmitted: "May 11, 2026",
-  },
-];
+import { getReferralByTrackingId } from "../../services/referrals";
+import {
+  formatDisplayValue,
+  formatPatientName,
+} from "../../utils/formatters";
 
 const qrCells = [
   1, 1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0,
@@ -63,8 +26,34 @@ const qrCells = [
 
 export default function ReferralQRCode() {
   const { trackingId } = useParams();
+  const [referral, setReferral] = useState(null);
+  const [loaded, setLoaded] = useState(false);
 
-  const referral = referrals.find((item) => item.trackingId === trackingId);
+  useEffect(() => {
+    getReferralByTrackingId(trackingId)
+      .then((record) =>
+        setReferral({
+          ...record,
+          patient: formatPatientName(
+            record.patientName || record.patient || record,
+            "Patient",
+          ),
+          dateSubmitted: record.createdAt || record.referralDateTime || "",
+        }),
+      )
+      .catch(() => setReferral(null))
+      .finally(() => setLoaded(true));
+  }, [trackingId]);
+
+  if (!loaded) {
+    return (
+      <DashboardLayout role="bhc" title="Referral QR Code">
+        <div className="rounded-xl border border-[#E8ECF0] bg-white p-8 text-center text-sm text-[#6B7280]">
+          Loading referral QR code...
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   if (!referral) {
     return (
@@ -87,6 +76,8 @@ export default function ReferralQRCode() {
       </DashboardLayout>
     );
   }
+
+  const patientName = formatPatientName(referral.patient, "Patient");
 
   return (
     <DashboardLayout role="bhc" title="Referral QR Code">
@@ -121,7 +112,10 @@ export default function ReferralQRCode() {
                 Referral QR Code
               </h1>
               <p className="mt-1 text-sm text-[#6B7280]">
+                {referral.trackingId} / {patientName}
+                {/*
                 {referral.trackingId} · {referral.patient}
+                */}
               </p>
             </div>
           </div>
@@ -185,7 +179,7 @@ export default function ReferralQRCode() {
             </div>
 
             <div className="space-y-3">
-              <DetailItem label="Patient" value={referral.patient} />
+              <DetailItem label="Patient" value={patientName} />
               <DetailItem label="Tracking ID" value={referral.trackingId} />
               <DetailItem label="Category" value={referral.category} />
               <DetailItem label="Priority" value={referral.priority} />
@@ -217,12 +211,16 @@ export default function ReferralQRCode() {
 }
 
 function DetailItem({ label, value }) {
+  const displayValue = formatDisplayValue(value, "Not recorded");
+
   return (
     <div className="rounded-xl border border-[#F3F4F6] bg-[#FAFBFC] px-4 py-3">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
         {label}
       </p>
-      <p className="mt-1 text-[13px] font-semibold text-[#1A1A1A]">{value}</p>
+      <p className="mt-1 text-[13px] font-semibold text-[#1A1A1A]">
+        {displayValue}
+      </p>
     </div>
   );
 }

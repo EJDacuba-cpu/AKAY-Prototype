@@ -26,6 +26,9 @@ import { Bar, Chart, Doughnut } from "react-chartjs-2";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ListToolbar from "../../components/common/list/ListToolbar";
+import { getRhuHealthRecords } from "../../services/healthRecordService";
+import { getRhuPatients } from "../../services/patientService";
+import { getReferrals } from "../../services/referrals";
 
 ChartJS.register(
   CategoryScale,
@@ -40,8 +43,6 @@ ChartJS.register(
   Legend,
 );
 
-const REPORT_CACHE_KEY = "akay_rhu_reports_snapshot";
-
 const DEFAULT_FILTERS = {
   search: "",
   barangay: "All Barangays",
@@ -50,46 +51,11 @@ const DEFAULT_FILTERS = {
   date: "",
 };
 
-const STORAGE_LOOKUP = {
-  referrals: {
-    keys: [
-      "akay_referrals",
-      "referrals",
-      "rhu_referrals",
-      "akay_rhu_referrals",
-      "akay_incoming_referrals",
-      "incoming_referrals",
-      "akay_incoming_referrals_records",
-    ],
-    keyIncludes: ["referral"],
-    collectionKeys: ["referrals", "items", "data", "records"],
-    predicate: isReferralLike,
-  },
-  patients: {
-    keys: [
-      "akay_rhu_patients",
-      "rhu_patients",
-      "patients",
-      "akay_patients",
-      "akay_patient_details",
-    ],
-    keyIncludes: ["patient"],
-    collectionKeys: ["patients", "items", "data", "records"],
-    predicate: isPatientLike,
-  },
-  healthRecords: {
-    keys: [
-      "akay_rhu_health_records",
-      "rhu_health_records",
-      "health_records",
-      "akay_health_records",
-      "records",
-    ],
-    keyIncludes: ["health_record", "health-record", "record"],
-    collectionKeys: ["records", "healthRecords", "items", "data"],
-    predicate: isHealthRecordLike,
-  },
-};
+const EMPTY_REPORT_SOURCE = Object.freeze({
+  referrals: [],
+  patients: [],
+  healthRecords: [],
+});
 
 const chartPalette = {
   red: "#B91C1C",
@@ -109,13 +75,14 @@ const chartPalette = {
 export default function RHUReports() {
   const [dataVersion, setDataVersion] = useState(0);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [reportSource, setReportSource] = useState(EMPTY_REPORT_SOURCE);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     function refreshReports() {
       setDataVersion((current) => current + 1);
     }
 
-    window.addEventListener("storage", refreshReports);
     window.addEventListener("akay:referrals-updated", refreshReports);
     window.addEventListener("akay:rhu-referrals-updated", refreshReports);
     window.addEventListener("akay:rhu-patients-updated", refreshReports);
@@ -124,7 +91,6 @@ export default function RHUReports() {
     window.addEventListener("akay:rhu-health-records-updated", refreshReports);
 
     return () => {
-      window.removeEventListener("storage", refreshReports);
       window.removeEventListener("akay:referrals-updated", refreshReports);
       window.removeEventListener("akay:rhu-referrals-updated", refreshReports);
       window.removeEventListener("akay:rhu-patients-updated", refreshReports);
@@ -137,13 +103,37 @@ export default function RHUReports() {
     };
   }, []);
 
-  const reportSource = useMemo(() => {
-    void dataVersion;
+  useEffect(() => {
+    let active = true;
 
-    return {
-      referrals: readStoredCollection("referrals"),
-      patients: readStoredCollection("patients"),
-      healthRecords: readStoredCollection("healthRecords"),
+    async function loadReportSource() {
+      try {
+        setLoadError("");
+
+        const [referrals, patients, healthRecords] = await Promise.all([
+          getReferrals(),
+          getRhuPatients(),
+          getRhuHealthRecords(),
+        ]);
+
+        if (!active) return;
+
+        setReportSource({
+          referrals: Array.isArray(referrals) ? referrals : [],
+          patients: Array.isArray(patients) ? patients : [],
+          healthRecords: Array.isArray(healthRecords) ? healthRecords : [],
+        });
+      } catch (error) {
+        if (!active) return;
+        setLoadError(error?.message || "Unable to load report data.");
+        setReportSource(EMPTY_REPORT_SOURCE);
+      }
+    }
+
+    loadReportSource();
+
+    return () => {
+      active = false;
     };
   }, [dataVersion]);
 
@@ -161,10 +151,6 @@ export default function RHUReports() {
     () => buildReportSummary(filteredSource),
     [filteredSource],
   );
-
-  useEffect(() => {
-    saveReportSnapshot(reportSummary, filters);
-  }, [reportSummary, filters]);
 
   const {
     stats,
@@ -274,6 +260,12 @@ export default function RHUReports() {
             />
           }
         />
+
+        {loadError && (
+          <div className="rounded-lg border border-red-100 bg-red-50/70 px-4 py-3 text-sm font-semibold text-[#B91C1C]">
+            {loadError}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard
@@ -1241,129 +1233,6 @@ function buildTooltipOptions(suffix = "record(s)") {
   };
 }
 
-function readStoredCollection(type) {
-  if (typeof window === "undefined") return [];
-
-  const config = STORAGE_LOOKUP[type];
-  const matchedKeys = new Set(config.keys);
-
-  for (let index = 0; index < window.localStorage.length; index += 1) {
-    const key = window.localStorage.key(index);
-    if (!key) continue;
-
-    const normalizedKey = key.toLowerCase();
-
-    if (
-      config.keyIncludes.some((token) => normalizedKey.includes(token)) &&
-      !normalizedKey.includes("reports_snapshot")
-    ) {
-      matchedKeys.add(key);
-    }
-  }
-
-  const items = [];
-
-  matchedKeys.forEach((key) => {
-    const parsed = readJson(key);
-    items.push(...extractArrayItems(parsed, config.collectionKeys));
-  });
-
-  return dedupeItems(items.filter(config.predicate));
-}
-
-function readJson(key) {
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-function extractArrayItems(value, collectionKeys) {
-  if (!value) return [];
-  if (Array.isArray(value)) return value;
-  if (typeof value !== "object") return [];
-
-  const items = [];
-
-  collectionKeys.forEach((key) => {
-    if (Array.isArray(value[key])) items.push(...value[key]);
-  });
-
-  Object.values(value).forEach((entry) => {
-    if (Array.isArray(entry)) items.push(...entry);
-  });
-
-  return items;
-}
-
-function dedupeItems(items) {
-  const seen = new Set();
-
-  return items.filter((item, index) => {
-    const key =
-      item.id ||
-      item._id ||
-      item.trackingId ||
-      item.tracking_id ||
-      item.referralId ||
-      item.patientId ||
-      item.name ||
-      `index-${index}`;
-
-    if (seen.has(String(key))) return false;
-    seen.add(String(key));
-    return true;
-  });
-}
-
-function isReferralLike(item) {
-  if (!item || typeof item !== "object") return false;
-
-  return Boolean(
-    item.trackingId ||
-    item.tracking_id ||
-    item.referralId ||
-    item.referral_id ||
-    item.referralCategory ||
-    item.categoryCode ||
-    item.referringFacility ||
-    item.sourceFacility ||
-    item.receivingFacility ||
-    item.chiefComplaint ||
-    item.reasonForReferral,
-  );
-}
-
-function isPatientLike(item) {
-  if (!item || typeof item !== "object") return false;
-
-  return Boolean(
-    item.patientId ||
-    item.id ||
-    item.name ||
-    item.fullName ||
-    item.firstName ||
-    item.lastName,
-  );
-}
-
-function isHealthRecordLike(item) {
-  if (!item || typeof item !== "object") return false;
-
-  return Boolean(
-    item.dateOfVisit ||
-    item.visitDate ||
-    item.chiefComplaint ||
-    item.diagnosis ||
-    item.vitalSigns ||
-    item.followUpStatus ||
-    item.recordType,
-  );
-}
-
 function isWalkInPatient(patient) {
   const source = [
     patient.source,
@@ -1549,23 +1418,6 @@ function sortUnique(values) {
 
 function hasAnyValue(values) {
   return values.some((value) => Number(value) > 0);
-}
-
-function saveReportSnapshot(summary, filters) {
-  if (typeof window === "undefined") return;
-
-  try {
-    window.localStorage.setItem(
-      REPORT_CACHE_KEY,
-      JSON.stringify({
-        ...summary,
-        filters,
-        updatedAt: new Date().toISOString(),
-      }),
-    );
-  } catch {
-    // localStorage quota errors should not block the report page.
-  }
 }
 
 function formatNumber(value) {

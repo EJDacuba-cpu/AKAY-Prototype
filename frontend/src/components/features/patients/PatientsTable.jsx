@@ -1,6 +1,10 @@
 import { Phone, Users, Inbox } from "lucide-react";
 import ActionMenu from "../../common/tables/ActionMenu";
 import TablePagination from "../../common/pagination/TablePagination";
+import {
+  formatDisplayValue,
+  formatPatientName,
+} from "../../../utils/formatters";
 
 export default function PatientsTable({
   patients = [], // Nilagyan ng default fallback array para ligtas sa .length at .map
@@ -201,7 +205,26 @@ export default function PatientsTable({
                     </td>
                   </tr>
                 ) : (
-                  patients.map((patient) => (
+                  patients.map((patient) => {
+                    const patientId = formatDisplayValue(patient.id, "");
+                    const patientName = formatPatientName(
+                      patient,
+                      "Unnamed Patient",
+                    );
+                    const contact = formatDisplayValue(
+                      patient.contact || patient.contactNumber,
+                      "Not recorded",
+                    );
+                    const category = formatDisplayValue(
+                      patient.category || patient.type,
+                      "General",
+                    );
+                    const lastVisit = formatDisplayValue(
+                      patient.lastVisit,
+                      "Not recorded",
+                    );
+
+                    return (
                     <tr
                       key={patient.id}
                       className="
@@ -225,7 +248,7 @@ export default function PatientsTable({
                             text-[#B91C1C]
                           "
                         >
-                          {patient.id}
+                          {patientId}
                         </span>
                       </td>
 
@@ -239,7 +262,7 @@ export default function PatientsTable({
                             text-[#0F172A]
                           "
                         >
-                          {patient.name}
+                          {patientName}
                         </span>
                       </td>
 
@@ -255,7 +278,7 @@ export default function PatientsTable({
                           "
                         >
                           <Phone size={12} className="text-[#BCC3CD]" />
-                          {patient.contact}
+                          {contact}
                         </span>
                       </td>
 
@@ -272,7 +295,7 @@ export default function PatientsTable({
                             text-slate-700
                           "
                         >
-                          {patient.category || patient.type || "General"}
+                          {category}
                         </span>
                       </td>
 
@@ -285,15 +308,18 @@ export default function PatientsTable({
                           text-[#6B7280]
                         "
                       >
+                        {lastVisit}
+                        {/*
                         {patient.lastVisit || "—"}
+                        */}
                       </td>
 
                       {/* Actions */}
                       <td className="border-l border-[#F1F5F9] bg-white px-4 py-3.5 text-right group-hover:bg-[#FAFBFD]">
                         <div className="relative flex justify-end">
                           <ActionMenu
-                            title={patient.name}
-                            subtitle={patient.id}
+                            title={patientName}
+                            subtitle={patientId}
                             viewLink={`/bhc/patients/${patient.id}`}
                             viewLabel="View Details"
                             editPatientLink={`/bhc/patients/${patient.id}`}
@@ -304,7 +330,8 @@ export default function PatientsTable({
                         </div>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>

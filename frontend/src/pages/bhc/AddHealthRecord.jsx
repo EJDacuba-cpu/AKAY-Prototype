@@ -24,6 +24,10 @@ import healthRecordService, {
 } from "../../services/healthRecordService";
 import { getPatientDetailsListByRole } from "../../services/patientService";
 import { getCurrentUser } from "../../utils/auth";
+import {
+  formatDisplayValue,
+  formatPatientName,
+} from "../../utils/formatters";
 
 /* ═══════════════════════════════════════════════════════════════
    KEYFRAMES
@@ -1243,9 +1247,9 @@ function PatientSearchDropdown({
                         >
                           {display.name}
                         </p>
-                        {(patient.id || patient.patientId) && (
+                        {display.id && (
                           <span className="shrink-0 rounded-md border border-[#E8ECF0] bg-[#F8FAFC] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-[#0F172A]">
-                            {patient.patientId || patient.id}
+                            {display.id}
                           </span>
                         )}
                       </div>
@@ -1297,11 +1301,11 @@ function SelectedPatientPreview({ patient }) {
           <span className="text-xs text-[#6B7280]">{display.age}</span>
         </>
       )}
-      {(display.cls || patient.patientClassification || patient.category) && (
+      {display.cls && (
         <>
           <span className="text-slate-300">•</span>
           <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-[#B91C1C]">
-            {display.cls || patient.patientClassification || patient.category}
+            {display.cls}
           </span>
         </>
       )}
@@ -1317,11 +1321,11 @@ function SelectedPatientPreview({ patient }) {
           <span className="text-xs text-[#6B7280]">{display.barangay}</span>
         </>
       )}
-      {(patient.patientId || patient.id) && (
+      {display.id && (
         <>
           <span className="text-slate-300">•</span>
           <span className="font-mono text-[10px] font-semibold text-[#0F172A]">
-            {patient.patientId || patient.id}
+            {display.id}
           </span>
         </>
       )}
@@ -1831,28 +1835,33 @@ function VaccineTimeline({ data, onChange }) {
    PATIENT DISPLAY HELPERS
    ═══════════════════════════════════════════════════════════════ */
 function getPatientName(patient = {}) {
-  return (
-    patient.name ||
-    [patient.firstName, patient.middleName, patient.lastName]
-      .filter(Boolean)
-      .join(" ")
-      .trim() ||
-    "Unnamed Patient"
-  );
+  return formatPatientName(patient, "Unnamed Patient");
 }
 
 function getPatientDisplay(patient = {}) {
   const name = getPatientName(patient);
-  const age = patient.ageSex
-    ? patient.ageSex
-    : patient.age
-      ? `${patient.age} yrs${patient.sex ? ` / ${patient.sex}` : ""}`
-      : patient.sex || "";
-  const cls = patient.patientClassification || patient.category || "";
-  const contact = patient.contactNumber || patient.contact || "";
-  const barangay = patient.barangay || patient.patientBarangay || "";
+  const age = formatDisplayValue(
+    patient.ageSex ||
+      (patient.age
+        ? `${patient.age} yrs${patient.sex ? ` / ${patient.sex}` : ""}`
+        : patient.sex),
+    "",
+  );
+  const cls = formatDisplayValue(
+    patient.patientClassification || patient.category,
+    "",
+  );
+  const contact = formatDisplayValue(
+    patient.contactNumber || patient.contact,
+    "",
+  );
+  const barangay = formatDisplayValue(
+    patient.barangay || patient.patientBarangay,
+    "",
+  );
+  const id = formatDisplayValue(patient.patientId || patient.id, "");
 
-  return { name, age, cls, contact, barangay };
+  return { name, age, cls, contact, barangay, id };
 }
 
 function getPatientSearchLabel(patient = {}) {

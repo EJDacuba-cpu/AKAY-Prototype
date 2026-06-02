@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import { addRhuMedicine } from "../../services/medicineService";
 
 export default function AddMedicineItem() {
   const navigate = useNavigate();
@@ -17,6 +18,8 @@ export default function AddMedicineItem() {
     lastUpdated: today,
     notes: "",
   });
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const computedStatus = useMemo(() => {
     const quantity = Number(form.quantity);
@@ -37,12 +40,28 @@ export default function AddMedicineItem() {
     }));
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
 
-    // Frontend demo only.
-    // Later, this will send data to Laravel API and save to Supabase PostgreSQL.
-    navigate("/rhu/medicine-management");
+    try {
+      setSaving(true);
+      setSubmitError("");
+      await addRhuMedicine({
+        name: form.itemName,
+        category: form.category,
+        quantity: form.quantity,
+        unit: form.unit,
+        lowStockThreshold: form.minimumStock,
+        availabilityStatus: computedStatus,
+        expiryDate: form.expiryDate,
+        notes: form.notes,
+      });
+      navigate("/rhu/medicine-management");
+    } catch (error) {
+      setSubmitError(error?.message || "Unable to save medicine item.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -199,6 +218,12 @@ export default function AddMedicineItem() {
           </p>
         </section>
 
+        {submitError && (
+          <div className="rounded-lg border border-red-100 bg-red-50/70 px-4 py-3 text-sm font-semibold text-[#B91C1C]">
+            {submitError}
+          </div>
+        )}
+
         <div className="flex items-center justify-end gap-3">
           <button
             type="button"
@@ -210,9 +235,10 @@ export default function AddMedicineItem() {
 
           <button
             type="submit"
+            disabled={saving}
             className="rounded-lg bg-[#B91C1C] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#991B1B]"
           >
-            Save Item
+            {saving ? "Saving..." : "Save Item"}
           </button>
         </div>
       </form>

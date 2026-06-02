@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import {
   BarChart3,
   ClipboardList,
@@ -72,160 +72,14 @@ const REPORT_DATA = {
     shortLabel: "Weekly",
     description:
       "Weekly summary of referrals, case records, referral status, and RHU feedback.",
-    logbook: [
-      {
-        trackingId: "AKY-257003",
-        name: "Maria Santos",
-        classification: "Maternal",
-        chiefComplaint: "Pregnancy-related concern",
-        status: "Completed",
-        date: "May 13, 2026",
-        feedback: "Managed at RHU",
-      },
-      {
-        trackingId: "AKY-197393",
-        name: "Juan Dela Cruz",
-        classification: "General Consultation",
-        chiefComplaint: "Hypertension check",
-        status: "Pending",
-        date: "May 12, 2026",
-        feedback: "Awaiting RHU check-in",
-      },
-      {
-        trackingId: "AKY-748385",
-        name: "Ana Reyes",
-        classification: "Maternal",
-        chiefComplaint: "Headache and swelling",
-        status: "For Monitoring",
-        date: "May 12, 2026",
-        feedback: "RHU monitoring ongoing",
-      },
-      {
-        trackingId: "AKY-626573",
-        name: "Pedro Lopez",
-        classification: "Senior Citizen",
-        chiefComplaint: "Diabetes maintenance",
-        status: "Received",
-        date: "May 11, 2026",
-        feedback: "Patient received by RHU",
-      },
-      {
-        trackingId: "AKY-547819",
-        name: "Rosa Garcia",
-        classification: "General Consultation",
-        chiefComplaint: "Fever and cough",
-        status: "Completed",
-        date: "May 10, 2026",
-        feedback: "Return slip received",
-      },
-      {
-        trackingId: "AKY-703945",
-        name: "Carlos Mendoza",
-        classification: "General Consultation",
-        chiefComplaint: "Chest discomfort",
-        status: "Pending",
-        date: "May 10, 2026",
-        feedback: "Awaiting RHU check-in",
-      },
-    ],
+    logbook: [],
   },
   monthly: {
     label: "Monthly Referrals",
     shortLabel: "Monthly",
     description:
       "Monthly summary of referrals, case records, completed cases, no-show cases, and RHU feedback.",
-    logbook: [
-      {
-        trackingId: "AKY-257003",
-        name: "Maria Santos",
-        classification: "Maternal",
-        chiefComplaint: "Pregnancy-related concern",
-        status: "Completed",
-        date: "May 13, 2026",
-        feedback: "Managed at RHU",
-      },
-      {
-        trackingId: "AKY-197393",
-        name: "Juan Dela Cruz",
-        classification: "General Consultation",
-        chiefComplaint: "Hypertension check",
-        status: "Pending",
-        date: "May 12, 2026",
-        feedback: "Awaiting RHU check-in",
-      },
-      {
-        trackingId: "AKY-748385",
-        name: "Ana Reyes",
-        classification: "Maternal",
-        chiefComplaint: "Headache and swelling",
-        status: "For Monitoring",
-        date: "May 12, 2026",
-        feedback: "RHU monitoring ongoing",
-      },
-      {
-        trackingId: "AKY-626573",
-        name: "Pedro Lopez",
-        classification: "Senior Citizen",
-        chiefComplaint: "Diabetes maintenance",
-        status: "Received",
-        date: "May 11, 2026",
-        feedback: "Patient received by RHU",
-      },
-      {
-        trackingId: "AKY-547819",
-        name: "Rosa Garcia",
-        classification: "General Consultation",
-        chiefComplaint: "Fever and cough",
-        status: "Completed",
-        date: "May 10, 2026",
-        feedback: "Return slip received",
-      },
-      {
-        trackingId: "AKY-703945",
-        name: "Carlos Mendoza",
-        classification: "General Consultation",
-        chiefComplaint: "Chest discomfort",
-        status: "Pending",
-        date: "May 10, 2026",
-        feedback: "Awaiting RHU check-in",
-      },
-      {
-        trackingId: "AKY-118204",
-        name: "Elena Bautista",
-        classification: "Immunization",
-        chiefComplaint: "Vaccination visit",
-        status: "Completed",
-        date: "May 8, 2026",
-        feedback: "Vaccine schedule reviewed",
-      },
-      {
-        trackingId: "AKY-882410",
-        name: "Lito Fernandez",
-        classification: "General Consultation",
-        chiefComplaint: "Fever and cough",
-        status: "Completed",
-        date: "May 7, 2026",
-        feedback: "Return slip received",
-      },
-      {
-        trackingId: "AKY-441927",
-        name: "Carmen Flores",
-        classification: "Senior Citizen",
-        chiefComplaint: "Hypertension check",
-        status: "No-Show",
-        date: "May 6, 2026",
-        feedback: "Patient did not arrive at RHU",
-      },
-      {
-        trackingId: "AKY-672819",
-        name: "Nora Villanueva",
-        classification: "Maternal",
-        chiefComplaint: "Maternal concern",
-        status: "Completed",
-        date: "May 5, 2026",
-        feedback: "Managed at RHU",
-      },
-    ],
+    logbook: [],
   },
 };
 
@@ -771,7 +625,7 @@ function getChiefComplaintComboOptions() {
           minRotation: 0,
           callback: function (value) {
             const label = this.getLabelForValue(value);
-            return label.length > 14 ? `${label.slice(0, 13)}…` : label;
+            return label.length > 14 ? `${label.slice(0, 13)}â€¦` : label;
           },
         },
       },
@@ -950,3 +804,5 @@ function formatNumber(value) {
   if (!Number.isFinite(parsed)) return "0";
   return parsed.toLocaleString();
 }
+
+

@@ -1,190 +1,163 @@
-import { getItem, setItem } from "./storageService";
-import { createRoleNotification } from "./notificationService";
+import { apiRequest, mapRoleForBackend, unwrapData, unwrapList } from "./apiClient";
 
-const ADMIN_ACCOUNTS_KEY = "akay_admin_accounts";
+export const ADMIN_ACCOUNTS_UPDATED_EVENT = "akay:admin-accounts-updated";
 
-const seedAccounts = [
-  {
-    id: "USR-001",
-    fullName: "Admin MHO",
-    name: "Admin MHO",
-    email: "admin@akay.local",
-    contactNumber: "09170000001",
-    role: "Admin",
-    position: "Municipal Health Officer",
-    facility: "Municipality of Bulakan",
-    status: "Active",
-    setupMethod: "Send setup link to email",
-  },
-  {
-    id: "USR-002",
-    fullName: "Lorna Reyes",
-    name: "Lorna Reyes",
-    email: "bhc@akay.local",
-    contactNumber: "09170000002",
-    role: "BHC",
-    position: "Barangay Health Worker",
-    facility: "Pitpitan Health Center",
-    status: "Active",
-    setupMethod: "Send setup link to email",
-  },
-  {
-    id: "USR-003",
-    fullName: "Joshua Pio",
-    name: "Joshua Pio",
-    email: "rhu@akay.local",
-    contactNumber: "09170000003",
-    role: "RHU",
-    position: "RHU Staff",
-    facility: "Rural Health Unit Bulakan",
-    status: "Active",
-    setupMethod: "Send setup link to email",
-  },
-  {
-    id: "USR-004",
-    fullName: "Ana Cruz",
-    name: "Ana Cruz",
-    email: "ana.bhc@akay.local",
-    contactNumber: "09170000006",
-    role: "BHC",
-    position: "BHC Staff",
-    facility: "Taliptip Health Center",
-    status: "Inactive",
-    setupMethod: "Require password reset on first login",
-  },
-];
+let accountCache = [];
+let loadingPromise = null;
 
-function ensureArray(value) {
-  return Array.isArray(value) ? value : [];
+function dispatchUpdate() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(ADMIN_ACCOUNTS_UPDATED_EVENT));
+  }
+}
+
+function frontendRole(role) {
+  if (role === "admin") return "Admin";
+  if (role === "bhw") return "BHC";
+  if (role === "rhu_staff") return "RHU";
+  return role || "";
 }
 
 function normalizeAccount(account = {}) {
-  const fullName = account.fullName || account.name || "";
-  const { doctorProfile, ...accountWithoutDoctorProfile } = account;
-  void doctorProfile;
+  const bhc = account.barangay_health_center || account.barangayHealthCenter || null;
+  const rhu = account.rural_health_unit || account.ruralHealthUnit || null;
+  const role = frontendRole(account.role);
+  const facility = bhc?.name || rhu?.name || account.facility || "";
 
   return {
-    ...accountWithoutDoctorProfile,
-    id: account.id || `USR-${Date.now()}`,
-    fullName,
-    name: fullName,
-    status: account.status || "Active",
-    facility: account.facility || account.assignedFacility || "",
-    setupMethod: account.setupMethod || "Send setup link to email",
+    ...account,
+    id: account.id ? String(account.id) : "",
+    fullName: account.fullName || account.name || "",
+    name: account.name || account.fullName || "",
+    role,
+    backendRole: account.role,
+    accountRole:
+      account.role === "bhw"
+        ? "bhc_worker"
+        : account.role === "rhu_staff"
+          ? "rhu_staff"
+          : "admin",
+    accountRoleLabel:
+      account.role === "bhw"
+        ? "Barangay Health Center Worker"
+        : account.role === "rhu_staff"
+          ? "Rural Health Unit Staff"
+          : "MHO / Admin",
+    position:
+      account.position ||
+      (account.role === "bhw"
+        ? "Barangay Health Worker"
+        : account.role === "rhu_staff"
+          ? "RHU Staff"
+          : "Municipal Health Officer"),
+    facility,
+    bhcFacility: bhc?.name || "",
+    rhuFacility: rhu?.name || "",
+    assignedBarangayHealthCenter: bhc?.name || "",
+    assignedRuralHealthUnit: rhu?.name || "",
+    barangayHealthCenterId:
+      account.barangay_health_center_id || account.barangayHealthCenterId || bhc?.id || "",
+    ruralHealthUnitId:
+      account.rural_health_unit_id || account.ruralHealthUnitId || rhu?.id || "",
+    status:
+      String(account.status || "active").toLowerCase() === "active"
+        ? "Active"
+        : "Inactive",
   };
 }
 
-function isDoctorAccount(account = {}) {
-  return account.role === "RHU" && account.position === "Doctor";
+function toBackendPayload(account = {}) {
+  const role = mapRoleForBackend(account.accountRole || account.role);
+
+  return {
+    name: account.fullName || account.name,
+    email: account.email,
+    password: account.password || undefined,
+    role,
+    status:
+      String(account.status || "Active").toLowerCase() === "active"
+        ? "active"
+        : "inactive",
+    barangay_health_center_id: account.barangayHealthCenterId || account.bhcId || null,
+    rural_health_unit_id: account.ruralHealthUnitId || account.rhuId || null,
+  };
 }
 
 export function getAdminAccounts() {
-  const stored = ensureArray(getItem(ADMIN_ACCOUNTS_KEY, []));
-  if (stored.length > 0) {
-    return stored.filter((account) => !isDoctorAccount(account)).map(normalizeAccount);
-  }
-
-  setItem(ADMIN_ACCOUNTS_KEY, seedAccounts);
-  return seedAccounts;
+  if (!loadingPromise) refreshAdminAccounts();
+  return accountCache;
 }
 
-export function saveAdminAccounts(accounts) {
-  const normalized = ensureArray(accounts)
-    .filter((account) => !isDoctorAccount(account))
-    .map(normalizeAccount);
-  setItem(ADMIN_ACCOUNTS_KEY, normalized);
-  return normalized;
-}
-
-export function createAdminAccount(accountData) {
-  const accounts = getAdminAccounts();
-  const nextId = `USR-${String(accounts.length + 1).padStart(3, "0")}`;
-  if (accountData.role === "RHU" && accountData.position === "Doctor") {
-    throw new Error("Doctors are managed through RHU Doctor Availability.");
-  }
-
-  const newAccount = normalizeAccount({
-    id: nextId,
-    ...accountData,
-  });
-
-  const saved = saveAdminAccounts([newAccount, ...accounts])[0];
-  createRoleNotification("admin", {
-    title: "New account created",
-    message: `${saved.fullName || saved.name} was added as ${
-      saved.accountRoleLabel || saved.role
-    }.`,
-    type: "account",
-    referenceId: `${saved.id}-created`,
-    link: "/admin/users",
-    sender: "Admin/MHO",
-  });
-  return saved;
-}
-
-export function updateAdminAccountStatus(id, status) {
-  const accounts = getAdminAccounts().map((account) =>
-    account.id === id
-      ? {
-          ...account,
-          status,
-        }
-      : account,
-  );
-  saveAdminAccounts(accounts);
-  const updated = accounts.find((account) => account.id === id) || null;
-  if (updated) {
-    createRoleNotification("admin", {
-      title: "Account status updated",
-      message: `${updated.fullName || updated.name} was ${
-        status === "Active" ? "activated" : "deactivated"
-      }.`,
-      type: "account",
-      referenceId: `${updated.id}-${status}`,
-      link: "/admin/users",
-      sender: "Admin/MHO",
+export async function refreshAdminAccounts() {
+  loadingPromise = apiRequest("/users")
+    .then((response) => {
+      accountCache = unwrapList(response).map(normalizeAccount);
+      dispatchUpdate();
+      return accountCache;
+    })
+    .catch(() => {
+      accountCache = [];
+      dispatchUpdate();
+      return accountCache;
+    })
+    .finally(() => {
+      loadingPromise = null;
     });
-  }
+
+  return loadingPromise;
+}
+
+export async function saveAdminAccounts() {
+  return refreshAdminAccounts();
+}
+
+export async function createAdminAccount(accountData) {
+  const response = await apiRequest("/users", {
+    method: "POST",
+    body: toBackendPayload(accountData),
+  });
+  const created = normalizeAccount(unwrapData(response));
+  accountCache = [created, ...accountCache.filter((account) => account.id !== created.id)];
+  dispatchUpdate();
+  return created;
+}
+
+export async function updateAdminAccountStatus(id, status) {
+  const response = await apiRequest(`/users/${id}`, {
+    method: "PATCH",
+    body: {
+      status: String(status).toLowerCase() === "active" ? "active" : "inactive",
+    },
+  });
+  const updated = normalizeAccount(unwrapData(response));
+  accountCache = accountCache.map((account) => (account.id === String(id) ? updated : account));
+  dispatchUpdate();
   return updated;
 }
 
-export function updateAdminAccount(id, updates) {
-  const accounts = getAdminAccounts().map((account) => {
-    if (account.id !== id) return account;
-
-    if (updates.role === "RHU" && updates.position === "Doctor") {
-      return account;
-    }
-
-    const next = normalizeAccount({
-      ...account,
-      ...updates,
-      name: updates.fullName || updates.name || account.name,
-    });
-
-    return next;
+export async function updateAdminAccount(id, updates) {
+  const response = await apiRequest(`/users/${id}`, {
+    method: "PATCH",
+    body: toBackendPayload(updates),
   });
-
-  saveAdminAccounts(accounts);
-  return accounts.find((account) => account.id === id) || null;
+  const updated = normalizeAccount(unwrapData(response));
+  accountCache = accountCache.map((account) => (account.id === String(id) ? updated : account));
+  dispatchUpdate();
+  return updated;
 }
 
-export function sendAdminAccountResetLink(id) {
-  const timestamp = new Date().toISOString();
-  const accounts = getAdminAccounts().map((account) =>
-    account.id === id
-      ? {
-          ...account,
-          setupMethod: "Require password reset on first login",
-          lastResetLinkSentAt: timestamp,
-        }
-      : account,
-  );
+export async function sendAdminAccountResetLink(id) {
+  const account = accountCache.find((item) => item.id === String(id));
+  if (!account?.email) return null;
 
-  saveAdminAccounts(accounts);
-  return accounts.find((account) => account.id === id) || null;
+  await apiRequest("/auth/forgot-password", {
+    method: "POST",
+    body: { email: account.email },
+  });
+
+  return account;
 }
 
 export function getRhuDoctorAccounts() {
-  return [];
+  return accountCache.filter((account) => account.role === "RHU" && account.position === "Doctor");
 }

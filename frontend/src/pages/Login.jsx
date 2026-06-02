@@ -12,24 +12,22 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     setIsLoading(true);
     setError("");
 
-    setTimeout(() => {
-      const user = loginUser(email, password);
-
-      if (!user) {
-        setError("Invalid email or password.");
-        setIsLoading(false);
-        return;
-      }
+    try {
+      const user = await loginUser(email, password);
 
       if (user.role === "admin") navigate("/admin/dashboard");
       if (user.role === "bhc") navigate("/bhc/dashboard");
       if (user.role === "rhu") navigate("/rhu/dashboard");
-    }, 800);
+    } catch (error) {
+      setError(error.message || "Invalid email or password.");
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
