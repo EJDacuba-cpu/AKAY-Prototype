@@ -491,7 +491,7 @@ function WorkflowShortcut({
     >
       <div className="flex items-start gap-3">
         <div
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110"
           style={{ backgroundColor: c.iconBg, color: c.iconColor }}
         >
           {icon}
@@ -508,7 +508,7 @@ function WorkflowShortcut({
 
             <ArrowRight
               size={13}
-              className="flex-shrink-0 text-[#0F172A] transition-transform group-hover:translate-x-1"
+              className="shrink-0 text-[#0F172A] transition-transform group-hover:translate-x-1"
             />
           </div>
 
@@ -556,7 +556,7 @@ function SectionCard({
 
         <Link
           to={linkTo}
-          className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-[#F3F4F6] px-3 py-1.5 text-[11px] font-semibold text-[#0F172A] transition-all duration-200 hover:bg-[#FEF2F2] hover:text-[#B91C1C] active:scale-[0.96]"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#F3F4F6] px-3 py-1.5 text-[11px] font-semibold text-[#0F172A] transition-all duration-200 hover:bg-[#FEF2F2] hover:text-[#B91C1C] active:scale-[0.96]"
         >
           View All
           <ArrowRight size={12} />
@@ -907,7 +907,7 @@ function MedicineAlert({ item, status }) {
       }}
     >
       <div
-        className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-transform duration-300 group-hover:scale-110"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-transform duration-300 group-hover:scale-110"
         style={{
           backgroundColor: danger ? "#FEE2E2" : "#FEF3C7",
           color: danger ? "#DC2626" : "#D97706",
@@ -927,7 +927,7 @@ function MedicineAlert({ item, status }) {
       </div>
 
       <span
-        className="flex-shrink-0 rounded-lg border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
+        className="shrink-0 rounded-lg border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
         style={{
           backgroundColor: danger ? "#FEF2F2" : "#FFFBEB",
           borderColor: danger ? "#FECACA" : "#FDE68A",

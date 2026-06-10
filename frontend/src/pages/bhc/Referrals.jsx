@@ -1,13 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { ClipboardList, Stethoscope } from "lucide-react";
+import { ClipboardList } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import ListToolbar from "../../components/common/list/ListToolbar";
-import ActionMenu from "../../components/common/tables/ActionMenu";
+import { ActionMenu, ListToolbar } from "../../components/common";
 import { getReferrals } from "../../services/referrals";
-import {
-  getDoctorAvailability,
-  listenDoctorAvailabilityUpdates,
-} from "../../services/doctorAvailability";
 import {
   formatDisplayValue,
   formatFacilityName,
@@ -100,37 +95,8 @@ function getSubmittedDate(referral) {
   );
 }
 
-function getAvailableDoctorCount(doctorAvailability) {
-  if (typeof doctorAvailability?.availableDoctorCount === "number") {
-    return doctorAvailability.availableDoctorCount;
-  }
-
-  if (Array.isArray(doctorAvailability?.doctors)) {
-    return doctorAvailability.doctors.filter(
-      (doctor) => doctor.status === "Available",
-    ).length;
-  }
-
-  return doctorAvailability?.status === "Not Available" ? 0 : 2;
-}
-
-function getTotalDoctorCount(doctorAvailability) {
-  if (typeof doctorAvailability?.totalDoctorCount === "number") {
-    return doctorAvailability.totalDoctorCount;
-  }
-
-  if (Array.isArray(doctorAvailability?.doctors)) {
-    return doctorAvailability.doctors.length;
-  }
-
-  return 2;
-}
-
 export default function Referrals() {
   const [referrals, setReferrals] = useState([]);
-  const [doctorAvailability, setDoctorAvailability] = useState(() =>
-    getDoctorAvailability(),
-  );
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
 
   useEffect(() => {
@@ -139,10 +105,6 @@ export default function Referrals() {
       setReferrals(data);
     }
     loadReferrals();
-  }, []);
-
-  useEffect(() => {
-    return listenDoctorAvailabilityUpdates(setDoctorAvailability);
   }, []);
 
   const classificationOptions = useMemo(
@@ -243,9 +205,6 @@ export default function Referrals() {
     },
   ];
 
-  const availableDoctorCount = getAvailableDoctorCount(doctorAvailability);
-  const totalDoctorCount = getTotalDoctorCount(doctorAvailability);
-
   function updateFilter(key, value) {
     setFilters((prev) => ({ ...prev, [key]: value }));
   }
@@ -271,12 +230,6 @@ export default function Referrals() {
         searchValue={filters.search}
         onSearchChange={(value) => updateFilter("search", value)}
         searchPlaceholder="Search by patient name, referral ID, or chief complaint..."
-        chip={
-          <span className="inline-flex items-center gap-2">
-            <Stethoscope size={14} className="text-[#B91C1C]" />
-            RHU Doctors: {availableDoctorCount} of {totalDoctorCount} available
-          </span>
-        }
         filters={dropdownFilters}
         activeFilterCount={activeFilterCount}
         activeFilters={activeFilters}
@@ -373,7 +326,9 @@ export default function Referrals() {
                           referral.trackingId || referral.id
                         }`}
                         viewLabel="View Referral"
-                        editLink={`/bhc/referrals/${referral.id}/print`}
+                        editLink={`/bhc/referrals/${
+                          referral.trackingId || referral.id
+                        }/print-slip`}
                         editLabel="Print Referral Slip"
                       />
                     </td>

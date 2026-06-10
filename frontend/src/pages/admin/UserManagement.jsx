@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import { KeyRound, MoreHorizontal, Plus, UserCheck, UserX } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import ListToolbar from "../../components/common/list/ListToolbar";
+import { ListToolbar } from "../../components/common";
 import {
   ADMIN_ACCOUNTS_UPDATED_EVENT,
   getAdminAccounts,
@@ -196,8 +196,6 @@ export default function UserManagement() {
     (filter) => filter.key !== "search",
   ).length;
 
-  const countLabel = "Accounts";
-
   return (
     <DashboardLayout role="admin" title="Account Directory">
       <div className="space-y-6">
@@ -207,7 +205,6 @@ export default function UserManagement() {
             setFilters((prev) => ({ ...prev, search: value }))
           }
           searchPlaceholder="Search name, email, role, or facility..."
-          chip={`${visibleUsers.length.toLocaleString()} ${countLabel}`}
           filters={toolbarFilters}
           activeFilterCount={activeFilterCount}
           activeFilters={activeFilters}

@@ -3,7 +3,6 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import {
   ArrowLeft,
   ClipboardList,
-  QrCode,
   Send,
   User,
   FileText,
@@ -32,6 +31,8 @@ import {
   listenDoctorAvailabilityUpdates,
 } from "../../services/doctorAvailability";
 import { getCurrentUser } from "../../utils/auth";
+import ReferralQrCode from "../../components/features/referrals/ReferralQrCode";
+import ReferralPrintSlip from "../../components/features/referrals/ReferralPrintSlip";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -409,6 +410,15 @@ export default function CreateReferral() {
 
   /* ─── Success Screen ─── */
   if (submitted) {
+    const submittedReferral = {
+      trackingId: generatedTrackingId,
+      patientName: patient?.name,
+      referringHci,
+      receivingFacility: form.receivingFacility,
+      urgencyLevel: form.urgencyLevel,
+      referralDateTime: `${form.dateOfReferral} ${form.timeOfReferral || "00:00"}`,
+    };
+
     return (
       <DashboardLayout role="bhc" title="Referral Transmitted">
         <style>{keyframes}</style>
@@ -451,9 +461,12 @@ export default function CreateReferral() {
               </div>
             </div>
             <div className="flex flex-col items-center p-8">
-              <div className="flex h-36 w-36 items-center justify-center rounded-xl border border-slate-200 bg-white">
-                <QrCode size={72} className="text-[#B91C1C]" />
-              </div>
+              <ReferralQrCode
+                trackingId={generatedTrackingId}
+                size={144}
+                className="rounded-xl border border-slate-200 p-2"
+                imageClassName="h-36 w-36"
+              />
               <p className="mt-4 font-mono text-sm font-bold text-slate-700 tracking-widest">
                 {generatedTrackingId}
               </p>
@@ -512,6 +525,12 @@ export default function CreateReferral() {
               <Printer size={14} /> Print Slip
             </button>
           </div>
+
+          <ReferralPrintSlip
+            referral={submittedReferral}
+            patient={patient}
+            printOnly
+          />
         </div>
       </DashboardLayout>
     );
@@ -530,7 +549,7 @@ export default function CreateReferral() {
 
             <div className="border-b border-slate-100 px-5 py-4">
               <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
                   <AlertTriangle size={21} />
                 </div>
                 <div>
@@ -628,7 +647,7 @@ export default function CreateReferral() {
 
             <div className="p-5">
               <div className="mb-4 flex items-start gap-3">
-                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
                   <AlertTriangle size={21} />
                 </div>
                 <div>

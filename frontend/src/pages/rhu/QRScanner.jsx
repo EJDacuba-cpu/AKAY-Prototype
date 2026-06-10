@@ -454,7 +454,7 @@ export default function QRScanner() {
                   <div className="anim-fade-in flex items-center gap-2.5 rounded-lg border border-red-100 bg-red-50/80 px-3.5 py-2.5">
                     <AlertCircle
                       size={14}
-                      className="flex-shrink-0 text-red-500"
+                      className="shrink-0 text-red-500"
                     />
                     <p className="text-[11.5px] font-medium text-red-700">
                       {error}
@@ -466,7 +466,7 @@ export default function QRScanner() {
                   <div className="anim-fade-in flex items-center gap-2.5 rounded-lg border border-emerald-100 bg-emerald-50/80 px-3.5 py-2.5">
                     <CheckCircle2
                       size={14}
-                      className="flex-shrink-0 text-emerald-500"
+                      className="shrink-0 text-emerald-500"
                     />
                     <p className="text-[11.5px] font-medium text-emerald-700">
                       {success}
@@ -495,7 +495,7 @@ export default function QRScanner() {
                         >
                           <QrCode
                             size={12}
-                            className="flex-shrink-0 text-slate-300"
+                            className="shrink-0 text-slate-300"
                           />
                           <span className="flex-1 truncate font-mono text-[11px] font-semibold text-slate-600">
                             {r.trackingId}
@@ -845,7 +845,7 @@ function ResultRow({ label, value }) {
 
   return (
     <div className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-3.5 py-2.5">
-      <p className="w-28 flex-shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+      <p className="w-28 shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400">
         {label}
       </p>
       <p className="flex-1 text-[12px] font-semibold text-slate-700">

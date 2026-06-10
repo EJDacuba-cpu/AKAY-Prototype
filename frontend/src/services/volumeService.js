@@ -1,5 +1,6 @@
 import { apiRequest, unwrapData, unwrapList } from "./apiClient";
 
+const VOLUME_CACHE_MS = 60_000;
 let volumeCache = {
   status: "Normal",
   updatedAt: "",
@@ -12,6 +13,7 @@ let volumeCache = {
   },
 };
 let loadingPromise = null;
+let lastFetchedAt = 0;
 
 function normalizeStatus(value) {
   const raw = String(value || "Normal").trim().toLowerCase();
@@ -20,7 +22,14 @@ function normalizeStatus(value) {
   return "Normal";
 }
 
-async function refreshVolume() {
+async function refreshVolume({ force = false } = {}) {
+  const now = Date.now();
+
+  if (loadingPromise) return loadingPromise;
+  if (!force && lastFetchedAt && now - lastFetchedAt < VOLUME_CACHE_MS) {
+    return volumeCache;
+  }
+
   loadingPromise = apiRequest("/rhu-patient-volumes")
     .then((response) => {
       const first = unwrapList(response)[0] || {};
@@ -29,6 +38,7 @@ async function refreshVolume() {
         status: normalizeStatus(first.status),
         updatedAt: first.updated_at || first.updatedAt || "",
       };
+      lastFetchedAt = Date.now();
       return volumeCache;
     })
     .catch(() => volumeCache)
@@ -40,12 +50,12 @@ async function refreshVolume() {
 }
 
 export function getRhuPatientVolume(defaultVolume = "Normal") {
-  if (!loadingPromise) refreshVolume();
+  refreshVolume();
   return volumeCache.status || defaultVolume;
 }
 
 export function getRhuPatientVolumeUpdatedTime(defaultValue = "Not updated yet") {
-  if (!loadingPromise) refreshVolume();
+  refreshVolume();
   return volumeCache.updatedAt || defaultValue;
 }
 
@@ -60,6 +70,7 @@ export async function saveRhuPatientVolume(volume) {
     status: normalizeStatus(data.status),
     updatedAt: data.updated_at || new Date().toISOString(),
   };
+  lastFetchedAt = Date.now();
   return volumeCache;
 }
 
@@ -81,7 +92,7 @@ export function getRhuWorkloadCounts() {
 }
 
 export function getRhuVolumeSnapshot() {
-  if (!loadingPromise) refreshVolume();
+  refreshVolume();
   return {
     volume: volumeCache.status,
     status: volumeCache.status,

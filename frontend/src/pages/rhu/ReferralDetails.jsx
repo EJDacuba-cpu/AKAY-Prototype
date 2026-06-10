@@ -621,7 +621,7 @@ function RecordSection({ title, description, icon, children }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-start gap-2.5 border-b border-slate-100 pb-3">
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B91C1C]">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B91C1C]">
           {icon}
         </div>
         <div>

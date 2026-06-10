@@ -1215,7 +1215,7 @@ function PatientSearchDropdown({
                     }`}
                   >
                     <div
-                      className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-[11px] font-bold ${
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold ${
                         isSelected
                           ? "bg-[#B91C1C] text-white"
                           : "bg-[#F3F4F6] text-[#6B7280]"
@@ -1256,7 +1256,7 @@ function PatientSearchDropdown({
                     {isSelected && (
                       <Check
                         size={14}
-                        className="flex-shrink-0 text-[#B91C1C]"
+                        className="shrink-0 text-[#B91C1C]"
                         strokeWidth={3}
                       />
                     )}
@@ -1433,7 +1433,7 @@ function BpInputGroup({
           onChange={(event) => onSystolicChange(event.target.value)}
           className="h-10 w-full rounded-l-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
-        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center border-y border-[#E8ECF0] bg-[#F3F4F6] text-sm font-bold text-[#6B7280]">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center border-y border-[#E8ECF0] bg-[#F3F4F6] text-sm font-bold text-[#6B7280]">
           /
         </div>
         <input
@@ -1519,7 +1519,7 @@ function ImmunizationSummaryCard({ data }) {
             in schedule
           </p>
         </div>
-        <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-red-50">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50">
           <Baby size={18} className="text-[#B91C1C]" />
         </div>
       </div>
@@ -1545,7 +1545,7 @@ function ImmunizationSummaryCard({ data }) {
 
       {nextItem && !fic && (
         <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2.5">
-          <Clock size={13} className="flex-shrink-0 text-amber-600" />
+          <Clock size={13} className="shrink-0 text-amber-600" />
           <p className="min-w-0 text-[11px] leading-snug text-amber-800">
             Next in schedule:{" "}
             <span className="font-bold">{nextItem.label}</span>
@@ -1560,7 +1560,7 @@ function FICCard() {
   return (
     <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5 shadow-sm">
       <div className="flex items-center gap-3.5">
-        <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-emerald-100">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-100">
           <ShieldCheck size={20} className="text-emerald-600" />
         </div>
         <div>
@@ -1653,7 +1653,7 @@ function SmartVaccineCheckbox({
       `}
     >
       <div
-        className={`flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded-md border transition-all duration-200 ${
+        className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border transition-all duration-200 ${
           checked
             ? "border-[#B91C1C] bg-[#B91C1C]"
             : "border-[#D4D4D4] bg-white group-hover:border-[#BFBFBF]"
@@ -1668,12 +1668,12 @@ function SmartVaccineCheckbox({
       </span>
       <StatusChip status={status} compact />
       {isNext && (
-        <span className="flex-shrink-0 rounded-md bg-amber-100 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-widest text-amber-700">
+        <span className="shrink-0 rounded-md bg-amber-100 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-widest text-amber-700">
           Next
         </span>
       )}
       {isBehind && !isNext && (
-        <span className="flex-shrink-0 rounded-md bg-red-100 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-widest text-red-700">
+        <span className="shrink-0 rounded-md bg-red-100 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-widest text-red-700">
           Behind
         </span>
       )}

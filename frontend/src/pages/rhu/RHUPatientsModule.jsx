@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import ListToolbar from "../../components/common/list/ListToolbar";
+import { ListToolbar } from "../../components/common";
 import { getRhuPatients } from "../../services/patientService";
 import {
   formatDisplayValue,
@@ -326,7 +326,6 @@ export default function Patients() {
           setFilters((prev) => ({ ...prev, search: value }))
         }
         searchPlaceholder="Search by name, ID, contact, or classification..."
-        chip={`● ${filteredPatients.length.toLocaleString()} Patients`}
         filters={dropdownFilters}
         activeFilterCount={activeFilterCount}
         activeFilters={activeFilters}

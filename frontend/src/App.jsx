@@ -41,7 +41,7 @@ import RHUReports from "./pages/rhu/RHUReports";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import UserManagement from "./pages/admin/UserManagement";
 import AddUser from "./pages/admin/AddUser";
-import DoctorManagement from "./pages/admin/DoctorManagement";
+
 
 import AdminReports from "./pages/admin/AdminReports";
 import AuditLogs from "./pages/admin/AuditLogs";
@@ -117,14 +117,7 @@ export default function App() {
           </ProtectedPage>
         }
       />
-      <Route
-        path="/admin/doctors"
-        element={
-          <ProtectedPage allowedRole="admin">
-            <DoctorManagement />
-          </ProtectedPage>
-        }
-      />
+
       <Route
         path="/admin/doctors/add"
         element={

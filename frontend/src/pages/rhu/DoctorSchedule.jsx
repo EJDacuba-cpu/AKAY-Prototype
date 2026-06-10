@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Clock, Plus, RefreshCcw, Save, Trash, UserRound } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
+import { ConfirmationModal } from "../../components/common";
 import {
   createDoctorRecord,
   getDoctorAvailability,

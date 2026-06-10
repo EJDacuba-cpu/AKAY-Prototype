@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import ListToolbar from "../../components/common/list/ListToolbar";
+import { ListToolbar } from "../../components/common";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
   formatDisplayValue,
@@ -240,7 +240,6 @@ export default function RHUHealthRecords() {
         searchValue={filters.search}
         onSearchChange={(value) => updateFilter("search", value)}
         searchPlaceholder="Search by patient name or record type..."
-        chip={`● ${filteredRecords.length.toLocaleString()} Records`}
         filters={dropdownFilters}
         activeFilterCount={activeFilterCount}
         activeFilters={activeFilters}

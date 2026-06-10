@@ -36,7 +36,7 @@ export default function SectionCard({
 
         <Link
           to={linkTo}
-          className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-3 py-1.5 text-[11px] font-bold text-[#B91C1C] transition-all duration-200 hover:bg-white active:scale-[0.96]"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-3 py-1.5 text-[11px] font-bold text-[#B91C1C] transition-all duration-200 hover:bg-white active:scale-[0.96]"
         >
           View All
           <ArrowRight size={12} />

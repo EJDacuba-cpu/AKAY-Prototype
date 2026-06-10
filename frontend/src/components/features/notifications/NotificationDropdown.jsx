@@ -10,7 +10,8 @@ export default function NotificationDropdown({
   onSeeAll,
 }) {
   const dropdownRef = useRef(null);
-  const { getLatestNotifications, markAllAsRead } = useNotifications();
+  const { getLatestNotifications, markAllAsRead, refreshNotifications } =
+    useNotifications();
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -21,6 +22,11 @@ export default function NotificationDropdown({
     if (isOpen) document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void refreshNotifications({ maxAgeMs: 30_000 });
+  }, [isOpen, refreshNotifications]);
 
   const latestNotifs = getLatestNotifications();
 

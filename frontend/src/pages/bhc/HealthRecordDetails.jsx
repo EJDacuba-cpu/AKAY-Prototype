@@ -25,16 +25,17 @@ import {
   getReferralByTrackingId,
 } from "../../services/referrals";
 
-import SideCard from "../../components/common/cards/SideCard";
+import {
+  ConfirmationModal,
+  FormInput,
+  FormSelect,
+  FormTextarea,
+  SideCard,
+  StatusBadge,
+  SuccessModal
+} from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
-import StatusBadge from "../../components/common/badges/StatusBadge";
 
-import FormInput from "../../components/common/forms/FormInput";
-import FormSelect from "../../components/common/forms/FormSelect";
-import FormTextarea from "../../components/common/forms/FormTextarea";
-
-import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
-import SuccessModal from "../../components/common/modals/SuccessModal";
 import {
   formatDisplayValue,
   formatPatientName,
@@ -218,10 +219,16 @@ export default function HealthRecordDetails() {
   const isImmunizationRecord = isImmunizationClassification(record, patient);
   const immunizationGroups = getImmunizationGroups(record);
   const patientName = formatPatientName(patient, "Unnamed Patient");
-  const patientClassification = formatDisplayValue(
-    patient?.category || patient?.patientClassification,
+  const recordCategory = formatDisplayValue(
+    record.category ||
+      record.classification ||
+      record.recordType ||
+      record.patientClassification ||
+      patient?.category ||
+      patient?.patientClassification,
     "General",
   );
+  const patientClassification = recordCategory;
 
   return (
     <>
@@ -453,8 +460,8 @@ export default function HealthRecordDetails() {
                   <SectionDivider label="Clinical Assessment" />
                   <div className="grid grid-cols-2 gap-x-8 gap-y-1 pt-3">
                     <PatientDetailItem
-                      label="Classification"
-                      value={patient?.category || "General Consultation"}
+                      label="Visit Type"
+                      value={recordCategory}
                     />
                     <PatientDetailItem
                       label="Initial Diagnosis"
@@ -602,7 +609,7 @@ export default function HealthRecordDetails() {
                       }
                     />
                     <PatientDetailItem
-                      label="Classification"
+                      label="Initial Registration Category"
                       value={formatDisplayValue(patient.category, "General")}
                     />
                     <PatientDetailItem

@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import ListToolbar from "../../components/common/list/ListToolbar";
+import { ListToolbar } from "../../components/common";
 import {
   autoMarkNoShowReferrals,
   getReferrals,
@@ -244,7 +244,7 @@ function ActionMenu({ referral }) {
                 role="menuitem"
               >
                 <div
-                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
                   style={{
                     backgroundColor: `${item.color}0A`,
                     color: item.color,
@@ -755,7 +755,6 @@ export default function IncomingReferrals() {
         searchValue={filters.search}
         onSearchChange={(value) => handleFilterChange("search", value)}
         searchPlaceholder="Search by patient name, BHC, referral ID, or chief complaint..."
-        chip={`● ${filtered.length.toLocaleString()} Referrals`}
         filters={toolbarFilters}
         activeFilterCount={activeFilters.length}
         activeFilters={activeFilters}

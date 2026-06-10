@@ -15,7 +15,7 @@ export default function MedicineAlert({ name, status, qty }) {
       }}
     >
       <div
-        className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-transform duration-300 group-hover:scale-110"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-transform duration-300 group-hover:scale-110"
         style={{
           backgroundColor: danger ? "#FEE2E2" : "#FEF3C7",
 
@@ -34,7 +34,7 @@ export default function MedicineAlert({ name, status, qty }) {
       </div>
 
       <span
-        className="flex-shrink-0 rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
+        className="shrink-0 rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
         style={{
           backgroundColor: danger ? "#FEF2F2" : "#FFFBEB",
           borderColor: danger ? "#FECACA" : "#FDE68A",

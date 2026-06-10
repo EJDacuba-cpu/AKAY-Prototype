@@ -30,6 +30,13 @@ export function normalizePatient(patient = {}) {
   const middleName = patient.middle_name || patient.middleName || nameParts.middleName;
   const lastName = patient.last_name || patient.lastName || nameParts.lastName;
   const name = fullName({ ...patient, first_name: firstName, middle_name: middleName, last_name: lastName });
+  const dateRegistered =
+    patient.created_at ||
+    patient.date_registered ||
+    patient.dateRegistered ||
+    patient.createdAt ||
+    patient.registeredAt ||
+    "";
 
   return {
     ...patient,
@@ -63,6 +70,10 @@ export function normalizePatient(patient = {}) {
       "General",
     category: patient.patient_category || patient.category || "General",
     status: patient.status || "active",
+    dateRegistered,
+    date_registered: patient.date_registered || patient.created_at || "",
+    createdAt: patient.created_at || patient.createdAt || "",
+    created_at: patient.created_at || "",
     barangayHealthCenterId: patient.barangay_health_center_id || "",
     ruralHealthUnitId: patient.rural_health_unit_id || "",
   };

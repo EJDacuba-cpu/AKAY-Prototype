@@ -25,16 +25,17 @@ import {
   updatePatient,
 } from "../../services/patientService";
 
-import SideCard from "../../components/common/cards/SideCard";
+import {
+  ConfirmationModal,
+  FormInput,
+  FormSelect,
+  FormTextarea,
+  SideCard,
+  StatusBadge,
+  SuccessModal
+} from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
-import StatusBadge from "../../components/common/badges/StatusBadge";
 
-import FormInput from "../../components/common/forms/FormInput";
-import FormSelect from "../../components/common/forms/FormSelect";
-import FormTextarea from "../../components/common/forms/FormTextarea";
-
-import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
-import SuccessModal from "../../components/common/modals/SuccessModal";
 import {
   formatDisplayValue,
   formatPatientName,
@@ -444,7 +445,7 @@ export default function PatientDetails() {
                             <option>Female</option>
                           </FormSelect>
                           <FormSelect
-                            label="Patient Classification"
+                            label="Initial Registration Category"
                             name="patientClassification"
                             value={form.patientClassification}
                             onChange={handleChange}
@@ -608,7 +609,7 @@ export default function PatientDetails() {
                             value={patient.sex || "—"}
                           />
                           <PatientDetailItem
-                            label="Patient Classification"
+                            label="Initial Registration Category"
                             value={
                               patient.category ||
                               patient.patientClassification ||
@@ -809,7 +810,7 @@ export default function PatientDetails() {
                         <th className="px-6 py-3">
                           Chief Complaint (Reason for Visit)
                         </th>
-                        <th className="px-6 py-3">Status / Type</th>
+                        <th className="px-6 py-3">Visit Type / Status</th>
                         <th className="px-6 py-3 text-right">Action</th>
                       </tr>
                     </thead>
@@ -832,9 +833,17 @@ export default function PatientDetails() {
                                 "No Chief Complaint Noted"}
                             </td>
                             <td className="whitespace-nowrap px-6 py-4">
-                              <RecordStatusBadge
-                                status={record.followUpStatus || "Consultation"}
-                              />
+                              <div className="flex flex-col items-start gap-1.5">
+                                <span className="text-xs font-semibold text-[#0F172A]">
+                                  {record.category ||
+                                    record.classification ||
+                                    record.patientClassification ||
+                                    "General Consultation"}
+                                </span>
+                                <RecordStatusBadge
+                                  status={record.followUpStatus || "Consultation"}
+                                />
+                              </div>
                             </td>
                             <td className="whitespace-nowrap px-6 py-4 text-right">
                               <button
@@ -1020,4 +1029,3 @@ function formatReferralDate(value) {
     year: "numeric",
   });
 }
-

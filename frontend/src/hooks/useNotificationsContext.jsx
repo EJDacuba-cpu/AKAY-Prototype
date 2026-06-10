@@ -3,9 +3,11 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   useEffect,
 } from "react";
+import { useLocation } from "react-router";
 import { getCurrentUser } from "../utils/auth";
 import {
   clearNotificationsForUser,
@@ -15,6 +17,7 @@ import {
   markNotificationAsRead,
   normalizeFacilityId,
   normalizeRole,
+  refreshNotifications as fetchNotifications,
   subscribeToNotifications,
 } from "../services/notificationService";
 
@@ -29,13 +32,16 @@ function getNotificationUserContext() {
 }
 
 export function NotificationProvider({ children }) {
+  const location = useLocation();
   const [userContext, setUserContext] = useState(getNotificationUserContext);
   const [notifications, setNotifications] = useState(() =>
     getNotificationsForUser(userContext.role, userContext.facilityId),
   );
   const [selectedNotif, setSelectedNotif] = useState(null);
+  const isMountedRef = useRef(false);
+  const pendingFetchRef = useRef(null);
 
-  const refreshNotifications = useCallback(() => {
+  const syncNotificationsFromCache = useCallback(() => {
     const nextContext = getNotificationUserContext();
     setUserContext(nextContext);
     setNotifications(
@@ -43,9 +49,45 @@ export function NotificationProvider({ children }) {
     );
   }, []);
 
+  const refreshNotifications = useCallback(
+    ({ force = false, maxAgeMs = 60_000 } = {}) => {
+      if (pendingFetchRef.current) return pendingFetchRef.current;
+
+      const nextContext = getNotificationUserContext();
+      setUserContext(nextContext);
+
+      pendingFetchRef.current = fetchNotifications({ force, maxAgeMs })
+        .then((nextNotifications) => {
+          if (isMountedRef.current) {
+            setNotifications(nextNotifications);
+          }
+          return nextNotifications;
+        })
+        .finally(() => {
+          pendingFetchRef.current = null;
+        });
+
+      return pendingFetchRef.current;
+    },
+    [],
+  );
+
   useEffect(() => {
-    return subscribeToNotifications(refreshNotifications);
-  }, [refreshNotifications]);
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (getCurrentUser()) {
+      void refreshNotifications();
+    }
+  }, [location.pathname, refreshNotifications]);
+
+  useEffect(() => {
+    return subscribeToNotifications(syncNotificationsFromCache);
+  }, [syncNotificationsFromCache]);
 
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !notification.isRead).length,
@@ -59,44 +101,75 @@ export function NotificationProvider({ children }) {
 
   const markAsRead = useCallback(
     (id) => {
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          notification.id === String(id)
+            ? { ...notification, isRead: true, read: true }
+            : notification,
+        ),
+      );
       markNotificationAsRead(id);
-      refreshNotifications();
     },
-    [refreshNotifications],
+    [],
   );
 
   const markAllAsRead = useCallback(() => {
+    setNotifications((prev) =>
+      prev.map((notification) => ({
+        ...notification,
+        isRead: true,
+        read: true,
+      })),
+    );
     markAllNotificationsAsRead(userContext.role, userContext.facilityId);
-    refreshNotifications();
-  }, [refreshNotifications, userContext.facilityId, userContext.role]);
+  }, [userContext.facilityId, userContext.role]);
 
   const deleteNotification = useCallback(
     (id) => {
+      setNotifications((prev) =>
+        prev.filter((notification) => notification.id !== String(id)),
+      );
       deleteStoredNotification(id);
-      refreshNotifications();
+      setSelectedNotif((prev) =>
+        prev?.id === String(id) || prev?.id === id ? null : prev,
+      );
     },
-    [refreshNotifications],
+    [],
   );
 
   const clearAll = useCallback(() => {
+    setNotifications([]);
     clearNotificationsForUser(userContext.role, userContext.facilityId);
-    refreshNotifications();
-  }, [refreshNotifications, userContext.facilityId, userContext.role]);
+  }, [userContext.facilityId, userContext.role]);
+
+  const value = useMemo(
+    () => ({
+      notifications,
+      unreadCount,
+      getLatestNotifications,
+      refreshNotifications,
+      markAsRead,
+      markAllAsRead,
+      deleteNotification,
+      clearAll,
+      selectedNotif,
+      setSelectedNotif,
+    }),
+    [
+      clearAll,
+      deleteNotification,
+      getLatestNotifications,
+      markAllAsRead,
+      markAsRead,
+      notifications,
+      refreshNotifications,
+      selectedNotif,
+      unreadCount,
+    ],
+  );
 
   return (
-    <NotificationContext.Provider
-      value={{
-        notifications,
-        unreadCount,
-        getLatestNotifications,
-        markAsRead,
-        markAllAsRead,
-        deleteNotification,
-        clearAll,
-        selectedNotif,
-        setSelectedNotif,
-      }}
-    >
+    <NotificationContext.Provider value={value}>
       {children}
     </NotificationContext.Provider>
   );

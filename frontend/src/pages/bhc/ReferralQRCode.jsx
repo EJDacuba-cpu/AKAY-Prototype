@@ -14,15 +14,9 @@ import {
   formatDisplayValue,
   formatPatientName,
 } from "../../utils/formatters";
-
-const qrCells = [
-  1, 1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0,
-  1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1,
-  1, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0,
-  1, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1,
-  0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1,
-  0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1,
-];
+import ReferralQrCode, {
+  getReferralQrValue,
+} from "../../components/features/referrals/ReferralQrCode";
 
 export default function ReferralQRCode() {
   const { trackingId } = useParams();
@@ -78,6 +72,7 @@ export default function ReferralQRCode() {
   }
 
   const patientName = formatPatientName(referral.patient, "Patient");
+  const qrValue = getReferralQrValue(referral);
 
   return (
     <DashboardLayout role="bhc" title="Referral QR Code">
@@ -121,7 +116,10 @@ export default function ReferralQRCode() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button className="inline-flex items-center gap-2 rounded-lg border border-[#E8ECF0] bg-white px-4 py-2 text-xs font-semibold text-[#0F172A] hover:bg-[#F8FAFC]">
+            <button
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-2 rounded-lg border border-[#E8ECF0] bg-white px-4 py-2 text-xs font-semibold text-[#0F172A] hover:bg-[#F8FAFC]"
+            >
               <Printer size={14} />
               Print
             </button>
@@ -138,16 +136,12 @@ export default function ReferralQRCode() {
         <section className="rounded-2xl border border-[#E8ECF0] bg-white p-8 shadow-sm">
           <div className="mx-auto max-w-md text-center">
             <div className="mx-auto rounded-2xl border border-[#E8ECF0] bg-[#FAFBFC] p-6">
-              <div className="mx-auto grid h-64 w-64 grid-cols-12 gap-1 rounded-xl bg-white p-4 shadow-sm">
-                {qrCells.map((cell, index) => (
-                  <div
-                    key={index}
-                    className={`rounded-[2px] ${
-                      cell ? "bg-[#B91C1C]" : "bg-transparent"
-                    }`}
-                  />
-                ))}
-              </div>
+              <ReferralQrCode
+                value={qrValue}
+                size={256}
+                className="mx-auto rounded-xl bg-white p-4 shadow-sm"
+                imageClassName="h-64 w-64"
+              />
             </div>
 
             <p className="mt-5 font-mono text-sm font-bold text-[#0F172A]">
@@ -155,9 +149,9 @@ export default function ReferralQRCode() {
             </p>
 
             <p className="mt-2 text-sm text-[#6B7280]">
-              QR code represents the referral tracking ID used by RHU staff for
-              quick retrieval.
+              QR code opens the referral verification URL for this tracking ID.
             </p>
+            <p className="mt-2 break-all text-xs text-[#9CA3AF]">{qrValue}</p>
           </div>
         </section>
 
@@ -193,7 +187,7 @@ export default function ReferralQRCode() {
 
           <section className="rounded-2xl border border-red-100 bg-red-50/60 p-5">
             <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-700">
+              <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-700">
                 <ShieldCheck size={14} />
               </div>
 

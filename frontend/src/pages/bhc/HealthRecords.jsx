@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { FileText, Plus } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import ListToolbar from "../../components/common/list/ListToolbar";
+import { ListToolbar } from "../../components/common";
 import HealthRecordsTable from "../../components/features/records/HealthRecordsTable";
 import { getHealthRecords } from "../../services/healthRecordService";
 import { getReferrals } from "../../services/referrals";
@@ -206,7 +206,6 @@ export default function HealthRecords() {
         searchValue={filters.search}
         onSearchChange={(value) => updateFilter("search", value)}
         searchPlaceholder="Search by patient name or record type..."
-        chip={`● ${filteredRecords.length.toLocaleString()} Records`}
         filters={dropdownFilters}
         activeFilterCount={activeFilterCount}
         activeFilters={activeFilters}

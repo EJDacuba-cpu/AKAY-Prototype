@@ -5,7 +5,6 @@ import {
   HeartPulse,
   Pill,
   Stethoscope,
-  UserPlus,
   Users,
 } from "lucide-react";
 
@@ -25,15 +24,13 @@ import { Bar } from "react-chartjs-2";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 
 /* Cards */
-import SideCard from "../../components/common/cards/SideCard";
-import MedicineAlert from "../../components/common/cards/MedicineAlert";
-import PatientVolumeCard from "../../components/features/volume/PatientVolumeCard";
+import { MedicineAlert, SideCard } from "../../components/common";
+
 
 /* Services */
 import {
-  getDashboardStats,
+  getBhcDashboardData,
   getMedicineAlerts,
-  getRecentReferrals,
 } from "../../services/dashboardService";
 import {
   formatDoctorAvailabilityDate,
@@ -52,6 +49,13 @@ const ACTIVE_REFERRAL_STATUSES = new Set([
   "For Monitoring",
   "No-Show",
 ]);
+
+const EMPTY_STATS = {
+  totalPatients: 0,
+  healthRecords: 0,
+  pendingReferrals: 0,
+  monitoringPatients: 0,
+};
 
 function getTopChiefComplaints(referrals) {
   if (!Array.isArray(referrals) || referrals.length === 0) return [];
@@ -78,13 +82,14 @@ const stagger = (index) => ({
 });
 
 export default function BHCDashboard() {
-  const [stats, setStats] = useState(null);
+  const [stats, setStats] = useState(EMPTY_STATS);
   const [referrals, setReferrals] = useState([]);
   const [medicineAlerts, setMedicineAlerts] = useState([]);
   const [doctorAvailability, setDoctorAvailability] = useState(() =>
     getDoctorAvailability(),
   );
-  const [loading, setLoading] = useState(true);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [medicineLoading, setMedicineLoading] = useState(true);
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -94,27 +99,62 @@ export default function BHCDashboard() {
   }, []);
 
   useEffect(() => {
-    async function fetchDashboard() {
+    let active = true;
+
+    async function fetchDashboardData() {
       try {
-        setLoading(true);
+        setDashboardLoading(true);
 
-        const [statsData, referralsData, medicineData] = await Promise.all([
-          getDashboardStats(),
-          getRecentReferrals(),
-          getMedicineAlerts(),
-        ]);
+        const dashboardData = await getBhcDashboardData();
+        if (!active) return;
 
-        setStats(statsData || {});
-        setReferrals(Array.isArray(referralsData) ? referralsData : []);
-        setMedicineAlerts(Array.isArray(medicineData) ? medicineData : []);
+        setStats(dashboardData?.stats || EMPTY_STATS);
+        setReferrals(
+          Array.isArray(dashboardData?.referrals)
+            ? dashboardData.referrals
+            : [],
+        );
       } catch (error) {
         console.error("Failed to load dashboard:", error);
+        if (active) {
+          setStats(EMPTY_STATS);
+          setReferrals([]);
+        }
       } finally {
-        setLoading(false);
+        if (active) setDashboardLoading(false);
       }
     }
 
-    fetchDashboard();
+    fetchDashboardData();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function fetchMedicineAlerts() {
+      try {
+        setMedicineLoading(true);
+        const medicineData = await getMedicineAlerts();
+        if (active) {
+          setMedicineAlerts(Array.isArray(medicineData) ? medicineData : []);
+        }
+      } catch (error) {
+        console.error("Failed to load medicine alerts:", error);
+        if (active) setMedicineAlerts([]);
+      } finally {
+        if (active) setMedicineLoading(false);
+      }
+    }
+
+    fetchMedicineAlerts();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -138,32 +178,23 @@ export default function BHCDashboard() {
       .slice(0, 6);
   }, [uniqueReferrals]);
 
-  if (loading || !stats) {
-    return (
-      <DashboardLayout role="bhc" title="Dashboard">
-        <div className="flex min-h-[60vh] items-center justify-center">
-          <div className="rounded-xl border border-[#FEE2E2] bg-white px-5 py-4 shadow-sm">
-            <p className="text-sm font-semibold text-[#B91C1C]">
-              Loading BHC workboard...
-            </p>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
   return (
     <DashboardLayout role="bhc" title="Dashboard">
       <div className="mx-auto w-full max-w-[1500px] space-y-4">
         <BHCWorkboardHeader userName={userName} now={now} />
 
-        <CareSnapshot stats={stats} rhuVolumeSnapshot={rhuVolumeSnapshot} />
+        <CareSnapshot
+          stats={stats}
+          rhuVolumeSnapshot={rhuVolumeSnapshot}
+          loading={dashboardLoading}
+        />
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="min-w-0 space-y-4">
             <ChiefComplaintSummaryCard
               activeCount={activeReferrals.length}
               referrals={activeReferrals}
+              loading={dashboardLoading}
             />
           </div>
 
@@ -171,9 +202,13 @@ export default function BHCDashboard() {
             <RHUReadinessCard
               availability={doctorAvailability}
               medicineAlerts={medicineAlerts}
+              loading={medicineLoading}
             />
 
-            <MedicineAvailabilityCard medicineAlerts={medicineAlerts} />
+            <MedicineAvailabilityCard
+              medicineAlerts={medicineAlerts}
+              loading={medicineLoading}
+            />
           </aside>
         </section>
       </div>
@@ -188,14 +223,8 @@ function BHCWorkboardHeader({ userName, now }) {
 
   return (
     <section className="anim-fade-up" style={stagger(0)}>
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
-          <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#B91C1C]">
-            <span>{today}</span>
-            <span className="h-1 w-1 rounded-full bg-[#FCA5A5]" />
-            <span>{currentTime}</span>
-          </div>
-
           <h1 className="text-2xl font-black tracking-tight text-[#0F172A] md:text-3xl">
             {greeting}, {userName}
           </h1>
@@ -206,34 +235,22 @@ function BHCWorkboardHeader({ userName, now }) {
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <HeaderAction
-            to="/bhc/patients/add"
-            icon={<UserPlus size={14} />}
-            label="Register Patient"
-            primary
-          />
+        <div className="shrink-0 text-left lg:text-right">
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#94A3B8]">
+            Today
+          </p>
+          <p className="mt-1 text-sm font-bold text-[#0F172A]">
+            {today}
+          </p>
+          <p className="mt-1 text-xs font-semibold text-[#64748B]">
+            {currentTime}
+          </p>
         </div>
       </div>
     </section>
   );
 }
 
-function HeaderAction({ to, icon, label, primary = false }) {
-  return (
-    <Link
-      to={to}
-      className={`inline-flex h-10 items-center gap-2 rounded-xl px-4 text-xs font-bold transition-all ${
-        primary
-          ? "bg-[#B91C1C] text-white shadow-sm hover:-translate-y-0.5 hover:bg-[#991B1B]"
-          : "border border-[#FECACA] bg-white text-[#991B1B] hover:-translate-y-0.5 hover:bg-[#FEF2F2]"
-      }`}
-    >
-      {icon}
-      {label}
-    </Link>
-  );
-}
 
 function CareSnapshot({ stats, rhuVolumeSnapshot }) {
   const cards = [
@@ -242,73 +259,138 @@ function CareSnapshot({ stats, rhuVolumeSnapshot }) {
       value: safeNumber(stats.totalPatients),
       description: "BHC patient profiles",
       icon: <Users size={17} />,
-      tone: "red",
+      color: "red",
     },
     {
       title: "Health Records",
       value: safeNumber(stats.healthRecords),
       description: "saved visit records",
       icon: <FileText size={17} />,
-      tone: "slate",
+      color: "slate",
     },
     {
       title: "Pending Referrals",
       value: safeNumber(stats.pendingReferrals),
       description: "waiting for RHU",
       icon: <ClipboardList size={17} />,
-      tone: "slate",
+      color: "slate",
     },
     {
       title: "For Monitoring",
       value: safeNumber(stats.monitoringPatients),
       description: "needs follow-up watch",
       icon: <HeartPulse size={17} />,
-      tone: "amber",
+      color: "amber",
     },
   ];
 
   return (
-    <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+    <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
       {cards.map((card, index) => (
-        <div
+        <BHCStatCard
           key={card.title}
-          className="anim-fade-up group relative overflow-hidden rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#FECACA] hover:shadow-md"
-          style={stagger(index + 1)}
-        >
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#B91C1C] via-[#DC2626] to-[#FCA5A5] opacity-0 transition-opacity group-hover:opacity-100" />
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="truncate text-[10px] font-bold uppercase tracking-[0.18em] text-[#94A3B8]">
-                {card.title}
-              </p>
-              <p className="mt-3 text-xl font-black tabular-nums text-[#0F172A]">
-                {card.value}
-              </p>
-              <p className="mt-1 truncate text-[11px] font-medium text-[#64748B]">
-                {card.description}
-              </p>
-            </div>
-            <span
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${getMetricTone(card.tone)}`}
-            >
-              {card.icon}
-            </span>
-          </div>
-        </div>
+          title={card.title}
+          value={card.value}
+          description={card.description}
+          icon={card.icon}
+          color={card.color}
+          delay={index + 1}
+        />
       ))}
 
-      <PatientVolumeCard
-        delay={cards.length + 1}
+      <RHUVolumeStatCard
         snapshot={rhuVolumeSnapshot}
-        title="RHU Patient Volume"
-        subtitle="Read-only RHU workload before sending referrals."
-        statusSuffix="Volume"
+        delay={cards.length + 1}
       />
     </section>
   );
 }
+function BHCStatCard({
+  title,
+  value,
+  description,
+  icon,
+  color = "red",
+  delay = 0,
+}) {
+  const map = {
+    red: {
+      border: "border-t-[#B91C1C]",
+      icon: "bg-[#FEF2F2] text-[#B91C1C]",
+    },
+    slate: {
+      border: "border-t-slate-300",
+      icon: "bg-slate-100 text-slate-600",
+    },
+    amber: {
+      border: "border-t-amber-400",
+      icon: "bg-amber-50 text-amber-700",
+    },
+    blue: {
+      border: "border-t-blue-400",
+      icon: "bg-blue-50 text-blue-700",
+    },
+  };
 
-function ChiefComplaintSummaryCard({ activeCount, referrals }) {
+  const selected = map[color] || map.red;
+
+  return (
+    <div
+      className={`anim-fade-up rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-5 shadow-sm transition-all duration-200 ease-out hover:-translate-y-1 hover:shadow-md ${selected.border}`}
+      style={stagger(delay)}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
+            {title}
+          </p>
+
+          <p className="mt-4 text-2xl font-bold tracking-tight text-[#0F172A]">
+            {value}
+          </p>
+
+          {description && (
+            <p className="mt-2 text-[11px] font-medium text-[#64748B]">
+              {description}
+            </p>
+          )}
+        </div>
+
+        <div
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${selected.icon}`}
+        >
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RHUVolumeStatCard({ snapshot, delay = 0 }) {
+  const status = snapshot?.status || "Normal Volume";
+  const cleanStatus = String(status).replace(/\s*Volume$/i, "") || "Normal";
+  const load = safeNumber(
+    snapshot?.load,
+    snapshot?.currentLoad,
+    snapshot?.patientLoad,
+    snapshot?.patientCount,
+    snapshot?.count,
+  );
+
+  return (
+    <BHCStatCard
+      title="RHU Patient Volume"
+      value={cleanStatus}
+      description={`Stable patient activity · Load ${load}`}
+      icon={<HeartPulse size={17} />}
+      color="blue"
+      delay={delay}
+    />
+  );
+}
+
+
+function ChiefComplaintSummaryCard({ activeCount, referrals, loading }) {
   const topComplaints = getTopChiefComplaints(referrals);
   const chartData = {
     labels: topComplaints.map((item) => item.label),
@@ -431,7 +513,9 @@ function ChiefComplaintSummaryCard({ activeCount, referrals }) {
       </div>
 
       <div className="p-4">
-        {topComplaints.length === 0 ? (
+        {loading ? (
+          <ChartSkeleton />
+        ) : topComplaints.length === 0 ? (
           <div className="flex h-[260px] items-center justify-center rounded-xl border border-dashed border-[#E5E7EB] bg-[#F8FAFC] px-4 text-center">
             <div>
               <ClipboardList
@@ -457,7 +541,22 @@ function ChiefComplaintSummaryCard({ activeCount, referrals }) {
   );
 }
 
-function RHUReadinessCard({ availability, medicineAlerts }) {
+function ChartSkeleton() {
+  return (
+    <div className="h-[260px] rounded-xl border border-[#F1F5F9] bg-[#F8FAFC]/60 p-4">
+      <div className="space-y-4">
+        {[0, 1, 2, 3, 4].map((item) => (
+          <div key={item} className="flex items-center gap-3">
+            <SkeletonLine className="h-3 w-24" />
+            <SkeletonLine className="h-5 flex-1 rounded-full" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RHUReadinessCard({ availability, medicineAlerts, loading }) {
   const unavailableMedicines = medicineAlerts.filter((medicine) =>
     String(medicine.status || "")
       .toLowerCase()
@@ -499,16 +598,25 @@ function RHUReadinessCard({ availability, medicineAlerts }) {
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <MiniReadinessMetric
-            label="Medicine alerts"
-            value={medicineAlerts.length}
-            icon={<Pill size={14} />}
-          />
-          <MiniReadinessMetric
-            label="Unavailable meds"
-            value={unavailableMedicines}
-            icon={<Pill size={14} />}
-          />
+          {loading ? (
+            <>
+              <MiniReadinessSkeleton />
+              <MiniReadinessSkeleton />
+            </>
+          ) : (
+            <>
+              <MiniReadinessMetric
+                label="Medicine alerts"
+                value={medicineAlerts.length}
+                icon={<Pill size={14} />}
+              />
+              <MiniReadinessMetric
+                label="Unavailable meds"
+                value={unavailableMedicines}
+                icon={<Pill size={14} />}
+              />
+            </>
+          )}
         </div>
 
         <p className="text-[10px] font-medium text-[#94A3B8]">
@@ -517,6 +625,18 @@ function RHUReadinessCard({ availability, medicineAlerts }) {
         </p>
       </div>
     </SideCard>
+  );
+}
+
+function MiniReadinessSkeleton() {
+  return (
+    <div className="rounded-xl border border-[#F1F5F9] bg-white p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <SkeletonLine className="h-4 w-4" />
+        <SkeletonLine className="h-5 w-8" />
+      </div>
+      <SkeletonLine className="h-3 w-24" />
+    </div>
   );
 }
 
@@ -536,7 +656,7 @@ function MiniReadinessMetric({ label, value, icon }) {
   );
 }
 
-function MedicineAvailabilityCard({ medicineAlerts }) {
+function MedicineAvailabilityCard({ medicineAlerts, loading }) {
   return (
     <SideCard
       title="Medicine Availability"
@@ -546,7 +666,13 @@ function MedicineAvailabilityCard({ medicineAlerts }) {
         Read-only RHU medicine status for referral coordination.
       </p>
 
-      {medicineAlerts.length === 0 ? (
+      {loading ? (
+        <div className="space-y-2.5">
+          {[0, 1, 2].map((item) => (
+            <MedicineAlertSkeleton key={item} />
+          ))}
+        </div>
+      ) : medicineAlerts.length === 0 ? (
         <div className="rounded-xl border border-dashed border-[#E5E7EB] bg-[#F8FAFC] px-4 py-6 text-center">
           <Pill className="mx-auto mb-2 text-[#CBD5E1]" size={26} />
           <p className="text-xs font-semibold text-[#64748B]">
@@ -574,6 +700,28 @@ function MedicineAvailabilityCard({ medicineAlerts }) {
         <ArrowRight size={13} />
       </Link>
     </SideCard>
+  );
+}
+
+function MedicineAlertSkeleton() {
+  return (
+    <div className="rounded-lg border border-[#E8ECF0] bg-[#F8FAFC] p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <SkeletonLine className="h-3 w-32" />
+          <SkeletonLine className="mt-2 h-3 w-20" />
+        </div>
+        <SkeletonLine className="h-5 w-16 rounded-md" />
+      </div>
+    </div>
+  );
+}
+
+function SkeletonLine({ className = "" }) {
+  return (
+    <span
+      className={`block animate-pulse rounded-full bg-slate-200/80 ${className}`}
+    />
   );
 }
 
@@ -611,16 +759,6 @@ function formatCurrentTime(date) {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-function getMetricTone(tone) {
-  const map = {
-    red: "bg-[#FEF2F2] text-[#B91C1C]",
-    slate: "bg-slate-100 text-slate-600",
-    amber: "bg-amber-50 text-amber-700",
-  };
-
-  return map[tone] || map.red;
 }
 
 function safeNumber(...values) {

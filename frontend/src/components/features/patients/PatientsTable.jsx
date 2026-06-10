@@ -6,6 +6,20 @@ import {
   formatPatientName,
 } from "../../../utils/formatters";
 
+function formatDate(value) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 export default function PatientsTable({
   patients = [], // Nilagyan ng default fallback array para ligtas sa .length at .map
   loading,
@@ -139,8 +153,8 @@ export default function PatientsTable({
                   <th className="px-4 py-3 whitespace-nowrap w-[150px]">
                     Classification
                   </th>
-                  <th className="px-4 py-3 whitespace-nowrap w-[130px]">
-                    Last Visit
+                  <th className="px-4 py-3 whitespace-nowrap w-[150px]">
+                    Date Registered
                   </th>
                   <th
                     className="
@@ -160,7 +174,7 @@ export default function PatientsTable({
               <tbody className="divide-y divide-[#F8FAFC]">
                 {patients.length === 0 ? (
                   <tr>
-                  <td colSpan={7} className="px-4 py-12">
+                  <td colSpan={6} className="px-4 py-12">
                       <div
                         className="
                           flex flex-col
@@ -204,8 +218,8 @@ export default function PatientsTable({
                       </div>
                     </td>
                   </tr>
-                ) : (
-                  patients.map((patient) => {
+              ) : (
+                patients.map((patient) => {
                     const patientId = formatDisplayValue(patient.id, "");
                     const patientName = formatPatientName(
                       patient,
@@ -219,11 +233,12 @@ export default function PatientsTable({
                       patient.category || patient.type,
                       "General",
                     );
-                    const lastVisit = formatDisplayValue(
-                      patient.lastVisit,
-                      "Not recorded",
+                    const dateRegistered = formatDate(
+                      patient.dateRegistered ||
+                        patient.date_registered ||
+                        patient.created_at ||
+                        patient.createdAt,
                     );
-
                     return (
                     <tr
                       key={patient.id}
@@ -299,20 +314,17 @@ export default function PatientsTable({
                         </span>
                       </td>
 
-                      {/* Last Visit */}
-                      <td
-                        className="
-                          px-4 py-3.5
-                          whitespace-nowrap
-                          text-[13px]
-                          text-[#6B7280]
-                        "
-                      >
-                        {lastVisit}
-                        {/*
-                        {patient.lastVisit || "—"}
-                        */}
-                      </td>
+                        {/* Date Registered */}
+                        <td
+                          className="
+                            px-4 py-3.5
+                            whitespace-nowrap
+                            text-[13px]
+                            text-[#6B7280]
+                          "
+                        >
+                          {dateRegistered}
+                        </td>
 
                       {/* Actions */}
                       <td className="border-l border-[#F1F5F9] bg-white px-4 py-3.5 text-right group-hover:bg-[#FAFBFD]">

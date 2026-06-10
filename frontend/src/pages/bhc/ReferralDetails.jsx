@@ -27,6 +27,8 @@ import {
   formatPatientName,
   formatUserName,
 } from "../../utils/formatters";
+import ReferralQrCode from "../../components/features/referrals/ReferralQrCode";
+import ReferralPrintSlip from "../../components/features/referrals/ReferralPrintSlip";
 
 const keyframes = `
   @keyframes fadeUp {
@@ -202,6 +204,8 @@ export default function ReferralDetails() {
           />
         </aside>
       </div>
+
+      <ReferralPrintSlip referral={referral} patient={patient} printOnly />
     </DashboardLayout>
   );
 }
@@ -526,9 +530,12 @@ function SystemReference({ referral }) {
         </h2>
         <p className="text-[10.5px] text-slate-400">QR code and tracking ID</p>
       </div>
-      <div className="mx-auto mb-3 flex h-28 w-28 items-center justify-center rounded-xl border-2 border-dashed border-red-200 bg-red-50/50">
-        <QrCode size={56} className="text-[#0F172A]/60" />
-      </div>
+      <ReferralQrCode
+        trackingId={referral.trackingId}
+        size={112}
+        className="mx-auto mb-3 rounded-xl border border-slate-200 p-2"
+        imageClassName="h-28 w-28"
+      />
       <p className="text-center font-mono text-xs font-bold text-[#0F172A]">
         {referral.trackingId}
       </p>
@@ -624,7 +631,7 @@ function RecordSection({ title, description, icon, children }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-start gap-2.5 border-b border-slate-100 pb-3">
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B91C1C]">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B91C1C]">
           {icon}
         </div>
         <div>

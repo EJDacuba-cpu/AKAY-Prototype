@@ -6,14 +6,17 @@ import {
   Activity,
   AlertTriangle,
   Boxes,
+  ChartNoAxesCombined,
   ClipboardList,
-  FileText,
+  FileClock,
   HeartPulse,
-  ShieldCheck,
   Stethoscope,
   UserCheck,
+  UserRoundPlus,
   Users,
+  UsersRound,
 } from "lucide-react";
+
 import { Link } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
@@ -122,34 +125,40 @@ const recentActivities = auditLogs.slice(0, 4).map((log, index) => ({
   return (
     <DashboardLayout role="admin" title="Dashboard">
       <div className="mx-auto w-full max-w-[1500px] space-y-4">
-      <section className="anim-fade-up">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#B91C1C]">
-              <span>{formatDashboardDate(now)}</span>
-              <span className="h-1 w-1 rounded-full bg-[#FCA5A5]" />
-              <span>{formatDashboardTime(now)}</span>
-            </div>
+<section className="anim-fade-up  p-5 ">
+  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <div className="min-w-0">
+      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#B91C1C]">
+        Admin Dashboard
+      </p>
 
-            <h1 className="text-2xl font-black tracking-tight text-[#0F172A] md:text-3xl">
-              {getGreeting(now)}, {userName}
-            </h1>
+      <h1 className="mt-2 text-2xl font-black tracking-tight text-[#0F172A] md:text-3xl">
+        {getGreeting(now)}, {userName}
+      </h1>
 
-            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[#64748B]">
-              Manage user accounts, role and facility assignments, account
-              status, and accountability records for AKAY.
-            </p>
-          </div>
+      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[#64748B]">
+        Manage user accounts, role and facility assignments, account status,
+        and accountability records for AKAY.
+      </p>
+    </div>
 
-          <Link
-            to="/admin/users/add"
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-xs font-bold text-white shadow-sm transition hover:bg-[#991B1B]"
-          >
-            <UserCheck size={14} />
-            Add User Account
-          </Link>
-        </div>
-      </section>
+<div className="shrink-0 text-left lg:text-right">
+    
+        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#94A3B8]">
+          Today
+        </p>
+
+        <p className="mt-1 text-sm font-bold text-[#0F172A]">
+          {formatDashboardDate(now)}
+        </p>
+
+        <p className="mt-1 text-xs font-semibold text-[#64748B]">
+          {formatDashboardTime(now)}
+        </p>
+    
+    </div>
+  </div>
+</section>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <StatCard
@@ -184,37 +193,9 @@ const recentActivities = auditLogs.slice(0, 4).map((log, index) => ({
         />
       </div>
 
-      <div className="mb-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        <QuickCard
-          title="Account Directory"
-          description="Add and manage MHO, BHC, and RHU staff accounts."
-          icon={<UserCheck size={20} />}
-          href="/admin/users"
-        />
 
-        <QuickCard
-          title="Doctor Availability"
-          description="View RHU-managed doctor availability records."
-          icon={<Stethoscope size={20} />}
-          href="/rhu/doctor-schedule"
-        />
 
-        <QuickCard
-          title="Reports"
-          description="Review account, referral, facility, and activity reports."
-          icon={<FileText size={20} />}
-          href="/admin/reports"
-        />
-
-        <QuickCard
-          title="Audit Logs"
-          description="Track important system actions for accountability."
-          icon={<ShieldCheck size={20} />}
-          href="/admin/audit-logs"
-        />
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-6">
           <section className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
             <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
@@ -345,6 +326,44 @@ const recentActivities = auditLogs.slice(0, 4).map((log, index) => ({
 
         <aside className="space-y-6">
           <section className="rounded-xl border border-[#E8ECF0] bg-white p-6">
+  <div className="mb-5">
+    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#B91C1C]">
+      Quick Actions
+    </p>
+  </div>
+
+  <div className="space-y-3">
+    <QuickAction
+      title="Add User Account"
+      description="Register BHC or RHU staff access."
+      icon={<UserRoundPlus size={17} />}
+      href="/admin/users/add"
+    />
+
+    <QuickAction
+      title="Account Directory"
+      description="Update roles, facilities, and status."
+      icon={<UsersRound size={17} />}
+      href="/admin/users"
+    />
+
+    <QuickAction
+      title="Reports"
+      description="Open referral and account summaries."
+      icon={<ChartNoAxesCombined size={17} />}
+      href="/admin/reports"
+    />
+
+    <QuickAction
+      title="Audit Logs"
+      description="Review recorded system activity."
+      icon={<FileClock size={17} />}
+      href="/admin/audit-logs"
+    />
+  </div>
+</section>
+
+          <section className="rounded-xl border border-[#E8ECF0] bg-white p-6">
             <div className="mb-5 flex items-center gap-3">
               <div className="rounded-xl bg-[#FEF2F2] p-3 text-[#B91C1C]">
                 <Stethoscope size={20} />
@@ -420,14 +439,7 @@ const recentActivities = auditLogs.slice(0, 4).map((log, index) => ({
             </div>
           </section>
 
-          <section className="rounded-xl border border-red-100 bg-red-50/70 p-5">
-            <p className="text-xs leading-relaxed text-[#4B5563]">
-              <span className="font-semibold text-[#0F172A]">Note:</span> The
-              MHO/Admin dashboard is for account management and system
-              accountability. Medical referral actions remain under BHC and RHU
-              personnel.
-            </p>
-          </section>
+ 
         </aside>
       </div>
       </div>
@@ -435,23 +447,23 @@ const recentActivities = auditLogs.slice(0, 4).map((log, index) => ({
   );
 }
 
-function QuickCard({ title, description, icon, href }) {
+function QuickAction({ title, description, icon, href }) {
   return (
     <Link
       to={href}
-      className="group rounded-xl border border-[#E8ECF0] bg-white p-5 transition-all hover:-translate-y-0.5 hover:shadow-md"
+      className="group flex items-start gap-3 rounded-xl border border-[#E8ECF0] bg-[#F8FAFC] p-3 transition-all hover:border-[#FCA5A5] hover:bg-white hover:shadow-sm"
     >
-      <div className="flex items-start gap-4">
-        <div className="rounded-xl bg-[#FEF2F2] p-3 text-[#B91C1C] transition-colors group-hover:bg-[#B91C1C] group-hover:text-white">
-          {icon}
-        </div>
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FEF2F2] text-[#B91C1C] transition-colors group-hover:bg-[#B91C1C] group-hover:text-white">
+        {icon}
+      </div>
 
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-[#0F172A]">{title}</h2>
-          <p className="mt-1 text-xs leading-relaxed text-[#6B7280]">
-            {description}
-          </p>
-        </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-bold text-[#0F172A]">
+          {title}
+        </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-[#64748B]">
+          {description}
+        </p>
       </div>
     </Link>
   );
@@ -474,14 +486,14 @@ function StatCard({ title, value, icon, color = "navy" }) {
 
   return (
     <div
-      className={`rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-5 ${border}`}
+      className={`rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-5 shadow-sm transition-transform duration-200 ease-out hover:scale-[1.02] hover:shadow-md ${border}`}
     >
       <div className="flex items-start justify-between gap-3">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
           {title}
         </p>
 
-        <div className={`flex-shrink-0 rounded-lg p-2 ${iconStyle}`}>
+        <div className={`shrink-0 rounded-lg p-2 ${iconStyle}`}>
           {icon}
         </div>
       </div>
@@ -492,7 +504,6 @@ function StatCard({ title, value, icon, color = "navy" }) {
     </div>
   );
 }
-
 function StatusBadge({ status }) {
   const displayStatus = formatDisplayValue(status, "Active");
   const map = {
@@ -546,7 +557,7 @@ function InventoryAlert({ item, status }) {
       </p>
 
       <span
-        className={`flex-shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${color}`}
+        className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${color}`}
       >
         {displayStatus}
       </span>

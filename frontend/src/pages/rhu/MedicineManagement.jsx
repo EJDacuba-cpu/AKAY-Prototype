@@ -11,7 +11,7 @@ import {
   XCircle,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import ListToolbar from "../../components/common/list/ListToolbar";
+import { ListToolbar } from "../../components/common";
 import MedicineFormModal from "../../components/features/medicine/MedicineFormModal";
 import {
   addRhuMedicine,
@@ -172,7 +172,6 @@ export default function MedicineManagement() {
         searchValue={filters.search}
         onSearchChange={(value) => updateFilter("search", value)}
         searchPlaceholder="Search by medicine name, category, item ID, or notes..."
-        chip={`${filteredItems.length.toLocaleString()} Items`}
         filters={toolbarFilters}
         activeFilterCount={
           activeFilters.filter((filter) => filter.key !== "search").length

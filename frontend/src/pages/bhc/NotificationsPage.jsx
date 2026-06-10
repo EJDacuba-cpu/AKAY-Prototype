@@ -88,7 +88,7 @@ export default function NotificationsPage() {
               >
                 <button
                   onClick={() => handleViewNotification(notif)}
-                  className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-400"
+                  className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-400"
                 >
                   <Eye size={14} className="group-hover:text-[#0F172A]" />
                 </button>

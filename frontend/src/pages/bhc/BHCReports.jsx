@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   BarChart3,
   ClipboardList,
@@ -23,7 +23,7 @@ import {
 import { Chart, PolarArea } from "react-chartjs-2";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import ListToolbar from "../../components/common/list/ListToolbar";
+import { ListToolbar } from "../../components/common";
 
 ChartJS.register(
   CategoryScale,
@@ -266,9 +266,6 @@ export default function BHCReports() {
             setFilters((prev) => ({ ...prev, search: value }))
           }
           searchPlaceholder="Search patient, tracking ID, chief complaint, or status..."
-          chip={`${filteredReferralLogbook.length.toLocaleString()} ${currentReport.shortLabel} Referral${
-            filteredReferralLogbook.length === 1 ? "" : "s"
-          }`}
           filters={dropdownFilters}
           activeFilterCount={activeFilterCount}
           activeFilters={activeFilters}
@@ -625,7 +622,7 @@ function getChiefComplaintComboOptions() {
           minRotation: 0,
           callback: function (value) {
             const label = this.getLabelForValue(value);
-            return label.length > 14 ? `${label.slice(0, 13)}â€¦` : label;
+            return label.length > 14 ? `${label.slice(0, 13)}…` : label;
           },
         },
       },
@@ -804,5 +801,4 @@ function formatNumber(value) {
   if (!Number.isFinite(parsed)) return "0";
   return parsed.toLocaleString();
 }
-
 

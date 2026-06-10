@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { getPatients } from "../services/patients";
 
@@ -8,6 +8,7 @@ export default function usePatients() {
    * ───────────────────────────────────────────── */
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -77,23 +78,26 @@ export default function usePatients() {
   /* ─────────────────────────────────────────────
    * Fetch Patients
    * ───────────────────────────────────────────── */
-  useEffect(() => {
-    async function fetchPatients() {
-      try {
-        setLoading(true);
+  const fetchPatients = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
 
-        const data = await getPatients();
+      const data = await getPatients();
 
-        setPatients(data);
-      } catch (error) {
-        console.error("Failed to fetch patients:", error);
-      } finally {
-        setLoading(false);
-      }
+      setPatients(data);
+    } catch (fetchError) {
+      console.error("Failed to fetch patients:", fetchError);
+      setPatients([]);
+      setError("Unable to load patients");
+    } finally {
+      setLoading(false);
     }
-
-    fetchPatients();
   }, []);
+
+  useEffect(() => {
+    fetchPatients();
+  }, [fetchPatients]);
 
   /* ─────────────────────────────────────────────
    * Filter Logic
@@ -213,6 +217,8 @@ export default function usePatients() {
     paginatedPatients,
 
     loading,
+    error,
+    refetchPatients: fetchPatients,
 
     filters,
     setFilters,

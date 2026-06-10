@@ -4,8 +4,9 @@ import {
   BarChart3,
   Building2,
   ClipboardList,
-  FileText,
   HeartPulse,
+  Download,
+  FileCheck,
   Printer,
   RefreshCw,
   SearchCheck,
@@ -27,12 +28,13 @@ import {
 import { Bar, Chart, Doughnut } from "react-chartjs-2";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import ListToolbar from "../../components/common/list/ListToolbar";
+import { ListToolbar } from "../../components/common";
 import { refreshAdminAccounts } from "../../services/adminAccountsService";
 import { getHealthRecords } from "../../services/healthRecordService";
 import { refreshRhuMedicines } from "../../services/medicineService";
 import { getPatients } from "../../services/patientService";
 import { getReferrals } from "../../services/referrals";
+
 
 ChartJS.register(
   CategoryScale,
@@ -71,6 +73,9 @@ const BULAKAN_BARANGAYS = [
   "Tibig",
 ];
 
+const MAIN_RHU_NAME = "Rural Health Unit Bulakan";
+const REPORT_SCOPE = "Municipal Health Office / Bulakan, Bulacan";
+
 const EMPTY_REPORT_SOURCE = Object.freeze({
   referrals: [],
   patients: [],
@@ -95,6 +100,75 @@ const chartPalette = {
   muted: "#94A3B8",
   grid: "rgba(226, 232, 240, 0.85)",
 };
+
+const printStyles = `
+  .print-only {
+    display: none;
+  }
+
+  @media print {
+    @page {
+      size: A4;
+      margin: 14mm;
+    }
+
+    body {
+      background: #ffffff !important;
+    }
+
+    body * {
+      visibility: hidden !important;
+    }
+
+    .mho-print-report,
+    .mho-print-report * {
+      visibility: visible !important;
+    }
+
+    .no-print {
+      display: none !important;
+    }
+
+    .print-only {
+      display: block !important;
+    }
+
+    .mho-print-report {
+      position: absolute !important;
+      inset: 0 auto auto 0 !important;
+      width: 100% !important;
+      color: #0f172a !important;
+      background: #ffffff !important;
+      font-family: Arial, sans-serif !important;
+    }
+
+    .mho-print-report table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .mho-print-report th,
+    .mho-print-report td {
+      border: 1px solid #cbd5e1;
+      padding: 7px 8px;
+      font-size: 10px;
+      text-align: left;
+    }
+
+    .mho-print-report th {
+      background: #f1f5f9;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .mho-print-report tr,
+    .mho-print-report section {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+  }
+`;
 
 export default function AdminReports() {
   const [dataVersion, setDataVersion] = useState(0);
@@ -208,30 +282,31 @@ export default function AdminReports() {
     categoryRanking,
     medicineAlerts,
     facilitySummary,
+    rhuSummary,
   } = reportSummary;
 
   const dropdownFilters = [
     {
       key: "barangay",
-      label: "Barangay / Source",
+      label: "Barangay / BHC",
       value: filters.barangay,
       options: dropdownOptions.barangays,
     },
     {
       key: "category",
-      label: "Category",
+      label: "Referral Category",
       value: filters.category,
       options: dropdownOptions.categories,
     },
     {
       key: "status",
-      label: "Status",
+      label: "Referral Status",
       value: filters.status,
       options: dropdownOptions.statuses,
     },
     {
       key: "date",
-      label: "Date",
+      label: "Report Date",
       value: filters.date,
       type: "date",
     },
@@ -286,18 +361,28 @@ export default function AdminReports() {
     window.print();
   }
 
+  function exportSummaryCsv() {
+    exportMunicipalReportCsv({
+      filters,
+      stats,
+      barangayReports,
+      rhuSummary,
+    });
+  }
+
   return (
-    <DashboardLayout role="admin" title="Reports">
-      <div className="space-y-4">
+    <DashboardLayout role="admin" title="MHO Reports">
+      <style>{printStyles}</style>
+
+      <div className="no-print space-y-4">
+        <MhoReportHeader />
+
         <ListToolbar
           searchValue={filters.search}
           onSearchChange={(value) =>
             setFilters((prev) => ({ ...prev, search: value }))
           }
-          searchPlaceholder="Search BHC, RHU, barangay, patient, tracking ID, status, or category..."
-          chip={`● ${formatNumber(stats.totalRecords)} System Record${
-            stats.totalRecords === 1 ? "" : "s"
-          }`}
+          searchPlaceholder="Search barangay, BHC, RHU, tracking ID, status, or category..."
           filters={dropdownFilters}
           activeFilterCount={activeFilterCount}
           activeFilters={activeFilters}
@@ -307,7 +392,7 @@ export default function AdminReports() {
           actions={
             <ReportActionButtons
               onRefresh={refreshReports}
-              onPdf={printAsPdf}
+              onExport={exportSummaryCsv}
               onPrint={printAsPdf}
             />
           }
@@ -327,21 +412,21 @@ export default function AdminReports() {
             tone="red"
           />
           <StatCard
-            title="Total Patients"
-            value={stats.totalPatients}
-            icon={<Users size={16} />}
+            title="Pending Referrals"
+            value={stats.pendingReferrals}
+            icon={<AlertTriangle size={16} />}
             tone="slate"
           />
           <StatCard
-            title="Health Records"
-            value={stats.totalHealthRecords}
-            icon={<HeartPulse size={16} />}
+            title="Completed Cases"
+            value={stats.completedCases}
+            icon={<SearchCheck size={16} />}
             tone="amber"
           />
           <StatCard
-            title="Completed Cases"
-            value={stats.completed}
-            icon={<SearchCheck size={16} />}
+            title="No-Show Cases"
+            value={stats.noShowCases}
+            icon={<Users size={16} />}
             tone="emerald"
           />
         </div>
@@ -350,7 +435,7 @@ export default function AdminReports() {
           <main className="min-w-0 space-y-4">
             <ReportChartCard
               title="Referral Activity by 14 Barangays"
-              description="Grouped Chart.js bar chart showing referrals, completed cases, and monitoring cases across all 14 barangays."
+              description={`Municipal BHC-to-${MAIN_RHU_NAME} referral activity across all 14 barangays.`}
               icon={<Building2 size={15} />}
               rightLabel="14 barangays"
             >
@@ -359,7 +444,7 @@ export default function AdminReports() {
                   barangayReferralActivity.flatMap((item) => [
                     item.referrals,
                     item.completed,
-                    item.monitoring,
+                    item.pending,
                   ]),
                 ) ? (
                   <Bar
@@ -379,8 +464,8 @@ export default function AdminReports() {
             </ReportChartCard>
 
             <ReportChartCard
-              title="Monthly Activity Summary"
-              description="Line chart showing the combined monthly activity from BHC referrals, RHU walk-ins, and health records."
+              title="Municipal Referral Summary"
+              description="Monthly municipal activity across referrals, patient registration, and health records."
               icon={<SearchCheck size={15} />}
               rightLabel="Monthly"
             >
@@ -402,8 +487,8 @@ export default function AdminReports() {
             </ReportChartCard>
 
             <ReportChartCard
-              title="Referrals per Barangay"
-              description="Horizontal bar chart comparing referral, completed, and monitoring counts from BHC to RHU."
+              title="Barangay Referral Summary"
+              description={`Horizontal comparison of referrals, completed cases, and pending referrals sent to ${MAIN_RHU_NAME}.`}
               icon={<Building2 size={15} />}
               rightLabel="Barangay"
             >
@@ -416,8 +501,8 @@ export default function AdminReports() {
                 ) : (
                   <EmptyChartState
                     icon={<ClipboardList size={24} />}
-                    title="No barangay referral data"
-                    message="Incoming referral records with barangay or source facility will appear here."
+                    title="No barangay referral activity yet"
+                    message="Barangay referral records will appear here once BHCs encode referrals."
                   />
                 )}
               </FixedChartBox>
@@ -428,10 +513,10 @@ export default function AdminReports() {
 
           <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
             <ReportChartCard
-              title="BHC and RHU Records"
-              description="Doughnut chart showing record counts by module source."
+              title="Municipal Service Coverage"
+              description="Doughnut chart summarizing BHC, RHU, referral, and account report coverage."
               icon={<Building2 size={15} />}
-              rightLabel="Records"
+              rightLabel="MHO view"
             >
               <FixedChartBox height="h-[280px]">
                 {hasAnyValue(facilitySummary.map((item) => item.value)) ? (
@@ -442,12 +527,14 @@ export default function AdminReports() {
                 ) : (
                   <EmptyChartState
                     icon={<Building2 size={24} />}
-                    title="No record summary data"
-                    message="BHC and RHU records will be summarized here."
+                    title="No municipal coverage data"
+                    message="Barangay and RHU report coverage will be summarized here."
                   />
                 )}
               </FixedChartBox>
             </ReportChartCard>
+
+            <RhuReceivingSummaryCard summary={rhuSummary} />
 
             <CategoryRankingCard
               categories={categoryRanking}
@@ -471,11 +558,44 @@ export default function AdminReports() {
           </aside>
         </div>
       </div>
+
+      <PrintableMhoReport
+        filters={filters}
+        stats={stats}
+        barangayReports={barangayReports}
+        rhuSummary={rhuSummary}
+      />
     </DashboardLayout>
   );
 }
 
-function ReportActionButtons({ onRefresh, onPdf, onPrint }) {
+function MhoReportHeader() {
+  return (
+    <section className="overflow-hidden ">
+      <div className=" px-5 py-4 sm:px-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#B91C1C]">
+              Municipal Health Officer Report
+            </p>
+            <h1 className="mt-1 text-xl font-black tracking-tight text-[#0F172A] sm:text-2xl">
+              Municipal Referral Report
+            </h1>
+            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[#64748B]">
+              MHO monitoring for all 14 barangays and BHCs, with receiving and
+              processing visibility for {MAIN_RHU_NAME}.
+            </p>
+          </div>
+   
+        </div>
+      </div>
+    </section>
+  );
+}
+
+
+
+function ReportActionButtons({ onRefresh, onExport, onPrint }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button
@@ -488,11 +608,11 @@ function ReportActionButtons({ onRefresh, onPdf, onPrint }) {
       </button>
       <button
         type="button"
-        onClick={onPdf}
+        onClick={onExport}
         className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-3 text-[11px] font-semibold text-[#374151] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
       >
-        <FileText size={12} className="text-red-600" />
-        PDF
+        <Download size={12} className="text-red-600" />
+        Export CSV
       </button>
       <button
         type="button"
@@ -500,7 +620,7 @@ function ReportActionButtons({ onRefresh, onPdf, onPrint }) {
         className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-3 text-[11px] font-semibold text-[#374151] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
       >
         <Printer size={12} />
-        Print
+        Print Report
       </button>
     </div>
   );
@@ -681,7 +801,7 @@ function SystemResourceCard({
             RHU Resources and Users
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-[#64748B]">
-            System-wide resource status for admin monitoring.
+            RHU workforce and medicine readiness for MHO monitoring.
           </p>
         </div>
         <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
@@ -769,21 +889,78 @@ function MedicineAlert({ item }) {
   );
 }
 
+function RhuReceivingSummaryCard({ summary }) {
+  return (
+    <section className="rounded-xl border border-[#E8ECF0] bg-white p-4 shadow-sm">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-black text-[#0F172A]">
+            RHU Receiving Summary
+          </h2>
+          <p className="mt-1 text-xs leading-relaxed text-[#64748B]">
+            {summary.name} receiving and processing status.
+          </p>
+        </div>
+        <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+          Main RHU
+        </span>
+      </div>
+
+      <div className="space-y-2.5">
+        <ResourceRow
+          icon={<ClipboardList size={13} />}
+          label="Incoming Referrals"
+          value={formatNumber(summary.incomingReferrals)}
+        />
+        <ResourceRow
+          icon={<SearchCheck size={13} />}
+          label="Received Cases"
+          value={formatNumber(summary.receivedCases)}
+        />
+        <ResourceRow
+          icon={<HeartPulse size={13} />}
+          label="Completed Cases"
+          value={formatNumber(summary.completedCases)}
+        />
+        <ResourceRow
+          icon={<FileCheck size={13} />}
+          label="Feedback Submitted"
+          value={formatNumber(summary.feedbackSubmitted)}
+        />
+        <ResourceRow
+          icon={<AlertTriangle size={13} />}
+          label="No-Show Cases"
+          value={formatNumber(summary.noShowCases)}
+        />
+      </div>
+
+      {summary.incomingReferrals === 0 && (
+        <div className="mt-4 rounded-lg border border-dashed border-[#E8ECF0] bg-[#F8FAFC] px-4 py-5 text-center text-xs text-[#94A3B8]">
+          No RHU processing data available yet.
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ReportScopeCard({ filters, stats, barangayCount, categoryCount }) {
   return (
     <section className="rounded-xl border border-[#E8ECF0] bg-white p-4 shadow-sm">
-      <h2 className="text-sm font-black text-[#0F172A]">Report Scope</h2>
+      <h2 className="text-sm font-black text-[#0F172A]">MHO Report Scope</h2>
       <p className="mt-1 text-xs leading-relaxed text-[#64748B]">
-        Current system-wide output after applying filters.
+        Current municipal report output after applying filters.
       </p>
 
       <div className="mt-4 space-y-2 text-[11px] text-[#64748B]">
+        <ScopeRow label="Report scope" value={REPORT_SCOPE} />
+        <ScopeRow label="Barangays / BHCs" value="14" />
+        <ScopeRow label="Receiving RHU" value={MAIN_RHU_NAME} />
         <ScopeRow
-          label="All records"
+          label="Summary records"
           value={formatNumber(stats.totalRecords)}
         />
         <ScopeRow
-          label="Barangay / Source"
+          label="Barangays with referrals"
           value={formatNumber(barangayCount)}
         />
         <ScopeRow label="Categories" value={formatNumber(categoryCount)} />
@@ -821,14 +998,16 @@ function BarangayReferralTable({ barangayReports }) {
       </div>
 
       <div className="w-full overflow-x-auto">
-        <table className="w-full min-w-[680px] text-left">
+        <table className="w-full min-w-[860px] text-left">
           <thead>
             <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              <th className="px-5 py-3">Barangay / Source</th>
-              <th className="px-4 py-3">Referrals</th>
+              <th className="px-5 py-3">Barangay / BHC</th>
+              <th className="px-4 py-3">Total Referrals</th>
+              <th className="px-4 py-3">Pending</th>
+              <th className="px-4 py-3">Received</th>
               <th className="px-4 py-3">Completed</th>
-              <th className="px-4 py-3">Monitoring</th>
-              <th className="px-4 py-3">Case Count</th>
+              <th className="px-4 py-3">No-Show</th>
+              <th className="px-4 py-3">Last Activity</th>
             </tr>
           </thead>
 
@@ -836,10 +1015,10 @@ function BarangayReferralTable({ barangayReports }) {
             {barangayReports.length === 0 ? (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={7}
                   className="px-5 py-10 text-center text-sm text-[#94A3B8]"
                 >
-                  No referral summary yet.
+                  No barangay referral activity yet.
                 </td>
               </tr>
             ) : (
@@ -852,23 +1031,19 @@ function BarangayReferralTable({ barangayReports }) {
                     {item.referrals}
                   </td>
                   <td className="px-4 py-3.5 text-sm text-[#6B7280]">
+                    {item.pending}
+                  </td>
+                  <td className="px-4 py-3.5 text-sm text-[#6B7280]">
+                    {item.received}
+                  </td>
+                  <td className="px-4 py-3.5 text-sm text-[#6B7280]">
                     {item.completed}
                   </td>
                   <td className="px-4 py-3.5 text-sm text-[#6B7280]">
-                    {item.monitoring}
+                    {item.noShow}
                   </td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-center gap-2">
-                      <div className="h-2 w-full min-w-[110px] overflow-hidden rounded-full bg-[#E8ECF0]">
-                        <div
-                          className="h-full rounded-full bg-[#B91C1C]"
-                          style={{ width: `${item.share}%` }}
-                        />
-                      </div>
-                      <span className="w-9 text-right text-[11px] font-bold text-[#64748B]">
-                        {formatNumber(item.totalCases)}
-                      </span>
-                    </div>
+                  <td className="px-4 py-3.5 text-sm text-[#6B7280]">
+                    {formatDisplayDate(item.lastActivity)}
                   </td>
                 </tr>
               ))
@@ -877,6 +1052,121 @@ function BarangayReferralTable({ barangayReports }) {
         </table>
       </div>
     </section>
+  );
+}
+
+function PrintableMhoReport({ filters, stats, barangayReports, rhuSummary }) {
+  return (
+    <article className="mho-print-report print-only">
+      <header className="mb-6 border-b-2 border-slate-900 pb-4">
+        <p className="text-xs font-bold uppercase tracking-[0.18em]">
+          AKAY Community EHR System
+        </p>
+        <h1 className="mt-1 text-2xl font-black">Municipal Referral Report</h1>
+        <div className="mt-3 grid grid-cols-2 gap-x-8 gap-y-1 text-xs">
+          <PrintMeta label="Report scope" value={REPORT_SCOPE} />
+          <PrintMeta label="Generated" value={formatDateTime(new Date())} />
+          <PrintMeta label="MHO role" value="Admin / Municipal Health Officer" />
+          <PrintMeta label="Receiving RHU" value={MAIN_RHU_NAME} />
+          <PrintMeta label="Barangay filter" value={filters.barangay} />
+          <PrintMeta label="Referral status" value={filters.status} />
+          <PrintMeta label="Category" value={filters.category} />
+          <PrintMeta label="Date range" value={filters.date || "Any date"} />
+        </div>
+      </header>
+
+      <section className="mb-5">
+        <h2 className="mb-2 text-sm font-black uppercase tracking-wide">
+          Summary Metrics
+        </h2>
+        <div className="grid grid-cols-4 gap-2">
+          <PrintMetric label="Total Referrals" value={stats.totalReferrals} />
+          <PrintMetric label="Pending Referrals" value={stats.pendingReferrals} />
+          <PrintMetric label="Completed Cases" value={stats.completedCases} />
+          <PrintMetric label="No-Show Cases" value={stats.noShowCases} />
+        </div>
+      </section>
+
+      <section className="mb-5">
+        <h2 className="mb-2 text-sm font-black uppercase tracking-wide">
+          Barangay Referral Summary
+        </h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Barangay / BHC</th>
+              <th>Total Referrals</th>
+              <th>Pending</th>
+              <th>Received</th>
+              <th>Completed</th>
+              <th>No-Show</th>
+              <th>Last Activity</th>
+            </tr>
+          </thead>
+          <tbody>
+            {barangayReports.map((item) => (
+              <tr key={item.barangay}>
+                <td>{item.barangay}</td>
+                <td>{formatNumber(item.referrals)}</td>
+                <td>{formatNumber(item.pending)}</td>
+                <td>{formatNumber(item.received)}</td>
+                <td>{formatNumber(item.completed)}</td>
+                <td>{formatNumber(item.noShow)}</td>
+                <td>{formatDisplayDate(item.lastActivity)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-black uppercase tracking-wide">
+          RHU Receiving and Processing Summary
+        </h2>
+        <table>
+          <thead>
+            <tr>
+              <th>RHU Name</th>
+              <th>Incoming Referrals</th>
+              <th>Received</th>
+              <th>Completed</th>
+              <th>Feedback Submitted</th>
+              <th>No-Show</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>{rhuSummary.name}</td>
+              <td>{formatNumber(rhuSummary.incomingReferrals)}</td>
+              <td>{formatNumber(rhuSummary.receivedCases)}</td>
+              <td>{formatNumber(rhuSummary.completedCases)}</td>
+              <td>{formatNumber(rhuSummary.feedbackSubmitted)}</td>
+              <td>{formatNumber(rhuSummary.noShowCases)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </article>
+  );
+}
+
+function PrintMeta({ label, value }) {
+  return (
+    <div className="flex gap-2">
+      <span className="min-w-[92px] font-bold">{label}:</span>
+      <span>{value}</span>
+    </div>
+  );
+}
+
+function PrintMetric({ label, value }) {
+  return (
+    <div className="border border-slate-300 p-3">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-600">
+        {label}
+      </p>
+      <p className="mt-2 text-xl font-black">{formatNumber(value)}</p>
+    </div>
   );
 }
 
@@ -1026,6 +1316,20 @@ function buildReportSummary(source) {
     healthRecords.filter((item) => isCompleteStatus(getRecordStatus(item)))
       .length;
 
+  const pendingReferrals = referrals.filter((item) =>
+    isPendingStatus(getRecordStatus(item)),
+  ).length;
+  const receivedReferrals = referrals.filter((item) =>
+    isReceivedStatus(getRecordStatus(item)),
+  ).length;
+  const completedCases = referrals.filter((item) =>
+    isCompleteStatus(getRecordStatus(item)),
+  ).length;
+  const noShowCases = referrals.filter((item) =>
+    isNoShowStatus(getRecordStatus(item)),
+  ).length;
+  const feedbackSubmitted = referrals.filter(hasFeedbackSubmitted).length;
+
   const medicineAlerts = medicines
     .map(normalizeMedicineAlert)
     .filter(Boolean)
@@ -1054,6 +1358,11 @@ function buildReportSummary(source) {
     totalHealthRecords: healthRecords.length,
     monitoring,
     completed,
+    pendingReferrals,
+    receivedReferrals,
+    completedCases,
+    noShowCases,
+    feedbackSubmitted,
     medicineAlerts: medicineAlerts.length,
     activeUsers,
     totalUsers: users.length,
@@ -1063,19 +1372,19 @@ function buildReportSummary(source) {
 
   const facilitySummary = [
     {
-      label: "BHC Records",
+      label: "BHC Activity",
       value: bhcPatients.length + bhcHealthRecords.length,
     },
     {
-      label: "RHU Records",
+      label: "RHU Processing",
       value: rhuPatients.length + rhuHealthRecords.length + medicines.length,
     },
     {
-      label: "Referral Records",
+      label: "Referral Activity",
       value: referrals.length,
     },
     {
-      label: "Account / Doctor Records",
+      label: "Workforce Resources",
       value: users.length + doctors.length,
     },
   ];
@@ -1088,6 +1397,7 @@ function buildReportSummary(source) {
     referrals.length,
   );
   const monthlyTrend = buildMonthlyTrend(referrals, patients, healthRecords);
+  const rhuSummary = buildRhuSummary(referrals);
 
   return {
     stats,
@@ -1098,6 +1408,7 @@ function buildReportSummary(source) {
     categoryRanking,
     medicineAlerts,
     facilitySummary,
+    rhuSummary,
   };
 }
 
@@ -1105,7 +1416,7 @@ function buildBarangayReferralActivity(referrals) {
   const groups = new Map(
     BULAKAN_BARANGAYS.map((barangay) => [
       barangay.toLowerCase(),
-      { barangay, referrals: 0, completed: 0, monitoring: 0 },
+      { barangay, referrals: 0, completed: 0, pending: 0 },
     ]),
   );
 
@@ -1118,7 +1429,7 @@ function buildBarangayReferralActivity(referrals) {
 
     current.referrals += 1;
     if (isCompleteStatus(status)) current.completed += 1;
-    if (isMonitoringStatus(status)) current.monitoring += 1;
+    if (isPendingStatus(status)) current.pending += 1;
   });
 
   return BULAKAN_BARANGAYS.map((barangay) =>
@@ -1127,35 +1438,68 @@ function buildBarangayReferralActivity(referrals) {
 }
 
 function buildBarangayReports(referrals) {
-  const groups = new Map();
+  const groups = new Map(
+    BULAKAN_BARANGAYS.map((barangay) => [
+      barangay.toLowerCase(),
+      {
+        barangay,
+        referrals: 0,
+        pending: 0,
+        received: 0,
+        completed: 0,
+        noShow: 0,
+        lastActivity: "",
+      },
+    ]),
+  );
 
   referrals.forEach((referral) => {
-    const barangay = getReferralBarangay(referral);
-    const current = groups.get(barangay) || {
-      barangay,
-      referrals: 0,
-      completed: 0,
-      monitoring: 0,
-    };
+    const matchedBarangay = findBulakanBarangay(getReferralBarangay(referral));
+    if (!matchedBarangay) return;
+
+    const current = groups.get(matchedBarangay.toLowerCase());
 
     current.referrals += 1;
 
     const status = getRecordStatus(referral);
-    if (isCompleteStatus(status)) current.completed += 1;
-    if (isMonitoringStatus(status)) current.monitoring += 1;
+    const activityDate = getRecordDate(referral);
 
-    groups.set(barangay, current);
+    if (isPendingStatus(status)) current.pending += 1;
+    if (isReceivedStatus(status)) current.received += 1;
+    if (isCompleteStatus(status)) current.completed += 1;
+    if (isNoShowStatus(status)) current.noShow += 1;
+    if (activityDate && activityDate > current.lastActivity) {
+      current.lastActivity = activityDate;
+    }
   });
 
-  const items = Array.from(groups.values()).sort(
-    (a, b) => b.referrals - a.referrals,
+  const items = BULAKAN_BARANGAYS.map((barangay) =>
+    groups.get(barangay.toLowerCase()),
   );
   const max = Math.max(...items.map((item) => item.referrals), 1);
 
-  return items.slice(0, 10).map((item) => ({
+  return items.map((item) => ({
     ...item,
     share: Math.round((item.referrals / max) * 100),
+    totalCases: item.referrals,
   }));
+}
+
+function buildRhuSummary(referrals) {
+  return {
+    name: MAIN_RHU_NAME,
+    incomingReferrals: referrals.length,
+    receivedCases: referrals.filter((item) =>
+      isReceivedStatus(getRecordStatus(item)),
+    ).length,
+    completedCases: referrals.filter((item) =>
+      isCompleteStatus(getRecordStatus(item)),
+    ).length,
+    feedbackSubmitted: referrals.filter(hasFeedbackSubmitted).length,
+    noShowCases: referrals.filter((item) =>
+      isNoShowStatus(getRecordStatus(item)),
+    ).length,
+  };
 }
 
 function buildCategoryReports(referrals) {
@@ -1258,8 +1602,8 @@ function buildFourteenBarangayChartData(items) {
         maxBarThickness: 24,
       },
       {
-        label: "Monitoring",
-        data: items.map((item) => item.monitoring),
+        label: "Pending",
+        data: items.map((item) => item.pending),
         backgroundColor: (context) =>
           getChartGradient(
             context,
@@ -1326,7 +1670,7 @@ function buildMonthlyLineData(monthlyTrend) {
     labels: monthlyTrend.map((item) => item.label),
     datasets: [
       {
-        label: "System Activity",
+        label: "Municipal Activity",
         data: monthlyTrend.map((item) => Number(item.value || 0)),
         borderColor: (context) =>
           getLineGradient(context, [chartPalette.red, chartPalette.redDark]),
@@ -1429,8 +1773,8 @@ function buildBarangayChartData(items) {
         maxBarThickness: 28,
       },
       {
-        label: "Monitoring",
-        data: items.map((item) => item.monitoring),
+        label: "Pending",
+        data: items.map((item) => item.pending),
         backgroundColor: (context) =>
           getChartGradient(
             context,
@@ -1776,8 +2120,21 @@ function normalizeStatus(status) {
   const normalized = value.toLowerCase();
 
   if (!value) return "Unspecified";
+  if (
+    normalized.includes("no-show") ||
+    normalized.includes("no show") ||
+    normalized.includes("noshow")
+  ) {
+    return "No-Show";
+  }
   if (normalized.includes("complete") || normalized.includes("closed")) {
     return "Complete";
+  }
+  if (normalized.includes("received") || normalized.includes("checked in")) {
+    return "Received";
+  }
+  if (normalized.includes("pending") || normalized.includes("queued")) {
+    return "Pending";
   }
   if (normalized.includes("follow")) return "Follow-up Required";
   if (normalized.includes("monitor") || normalized.includes("routine")) {
@@ -1798,6 +2155,29 @@ function isCompleteStatus(status) {
   return normalized.includes("complete") || normalized.includes("closed");
 }
 
+function isPendingStatus(status) {
+  const normalized = String(status || "").toLowerCase();
+  return normalized.includes("pending") || normalized.includes("queue");
+}
+
+function isReceivedStatus(status) {
+  const normalized = String(status || "").toLowerCase();
+  return (
+    normalized.includes("received") ||
+    normalized.includes("checked in") ||
+    normalized.includes("check-in")
+  );
+}
+
+function isNoShowStatus(status) {
+  const normalized = String(status || "").toLowerCase();
+  return (
+    normalized.includes("no-show") ||
+    normalized.includes("no show") ||
+    normalized.includes("noshow")
+  );
+}
+
 function isMonitoringStatus(status) {
   const normalized = String(status || "").toLowerCase();
   return (
@@ -1805,6 +2185,31 @@ function isMonitoringStatus(status) {
     normalized.includes("routine") ||
     normalized.includes("follow-up") ||
     normalized.includes("follow up")
+  );
+}
+
+function hasFeedbackSubmitted(referral = {}) {
+  const feedbackText = [
+    referral.feedbackStatus,
+    referral.feedback_status,
+    referral.returnSlipStatus,
+    referral.return_slip_status,
+    referral.feedbackSubmitted,
+    referral.feedback_submitted,
+    referral.feedback,
+    referral.returnSlip,
+    referral.return_slip,
+  ]
+    .filter((value) => value !== null && value !== undefined)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    feedbackText.includes("submitted") ||
+    feedbackText.includes("complete") ||
+    feedbackText === "true" ||
+    referral.feedbackSubmitted === true ||
+    referral.feedback_submitted === true
   );
 }
 
@@ -2002,6 +2407,130 @@ function normalizeDate(value) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "";
   return parsed.toISOString().slice(0, 10);
+}
+
+function exportMunicipalReportCsv({
+  filters,
+  stats,
+  barangayReports,
+  rhuSummary,
+}) {
+  const generatedAt = new Date();
+  const rows = [
+    ["AKAY Community EHR System"],
+    ["Municipal Referral Report"],
+    ["Generated date", formatDateTime(generatedAt)],
+    ["Report scope", REPORT_SCOPE],
+    ["Receiving RHU", MAIN_RHU_NAME],
+    ["Barangay / BHC filter", filters.barangay],
+    ["Referral category filter", filters.category],
+    ["Referral status filter", filters.status],
+    ["Date filter", filters.date || "Any date"],
+    [],
+    ["Summary Metrics"],
+    ["Total Referrals", stats.totalReferrals],
+    ["Pending Referrals", stats.pendingReferrals],
+    ["Completed Cases", stats.completedCases],
+    ["No-Show Cases", stats.noShowCases],
+    [],
+    [
+      "Barangay",
+      "Total Referrals",
+      "Pending",
+      "Received",
+      "Completed",
+      "No-Show",
+      "Last Activity",
+    ],
+    ...barangayReports.map((item) => [
+      item.barangay,
+      item.referrals,
+      item.pending,
+      item.received,
+      item.completed,
+      item.noShow,
+      formatDisplayDate(item.lastActivity),
+    ]),
+    [],
+    [
+      "RHU Name",
+      "Incoming Referrals",
+      "Received",
+      "Completed",
+      "Feedback Submitted",
+      "No-Show",
+    ],
+    [
+      rhuSummary.name,
+      rhuSummary.incomingReferrals,
+      rhuSummary.receivedCases,
+      rhuSummary.completedCases,
+      rhuSummary.feedbackSubmitted,
+      rhuSummary.noShowCases,
+    ],
+  ];
+
+  downloadCsv(
+    rows,
+    `akay-municipal-referral-report-${formatFileDate(generatedAt)}.csv`,
+  );
+}
+
+function downloadCsv(rows, filename) {
+  if (typeof window === "undefined") return;
+
+  const csv = rows.map((row) => row.map(escapeCsvValue).join(",")).join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  link.click();
+
+  window.URL.revokeObjectURL(url);
+}
+
+function escapeCsvValue(value) {
+  const text = String(value ?? "");
+  if (!/[",\r\n]/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function formatDateTime(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not available";
+
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatDisplayDate(value) {
+  if (!value) return "No activity";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatFileDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "generated";
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
 }
 
 function sortUnique(values) {

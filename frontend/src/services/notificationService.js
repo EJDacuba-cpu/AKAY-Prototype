@@ -1,8 +1,10 @@
 import { apiRequest, unwrapList } from "./apiClient";
 
 const UPDATE_EVENT = "akay:notifications-updated";
+const DEFAULT_STALE_MS = 60_000;
 let notificationCache = [];
 let loadingPromise = null;
+let lastFetchedAt = 0;
 
 function emitUpdate() {
   if (typeof window !== "undefined") {
@@ -11,6 +13,10 @@ function emitUpdate() {
 }
 
 function normalizeNotification(notification = {}) {
+  const isRead = Boolean(
+    notification.is_read ?? notification.isRead ?? notification.read,
+  );
+
   return {
     ...notification,
     id: notification.id ? String(notification.id) : "",
@@ -18,9 +24,11 @@ function normalizeNotification(notification = {}) {
     message: notification.message || notification.description || "",
     description: notification.message || notification.description || "",
     type: notification.type || "system",
-    isRead: Boolean(notification.is_read ?? notification.isRead),
+    isRead,
+    read: isRead,
     createdAt: notification.created_at || notification.createdAt || "",
-    relatedReferralId: notification.related_referral_id || notification.relatedReferralId || "",
+    relatedReferralId:
+      notification.related_referral_id || notification.relatedReferralId || "",
   };
 }
 
@@ -39,15 +47,25 @@ export function notifyNotificationChange() {
   emitUpdate();
 }
 
-export async function refreshNotifications() {
+export async function refreshNotifications({
+  force = false,
+  maxAgeMs = DEFAULT_STALE_MS,
+} = {}) {
+  const now = Date.now();
+
+  if (loadingPromise) return loadingPromise;
+  if (!force && lastFetchedAt && now - lastFetchedAt < maxAgeMs) {
+    return notificationCache;
+  }
+
   loadingPromise = apiRequest("/notifications")
     .then((response) => {
       notificationCache = unwrapList(response).map(normalizeNotification);
+      lastFetchedAt = Date.now();
       emitUpdate();
       return notificationCache;
     })
     .catch(() => {
-      notificationCache = [];
       emitUpdate();
       return notificationCache;
     })
@@ -59,7 +77,6 @@ export async function refreshNotifications() {
 }
 
 export function getAllNotifications() {
-  if (!loadingPromise) refreshNotifications();
   return notificationCache;
 }
 
@@ -92,32 +109,42 @@ export function createFacilityNotification(role, facilityId, notification) {
 export function markNotificationAsRead(notificationId) {
   notificationCache = notificationCache.map((notification) =>
     notification.id === String(notificationId)
-      ? { ...notification, isRead: true }
+      ? { ...notification, isRead: true, read: true }
       : notification,
   );
   emitUpdate();
-  apiRequest(`/notifications/${notificationId}/read`, { method: "PATCH" }).then(refreshNotifications).catch(() => {});
+  apiRequest(`/notifications/${notificationId}/read`, {
+    method: "PATCH",
+  }).catch(() => {});
 }
 
 export function markAllNotificationsAsRead() {
-  notificationCache = notificationCache.map((notification) => ({ ...notification, isRead: true }));
+  notificationCache = notificationCache.map((notification) => ({
+    ...notification,
+    isRead: true,
+    read: true,
+  }));
   emitUpdate();
-  apiRequest("/notifications/read-all", { method: "PATCH" }).then(refreshNotifications).catch(() => {});
+  apiRequest("/notifications/read-all", { method: "PATCH" }).catch(() => {});
   return notificationCache;
 }
 
 export function getUnreadNotificationCount() {
-  return getAllNotifications().filter((notification) => !notification.isRead).length;
+  return getAllNotifications().filter((notification) => !notification.isRead)
+    .length;
 }
 
 export function deleteNotification(notificationId) {
-  notificationCache = notificationCache.filter((notification) => notification.id !== String(notificationId));
+  notificationCache = notificationCache.filter(
+    (notification) => notification.id !== String(notificationId),
+  );
   emitUpdate();
   apiRequest(`/notifications/${notificationId}`, { method: "DELETE" }).catch(() => {});
 }
 
 export function clearNotificationsForUser() {
   notificationCache = [];
+  lastFetchedAt = Date.now();
   emitUpdate();
   return notificationCache;
 }
@@ -126,7 +153,6 @@ export function subscribeToNotifications(callback) {
   if (typeof window === "undefined") return () => {};
   const handler = () => callback();
   window.addEventListener(UPDATE_EVENT, handler);
-  refreshNotifications();
 
   return () => window.removeEventListener(UPDATE_EVENT, handler);
 }

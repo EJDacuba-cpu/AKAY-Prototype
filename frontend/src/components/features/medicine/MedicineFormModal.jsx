@@ -185,7 +185,7 @@ export default function MedicineFormModal({
                 onChange={(event) => updateField("notes", event.target.value)}
                 placeholder="Optional coordination note..."
                 rows={3}
-                className={`${inputClass} min-h-[84px] resize-none py-2.5`}
+                className={`${inputClass} min-h-21 resize-none py-2.5`}
               />
             </Field>
           </div>

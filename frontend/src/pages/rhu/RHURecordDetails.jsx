@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import SideCard from "../../components/common/cards/SideCard";
+import { SideCard } from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {

@@ -10,8 +10,13 @@ import {
 } from "lucide-react"; // FIXED: Added missing icons
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
-import SuccessModal from "../../components/common/modals/SuccessModal";
+import {
+  ConfirmationModal,
+  FormInput,
+  FormSelect,
+  FormTextarea,
+  SuccessModal
+} from "../../components/common";
 
 // Import extracted utils and components
 import {
@@ -25,11 +30,6 @@ import {
   PhilippineContactInput,
   TpalHistoryGrid,
 } from "../../components/features/patients/PatientFormComponents";
-
-// Import existing reusable inputs
-import FormInput from "../../components/common/forms/FormInput";
-import FormSelect from "../../components/common/forms/FormSelect";
-import FormTextarea from "../../components/common/forms/FormTextarea";
 
 import { createBhcPatient } from "../../services/patientService";
 
@@ -543,7 +543,7 @@ export default function AddPatient() {
               className="flex items-center gap-2 rounded-lg bg-[#B91C1C] px-6 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-[#991B1B]"
             >
               <UserPlus size={14} />
-              Save Profile
+              Register Patient
             </button>
           </div>
         </form>
@@ -552,9 +552,10 @@ export default function AddPatient() {
       {/* Modals */}
       <SuccessModal
         open={modals.success}
-        title="Patient Successfully Added"
-        description="The patient profile has been successfully saved to the system."
-        buttonText="Back to Patients"
+        title="Patient Registered Successfully"
+        description="Patient Registered Successfully
+The patient profile has been created. You may now add the first health record or return to the patient list."
+        buttonText="Back to Patient List"
         onClose={() => navigate("/bhc/patients")}
         secondaryButtonText="Add Health Record"
         onSecondaryAction={() =>
@@ -563,9 +564,9 @@ export default function AddPatient() {
       />
       <ConfirmationModal
         open={modals.confirm}
-        title="Save Patient Profile?"
-        description="Please confirm that the patient information entered is accurate before saving."
-        confirmText="Save Patient"
+        title="Confirm Patient Registration?"
+        description="Please review the patient information before registering this profile."
+        confirmText="Register Patient"
         cancelText="Cancel"
         onConfirm={handleSubmit}
         onCancel={() => setModals({ ...modals, confirm: false })}

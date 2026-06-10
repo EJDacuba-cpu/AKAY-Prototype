@@ -77,7 +77,7 @@ function WorkflowShortcut({ href, icon, label, title, description }) {
       to={href}
       className="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-200 hover:bg-[#FEF2F2]/70 active:scale-[0.99]"
     >
-      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#FAFAFA] text-[#9CA3AF] transition-all duration-200 group-hover:bg-red-50 group-hover:text-[#B91C1C] group-hover:shadow-sm">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#FAFAFA] text-[#9CA3AF] transition-all duration-200 group-hover:bg-red-50 group-hover:text-[#B91C1C] group-hover:shadow-sm">
         {icon}
       </div>
 
@@ -92,13 +92,13 @@ function WorkflowShortcut({ href, icon, label, title, description }) {
         </p>
       </div>
 
-      <span className="flex-shrink-0 rounded-md bg-[#FAFAFA] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#BFBFBF] transition-all duration-200 group-hover:bg-red-50 group-hover:text-[#991B1B]">
+      <span className="shrink-0 rounded-md bg-[#FAFAFA] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#BFBFBF] transition-all duration-200 group-hover:bg-red-50 group-hover:text-[#991B1B]">
         {label}
       </span>
 
       <ArrowRight
         size={14}
-        className="flex-shrink-0 text-transparent transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-[#B91C1C]"
+        className="shrink-0 text-transparent transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-[#B91C1C]"
       />
     </Link>
   );

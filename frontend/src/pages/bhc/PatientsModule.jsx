@@ -2,17 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import {
+  AlertCircle,
   ChevronLeft,
   ChevronRight,
   Eye,
   FilePlus2,
   MoreHorizontal,
   Plus,
+  RefreshCw,
   Users,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import ListToolbar from "../../components/common/list/ListToolbar";
+import { ListToolbar } from "../../components/common";
 import usePatients from "../../hooks/usePatients";
 import {
   formatDisplayValue,
@@ -55,7 +57,15 @@ function formatDate(value) {
 
   if (!normalized) return "-";
 
-  return normalized;
+  const date = new Date(normalized);
+
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function getPatientSex(patient) {
@@ -94,6 +104,7 @@ function getRegisteredDate(patient) {
   return normalizeDate(
     patient.dateRegistered ||
       patient.date_registered ||
+      patient.created_at ||
       patient.createdAt ||
       patient.registeredAt,
   );
@@ -110,6 +121,8 @@ export default function PatientsModule() {
     currentPage,
     setCurrentPage,
     totalPages,
+    error,
+    refetchPatients,
   } = usePatients();
 
   const barangayOptions = uniqueOptions(
@@ -210,8 +223,7 @@ export default function PatientsModule() {
         onSearchChange={(value) =>
           setFilters((prev) => ({ ...prev, search: value }))
         }
-        searchPlaceholder="Search by name, ID, contact, or classification..."
-        chip={`● ${filteredPatients.length.toLocaleString()} Patients`}
+        searchPlaceholder="Search by name, ID, contact, or barangay..."
         filters={dropdownFilters}
         activeFilterCount={activeFilterCount}
         activeFilters={activeFilters}
@@ -230,40 +242,16 @@ export default function PatientsModule() {
       />
 
       <div className="min-w-0">
-        {paginatedPatients.length === 0 && !loading ? (
-          <div className="rounded-xl border border-[#E2E8F0] bg-white px-6 py-24 text-center shadow-sm">
-            <div className="flex flex-col items-center justify-center">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
-                <Users size={20} className="text-[#94A3B8]" />
-              </div>
-
-              <p className="text-[13px] font-semibold text-[#334155]">
-                No Matching Patients
-              </p>
-
-              <p className="mt-1 text-[11.5px] text-[#94A3B8]">
-                Try adjusting your search or filter criteria.
-              </p>
-
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="mt-4 text-[11px] font-semibold text-[#B91C1C] hover:text-[#7F1D1D] hover:underline"
-              >
-                Clear current filters
-              </button>
-            </div>
-          </div>
-        ) : (
-          <BHCPatientsTable
-            patients={paginatedPatients}
-            loading={loading}
-            currentPage={currentPage}
-            totalPages={totalPages}
-            setCurrentPage={setCurrentPage}
-            filteredCount={filteredPatients.length}
-          />
-        )}
+        <BHCPatientsTable
+          patients={paginatedPatients}
+          loading={loading}
+          error={error}
+          onRetry={refetchPatients}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          setCurrentPage={setCurrentPage}
+          filteredCount={filteredPatients.length}
+        />
       </div>
     </DashboardLayout>
   );
@@ -272,6 +260,8 @@ export default function PatientsModule() {
 function BHCPatientsTable({
   patients,
   loading,
+  error,
+  onRetry,
   currentPage,
   totalPages,
   setCurrentPage,
@@ -286,7 +276,7 @@ function BHCPatientsTable({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[780px] text-left">
           <thead>
-            <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC] text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+<tr className="border-b border-[#F1F5F9] bg-white text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
               <th className="w-[120px] px-6 py-4">ID</th>
               <th className="w-[240px] px-4 py-4">Patient</th>
               <th className="w-[110px] px-4 py-4">Age / Sex</th>
@@ -299,14 +289,38 @@ function BHCPatientsTable({
 
           <tbody className="divide-y divide-[#F1F5F9]">
             {loading ? (
-              <tr>
-                <td
-                  colSpan={7}
-                  className="px-6 py-12 text-center text-sm text-[#94A3B8]"
-                >
-                  Loading patients...
-                </td>
-              </tr>
+              <PatientTableSkeletonRows />
+            ) : error ? (
+              <PatientTableState
+                icon={<AlertCircle size={22} className="text-[#B91C1C]" />}
+                title="Unable to load patients"
+                description="Please check your connection and try again."
+                action={
+                  <button
+                    type="button"
+                    onClick={onRetry}
+                    className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white px-4 py-2 text-xs font-semibold text-[#475569] shadow-sm transition hover:border-[#B91C1C]/30 hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
+                  >
+                    <RefreshCw size={13} />
+                    Retry
+                  </button>
+                }
+              />
+            ) : patients.length === 0 ? (
+              <PatientTableState
+                icon={<Users size={22} className="text-[#94A3B8]" />}
+                title="No patients found"
+                description="Registered patients will appear here once added."
+                action={
+                  <Link
+                    to="/bhc/patients/add"
+                    className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
+                  >
+                    <Plus size={13} />
+                    New Patient
+                  </Link>
+                }
+              />
             ) : (
               patients.map((patient) => {
                 const patientId = formatDisplayValue(patient.id, "");
@@ -373,7 +387,7 @@ function BHCPatientsTable({
         </table>
       </div>
 
-      {totalPages > 1 && (
+      {!loading && !error && totalPages > 1 && (
         <div className="flex flex-col gap-3 border-t border-[#E2E8F0] bg-[#F8FAFC] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-[#64748B]">
             Showing{" "}
@@ -391,6 +405,62 @@ function BHCPatientsTable({
         </div>
       )}
     </div>
+  );
+}
+
+function PatientTableSkeletonRows() {
+  return Array.from({ length: 5 }, (_, index) => (
+    <tr key={`patient-skeleton-${index}`} className="animate-pulse">
+      <td className="whitespace-nowrap px-6 py-4">
+        <SkeletonBar className="h-3 w-16" />
+      </td>
+      <td className="whitespace-nowrap px-4 py-4">
+        <SkeletonBar className="h-4 w-36" />
+        <SkeletonBar className="mt-2 h-2.5 w-20" />
+      </td>
+      <td className="whitespace-nowrap px-4 py-4">
+        <SkeletonBar className="h-3 w-16" />
+      </td>
+      <td className="whitespace-nowrap px-4 py-4">
+        <SkeletonBar className="h-3 w-24" />
+      </td>
+      <td className="whitespace-nowrap px-4 py-4">
+        <SkeletonBar className="h-6 w-32 rounded-md" />
+      </td>
+      <td className="whitespace-nowrap px-4 py-4">
+        <SkeletonBar className="h-3 w-24" />
+      </td>
+      <td className="whitespace-nowrap px-6 py-4">
+        <div className="flex justify-end">
+          <SkeletonBar className="h-8 w-8 rounded-full" />
+        </div>
+      </td>
+    </tr>
+  ));
+}
+
+function PatientTableState({ icon, title, description, action }) {
+  return (
+    <tr>
+      <td colSpan={7} className="px-6 py-20 text-center">
+        <div className="flex flex-col items-center justify-center">
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
+            {icon}
+          </div>
+          <p className="text-[13px] font-semibold text-[#334155]">{title}</p>
+          <p className="mt-1 text-[11.5px] text-[#94A3B8]">{description}</p>
+          {action}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function SkeletonBar({ className = "" }) {
+  return (
+    <div
+      className={`rounded-full bg-gradient-to-r from-[#E2E8F0] via-[#F1F5F9] to-[#E2E8F0] ${className}`}
+    />
   );
 }
 

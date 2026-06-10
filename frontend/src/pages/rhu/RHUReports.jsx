@@ -25,7 +25,7 @@ import {
 import { Bar, Chart, Doughnut } from "react-chartjs-2";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import ListToolbar from "../../components/common/list/ListToolbar";
+import { ListToolbar } from "../../components/common";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import { getRhuPatients } from "../../services/patientService";
 import { getReferrals } from "../../services/referrals";
@@ -245,7 +245,6 @@ export default function RHUReports() {
             setFilters((prev) => ({ ...prev, search: value }))
           }
           searchPlaceholder="Search barangay, tracking ID, patient, category, status, or chief complaint..."
-          chip={`${stats.totalReferrals.toLocaleString()} Referral${stats.totalReferrals === 1 ? "" : "s"}`}
           filters={dropdownFilters}
           activeFilterCount={activeFilterCount}
           activeFilters={activeFilters}
@@ -1425,4 +1424,3 @@ function formatNumber(value) {
   if (!Number.isFinite(parsed)) return "0";
   return parsed.toLocaleString();
 }
-

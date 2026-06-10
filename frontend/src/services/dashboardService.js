@@ -3,6 +3,11 @@ import { getBhcPatients } from "./patientService";
 import { getReferrals } from "./referrals";
 import { getAllNotifications } from "./notificationService";
 
+const DASHBOARD_CACHE_MS = 30_000;
+let dashboardCache = null;
+let dashboardLoadingPromise = null;
+let dashboardFetchedAt = 0;
+
 function formatMaybeDate(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -63,13 +68,7 @@ function normalizeMedicineAlerts(notifications) {
     }));
 }
 
-export async function getDashboardStats() {
-  const [patients, healthRecords, referrals] = await Promise.all([
-    getBhcPatients(),
-    getHealthRecords(),
-    getReferrals(),
-  ]);
-
+function buildDashboardStats({ patients, healthRecords, referrals }) {
   return {
     totalPatients: patients.length,
     healthRecords: healthRecords.length,
@@ -82,13 +81,72 @@ export async function getDashboardStats() {
   };
 }
 
+async function fetchDashboardCollections() {
+  const [patients, healthRecords, referrals] = await Promise.all([
+    getBhcPatients(),
+    getHealthRecords(),
+    getReferrals(),
+  ]);
+
+  return {
+    patients: Array.isArray(patients) ? patients : [],
+    healthRecords: Array.isArray(healthRecords) ? healthRecords : [],
+    referrals: Array.isArray(referrals) ? referrals : [],
+  };
+}
+
+export async function getBhcDashboardData({
+  force = false,
+  maxAgeMs = DASHBOARD_CACHE_MS,
+} = {}) {
+  const now = Date.now();
+
+  if (dashboardLoadingPromise) return dashboardLoadingPromise;
+  if (
+    !force &&
+    dashboardCache &&
+    dashboardFetchedAt &&
+    now - dashboardFetchedAt < maxAgeMs
+  ) {
+    return dashboardCache;
+  }
+
+  dashboardLoadingPromise = fetchDashboardCollections()
+    .then((collections) => {
+      dashboardCache = {
+        ...collections,
+        stats: buildDashboardStats(collections),
+        recentReferrals: normalizeRecentReferrals(collections.referrals),
+        recentHealthRecords: normalizeRecentHealthRecords(
+          collections.healthRecords,
+          collections.patients,
+        ),
+      };
+      dashboardFetchedAt = Date.now();
+      return dashboardCache;
+    })
+    .finally(() => {
+      dashboardLoadingPromise = null;
+    });
+
+  return dashboardLoadingPromise;
+}
+
+export async function getDashboardStats() {
+  const { stats } = await getBhcDashboardData();
+  return {
+    ...stats,
+  };
+}
+
 export async function getRecentHealthRecords() {
-  const [records, patients] = await Promise.all([getHealthRecords(), getBhcPatients()]);
-  return normalizeRecentHealthRecords(records, patients);
+  const { recentHealthRecords } = await getBhcDashboardData();
+  return recentHealthRecords;
 }
 
 export async function getRecentReferrals() {
-  return normalizeRecentReferrals(await getReferrals());
+  const { recentReferrals } = await getBhcDashboardData();
+  return recentReferrals;
 }
 
 export async function getMedicineAlerts() {
