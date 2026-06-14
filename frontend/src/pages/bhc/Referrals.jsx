@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ClipboardList } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ActionMenu, ListToolbar } from "../../components/common";
+import TableSkeleton from "../../components/common/loading/TableSkeleton";
 import { getReferrals } from "../../services/referrals";
 import {
   formatDisplayValue,
@@ -97,12 +98,18 @@ function getSubmittedDate(referral) {
 
 export default function Referrals() {
   const [referrals, setReferrals] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
 
   useEffect(() => {
     async function loadReferrals() {
-      const data = await getReferrals();
-      setReferrals(data);
+      try {
+        setLoading(true);
+        const data = await getReferrals();
+        setReferrals(data);
+      } finally {
+        setLoading(false);
+      }
     }
     loadReferrals();
   }, []);
@@ -240,6 +247,9 @@ export default function Referrals() {
         onRemoveFilter={removeFilter}
       />
 
+      {loading ? (
+        <TableSkeleton columns={8} rows={8} label="Loading referrals..." />
+      ) : (
       <div className="min-w-0 overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-[#F3F4F6] px-5 py-3">
           <div>
@@ -355,6 +365,7 @@ export default function Referrals() {
           </table>
         </div>
       </div>
+      )}
     </DashboardLayout>
   );
 }

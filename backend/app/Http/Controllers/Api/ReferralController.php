@@ -5,19 +5,45 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ReferralRequest;
 use App\Http\Requests\ReferralStatusRequest;
+use App\Models\HealthRecord;
 use App\Models\Referral;
 use App\Models\ReferralUpdate;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\ReferralService;
 use App\Services\UserNotificationService;
+use App\Support\StoredFunction;
 use Illuminate\Http\Request;
 
 class ReferralController extends Controller
 {
     public function index(Request $request)
     {
-        $query = $this->scope(Referral::query(), $request)->with(['patient', 'barangayHealthCenter', 'ruralHealthUnit', 'feedback']);
+        if (StoredFunction::available()) {
+            $perPage = $request->integer('per_page', 25);
+            $page = max(1, $request->integer('page', 1));
+            $rows = StoredFunction::select(
+                'SELECT * FROM akay_referral_list(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [
+                    $request->user()->role,
+                    $request->user()->barangay_health_center_id,
+                    $request->user()->rural_health_unit_id,
+                    $request->query('status'),
+                    $request->query('referral_category'),
+                    $request->query('urgency_level'),
+                    $request->query('barangay_health_center_id')
+                        ? (int) $request->query('barangay_health_center_id')
+                        : null,
+                    $request->query('search'),
+                    $perPage,
+                    ($page - 1) * $perPage,
+                ]
+            );
+
+            return response()->json(['data' => StoredFunction::paginatedResponse($rows, $request)]);
+        }
+
+        $query = $this->scope(Referral::query(), $request)->with(['patient', 'healthRecord', 'barangayHealthCenter', 'ruralHealthUnit', 'feedback']);
 
         foreach (['status', 'referral_category', 'urgency_level', 'barangay_health_center_id'] as $filter) {
             if ($request->query($filter)) {
@@ -52,6 +78,16 @@ class ReferralController extends Controller
 
         abort_unless($data['barangay_health_center_id'] ?? null, 422, 'Barangay health center is required.');
 
+        if (! empty($data['health_record_id'])) {
+            $record = HealthRecord::findOrFail($data['health_record_id']);
+
+            abort_unless(
+                (int) $record->patient_id === (int) $data['patient_id'],
+                422,
+                'Health record must belong to the referred patient.'
+            );
+        }
+
         $referral = Referral::create([
             ...$data,
             'tracking_id' => $trackingId,
@@ -77,14 +113,30 @@ class ReferralController extends Controller
         $notifications->notifyUsers($rhuUsers, 'New referral submitted', "Referral {$referral->tracking_id} was submitted.", 'referral_submitted', $referral->id);
         $auditLogger->log($request, 'submitted', 'referrals', "Submitted referral {$referral->tracking_id}.");
 
-        return response()->json(['data' => $referral->load(['patient', 'barangayHealthCenter', 'ruralHealthUnit'])], 201);
+        return response()->json(['data' => $referral->load(['patient', 'healthRecord', 'barangayHealthCenter', 'ruralHealthUnit'])], 201);
     }
 
     public function show(Request $request, Referral $referral)
     {
         $this->authorizeReferral($request, $referral);
 
-        return response()->json(['data' => $referral->load(['patient', 'updates.user', 'feedback', 'barangayHealthCenter', 'ruralHealthUnit'])]);
+        if (StoredFunction::available()) {
+            $data = StoredFunction::selectJson(
+                'SELECT akay_referral_details(?, ?, ?, ?) AS data',
+                [
+                    $referral->id,
+                    $request->user()->role,
+                    $request->user()->barangay_health_center_id,
+                    $request->user()->rural_health_unit_id,
+                ]
+            );
+
+            abort_unless($data, 404);
+
+            return response()->json(['data' => $data]);
+        }
+
+        return response()->json(['data' => $referral->load(['patient', 'healthRecord', 'updates.user', 'feedback', 'barangayHealthCenter', 'ruralHealthUnit'])]);
     }
 
     public function updateStatus(
@@ -113,7 +165,7 @@ class ReferralController extends Controller
         $notifications->notifyUser($referral->creator, 'Referral status updated', "Referral {$referral->tracking_id} is now {$data['status']}.", 'referral_status', $referral->id);
         $auditLogger->log($request, 'status_updated', 'referrals', "Updated referral {$referral->tracking_id} to {$data['status']}.");
 
-        return response()->json(['data' => $referral->fresh()->load(['patient', 'updates'])]);
+        return response()->json(['data' => $referral->fresh()->load(['patient', 'healthRecord', 'updates'])]);
     }
 
     public function destroy(Request $request, Referral $referral)

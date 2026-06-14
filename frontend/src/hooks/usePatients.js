@@ -15,7 +15,6 @@ export default function usePatients() {
   const [filters, setFilters] = useState({
     search: "",
     sex: "All",
-    type: "All Patients",
     barangay: "All Barangays",
     ageGroup: "All Age Groups",
     civilStatus: "All Civil Status",
@@ -23,24 +22,6 @@ export default function usePatients() {
   });
 
   const itemsPerPage = 10;
-
-  function matchesPatientType(patient, filterType) {
-    if (filterType === "All Patients") return true;
-
-    const type = patient.type || patient.category || patient.patientClassification || "";
-
-    if (filterType === "Maternal") {
-      return ["Maternal", "Pregnant", "Pregnant Patient", "Maternal Care"].includes(
-        type,
-      );
-    }
-
-    if (filterType === "Immunization") {
-      return ["Immunization", "Child", "Child Health"].includes(type);
-    }
-
-    return type === filterType;
-  }
 
   function getPatientAge(patient) {
     if (typeof patient.age === "number") return patient.age;
@@ -126,8 +107,6 @@ export default function usePatients() {
           .toLowerCase()
           .includes(filters.sex === "Male" ? "/m" : "/f");
 
-      const matchesType = matchesPatientType(patient, filters.type);
-
       const matchesBarangay =
         filters.barangay === "All Barangays" ||
         patient.barangay === filters.barangay ||
@@ -149,7 +128,6 @@ export default function usePatients() {
       return (
         matchesSearch &&
         matchesSex &&
-        matchesType &&
         matchesBarangay &&
         matchesAge &&
         matchesCivilStatus &&
@@ -187,26 +165,12 @@ export default function usePatients() {
   /* ─────────────────────────────────────────────
    * Statistics
    * ───────────────────────────────────────────── */
-  const stats = useMemo(() => {
-    const seniorCitizens = patients.filter(
-      (patient) => patient.type === "Senior Citizen",
-    ).length;
-
-    const children = patients.filter((patient) =>
-      matchesPatientType(patient, "Immunization"),
-    ).length;
-
-    const pregnantPatients = patients.filter((patient) =>
-      matchesPatientType(patient, "Maternal"),
-    ).length;
-
-    return {
+  const stats = useMemo(
+    () => ({
       totalPatients: patients.length,
-      seniorCitizens,
-      children,
-      pregnantPatients,
-    };
-  }, [patients]);
+    }),
+    [patients],
+  );
 
   /* ─────────────────────────────────────────────
    * Return

@@ -15,6 +15,7 @@ import {
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar } from "../../components/common";
+import TableSkeleton from "../../components/common/loading/TableSkeleton";
 import usePatients from "../../hooks/usePatients";
 import {
   formatDisplayValue,
@@ -26,7 +27,6 @@ const PER_PAGE = 8;
 const DEFAULT_FILTERS = {
   search: "",
   sex: "All",
-  type: "All Patients",
   barangay: "All Barangays",
   ageGroup: "All Age Groups",
   civilStatus: "All Civil Status",
@@ -84,19 +84,8 @@ function getPatientContact(patient) {
     patient.contact ||
       patient.contactNumber ||
       patient.phone ||
-      patient.mobileNumber ||
-      patient.guardianContact,
+      patient.mobileNumber,
     "",
-  );
-}
-
-function getPatientClassification(patient) {
-  return formatDisplayValue(
-    patient.patientClassification ||
-      patient.classification ||
-      patient.category ||
-      patient.patientCategory,
-    "General Consultation",
   );
 }
 
@@ -242,16 +231,19 @@ export default function PatientsModule() {
       />
 
       <div className="min-w-0">
-        <BHCPatientsTable
-          patients={paginatedPatients}
-          loading={loading}
-          error={error}
-          onRetry={refetchPatients}
-          currentPage={currentPage}
-          totalPages={totalPages}
-          setCurrentPage={setCurrentPage}
-          filteredCount={filteredPatients.length}
-        />
+        {loading ? (
+          <TableSkeleton columns={6} rows={8} label="Loading patients..." />
+        ) : (
+          <BHCPatientsTable
+            patients={paginatedPatients}
+            error={error}
+            onRetry={refetchPatients}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            setCurrentPage={setCurrentPage}
+            filteredCount={filteredPatients.length}
+          />
+        )}
       </div>
     </DashboardLayout>
   );
@@ -259,7 +251,6 @@ export default function PatientsModule() {
 
 function BHCPatientsTable({
   patients,
-  loading,
   error,
   onRetry,
   currentPage,
@@ -274,23 +265,20 @@ function BHCPatientsTable({
   return (
     <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[780px] text-left">
+        <table className="w-full min-w-[680px] text-left">
           <thead>
 <tr className="border-b border-[#F1F5F9] bg-white text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
               <th className="w-[120px] px-6 py-4">ID</th>
               <th className="w-[240px] px-4 py-4">Patient</th>
               <th className="w-[110px] px-4 py-4">Age / Sex</th>
               <th className="w-[150px] px-4 py-4">Contact</th>
-              <th className="w-[180px] px-4 py-4">Classification</th>
               <th className="w-[140px] px-4 py-4">Date Registered</th>
               <th className="w-[90px] px-6 py-4 text-right">Actions</th>
             </tr>
           </thead>
 
           <tbody className="divide-y divide-[#F1F5F9]">
-            {loading ? (
-              <PatientTableSkeletonRows />
-            ) : error ? (
+            {error ? (
               <PatientTableState
                 icon={<AlertCircle size={22} className="text-[#B91C1C]" />}
                 title="Unable to load patients"
@@ -328,7 +316,6 @@ function BHCPatientsTable({
                   patient,
                   "Unnamed Patient",
                 );
-                const classification = getPatientClassification(patient);
                 const contact = getPatientContact(patient);
                 const registeredDate = getRegisteredDate(patient);
                 const ageSex = formatDisplayValue(
@@ -364,10 +351,6 @@ function BHCPatientsTable({
                       {contact || "-"}
                     </td>
 
-                    <td className="whitespace-nowrap px-4 py-4">
-                      <ClassificationBadge label={classification} />
-                    </td>
-
                     <td className="whitespace-nowrap px-4 py-4 text-sm text-[#64748B]">
                       {formatDate(registeredDate)}
                     </td>
@@ -387,7 +370,7 @@ function BHCPatientsTable({
         </table>
       </div>
 
-      {!loading && !error && totalPages > 1 && (
+      {!error && totalPages > 1 && (
         <div className="flex flex-col gap-3 border-t border-[#E2E8F0] bg-[#F8FAFC] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-[#64748B]">
             Showing{" "}
@@ -408,41 +391,10 @@ function BHCPatientsTable({
   );
 }
 
-function PatientTableSkeletonRows() {
-  return Array.from({ length: 5 }, (_, index) => (
-    <tr key={`patient-skeleton-${index}`} className="animate-pulse">
-      <td className="whitespace-nowrap px-6 py-4">
-        <SkeletonBar className="h-3 w-16" />
-      </td>
-      <td className="whitespace-nowrap px-4 py-4">
-        <SkeletonBar className="h-4 w-36" />
-        <SkeletonBar className="mt-2 h-2.5 w-20" />
-      </td>
-      <td className="whitespace-nowrap px-4 py-4">
-        <SkeletonBar className="h-3 w-16" />
-      </td>
-      <td className="whitespace-nowrap px-4 py-4">
-        <SkeletonBar className="h-3 w-24" />
-      </td>
-      <td className="whitespace-nowrap px-4 py-4">
-        <SkeletonBar className="h-6 w-32 rounded-md" />
-      </td>
-      <td className="whitespace-nowrap px-4 py-4">
-        <SkeletonBar className="h-3 w-24" />
-      </td>
-      <td className="whitespace-nowrap px-6 py-4">
-        <div className="flex justify-end">
-          <SkeletonBar className="h-8 w-8 rounded-full" />
-        </div>
-      </td>
-    </tr>
-  ));
-}
-
 function PatientTableState({ icon, title, description, action }) {
   return (
     <tr>
-      <td colSpan={7} className="px-6 py-20 text-center">
+      <td colSpan={6} className="px-6 py-20 text-center">
         <div className="flex flex-col items-center justify-center">
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
             {icon}
@@ -453,14 +405,6 @@ function PatientTableState({ icon, title, description, action }) {
         </div>
       </td>
     </tr>
-  );
-}
-
-function SkeletonBar({ className = "" }) {
-  return (
-    <div
-      className={`rounded-full bg-gradient-to-r from-[#E2E8F0] via-[#F1F5F9] to-[#E2E8F0] ${className}`}
-    />
   );
 }
 
@@ -504,16 +448,6 @@ function Pagination({ currentPage, totalPages, setCurrentPage }) {
         <ChevronRight size={14} />
       </button>
     </div>
-  );
-}
-
-function ClassificationBadge({ label }) {
-  const displayLabel = formatDisplayValue(label, "General Consultation");
-
-  return (
-    <span className="inline-flex max-w-[160px] items-center truncate rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-700">
-      {displayLabel}
-    </span>
   );
 }
 

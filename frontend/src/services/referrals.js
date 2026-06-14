@@ -11,6 +11,7 @@ export function normalizeReferralStatus(status) {
 
 function normalizeReferral(referral = {}) {
   const patient = referral.patient || {};
+  const healthRecord = referral.health_record || referral.healthRecord || {};
   const bhc = referral.barangay_health_center || referral.barangayHealthCenter || {};
   const rhu = referral.rural_health_unit || referral.ruralHealthUnit || {};
 
@@ -20,6 +21,12 @@ function normalizeReferral(referral = {}) {
     trackingId: referral.tracking_id || referral.trackingId || "",
     qrCodeValue: referral.qr_code_value || referral.qrCodeValue || "",
     patientId: referral.patient_id ? String(referral.patient_id) : referral.patientId || "",
+    healthRecordId: referral.health_record_id
+      ? String(referral.health_record_id)
+      : healthRecord.id
+        ? String(healthRecord.id)
+        : referral.healthRecordId || referral.recordId || "",
+    healthRecord,
     patient,
     patientName:
       patient.full_name ||
@@ -57,6 +64,8 @@ function normalizeReferral(referral = {}) {
 function toPayload(referral = {}) {
   return {
     patient_id: referral.patientId || referral.patient_id,
+    health_record_id:
+      referral.healthRecordId || referral.health_record_id || referral.recordId || null,
     barangay_health_center_id: referral.barangayHealthCenterId || referral.bhcId || null,
     rural_health_unit_id: referral.ruralHealthUnitId || referral.rhuId || referral.rhu_id,
     referral_category: referral.referralCategory || referral.category || null,

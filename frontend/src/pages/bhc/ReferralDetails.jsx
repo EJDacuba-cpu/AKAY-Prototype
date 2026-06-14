@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import DetailsSkeleton from "../../components/common/loading/DetailsSkeleton";
 import { getReferralByTrackingId } from "../../services/referrals";
 import { getPatientById } from "../../services/patientService";
 import {
@@ -108,9 +109,7 @@ export default function ReferralDetails() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Referral Details">
-        <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-400">
-          Loading referral details...
-        </div>
+        <DetailsSkeleton label="Loading details..." />
       </DashboardLayout>
     );
   }

@@ -13,6 +13,7 @@ import {
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar } from "../../components/common";
+import TableSkeleton from "../../components/common/loading/TableSkeleton";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
   formatDisplayValue,
@@ -219,21 +220,6 @@ export default function RHUHealthRecords() {
     updateFilter(key, "");
   }
 
-  if (loading) {
-    return (
-      <DashboardLayout role="rhu" title="Health Records">
-        <div className="flex min-h-[60vh] items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <div className="h-7 w-7 animate-spin rounded-full border-2 border-slate-200 border-t-[#B91C1C]" />
-            <p className="text-[12px] font-medium text-slate-400">
-              Loading health records...
-            </p>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
   return (
     <DashboardLayout role="rhu" title="Health Records">
       <ListToolbar
@@ -258,7 +244,9 @@ export default function RHUHealthRecords() {
       />
 
       <div className="min-w-0">
-        {filteredRecords.length === 0 ? (
+        {loading ? (
+          <TableSkeleton columns={7} rows={8} label="Loading health records..." />
+        ) : filteredRecords.length === 0 ? (
           <div className="rounded-xl border border-[#E2E8F0] bg-white px-6 py-24 text-center shadow-sm">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
               <FileText size={20} className="text-[#94A3B8]" />

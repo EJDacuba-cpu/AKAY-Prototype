@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import {
   ArrowLeft,
+  CheckCircle2,
   ClipboardList,
   Send,
   User,
@@ -14,6 +15,7 @@ import {
   Radio,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import FormSkeleton from "../../components/common/loading/FormSkeleton";
 import {
   createReferral,
   getReferralByHealthRecordId,
@@ -84,11 +86,13 @@ export default function CreateReferral() {
   });
 
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showUnavailableDoctorModal, setShowUnavailableDoctorModal] =
     useState(false);
   const [unavailableDoctorNotice, setUnavailableDoctorNotice] = useState(null);
   const [generatedTrackingId, setGeneratedTrackingId] = useState("");
+  const [successReferral, setSuccessReferral] = useState(null);
   const [rhuDoctorAvailability, setRhuDoctorAvailability] = useState(() =>
     getDoctorAvailability(),
   );
@@ -157,7 +161,11 @@ export default function CreateReferral() {
 
   const recordIdDisplay = record?.id || record?._id || targetRecordId;
 
-  const patientClassification =
+  const referralClassification =
+    record?.category ||
+    record?.recordType ||
+    record?.patientClassification ||
+    record?.classification ||
     patient?.category ||
     patient?.patientClassification ||
     "General Consultation";
@@ -172,13 +180,13 @@ export default function CreateReferral() {
       .join(", ") || "—";
 
   const suggestedSpecialization = useMemo(() => {
-    const cat = (patientClassification || "").toLowerCase();
+    const cat = (referralClassification || "").toLowerCase();
     if (cat === "pregnant patient" || cat === "maternal")
       return "Maternal Care";
     if (cat === "children" || cat === "pediatric" || cat === "immunization")
       return "Pediatrics";
     return "General Consultation";
-  }, [patientClassification]);
+  }, [referralClassification]);
 
   const rhuDoctors = useMemo(() => {
     const rawDoctors = Array.isArray(rhuDoctorAvailability?.doctors)
@@ -267,6 +275,11 @@ export default function CreateReferral() {
   }
 
   async function confirmReferralSubmission() {
+    if (submitting) return;
+
+    setSubmitting(true);
+
+    try {
     const existingReferral = await findExistingReferralForRecord();
     if (existingReferral?.trackingId) {
       setShowConfirmModal(false);
@@ -299,10 +312,10 @@ export default function CreateReferral() {
       destinationFacility: form.receivingFacility,
       ruralHealthUnitId: currentUser?.ruralHealthUnitId || "",
 
-      // Category is based on patient classification/category.
-      referralCategory: patientClassification,
-      category: patientClassification,
-      classification: patientClassification,
+      // Category is based on the linked health record, with patient fallback for old data.
+      referralCategory: referralClassification,
+      category: referralClassification,
+      classification: referralClassification,
 
       // Urgency is chosen by BHC staff.
       urgency: form.urgencyLevel,
@@ -367,17 +380,50 @@ export default function CreateReferral() {
       );
     }
 
-    setGeneratedTrackingId(referral.trackingId);
+    const savedTrackingId =
+      referral.trackingId || referral.tracking_id || referral.id;
+
+    setGeneratedTrackingId(savedTrackingId);
+    setSuccessReferral({
+      ...referral,
+      trackingId: savedTrackingId,
+      patientName: referral.patientName || patient?.name,
+      referringHci,
+      receivingFacility:
+        referral.receivingFacility ||
+        referral.destinationFacility ||
+        referral.referredFacility ||
+        form.receivingFacility,
+      urgencyLevel: referral.urgencyLevel || referral.urgency || form.urgencyLevel,
+      referralDateTime:
+        referral.referralDateTime ||
+        `${form.dateOfReferral} ${form.timeOfReferral || "00:00"}`,
+      preferredRhuDoctorName:
+        referral.preferredRhuDoctorName ||
+        selectedRhuDoctor?.name ||
+        "RHU to assign",
+      preferredRhuDoctorStatus:
+        referral.preferredRhuDoctorStatus || selectedRhuDoctor?.status || "",
+      philHealthNumber:
+        referral.philHealthNumber ||
+        referral.patientPhilHealthNumber ||
+        form.philHealthNumber.trim(),
+      philHealthCategory:
+        referral.philHealthCategory ||
+        referral.patientPhilHealthCategory ||
+        form.philHealthCategory,
+    });
     setShowConfirmModal(false);
     setSubmitted(true);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Submit Referral">
-        <div className="flex h-[60vh] items-center justify-center">
-          <p className="text-sm text-slate-500">Loading referral context...</p>
-        </div>
+        <FormSkeleton label="Loading details..." />
       </DashboardLayout>
     );
   }
@@ -409,7 +455,7 @@ export default function CreateReferral() {
   }
 
   /* ─── Success Screen ─── */
-  if (submitted) {
+  if (submitted && !successReferral) {
     const submittedReferral = {
       trackingId: generatedTrackingId,
       patientName: patient?.name,
@@ -537,6 +583,30 @@ export default function CreateReferral() {
   }
 
   /* ─── Main Form ─── */
+  const submittedReferral = successReferral
+    ? {
+        ...successReferral,
+        trackingId: generatedTrackingId || successReferral.trackingId,
+      }
+    : null;
+  const successTrackingId = submittedReferral?.trackingId || "";
+  const successPreferredDoctor =
+    submittedReferral?.preferredRhuDoctorName &&
+    submittedReferral.preferredRhuDoctorName !== "RHU to assign"
+      ? `${submittedReferral.preferredRhuDoctorName}${
+          submittedReferral.preferredRhuDoctorStatus
+            ? ` · ${submittedReferral.preferredRhuDoctorStatus}`
+            : ""
+        }`
+      : preferredRhuDoctorLabel;
+  const successPhilHealth = submittedReferral?.philHealthNumber
+    ? `${submittedReferral.philHealthNumber}${
+        submittedReferral.philHealthCategory
+          ? ` · ${submittedReferral.philHealthCategory}`
+          : ""
+      }`
+    : submittedReferral?.philHealthCategory || "Not provided";
+
   return (
     <DashboardLayout role="bhc" title="Submit Referral">
       <style>{keyframes}</style>
@@ -629,10 +699,11 @@ export default function CreateReferral() {
               <button
                 type="button"
                 onClick={confirmReferralSubmission}
-                className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
+                disabled={submitting}
+                className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <Send size={14} />
-                Submit Referral
+                {submitting ? "Submitting..." : "Submit Referral"}
               </button>
             </div>
           </div>
@@ -705,6 +776,110 @@ export default function CreateReferral() {
       )}
 
       {/* ─── Page Content ─── */}
+      {submitted && submittedReferral && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 px-4 py-5 backdrop-blur-sm print:hidden">
+          <div className="anim-scale-in flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="h-1 bg-emerald-500" />
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+              <div className="text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                  <CheckCircle2 size={30} strokeWidth={2.4} />
+                </div>
+                <h2 className="mt-4 text-xl font-bold text-slate-900">
+                  Referral Successfully Escalated
+                </h2>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">
+                  The consultation has been transmitted to the receiving
+                  facility. Use the tracking ID or QR code for verification and
+                  follow-up.
+                </p>
+              </div>
+
+              <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <div className="bg-[#B91C1C] px-5 py-3">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck size={14} className="text-red-100" />
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-red-50">
+                      Referral Verification
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-col items-center px-5 py-6">
+                  <ReferralQrCode
+                    trackingId={successTrackingId}
+                    size={148}
+                    className="rounded-xl border border-slate-200 p-2"
+                    imageClassName="h-36 w-36"
+                  />
+                  <p className="mt-4 font-mono text-sm font-bold tracking-widest text-slate-800">
+                    {successTrackingId}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Scan QR for referral verification
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Info label="Tracking ID" value={successTrackingId} mono />
+                  <Info
+                    label="Patient"
+                    value={submittedReferral.patientName || patient?.name}
+                    highlight
+                  />
+                  <Info
+                    label="Urgency"
+                    value={
+                      submittedReferral.urgencyLevel ||
+                      submittedReferral.urgency ||
+                      form.urgencyLevel
+                    }
+                    highlight
+                  />
+                  <Info
+                    label="Receiving Facility"
+                    value={submittedReferral.receivingFacility}
+                    highlight
+                  />
+                  <Info
+                    label="Preferred RHU Doctor"
+                    value={successPreferredDoctor}
+                  />
+                  <Info label="PhilHealth" value={successPhilHealth} />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 bg-white px-5 py-4">
+              <button
+                type="button"
+                onClick={() => navigate("/bhc/referrals")}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Go to Referrals
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(`/bhc/referrals/${successTrackingId}`)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                View Details
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
+              >
+                <Printer size={14} />
+                Print Slip
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto max-w-4xl pb-12">
         {/* Header */}
         <div className="anim-fade-up mb-6" style={stagger(0)}>
@@ -832,7 +1007,7 @@ export default function CreateReferral() {
               />
               <MetaField
                 label="Patient Classification"
-                value={patientClassification}
+                value={referralClassification}
               />
             </div>
 
@@ -970,6 +1145,14 @@ export default function CreateReferral() {
           </div>
         </form>
       </div>
+
+      {submittedReferral && (
+        <ReferralPrintSlip
+          referral={submittedReferral}
+          patient={patient}
+          printOnly
+        />
+      )}
     </DashboardLayout>
   );
 }

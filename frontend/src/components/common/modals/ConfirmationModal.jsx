@@ -9,6 +9,7 @@ export default function ConfirmationModal({
   onConfirm,
   onCancel,
   loading = false,
+  loadingText = "Saving...",
 }) {
   if (!open) return null;
 
@@ -112,7 +113,7 @@ export default function ConfirmationModal({
               "
             >
               {loading && <Loader2 size={13} className="animate-spin" />}
-              {loading ? "Processing..." : confirmText}
+              {loading ? loadingText : confirmText}
             </button>
           </div>
         </div>

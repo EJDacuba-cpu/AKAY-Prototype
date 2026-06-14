@@ -15,6 +15,10 @@ class HealthRecord extends Model
         'date_recorded',
         'vital_signs',
         'category',
+        'maternal_data',
+        'immunization_data',
+        'monitoring_data',
+        'needs_referral',
         'chief_complaint',
         'diagnosis',
         'treatment_notes',
@@ -25,6 +29,10 @@ class HealthRecord extends Model
     protected $casts = [
         'date_recorded' => 'datetime',
         'vital_signs' => 'array',
+        'maternal_data' => 'array',
+        'immunization_data' => 'array',
+        'monitoring_data' => 'array',
+        'needs_referral' => 'boolean',
     ];
 
     public function patient(): BelongsTo

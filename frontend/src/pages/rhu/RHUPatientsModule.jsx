@@ -13,6 +13,7 @@ import {
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar } from "../../components/common";
+import TableSkeleton from "../../components/common/loading/TableSkeleton";
 import { getRhuPatients } from "../../services/patientService";
 import {
   formatDisplayValue,
@@ -23,7 +24,6 @@ const PER_PAGE = 8;
 
 const DEFAULT_FILTERS = {
   search: "",
-  classification: "All Classifications",
   sex: "All",
   ageGroup: "All Age Groups",
   civilStatus: "All Civil Status",
@@ -80,19 +80,8 @@ function getPatientContact(patient) {
     patient.contact ||
       patient.contactNumber ||
       patient.phone ||
-      patient.mobileNumber ||
-      patient.guardianContact,
+      patient.mobileNumber,
     "",
-  );
-}
-
-function getPatientClassification(patient) {
-  return formatDisplayValue(
-    patient.patientClassification ||
-      patient.classification ||
-      patient.category ||
-      patient.patientCategory,
-    "General Consultation",
   );
 }
 
@@ -128,12 +117,6 @@ export default function Patients() {
     loadPatients();
   }, []);
 
-  const classificationOptions = uniqueOptions(
-    allPatients,
-    [getPatientClassification],
-    "All Classifications",
-  );
-
   const civilStatusOptions = uniqueOptions(
     allPatients,
     [(patient) => patient.civilStatus],
@@ -147,7 +130,6 @@ export default function Patients() {
       const sex = getPatientSex(patient);
       const age = getPatientAge(patient);
       const contact = getPatientContact(patient);
-      const classification = getPatientClassification(patient);
       const registeredDate = getRegisteredDate(patient);
 
       const searchText = [
@@ -155,7 +137,6 @@ export default function Patients() {
         formatPatientName(patient, ""),
         contact,
         patient.email,
-        classification,
         patient.civilStatus,
         registeredDate,
       ]
@@ -164,10 +145,6 @@ export default function Patients() {
         .toLowerCase();
 
       const matchesSearch = !query || searchText.includes(query);
-
-      const matchesClassification =
-        filters.classification === "All Classifications" ||
-        classification === filters.classification;
 
       const matchesSex = filters.sex === "All" || sex === filters.sex;
 
@@ -189,7 +166,6 @@ export default function Patients() {
 
       return (
         matchesSearch &&
-        matchesClassification &&
         matchesSex &&
         matchesAgeGroup &&
         matchesCivilStatus &&
@@ -199,9 +175,6 @@ export default function Patients() {
 
     return filtered.sort((a, b) => {
       const getValue = (patient) => {
-        if (sortKey === "classification") {
-          return getPatientClassification(patient);
-        }
         if (sortKey === "contact") return getPatientContact(patient);
         if (sortKey === "registeredDate") return getRegisteredDate(patient);
         if (sortKey === "sex") return getPatientSex(patient);
@@ -250,7 +223,6 @@ export default function Patients() {
   function removeFilter(key) {
     const resetValues = {
       search: "",
-      classification: "All Classifications",
       sex: "All",
       ageGroup: "All Age Groups",
       civilStatus: "All Civil Status",
@@ -261,12 +233,6 @@ export default function Patients() {
   }
 
   const dropdownFilters = [
-    {
-      key: "classification",
-      label: "Patient Classification",
-      value: filters.classification,
-      options: classificationOptions,
-    },
     {
       key: "sex",
       label: "Sex",
@@ -295,10 +261,6 @@ export default function Patients() {
 
   const activeFilters = [
     filters.search && { key: "search", label: `Search: ${filters.search}` },
-    filters.classification !== "All Classifications" && {
-      key: "classification",
-      label: filters.classification,
-    },
     filters.sex !== "All" && { key: "sex", label: filters.sex },
     filters.ageGroup !== "All Age Groups" && {
       key: "ageGroup",
@@ -325,7 +287,7 @@ export default function Patients() {
         onSearchChange={(value) =>
           setFilters((prev) => ({ ...prev, search: value }))
         }
-        searchPlaceholder="Search by name, ID, contact, or classification..."
+        searchPlaceholder="Search by name, ID, or contact..."
         filters={dropdownFilters}
         activeFilterCount={activeFilterCount}
         activeFilters={activeFilters}
@@ -344,7 +306,9 @@ export default function Patients() {
       />
 
       <div className="min-w-0">
-        {paginatedPatients.length === 0 && !loading ? (
+        {loading ? (
+          <TableSkeleton columns={6} rows={8} label="Loading patients..." />
+        ) : paginatedPatients.length === 0 ? (
           <div className="rounded-xl border border-[#E2E8F0] bg-white px-6 py-24 text-center shadow-sm">
             <div className="flex flex-col items-center justify-center">
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
@@ -371,7 +335,6 @@ export default function Patients() {
         ) : (
           <RHUPatientsTable
             patients={paginatedPatients}
-            loading={loading}
             currentPage={currentPage}
             totalPages={totalPages}
             setCurrentPage={setCurrentPage}
@@ -388,7 +351,6 @@ export default function Patients() {
 
 function RHUPatientsTable({
   patients,
-  loading,
   currentPage,
   totalPages,
   setCurrentPage,
@@ -404,7 +366,7 @@ function RHUPatientsTable({
   return (
     <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[780px] text-left">
+        <table className="w-full min-w-[680px] text-left">
           <thead>
             <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC] text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
               <SortableHeader
@@ -437,15 +399,6 @@ function RHUPatientsTable({
               />
 
               <SortableHeader
-                label="Classification"
-                sortKey="classification"
-                currentSort={sortKey}
-                currentDir={sortDir}
-                onSort={onSort}
-                className="w-[180px] px-4 py-4"
-              />
-
-              <SortableHeader
                 label="Date Registered"
                 sortKey="registeredDate"
                 currentSort={sortKey}
@@ -459,23 +412,12 @@ function RHUPatientsTable({
           </thead>
 
           <tbody className="divide-y divide-[#F1F5F9]">
-            {loading ? (
-              <tr>
-                <td
-                  colSpan={7}
-                  className="px-6 py-12 text-center text-sm text-[#94A3B8]"
-                >
-                  Loading patients...
-                </td>
-              </tr>
-            ) : (
-              patients.map((patient) => {
+            {patients.map((patient) => {
                 const patientId = formatDisplayValue(patient.id, "");
                 const patientName = formatPatientName(
                   patient,
                   "Unnamed Patient",
                 );
-                const classification = getPatientClassification(patient);
                 const contact = getPatientContact(patient);
                 const registeredDate = getRegisteredDate(patient);
                 const ageSex = formatDisplayValue(
@@ -511,10 +453,6 @@ function RHUPatientsTable({
                       {contact || "-"}
                     </td>
 
-                    <td className="whitespace-nowrap px-4 py-4">
-                      <ClassificationBadge label={classification} />
-                    </td>
-
                     <td className="whitespace-nowrap px-4 py-4 text-sm text-[#64748B]">
                       {formatDate(registeredDate)}
                     </td>
@@ -527,8 +465,7 @@ function RHUPatientsTable({
                     </td>
                   </tr>
                 );
-              })
-            )}
+              })}
           </tbody>
         </table>
       </div>
@@ -615,16 +552,6 @@ function SortableHeader({
         </span>
       </div>
     </th>
-  );
-}
-
-function ClassificationBadge({ label }) {
-  const displayLabel = formatDisplayValue(label, "General Consultation");
-
-  return (
-    <span className="inline-flex max-w-[160px] items-center truncate rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-700">
-      {displayLabel}
-    </span>
   );
 }
 

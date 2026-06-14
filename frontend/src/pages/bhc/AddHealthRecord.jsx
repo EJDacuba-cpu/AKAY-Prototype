@@ -58,6 +58,18 @@ const RECORD_TYPE_OPTIONS = [
   "Senior Citizen",
 ];
 
+const EMPTY_MATERNAL_DATA = {
+  lmp: "",
+  pmp: "",
+  cycleDuration: "",
+  gravida: "",
+  para: "",
+  term: "",
+  preterm: "",
+  abortion: "",
+  living: "",
+};
+
 function normalizeRecordType(value) {
   const raw = String(value || "").trim();
   const lower = raw.toLowerCase();
@@ -278,6 +290,7 @@ export default function AddHealthRecord() {
   const isEditingRecord = !!recordId && mode === "edit";
 
   const [patients, setPatients] = useState([]);
+  const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -312,6 +325,7 @@ export default function AddHealthRecord() {
   const [needsReferral, setNeedsReferral] = useState("no");
   const [patientCondition, setPatientCondition] = useState("Improving");
 
+  const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
   const [aog, setAog] = useState("");
   const [followUpRecord, setFollowUpRecord] = useState(null);
@@ -384,8 +398,25 @@ export default function AddHealthRecord() {
       setMonitoringNotes(found.monitoringNotes || "");
       setNeedsReferral(found.needsReferral || "no");
       setPatientCondition(found.patientCondition || "Improving");
-      setExpectedDeliveryDate(found.expectedDeliveryDate || "");
-      setAog(found.aog || "");
+      const existingMaternalData = found.maternalData || found.maternal_data || {};
+      setMaternalData({
+        lmp: existingMaternalData.lmp || found.lmp || "",
+        pmp: existingMaternalData.pmp || found.pmp || "",
+        cycleDuration:
+          existingMaternalData.cycleDuration || found.cycleDuration || "",
+        gravida: existingMaternalData.gravida || found.gravida || "",
+        para: existingMaternalData.para || found.para || "",
+        term: existingMaternalData.term || found.term || "",
+        preterm: existingMaternalData.preterm || found.preterm || "",
+        abortion: existingMaternalData.abortion || found.abortion || "",
+        living: existingMaternalData.living || found.living || "",
+      });
+      setExpectedDeliveryDate(
+        existingMaternalData.expectedDeliveryDate ||
+          found.expectedDeliveryDate ||
+          "",
+      );
+      setAog(existingMaternalData.aog || found.aog || "");
       setHealthRecordType(
         normalizeRecordType(
           found.category ||
@@ -542,20 +573,6 @@ export default function AddHealthRecord() {
     setDropdownOpen(true);
   }
 
-  function getPatientInitialRecordType() {
-    return normalizeRecordType(
-      selectedPatient?.patientClassification || selectedPatient?.category,
-    );
-  }
-
-  useEffect(() => {
-    if (!selectedPatient || isEditingRecord || isFollowUp) return;
-    setHealthRecordType(
-      getPatientInitialRecordType() || "General Consultation",
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPatientId, isEditingRecord, isFollowUp]);
-
   const normalizedHealthRecordType = normalizeRecordType(healthRecordType);
   const recordTypeKey = normalizedHealthRecordType.toLowerCase();
   const isImmunization = recordTypeKey === "immunization";
@@ -589,14 +606,14 @@ export default function AddHealthRecord() {
   }
 
   useEffect(() => {
-    const registryLmp = selectedPatient?.lmp || selectedPatient?.LMP;
-    if (!registryLmp) {
+    const recordLmp = maternalData.lmp;
+    if (!recordLmp) {
       setExpectedDeliveryDate("");
       setAog("");
       return;
     }
 
-    const lmpDate = new Date(registryLmp);
+    const lmpDate = new Date(recordLmp);
     const visitDate = dateOfVisit ? new Date(dateOfVisit) : new Date();
 
     if (Number.isNaN(lmpDate.getTime())) {
@@ -629,13 +646,17 @@ export default function AddHealthRecord() {
     const weekStr = `${weeks} week${weeks !== 1 ? "s" : ""}`;
     const dayStr = days > 0 ? ` and ${days} day${days > 1 ? "s" : ""}` : "";
     setAog(`${weekStr}${dayStr}`);
-  }, [selectedPatient, dateOfVisit]);
+  }, [maternalData.lmp, dateOfVisit]);
 
   function handleVaccineChange(field, value) {
     setImmunizationData((prev) => {
       const updated = { ...prev, [field]: value };
       return typeof value === "boolean" ? applyAutomation(updated) : updated;
     });
+  }
+
+  function handleMaternalChange(field, value) {
+    setMaternalData((prev) => ({ ...prev, [field]: value }));
   }
 
   async function handleSave(event) {
@@ -655,12 +676,24 @@ export default function AddHealthRecord() {
     const finalChiefComplaint =
       isImmunization && !chiefComplaint ? "Vaccination Visit" : chiefComplaint;
 
+    const recordMaternalData = {
+      ...maternalData,
+      expectedDeliveryDate,
+      aog,
+      tpal: [
+        maternalData.term || 0,
+        maternalData.preterm || 0,
+        maternalData.abortion || 0,
+        maternalData.living || 0,
+      ].join("-"),
+    };
+
     const formData = {
       patientId: selectedPatientId,
       patientName: getPatientName(selectedPatient),
       category: normalizedHealthRecordType,
-      patientClassification:
-        normalizedHealthRecordType,
+      recordType: normalizedHealthRecordType,
+      patientClassification: normalizedHealthRecordType,
       dateOfVisit,
       timeOfVisit,
       chiefComplaint: finalChiefComplaint,
@@ -685,12 +718,17 @@ export default function AddHealthRecord() {
       referralCategory: null,
       referralAssessmentStatus:
               needsReferral === "yes" ? "Pending RHU Assessment" : null,
-      lmp: selectedPatient?.lmp || selectedPatient?.LMP || null,
-      pmp: selectedPatient?.pmp || null,
-      cycleDuration: selectedPatient?.cycleDuration || null,
-      gravida: selectedPatient?.gravida || null,
-      para: selectedPatient?.para || null,
-      tpal: selectedPatient?.tpal || null,
+      maternalData: recordMaternalData,
+      lmp: recordMaternalData.lmp || null,
+      pmp: recordMaternalData.pmp || null,
+      cycleDuration: recordMaternalData.cycleDuration || null,
+      gravida: recordMaternalData.gravida || null,
+      para: recordMaternalData.para || null,
+      term: recordMaternalData.term || null,
+      preterm: recordMaternalData.preterm || null,
+      abortion: recordMaternalData.abortion || null,
+      living: recordMaternalData.living || null,
+      tpal: recordMaternalData.tpal || null,
       expectedDeliveryDate,
       aog,
       immunizationData,
@@ -698,16 +736,15 @@ export default function AddHealthRecord() {
       linkedTrackingId: isFollowUp ? followUpRecord?.linkedTrackingId || "" : "",
     };
 
+    setSaving(true);
+
     try {
       const savedRecord = isEditingRecord
-        ? {
-            success: true,
-            data: await healthRecordService.updateHealthRecordById(
-              recordId,
-              formData,
-              "bhc",
-            ),
-          }
+        ? await healthRecordService.updateHealthRecordById(
+            recordId,
+            formData,
+            "bhc",
+          )
         : isFollowUp
           ? await healthRecordService.createFollowUpHealthRecord(
               {
@@ -719,7 +756,11 @@ export default function AddHealthRecord() {
               "bhc",
             )
           : await healthRecordService.createHealthRecord(formData, "bhc");
-      const savedId = savedRecord?.data?.id || savedRecord?.data?._id;
+      const savedId =
+        savedRecord?.id ||
+        savedRecord?._id ||
+        savedRecord?.data?.id ||
+        savedRecord?.data?._id;
 
       if (
         needsReferral === "yes" &&
@@ -738,6 +779,8 @@ export default function AddHealthRecord() {
     } catch (error) {
       console.error("Failed to save record:", error);
       alert("May error sa pag-save ng record. Pakisuri ang console.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -833,12 +876,6 @@ export default function AddHealthRecord() {
                 </option>
               ))}
             </FieldSelect>
-            {selectedPatient && (
-              <ReadOnlyField
-                label="Initial Registration Category"
-                value={getPatientInitialRecordType() || "Not set"}
-              />
-            )}
           </div>
         </FormSection>
 
@@ -937,12 +974,28 @@ export default function AddHealthRecord() {
                 Obstetric Profile
               </p>
               <div className="grid gap-4 lg:grid-cols-3">
-                <ReadOnlyField
-                  label="Registered LMP"
-                  value={
-                    formatLongDate(
-                      selectedPatient?.lmp || selectedPatient?.LMP,
-                    ) || "Not set"
+                <FieldInput
+                  label="LMP"
+                  type="date"
+                  value={maternalData.lmp}
+                  onChange={(event) =>
+                    handleMaternalChange("lmp", event.target.value)
+                  }
+                />
+                <FieldInput
+                  label="PMP"
+                  type="date"
+                  value={maternalData.pmp}
+                  onChange={(event) =>
+                    handleMaternalChange("pmp", event.target.value)
+                  }
+                />
+                <FieldInput
+                  label="Cycle Duration"
+                  type="number"
+                  value={maternalData.cycleDuration}
+                  onChange={(event) =>
+                    handleMaternalChange("cycleDuration", event.target.value)
                   }
                 />
                 <FieldInput
@@ -954,6 +1007,54 @@ export default function AddHealthRecord() {
                   label="Expected Delivery Date"
                   value={expectedDeliveryDate || "Calculating..."}
                   readOnly
+                />
+                <FieldInput
+                  label="Gravida"
+                  type="number"
+                  value={maternalData.gravida}
+                  onChange={(event) =>
+                    handleMaternalChange("gravida", event.target.value)
+                  }
+                />
+                <FieldInput
+                  label="Para"
+                  type="number"
+                  value={maternalData.para}
+                  onChange={(event) =>
+                    handleMaternalChange("para", event.target.value)
+                  }
+                />
+                <FieldInput
+                  label="Term"
+                  type="number"
+                  value={maternalData.term}
+                  onChange={(event) =>
+                    handleMaternalChange("term", event.target.value)
+                  }
+                />
+                <FieldInput
+                  label="Preterm"
+                  type="number"
+                  value={maternalData.preterm}
+                  onChange={(event) =>
+                    handleMaternalChange("preterm", event.target.value)
+                  }
+                />
+                <FieldInput
+                  label="Abortion"
+                  type="number"
+                  value={maternalData.abortion}
+                  onChange={(event) =>
+                    handleMaternalChange("abortion", event.target.value)
+                  }
+                />
+                <FieldInput
+                  label="Living"
+                  type="number"
+                  value={maternalData.living}
+                  onChange={(event) =>
+                    handleMaternalChange("living", event.target.value)
+                  }
                 />
               </div>
             </div>
@@ -1182,13 +1283,14 @@ export default function AddHealthRecord() {
           </button>
           <button
             type="submit"
-            className="group flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98]"
+            disabled={saving}
+            className="group flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
           >
             <Save
               size={15}
               className="transition-transform duration-300 group-hover:scale-110"
             />
-            Save Health Record
+            {saving ? "Saving..." : "Save Health Record"}
           </button>
         </div>
       </form>
@@ -1495,17 +1597,6 @@ function FieldTextarea({ label, required, rows = 3, ...props }) {
         rows={rows}
         className="w-full resize-none rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 py-3 text-sm leading-relaxed text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10"
       />
-    </div>
-  );
-}
-
-function ReadOnlyField({ label, value }) {
-  return (
-    <div className="rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] p-3">
-      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-        {label}
-      </p>
-      <p className="text-sm font-semibold text-[#1F2937]">{value}</p>
     </div>
   );
 }
@@ -1982,13 +2073,3 @@ function getPatientInitial(patient = {}) {
   return getPatientName(patient).charAt(0).toUpperCase() || "P";
 }
 
-function formatLongDate(value) {
-  if (!value) return "";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return String(value);
-  return parsed.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-}

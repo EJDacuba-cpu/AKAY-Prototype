@@ -3,25 +3,20 @@ import { RotateCcw, Search, X } from "lucide-react";
 export default function PatientFilters({ filters, setFilters, action = null }) {
   const hasActiveFilters =
     filters.search !== "" ||
-    filters.sex !== "All" ||
-    (filters.type && filters.type !== "All Patients");
+    filters.sex !== "All";
 
   const activeFilters = [
     filters.search && { key: "search", label: filters.search },
     filters.sex !== "All" && { key: "sex", label: filters.sex },
-    filters.type !== "All Patients" && { key: "type", label: filters.type },
   ].filter(Boolean);
 
   const clearFilters = () => {
-    setFilters({ search: "", sex: "All", type: "All Patients" });
+    setFilters({ search: "", sex: "All" });
   };
 
   function removeFilter(key) {
     if (key === "search") setFilters((prev) => ({ ...prev, search: "" }));
     if (key === "sex") setFilters((prev) => ({ ...prev, sex: "All" }));
-    if (key === "type") {
-      setFilters((prev) => ({ ...prev, type: "All Patients" }));
-    }
   }
 
   return (

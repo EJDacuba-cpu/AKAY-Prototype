@@ -9,6 +9,7 @@ use App\Models\Referral;
 use App\Models\RhuPatientVolume;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Support\StoredFunction;
 use Illuminate\Http\Request;
 
 class ReportController extends Controller
@@ -54,6 +55,23 @@ class ReportController extends Controller
 
     private function referralReport($query): array
     {
+        if (StoredFunction::available()) {
+            $user = request()->user();
+            $role = $user?->role ?? 'admin';
+            $data = StoredFunction::selectJson(
+                'SELECT akay_referral_report(?, ?, ?) AS data',
+                [
+                    $role,
+                    $user?->barangay_health_center_id,
+                    $user?->rural_health_unit_id,
+                ]
+            );
+
+            if ($data) {
+                return $data;
+            }
+        }
+
         $base = clone $query;
 
         return [

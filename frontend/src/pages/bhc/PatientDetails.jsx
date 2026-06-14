@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import DetailsSkeleton from "../../components/common/loading/DetailsSkeleton";
 
 import {
   getPatientById,
@@ -29,7 +30,6 @@ import {
   ConfirmationModal,
   FormInput,
   FormSelect,
-  FormTextarea,
   SideCard,
   StatusBadge,
   SuccessModal
@@ -101,22 +101,6 @@ export default function PatientDetails() {
       streetAddress: data.address || data.streetAddress || "",
       barangay: data.barangay || "",
       municipality: data.municipality || "Bulakan",
-      patientClassification: data.category || data.patientClassification || "",
-      notes: data.notes || "",
-      guardianName: data.guardianName || "",
-      guardianRelationship: data.guardianRelationship || "",
-      guardianContact: data.guardianContact || "",
-      birthWeight: data.birthWeight || "",
-      feedingStatus: data.feedingStatus || "",
-      lmp: data.lmp || "",
-      pmp: data.pmp || "",
-      cycleDuration: data.cycleDuration || "",
-      gravida: data.gravida || "",
-      para: data.para || "",
-      term: data.term || "",
-      preterm: data.preterm || "",
-      abortion: data.abortion || "",
-      living: data.living || "",
     });
   };
 
@@ -146,10 +130,6 @@ export default function PatientDetails() {
         return { ...prev, birthDate: value, age: calculatedAge };
       }
 
-      if (name === "patientClassification" && value !== "Maternal") {
-        return { ...prev, [name]: value, lmp: "" };
-      }
-
       return { ...prev, [name]: value };
     });
   }
@@ -172,14 +152,6 @@ export default function PatientDetails() {
         address: form.streetAddress,
         barangay: form.barangay,
         municipality: form.municipality,
-        category: form.patientClassification,
-        guardianName: form.guardianName,
-        guardianRelationship: form.guardianRelationship,
-        guardianContact: form.guardianContact,
-        birthWeight: form.birthWeight,
-        feedingStatus: form.feedingStatus,
-        lmp: form.lmp,
-        notes: form.notes,
         ageSex: `${form.age} years old / ${form.sex}`,
       }));
 
@@ -196,9 +168,7 @@ export default function PatientDetails() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Patient Details">
-        <div className="flex min-h-[60vh] items-center justify-center text-sm font-medium text-slate-400">
-          Loading patient details...
-        </div>
+        <DetailsSkeleton label="Loading details..." />
       </DashboardLayout>
     );
   }
@@ -241,11 +211,6 @@ export default function PatientDetails() {
     patient.contact || patient.contactNumber,
     "Not recorded",
   );
-  const patientClassification = formatDisplayValue(
-    patient.category || patient.patientClassification,
-    "General",
-  );
-
   return (
     <>
       <DashboardLayout role="bhc" title="Patient Details">
@@ -291,9 +256,6 @@ export default function PatientDetails() {
                   {/*
                   {patient.contact || "—"}
                   */}
-                </span>
-                <span className="inline-flex items-center gap-1.5 rounded-lg bg-[#FEF2F2] px-3 py-1.5 text-xs font-semibold text-[#0F172A]">
-                  {patientClassification}
                 </span>
               </div>
 
@@ -444,135 +406,7 @@ export default function PatientDetails() {
                             <option>Male</option>
                             <option>Female</option>
                           </FormSelect>
-                          <FormSelect
-                            label="Initial Registration Category"
-                            name="patientClassification"
-                            value={form.patientClassification}
-                            onChange={handleChange}
-                            required
-                          >
-                            <option value="">Select Classification</option>
-                            <option>Immunization</option>
-                            <option>Maternal</option>
-                            <option>Senior Citizen</option>
-                            <option>General Consultation</option>
-                          </FormSelect>
                         </div>
-                      </div>
-                      {form.patientClassification === "Immunization" && (
-                        <div>
-                          <h3 className="mb-4 border-b border-emerald-100 pb-2 text-xs font-bold uppercase tracking-wider text-emerald-700">
-                            Child / Immunization Information
-                          </h3>
-                          <div className="grid gap-5 md:grid-cols-2">
-                            <FormInput
-                              label="Guardian Name"
-                              name="guardianName"
-                              value={form.guardianName}
-                              onChange={handleChange}
-                            />
-                            <FormInput
-                              label="Relationship to Child"
-                              name="guardianRelationship"
-                              value={form.guardianRelationship}
-                              onChange={handleChange}
-                            />
-                            <FormInput
-                              label="Guardian Contact"
-                              name="guardianContact"
-                              value={form.guardianContact}
-                              onChange={handleChange}
-                            />
-                            <FormInput
-                              label="Birth Weight (kg)"
-                              name="birthWeight"
-                              value={form.birthWeight}
-                              onChange={handleChange}
-                            />
-                            <FormInput
-                              label="Feeding Status"
-                              name="feedingStatus"
-                              value={form.feedingStatus}
-                              onChange={handleChange}
-                            />
-                          </div>
-                        </div>
-                      )}
-                      {form.patientClassification === "Maternal" && (
-                        <div>
-                          <h3 className="mb-4 border-b border-pink-100 pb-2 text-xs font-bold uppercase tracking-wider text-pink-700">
-                            Maternal / Obstetric History
-                          </h3>
-                          <div className="grid gap-5 md:grid-cols-2">
-                            <FormInput
-                              label="Last Menstrual Period (LMP)"
-                              name="lmp"
-                              type="date"
-                              value={form.lmp}
-                              onChange={handleChange}
-                            />
-                            <FormInput
-                              label="Previous Menstrual Period (PMP)"
-                              name="pmp"
-                              type="date"
-                              value={form.pmp}
-                              onChange={handleChange}
-                            />
-                            <FormInput
-                              label="Cycle Duration"
-                              name="cycleDuration"
-                              value={form.cycleDuration}
-                              onChange={handleChange}
-                            />
-                            <FormInput
-                              label="Gravida"
-                              name="gravida"
-                              value={form.gravida}
-                              onChange={handleChange}
-                            />
-                            <FormInput
-                              label="Para"
-                              name="para"
-                              value={form.para}
-                              onChange={handleChange}
-                            />
-                            <FormInput
-                              label="Term"
-                              name="term"
-                              value={form.term}
-                              onChange={handleChange}
-                            />
-                            <FormInput
-                              label="Preterm"
-                              name="preterm"
-                              value={form.preterm}
-                              onChange={handleChange}
-                            />
-                            <FormInput
-                              label="Abortion"
-                              name="abortion"
-                              value={form.abortion}
-                              onChange={handleChange}
-                            />
-                            <FormInput
-                              label="Living"
-                              name="living"
-                              value={form.living}
-                              onChange={handleChange}
-                            />
-                          </div>
-                        </div>
-                      )}
-                      <div>
-                        <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0F172A]">
-                          Clinical Notes
-                        </h3>
-                        <FormTextarea
-                          label="Notes"
-                          name="notes"
-                          value={form.notes}
-                          onChange={handleChange}
-                        />
                       </div>
                     </div>
                   ) : (
@@ -608,107 +442,7 @@ export default function PatientDetails() {
                             label="Sex"
                             value={patient.sex || "—"}
                           />
-                          <PatientDetailItem
-                            label="Initial Registration Category"
-                            value={
-                              patient.category ||
-                              patient.patientClassification ||
-                              "—"
-                            }
-                          />
                         </div>
-                      </div>
-                      {patientClassification === "Immunization" && (
-                        <div>
-                          <h3 className="mb-4 border-b border-emerald-100 pb-2 text-xs font-bold uppercase tracking-wider text-emerald-700">
-                            Child / Immunization Information
-                          </h3>
-                          <div className="grid gap-x-8 gap-y-1 md:grid-cols-2">
-                            <PatientDetailItem
-                              label="Guardian Name"
-                              value={patient.guardianName || "—"}
-                            />
-                            <PatientDetailItem
-                              label="Relationship to Child"
-                              value={patient.guardianRelationship || "—"}
-                            />
-                            <PatientDetailItem
-                              label="Guardian Contact"
-                              value={patient.guardianContact || "—"}
-                            />
-                            <PatientDetailItem
-                              label="Birth Weight"
-                              value={
-                                patient.birthWeight
-                                  ? `${patient.birthWeight} kg`
-                                  : "—"
-                              }
-                            />
-                            <PatientDetailItem
-                              label="Feeding Status"
-                              value={patient.feedingStatus || "—"}
-                            />
-                          </div>
-                        </div>
-                      )}
-                      {patientClassification === "Maternal" && (
-                        <div>
-                          <h3 className="mb-4 border-b border-pink-100 pb-2 text-xs font-bold uppercase tracking-wider text-pink-700">
-                            Maternal / Obstetric History
-                          </h3>
-                          <div className="grid gap-x-8 gap-y-1 md:grid-cols-2">
-                            <PatientDetailItem
-                              label="Last Menstrual Period (LMP)"
-                              value={patient.lmp || "—"}
-                            />
-                            <PatientDetailItem
-                              label="Previous Menstrual Period (PMP)"
-                              value={patient.pmp || "—"}
-                            />
-                            <PatientDetailItem
-                              label="Cycle Duration"
-                              value={
-                                patient.cycleDuration
-                                  ? `${patient.cycleDuration} days`
-                                  : "—"
-                              }
-                            />
-                            <PatientDetailItem
-                              label="Gravida"
-                              value={patient.gravida || "—"}
-                            />
-                            <PatientDetailItem
-                              label="Para"
-                              value={patient.para || "—"}
-                            />
-                            <PatientDetailItem
-                              label="Term"
-                              value={patient.term || "—"}
-                            />
-                            <PatientDetailItem
-                              label="Preterm"
-                              value={patient.preterm || "—"}
-                            />
-                            <PatientDetailItem
-                              label="Abortion"
-                              value={patient.abortion || "—"}
-                            />
-                            <PatientDetailItem
-                              label="Living"
-                              value={patient.living || "—"}
-                            />
-                          </div>
-                        </div>
-                      )}
-                      <div>
-                        <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0F172A]">
-                          Clinical Notes
-                        </h3>
-                        <PatientDetailItem
-                          label="Notes"
-                          value={patient.notes || "No notes available"}
-                          wide
-                        />
                       </div>
                     </div>
                   )}

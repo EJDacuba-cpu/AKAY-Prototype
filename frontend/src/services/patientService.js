@@ -67,8 +67,9 @@ export function normalizePatient(patient = {}) {
       patient.patient_category ||
       patient.patientClassification ||
       patient.category ||
-      "General",
-    category: patient.patient_category || patient.category || "General",
+      "",
+    patientCategory: patient.patient_category || patient.patientCategory || "",
+    category: patient.patient_category || patient.category || "",
     status: patient.status || "active",
     dateRegistered,
     date_registered: patient.date_registered || patient.created_at || "",
@@ -82,13 +83,12 @@ export function normalizePatient(patient = {}) {
 function toPayload(patient = {}) {
   const parts = splitName(patient.name || patient.fullName);
   const ageSexParts = String(patient.ageSex || "").split("/");
-
-  return {
+  const payload = {
     first_name: patient.firstName || parts.firstName,
     middle_name: patient.middleName || parts.middleName || null,
     last_name: patient.lastName || parts.lastName || patient.firstName || "Patient",
     sex: patient.sex || ageSexParts[1]?.trim() || "Other",
-    birthdate: patient.birthdate || patient.dateOfBirth || null,
+    birthdate: patient.birthdate || patient.dateOfBirth || patient.birthDate || null,
     contact_number: patient.contactNumber || patient.contact || null,
     street_address: patient.streetAddress || patient.address || null,
     barangay: patient.barangay || patient.patientBarangay || null,
@@ -96,12 +96,21 @@ function toPayload(patient = {}) {
     civil_status: patient.civilStatus || null,
     philhealth_number: patient.philHealthNumber || patient.philhealthNumber || null,
     philhealth_category: patient.philHealthCategory || null,
-    patient_category:
-      patient.patientClassification || patient.patientCategory || patient.category || null,
     status: patient.status || undefined,
     barangay_health_center_id: patient.barangayHealthCenterId || patient.bhcId || null,
     rural_health_unit_id: patient.ruralHealthUnitId || patient.rhuId || null,
   };
+
+  const hasCategoryField = ["patientClassification", "patientCategory", "category"].some(
+    (key) => Object.prototype.hasOwnProperty.call(patient, key),
+  );
+
+  if (hasCategoryField) {
+    payload.patient_category =
+      patient.patientClassification || patient.patientCategory || patient.category || null;
+  }
+
+  return payload;
 }
 
 async function listPatients(params = {}) {

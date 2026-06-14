@@ -14,6 +14,7 @@ import {
 import { Link, useNavigate } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar } from "../../components/common";
+import TableSkeleton from "../../components/common/loading/TableSkeleton";
 import {
   autoMarkNoShowReferrals,
   getReferrals,
@@ -560,6 +561,7 @@ function CategoryBadge({ category }) {
 export default function IncomingReferrals() {
   const navigate = useNavigate();
   const [referrals, setReferrals] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [animatedIds] = useState(new Set());
 
   const [filters, setFilters] = useState({
@@ -581,7 +583,9 @@ export default function IncomingReferrals() {
         if (!isMounted) return;
         setReferrals(all);
       } catch {
-        setReferrals([]);
+        if (isMounted) setReferrals([]);
+      } finally {
+        if (isMounted) setLoading(false);
       }
     }
 
@@ -774,6 +778,13 @@ export default function IncomingReferrals() {
         }
       />
 
+      {loading ? (
+        <TableSkeleton
+          columns={10}
+          rows={8}
+          label="Loading incoming referrals..."
+        />
+      ) : (
       <div className="flex items-start gap-6">
         <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
@@ -927,6 +938,7 @@ export default function IncomingReferrals() {
           </div>
         </div>
       </div>
+      )}
     </DashboardLayout>
   );
 }

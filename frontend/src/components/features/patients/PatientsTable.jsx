@@ -151,9 +151,6 @@ export default function PatientsTable({
                     Contact
                   </th>
                   <th className="px-4 py-3 whitespace-nowrap w-[150px]">
-                    Classification
-                  </th>
-                  <th className="px-4 py-3 whitespace-nowrap w-[150px]">
                     Date Registered
                   </th>
                   <th
@@ -174,7 +171,7 @@ export default function PatientsTable({
               <tbody className="divide-y divide-[#F8FAFC]">
                 {patients.length === 0 ? (
                   <tr>
-                  <td colSpan={6} className="px-4 py-12">
+                  <td colSpan={5} className="px-4 py-12">
                       <div
                         className="
                           flex flex-col
@@ -228,10 +225,6 @@ export default function PatientsTable({
                     const contact = formatDisplayValue(
                       patient.contact || patient.contactNumber,
                       "Not recorded",
-                    );
-                    const category = formatDisplayValue(
-                      patient.category || patient.type,
-                      "General",
                     );
                     const dateRegistered = formatDate(
                       patient.dateRegistered ||
@@ -294,23 +287,6 @@ export default function PatientsTable({
                         >
                           <Phone size={12} className="text-[#BCC3CD]" />
                           {contact}
-                        </span>
-                      </td>
-
-                      {/* Classification */}
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        <span
-                          className="
-                            inline-flex
-                            rounded-md
-                            bg-slate-100
-                            px-2.5 py-1
-                            text-[11px]
-                            font-semibold
-                            text-slate-700
-                          "
-                        >
-                          {category}
                         </span>
                       </td>
 

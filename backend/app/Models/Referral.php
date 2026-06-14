@@ -19,6 +19,7 @@ class Referral extends Model
         'tracking_id',
         'qr_code_value',
         'patient_id',
+        'health_record_id',
         'barangay_health_center_id',
         'rural_health_unit_id',
         'created_by',
@@ -41,6 +42,11 @@ class Referral extends Model
     public function patient(): BelongsTo
     {
         return $this->belongsTo(Patient::class);
+    }
+
+    public function healthRecord(): BelongsTo
+    {
+        return $this->belongsTo(HealthRecord::class);
     }
 
     public function barangayHealthCenter(): BelongsTo

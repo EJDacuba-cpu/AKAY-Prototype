@@ -6,12 +6,34 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\PatientRequest;
 use App\Models\Patient;
 use App\Services\AuditLogger;
+use App\Support\StoredFunction;
 use Illuminate\Http\Request;
 
 class PatientController extends Controller
 {
     public function index(Request $request)
     {
+        if (StoredFunction::available()) {
+            $perPage = $request->integer('per_page', 25);
+            $page = max(1, $request->integer('page', 1));
+            $rows = StoredFunction::select(
+                'SELECT * FROM akay_patient_list(?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [
+                    $request->user()->role,
+                    $request->user()->barangay_health_center_id,
+                    $request->user()->rural_health_unit_id,
+                    $request->query('search'),
+                    $request->query('patient_category'),
+                    $request->query('barangay'),
+                    $request->query('status'),
+                    $perPage,
+                    ($page - 1) * $perPage,
+                ]
+            );
+
+            return response()->json(['data' => StoredFunction::paginatedResponse($rows, $request)]);
+        }
+
         $query = $this->scope(Patient::query(), $request)->with(['barangayHealthCenter', 'ruralHealthUnit']);
 
         if ($search = $request->query('search')) {
@@ -54,6 +76,22 @@ class PatientController extends Controller
     public function show(Request $request, Patient $patient)
     {
         $this->authorizePatient($request, $patient);
+
+        if (StoredFunction::available()) {
+            $data = StoredFunction::selectJson(
+                'SELECT akay_patient_details(?, ?, ?, ?) AS data',
+                [
+                    $patient->id,
+                    $request->user()->role,
+                    $request->user()->barangay_health_center_id,
+                    $request->user()->rural_health_unit_id,
+                ]
+            );
+
+            abort_unless($data, 404);
+
+            return response()->json(['data' => $data]);
+        }
 
         return response()->json(['data' => $patient->load(['healthRecords', 'referrals.feedback'])]);
     }

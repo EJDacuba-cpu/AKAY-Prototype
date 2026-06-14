@@ -13,6 +13,7 @@ import {
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { SideCard, StatusBadge } from "../../components/common";
+import DetailsSkeleton from "../../components/common/loading/DetailsSkeleton";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
@@ -114,9 +115,7 @@ export default function RHUPatientDetails() {
     return (
       <DashboardLayout role="rhu" title="Patient Details">
         <style>{keyframes}</style>
-        <div className="rounded-2xl border border-[#E8ECF0] bg-white p-8 text-sm text-[#6B7280] shadow-sm">
-          Loading patient details...
-        </div>
+        <DetailsSkeleton label="Loading details..." />
       </DashboardLayout>
     );
   }
@@ -141,8 +140,6 @@ export default function RHUPatientDetails() {
   }
 
   const patientName = getPatientName(patient);
-  const classification = getPatientClassification(patient);
-
   return (
     <DashboardLayout role="rhu" title="Patient Details">
       <style>{keyframes}</style>
@@ -166,7 +163,6 @@ export default function RHUPatientDetails() {
                 icon={<Phone size={12} />}
                 label={getPatientContact(patient)}
               />
-              <InfoChip label={classification} />
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
@@ -217,10 +213,7 @@ export default function RHUPatientDetails() {
       </div>
 
       {activeTab === "patient" && (
-        <PatientInformationTab
-          patient={patient}
-          classification={classification}
-        />
+        <PatientInformationTab patient={patient} />
       )}
 
       {activeTab === "records" && <RhuRecordsTab records={records} />}
@@ -232,7 +225,7 @@ export default function RHUPatientDetails() {
   );
 }
 
-function PatientInformationTab({ patient, classification }) {
+function PatientInformationTab({ patient }) {
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div>
@@ -266,10 +259,6 @@ function PatientInformationTab({ patient, classification }) {
                 />
                 <PatientDetailItem label="Sex" value={patient.sex} />
                 <PatientDetailItem
-                  label="Patient Classification"
-                  value={classification}
-                />
-                <PatientDetailItem
                   label="Date Registered"
                   value={patient.dateRegistered || patient.createdAt}
                 />
@@ -278,16 +267,6 @@ function PatientInformationTab({ patient, classification }) {
                   value={patient.civilStatus}
                 />
               </div>
-            </div>
-
-            <div>
-              <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0F172A]">
-                Clinical Notes
-              </h3>
-              <PatientDetailItem
-                label="Notes"
-                value={patient.notes || "No notes available"}
-              />
             </div>
           </div>
         </SideCard>
@@ -308,14 +287,6 @@ function PatientInformationTab({ patient, classification }) {
             <PatientDetailItem
               label="Contact Number"
               value={getPatientContact(patient)}
-            />
-            <PatientDetailItem
-              label="Guardian / Contact Person"
-              value={patient.guardianName || patient.emergencyContact}
-            />
-            <PatientDetailItem
-              label="Guardian Contact"
-              value={patient.guardianContact}
             />
           </div>
         </SideCard>
@@ -533,15 +504,6 @@ function getPatientName(patient) {
     patient.patient ||
     composed ||
     "Unknown Patient"
-  );
-}
-
-function getPatientClassification(patient) {
-  return (
-    patient?.patientClassification ||
-    patient?.category ||
-    patient?.classification ||
-    "General Consultation"
   );
 }
 

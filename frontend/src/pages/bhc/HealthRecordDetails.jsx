@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import DetailsSkeleton from "../../components/common/loading/DetailsSkeleton";
 
 import { getPatientById } from "../../services/patientService";
 import {
@@ -188,9 +189,7 @@ export default function HealthRecordDetails() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Health Record Details">
-        <div className="flex min-h-[60vh] items-center justify-center text-sm font-medium text-slate-400">
-          Loading health record details...
-        </div>
+        <DetailsSkeleton label="Loading details..." />
       </DashboardLayout>
     );
   }

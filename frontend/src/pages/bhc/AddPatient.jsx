@@ -4,9 +4,6 @@ import {
   ArrowLeft,
   UserPlus,
   MapPinHouse,
-  FileText,
-  Baby,
-  HeartPulse,
 } from "lucide-react"; // FIXED: Added missing icons
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -14,7 +11,6 @@ import {
   ConfirmationModal,
   FormInput,
   FormSelect,
-  FormTextarea,
   SuccessModal
 } from "../../components/common";
 
@@ -23,12 +19,10 @@ import {
   calculateAge,
   normalizePhilippineContact,
   formatFullName,
-  formatTpal,
 } from "../../utils/patientUtils";
 import {
   SectionHeader,
   PhilippineContactInput,
-  TpalHistoryGrid,
 } from "../../components/features/patients/PatientFormComponents";
 
 import { createBhcPatient } from "../../services/patientService";
@@ -51,25 +45,6 @@ const INITIAL_FORM_STATE = {
   streetAddress: "",
   barangay: "",
   municipality: "Bulakan",
-  patientClassification: "",
-  notes: "",
-  // Immunization
-  guardianName: "",
-  guardianRelationship: "",
-  guardianContact: "",
-  birthWeight: "",
-  feedingStatus: "",
-  childAgeGroup: "",
-  // Maternal
-  lmp: "",
-  pmp: "",
-  cycleDuration: "",
-  gravida: "",
-  para: "",
-  term: "",
-  preterm: "",
-  abortion: "",
-  living: "",
 };
 
 export default function AddPatient() {
@@ -83,7 +58,7 @@ export default function AddPatient() {
   const [saving, setSaving] = useState(false);
   const [createdPatientId, setCreatedPatientId] = useState("");
   const [form, setForm] = useState(INITIAL_FORM_STATE);
-  const isImmunization = form.patientClassification === "Immunization";
+
 
   // --- HANDLERS ---
 
@@ -105,47 +80,6 @@ export default function AddPatient() {
         };
       }
 
-      // Dynamic Field Reset based on Classification
-      if (name === "patientClassification") {
-        const isMaternal = value === "Maternal";
-        const isImmunization = value === "Immunization";
-
-        return {
-          ...prev,
-          patientClassification: value,
-          ...(isImmunization
-            ? {
-                civilStatus: "",
-                contactNumber: "",
-              }
-            : {}),
-          // Reset Maternal fields if not Maternal
-          ...(isMaternal
-            ? {}
-            : {
-                lmp: "",
-                pmp: "",
-                cycleDuration: "",
-                gravida: "",
-                para: "",
-                term: "",
-                preterm: "",
-                abortion: "",
-                living: "",
-              }),
-          // Reset Immunization fields if not Immunization
-          ...(isImmunization
-            ? {}
-            : {
-                guardianName: "",
-                guardianRelationship: "",
-                guardianContact: "",
-                birthWeight: "",
-                feedingStatus: "",
-              }),
-        };
-      }
-
       return { ...prev, [name]: value };
     });
   };
@@ -158,17 +92,12 @@ export default function AddPatient() {
         ...form,
         id: Date.now().toString(),
         name: formatFullName(form.firstName, form.middleName, form.lastName),
-        category: form.patientClassification,
         ageSex: `${form.age || calculateAge(form.birthDate)} / ${form.sex}`,
-        tpal:
-          form.patientClassification === "Maternal"
-            ? formatTpal(form.term, form.preterm, form.abortion, form.living)
-            : "",
       };
 
       const created = await createBhcPatient(patientData);
       const nextId =
-        created?.details?.id || created?.patient?.id || patientData.id;
+        created?.id || created?.details?.id || created?.patient?.id || patientData.id;
 
       setCreatedPatientId(nextId);
       setModals({ ...modals, confirm: false, success: true });
@@ -274,30 +203,26 @@ export default function AddPatient() {
                 <option>Female</option>
               </FormSelect>
 
-              {!isImmunization && (
-                <>
-                  <FormSelect
-                    label="Civil Status"
-                    name="civilStatus"
-                    value={form.civilStatus}
-                    onChange={handleChange}
-                    required
-                  >
-                    <option value="">Select Civil Status</option>
-                    <option>Single</option>
-                    <option>Married</option>
-                  </FormSelect>
+              <FormSelect
+                label="Civil Status"
+                name="civilStatus"
+                value={form.civilStatus}
+                onChange={handleChange}
+                required
+              >
+                <option value="">Select Civil Status</option>
+                <option>Single</option>
+                <option>Married</option>
+              </FormSelect>
 
-                  <div className="lg:col-span-2">
-                    <PhilippineContactInput
-                      label="Contact Number"
-                      name="contactNumber"
-                      value={form.contactNumber}
-                      onChange={handleChange}
-                    />
-                  </div>
-                </>
-              )}
+              <div className="lg:col-span-2">
+                <PhilippineContactInput
+                  label="Contact Number"
+                  name="contactNumber"
+                  value={form.contactNumber}
+                  onChange={handleChange}
+                />
+              </div>
             </div>
           </section>
 
@@ -359,172 +284,6 @@ export default function AddPatient() {
               </div>
             </div>
           </section>
-
-          {/* SECTION 3: CLASSIFICATION */}
-          <section
-            className="anim-fade-up rounded-xl border border-gray-200 border-t-4 border-t-[#B91C1C] bg-white p-6 shadow-sm"
-            style={stagger(3)}
-          >
-            <SectionHeader
-              icon={FileText}
-              title="Patient Classification"
-              description="Select the primary classification for health record management."
-            />
-
-            <div className="grid gap-5 md:grid-cols-2">
-              <FormSelect
-                label="Patient Classification"
-                name="patientClassification"
-                value={form.patientClassification}
-                onChange={handleChange}
-                required
-              >
-                <option value="">Select Classification</option>
-                <option>General Consultation</option>
-                <option>Maternal</option>
-                <option>Immunization</option>
-                <option>Senior Citizen</option>
-              </FormSelect>
-            </div>
-
-            <div className="mt-4">
-              <FormTextarea
-                label="Notes"
-                name="notes"
-                value={form.notes}
-                onChange={handleChange}
-                placeholder="Optional notes..."
-              />
-            </div>
-          </section>
-
-          {/* DYNAMIC: IMMUNIZATION */}
-          {isImmunization && (
-            <section
-              className="anim-fade-up rounded-xl border border-gray-200 border-t-4 border-t-[#B91C1C] bg-white p-6 shadow-sm"
-              style={stagger(4)}
-            >
-              <SectionHeader
-                icon={Baby}
-                title="Immunization / Child Information"
-                description="Fill out child specific tracking data."
-              />
-
-              <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-                <FormInput
-                  label="Guardian Name"
-                  name="guardianName"
-                  value={form.guardianName}
-                  onChange={handleChange}
-                  required
-                />
-                <FormInput
-                  label="Relationship"
-                  name="guardianRelationship"
-                  value={form.guardianRelationship}
-                  onChange={handleChange}
-                  required
-                />
-                <PhilippineContactInput
-                  label="Guardian Contact"
-                  name="guardianContact"
-                  value={form.guardianContact}
-                  onChange={handleChange}
-                />
-                <FormInput
-                  label="Birth Weight (kg)"
-                  name="birthWeight"
-                  type="number"
-                  value={form.birthWeight}
-                  onChange={handleChange}
-                />
-                <FormSelect
-                  label="Feeding Status"
-                  name="feedingStatus"
-                  value={form.feedingStatus}
-                  onChange={handleChange}
-                >
-                  <option value="">Select Status</option>
-                  <option>Exclusive Breastfeeding</option>
-                  <option>Mixed Feeding</option>
-                  <option>Formula Feeding</option>
-                </FormSelect>
-              </div>
-            </section>
-          )}
-
-          {/* DYNAMIC: MATERNAL */}
-          {form.patientClassification === "Maternal" && (
-            <section
-              className="anim-fade-up rounded-xl border border-gray-200 border-t-4 border-t-[#B91C1C] bg-white p-6 shadow-sm"
-              style={stagger(4)}
-            >
-              <SectionHeader
-                icon={HeartPulse}
-                title="Maternal / Obstetric History"
-                description="Provide complete pregnancy and menstrual tracking data."
-              />
-
-              {/* Menstrual History */}
-              <div className="mb-8">
-                <h3 className="mb-4 text-[10px] font-bold uppercase tracking-wider text-gray-900">
-                  Menstrual History
-                </h3>
-                <div className="grid gap-5 md:grid-cols-3">
-                  <FormInput
-                    label="LMP"
-                    name="lmp"
-                    type="date"
-                    value={form.lmp}
-                    onChange={handleChange}
-                  />
-                  <FormInput
-                    label="PMP"
-                    name="pmp"
-                    type="date"
-                    value={form.pmp}
-                    onChange={handleChange}
-                  />
-                  <FormInput
-                    label="Cycle (Days)"
-                    name="cycleDuration"
-                    type="number"
-                    value={form.cycleDuration}
-                    onChange={handleChange}
-                    placeholder="e.g. 28"
-                  />
-                </div>
-              </div>
-
-              {/* Obstetric History */}
-              <div className="mb-8">
-                <h3 className="mb-4 text-[10px] font-bold uppercase tracking-wider text-gray-900">
-                  Obstetric History (GTPAL)
-                </h3>
-
-                <div className="grid gap-5 lg:grid-cols-2 mb-6">
-                  <FormInput
-                    label="Gravida (G)"
-                    name="gravida"
-                    type="number"
-                    value={form.gravida}
-                    onChange={handleChange}
-                    placeholder="Total pregnancies"
-                  />
-                  <FormInput
-                    label="Para (P)"
-                    name="para"
-                    type="number"
-                    value={form.para}
-                    onChange={handleChange}
-                    placeholder="Births > 20 weeks"
-                  />
-                </div>
-
-                <TpalHistoryGrid form={form} onChange={handleChange} />
-              </div>
-            </section>
-          )}
 
           {/* ACTIONS */}
           <div

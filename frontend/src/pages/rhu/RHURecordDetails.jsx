@@ -11,6 +11,7 @@ import {
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { SideCard } from "../../components/common";
+import DetailsSkeleton from "../../components/common/loading/DetailsSkeleton";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
@@ -77,9 +78,7 @@ export default function RHURecordDetails() {
     return (
       <DashboardLayout role="rhu" title="Health Record Details">
         <style>{keyframes}</style>
-        <div className="rounded-2xl border border-[#E8ECF0] bg-white p-8 text-sm text-[#6B7280] shadow-sm">
-          Loading health record details...
-        </div>
+        <DetailsSkeleton label="Loading details..." />
       </DashboardLayout>
     );
   }

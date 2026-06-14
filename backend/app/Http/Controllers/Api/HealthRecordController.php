@@ -7,12 +7,32 @@ use App\Http\Requests\HealthRecordRequest;
 use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Services\AuditLogger;
+use App\Support\StoredFunction;
 use Illuminate\Http\Request;
 
 class HealthRecordController extends Controller
 {
     public function index(Request $request)
     {
+        if (StoredFunction::available()) {
+            $perPage = $request->integer('per_page', 25);
+            $page = max(1, $request->integer('page', 1));
+            $rows = StoredFunction::select(
+                'SELECT * FROM akay_health_record_list(?, ?, ?, ?, ?, ?, ?)',
+                [
+                    $request->user()->role,
+                    $request->user()->barangay_health_center_id,
+                    $request->user()->rural_health_unit_id,
+                    $request->query('patient_id') ? (int) $request->query('patient_id') : null,
+                    $request->query('category'),
+                    $perPage,
+                    ($page - 1) * $perPage,
+                ]
+            );
+
+            return response()->json(['data' => StoredFunction::paginatedResponse($rows, $request)]);
+        }
+
         $query = $this->scope(HealthRecord::query(), $request)->with('patient');
 
         if ($request->query('patient_id')) {
@@ -46,6 +66,22 @@ class HealthRecordController extends Controller
     public function show(Request $request, HealthRecord $healthRecord)
     {
         $this->authorizeRecord($request, $healthRecord);
+
+        if (StoredFunction::available()) {
+            $data = StoredFunction::selectJson(
+                'SELECT akay_health_record_details(?, ?, ?, ?) AS data',
+                [
+                    $healthRecord->id,
+                    $request->user()->role,
+                    $request->user()->barangay_health_center_id,
+                    $request->user()->rural_health_unit_id,
+                ]
+            );
+
+            abort_unless($data, 404);
+
+            return response()->json(['data' => $data]);
+        }
 
         return response()->json(['data' => $healthRecord->load('patient')]);
     }
