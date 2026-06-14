@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   ChevronLeft,
   ChevronRight,
@@ -14,12 +15,14 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar } from "../../components/common";
 import TableSkeleton from "../../components/common/loading/TableSkeleton";
+import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
   formatDisplayValue,
   formatPatientName,
   formatUserName,
 } from "../../utils/formatters";
+import { queryKeys } from "../../utils/queryKeys";
 
 const PER_PAGE = 8;
 
@@ -32,93 +35,93 @@ const DEFAULT_FILTERS = {
 
 export default function RHUHealthRecords() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [openMenuId, setOpenMenuId] = useState(null);
 
+  const {
+    data: recordsData = [],
+    isLoading,
+    isFetching,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.healthRecords("rhu"),
+    queryFn: async () => {
+      const data = await getRhuHealthRecords();
+      const rawData = Array.isArray(data) ? data : [];
+
+      return rawData
+        .map((record) => {
+        const recordId =
+          record.id ||
+          record.recordId ||
+          record._id ||
+          record.trackingId ||
+          `RHU-HR-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+        return {
+          ...record,
+          id: recordId,
+          trackingId: record.trackingId || recordId,
+          patientName: formatPatientName(
+            record.patientName || record.patient || record,
+            "Unnamed Patient",
+          ),
+          classification:
+            record.patientClassification ||
+            record.classification ||
+            record.category ||
+            inferClassification(record),
+          concern: formatDisplayValue(
+            record.chiefComplaint ||
+              record.concern ||
+              record.summaryOfPresentIllness ||
+              record.diagnosis,
+            "General Consultation",
+          ),
+          status: normalizeHealthRecordStatus(
+            record.followUpStatus || record.status || record.recordStatus,
+          ),
+          followUp: record.followUpDate || "No Follow-up",
+          date:
+            record.dateOfVisit ||
+            record.visitDate ||
+            record.date ||
+            record.createdAt ||
+            "No Date",
+          provider: formatUserName(
+            record.attendingStaff ||
+              record.recordedBy ||
+              record.createdBy ||
+              record.created_by ||
+              record.provider ||
+              record.practitioner,
+            "RHU Staff",
+          ),
+        };
+      })
+        .reverse();
+    },
+  });
+
+  const records = Array.isArray(recordsData) ? recordsData : [];
+  const loading = isLoading && records.length === 0;
+
   useEffect(() => {
-    let active = true;
-
-    async function fetchRecords() {
-      try {
-        setLoading(true);
-        const data = await getRhuHealthRecords();
-        const rawData = Array.isArray(data) ? data : [];
-
-        const normalizedRecords = rawData.map((record) => {
-          const recordId =
-            record.id ||
-            record.recordId ||
-            record._id ||
-            record.trackingId ||
-            `RHU-HR-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-
-          return {
-            ...record,
-            id: recordId,
-            trackingId: record.trackingId || recordId,
-            patientName: formatPatientName(
-              record.patientName || record.patient || record,
-              "Unnamed Patient",
-            ),
-            classification:
-              record.patientClassification ||
-              record.classification ||
-              record.category ||
-              inferClassification(record),
-            concern: formatDisplayValue(
-              record.chiefComplaint ||
-                record.concern ||
-                record.summaryOfPresentIllness ||
-                record.diagnosis,
-              "General Consultation",
-            ),
-            status: normalizeHealthRecordStatus(
-              record.followUpStatus || record.status || record.recordStatus,
-            ),
-            followUp: record.followUpDate || "No Follow-up",
-            date:
-              record.dateOfVisit ||
-              record.visitDate ||
-              record.date ||
-              record.createdAt ||
-              "No Date",
-            provider: formatUserName(
-              record.attendingStaff ||
-                record.recordedBy ||
-                record.createdBy ||
-                record.created_by ||
-                record.provider ||
-                record.practitioner,
-              "RHU Staff",
-            ),
-          };
-        });
-
-        if (active) setRecords(normalizedRecords.reverse());
-      } catch (error) {
-        console.error("Failed to fetch RHU health records:", error);
-        if (active) setRecords([]);
-      } finally {
-        if (active) setLoading(false);
-      }
+    function fetchRecords() {
+      refetch();
     }
-
-    fetchRecords();
 
     window.addEventListener("akay:rhu-health-records-updated", fetchRecords);
     window.addEventListener("akay:health-records-updated", fetchRecords);
 
     return () => {
-      active = false;
       window.removeEventListener(
         "akay:rhu-health-records-updated",
         fetchRecords,
       );
       window.removeEventListener("akay:health-records-updated", fetchRecords);
     };
-  }, []);
+  }, [refetch]);
 
   const filteredRecords = records.filter((record) => {
     const searchLower = filters.search.trim().toLowerCase();
@@ -244,6 +247,11 @@ export default function RHUHealthRecords() {
       />
 
       <div className="min-w-0">
+        <RefreshingIndicator
+          show={isFetching && !loading}
+          label="Refreshing health records..."
+          className="mb-3"
+        />
         {loading ? (
           <TableSkeleton columns={7} rows={8} label="Loading health records..." />
         ) : filteredRecords.length === 0 ? (

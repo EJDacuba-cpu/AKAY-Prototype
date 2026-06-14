@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   CalendarDays,
@@ -12,12 +12,14 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { SideCard } from "../../components/common";
 import DetailsSkeleton from "../../components/common/loading/DetailsSkeleton";
+import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
   getPatientDetailsListByRole,
   getPatientsByRole,
 } from "../../services/patients";
+import { queryKeys } from "../../utils/queryKeys";
 
 const keyframes = `
   @keyframes fadeUp {
@@ -29,50 +31,41 @@ const keyframes = `
 
 export default function RHURecordDetails() {
   const { recordId } = useParams();
-  const [loading, setLoading] = useState(true);
-  const [record, setRecord] = useState(null);
-  const [patient, setPatient] = useState(null);
+  const {
+    data: details,
+    isLoading,
+    isFetching,
+  } = useQuery({
+    queryKey: queryKeys.healthRecordDetails("rhu", recordId),
+    queryFn: async () => {
+      const [rhuRecords, patientDetails, patientList] = await Promise.all([
+        getRhuHealthRecords(),
+        getPatientDetailsListByRole("rhu"),
+        getPatientsByRole("rhu"),
+      ]);
 
-  useEffect(() => {
-    let active = true;
+      const allRecords = Array.isArray(rhuRecords) ? rhuRecords : [];
+      const foundRecord =
+        allRecords.find((item) => getRecordId(item) === recordId) || null;
 
-    async function loadRecordDetails() {
-      setLoading(true);
+      const foundPatient = foundRecord
+        ? findPatientForRecord(foundRecord, [
+            ...(Array.isArray(patientDetails) ? patientDetails : []),
+            ...(Array.isArray(patientList) ? patientList : []),
+          ])
+        : null;
 
-      try {
-        const [rhuRecords, patientDetails, patientList] = await Promise.all([
-          getRhuHealthRecords(),
-          getPatientDetailsListByRole("rhu"),
-          getPatientsByRole("rhu"),
-        ]);
+      return {
+        record: foundRecord,
+        patient: foundPatient || derivePatientFromRecord(foundRecord),
+      };
+    },
+    enabled: Boolean(recordId),
+  });
 
-        if (!active) return;
-
-        const allRecords = Array.isArray(rhuRecords) ? rhuRecords : [];
-
-        const foundRecord =
-          allRecords.find((item) => getRecordId(item) === recordId) || null;
-
-        const foundPatient = foundRecord
-          ? findPatientForRecord(foundRecord, [
-              ...(Array.isArray(patientDetails) ? patientDetails : []),
-              ...(Array.isArray(patientList) ? patientList : []),
-            ])
-          : null;
-
-        setRecord(foundRecord);
-        setPatient(foundPatient || derivePatientFromRecord(foundRecord));
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    loadRecordDetails();
-
-    return () => {
-      active = false;
-    };
-  }, [recordId]);
+  const record = details?.record || null;
+  const patient = details?.patient || null;
+  const loading = isLoading && !details;
 
   if (loading) {
     return (
@@ -112,6 +105,11 @@ export default function RHURecordDetails() {
   return (
     <DashboardLayout role="rhu" title="Health Record Details">
       <style>{keyframes}</style>
+      <RefreshingIndicator
+        show={isFetching && !loading}
+        label="Refreshing details..."
+        className="mb-3"
+      />
 
       <div className="mb-6">
         <Link

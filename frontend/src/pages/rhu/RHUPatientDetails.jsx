@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ClipboardList,
@@ -14,6 +15,7 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { SideCard, StatusBadge } from "../../components/common";
 import DetailsSkeleton from "../../components/common/loading/DetailsSkeleton";
+import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
@@ -22,6 +24,7 @@ import {
   getPatientsByRole,
 } from "../../services/patients";
 import { getReferrals } from "../../services/referrals";
+import { queryKeys } from "../../utils/queryKeys";
 
 const keyframes = `
   @keyframes fadeUp {
@@ -39,72 +42,65 @@ const TABS = [
 
 export default function RHUPatientDetails() {
   const { patientId } = useParams();
-  const [loading, setLoading] = useState(true);
-  const [patient, setPatient] = useState(null);
-  const [records, setRecords] = useState([]);
-  const [referrals, setReferrals] = useState([]);
   const [activeTab, setActiveTab] = useState("patient");
 
-  useEffect(() => {
-    let active = true;
+  const {
+    data: workspace,
+    isLoading,
+    isFetching,
+  } = useQuery({
+    queryKey: queryKeys.patientDetails("rhu", patientId),
+    queryFn: async () => {
+      const [
+        patientDetails,
+        patientDetailsList,
+        patientList,
+        rhuRecords,
+        referralList,
+      ] = await Promise.all([
+        getPatientByIdForRole(patientId, "rhu"),
+        getPatientDetailsListByRole("rhu"),
+        getPatientsByRole("rhu"),
+        getRhuHealthRecords(),
+        getReferrals(),
+      ]);
 
-    async function loadPatientWorkspace() {
-      setLoading(true);
+      const allPatients = [
+        ...(Array.isArray(patientDetailsList) ? patientDetailsList : []),
+        ...(Array.isArray(patientList) ? patientList : []),
+      ];
 
-      try {
-        const [
-          patientDetails,
-          patientDetailsList,
-          patientList,
-          rhuRecords,
-          referralList,
-        ] = await Promise.all([
-          getPatientByIdForRole(patientId, "rhu"),
-          getPatientDetailsListByRole("rhu"),
-          getPatientsByRole("rhu"),
-          getRhuHealthRecords(),
-          getReferrals(),
-        ]);
+      const basePatient =
+        patientDetails ||
+        allPatients.find((item) => sameId(item?.id, patientId)) ||
+        derivePatientFromSources(patientId, rhuRecords, referralList);
 
-        if (!active) return;
+      const patientName = getPatientName(basePatient);
+      const patientRecords = ensureArray(rhuRecords)
+        .filter((record) =>
+          recordBelongsToPatient(record, patientId, patientName),
+        )
+        .sort(sortByDateDesc);
 
-        const allPatients = [
-          ...(Array.isArray(patientDetailsList) ? patientDetailsList : []),
-          ...(Array.isArray(patientList) ? patientList : []),
-        ];
+      const patientReferrals = ensureArray(referralList)
+        .filter((referral) =>
+          referralBelongsToPatient(referral, patientId, patientName),
+        )
+        .sort(sortByDateDesc);
 
-        const basePatient =
-          patientDetails ||
-          allPatients.find((item) => sameId(item?.id, patientId)) ||
-          derivePatientFromSources(patientId, rhuRecords, referralList);
+      return {
+        patient: basePatient,
+        records: patientRecords,
+        referrals: patientReferrals,
+      };
+    },
+    enabled: Boolean(patientId),
+  });
 
-        const patientName = getPatientName(basePatient);
-        const patientRecords = ensureArray(rhuRecords)
-          .filter((record) =>
-            recordBelongsToPatient(record, patientId, patientName),
-          )
-          .sort(sortByDateDesc);
-
-        const patientReferrals = ensureArray(referralList)
-          .filter((referral) =>
-            referralBelongsToPatient(referral, patientId, patientName),
-          )
-          .sort(sortByDateDesc);
-
-        setPatient(basePatient);
-        setRecords(patientRecords);
-        setReferrals(patientReferrals);
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    loadPatientWorkspace();
-
-    return () => {
-      active = false;
-    };
-  }, [patientId]);
+  const patient = workspace?.patient || null;
+  const records = useMemo(() => workspace?.records || [], [workspace]);
+  const referrals = useMemo(() => workspace?.referrals || [], [workspace]);
+  const loading = isLoading && !workspace;
 
   const latestRecord = useMemo(() => records[0] || null, [records]);
   const latestSummary = latestRecord
@@ -143,6 +139,11 @@ export default function RHUPatientDetails() {
   return (
     <DashboardLayout role="rhu" title="Patient Details">
       <style>{keyframes}</style>
+      <RefreshingIndicator
+        show={isFetching && !loading}
+        label="Refreshing details..."
+        className="mb-3"
+      />
 
       <div className="mb-6">
         <Link

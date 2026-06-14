@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   AlertTriangle,
@@ -30,6 +31,7 @@ import {
   formatPatientName,
   formatUserName,
 } from "../../utils/formatters";
+import { queryKeys } from "../../utils/queryKeys";
 
 const keyframes = `
   @keyframes fadeUp {
@@ -51,6 +53,7 @@ const stagger = (index) => ({ animationDelay: `${index * 55}ms` });
 
 export default function RHUReferralDetails() {
   const { trackingId } = useParams();
+  const queryClient = useQueryClient();
   const [referral, setReferral] = useState(null);
   const [patient, setPatient] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -130,6 +133,18 @@ export default function RHUReferralDetails() {
         }
 
         setMessage(getStatusMessage(nextStatus, extra));
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.referralDetails("rhu", referral.trackingId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.referrals("bhc"),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.incomingReferrals("rhu"),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboardSummary("rhu"),
+        });
       }
     } finally {
       setBusy(false);

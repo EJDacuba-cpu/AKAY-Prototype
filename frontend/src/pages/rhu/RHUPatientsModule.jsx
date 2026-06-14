@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import {
@@ -14,11 +15,13 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar } from "../../components/common";
 import TableSkeleton from "../../components/common/loading/TableSkeleton";
+import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import { getRhuPatients } from "../../services/patientService";
 import {
   formatDisplayValue,
   formatPatientName,
 } from "../../utils/formatters";
+import { queryKeys } from "../../utils/queryKeys";
 
 const PER_PAGE = 8;
 
@@ -95,27 +98,25 @@ function getRegisteredDate(patient) {
 }
 
 export default function Patients() {
-  const [allPatients, setAllPatients] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [sortKey, setSortKey] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
   const [currentPage, setCurrentPage] = useState(1);
 
-  useEffect(() => {
-    const loadPatients = async () => {
-      try {
-        const patients = await getRhuPatients();
-        setAllPatients(Array.isArray(patients) ? patients : []);
-      } catch (error) {
-        console.error("Failed to load patients:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const {
+    data: patientsData = [],
+    isLoading,
+    isFetching,
+  } = useQuery({
+    queryKey: queryKeys.patients("rhu"),
+    queryFn: getRhuPatients,
+  });
 
-    loadPatients();
-  }, []);
+  const allPatients = useMemo(
+    () => (Array.isArray(patientsData) ? patientsData : []),
+    [patientsData],
+  );
+  const loading = isLoading && allPatients.length === 0;
 
   const civilStatusOptions = uniqueOptions(
     allPatients,
@@ -306,6 +307,11 @@ export default function Patients() {
       />
 
       <div className="min-w-0">
+        <RefreshingIndicator
+          show={isFetching && !loading}
+          label="Refreshing patients..."
+          className="mb-3"
+        />
         {loading ? (
           <TableSkeleton columns={6} rows={8} label="Loading patients..." />
         ) : paginatedPatients.length === 0 ? (

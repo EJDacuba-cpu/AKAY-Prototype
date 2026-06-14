@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   CheckCircle2,
   Clock,
@@ -15,6 +16,7 @@ import { Link, useNavigate } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar } from "../../components/common";
 import TableSkeleton from "../../components/common/loading/TableSkeleton";
+import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import {
   autoMarkNoShowReferrals,
   getReferrals,
@@ -24,6 +26,7 @@ import {
   formatFacilityName,
   formatPatientName,
 } from "../../utils/formatters";
+import { queryKeys } from "../../utils/queryKeys";
 
 const keyframes = `
   @keyframes fadeUp {
@@ -560,8 +563,6 @@ function CategoryBadge({ category }) {
 
 export default function IncomingReferrals() {
   const navigate = useNavigate();
-  const [referrals, setReferrals] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [animatedIds] = useState(new Set());
 
   const [filters, setFilters] = useState({
@@ -573,31 +574,24 @@ export default function IncomingReferrals() {
     referringBhc: "All Referring BHCs",
   });
 
-  useEffect(() => {
-    let isMounted = true;
+  const {
+    data: referralsData = [],
+    isLoading,
+    isFetching,
+  } = useQuery({
+    queryKey: queryKeys.incomingReferrals("rhu"),
+    queryFn: async () => {
+      await autoMarkNoShowReferrals();
+      return getReferrals();
+    },
+    refetchInterval: 5000,
+  });
 
-    async function loadReferrals() {
-      try {
-        await autoMarkNoShowReferrals();
-        const all = await getReferrals();
-        if (!isMounted) return;
-        setReferrals(all);
-      } catch {
-        if (isMounted) setReferrals([]);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    }
-
-    loadReferrals();
-
-    const interval = setInterval(loadReferrals, 5000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, []);
+  const referrals = useMemo(
+    () => (Array.isArray(referralsData) ? referralsData : []),
+    [referralsData],
+  );
+  const loading = isLoading && referrals.length === 0;
 
   const handleFilterChange = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -776,6 +770,12 @@ export default function IncomingReferrals() {
             QR Scan
           </Link>
         }
+      />
+
+      <RefreshingIndicator
+        show={isFetching && !loading}
+        label="Refreshing incoming referrals..."
+        className="mb-3"
       />
 
       {loading ? (

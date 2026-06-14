@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -35,6 +36,13 @@ import {
 import { getCurrentUser } from "../../utils/auth";
 import ReferralQrCode from "../../components/features/referrals/ReferralQrCode";
 import ReferralPrintSlip from "../../components/features/referrals/ReferralPrintSlip";
+import { queryKeys } from "../../utils/queryKeys";
+import {
+  deleteReferralDraft,
+  saveReferralDraft,
+  updateReferralDraft,
+} from "../../services/offlineDraftService";
+import useOfflineDrafts from "../../hooks/useOfflineDrafts";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -51,9 +59,27 @@ const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 
 export default function CreateReferral() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const targetRecordId = searchParams.get("recordId");
   const currentUser = getCurrentUser();
+  const draftScope = useMemo(
+    () => ({
+      userId:
+        currentUser?.id ||
+        currentUser?.userId ||
+        currentUser?.email ||
+        currentUser?.username ||
+        "",
+      role: currentUser?.role || "bhc",
+    }),
+    [currentUser],
+  );
+  const {
+    pendingReferralDraftCount,
+    refreshDrafts,
+    markDraftFailed,
+  } = useOfflineDrafts(draftScope);
   const referringHci =
     currentUser?.assignedBarangayHealthCenter || currentUser?.facility || "";
   const referringPractitioner = currentUser?.fullName || currentUser?.name || "";
@@ -93,6 +119,8 @@ export default function CreateReferral() {
   const [unavailableDoctorNotice, setUnavailableDoctorNotice] = useState(null);
   const [generatedTrackingId, setGeneratedTrackingId] = useState("");
   const [successReferral, setSuccessReferral] = useState(null);
+  const [offlineDraftNotice, setOfflineDraftNotice] = useState(null);
+  const [retryingDraft, setRetryingDraft] = useState(false);
   const [rhuDoctorAvailability, setRhuDoctorAvailability] = useState(() =>
     getDoctorAvailability(),
   );
@@ -278,6 +306,7 @@ export default function CreateReferral() {
     if (submitting) return;
 
     setSubmitting(true);
+    let referralPayload = null;
 
     try {
     const existingReferral = await findExistingReferralForRecord();
@@ -291,7 +320,7 @@ export default function CreateReferral() {
       rhuDoctorAvailability,
     );
 
-    const referral = await createReferral({
+    referralPayload = {
       patientId: patient?.id,
       patientName: patient?.name,
       ageSex:
@@ -367,7 +396,9 @@ export default function CreateReferral() {
       attendingStaff: record?.attendingStaff,
       practitioner: referringPractitioner,
       suggestedSpecialization,
-    });
+    };
+
+    const referral = await createReferral(referralPayload);
 
     if (record?.id || record?._id) {
       await updateHealthRecordById(
@@ -380,43 +411,71 @@ export default function CreateReferral() {
       );
     }
 
-    const savedTrackingId =
-      referral.trackingId || referral.tracking_id || referral.id;
-
-    setGeneratedTrackingId(savedTrackingId);
-    setSuccessReferral({
-      ...referral,
-      trackingId: savedTrackingId,
-      patientName: referral.patientName || patient?.name,
-      referringHci,
-      receivingFacility:
-        referral.receivingFacility ||
-        referral.destinationFacility ||
-        referral.referredFacility ||
-        form.receivingFacility,
-      urgencyLevel: referral.urgencyLevel || referral.urgency || form.urgencyLevel,
-      referralDateTime:
-        referral.referralDateTime ||
-        `${form.dateOfReferral} ${form.timeOfReferral || "00:00"}`,
-      preferredRhuDoctorName:
-        referral.preferredRhuDoctorName ||
-        selectedRhuDoctor?.name ||
-        "RHU to assign",
-      preferredRhuDoctorStatus:
-        referral.preferredRhuDoctorStatus || selectedRhuDoctor?.status || "",
-      philHealthNumber:
-        referral.philHealthNumber ||
-        referral.patientPhilHealthNumber ||
-        form.philHealthNumber.trim(),
-      philHealthCategory:
-        referral.philHealthCategory ||
-        referral.patientPhilHealthCategory ||
-        form.philHealthCategory,
-    });
     setShowConfirmModal(false);
-    setSubmitted(true);
+    showSuccessfulReferral(referral, referralPayload);
+    } catch (error) {
+      if (referralPayload && isNetworkSubmissionError(error)) {
+        const draft = await saveReferralDraft({
+          ...draftScope,
+          patientId: patient?.id,
+          healthRecordId: record?.id || record?._id || targetRecordId,
+          payload: referralPayload,
+          errorMessage:
+            "Internet connection lost before this referral reached the backend.",
+        });
+        await refreshDrafts();
+        setShowConfirmModal(false);
+        setOfflineDraftNotice({
+          draft,
+          message:
+            "Internet connection lost. This referral was saved as a local draft and has not been submitted to the RHU yet. Please retry when the connection is restored.",
+          errorMessage: "",
+        });
+        return;
+      }
+
+      console.error("Failed to submit referral:", error);
+      alert("Referral submission failed. Please try again.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function retryOfflineDraft(draft = offlineDraftNotice?.draft) {
+    if (!draft || retryingDraft) return;
+
+    setRetryingDraft(true);
+    try {
+      const referral = await createReferral(draft.payload);
+
+      if (draft.healthRecordId) {
+        await updateHealthRecordById(
+          draft.healthRecordId,
+          {
+            linkedTrackingId: referral.trackingId,
+            referralTrackingId: referral.trackingId,
+          },
+          "bhc",
+        );
+      }
+
+      await deleteReferralDraft(draft.localDraftId);
+      await refreshDrafts();
+      setOfflineDraftNotice(null);
+      showSuccessfulReferral(referral, draft.payload);
+    } catch (error) {
+      const errorMessage = isNetworkSubmissionError(error)
+        ? "Still offline. This referral remains saved as a local draft and has not been submitted."
+        : error?.message || "Retry failed. This draft is still pending sync.";
+      await updateReferralDraft(draft.localDraftId, { errorMessage });
+      await markDraftFailed(draft.localDraftId, errorMessage);
+      setOfflineDraftNotice((prev) => ({
+        ...(prev || {}),
+        draft,
+        errorMessage,
+      }));
+    } finally {
+      setRetryingDraft(false);
     }
   }
 
@@ -426,6 +485,95 @@ export default function CreateReferral() {
         <FormSkeleton label="Loading details..." />
       </DashboardLayout>
     );
+  }
+
+  function isNetworkSubmissionError(error) {
+    if (navigator && navigator.onLine === false) return true;
+    const message = String(error?.message || "").toLowerCase();
+    return (
+      error instanceof TypeError ||
+      message.includes("failed to fetch") ||
+      message.includes("network") ||
+      message.includes("offline") ||
+      message.includes("internet")
+    );
+  }
+
+  function invalidateReferralCaches(savedReferral = {}) {
+    queryClient.invalidateQueries({ queryKey: queryKeys.referrals("bhc") });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.incomingReferrals("rhu"),
+    });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.dashboardSummary("bhc"),
+    });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.dashboardSummary("rhu"),
+    });
+    if (patient?.id) {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.patientDetails("bhc", patient.id),
+      });
+    }
+    const sourceRecordId = savedReferral.healthRecordId || record?.id || record?._id;
+    if (sourceRecordId) {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecordDetails("bhc", sourceRecordId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecords("bhc"),
+      });
+    }
+  }
+
+  function showSuccessfulReferral(referral, sourcePayload = {}) {
+    const savedTrackingId =
+      referral.trackingId || referral.tracking_id || referral.id;
+
+    setGeneratedTrackingId(savedTrackingId);
+    setSuccessReferral({
+      ...referral,
+      trackingId: savedTrackingId,
+      patientName: referral.patientName || patient?.name || sourcePayload.patientName,
+      referringHci,
+      receivingFacility:
+        referral.receivingFacility ||
+        referral.destinationFacility ||
+        referral.referredFacility ||
+        sourcePayload.receivingFacility ||
+        form.receivingFacility,
+      urgencyLevel:
+        referral.urgencyLevel ||
+        referral.urgency ||
+        sourcePayload.urgencyLevel ||
+        form.urgencyLevel,
+      referralDateTime:
+        referral.referralDateTime ||
+        sourcePayload.referralDateTime ||
+        `${form.dateOfReferral} ${form.timeOfReferral || "00:00"}`,
+      preferredRhuDoctorName:
+        referral.preferredRhuDoctorName ||
+        sourcePayload.preferredRhuDoctorName ||
+        selectedRhuDoctor?.name ||
+        "RHU to assign",
+      preferredRhuDoctorStatus:
+        referral.preferredRhuDoctorStatus ||
+        sourcePayload.preferredRhuDoctorStatus ||
+        selectedRhuDoctor?.status ||
+        "",
+      philHealthNumber:
+        referral.philHealthNumber ||
+        referral.patientPhilHealthNumber ||
+        sourcePayload.philHealthNumber ||
+        form.philHealthNumber.trim(),
+      philHealthCategory:
+        referral.philHealthCategory ||
+        referral.patientPhilHealthCategory ||
+        sourcePayload.philHealthCategory ||
+        form.philHealthCategory,
+    });
+    setSubmitted(true);
+    invalidateReferralCaches(referral);
   }
 
   /* ─── Error: No Context ─── */
@@ -880,31 +1028,102 @@ export default function CreateReferral() {
         </div>
       )}
 
-      <div className="mx-auto max-w-4xl pb-12">
+      {offlineDraftNotice && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 px-4 py-5 backdrop-blur-sm">
+          <div className="anim-scale-in w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="h-1 bg-amber-500" />
+            <div className="p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                  <AlertTriangle size={21} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-800">
+                    Saved as Draft / Pending Sync
+                  </h2>
+                  <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                    {offlineDraftNotice.message}
+                  </p>
+                  {offlineDraftNotice.errorMessage && (
+                    <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                      {offlineDraftNotice.errorMessage}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-wrap justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setOfflineDraftNotice(null)}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Continue Editing
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate("/bhc/referrals")}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Back to Referrals
+                </button>
+                <button
+                  type="button"
+                  disabled={retryingDraft}
+                  onClick={() => retryOfflineDraft()}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <Send size={14} />
+                  {retryingDraft ? "Retrying..." : "Retry Now"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="pb-12">
         {/* Header */}
-        <div className="anim-fade-up mb-6" style={stagger(0)}>
+        <div className="anim-fade-up mb-3" style={stagger(0)}>
           <Link
             to="/bhc/health-records"
-            className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 hover:text-[#B91C1C]"
+            className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 hover:text-[#0F172A]"
           >
             <ArrowLeft size={15} /> Back to Health Records
           </Link>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <h1 className="text-xl font-bold text-[#B91C1C]">
-              Submit Referral
-            </h1>
-            <span className="inline-flex items-center gap-1.5 rounded-md bg-red-50 px-2.5 py-1">
-              <ClipboardList size={11} className="text-[#B91C1C]/60" />
-              <span className="font-mono text-[11px] font-semibold text-[#B91C1C]/80">
-                {recordIdDisplay}
-              </span>
-            </span>
-          </div>
-          <p className="mt-1.5 text-sm text-slate-500">
-            Review the consultation context and configure referral details for
-            the receiving facility.
-          </p>
         </div>
+
+        <header
+          className="anim-fade-up mb-5 border-b border-slate-200 pb-5"
+          style={stagger(1)}
+        >
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="text-2xl font-bold tracking-tight text-[#0F172A]">
+                  Submit Referral
+                </h1>
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-red-50 px-2.5 py-1">
+                  <ClipboardList size={11} className="text-[#B91C1C]/60" />
+                  <span className="font-mono text-[11px] font-semibold text-[#B91C1C]/80">
+                    {recordIdDisplay}
+                  </span>
+                </span>
+              </div>
+              <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-500">
+                Review the consultation context and configure referral details
+                for the receiving facility.
+              </p>
+            </div>
+          </div>
+        </header>
+
+        {pendingReferralDraftCount > 0 && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+            You have {pendingReferralDraftCount} unsent referral draft
+            {pendingReferralDraftCount === 1 ? "" : "s"}. Status: Pending sync.
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* ═══════════════════════════════════

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   UserPlus,
@@ -26,6 +27,7 @@ import {
 } from "../../components/features/patients/PatientFormComponents";
 
 import { createBhcPatient } from "../../services/patientService";
+import { queryKeys } from "../../utils/queryKeys";
 
 // Animation Utility
 const stagger = (i) => ({
@@ -49,6 +51,7 @@ const INITIAL_FORM_STATE = {
 
 export default function AddPatient() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   // Unified State Management
   const [modals, setModals] = useState({
@@ -99,6 +102,10 @@ export default function AddPatient() {
       const nextId =
         created?.id || created?.details?.id || created?.patient?.id || patientData.id;
 
+      queryClient.invalidateQueries({ queryKey: queryKeys.patients("bhc") });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboardSummary("bhc"),
+      });
       setCreatedPatientId(nextId);
       setModals({ ...modals, confirm: false, success: true });
     } catch (error) {

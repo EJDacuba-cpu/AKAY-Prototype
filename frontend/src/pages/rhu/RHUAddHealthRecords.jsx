@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   ArrowLeft,
@@ -30,6 +31,7 @@ import {
   formatDisplayValue,
   formatPatientName,
 } from "../../utils/formatters";
+import { queryKeys } from "../../utils/queryKeys";
 
 /* ═══════════════════════════════════════════════════════════════
    KEYFRAMES
@@ -298,6 +300,7 @@ function getTimelineNodeStatus(group, data) {
    ═══════════════════════════════════════════════════════════════ */
 export default function AddHealthRecord() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
 
   const currentUser = getCurrentUser();
@@ -778,6 +781,23 @@ export default function AddHealthRecord() {
         savedRecord?._id ||
         savedRecord?.data?.id ||
         savedRecord?.data?._id;
+
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecords("rhu"),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboardSummary("rhu"),
+      });
+      if (selectedPatientId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.patientDetails("rhu", selectedPatientId),
+        });
+      }
+      if (savedId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.healthRecordDetails("rhu", savedId),
+        });
+      }
 
       navigate(savedId ? `/rhu/health-records/${savedId}` : healthRecordsPath);
     } catch (error) {

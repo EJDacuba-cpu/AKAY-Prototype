@@ -1,14 +1,17 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { FileText, Plus } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar } from "../../components/common";
 import TableSkeleton from "../../components/common/loading/TableSkeleton";
+import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import HealthRecordsTable from "../../components/features/records/HealthRecordsTable";
 import { getHealthRecords } from "../../services/healthRecordService";
 import { getReferrals } from "../../services/referrals";
 import { formatPatientName } from "../../utils/formatters";
+import { queryKeys } from "../../utils/queryKeys";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -19,81 +22,81 @@ const DEFAULT_FILTERS = {
 
 export default function HealthRecords() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
 
-  useEffect(() => {
-    async function fetchRecords() {
-      try {
-        setLoading(true);
-        const [data, referrals] = await Promise.all([
+  const {
+    data: recordsData = [],
+    isLoading,
+    isFetching,
+  } = useQuery({
+    queryKey: queryKeys.healthRecords("bhc"),
+    queryFn: async () => {
+      const [data, referrals] = await Promise.all([
           getHealthRecords(),
           getReferrals(),
-        ]);
-        const rawData = Array.isArray(data) ? data : [];
+      ]);
+      const rawData = Array.isArray(data) ? data : [];
 
-        const normalizedRecords = rawData.map((record) => {
-          const recordId =
-            record.id ||
-            record.trackingId ||
-            Math.random().toString(36).substr(2, 9);
-          const linkedReferral = referrals.find((referral) =>
-            [
-              referral.healthRecordId,
-              referral.recordId,
-              referral.sourceRecordId,
-              referral.consultationRecordId,
-            ]
-              .filter(Boolean)
-              .includes(recordId),
-          );
+      return rawData
+        .map((record) => {
+        const recordId =
+          record.id ||
+          record.trackingId ||
+          Math.random().toString(36).substr(2, 9);
+        const linkedReferral = referrals.find((referral) =>
+          [
+            referral.healthRecordId,
+            referral.recordId,
+            referral.sourceRecordId,
+            referral.consultationRecordId,
+          ]
+            .filter(Boolean)
+            .includes(recordId),
+        );
 
-          return {
-            ...record,
-            id: recordId,
-            trackingId: record.trackingId || record.id || "No Tracking ID",
-            patientName: formatPatientName(record.patientName || record.patient || record, "Unnamed Patient"),
-            classification:
-              record.patientClassification ||
-              record.classification ||
-              record.category ||
-              (record.vaccineType
-                ? "Immunization"
-                : record.aog || record.expectedDeliveryDate
-                  ? "Maternal"
-                  : "General Consultation"),
-            concern:
-              record.chiefComplaint ||
-              (record.vaccineType
-                ? `${record.vaccineType} - ${record.doseNumber || ""}`
+        return {
+          ...record,
+          id: recordId,
+          trackingId: record.trackingId || record.id || "No Tracking ID",
+          patientName: formatPatientName(record.patientName || record.patient || record, "Unnamed Patient"),
+          classification:
+            record.patientClassification ||
+            record.classification ||
+            record.category ||
+            (record.vaccineType
+              ? "Immunization"
+              : record.aog || record.expectedDeliveryDate
+                ? "Maternal"
                 : "General Consultation"),
-            status:
-              record.status ||
-              (record.needsReferral === "yes"
-                ? "Routine Monitoring"
-                : record.followUpStatus || "Completed"),
-            followUp: record.followUpDate || "No Follow-up",
-            date: record.dateOfVisit || record.date || "No Date",
-            linkedReferralTrackingId:
-              linkedReferral?.trackingId ||
-              (!record.isFollowUp
-                ? record.linkedTrackingId || record.referralTrackingId
-                : "") ||
-              "",
-          };
-        });
+          concern:
+            record.chiefComplaint ||
+            (record.vaccineType
+              ? `${record.vaccineType} - ${record.doseNumber || ""}`
+              : "General Consultation"),
+          status:
+            record.status ||
+            (record.needsReferral === "yes"
+              ? "Routine Monitoring"
+              : record.followUpStatus || "Completed"),
+          followUp: record.followUpDate || "No Follow-up",
+          date: record.dateOfVisit || record.date || "No Date",
+          linkedReferralTrackingId:
+            linkedReferral?.trackingId ||
+            (!record.isFollowUp
+              ? record.linkedTrackingId || record.referralTrackingId
+              : "") ||
+            "",
+        };
+      })
+        .reverse();
+    },
+  });
 
-        setRecords(normalizedRecords.reverse());
-      } catch (error) {
-        console.error("Failed to fetch records:", error);
-        setRecords([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchRecords();
-  }, []);
+  const records = useMemo(
+    () => (Array.isArray(recordsData) ? recordsData : []),
+    [recordsData],
+  );
+  const loading = isLoading && records.length === 0;
 
   const filteredRecords = records.filter((record) => {
     const searchLower = filters.search.toLowerCase();
@@ -210,6 +213,11 @@ export default function HealthRecords() {
       />
 
       <div className="min-w-0">
+        <RefreshingIndicator
+          show={isFetching && !loading}
+          label="Refreshing health records..."
+          className="mb-3"
+        />
         {loading ? (
           <TableSkeleton columns={7} rows={8} label="Loading health records..." />
         ) : filteredRecords.length === 0 ? (

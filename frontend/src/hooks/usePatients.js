@@ -1,15 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { getPatients } from "../services/patients";
+import { queryKeys } from "../utils/queryKeys";
 
-export default function usePatients() {
+export default function usePatients(role = "bhc") {
   /* ─────────────────────────────────────────────
    * State
    * ───────────────────────────────────────────── */
-  const [patients, setPatients] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
   const [currentPage, setCurrentPage] = useState(1);
 
   const [filters, setFilters] = useState({
@@ -59,26 +57,23 @@ export default function usePatients() {
   /* ─────────────────────────────────────────────
    * Fetch Patients
    * ───────────────────────────────────────────── */
-  const fetchPatients = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError("");
+  const {
+    data: patientsData = [],
+    isLoading,
+    isFetching,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.patients(role),
+    queryFn: getPatients,
+  });
 
-      const data = await getPatients();
-
-      setPatients(data);
-    } catch (fetchError) {
-      console.error("Failed to fetch patients:", fetchError);
-      setPatients([]);
-      setError("Unable to load patients");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPatients();
-  }, [fetchPatients]);
+  const patients = useMemo(
+    () => (Array.isArray(patientsData) ? patientsData : []),
+    [patientsData],
+  );
+  const loading = isLoading && patients.length === 0;
+  const error = queryError ? "Unable to load patients" : "";
 
   /* ─────────────────────────────────────────────
    * Filter Logic
@@ -182,7 +177,8 @@ export default function usePatients() {
 
     loading,
     error,
-    refetchPatients: fetchPatients,
+    refetchPatients: refetch,
+    isRefreshing: isFetching && !loading,
 
     filters,
     setFilters,

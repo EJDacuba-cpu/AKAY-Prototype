@@ -16,6 +16,7 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar } from "../../components/common";
 import TableSkeleton from "../../components/common/loading/TableSkeleton";
+import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import usePatients from "../../hooks/usePatients";
 import {
   formatDisplayValue,
@@ -112,6 +113,7 @@ export default function PatientsModule() {
     totalPages,
     error,
     refetchPatients,
+    isRefreshing,
   } = usePatients();
 
   const barangayOptions = uniqueOptions(
@@ -231,6 +233,11 @@ export default function PatientsModule() {
       />
 
       <div className="min-w-0">
+        <RefreshingIndicator
+          show={isRefreshing}
+          label="Refreshing patients..."
+          className="mb-3"
+        />
         {loading ? (
           <TableSkeleton columns={6} rows={8} label="Loading patients..." />
         ) : (

@@ -1,5 +1,6 @@
 import { Link, useLocation, useParams, useNavigate } from "react-router";
 import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   CalendarDays,
@@ -15,6 +16,7 @@ import {
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import DetailsSkeleton from "../../components/common/loading/DetailsSkeleton";
+import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 
 import { getPatientById } from "../../services/patientService";
 import {
@@ -41,6 +43,7 @@ import {
   formatDisplayValue,
   formatPatientName,
 } from "../../utils/formatters";
+import { queryKeys } from "../../utils/queryKeys";
 
 const VACCINE_TIMELINE = [
   {
@@ -96,11 +99,11 @@ export default function HealthRecordDetails() {
   const { recordId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
 
   const [record, setRecord] = useState(null);
   const [patient, setPatient] = useState(null);
   const [linkedReferral, setLinkedReferral] = useState(null);
-  const [loading, setLoading] = useState(true);
 
   const [isEditing, setIsEditing] = useState(
     Boolean(location.state?.startInEditMode),
@@ -111,37 +114,37 @@ export default function HealthRecordDetails() {
 
   const [form, setForm] = useState({});
 
+  const {
+    data: details,
+    isLoading,
+    isFetching,
+  } = useQuery({
+    queryKey: queryKeys.healthRecordDetails("bhc", recordId),
+    queryFn: async () => {
+      const recordData = await getHealthRecordById(recordId);
+      const existingReferral =
+        (await getReferralByHealthRecordId(recordId)) ||
+        (!recordData?.isFollowUp && recordData?.linkedTrackingId
+          ? await getReferralByTrackingId(recordData.linkedTrackingId)
+          : null);
+      const patientData = recordData?.patientId
+        ? await getPatientById(recordData.patientId)
+        : null;
+
+      return { record: recordData, patient: patientData, linkedReferral: existingReferral };
+    },
+    enabled: Boolean(recordId),
+  });
+
   useEffect(() => {
-    async function fetchData() {
-      try {
-        setLoading(true);
+    if (!details) return;
+    setRecord(details.record);
+    setPatient(details.patient);
+    setLinkedReferral(details.linkedReferral);
+    if (details.record) initializeForm(details.record);
+  }, [details]);
 
-        const recordData = await getHealthRecordById(recordId);
-        setRecord(recordData);
-        const existingReferral =
-          (await getReferralByHealthRecordId(recordId)) ||
-          (!recordData?.isFollowUp && recordData?.linkedTrackingId
-            ? await getReferralByTrackingId(recordData.linkedTrackingId)
-            : null);
-        setLinkedReferral(existingReferral);
-
-        if (recordData) {
-          initializeForm(recordData);
-
-          if (recordData.patientId) {
-            const patientData = await getPatientById(recordData.patientId);
-            setPatient(patientData);
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching health record details:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchData();
-  }, [recordId]);
+  const loading = isLoading && !details;
 
   function initializeForm(data) {
     setForm({
@@ -179,6 +182,17 @@ export default function HealthRecordDetails() {
       setOpenConfirm(false);
       setOpenSuccess(true);
       setIsEditing(false);
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecordDetails("bhc", recordId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecords("bhc"),
+      });
+      if (record?.patientId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.patientDetails("bhc", record.patientId),
+        });
+      }
     } catch (error) {
       console.error("Failed to update health record info:", error);
     } finally {
@@ -189,6 +203,11 @@ export default function HealthRecordDetails() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Health Record Details">
+        <RefreshingIndicator
+          show={isFetching && !loading}
+          label="Refreshing details..."
+          className="mb-3"
+        />
         <DetailsSkeleton label="Loading details..." />
       </DashboardLayout>
     );

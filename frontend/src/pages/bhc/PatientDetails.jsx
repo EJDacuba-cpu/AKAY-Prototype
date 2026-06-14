@@ -1,5 +1,6 @@
 import { Link, useParams, useNavigate } from "react-router";
 import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   ArrowLeft,
@@ -18,6 +19,7 @@ import {
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import DetailsSkeleton from "../../components/common/loading/DetailsSkeleton";
+import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 
 import {
   getPatientById,
@@ -40,15 +42,14 @@ import {
   formatDisplayValue,
   formatPatientName,
 } from "../../utils/formatters";
+import { queryKeys } from "../../utils/queryKeys";
 
 export default function PatientDetails() {
   const { patientId } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [patient, setPatient] = useState(null);
-  const [records, setRecords] = useState([]);
-  const [referrals, setReferrals] = useState([]);
-  const [loading, setLoading] = useState(true);
 
   /* Inline Editing States */
   const [isEditing, setIsEditing] = useState(false);
@@ -61,33 +62,38 @@ export default function PatientDetails() {
   /* Tab Navigation State */
   const [activeTab, setActiveTab] = useState("patient");
 
+  const {
+    data: details,
+    isLoading,
+    isFetching,
+  } = useQuery({
+    queryKey: queryKeys.patientDetails("bhc", patientId),
+    queryFn: async () => {
+      const [patientData, recordsData, referralsData] = await Promise.all([
+        getPatientById(patientId),
+        getPatientHealthRecords(patientId),
+        getPatientReferrals(patientId),
+      ]);
+
+      return {
+        patient: patientData,
+        records: recordsData || [],
+        referrals: referralsData || [],
+      };
+    },
+    enabled: Boolean(patientId),
+  });
+
   useEffect(() => {
-    async function fetchData() {
-      try {
-        setLoading(true);
-
-        const patientData = await getPatientById(patientId);
-        const recordsData = await getPatientHealthRecords(patientId);
-        const referralsData = await getPatientReferrals(patientId);
-
-        setPatient(patientData);
-        setRecords(recordsData || []);
-        setReferrals(referralsData || []);
-
-        if (patientData) {
-          initializeForm(patientData);
-        }
-      } catch (error) {
-        console.error("Error fetching patient details:", error);
-        setRecords([]);
-        setReferrals([]);
-      } finally {
-        setLoading(false);
-      }
+    if (details?.patient) {
+      setPatient(details.patient);
+      initializeForm(details.patient);
     }
+  }, [details]);
 
-    fetchData();
-  }, [patientId]);
+  const records = details?.records || [];
+  const referrals = details?.referrals || [];
+  const loading = isLoading && !details;
 
   const initializeForm = (data) => {
     setForm({
@@ -158,6 +164,10 @@ export default function PatientDetails() {
       setOpenConfirm(false);
       setOpenSuccess(true);
       setIsEditing(false);
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.patientDetails("bhc", patientId),
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.patients("bhc") });
     } catch (error) {
       console.error("Failed to update profile info:", error);
     } finally {
@@ -214,6 +224,11 @@ export default function PatientDetails() {
   return (
     <>
       <DashboardLayout role="bhc" title="Patient Details">
+        <RefreshingIndicator
+          show={isFetching && !loading}
+          label="Refreshing details..."
+          className="mb-3"
+        />
         <div className="mb-6">
           <Link
             to="/bhc/patients"

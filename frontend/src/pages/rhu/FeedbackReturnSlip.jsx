@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   AlertCircle,
@@ -22,6 +23,7 @@ import {
   getDoctorAvailability,
   listenDoctorAvailabilityUpdates,
 } from "../../services/doctorAvailability";
+import { queryKeys } from "../../utils/queryKeys";
 
 const OUTCOME_OPTIONS = [
   "Managed at RHU",
@@ -281,6 +283,7 @@ function SectionHeader({ icon, title, description }) {
 
 export default function FeedbackReturnSlip() {
   const { trackingId: routeTrackingId } = useParams();
+  const queryClient = useQueryClient();
   const [selectedReferralId, setSelectedReferralId] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [notFound, setNotFound] = useState(false);
@@ -394,6 +397,19 @@ export default function FeedbackReturnSlip() {
           referral.trackingId === updated.trackingId ? updated : referral,
         ),
       );
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.referralDetails("bhc", updated.trackingId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.referralDetails("rhu", updated.trackingId),
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.referrals("bhc") });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.incomingReferrals("rhu"),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboardSummary("rhu"),
+      });
     }
 
     setSubmitted(true);

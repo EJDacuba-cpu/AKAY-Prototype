@@ -12,13 +12,11 @@ import AddHealthRecord from "./pages/bhc/AddHealthRecord";
 import AddPatient from "./pages/bhc/AddPatient";
 import Referrals from "./pages/bhc/Referrals";
 import CreateReferral from "./pages/bhc/CreateReferral";
-import PrintableReferralSlip from "./pages/bhc/PrintableReferralSlip";
 import ReferralDetails from "./pages/bhc/ReferralDetails";
 import MedicineAvailability from "./pages/bhc/MedicineAvailability";
 import BHCReports from "./pages/bhc/BHCReports";
 import PatientDetails from "./pages/bhc/PatientDetails";
 import HealthRecordDetails from "./pages/bhc/HealthRecordDetails";
-import ReferralQRCode from "./pages/bhc/ReferralQRCode";
 
 // RHU Pages
 import RHUDashboard from "./pages/rhu/RHUDashboard";
@@ -211,22 +209,6 @@ export default function App() {
       />
 
       <Route
-        path="/bhc/referrals/print-slip"
-        element={
-          <ProtectedPage allowedRole="bhc">
-            <PrintableReferralSlip />
-          </ProtectedPage>
-        }
-      />
-      <Route
-        path="/bhc/referrals/:trackingId/print-slip"
-        element={
-          <ProtectedPage allowedRole="bhc">
-            <PrintableReferralSlip />
-          </ProtectedPage>
-        }
-      />
-      <Route
         path="/bhc/referrals/:trackingId"
         element={
           <ProtectedPage allowedRole="bhc">
@@ -266,15 +248,6 @@ export default function App() {
           </ProtectedPage>
         }
       />
-      <Route
-        path="/bhc/referrals/:trackingId/qr"
-        element={
-          <ProtectedPage allowedRole="bhc">
-            <ReferralQRCode />
-          </ProtectedPage>
-        }
-      />
-
       {/* RHU Routes */}
       <Route
         path="/rhu/dashboard"

@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ClipboardList } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ActionMenu, ListToolbar } from "../../components/common";
 import TableSkeleton from "../../components/common/loading/TableSkeleton";
+import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import { getReferrals } from "../../services/referrals";
 import {
   formatDisplayValue,
   formatFacilityName,
   formatPatientName,
 } from "../../utils/formatters";
+import { queryKeys } from "../../utils/queryKeys";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -97,22 +100,22 @@ function getSubmittedDate(referral) {
 }
 
 export default function Referrals() {
-  const [referrals, setReferrals] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
 
-  useEffect(() => {
-    async function loadReferrals() {
-      try {
-        setLoading(true);
-        const data = await getReferrals();
-        setReferrals(data);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadReferrals();
-  }, []);
+  const {
+    data: referralsData = [],
+    isLoading,
+    isFetching,
+  } = useQuery({
+    queryKey: queryKeys.referrals("bhc"),
+    queryFn: getReferrals,
+  });
+
+  const referrals = useMemo(
+    () => (Array.isArray(referralsData) ? referralsData : []),
+    [referralsData],
+  );
+  const loading = isLoading && referrals.length === 0;
 
   const classificationOptions = useMemo(
     () => [
@@ -247,6 +250,12 @@ export default function Referrals() {
         onRemoveFilter={removeFilter}
       />
 
+      <RefreshingIndicator
+        show={isFetching && !loading}
+        label="Refreshing referrals..."
+        className="mb-3"
+      />
+
       {loading ? (
         <TableSkeleton columns={8} rows={8} label="Loading referrals..." />
       ) : (
@@ -336,10 +345,6 @@ export default function Referrals() {
                           referral.trackingId || referral.id
                         }`}
                         viewLabel="View Referral"
-                        editLink={`/bhc/referrals/${
-                          referral.trackingId || referral.id
-                        }/print-slip`}
-                        editLabel="Print Referral Slip"
                       />
                     </td>
                   </tr>

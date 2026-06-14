@@ -1,25 +1,22 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useParams } from "react-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   AlertTriangle,
   ArrowLeft,
-  Building2,
   CheckCircle2,
-  ClipboardList,
-  Clock,
   FileText,
-  MapPin,
   MessageSquare,
   Phone,
   Printer,
-  QrCode,
   Stethoscope,
   User,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import DetailsSkeleton from "../../components/common/loading/DetailsSkeleton";
+import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import { getReferralByTrackingId } from "../../services/referrals";
 import { getPatientById } from "../../services/patientService";
 import {
@@ -28,8 +25,8 @@ import {
   formatPatientName,
   formatUserName,
 } from "../../utils/formatters";
-import ReferralQrCode from "../../components/features/referrals/ReferralQrCode";
 import ReferralPrintSlip from "../../components/features/referrals/ReferralPrintSlip";
+import { queryKeys } from "../../utils/queryKeys";
 
 const keyframes = `
   @keyframes fadeUp {
@@ -40,9 +37,8 @@ const keyframes = `
 `;
 
 const TABS = [
-  { key: "record", label: "Referral Record", icon: ClipboardList },
+  { key: "clinical", label: "Clinical Summary", icon: Stethoscope },
   { key: "returnSlip", label: "RHU Return Slip", icon: MessageSquare },
-  { key: "timeline", label: "Referral Timeline", icon: Clock },
 ];
 
 const OFFICIAL_REFERRAL_STATUSES = [
@@ -57,54 +53,29 @@ const stagger = (index) => ({ animationDelay: `${index * 55}ms` });
 
 export default function ReferralDetails() {
   const { trackingId } = useParams();
-  const [referral, setReferral] = useState(null);
-  const [patient, setPatient] = useState(null);
-  const [activeTab, setActiveTab] = useState("record");
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+  const [activeTab, setActiveTab] = useState("clinical");
 
-  useEffect(() => {
-    let active = true;
+  const {
+    data: details,
+    isLoading,
+    isFetching,
+  } = useQuery({
+    queryKey: queryKeys.referralDetails("bhc", trackingId),
+    queryFn: async () => {
+      const found = await getReferralByTrackingId(trackingId);
+      const linkedPatient = found?.patientId
+        ? await getPatientById(found.patientId)
+        : null;
 
-    async function loadReferral() {
-      setLoading(true);
-      setNotFound(false);
+      return { referral: found, patient: linkedPatient };
+    },
+    enabled: Boolean(trackingId),
+  });
 
-      try {
-        const found = await getReferralByTrackingId(trackingId);
-
-        if (!found) {
-          if (!active) return;
-          setReferral(null);
-          setPatient(null);
-          setNotFound(true);
-          return;
-        }
-
-        const linkedPatient = found.patientId
-          ? await getPatientById(found.patientId)
-          : null;
-
-        if (!active) return;
-        setReferral(found);
-        setPatient(linkedPatient);
-      } catch (error) {
-        console.error(error);
-        if (!active) return;
-        setReferral(null);
-        setPatient(null);
-        setNotFound(true);
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    loadReferral();
-
-    return () => {
-      active = false;
-    };
-  }, [trackingId]);
+  const referral = details?.referral || null;
+  const patient = details?.patient || null;
+  const loading = isLoading && !details;
+  const notFound = !loading && !referral;
 
   if (loading) {
     return (
@@ -143,6 +114,11 @@ export default function ReferralDetails() {
   return (
     <DashboardLayout role="bhc" title="Referral Details">
       <style>{keyframes}</style>
+      <RefreshingIndicator
+        show={isFetching && !loading}
+        label="Refreshing details..."
+        className="mb-3"
+      />
 
       <div className="anim-fade-up mb-3" style={stagger(0)}>
         <Link
@@ -156,9 +132,11 @@ export default function ReferralDetails() {
 
       <ReferralHeader referral={referral} patient={patient} />
 
+
+
       <div
         className="anim-fade-up mb-5 border-b border-slate-200"
-        style={stagger(2)}
+        style={stagger(3)}
       >
         <nav className="-mb-px flex overflow-x-auto" role="tablist">
           {TABS.map((tab) => {
@@ -185,24 +163,10 @@ export default function ReferralDetails() {
         </nav>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <main className="anim-fade-up min-w-0" style={stagger(3)}>
-          {activeTab === "record" && (
-            <ReferralRecord referral={referral} patient={patient} />
-          )}
-          {activeTab === "returnSlip" && <ReturnSlipTab referral={referral} />}
-          {activeTab === "timeline" && <TimelineTab referral={referral} />}
-        </main>
-
-        <aside className="space-y-4 xl:sticky xl:top-5 xl:self-start">
-          <SystemReference referral={referral} />
-          <ReferralStatusPanel referral={referral} />
-          <BhcActionsPanel
-            referral={referral}
-            onViewReturnSlip={() => setActiveTab("returnSlip")}
-          />
-        </aside>
-      </div>
+      <main className="anim-fade-up min-w-0" style={stagger(4)}>
+        {activeTab === "clinical" && <ClinicalSummaryTab referral={referral} />}
+        {activeTab === "returnSlip" && <ReturnSlipTab referral={referral} />}
+      </main>
 
       <ReferralPrintSlip referral={referral} patient={patient} printOnly />
     </DashboardLayout>
@@ -238,6 +202,17 @@ function ReferralHeader({ referral, patient }) {
             <InfoChip value={getPatientClassification(referral, patient)} />
           </div>
         </div>
+        
+        <div className="anim-fade-up mb-5 flex justify-end" style={stagger(2)}>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
+          >
+            <Printer size={14} />
+            Print Referral Slip
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 grid gap-x-6 gap-y-3 border-t border-slate-100 pt-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -271,80 +246,9 @@ function ReferralHeader({ referral, patient }) {
   );
 }
 
-function ReferralRecord({ referral, patient }) {
-  const referralDate = getReferralDate(referral);
-
+function ClinicalSummaryTab({ referral }) {
   return (
     <div className="space-y-4">
-      <RecordSection
-        title="Patient Demographics"
-        description="Patient details captured in the original referral."
-        icon={<User size={14} />}
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <Detail label="Name of Patient" value={getPatientName(referral, patient)} strong />
-          <Detail label="Date of Birth" value={getBirthDate(referral, patient)} />
-          <Detail
-            label="Age / Sex / Civil Status"
-            value={getAgeSexCivil(referral, patient)}
-          />
-          <Detail
-            label="Address"
-            value={getPatientAddress(referral, patient)}
-            icon={<MapPin size={12} />}
-          />
-          <Detail
-            label="Contact Number"
-            value={getContact(referral, patient)}
-          />
-          <Detail
-            label="Patient Classification"
-            value={getPatientClassification(referral, patient)}
-            badge
-          />
-        </div>
-      </RecordSection>
-
-      <RecordSection
-        title="Referral Information"
-        description="BHC referral form and routing details."
-        icon={<ClipboardList size={14} />}
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <Detail label="Tracking ID" value={referral.trackingId} mono />
-          <Detail label="Referral Category" value={getReferralCategory(referral)} badge />
-          <Detail label="Date of Referral" value={formatDate(referralDate)} />
-          <Detail label="Time of Referral" value={formatTime(referralDate)} />
-          <Detail
-            label="Referring HCI"
-            value={getReferringHci(referral, patient)}
-            icon={<Building2 size={12} />}
-          />
-          <Detail
-            label="Destination Facility"
-            value={getDestinationFacility(referral)}
-            icon={<Building2 size={12} />}
-          />
-          <Detail
-            label="Referring Practitioner"
-            value={getReferringPractitioner(referral)}
-          />
-          <Detail
-            label="Urgency"
-            value={getReferralUrgency(referral)}
-            badge
-          />
-          <Detail
-            label="Preferred RHU Doctor"
-            value={
-              referral.preferredRhuDoctorName ||
-              referral.preferredDoctor ||
-              "RHU to assign"
-            }
-          />
-        </div>
-      </RecordSection>
-
       <RecordSection
         title="Clinical Summary"
         description="Clinical basis sent by the BHC for RHU assessment."
@@ -379,6 +283,16 @@ function ReferralRecord({ referral, patient }) {
             label="Reason for Referral"
             value={referral.reasonForReferral || referral.referralReason}
             empty="No reason for referral recorded."
+          />
+          <NarrativeBlock
+            label="Notes / Remarks"
+            value={referral.remarks || referral.notes}
+            empty="No notes or remarks recorded."
+          />
+          <NarrativeBlock
+            label="Referring Practitioner"
+            value={getReferringPractitioner(referral)}
+            empty="No referring practitioner recorded."
           />
         </div>
       </RecordSection>
@@ -474,124 +388,6 @@ function ReturnSlipTab({ referral }) {
         />
       </RecordSection>
     </div>
-  );
-}
-
-function TimelineTab({ referral }) {
-  const items = [
-    [
-      "Referral Submitted",
-      referral.createdAt || referral.dateOfReferral || referral.referralDate,
-    ],
-    ["Received by RHU", referral.receivedAt],
-    ["For Monitoring", referral.monitoringStartedAt],
-    ["Return Slip Submitted", referral.feedback?.submittedAt],
-    ["Completed", referral.completedAt],
-  ];
-
-  if (referral.noShowAt) {
-    items.splice(1, 0, ["No-Show", referral.noShowAt]);
-  }
-
-  return (
-    <RecordSection
-      title="Referral Timeline"
-      description="Read-only BHC view of RHU tracking updates."
-      icon={<Clock size={14} />}
-    >
-      <div className="space-y-3">
-        {items.map(([label, value]) => (
-          <div key={label} className="flex items-start gap-3">
-            <span
-              className={`mt-1 h-2.5 w-2.5 rounded-full ${
-                value ? "bg-[#B91C1C]" : "bg-slate-200"
-              }`}
-            />
-            <div>
-              <p className="text-xs font-semibold text-slate-700">{label}</p>
-              <p className="text-[10.5px] text-slate-400">
-                {value ? formatDateTime(value) : "Pending"}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </RecordSection>
-  );
-}
-
-function SystemReference({ referral }) {
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-4 border-b border-slate-100 pb-3">
-        <h2 className="text-[13px] font-bold text-slate-800">
-          Referral Tracking Details
-        </h2>
-        <p className="text-[10.5px] text-slate-400">QR code and tracking ID</p>
-      </div>
-      <ReferralQrCode
-        trackingId={referral.trackingId}
-        size={112}
-        className="mx-auto mb-3 rounded-xl border border-slate-200 p-2"
-        imageClassName="h-28 w-28"
-      />
-      <p className="text-center font-mono text-xs font-bold text-[#0F172A]">
-        {referral.trackingId}
-      </p>
-    </section>
-  );
-}
-
-function ReferralStatusPanel({ referral }) {
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <h2 className="mb-3 text-[13px] font-bold text-slate-800">
-        Referral Status
-      </h2>
-      <StatusBadge status={referral.status} />
-      <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
-        {getStatusDescription(referral)}
-      </p>
-    </section>
-  );
-}
-
-function BhcActionsPanel({ referral, onViewReturnSlip }) {
-  const hasReturnSlip = !!(referral.feedback || referral.returnSlip);
-
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-      <h2 className="mb-3 px-1 text-[13px] font-bold text-slate-800">
-        BHC Actions
-      </h2>
-      <div className="space-y-2">
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-        >
-          <Printer size={14} />
-          Print Referral Slip
-        </button>
-        <Link
-          to={`/bhc/referrals/${referral.trackingId}/qr`}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#991B1B]"
-        >
-          <QrCode size={14} />
-          Open Full QR Code
-        </Link>
-        {hasReturnSlip && (
-          <button
-            type="button"
-            onClick={onViewReturnSlip}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
-          >
-            <FileText size={14} />
-            View / Print Return Slip
-          </button>
-        )}
-      </div>
-    </section>
   );
 }
 
@@ -762,18 +558,6 @@ function getOfficialStatus(status) {
   return "Pending";
 }
 
-function getStatusDescription(referral) {
-  const status = getOfficialStatus(referral.status);
-  const map = {
-    Pending: "Referral was submitted by BHC and is awaiting RHU action.",
-    Received: "RHU has received the patient and is reviewing the case.",
-    "For Monitoring": "RHU marked this referral for monitoring before final return slip submission.",
-    Completed: "RHU submitted the return slip and completed this referral.",
-    "No-Show": "Patient did not arrive within the expected referral date.",
-  };
-  return map[status] || map.Pending;
-}
-
 function isRhuFacility(value = "") {
   return /rhu|rural health unit/i.test(String(value));
 }
@@ -877,15 +661,6 @@ function getAgeSex(referral = {}, patient = null) {
     .join(" / ");
 }
 
-function getAgeSexCivil(referral = {}, patient = null) {
-  return [
-    getAgeSex(referral, patient),
-    referral.civilStatus || referral.civil_status || patient?.civilStatus,
-  ]
-    .filter(Boolean)
-    .join(" / ");
-}
-
 function getContact(referral = {}, patient = null) {
   return formatDisplayValue(
     referral.contactNumber ||
@@ -912,43 +687,6 @@ function getReferralCategory(referral = {}) {
   return formatDisplayValue(
     referral.referralCategory || referral.category,
     "Unclassified",
-  );
-}
-
-function getReferralUrgency(referral = {}) {
-  const raw =
-    referral.urgency ||
-    referral.priorityLevel ||
-    referral.priority ||
-    "Non-Urgent";
-
-  const map = {
-    High: "Emergency",
-    Medium: "Urgent",
-    Normal: "Non-Urgent",
-  };
-
-  return formatDisplayValue(map[raw] || raw, "Non-Urgent");
-}
-
-function getBirthDate(referral = {}, patient = null) {
-  return referral.birthDate || referral.dateOfBirth || patient?.birthDate || "";
-}
-
-function getPatientAddress(referral = {}, patient = null) {
-  const patientAddress = patient
-    ? [patient.address, patient.barangay, patient.municipality]
-        .filter(Boolean)
-        .join(", ")
-    : "";
-  return (
-    referral.patientAddress ||
-    referral.address ||
-    [referral.street, referral.barangay, referral.municipality]
-      .filter(Boolean)
-      .join(", ") ||
-    patientAddress ||
-    ""
   );
 }
 
