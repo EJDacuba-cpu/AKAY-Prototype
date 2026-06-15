@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import DetailsSkeleton from "../../components/common/loading/DetailsSkeleton";
+import PatientDetailsSkeleton from "../../components/common/loading/PatientDetailsSkeleton";
 import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 
 import {
@@ -178,7 +178,7 @@ export default function PatientDetails() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Patient Details">
-        <DetailsSkeleton label="Loading details..." />
+        <PatientDetailsSkeleton />
       </DashboardLayout>
     );
   }

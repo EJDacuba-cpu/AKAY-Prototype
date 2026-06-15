@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   Baby,
   Check,
@@ -20,10 +21,13 @@ import {
   X,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
+import InlineSpinner from "../../components/common/loading/InlineSpinner";
 import healthRecordService, {
   getHealthRecordById,
 } from "../../services/healthRecordService";
 import { getPatientDetailsListByRole } from "../../services/patientService";
+import { getReferralsByPatient } from "../../services/referrals";
 import { getCurrentUser } from "../../utils/auth";
 import {
   formatDisplayValue,
@@ -293,7 +297,11 @@ export default function AddHealthRecord() {
   const isEditingRecord = !!recordId && mode === "edit";
 
   const [patients, setPatients] = useState([]);
+  const [patientsLoading, setPatientsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [checkingActiveReferral, setCheckingActiveReferral] = useState(false);
+  const [activeReferralConflict, setActiveReferralConflict] = useState(null);
+  const [noticeModal, setNoticeModal] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -359,13 +367,25 @@ export default function AddHealthRecord() {
   }
 
   useEffect(() => {
+    let active = true;
+
     async function loadPatients() {
-      const parsedPatients = await getPatientDetailsListByRole("bhc");
-      setPatients(parsedPatients || []);
-      if (preselectedPatientId) setSelectedPatientId(preselectedPatientId);
+      try {
+        setPatientsLoading(true);
+        const parsedPatients = await getPatientDetailsListByRole("bhc");
+        if (!active) return;
+        setPatients(parsedPatients || []);
+        if (preselectedPatientId) setSelectedPatientId(preselectedPatientId);
+      } finally {
+        if (active) setPatientsLoading(false);
+      }
     }
 
     loadPatients();
+
+    return () => {
+      active = false;
+    };
   }, [preselectedPatientId]);
 
   useEffect(() => {
@@ -464,17 +484,17 @@ export default function AddHealthRecord() {
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
 
-  const filteredPatients = useMemo(() => {
+  const matchingPatients = useMemo(() => {
     const source = patients || [];
 
-    if (!normalizedSearch) return source.slice(0, 8);
+    if (!normalizedSearch) return source;
 
-    return source
-      .filter((patient) =>
-        getPatientSearchText(patient).includes(normalizedSearch),
-      )
-      .slice(0, 12);
+    return source.filter((patient) =>
+      getPatientSearchText(patient).includes(normalizedSearch),
+    );
   }, [patients, normalizedSearch]);
+  const visiblePatientLimit = normalizedSearch ? 8 : 6;
+  const filteredPatients = matchingPatients.slice(0, visiblePatientLimit);
 
   const selectedPatientLabel = selectedPatient
     ? getPatientSearchLabel(selectedPatient)
@@ -662,17 +682,86 @@ export default function AddHealthRecord() {
     setMaternalData((prev) => ({ ...prev, [field]: value }));
   }
 
+  async function findActiveReferralForSelectedPatient() {
+    if (!selectedPatientId) return null;
+
+    const referrals = await getReferralsByPatient(selectedPatient || selectedPatientId);
+    return (
+      referrals.find((referral) =>
+        ["Pending", "Received", "For Monitoring"].includes(referral.status),
+      ) || null
+    );
+  }
+
+  async function saveHealthRecord(formData, { proceedToReferral = false } = {}) {
+    const savedRecord = isEditingRecord
+      ? await healthRecordService.updateHealthRecordById(
+          recordId,
+          formData,
+          "bhc",
+        )
+      : isFollowUp
+        ? await healthRecordService.createFollowUpHealthRecord(
+            {
+              ...formData,
+              previousRecordId: recordId,
+              recordType: "Follow-up",
+              isFollowUp: true,
+            },
+            "bhc",
+          )
+        : await healthRecordService.createHealthRecord(formData, "bhc");
+    const savedId =
+      savedRecord?.id ||
+      savedRecord?._id ||
+      savedRecord?.data?.id ||
+      savedRecord?.data?._id;
+
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.healthRecords(userRole),
+    });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.dashboardSummary(userRole),
+    });
+    if (selectedPatientId) {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.patientDetails(userRole, selectedPatientId),
+      });
+    }
+    if (savedId) {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecordDetails(userRole, savedId),
+      });
+    }
+
+    if (proceedToReferral && savedId) {
+      navigate(
+        `/bhc/referrals/create?recordId=${savedId}&patientId=${selectedPatientId}`,
+      );
+      return savedRecord;
+    }
+
+    navigate(savedId ? `${healthRecordsPath}/${savedId}` : healthRecordsPath);
+    return savedRecord;
+  }
+
   async function handleSave(event) {
     event.preventDefault();
 
     if (!selectedPatientId) {
-      alert("Please select a patient first.");
+      setNoticeModal({
+        title: "Patient Required",
+        message: "Please select a patient first.",
+      });
       requestAnimationFrame(() => inputRef.current?.focus());
       return;
     }
 
     if (!normalizedHealthRecordType) {
-      alert("Please select a health record type.");
+      setNoticeModal({
+        title: "Health Record Type Required",
+        message: "Please select a health record type.",
+      });
       return;
     }
 
@@ -739,70 +828,77 @@ export default function AddHealthRecord() {
       linkedTrackingId: isFollowUp ? followUpRecord?.linkedTrackingId || "" : "",
     };
 
+    const shouldProceedToReferral =
+      needsReferral === "yes" && userRole === "bhc" && !isEditingRecord;
+
+    if (shouldProceedToReferral) {
+      setCheckingActiveReferral(true);
+      try {
+        const activeReferral = await findActiveReferralForSelectedPatient();
+        if (activeReferral) {
+          setActiveReferralConflict(activeReferral);
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to check active referral:", error);
+        setNoticeModal({
+          title: "Referral Check Failed",
+          message:
+            "Unable to check existing active referrals. Please try again before saving this referral record.",
+        });
+        return;
+      } finally {
+        setCheckingActiveReferral(false);
+      }
+    }
+
     setSaving(true);
 
     try {
-      const savedRecord = isEditingRecord
-        ? await healthRecordService.updateHealthRecordById(
-            recordId,
-            formData,
-            "bhc",
-          )
-        : isFollowUp
-          ? await healthRecordService.createFollowUpHealthRecord(
-              {
-                ...formData,
-                previousRecordId: recordId,
-                recordType: "Follow-up",
-                isFollowUp: true,
-              },
-              "bhc",
-            )
-          : await healthRecordService.createHealthRecord(formData, "bhc");
-      const savedId =
-        savedRecord?.id ||
-        savedRecord?._id ||
-        savedRecord?.data?.id ||
-        savedRecord?.data?._id;
-
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.healthRecords(userRole),
+      await saveHealthRecord(formData, {
+        proceedToReferral: shouldProceedToReferral,
       });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.dashboardSummary(userRole),
-      });
-      if (selectedPatientId) {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.patientDetails(userRole, selectedPatientId),
-        });
-      }
-      if (savedId) {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.healthRecordDetails(userRole, savedId),
-        });
-      }
-
-      if (
-        needsReferral === "yes" &&
-        userRole === "bhc" &&
-        !isEditingRecord
-      ) {
-        navigate(
-          `/bhc/referrals/create?recordId=${savedId}&patientId=${selectedPatientId}`,
-        );
-        return;
-      }
-
-      navigate(
-        savedId ? `${healthRecordsPath}/${savedId}` : healthRecordsPath,
-      );
     } catch (error) {
       console.error("Failed to save record:", error);
-      alert("May error sa pag-save ng record. Pakisuri ang console.");
+      setNoticeModal({
+        title: "Save Failed",
+        message: "May error sa pag-save ng record. Pakisuri ang console.",
+      });
     } finally {
       setSaving(false);
     }
   }
+
+  function handleViewExistingReferral() {
+    const referralTarget =
+      activeReferralConflict?.trackingId || activeReferralConflict?.id;
+
+    if (!referralTarget) return;
+
+    setActiveReferralConflict(null);
+    navigate(`/bhc/referrals/${referralTarget}`);
+  }
+
+  const activeReferralTarget =
+    activeReferralConflict?.trackingId || activeReferralConflict?.id || "";
+  const activeReferralDestination =
+    activeReferralConflict?.receivingFacility ||
+    activeReferralConflict?.destinationFacility ||
+    activeReferralConflict?.referredFacility ||
+    "—";
+  const activeReferralDate =
+    activeReferralConflict?.referralDateTime ||
+    activeReferralConflict?.date ||
+    activeReferralConflict?.createdAt ||
+    "—";
+  const isPrimaryActionLoading = checkingActiveReferral || saving;
+  const primaryActionLabel = checkingActiveReferral
+    ? "Checking..."
+    : saving
+      ? "Saving..."
+      : needsReferral === "yes" && userRole === "bhc" && !isEditingRecord
+        ? "Save and Continue to Referral"
+        : "Save Health Record";
 
   return (
     <DashboardLayout role={userRole} title="Add Health Record">
@@ -862,6 +958,12 @@ export default function AddHealthRecord() {
               searchTerm={searchTerm}
               inputValue={patientSearchInputValue}
               patients={filteredPatients}
+              totalPatientCount={patients.length}
+              matchingPatientCount={matchingPatients.length}
+              visibleLimit={visiblePatientLimit}
+              loading={patientsLoading && patients.length === 0}
+              isSearching={Boolean(normalizedSearch)}
+              onSeeAll={() => navigate("/bhc/patients")}
               highlightIndex={highlightIndex}
               onSearchChange={handlePatientSearchChange}
               onOpen={() => {
@@ -1303,17 +1405,117 @@ export default function AddHealthRecord() {
           </button>
           <button
             type="submit"
-            disabled={saving}
+            disabled={isPrimaryActionLoading}
             className="group flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
           >
-            <Save
-              size={15}
-              className="transition-transform duration-300 group-hover:scale-110"
-            />
-            {saving ? "Saving..." : "Save Health Record"}
+            {isPrimaryActionLoading ? (
+              <ButtonSpinner />
+            ) : (
+              <Save
+                size={15}
+                className="transition-transform duration-300 group-hover:scale-110"
+              />
+            )}
+            {primaryActionLabel}
           </button>
         </div>
       </form>
+
+      {activeReferralConflict && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 px-4 py-5 backdrop-blur-sm">
+          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-amber-100 bg-white shadow-2xl">
+            <div className="h-1 bg-amber-500" />
+            <div className="p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                  <AlertTriangle size={21} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-800">
+                    Active Referral Already Exists
+                  </h2>
+                  <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                    This patient already has an active BHC-RHU referral. Please
+                    review the existing referral before creating another
+                    referral. The current save-and-refer action has been
+                    stopped.
+                  </p>
+                </div>
+              </div>
+
+              {activeReferralTarget && (
+                <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <ModalInfo
+                      label="Tracking ID"
+                      value={activeReferralConflict.trackingId || "—"}
+                      mono
+                    />
+                    <ModalInfo
+                      label="Status"
+                      value={activeReferralConflict.status || "—"}
+                      highlight
+                    />
+                    <ModalInfo label="Referred To" value={activeReferralDestination} />
+                    <ModalInfo label="Date of Referral" value={activeReferralDate} />
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-5 flex flex-wrap justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveReferralConflict(null)}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                {activeReferralTarget && (
+                  <button
+                    type="button"
+                    onClick={handleViewExistingReferral}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    View Existing Referral
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {noticeModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 px-4 py-5 backdrop-blur-sm">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-red-100 bg-white shadow-2xl">
+            <div className="h-1 bg-[#B91C1C]" />
+            <div className="p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
+                  <AlertCircle size={21} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-800">
+                    {noticeModal.title}
+                  </h2>
+                  <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                    {noticeModal.message}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-5 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setNoticeModal(null)}
+                  className="rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }
@@ -1331,6 +1533,12 @@ function PatientSearchDropdown({
   searchTerm,
   inputValue,
   patients,
+  totalPatientCount,
+  matchingPatientCount,
+  visibleLimit,
+  loading,
+  isSearching,
+  onSeeAll,
   highlightIndex,
   onSearchChange,
   onOpen,
@@ -1388,11 +1596,13 @@ function PatientSearchDropdown({
       {dropdownOpen && !disabled && (
         <div
           ref={dropdownRef}
-          className="anim-drop-in absolute left-0 right-0 top-full z-[9999] mt-1.5 max-h-72 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-xl shadow-black/[0.08]"
+          className="anim-drop-in absolute left-0 right-0 top-full z-[9999] mt-1.5 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-xl shadow-black/[0.08]"
         >
           <div className="flex items-center justify-between border-b border-[#F3F4F6] px-3.5 py-2">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              {patients.length} result{patients.length !== 1 ? "s" : ""}
+              {loading
+                ? "Loading"
+                : `${matchingPatientCount} result${matchingPatientCount !== 1 ? "s" : ""}`}
             </p>
             {searchTerm && (
               <span className="max-w-[220px] truncate text-[10px] text-[#BFBFBF]">
@@ -1401,18 +1611,34 @@ function PatientSearchDropdown({
             )}
           </div>
 
-          {patients.length === 0 ? (
+          {loading ? (
+            <div className="px-3.5 py-8 text-center">
+              <InlineSpinner
+                label={
+                  isSearching
+                    ? "Searching patients..."
+                    : "Loading registered patients..."
+                }
+                className="justify-center"
+              />
+            </div>
+          ) : patients.length === 0 ? (
             <div className="px-3.5 py-8 text-center">
               <Search size={20} className="mx-auto mb-2 text-[#D4D4D4]" />
               <p className="text-xs font-medium text-[#9CA3AF]">
-                No patients found
+                {totalPatientCount === 0
+                  ? "No registered patients found"
+                  : "No patients found"}
               </p>
               <p className="mt-0.5 text-[10px] text-[#D4D4D4]">
-                Try a different name, ID, contact number, or barangay.
+                {totalPatientCount === 0
+                  ? "Registered patients will appear here once available."
+                  : "Try a different name, ID, contact number, or barangay."}
               </p>
             </div>
           ) : (
-            <div className="max-h-64 overflow-y-auto py-1">
+            <>
+            <div className="max-h-80 overflow-y-auto py-1">
               {patients.map((patient, index) => {
                 const display = getPatientDisplay(patient);
                 const isSelected = patient.id === selectedPatientId;
@@ -1462,9 +1688,7 @@ function PatientSearchDropdown({
                       <p className="mt-0.5 truncate text-[10px] text-[#9CA3AF]">
                         {[
                           display.age,
-                          display.cls,
-                          display.contact,
-                          display.barangay,
+                          display.contact || display.barangay,
                         ]
                           .filter(Boolean)
                           .join(" · ")}
@@ -1482,11 +1706,38 @@ function PatientSearchDropdown({
                 );
               })}
             </div>
+            {matchingPatientCount > visibleLimit && (
+              <button
+                type="button"
+                onClick={onSeeAll}
+                className="flex w-full items-center justify-center border-t border-[#F3F4F6] bg-[#FAFBFC] px-3.5 py-2.5 text-xs font-semibold text-[#B91C1C] transition-colors hover:bg-red-50"
+              >
+                See all patients
+              </button>
+            )}
+            </>
           )}
         </div>
       )}
 
       {selectedPatient && <SelectedPatientPreview patient={selectedPatient} />}
+    </div>
+  );
+}
+
+function ModalInfo({ label, value, mono, highlight }) {
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        {label}
+      </p>
+      <p
+        className={`mt-1 text-sm leading-relaxed ${
+          mono ? "font-mono" : ""
+        } ${highlight ? "font-bold text-slate-800" : "font-medium text-slate-700"}`}
+      >
+        {value || "—"}
+      </p>
     </div>
   );
 }

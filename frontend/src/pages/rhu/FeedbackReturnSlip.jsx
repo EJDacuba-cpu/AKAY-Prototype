@@ -17,6 +17,8 @@ import {
   UserCheck,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
+import FormSkeleton from "../../components/common/loading/FormSkeleton";
 
 import { getReferrals, submitReturnSlip } from "../../services/referrals";
 import {
@@ -286,6 +288,7 @@ export default function FeedbackReturnSlip() {
   const queryClient = useQueryClient();
   const [selectedReferralId, setSelectedReferralId] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
   const [referrals, setReferrals] = useState([]);
@@ -367,7 +370,9 @@ export default function FeedbackReturnSlip() {
 
   async function handleSubmit(e) {
     e?.preventDefault();
-    if (!selectedReferral || !canCreateReturnSlip) return;
+    if (!selectedReferral || !canCreateReturnSlip || submitting) return;
+
+    setSubmitting(true);
 
     const now = new Date().toISOString();
     const feedback = {
@@ -386,41 +391,45 @@ export default function FeedbackReturnSlip() {
       submittedAt: now,
     };
 
-    const updated = await submitReturnSlip(selectedReferral.trackingId, {
-      ...feedback,
-      submittedBy: form.receivingPersonnel || "RHU Staff",
-    });
+    try {
+      const updated = await submitReturnSlip(selectedReferral.trackingId, {
+        ...feedback,
+        submittedBy: form.receivingPersonnel || "RHU Staff",
+      });
 
-    if (updated) {
-      setReferrals((prev) =>
-        prev.map((referral) =>
-          referral.trackingId === updated.trackingId ? updated : referral,
-        ),
-      );
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.referralDetails("bhc", updated.trackingId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.referralDetails("rhu", updated.trackingId),
-      });
-      queryClient.invalidateQueries({ queryKey: queryKeys.referrals("bhc") });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.incomingReferrals("rhu"),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.dashboardSummary("rhu"),
-      });
+      if (updated) {
+        setReferrals((prev) =>
+          prev.map((referral) =>
+            referral.trackingId === updated.trackingId ? updated : referral,
+          ),
+        );
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.referralDetails("bhc", updated.trackingId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.referralDetails("rhu", updated.trackingId),
+        });
+        queryClient.invalidateQueries({ queryKey: queryKeys.referrals("bhc") });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.incomingReferrals("rhu"),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboardSummary("rhu"),
+        });
+      }
+
+      setSubmitted(true);
+    } catch (error) {
+      console.error("Failed to submit return slip:", error);
+    } finally {
+      setSubmitting(false);
     }
-
-    setSubmitted(true);
   }
 
   if (loading) {
     return (
       <DashboardLayout role="rhu" title="Return Slip">
-        <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-400">
-          Loading referral...
-        </div>
+        <FormSkeleton label="Loading details..." />
       </DashboardLayout>
     );
   }
@@ -784,10 +793,11 @@ export default function FeedbackReturnSlip() {
                 <button
                   type="button"
                   onClick={handleSubmit}
-                  className="flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-5 text-sm font-medium text-white transition-colors hover:bg-slate-800"
+                  disabled={submitting || !canCreateReturnSlip}
+                  className="flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-5 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  <Send size={14} />
-                  Submit Return Slip
+                  {submitting ? <ButtonSpinner /> : <Send size={14} />}
+                  {submitting ? "Submitting..." : "Submit Return Slip"}
                 </button>
               </div>
             </div>

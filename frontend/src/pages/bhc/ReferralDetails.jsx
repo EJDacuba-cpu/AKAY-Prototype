@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import DetailsSkeleton from "../../components/common/loading/DetailsSkeleton";
+import ReferralDetailsSkeleton from "../../components/common/loading/ReferralDetailsSkeleton";
 import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import { getReferralByTrackingId } from "../../services/referrals";
 import { getPatientById } from "../../services/patientService";
@@ -80,7 +80,7 @@ export default function ReferralDetails() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Referral Details">
-        <DetailsSkeleton label="Loading details..." />
+        <ReferralDetailsSkeleton />
       </DashboardLayout>
     );
   }

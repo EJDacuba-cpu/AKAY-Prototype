@@ -1,4 +1,5 @@
-import { AlertTriangle, X, Loader2 } from "lucide-react";
+import { AlertTriangle, X } from "lucide-react";
+import ButtonSpinner from "../loading/ButtonSpinner";
 
 export default function ConfirmationModal({
   open,
@@ -22,7 +23,7 @@ export default function ConfirmationModal({
         bg-slate-900/30
         backdrop-blur-[2px]
       "
-      onClick={onCancel} // Click backdrop to close
+      onClick={loading ? undefined : onCancel}
     >
       {/* Stop click propagation so clicking inside doesn't close it */}
       <div
@@ -112,7 +113,7 @@ export default function ConfirmationModal({
                 disabled:cursor-not-allowed disabled:opacity-60
               "
             >
-              {loading && <Loader2 size={13} className="animate-spin" />}
+              {loading && <ButtonSpinner />}
               {loading ? loadingText : confirmText}
             </button>
           </div>

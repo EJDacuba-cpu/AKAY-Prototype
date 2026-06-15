@@ -18,6 +18,7 @@ class Referral extends Model
     protected $fillable = [
         'tracking_id',
         'qr_code_value',
+        'client_submission_id',
         'patient_id',
         'health_record_id',
         'barangay_health_center_id',

@@ -46,6 +46,17 @@ export function getDraftScope({ userId = "", role = "" } = {}) {
   return `${role || "unknown"}:${userId || "anonymous"}`;
 }
 
+export function createClientSubmissionId() {
+  return (
+    globalThis.crypto?.randomUUID?.() ||
+    `client-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+}
+
+function getPayloadClientSubmissionId(payload = {}) {
+  return payload.clientSubmissionId || payload.client_submission_id || "";
+}
+
 export async function saveReferralDraft({
   userId,
   role,
@@ -55,9 +66,15 @@ export async function saveReferralDraft({
   errorMessage = "",
 }) {
   const now = new Date().toISOString();
+  const clientSubmissionId =
+    getPayloadClientSubmissionId(payload) || createClientSubmissionId();
+  const payloadWithClientSubmissionId = {
+    ...payload,
+    clientSubmissionId,
+  };
   const draft = {
     localDraftId:
-      crypto?.randomUUID?.() ||
+      globalThis.crypto?.randomUUID?.() ||
       `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     type: REFERRAL_DRAFT_TYPE,
     userId: userId || "",
@@ -65,7 +82,8 @@ export async function saveReferralDraft({
     userScope: getDraftScope({ userId, role }),
     patientId: patientId || "",
     healthRecordId: healthRecordId || "",
-    payload,
+    clientSubmissionId,
+    payload: payloadWithClientSubmissionId,
     createdAt: now,
     updatedAt: now,
     status: "pending_sync",

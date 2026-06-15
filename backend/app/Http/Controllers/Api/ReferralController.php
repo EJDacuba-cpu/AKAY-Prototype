@@ -13,6 +13,7 @@ use App\Services\AuditLogger;
 use App\Services\ReferralService;
 use App\Services\UserNotificationService;
 use App\Support\StoredFunction;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 
 class ReferralController extends Controller
@@ -70,7 +71,6 @@ class ReferralController extends Controller
     ) {
         $user = $request->user();
         $data = $request->validated();
-        $trackingId = $referralService->makeTrackingId();
 
         if ($user->isBhw()) {
             $data['barangay_health_center_id'] = $user->barangay_health_center_id;
@@ -88,15 +88,40 @@ class ReferralController extends Controller
             );
         }
 
-        $referral = Referral::create([
-            ...$data,
-            'tracking_id' => $trackingId,
-            'qr_code_value' => $referralService->makeQrValue($trackingId),
-            'created_by' => $user->id,
-            'status' => Referral::STATUS_PENDING,
-            'urgency_level' => $data['urgency_level'] ?? 'Normal',
-            'referral_datetime' => $data['referral_datetime'] ?? now(),
-        ]);
+        if (! empty($data['client_submission_id'])) {
+            $existingReferral = $this->scope(Referral::query(), $request)
+                ->where('client_submission_id', $data['client_submission_id'])
+                ->first();
+
+            if ($existingReferral) {
+                return $this->storeResponse($existingReferral, 200);
+            }
+        }
+
+        try {
+            $trackingId = $referralService->makeTrackingId();
+            $referral = Referral::create([
+                ...$data,
+                'tracking_id' => $trackingId,
+                'qr_code_value' => $referralService->makeQrValue($trackingId),
+                'created_by' => $user->id,
+                'status' => Referral::STATUS_PENDING,
+                'urgency_level' => $data['urgency_level'] ?? 'Normal',
+                'referral_datetime' => $data['referral_datetime'] ?? now(),
+            ]);
+        } catch (QueryException $exception) {
+            if (! empty($data['client_submission_id']) && $this->isClientSubmissionConflict($exception)) {
+                $existingReferral = $this->scope(Referral::query(), $request)
+                    ->where('client_submission_id', $data['client_submission_id'])
+                    ->first();
+
+                if ($existingReferral) {
+                    return $this->storeResponse($existingReferral, 200);
+                }
+            }
+
+            throw $exception;
+        }
 
         ReferralUpdate::create([
             'referral_id' => $referral->id,
@@ -113,7 +138,7 @@ class ReferralController extends Controller
         $notifications->notifyUsers($rhuUsers, 'New referral submitted', "Referral {$referral->tracking_id} was submitted.", 'referral_submitted', $referral->id);
         $auditLogger->log($request, 'submitted', 'referrals', "Submitted referral {$referral->tracking_id}.");
 
-        return response()->json(['data' => $referral->load(['patient', 'healthRecord', 'barangayHealthCenter', 'ruralHealthUnit'])], 201);
+        return $this->storeResponse($referral, 201);
     }
 
     public function show(Request $request, Referral $referral)
@@ -187,6 +212,22 @@ class ReferralController extends Controller
         }
 
         return $query;
+    }
+
+    protected function storeResponse(Referral $referral, int $status)
+    {
+        return response()->json([
+            'data' => $referral->load(['patient', 'healthRecord', 'barangayHealthCenter', 'ruralHealthUnit']),
+        ], $status);
+    }
+
+    protected function isClientSubmissionConflict(QueryException $exception): bool
+    {
+        $sqlState = $exception->errorInfo[0] ?? null;
+        $message = strtolower($exception->getMessage());
+
+        return in_array($sqlState, ['23505', '23000'], true)
+            && str_contains($message, 'client_submission_id');
     }
 
     protected function authorizeReferral(Request $request, Referral $referral): void

@@ -20,6 +20,8 @@ function normalizeReferral(referral = {}) {
     id: referral.id ? String(referral.id) : "",
     trackingId: referral.tracking_id || referral.trackingId || "",
     qrCodeValue: referral.qr_code_value || referral.qrCodeValue || "",
+    clientSubmissionId:
+      referral.client_submission_id || referral.clientSubmissionId || "",
     patientId: referral.patient_id ? String(referral.patient_id) : referral.patientId || "",
     healthRecordId: referral.health_record_id
       ? String(referral.health_record_id)
@@ -63,6 +65,8 @@ function normalizeReferral(referral = {}) {
 
 function toPayload(referral = {}) {
   return {
+    client_submission_id:
+      referral.clientSubmissionId || referral.client_submission_id || null,
     patient_id: referral.patientId || referral.patient_id,
     health_record_id:
       referral.healthRecordId || referral.health_record_id || referral.recordId || null,

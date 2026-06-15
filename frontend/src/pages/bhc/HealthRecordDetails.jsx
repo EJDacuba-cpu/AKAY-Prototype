@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import DetailsSkeleton from "../../components/common/loading/DetailsSkeleton";
+import HealthRecordDetailsSkeleton from "../../components/common/loading/HealthRecordDetailsSkeleton";
 import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 
 import { getPatientById } from "../../services/patientService";
@@ -203,12 +203,7 @@ export default function HealthRecordDetails() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Health Record Details">
-        <RefreshingIndicator
-          show={isFetching && !loading}
-          label="Refreshing details..."
-          className="mb-3"
-        />
-        <DetailsSkeleton label="Loading details..." />
+        <HealthRecordDetailsSkeleton />
       </DashboardLayout>
     );
   }
@@ -251,6 +246,12 @@ export default function HealthRecordDetails() {
   return (
     <>
       <DashboardLayout role="bhc" title="Health Record Details">
+        <RefreshingIndicator
+          show={isFetching && !loading}
+          label="Refreshing details..."
+          className="mb-3"
+        />
+
         {/* ─── Header ─── */}
         <div className="mb-6">
           <button

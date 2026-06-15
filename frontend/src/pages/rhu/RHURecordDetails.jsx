@@ -11,7 +11,7 @@ import {
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { SideCard } from "../../components/common";
-import DetailsSkeleton from "../../components/common/loading/DetailsSkeleton";
+import HealthRecordDetailsSkeleton from "../../components/common/loading/HealthRecordDetailsSkeleton";
 import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
@@ -71,7 +71,7 @@ export default function RHURecordDetails() {
     return (
       <DashboardLayout role="rhu" title="Health Record Details">
         <style>{keyframes}</style>
-        <DetailsSkeleton label="Loading details..." />
+        <HealthRecordDetailsSkeleton showActions={false} />
       </DashboardLayout>
     );
   }

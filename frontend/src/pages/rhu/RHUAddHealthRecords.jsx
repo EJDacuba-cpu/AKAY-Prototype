@@ -19,6 +19,8 @@ import {
   X,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
+import InlineSpinner from "../../components/common/loading/InlineSpinner";
 import {
   createFollowUpHealthRecord,
   createRhuHealthRecord,
@@ -316,6 +318,7 @@ export default function AddHealthRecord() {
   const isEditingRecord = !!recordId && !isFollowUp;
 
   const [patients, setPatients] = useState([]);
+  const [patientsLoading, setPatientsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
@@ -375,13 +378,25 @@ export default function AddHealthRecord() {
   });
 
   useEffect(() => {
+    let active = true;
+
     async function loadPatients() {
-      const parsedPatients = await getPatientDetailsListByRole("rhu");
-      setPatients(parsedPatients || []);
-      if (preselectedPatientId) setSelectedPatientId(preselectedPatientId);
+      try {
+        setPatientsLoading(true);
+        const parsedPatients = await getPatientDetailsListByRole("rhu");
+        if (!active) return;
+        setPatients(parsedPatients || []);
+        if (preselectedPatientId) setSelectedPatientId(preselectedPatientId);
+      } finally {
+        if (active) setPatientsLoading(false);
+      }
     }
 
     loadPatients();
+
+    return () => {
+      active = false;
+    };
   }, [preselectedPatientId]);
 
   useEffect(() => {
@@ -485,17 +500,17 @@ export default function AddHealthRecord() {
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
 
-  const filteredPatients = useMemo(() => {
+  const matchingPatients = useMemo(() => {
     const source = patients || [];
 
-    if (!normalizedSearch) return source.slice(0, 8);
+    if (!normalizedSearch) return source;
 
-    return source
-      .filter((patient) =>
-        getPatientSearchText(patient).includes(normalizedSearch),
-      )
-      .slice(0, 12);
+    return source.filter((patient) =>
+      getPatientSearchText(patient).includes(normalizedSearch),
+    );
   }, [patients, normalizedSearch]);
+  const visiblePatientLimit = normalizedSearch ? 8 : 6;
+  const filteredPatients = matchingPatients.slice(0, visiblePatientLimit);
 
   const selectedPatientLabel = selectedPatient
     ? getPatientSearchLabel(selectedPatient)
@@ -868,6 +883,12 @@ export default function AddHealthRecord() {
               searchTerm={searchTerm}
               inputValue={patientSearchInputValue}
               patients={filteredPatients}
+              totalPatientCount={patients.length}
+              matchingPatientCount={matchingPatients.length}
+              visibleLimit={visiblePatientLimit}
+              loading={patientsLoading && patients.length === 0}
+              isSearching={Boolean(normalizedSearch)}
+              onSeeAll={() => navigate("/rhu/patients")}
               highlightIndex={highlightIndex}
               onSearchChange={handlePatientSearchChange}
               onOpen={() => {
@@ -1282,10 +1303,14 @@ export default function AddHealthRecord() {
             disabled={saving}
             className="group flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
           >
-            <Save
-              size={15}
-              className="transition-transform duration-300 group-hover:scale-110"
-            />
+            {saving ? (
+              <ButtonSpinner />
+            ) : (
+              <Save
+                size={15}
+                className="transition-transform duration-300 group-hover:scale-110"
+              />
+            )}
             {saving ? "Saving..." : "Save Health Record"}
           </button>
         </div>
@@ -1307,6 +1332,12 @@ function PatientSearchDropdown({
   searchTerm,
   inputValue,
   patients,
+  totalPatientCount,
+  matchingPatientCount,
+  visibleLimit,
+  loading,
+  isSearching,
+  onSeeAll,
   highlightIndex,
   onSearchChange,
   onOpen,
@@ -1364,11 +1395,13 @@ function PatientSearchDropdown({
       {dropdownOpen && !disabled && (
         <div
           ref={dropdownRef}
-          className="anim-drop-in absolute left-0 right-0 top-full z-[9999] mt-1.5 max-h-72 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-xl shadow-black/[0.08]"
+          className="anim-drop-in absolute left-0 right-0 top-full z-[9999] mt-1.5 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-xl shadow-black/[0.08]"
         >
           <div className="flex items-center justify-between border-b border-[#F3F4F6] px-3.5 py-2">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              {patients.length} result{patients.length !== 1 ? "s" : ""}
+              {loading
+                ? "Loading"
+                : `${matchingPatientCount} result${matchingPatientCount !== 1 ? "s" : ""}`}
             </p>
             {searchTerm && (
               <span className="max-w-[220px] truncate text-[10px] text-[#BFBFBF]">
@@ -1377,18 +1410,34 @@ function PatientSearchDropdown({
             )}
           </div>
 
-          {patients.length === 0 ? (
+          {loading ? (
+            <div className="px-3.5 py-8 text-center">
+              <InlineSpinner
+                label={
+                  isSearching
+                    ? "Searching patients..."
+                    : "Loading registered patients..."
+                }
+                className="justify-center"
+              />
+            </div>
+          ) : patients.length === 0 ? (
             <div className="px-3.5 py-8 text-center">
               <Search size={20} className="mx-auto mb-2 text-[#D4D4D4]" />
               <p className="text-xs font-medium text-[#9CA3AF]">
-                No patients found
+                {totalPatientCount === 0
+                  ? "No registered patients found"
+                  : "No patients found"}
               </p>
               <p className="mt-0.5 text-[10px] text-[#D4D4D4]">
-                Try a different name, ID, contact number, or barangay.
+                {totalPatientCount === 0
+                  ? "Registered patients will appear here once available."
+                  : "Try a different name, ID, contact number, or barangay."}
               </p>
             </div>
           ) : (
-            <div className="max-h-64 overflow-y-auto py-1">
+            <>
+            <div className="max-h-80 overflow-y-auto py-1">
               {patients.map((patient, index) => {
                 const display = getPatientDisplay(patient);
                 const isSelected = patient.id === selectedPatientId;
@@ -1438,9 +1487,7 @@ function PatientSearchDropdown({
                       <p className="mt-0.5 truncate text-[10px] text-[#9CA3AF]">
                         {[
                           display.age,
-                          display.cls,
-                          display.contact,
-                          display.barangay,
+                          display.contact || display.barangay,
                         ]
                           .filter(Boolean)
                           .join(" · ")}
@@ -1458,6 +1505,16 @@ function PatientSearchDropdown({
                 );
               })}
             </div>
+            {matchingPatientCount > visibleLimit && (
+              <button
+                type="button"
+                onClick={onSeeAll}
+                className="flex w-full items-center justify-center border-t border-[#F3F4F6] bg-[#FAFBFC] px-3.5 py-2.5 text-xs font-semibold text-[#B91C1C] transition-colors hover:bg-red-50"
+              >
+                See all patients
+              </button>
+            )}
+            </>
           )}
         </div>
       )}

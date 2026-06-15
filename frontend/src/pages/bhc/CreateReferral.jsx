@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -16,12 +16,13 @@ import {
   Radio,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import FormSkeleton from "../../components/common/loading/FormSkeleton";
+import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
+import CreateReferralSkeleton from "../../components/common/loading/CreateReferralSkeleton";
 import {
   createReferral,
   getReferralByHealthRecordId,
   getReferralByTrackingId,
-  hasActiveReferralForPatient,
+  getReferralsByPatient,
 } from "../../services/referrals";
 import {
   getHealthRecords,
@@ -38,6 +39,7 @@ import ReferralQrCode from "../../components/features/referrals/ReferralQrCode";
 import ReferralPrintSlip from "../../components/features/referrals/ReferralPrintSlip";
 import { queryKeys } from "../../utils/queryKeys";
 import {
+  createClientSubmissionId,
   deleteReferralDraft,
   saveReferralDraft,
   updateReferralDraft,
@@ -112,8 +114,11 @@ export default function CreateReferral() {
   });
 
   const [submitted, setSubmitted] = useState(false);
+  const [checkingSubmission, setCheckingSubmission] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [activeReferralWarning, setActiveReferralWarning] = useState(null);
+  const [submissionErrorNotice, setSubmissionErrorNotice] = useState("");
   const [showUnavailableDoctorModal, setShowUnavailableDoctorModal] =
     useState(false);
   const [unavailableDoctorNotice, setUnavailableDoctorNotice] = useState(null);
@@ -121,6 +126,7 @@ export default function CreateReferral() {
   const [successReferral, setSuccessReferral] = useState(null);
   const [offlineDraftNotice, setOfflineDraftNotice] = useState(null);
   const [retryingDraft, setRetryingDraft] = useState(false);
+  const retryingDraftIdsRef = useRef(new Set());
   const [rhuDoctorAvailability, setRhuDoctorAvailability] = useState(() =>
     getDoctorAvailability(),
   );
@@ -285,21 +291,49 @@ export default function CreateReferral() {
     );
   }
 
+  async function findActiveReferralForPatient() {
+    if (!patient) return null;
+
+    const referrals = await getReferralsByPatient(patient);
+    return (
+      referrals.find((referral) =>
+        ["Pending", "Received", "For Monitoring"].includes(referral.status),
+      ) || null
+    );
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
-    const existingReferral = await findExistingReferralForRecord();
-    if (existingReferral?.trackingId) {
-      navigate(`/bhc/referrals/${existingReferral.trackingId}`);
-      return;
-    }
+    if (checkingSubmission || submitting) return;
 
-    if (patient && (await hasActiveReferralForPatient(patient))) {
-      const proceed = window.confirm(
-        "This patient already has an active BHC-RHU referral. Continue only if this is a separate referral transaction.",
-      );
-      if (!proceed) return;
+    setCheckingSubmission(true);
+    try {
+      const existingReferral = await findExistingReferralForRecord();
+      if (existingReferral?.trackingId) {
+        navigate(`/bhc/referrals/${existingReferral.trackingId}`);
+        return;
+      }
+
+      const activeReferral = await findActiveReferralForPatient();
+      if (activeReferral) {
+        setActiveReferralWarning(activeReferral);
+        return;
+      }
+
+      setShowConfirmModal(true);
+    } finally {
+      setCheckingSubmission(false);
     }
-    setShowConfirmModal(true);
+  }
+
+  function handleViewExistingReferral() {
+    const referralTarget =
+      activeReferralWarning?.trackingId || activeReferralWarning?.id;
+
+    if (!referralTarget) return;
+
+    setActiveReferralWarning(null);
+    navigate(`/bhc/referrals/${referralTarget}`);
   }
 
   async function confirmReferralSubmission() {
@@ -319,8 +353,10 @@ export default function CreateReferral() {
     const availabilitySnapshot = createDoctorAvailabilitySnapshot(
       rhuDoctorAvailability,
     );
+    const clientSubmissionId = createClientSubmissionId();
 
     referralPayload = {
+      clientSubmissionId,
       patientId: patient?.id,
       patientName: patient?.name,
       ageSex:
@@ -435,22 +471,56 @@ export default function CreateReferral() {
       }
 
       console.error("Failed to submit referral:", error);
-      alert("Referral submission failed. Please try again.");
+      setSubmissionErrorNotice("Referral submission failed. Please try again.");
     } finally {
       setSubmitting(false);
     }
   }
 
   async function retryOfflineDraft(draft = offlineDraftNotice?.draft) {
-    if (!draft || retryingDraft) return;
+    const localDraftId = draft?.localDraftId;
+    if (!draft || !localDraftId || retryingDraftIdsRef.current.has(localDraftId))
+      return;
 
+    retryingDraftIdsRef.current.add(localDraftId);
     setRetryingDraft(true);
+    let draftForRetry = draft;
     try {
-      const referral = await createReferral(draft.payload);
+      const clientSubmissionId =
+        draft.clientSubmissionId ||
+        draft.payload?.clientSubmissionId ||
+        draft.payload?.client_submission_id ||
+        createClientSubmissionId();
 
-      if (draft.healthRecordId) {
+      if (
+        !draft.clientSubmissionId ||
+        !draft.payload?.clientSubmissionId ||
+        draft.payload?.clientSubmissionId !== clientSubmissionId
+      ) {
+        const updatedDraft = await updateReferralDraft(localDraftId, {
+          clientSubmissionId,
+          payload: {
+            ...draft.payload,
+            clientSubmissionId,
+          },
+          errorMessage: "",
+        });
+        draftForRetry =
+          updatedDraft || {
+            ...draft,
+            clientSubmissionId,
+            payload: {
+              ...draft.payload,
+              clientSubmissionId,
+            },
+          };
+      }
+
+      const referral = await createReferral(draftForRetry.payload);
+
+      if (draftForRetry.healthRecordId) {
         await updateHealthRecordById(
-          draft.healthRecordId,
+          draftForRetry.healthRecordId,
           {
             linkedTrackingId: referral.trackingId,
             referralTrackingId: referral.trackingId,
@@ -459,22 +529,23 @@ export default function CreateReferral() {
         );
       }
 
-      await deleteReferralDraft(draft.localDraftId);
+      await deleteReferralDraft(draftForRetry.localDraftId);
       await refreshDrafts();
       setOfflineDraftNotice(null);
-      showSuccessfulReferral(referral, draft.payload);
+      showSuccessfulReferral(referral, draftForRetry.payload);
     } catch (error) {
       const errorMessage = isNetworkSubmissionError(error)
         ? "Still offline. This referral remains saved as a local draft and has not been submitted."
         : error?.message || "Retry failed. This draft is still pending sync.";
-      await updateReferralDraft(draft.localDraftId, { errorMessage });
-      await markDraftFailed(draft.localDraftId, errorMessage);
+      await updateReferralDraft(localDraftId, { errorMessage });
+      await markDraftFailed(localDraftId, errorMessage);
       setOfflineDraftNotice((prev) => ({
         ...(prev || {}),
-        draft,
+        draft: draftForRetry,
         errorMessage,
       }));
     } finally {
+      retryingDraftIdsRef.current.delete(localDraftId);
       setRetryingDraft(false);
     }
   }
@@ -482,7 +553,7 @@ export default function CreateReferral() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Submit Referral">
-        <FormSkeleton label="Loading details..." />
+        <CreateReferralSkeleton />
       </DashboardLayout>
     );
   }
@@ -755,9 +826,122 @@ export default function CreateReferral() {
       }`
     : submittedReferral?.philHealthCategory || "Not provided";
 
+  const activeReferralTarget =
+    activeReferralWarning?.trackingId || activeReferralWarning?.id || "";
+  const activeReferralDestination =
+    activeReferralWarning?.receivingFacility ||
+    activeReferralWarning?.destinationFacility ||
+    activeReferralWarning?.referredFacility ||
+    "—";
+  const activeReferralDate =
+    activeReferralWarning?.referralDateTime ||
+    activeReferralWarning?.date ||
+    activeReferralWarning?.createdAt ||
+    "—";
+
   return (
     <DashboardLayout role="bhc" title="Submit Referral">
       <style>{keyframes}</style>
+
+      {activeReferralWarning && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 px-4 py-5 backdrop-blur-sm">
+          <div className="anim-scale-in w-full max-w-xl overflow-hidden rounded-2xl border border-amber-100 bg-white shadow-2xl">
+            <div className="h-1 bg-amber-500" />
+
+            <div className="p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                  <AlertTriangle size={21} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-800">
+                    Active Referral Already Exists
+                  </h2>
+                  <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                    This patient already has an active BHC-RHU referral. Please
+                    review the existing referral before creating another
+                    referral.
+                  </p>
+                </div>
+              </div>
+
+              {activeReferralTarget && (
+                <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Info
+                      label="Tracking ID"
+                      value={activeReferralWarning.trackingId || "—"}
+                      mono
+                    />
+                    <Info
+                      label="Status"
+                      value={activeReferralWarning.status || "—"}
+                      highlight
+                    />
+                    <Info
+                      label="Referred To"
+                      value={activeReferralDestination}
+                    />
+                    <Info label="Date of Referral" value={activeReferralDate} />
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-5 flex flex-wrap justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveReferralWarning(null)}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                {activeReferralTarget && (
+                  <button
+                    type="button"
+                    onClick={handleViewExistingReferral}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    View Existing Referral
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {submissionErrorNotice && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 px-4 py-5 backdrop-blur-sm">
+          <div className="anim-scale-in w-full max-w-md overflow-hidden rounded-2xl border border-red-100 bg-white shadow-2xl">
+            <div className="h-1 bg-[#B91C1C]" />
+            <div className="p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
+                  <AlertTriangle size={21} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-800">
+                    Referral Submission Failed
+                  </h2>
+                  <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                    {submissionErrorNotice}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setSubmissionErrorNotice("")}
+                  className="rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── Confirm Modal ─── */}
       {showConfirmModal && (
@@ -850,7 +1034,7 @@ export default function CreateReferral() {
                 disabled={submitting}
                 className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
               >
-                <Send size={14} />
+                {submitting ? <ButtonSpinner /> : <Send size={14} />}
                 {submitting ? "Submitting..." : "Submit Referral"}
               </button>
             </div>
@@ -1073,7 +1257,7 @@ export default function CreateReferral() {
                   onClick={() => retryOfflineDraft()}
                   className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  <Send size={14} />
+                  {retryingDraft ? <ButtonSpinner /> : <Send size={14} />}
                   {retryingDraft ? "Retrying..." : "Retry Now"}
                 </button>
               </div>
@@ -1356,9 +1540,17 @@ export default function CreateReferral() {
               </button>
               <button
                 type="submit"
-                className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
+                disabled={checkingSubmission || submitting}
+                className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
               >
-                <Send size={14} /> Submit Referral Slip
+                {checkingSubmission || submitting ? (
+                  <ButtonSpinner />
+                ) : (
+                  <Send size={14} />
+                )}
+                {checkingSubmission || submitting
+                  ? "Submitting..."
+                  : "Submit Referral Slip"}
               </button>
             </div>
           </div>
