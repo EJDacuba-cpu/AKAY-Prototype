@@ -145,6 +145,40 @@ export function formatDate(value, fallback = "Not recorded") {
   });
 }
 
+export function formatLongDate(value, fallback = "—") {
+  if (!value) return fallback;
+
+  if (isObject(value) && !(value instanceof Date)) {
+    return formatLongDate(
+      value.birthdate ||
+        value.birthDate ||
+        value.dateOfBirth ||
+        value.date_of_birth ||
+        value.date,
+      fallback,
+    );
+  }
+
+  let date;
+
+  if (value instanceof Date) {
+    date = value;
+  } else if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split("-").map(Number);
+    date = new Date(year, month - 1, day);
+  } else {
+    date = new Date(value);
+  }
+
+  if (Number.isNaN(date.getTime())) return cleanText(value) || fallback;
+
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 export function formatDisplayValue(value, fallback = "Not recorded") {
   if (!value && value !== 0) return fallback;
   if (!isObject(value)) return cleanText(value) || fallback;

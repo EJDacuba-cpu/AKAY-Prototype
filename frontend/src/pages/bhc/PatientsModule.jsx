@@ -3,8 +3,6 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import {
   AlertCircle,
-  ChevronLeft,
-  ChevronRight,
   Eye,
   FilePlus2,
   MoreHorizontal,
@@ -14,7 +12,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar } from "../../components/common";
+import { ListToolbar, ModuleTableCard, TablePagination } from "../../components/common";
 import TableSkeleton from "../../components/common/loading/TableSkeleton";
 import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import usePatients from "../../hooks/usePatients";
@@ -22,9 +20,6 @@ import {
   formatDisplayValue,
   formatPatientName,
 } from "../../utils/formatters";
-
-const PER_PAGE = 8;
-
 const DEFAULT_FILTERS = {
   search: "",
   sex: "All",
@@ -265,26 +260,34 @@ function BHCPatientsTable({
   setCurrentPage,
   filteredCount,
 }) {
-  const startRecord =
-    filteredCount === 0 ? 0 : (currentPage - 1) * PER_PAGE + 1;
-  const endRecord = Math.min(currentPage * PER_PAGE, filteredCount);
-
   return (
-    <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[680px] text-left">
+    <ModuleTableCard
+      title="Registered Patients"
+      count={filteredCount}
+      subtitle="Registered patient profiles accessible to this facility."
+      minWidth="min-w-[900px]"
+      footer={
+        !error && (
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+          />
+        )
+      }
+    >
           <thead>
-<tr className="border-b border-[#F1F5F9] bg-white text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
-              <th className="w-[120px] px-6 py-4">ID</th>
-              <th className="w-[240px] px-4 py-4">Patient</th>
-              <th className="w-[110px] px-4 py-4">Age / Sex</th>
-              <th className="w-[150px] px-4 py-4">Contact</th>
-              <th className="w-[140px] px-4 py-4">Date Registered</th>
-              <th className="w-[90px] px-6 py-4 text-right">Actions</th>
+            <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+              <th className="w-[120px] whitespace-nowrap px-4 py-3">ID</th>
+              <th className="w-[240px] whitespace-nowrap px-4 py-3">Patient</th>
+              <th className="w-[110px] whitespace-nowrap px-4 py-3">Age / Sex</th>
+              <th className="w-[150px] whitespace-nowrap px-4 py-3">Contact</th>
+              <th className="w-[140px] whitespace-nowrap px-4 py-3">Date Registered</th>
+              <th className="w-[90px] whitespace-nowrap px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
 
-          <tbody className="divide-y divide-[#F1F5F9]">
+          <tbody className="divide-y divide-[#F8FAFC]">
             {error ? (
               <PatientTableState
                 icon={<AlertCircle size={22} className="text-[#B91C1C]" />}
@@ -336,33 +339,33 @@ function BHCPatientsTable({
                 return (
                   <tr
                     key={patientId}
-                    className="group transition-colors hover:bg-[#F8FAFC]"
+                    className="group transition-colors duration-150 hover:bg-[#FAFBFD]"
                   >
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <span className="font-mono text-xs font-medium text-[#64748B]">
+                    <td className="whitespace-nowrap px-4 py-3.5">
+                      <span className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-1.5 font-mono text-[11px] font-semibold text-[#B91C1C] transition-colors duration-200 group-hover:border-[#FECACA] group-hover:bg-[#FEF2F2]">
                         {patientId}
                       </span>
                     </td>
 
-                    <td className="whitespace-nowrap px-4 py-4">
-                      <p className="text-sm font-semibold text-[#0F172A]">
+                    <td className="whitespace-nowrap px-4 py-3.5">
+                      <p className="text-[13px] font-semibold text-[#111827]">
                         {patientName}
                       </p>
                     </td>
 
-                    <td className="whitespace-nowrap px-4 py-4 text-sm text-[#64748B]">
+                    <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#6B7280]">
                       {ageSex}
                     </td>
 
-                    <td className="whitespace-nowrap px-4 py-4 text-sm text-[#64748B]">
+                    <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#6B7280]">
                       {contact || "-"}
                     </td>
 
-                    <td className="whitespace-nowrap px-4 py-4 text-sm text-[#64748B]">
+                    <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#9CA3AF]">
                       {formatDate(registeredDate)}
                     </td>
 
-                    <td className="whitespace-nowrap px-6 py-4 text-right">
+                    <td className="whitespace-nowrap px-4 py-3.5 text-right">
                       <ActionMenu
                         role="bhc"
                         patientId={patientId}
@@ -374,27 +377,7 @@ function BHCPatientsTable({
               })
             )}
           </tbody>
-        </table>
-      </div>
-
-      {!error && totalPages > 1 && (
-        <div className="flex flex-col gap-3 border-t border-[#E2E8F0] bg-[#F8FAFC] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-[#64748B]">
-            Showing{" "}
-            <span className="font-medium text-[#0F172A]">{startRecord}</span> to{" "}
-            <span className="font-medium text-[#0F172A]">{endRecord}</span> of{" "}
-            <span className="font-medium text-[#0F172A]">{filteredCount}</span>{" "}
-            records
-          </p>
-
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            setCurrentPage={setCurrentPage}
-          />
-        </div>
-      )}
-    </div>
+    </ModuleTableCard>
   );
 }
 
@@ -412,49 +395,6 @@ function PatientTableState({ icon, title, description, action }) {
         </div>
       </td>
     </tr>
-  );
-}
-
-function Pagination({ currentPage, totalPages, setCurrentPage }) {
-  return (
-    <div className="flex items-center gap-1">
-      <button
-        type="button"
-        onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-        disabled={currentPage === 1}
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#94A3B8] transition hover:border-[#94A3B8] hover:text-[#475569] disabled:cursor-not-allowed disabled:opacity-40"
-        aria-label="Previous page"
-      >
-        <ChevronLeft size={14} />
-      </button>
-
-      {Array.from({ length: totalPages }, (_, index) => index + 1).map(
-        (pageNumber) => (
-          <button
-            key={pageNumber}
-            type="button"
-            onClick={() => setCurrentPage(pageNumber)}
-            className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition ${
-              pageNumber === currentPage
-                ? "bg-[#B91C1C] text-white shadow-sm"
-                : "text-[#475569] hover:bg-white"
-            }`}
-          >
-            {pageNumber}
-          </button>
-        ),
-      )}
-
-      <button
-        type="button"
-        onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-        disabled={currentPage === totalPages}
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#94A3B8] transition hover:border-[#94A3B8] hover:text-[#475569] disabled:cursor-not-allowed disabled:opacity-40"
-        aria-label="Next page"
-      >
-        <ChevronRight size={14} />
-      </button>
-    </div>
   );
 }
 

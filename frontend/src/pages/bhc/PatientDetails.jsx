@@ -1,7 +1,6 @@
 import { Link, useParams, useNavigate } from "react-router";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-
 import {
   ArrowLeft,
   CalendarDays,
@@ -39,9 +38,12 @@ import {
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 
 import {
+  formatDate,
   formatDisplayValue,
   formatPatientName,
+  formatLongDate,
 } from "../../utils/formatters";
+
 import { queryKeys } from "../../utils/queryKeys";
 
 export default function PatientDetails() {
@@ -49,7 +51,7 @@ export default function PatientDetails() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [patient, setPatient] = useState(null);
+  const [patientOverride, setPatient] = useState(null);
 
   /* Inline Editing States */
   const [isEditing, setIsEditing] = useState(false);
@@ -61,39 +63,62 @@ export default function PatientDetails() {
 
   /* Tab Navigation State */
   const [activeTab, setActiveTab] = useState("patient");
+  const [showAllRecords, setShowAllRecords] = useState(false);
+  const [showAllReferrals, setShowAllReferrals] = useState(false);
 
   const {
-    data: details,
-    isLoading,
-    isFetching,
+    data: patientData,
+    isLoading: patientLoading,
+    isFetching: patientFetching,
   } = useQuery({
     queryKey: queryKeys.patientDetails("bhc", patientId),
-    queryFn: async () => {
-      const [patientData, recordsData, referralsData] = await Promise.all([
-        getPatientById(patientId),
-        getPatientHealthRecords(patientId),
-        getPatientReferrals(patientId),
-      ]);
-
-      return {
-        patient: patientData,
-        records: recordsData || [],
-        referrals: referralsData || [],
-      };
-    },
+    queryFn: () => getPatientById(patientId),
     enabled: Boolean(patientId),
   });
 
-  useEffect(() => {
-    if (details?.patient) {
-      setPatient(details.patient);
-      initializeForm(details.patient);
-    }
-  }, [details]);
+  const {
+    data: recordsData = [],
+    isLoading: recordsLoading,
+    isFetching: recordsFetching,
+    isError: recordsError,
+  } = useQuery({
+    queryKey: [...queryKeys.healthRecords("bhc"), "patient", patientId],
+    queryFn: () => getPatientHealthRecords(patientId),
+    enabled: Boolean(patientId),
+  });
 
-  const records = details?.records || [];
-  const referrals = details?.referrals || [];
-  const loading = isLoading && !details;
+  const {
+    data: referralsData = [],
+    isLoading: referralsLoading,
+    isFetching: referralsFetching,
+    isError: referralsError,
+  } = useQuery({
+    queryKey: [...queryKeys.referrals("bhc"), "patient", patientId],
+    queryFn: () => getPatientReferrals(patientId),
+    enabled: Boolean(patientId),
+  });
+
+  const overrideMatchesCurrentPatient =
+    patientOverride &&
+    String(patientOverride.id || patientOverride.patientId || "") ===
+      String(patientId);
+  const patient = overrideMatchesCurrentPatient ? patientOverride : patientData || null;
+
+  useEffect(() => {
+    if (patientData) {
+      setPatient(patientData);
+      initializeForm(patientData);
+    }
+  }, [patientData]);
+
+  useEffect(() => {
+    setShowAllRecords(false);
+    setShowAllReferrals(false);
+  }, [patientId]);
+
+  const records = Array.isArray(recordsData) ? recordsData : [];
+  const referrals = Array.isArray(referralsData) ? referralsData : [];
+  const loading = patientLoading && !patient;
 
   const initializeForm = (data) => {
     setForm({
@@ -201,8 +226,17 @@ export default function PatientDetails() {
     );
   }
 
-  const safeRecords = records || [];
-  const safeReferrals = referrals || [];
+  const safeRecords = [...(records || [])]
+    .sort(sortByDateDesc)
+    .map((record) => ({
+      ...record,
+      timeOfVisit: getHealthRecordTime(record),
+    }));
+  const safeReferrals = [...(referrals || [])].sort(sortByDateDesc);
+  const visibleRecords = showAllRecords ? safeRecords : safeRecords.slice(0, 5);
+  const visibleReferrals = showAllReferrals
+    ? safeReferrals
+    : safeReferrals.slice(0, 5);
 
   const isUnderMonitoring = safeRecords.some(
     (r) =>
@@ -225,7 +259,7 @@ export default function PatientDetails() {
     <>
       <DashboardLayout role="bhc" title="Patient Details">
         <RefreshingIndicator
-          show={isFetching && !loading}
+          show={patientFetching && !loading}
           label="Refreshing details..."
           className="mb-3"
         />
@@ -360,11 +394,11 @@ export default function PatientDetails() {
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
               <div className="space-y-6">
                 <SideCard
-                  title="Patient Demographics"
+                  title="Personal Information"
                   subtitle={
                     isEditing
                       ? "Modify patient profile."
-                      : "Registered patient details."
+                      : "Basic details from the patient registry."
                   }
                   icon={<User size={14} />}
                 >
@@ -445,7 +479,7 @@ export default function PatientDetails() {
                           />
                           <PatientDetailItem
                             label="Date of Birth"
-                            value={patient.birthDate || "—"}
+                            value={formatLongDate(patient.birthDate || patient.birthdate || patient.dateOfBirth)}
                           />
                           <PatientDetailItem
                             label="Age"
@@ -545,26 +579,34 @@ export default function PatientDetails() {
                   Chronological health records linked to this patient.
                 </p>
               </div>
-              {safeRecords.length === 0 ? (
+              <RefreshingIndicator
+                show={recordsFetching && !recordsLoading && safeRecords.length > 0}
+                label="Refreshing health records..."
+                className="mx-6 mt-4"
+              />
+              {recordsLoading && safeRecords.length === 0 ? (
+                <TabLoadingState label="Loading health records..." />
+              ) : recordsError && safeRecords.length === 0 ? (
+                <TabErrorState message="Unable to load health records right now." />
+              ) : safeRecords.length === 0 ? (
                 <div className="p-12 text-center text-sm text-slate-400">
                   <FileText className="mx-auto mb-3 text-slate-300" size={32} />
                   No health records found for this patient.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
+                  <table className="w-full min-w-[980px] text-left border-collapse">
                     <thead>
                       <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                         <th className="px-6 py-3">Date / Time of Visit</th>
-                        <th className="px-6 py-3">
-                          Chief Complaint (Reason for Visit)
-                        </th>
-                        <th className="px-6 py-3">Visit Type / Status</th>
+                        <th className="px-6 py-3">Record Type</th>
+                        <th className="px-6 py-3">Chief Complaint</th>
+                        <th className="px-6 py-3">Status</th>
                         <th className="px-6 py-3 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-sm">
-                      {safeRecords.map((record) => {
+                      {visibleRecords.map((record) => {
                         const currentId = record.id || record._id;
                         return (
                           <tr
@@ -572,27 +614,23 @@ export default function PatientDetails() {
                             className="hover:bg-slate-50/80 transition-colors"
                           >
                             <td className="whitespace-nowrap px-6 py-4 font-medium text-slate-700">
-                              <div>{record.dateOfVisit}</div>
+                              <div>{getHealthRecordDate(record)}</div>
                               <div className="text-xs text-slate-400">
                                 {record.timeOfVisit || "—"}
                               </div>
                             </td>
+                            <td className="whitespace-nowrap px-6 py-4">
+                              <span className="text-xs font-semibold text-[#0F172A]">
+                                {getHealthRecordType(record)}
+                              </span>
+                            </td>
                             <td className="px-6 py-4 text-[#0F172A] font-semibold">
-                              {record.chiefComplaint ||
-                                "No Chief Complaint Noted"}
+                              {getHealthRecordComplaint(record)}
                             </td>
                             <td className="whitespace-nowrap px-6 py-4">
-                              <div className="flex flex-col items-start gap-1.5">
-                                <span className="text-xs font-semibold text-[#0F172A]">
-                                  {record.category ||
-                                    record.classification ||
-                                    record.patientClassification ||
-                                    "General Consultation"}
-                                </span>
-                                <RecordStatusBadge
-                                  status={record.followUpStatus || "Consultation"}
-                                />
-                              </div>
+                              <RecordStatusBadge
+                                status={getHealthRecordStatus(record)}
+                              />
                             </td>
                             <td className="whitespace-nowrap px-6 py-4 text-right">
                               <button
@@ -610,6 +648,19 @@ export default function PatientDetails() {
                       })}
                     </tbody>
                   </table>
+                  {safeRecords.length > 5 && (
+                    <div className="border-t border-slate-100 px-6 py-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setShowAllRecords((value) => !value)}
+                        className="text-xs font-semibold text-[#B91C1C] transition hover:text-[#7F1D1D]"
+                      >
+                        {showAllRecords
+                          ? "Show less"
+                          : `Show all ${safeRecords.length} records`}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -625,13 +676,22 @@ export default function PatientDetails() {
                   BHC-RHU referral tracking logs linked to this patient.
                 </p>
               </div>
-              {safeReferrals.length === 0 ? (
+              <RefreshingIndicator
+                show={referralsFetching && !referralsLoading && safeReferrals.length > 0}
+                label="Refreshing referrals..."
+                className="mx-6 mt-4"
+              />
+              {referralsLoading && safeReferrals.length === 0 ? (
+                <TabLoadingState label="Loading referrals..." />
+              ) : referralsError && safeReferrals.length === 0 ? (
+                <TabErrorState message="Unable to load referral history right now." />
+              ) : safeReferrals.length === 0 ? (
                 <div className="p-12 text-center text-sm text-slate-400">
                   <ClipboardList
                     className="mx-auto mb-3 text-slate-300"
                     size={32}
                   />
-                  No referral history found for this profile.
+                  No referral history found for this patient.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -647,7 +707,7 @@ export default function PatientDetails() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-sm">
-                      {safeReferrals.map((ref) => (
+                      {visibleReferrals.map((ref) => (
                         <tr
                           key={ref.trackingId || ref.id}
                           className="transition-colors hover:bg-slate-50/80"
@@ -658,13 +718,7 @@ export default function PatientDetails() {
                             </span>
                           </td>
                           <td className="whitespace-nowrap px-4 py-4 text-slate-600">
-                            {formatReferralDate(
-                              ref.dateOfReferral ||
-                                ref.referralDate ||
-                                ref.dateSubmitted ||
-                                ref.createdAt ||
-                                ref.date,
-                            )}
+                            {getReferralDate(ref)}
                           </td>
                           <td className="px-4 py-4 text-slate-600">
                             {getReferralDestination(ref)}
@@ -692,6 +746,19 @@ export default function PatientDetails() {
                       ))}
                     </tbody>
                   </table>
+                  {safeReferrals.length > 5 && (
+                    <div className="border-t border-slate-100 px-6 py-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setShowAllReferrals((value) => !value)}
+                        className="text-xs font-semibold text-[#B91C1C] transition hover:text-[#7F1D1D]"
+                      >
+                        {showAllReferrals
+                          ? "Show less"
+                          : `Show all ${safeReferrals.length} referrals`}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -719,6 +786,114 @@ export default function PatientDetails() {
   );
 }
 
+function TabLoadingState({ label }) {
+  return (
+    <div className="p-12 text-center text-sm text-slate-400">
+      <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-[#B91C1C]" />
+      {label}
+    </div>
+  );
+}
+
+function TabErrorState({ message }) {
+  return (
+    <div className="p-12 text-center text-sm text-slate-400">
+      <FileText className="mx-auto mb-3 text-slate-300" size={32} />
+      {message}
+    </div>
+  );
+}
+
+function getHealthRecordDate(record = {}) {
+  return formatDate(
+    record.dateOfVisit ||
+      record.date_of_visit ||
+      record.dateRecorded ||
+      record.date_recorded ||
+      record.visitDate ||
+      record.date ||
+      record.createdAt ||
+      record.created_at,
+    "Not recorded",
+  );
+}
+
+function getHealthRecordTime(record = {}) {
+  return formatDisplayValue(
+    record.timeOfVisit || record.time_of_visit || record.time || record.visitTime,
+    "-",
+  );
+}
+
+function getHealthRecordType(record = {}) {
+  return formatDisplayValue(
+    record.category ||
+      record.classification ||
+      record.recordType ||
+      record.record_type ||
+      record.patientClassification,
+    "General Consultation",
+  );
+}
+
+function getHealthRecordComplaint(record = {}) {
+  return formatDisplayValue(
+    record.chiefComplaint ||
+      record.chief_complaint ||
+      record.concern ||
+      record.reasonForVisit ||
+      record.diagnosis,
+    "Not recorded",
+  );
+}
+
+function getHealthRecordStatus(record = {}) {
+  return formatDisplayValue(
+    record.followUpStatus ||
+      record.follow_up_status ||
+      record.status ||
+      record.recordStatus,
+    "Not recorded",
+  );
+}
+
+function getReferralDate(referral = {}) {
+  return formatReferralDate(
+    referral.dateOfReferral ||
+      referral.date_of_referral ||
+      referral.referralDate ||
+      referral.referral_datetime ||
+      referral.dateSubmitted ||
+      referral.createdAt ||
+      referral.created_at ||
+      referral.date,
+  );
+}
+
+function sortByDateDesc(a, b) {
+  return getDateTimeValue(b) - getDateTimeValue(a);
+}
+
+function getDateTimeValue(item = {}) {
+  const raw =
+    item.dateOfVisit ||
+    item.date_of_visit ||
+    item.dateRecorded ||
+    item.date_recorded ||
+    item.visitDate ||
+    item.dateOfReferral ||
+    item.date_of_referral ||
+    item.referralDate ||
+    item.referral_datetime ||
+    item.dateSubmitted ||
+    item.createdAt ||
+    item.created_at ||
+    item.date;
+
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
 function ReturnSlipIndicator({ referral }) {
   const hasReturnSlip = !!(referral.feedback || referral.returnSlip);
 
@@ -742,6 +917,7 @@ function RecordStatusBadge({ status }) {
     "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
     "Follow-up Required": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
     "Routine Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    "Not recorded": "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
     Consultation: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
   };
 

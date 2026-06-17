@@ -979,12 +979,12 @@ export default function AddHealthRecord() {
         </div>
 
         <FormSection
-          title="Visit Type"
-          subtitle="Select the health record type for this specific visit."
-          icon={<Stethoscope size={14} />}
+          title="Visit Overview"
+          subtitle="Set the record type, visit schedule, and attending practitioner."
+          icon={<Clock size={14} />}
           delay={2}
         >
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4 lg:grid-cols-4">
             <FieldSelect
               label="Health Record Type"
               value={healthRecordType}
@@ -998,6 +998,25 @@ export default function AddHealthRecord() {
                 </option>
               ))}
             </FieldSelect>
+            <FieldInput
+              label="Date of Visit"
+              type="date"
+              required
+              value={dateOfVisit}
+              onChange={(event) => setDateOfVisit(event.target.value)}
+            />
+            <FieldInput
+              label="Time of Visit"
+              type="time"
+              required
+              value={timeOfVisit}
+              onChange={(event) => setTimeOfVisit(event.target.value)}
+            />
+            <FieldInput
+              label="Name of Practitioner"
+              value={attendingStaff}
+              onChange={(event) => setAttendingStaff(event.target.value)}
+            />
           </div>
         </FormSection>
 
@@ -1017,20 +1036,7 @@ export default function AddHealthRecord() {
               )}
             </div>
 
-            <div className="mb-6 grid gap-4 lg:grid-cols-3">
-              <FieldInput
-                label="Date of Visit"
-                type="date"
-                required
-                value={dateOfVisit}
-                onChange={(event) => setDateOfVisit(event.target.value)}
-              />
-              <FieldInput
-                label="Time of Visit"
-                type="time"
-                value={timeOfVisit}
-                onChange={(event) => setTimeOfVisit(event.target.value)}
-              />
+            <div className="mb-6 max-w-sm">
               <FieldSelect
                 label="Feeding Status"
                 value={immunizationData.feeding_status}
@@ -1190,27 +1196,18 @@ export default function AddHealthRecord() {
             icon={<Stethoscope size={14} />}
             delay={3}
           >
-            <div className="grid gap-4 lg:grid-cols-3">
-              <FieldInput
-                label="Date of Visit"
-                type="date"
-                required
-                value={dateOfVisit}
-                onChange={(event) => setDateOfVisit(event.target.value)}
-              />
-              <FieldInput
-                label="Time of Visit"
-                type="time"
-                required
-                value={timeOfVisit}
-                onChange={(event) => setTimeOfVisit(event.target.value)}
-              />
+            <div className="grid gap-4 lg:grid-cols-2">
               <FieldInput
                 label="Chief Complaint"
                 placeholder="e.g. Fever, vomiting, cough"
                 required
                 value={chiefComplaint}
                 onChange={(event) => setChiefComplaint(event.target.value)}
+              />
+              <FieldInput
+                label="Initial Diagnosis"
+                value={diagnosis}
+                onChange={(event) => setDiagnosis(event.target.value)}
               />
             </div>
             <div className="mt-4">
@@ -1225,21 +1222,18 @@ export default function AddHealthRecord() {
                 rows={5}
               />
             </div>
-            <div className="mt-4 grid gap-4 lg:grid-cols-3">
-              <FieldInput
-                label="Initial Diagnosis"
-                value={diagnosis}
-                onChange={(event) => setDiagnosis(event.target.value)}
-              />
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
               <FieldInput
                 label="Initial Actions Taken"
                 value={medication}
                 onChange={(event) => setMedication(event.target.value)}
               />
-              <FieldInput
-                label="Name of Practitioner"
-                value={attendingStaff}
-                onChange={(event) => setAttendingStaff(event.target.value)}
+              <FieldTextarea
+                label="Other Observations"
+                value={consultationNotes}
+                onChange={(event) => setConsultationNotes(event.target.value)}
+                placeholder="Other observations not covered in the summary..."
+                rows={3}
               />
             </div>
           </FormSection>
@@ -1287,23 +1281,6 @@ export default function AddHealthRecord() {
               placeholder="e.g. 165"
               value={height}
               onChange={(event) => setHeight(event.target.value)}
-            />
-          </div>
-          <div className="mt-4">
-            <FieldTextarea
-              label={
-                isImmunization
-                  ? "Vaccination Notes (Optional)"
-                  : "Additional Notes (Optional)"
-              }
-              value={consultationNotes}
-              onChange={(event) => setConsultationNotes(event.target.value)}
-              placeholder={
-                isImmunization
-                  ? "e.g. Post-vaccination observations, adverse events, etc..."
-                  : "Other observations not covered in the summary..."
-              }
-              rows={3}
             />
           </div>
             </FormSection>

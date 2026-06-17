@@ -2,11 +2,9 @@ import { Link, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  CalendarDays,
   FilePlus2,
   HeartPulse,
   Pencil,
-  User,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -20,6 +18,7 @@ import {
   getPatientsByRole,
 } from "../../services/patients";
 import { queryKeys } from "../../utils/queryKeys";
+import { formatLongDate } from "../../utils/formatters";
 
 const keyframes = `
   @keyframes fadeUp {
@@ -100,7 +99,8 @@ export default function RHURecordDetails() {
   );
   const patientId = patient?.id || record.patientId;
   const patientName = getPatientName(patient) || getRecordPatientName(record);
-  const isFollowUp = status === "Follow-up Required";
+  const canRecordFollowUpVisit = isFollowUpEligibleStatus(status);
+  const showPatientProfileSidebar = false;
 
   return (
     <DashboardLayout role="rhu" title="Health Record Details">
@@ -123,15 +123,9 @@ export default function RHURecordDetails() {
           <div>
             <div className="flex flex-wrap items-center gap-2.5">
               <h1 className="text-xl font-bold text-[#0F172A]">
-                {record.diagnosis || "Medical Consultation"}
+                {getRecordDiagnosis(record, "Medical Consultation")}
               </h1>
               <HealthRecordStatusBadge status={status} />
-              {isFollowUp && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#B45309]">
-                  <CalendarDays size={12} />
-                  Follow-up Required
-                </span>
-              )}
             </div>
 
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
@@ -167,19 +161,23 @@ export default function RHURecordDetails() {
               <Pencil size={14} />
               Edit Record
             </Link>
-            <Link
-              to={`/rhu/health-records/add?recordId=${getRecordId(record)}&mode=follow-up`}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
-            >
-              <FilePlus2 size={14} />
-              Add Follow-up Record
-            </Link>
+            {canRecordFollowUpVisit && (
+              <Link
+                to={`/rhu/health-records/add?recordId=${getRecordId(record)}&mode=follow-up`}
+                title="This action creates a follow-up visit linked to the current health record."
+                aria-label="Record a follow-up visit linked to this health record"
+                className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100"
+              >
+                <FilePlus2 size={14} />
+                Record Follow-up Visit
+              </Link>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+      <div className="space-y-6">
+        <div>
           <SideCard title="Clinical Record" icon={<HeartPulse size={14} />}>
             <div className="space-y-1">
               <SectionDivider label="Clinical Assessment" />
@@ -190,14 +188,12 @@ export default function RHURecordDetails() {
                 />
                 <PatientDetailItem
                   label="Diagnosis / Assessment"
-                  value={record.diagnosis || "Medical Consultation"}
+                  value={getRecordDiagnosis(record)}
                 />
                 <PatientDetailItem label="Status / Type" value={status} />
                 <PatientDetailItem
                   label="Recorded By"
-                  value={
-                    record.recordedBy || record.attendingStaff || "RHU Staff"
-                  }
+                  value={getRecordPractitioner(record, "RHU Staff")}
                 />
               </div>
 
@@ -211,12 +207,8 @@ export default function RHURecordDetails() {
               <div className="pt-2">
                 <NarrativeBox
                   label="Summary of Present Illness"
-                  value={
-                    record.summaryOfPresentIllness ||
-                    record.consultationNotes ||
-                    record.notes
-                  }
-                  emptyText="No summary of present illness documented."
+                  value={getRecordSummary(record, "")}
+                  emptyText="Not recorded"
                 />
               </div>
 
@@ -224,12 +216,7 @@ export default function RHURecordDetails() {
               <div className="pt-3">
                 <PatientDetailItem
                   label="Initial Action Taken / Medication"
-                  value={
-                    record.medication ||
-                    record.treatment ||
-                    record.initialAction ||
-                    "No actions recorded"
-                  }
+                  value={getRecordInitialActions(record)}
                 />
               </div>
 
@@ -246,26 +233,37 @@ export default function RHURecordDetails() {
               <div className="grid gap-x-8 gap-y-1 pt-3 md:grid-cols-2">
                 <PatientDetailItem
                   label="Follow-up Date"
-                  value={record.followUpDate}
+                  value={formatLongDate(
+                    getRecordValue(record, ["followUpDate", "follow_up_date"], ""),
+                    "Not recorded",
+                  )}
                 />
                 <PatientDetailItem
                   label="Patient Condition"
-                  value={record.patientCondition}
+                  value={getRecordValue(record, [
+                    "patientCondition",
+                    "patient_condition",
+                  ])}
                 />
               </div>
               <div className="pt-2">
                 <NarrativeBox
                   label="Monitoring Notes"
-                  value={record.monitoringNotes}
-                  emptyText="No monitoring notes documented."
+                  value={getRecordValue(
+                    record,
+                    ["monitoringNotes", "monitoring_notes"],
+                    "",
+                  )}
+                  emptyText="Not recorded"
                 />
               </div>
             </div>
           </SideCard>
         </div>
 
+        {showPatientProfileSidebar && (
         <aside className="space-y-6">
-          <SideCard title="Patient Profile" icon={<User size={14} />}>
+          <SideCard title="Patient Profile" icon={<HeartPulse size={14} />}>
             {patient || patientName ? (
               <div>
                 <div className="space-y-1">
@@ -314,6 +312,7 @@ export default function RHURecordDetails() {
             )}
           </SideCard>
         </aside>
+        )}
       </div>
     </DashboardLayout>
   );
@@ -323,33 +322,67 @@ function normalizeHealthRecordStatus(status) {
   const value = String(status || "").trim();
 
   if (!value) return "Routine Monitoring";
-  if (["Follow-up", "Follow Up", "Follow-up Required"].includes(value)) {
+  if (
+    [
+      "Follow-up",
+      "Follow Up",
+      "Follow-up Required",
+      "Follow-up After 2 Days",
+    ].includes(value)
+  ) {
     return "Follow-up Required";
+  }
+  if (["Under Observation", "Observation"].includes(value)) {
+    return "Under Observation";
   }
   if (["Completed", "Complete", "Recovered", "Closed"].includes(value)) {
     return "Completed";
   }
   if (
-    ["For Monitoring", "Active", "Monitoring", "For Referral"].includes(value)
+    ["For Monitoring", "Active", "Monitoring", "Routine Monitoring"].includes(
+      value,
+    )
   ) {
     return "Routine Monitoring";
+  }
+  if (["For Referral", "Needs Referral"].includes(value)) {
+    return "Needs Referral";
+  }
+  if (
+    ["Referred", "Pending", "Pending RHU Review", "Received"].includes(value)
+  ) {
+    return "Referred/Pending";
   }
 
   return value;
 }
 
+function isFollowUpEligibleStatus(status) {
+  return [
+    "Follow-up Required",
+    "For Monitoring",
+    "Under Observation",
+    "Routine Monitoring",
+  ].includes(normalizeHealthRecordStatus(status));
+}
+
 function HealthRecordStatusBadge({ status }) {
   const normalizedStatus = normalizeHealthRecordStatus(status);
   const styles = {
-    "Routine Monitoring": "border-slate-200 bg-slate-50 text-slate-700",
+    "Routine Monitoring": "border-blue-200 bg-blue-50 text-blue-800",
     "Follow-up Required": "border-amber-200 bg-amber-50 text-amber-800",
-    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    "Under Observation": "border-amber-200 bg-amber-50 text-amber-800",
+    Completed: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    "Needs Referral": "border-orange-200 bg-orange-50 text-orange-800",
+    "Referred/Pending": "border-blue-200 bg-blue-50 text-blue-800",
+    "For Monitoring": "border-blue-200 bg-blue-50 text-blue-800",
   };
 
   return (
     <span
       className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-        styles[normalizedStatus] || styles["Routine Monitoring"]
+        styles[normalizedStatus] ||
+        "border-slate-200 bg-slate-50 text-slate-700"
       }`}
     >
       {normalizedStatus}
@@ -475,33 +508,130 @@ function getAgeSex(patient, record) {
   return `${age} / ${sex}`;
 }
 
+function getRecordValue(record = {}, keys = [], fallback = "Not recorded") {
+  for (const key of keys) {
+    const value = record?.[key];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+
+  return fallback;
+}
+
+function getRecordDiagnosis(record = {}, fallback = "Not recorded") {
+  return getRecordValue(record, ["diagnosis", "initialDiagnosis", "initial_diagnosis"], fallback);
+}
+
+function getRecordSummary(record = {}, fallback = "Not recorded") {
+  return getRecordValue(
+    record,
+    [
+      "summaryOfPresentIllness",
+      "summary_of_present_illness",
+      "physicalExamination",
+      "physical_examination",
+      "medicalHistory",
+      "medical_history",
+      "consultationNotes",
+      "consultation_notes",
+      "notes",
+    ],
+    fallback,
+  );
+}
+
+function getRecordInitialActions(record = {}, fallback = "Not recorded") {
+  return getRecordValue(
+    record,
+    [
+      "initialActionsTaken",
+      "initialActionTaken",
+      "initial_actions_taken",
+      "initial_action_taken",
+      "medication",
+      "treatment",
+      "treatmentNotes",
+      "treatment_notes",
+    ],
+    fallback,
+  );
+}
+
+function getRecordPractitioner(record = {}, fallback = "Not recorded") {
+  return getRecordValue(
+    record,
+    [
+      "recordedBy",
+      "recorded_by",
+      "attendingStaff",
+      "attending_staff",
+      "nameOfPractitioner",
+      "name_of_practitioner",
+    ],
+    fallback,
+  );
+}
+
 function getRecordConcern(record) {
   return (
     record?.chiefComplaint ||
+    record?.chief_complaint ||
     record?.concern ||
     record?.summaryOfPresentIllness ||
-    "No concern recorded"
+    record?.summary_of_present_illness ||
+    "Not recorded"
   );
 }
 
 function getRecordDate(record) {
-  return (
-    formatDate(
-      record?.dateOfVisit ||
-        record?.visitDate ||
-        record?.date ||
-        record?.dateCreated ||
-        record?.createdAt,
-    ) || "No date recorded"
+  return formatLongDate(
+    getRecordValue(
+      record,
+      [
+        "dateOfVisit",
+        "date_of_visit",
+        "dateRecorded",
+        "date_recorded",
+        "visitDate",
+        "date",
+        "dateCreated",
+        "createdAt",
+        "created_at",
+      ],
+      "",
+    ),
+    "Not recorded",
   );
 }
 
 function getRecordTime(record) {
-  return record?.timeOfVisit || record?.time || "No time recorded";
+  const direct = record?.timeOfVisit || record?.time_of_visit || record?.time;
+  if (direct) return direct;
+
+  const recorded = record?.dateRecorded || record?.date_recorded;
+  const match = String(recorded || "").match(/\d{2}:\d{2}/);
+  return match ? match[0] : "";
 }
 
 function getVitalSigns(record) {
-  if (record?.vitalSigns) return record.vitalSigns;
+  const vitalSigns = record?.vitalSigns || record?.vital_signs;
+  if (vitalSigns && typeof vitalSigns !== "object") return vitalSigns;
+
+  if (vitalSigns && typeof vitalSigns === "object") {
+    const values = [
+      (vitalSigns.systolicBp || vitalSigns.systolic_bp) &&
+      (vitalSigns.diastolicBp || vitalSigns.diastolic_bp)
+        ? `BP: ${vitalSigns.systolicBp || vitalSigns.systolic_bp}/${vitalSigns.diastolicBp || vitalSigns.diastolic_bp} mmHg`
+        : "",
+      vitalSigns.temperature ? `Temp: ${vitalSigns.temperature} C` : "",
+      vitalSigns.pulseRate || vitalSigns.pulse_rate
+        ? `Pulse: ${vitalSigns.pulseRate || vitalSigns.pulse_rate} bpm`
+        : "",
+      vitalSigns.weight ? `Weight: ${vitalSigns.weight} kg` : "",
+      vitalSigns.height ? `Height: ${vitalSigns.height} cm` : "",
+    ].filter(Boolean);
+
+    if (values.length) return values.join(" | ");
+  }
 
   const values = [
     record?.systolicBp && record?.diastolicBp
@@ -514,17 +644,4 @@ function getVitalSigns(record) {
   ].filter(Boolean);
 
   return values.join(", ");
-}
-
-function formatDate(value) {
-  if (!value) return "";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 }

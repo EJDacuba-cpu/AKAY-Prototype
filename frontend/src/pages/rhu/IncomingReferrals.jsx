@@ -14,7 +14,11 @@ import {
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar } from "../../components/common";
+import {
+  ListToolbar,
+  ModuleTableCard,
+  TablePagination,
+} from "../../components/common";
 import TableSkeleton from "../../components/common/loading/TableSkeleton";
 import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import {
@@ -68,6 +72,7 @@ const REFERRAL_STATUS_OPTIONS = [
 ];
 
 const DATE_OPTIONS = ["All Dates", "Today", "Yesterday", "Last 7 Days"];
+const ITEMS_PER_PAGE = 5;
 
 function ActionMenu({ referral }) {
   const [open, setOpen] = useState(false);
@@ -573,6 +578,7 @@ export default function IncomingReferrals() {
     date: "All Dates",
     referringBhc: "All Referring BHCs",
   });
+  const [currentPage, setCurrentPage] = useState(1);
 
   const {
     data: referralsData = [],
@@ -712,6 +718,22 @@ export default function IncomingReferrals() {
     return statusFiltered.slice().sort(compareReferralQueueOrder);
   }, [baseFiltered, filters.status]);
 
+  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+  const paginatedReferrals = filtered.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE,
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters]);
+
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   const toolbarFilters = [
     {
       key: "status",
@@ -785,43 +807,35 @@ export default function IncomingReferrals() {
           label="Loading incoming referrals..."
         />
       ) : (
-      <div className="flex items-start gap-6">
-        <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-            <div className="flex items-center gap-3">
-              <div>
-                <h2 className="text-[13px] font-bold text-slate-900">
-                  Referral Queue
-                </h2>
-                <p className="mt-0.5 text-[11px] text-slate-500">
-                  Process patient arrival, monitoring, and return slips
-                </p>
-              </div>
-            </div>
-
-            <span className="rounded-md bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
-              {filtered.length} records
-            </span>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1360px] text-left">
+        <ModuleTableCard
+          title="Referral Tracking"
+          count={filtered.length}
+          subtitle="BHC-RHU referral records and tracking status."
+          minWidth="min-w-[1360px]"
+          footer={
+            <TablePagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
+          }
+        >
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                  <th className="px-6 py-3">Queue No.</th>
-                  <th className="px-6 py-3">Tracking ID</th>
-                  <th className="px-4 py-3">Date / Time Referred</th>
-                  <th className="px-4 py-3">Patient</th>
-                  <th className="px-4 py-3">Name of Referring HCI</th>
-                  <th className="px-4 py-3">{categoryColumnLabel}</th>
-                  <th className="px-4 py-3">Urgency</th>
-                  <th className="px-4 py-3">Chief Complaint</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-6 py-3 text-right">Actions</th>
+                <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                  <th className="whitespace-nowrap px-4 py-3">Queue No.</th>
+                  <th className="whitespace-nowrap px-4 py-3">Tracking ID</th>
+                  <th className="whitespace-nowrap px-4 py-3">Date / Time Referred</th>
+                  <th className="whitespace-nowrap px-4 py-3">Patient</th>
+                  <th className="whitespace-nowrap px-4 py-3">Name of Referring HCI</th>
+                  <th className="whitespace-nowrap px-4 py-3">{categoryColumnLabel}</th>
+                  <th className="whitespace-nowrap px-4 py-3">Urgency</th>
+                  <th className="whitespace-nowrap px-4 py-3">Chief Complaint</th>
+                  <th className="whitespace-nowrap px-4 py-3">Status</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
 
-              <tbody className="divide-y divide-slate-50">
+              <tbody className="divide-y divide-[#F8FAFC]">
                 {filtered.length === 0 ? (
                   <tr>
                     <td colSpan={10} className="px-6 py-24 text-center">
@@ -849,7 +863,7 @@ export default function IncomingReferrals() {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((referral, index) => {
+                  paginatedReferrals.map((referral, index) => {
                     const animated = animatedIds.has(referral.trackingId);
                     const isTerminal = referral.status === "Completed";
                     const patientName = getReferralPatientName(referral);
@@ -868,28 +882,28 @@ export default function IncomingReferrals() {
                         onClick={() =>
                           navigate(`/rhu/referrals/${referral.trackingId}`)
                         }
-                        className={`group cursor-pointer transition-colors hover:bg-slate-50/50 ${
+                        className={`group cursor-pointer transition-colors duration-150 hover:bg-[#FAFBFD] ${
                           isTerminal ? "bg-slate-50/30" : ""
                         }`}
                       >
-                        <td className="whitespace-nowrap px-6 py-4">
+                        <td className="whitespace-nowrap px-4 py-3.5">
                           <span className="text-[12px] font-bold text-slate-500">
-                            #{index + 1}
+                            #{(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
                           </span>
                         </td>
 
-                        <td className="whitespace-nowrap px-6 py-4">
-                          <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-[11px] font-semibold text-[#0F172A]">
+                        <td className="whitespace-nowrap px-4 py-3.5">
+                          <span className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-1.5 font-mono text-[11px] font-semibold text-[#B91C1C] transition-colors duration-200 group-hover:border-[#FECACA] group-hover:bg-[#FEF2F2]">
                             {referral.trackingId}
                           </span>
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-4 text-[12px] text-slate-600">
+                        <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#6B7280]">
                           {formatReferralSubmittedAt(referral)}
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-4">
-                          <p className="text-[12.5px] font-semibold text-slate-800">
+                        <td className="whitespace-nowrap px-4 py-3.5">
+                          <p className="text-[13px] font-semibold text-[#111827]">
                             {patientName}
                           </p>
                           <p className="mt-0.5 text-[10.5px] text-slate-400">
@@ -897,34 +911,34 @@ export default function IncomingReferrals() {
                           </p>
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-4 text-[12px] text-slate-600">
+                        <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#6B7280]">
                           {getReferringHci(referral)}
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-4">
+                        <td className="whitespace-nowrap px-4 py-3.5">
                           <CategoryBadge
                             category={getReferralCategory(referral)}
                           />
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-4">
+                        <td className="whitespace-nowrap px-4 py-3.5">
                           <UrgencyBadge
                             urgency={getReferralUrgency(referral)}
                           />
                         </td>
 
-                        <td className="max-w-[180px] truncate px-4 py-4 text-[12px] text-slate-600">
+                        <td className="max-w-[180px] truncate px-4 py-3.5 text-[13px] text-[#6B7280]">
                           {chiefComplaint}
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-4">
+                        <td className="whitespace-nowrap px-4 py-3.5">
                           <StatusBadge
                             status={referral.status}
                             animate={animated}
                           />
                         </td>
 
-                        <td className="whitespace-nowrap px-6 py-4 text-right">
+                        <td className="whitespace-nowrap px-4 py-3.5 text-right">
                           <div className="flex items-center justify-end">
                             <ActionMenu referral={referral} />
                           </div>
@@ -934,10 +948,7 @@ export default function IncomingReferrals() {
                   })
                 )}
               </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+        </ModuleTableCard>
       )}
     </DashboardLayout>
   );

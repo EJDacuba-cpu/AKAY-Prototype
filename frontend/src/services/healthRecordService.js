@@ -4,6 +4,10 @@ import { normalizePatient } from "./patientService";
 export const BHC_RECORDS_KEY = "api:bhc_health_records";
 export const RHU_RECORDS_KEY = "api:rhu_health_records";
 
+function firstPresent(values = []) {
+  return values.find((value) => value !== undefined && value !== null && value !== "") || "";
+}
+
 function normalizeRecord(record = {}) {
   const vitalSigns = record.vital_signs || record.vitalSigns || {};
   const patient = record.patient ? normalizePatient(record.patient) : null;
@@ -34,8 +38,43 @@ function normalizeRecord(record = {}) {
     chiefComplaint: record.chief_complaint || record.chiefComplaint || "",
     diagnosis: record.diagnosis || "",
     treatmentNotes: record.treatment_notes || record.treatmentNotes || "",
+    medication: record.treatment_notes || record.treatmentNotes || record.medication || "",
+    initialActionsTaken:
+      record.initialActionsTaken ||
+      record.initial_actions_taken ||
+      record.treatment_notes ||
+      record.treatmentNotes ||
+      record.medication ||
+      "",
+    summaryOfPresentIllness: firstPresent([
+      record.summaryOfPresentIllness,
+      record.summary_of_present_illness,
+      record.physicalExamination,
+      record.physical_examination,
+      record.medical_history,
+      record.medicalHistory,
+      record.notes,
+    ]),
+    physicalExamination:
+      record.physicalExamination || record.physical_examination || "",
     consultationNotes: record.notes || record.consultationNotes || "",
     medicalHistory: record.medical_history || record.medicalHistory || "",
+    attendingStaff:
+      record.attendingStaff ||
+      record.attending_staff ||
+      record.nameOfPractitioner ||
+      record.name_of_practitioner ||
+      record.recordedBy ||
+      record.recorded_by ||
+      "",
+    recordedBy:
+      record.recordedBy ||
+      record.recorded_by ||
+      record.attendingStaff ||
+      record.attending_staff ||
+      "",
+    vitalSigns: record.vitalSigns || record.vital_signs || "",
+    vital_signs: record.vital_signs || record.vitalSigns || null,
     maternalData,
     maternal_data: maternalData,
     lmp: maternalData.lmp || record.lmp || "",
@@ -71,18 +110,37 @@ function normalizeRecord(record = {}) {
     status:
       record.status ||
       monitoringData.followUpStatus ||
+      monitoringData.follow_up_status ||
       monitoringData.status ||
       record.followUpStatus ||
+      record.follow_up_status ||
       "Routine Monitoring",
     followUpStatus:
       record.followUpStatus ||
+      record.follow_up_status ||
       monitoringData.followUpStatus ||
+      monitoringData.follow_up_status ||
       monitoringData.status ||
       record.status ||
       "Routine Monitoring",
-    followUpDate: monitoringData.followUpDate || record.followUpDate || "",
-    monitoringNotes: monitoringData.monitoringNotes || record.monitoringNotes || "",
-    patientCondition: monitoringData.patientCondition || record.patientCondition || "",
+    followUpDate:
+      monitoringData.followUpDate ||
+      monitoringData.follow_up_date ||
+      record.followUpDate ||
+      record.follow_up_date ||
+      "",
+    monitoringNotes:
+      monitoringData.monitoringNotes ||
+      monitoringData.monitoring_notes ||
+      record.monitoringNotes ||
+      record.monitoring_notes ||
+      "",
+    patientCondition:
+      monitoringData.patientCondition ||
+      monitoringData.patient_condition ||
+      record.patientCondition ||
+      record.patient_condition ||
+      "",
     linkedTrackingId: monitoringData.linkedTrackingId || record.linkedTrackingId || "",
     referralTrackingId: monitoringData.referralTrackingId || record.referralTrackingId || "",
     previousRecordId: monitoringData.previousRecordId || record.previousRecordId || "",
@@ -155,9 +213,22 @@ function toPayload(record = {}, { partial = false } = {}) {
     needs_referral: needsReferral,
     chief_complaint: record.chiefComplaint || null,
     diagnosis: record.diagnosis || null,
-    treatment_notes: record.treatmentNotes || record.medication || null,
-    medical_history: record.medicalHistory || null,
-    notes: record.consultationNotes || record.monitoringNotes || null,
+    treatment_notes:
+      record.treatmentNotes ||
+      record.medication ||
+      record.initialActionsTaken ||
+      record.initialActionTaken ||
+      null,
+    medical_history:
+      record.medicalHistory ||
+      record.summaryOfPresentIllness ||
+      record.physicalExamination ||
+      null,
+    notes:
+      record.consultationNotes ||
+      record.summaryOfPresentIllness ||
+      record.monitoringNotes ||
+      null,
   };
 
   if (!partial) return payload;
@@ -210,11 +281,32 @@ function toPayload(record = {}, { partial = false } = {}) {
   }
   if (!hasAny(record, ["chiefComplaint"])) delete payload.chief_complaint;
   if (!hasAny(record, ["diagnosis"])) delete payload.diagnosis;
-  if (!hasAny(record, ["treatmentNotes", "medication"])) {
+  if (
+    !hasAny(record, [
+      "treatmentNotes",
+      "medication",
+      "initialActionsTaken",
+      "initialActionTaken",
+    ])
+  ) {
     delete payload.treatment_notes;
   }
-  if (!hasAny(record, ["medicalHistory"])) delete payload.medical_history;
-  if (!hasAny(record, ["consultationNotes", "monitoringNotes"])) {
+  if (
+    !hasAny(record, [
+      "medicalHistory",
+      "summaryOfPresentIllness",
+      "physicalExamination",
+    ])
+  ) {
+    delete payload.medical_history;
+  }
+  if (
+    !hasAny(record, [
+      "consultationNotes",
+      "summaryOfPresentIllness",
+      "monitoringNotes",
+    ])
+  ) {
     delete payload.notes;
   }
 

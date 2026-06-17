@@ -3,11 +3,9 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  CalendarDays,
   ClipboardList,
   FilePlus2,
   Pencil,
-  User,
   X,
   Check,
   HeartPulse,
@@ -34,13 +32,13 @@ import {
   FormSelect,
   FormTextarea,
   SideCard,
-  StatusBadge,
   SuccessModal
 } from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 
 import {
   formatDisplayValue,
+  formatLongDate,
   formatPatientName,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
@@ -148,16 +146,20 @@ export default function HealthRecordDetails() {
 
   function initializeForm(data) {
     setForm({
-      diagnosis: data.diagnosis || "",
-      chiefComplaint: data.chiefComplaint || "",
-      summaryOfPresentIllness: data.summaryOfPresentIllness || "",
-      consultationNotes: data.consultationNotes || "",
-      medication: data.medication || "",
-      vitalSigns: data.vitalSigns || "",
-      followUpStatus: data.followUpStatus || "Consultation",
-      attendingStaff: data.attendingStaff || "",
-      aog: data.aog || "",
-      expectedDeliveryDate: data.expectedDeliveryDate || "",
+      diagnosis: getRecordDiagnosis(data, ""),
+      chiefComplaint: getRecordChiefComplaint(data, ""),
+      summaryOfPresentIllness: getRecordSummary(data, ""),
+      consultationNotes: getRecordNotes(data, ""),
+      medication: getRecordInitialActions(data, ""),
+      vitalSigns: getVitalSigns(data, ""),
+      followUpStatus: getRecordFollowUpStatus(data, "Consultation"),
+      attendingStaff: getRecordPractitioner(data, ""),
+      aog: getRecordValue(data, ["aog", "ageOfGestation", "age_of_gestation"], ""),
+      expectedDeliveryDate: getRecordValue(
+        data,
+        ["expectedDeliveryDate", "expected_delivery_date", "edd"],
+        "",
+      ),
     });
   }
 
@@ -226,12 +228,24 @@ export default function HealthRecordDetails() {
     );
   }
 
-  const isFollowUp =
-    record.followUpStatus === "Follow-up After 2 Days" ||
-    record.followUpStatus === "Under Observation";
+  const status = normalizeHealthRecordStatus(
+    record.followUpStatus || record.status || "Consultation",
+  );
+  const canRecordFollowUpVisit = isFollowUpEligibleStatus(status);
+  const showPatientProfileSidebar = false;
   const isImmunizationRecord = isImmunizationClassification(record, patient);
   const immunizationGroups = getImmunizationGroups(record);
-  const patientName = formatPatientName(patient, "Unnamed Patient");
+  const patientId =
+    patient?.id ||
+    patient?._id ||
+    record.patientId ||
+    record.patient_id ||
+    record.patient?.id ||
+    record.patient?._id;
+  const patientName = formatPatientName(
+    patient || record.patient,
+    record.patientName || record.patient_name || "Unnamed Patient",
+  );
   const recordCategory = formatDisplayValue(
     record.category ||
       record.classification ||
@@ -242,6 +256,8 @@ export default function HealthRecordDetails() {
     "General",
   );
   const patientClassification = recordCategory;
+  const displayDate = formatLongDate(getRecordDateValue(record), "Not recorded");
+  const displayTime = getRecordTime(record);
 
   return (
     <>
@@ -267,13 +283,7 @@ export default function HealthRecordDetails() {
                 <h1 className="text-xl font-bold text-[#0F172A]">
                   {record.diagnosis || "Medical Consultation"}
                 </h1>
-                <StatusBadge status={record.followUpStatus || "Consultation"} />
-                {isFollowUp && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#B45309]">
-                    <CalendarDays size={12} />
-                    Requires Follow-up
-                  </span>
-                )}
+                <HealthRecordStatusBadge status={status} />
               </div>
 
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
@@ -281,16 +291,14 @@ export default function HealthRecordDetails() {
                   {recordId}
                 </span>
                 <span className="text-slate-300">•</span>
-                <span>
-                  {record.dateOfVisit} at {record.timeOfVisit}
-                </span>
-                {patient && (
+                <span>{displayDate}{displayTime ? ` at ${displayTime}` : ""}</span>
+                {patientId && (
                   <>
                     <span className="text-slate-300">•</span>
                     <span>
                       Patient:{" "}
                       <Link
-                        to={`/bhc/patients/${patient.id || patient._id}`}
+                        to={`/bhc/patients/${patientId}`}
                         className="font-semibold text-[#B91C1C] hover:text-[#7F1D1D] hover:underline"
                       >
                         {patientName}
@@ -333,13 +341,17 @@ export default function HealthRecordDetails() {
                     <Pencil size={14} />
                     Edit Record
                   </Link>
-                  <Link
-                    to={`/bhc/health-records/add?recordId=${record.id || record._id}&mode=follow-up`}
-                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
-                  >
-                    <FilePlus2 size={14} />
-                    Add Follow-up Record
-                  </Link>
+                  {canRecordFollowUpVisit && (
+                    <Link
+                      to={`/bhc/health-records/add?recordId=${record.id || record._id}&mode=follow-up`}
+                      title="This action creates a follow-up visit linked to the current health record."
+                      aria-label="Record a follow-up visit linked to this health record"
+                      className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100"
+                    >
+                      <FilePlus2 size={14} />
+                      Record Follow-up Visit
+                    </Link>
+                  )}
                   {linkedReferral?.trackingId ? (
                     <Link
                       to={`/bhc/referrals/${linkedReferral.trackingId}`}
@@ -369,9 +381,9 @@ export default function HealthRecordDetails() {
         </div>
 
         {/* ─── Main Content ─── */}
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6">
           {/* ═══ Clinical Record — Single Card ═══ */}
-          <div className="space-y-6 lg:col-span-2">
+          <div className="space-y-6">
             <SideCard title="Clinical Record" icon={<HeartPulse size={14} />}>
               {isEditing ? (
                 /* ── Edit Mode ── */
@@ -441,9 +453,9 @@ export default function HealthRecordDetails() {
                     />
                   </div>
 
-                  {patientClassification === "Maternal" && (
-                    <>
-                      <SectionDivider label="Maternal Parameters" />
+	                  {patientClassification === "Maternal" && (
+	                    <>
+	                      <SectionDivider label="Maternal Parameters" />
                       <div className="grid gap-5 pt-3 md:grid-cols-2">
                         <FormInput
                           label="Age of Gestation (AOG)"
@@ -484,28 +496,28 @@ export default function HealthRecordDetails() {
                     />
                     <PatientDetailItem
                       label="Initial Diagnosis"
-                      value={record.diagnosis || "—"}
+                      value={getRecordDiagnosis(record)}
                     />
                     <PatientDetailItem
                       label="Follow-up Status"
-                      value={record.followUpStatus || "Consultation"}
+                      value={getRecordFollowUpStatus(record)}
                     />
                     <PatientDetailItem
                       label="Attending Staff"
-                      value={record.attendingStaff || "—"}
+                      value={getRecordPractitioner(record)}
                     />
                   </div>
                   <div className="pt-2">
                     <PatientDetailItem
                       label="Chief Complaint"
-                      value={record.chiefComplaint || "—"}
+                      value={getRecordChiefComplaint(record)}
                     />
                   </div>
                   <div className="pt-2">
                     <NarrativeBox
                       label="Summary of Present Illness"
-                      value={record.summaryOfPresentIllness}
-                      emptyText="No summary of present illness documented."
+                      value={getRecordSummary(record, "")}
+                      emptyText="Not recorded"
                     />
                   </div>
 
@@ -513,7 +525,7 @@ export default function HealthRecordDetails() {
                   <div className="pt-3">
                     <PatientDetailItem
                       label="Initial Action Taken"
-                      value={record.medication || "No actions recorded"}
+                      value={getRecordInitialActions(record)}
                     />
                   </div>
 
@@ -521,7 +533,7 @@ export default function HealthRecordDetails() {
                   <div className="pt-3">
                     <NarrativeBox
                       label="Recorded Vitals"
-                      value={record.vitalSigns}
+                      value={getVitalSigns(record, "")}
                       emptyText="No vital signs recorded for this visit."
                     />
                   </div>
@@ -532,17 +544,49 @@ export default function HealthRecordDetails() {
                       <div className="grid grid-cols-2 gap-x-8 gap-y-1 pt-3">
                         <PatientDetailItem
                           label="Age of Gestation (AOG)"
-                          value={record.aog || "—"}
+                          value={getRecordValue(record, ["aog", "ageOfGestation", "age_of_gestation"])}
                         />
                         <PatientDetailItem
                           label="Expected Delivery Date (EDD)"
-                          value={record.expectedDeliveryDate || "—"}
+                          value={formatLongDate(getRecordValue(record, ["expectedDeliveryDate", "expected_delivery_date", "edd"], ""), "Not recorded")}
                         />
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
+	                      </div>
+	                    </>
+	                  )}
+                    <SectionDivider label="Monitoring & Follow-up" />
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-1 pt-3">
+                      <PatientDetailItem
+                        label="Follow-up Date"
+                        value={formatLongDate(
+                          getRecordValue(
+                            record,
+                            ["followUpDate", "follow_up_date"],
+                            "",
+                          ),
+                          "Not recorded",
+                        )}
+                      />
+                      <PatientDetailItem
+                        label="Patient Condition"
+                        value={getRecordValue(record, [
+                          "patientCondition",
+                          "patient_condition",
+                        ])}
+                      />
+                    </div>
+                    <div className="pt-2">
+                      <NarrativeBox
+                        label="Monitoring Notes"
+                        value={getRecordValue(
+                          record,
+                          ["monitoringNotes", "monitoring_notes"],
+                          "",
+                        )}
+                        emptyText="Not recorded"
+                      />
+                    </div>
+	                </div>
+	              )}
             </SideCard>
 
             {isImmunizationRecord && (
@@ -616,8 +660,9 @@ export default function HealthRecordDetails() {
           </div>
 
           {/* ═══ Sidebar ═══ */}
+          {showPatientProfileSidebar && (
           <aside className="space-y-6">
-            <SideCard title="Patient Profile" icon={<User size={14} />}>
+            <SideCard title="Patient Profile" icon={<HeartPulse size={14} />}>
               {patient ? (
                 <div>
                   <div className="space-y-1">
@@ -653,6 +698,7 @@ export default function HealthRecordDetails() {
               )}
             </SideCard>
           </aside>
+          )}
         </div>
       </DashboardLayout>
 
@@ -729,6 +775,222 @@ function getImmunizationGroups(record = {}) {
         .length,
     };
   });
+}
+
+function normalizeHealthRecordStatus(status) {
+  const value = String(status || "").trim();
+
+  if (!value || value === "Consultation") return "Routine Monitoring";
+  if (
+    [
+      "Follow-up",
+      "Follow Up",
+      "Follow-up Required",
+      "Follow-up After 2 Days",
+    ].includes(value)
+  ) {
+    return "Follow-up Required";
+  }
+  if (["Under Observation", "Observation"].includes(value)) {
+    return "Under Observation";
+  }
+  if (
+    ["Completed", "Complete", "Recovered", "Closed", "Discharged"].includes(
+      value,
+    )
+  ) {
+    return "Completed";
+  }
+  if (
+    ["For Monitoring", "Active", "Monitoring", "Routine Monitoring"].includes(
+      value,
+    )
+  ) {
+    return "Routine Monitoring";
+  }
+  if (["For Referral", "Needs Referral"].includes(value)) {
+    return "Needs Referral";
+  }
+  if (
+    ["Referred", "Pending", "Pending RHU Review", "Received"].includes(value)
+  ) {
+    return "Referred/Pending";
+  }
+
+  return value;
+}
+
+function isFollowUpEligibleStatus(status) {
+  return [
+    "Follow-up Required",
+    "For Monitoring",
+    "Under Observation",
+    "Routine Monitoring",
+  ].includes(normalizeHealthRecordStatus(status));
+}
+
+function HealthRecordStatusBadge({ status }) {
+  const normalizedStatus = normalizeHealthRecordStatus(status);
+  const styles = {
+    "Follow-up Required": "border-amber-200 bg-amber-50 text-amber-800",
+    "Routine Monitoring": "border-blue-200 bg-blue-50 text-blue-800",
+    "Under Observation": "border-amber-200 bg-amber-50 text-amber-800",
+    Completed: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    "Needs Referral": "border-orange-200 bg-orange-50 text-orange-800",
+    "Referred/Pending": "border-blue-200 bg-blue-50 text-blue-800",
+    "For Monitoring": "border-blue-200 bg-blue-50 text-blue-800",
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+        styles[normalizedStatus] ||
+        "border-slate-200 bg-slate-50 text-slate-700"
+      }`}
+    >
+      {normalizedStatus}
+    </span>
+  );
+}
+
+function getRecordValue(record = {}, keys = [], fallback = "Not recorded") {
+  for (const key of keys) {
+    const value = record?.[key];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+
+  return fallback;
+}
+
+function getNestedRecordValue(record = {}, directKeys = [], nestedKeys = []) {
+  const direct = getRecordValue(record, directKeys, "");
+  if (direct) return direct;
+
+  for (const nestedKey of nestedKeys) {
+    const nested = record?.[nestedKey];
+    if (!nested || typeof nested !== "object") continue;
+    const value = getRecordValue(nested, directKeys, "");
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function getRecordDateValue(record = {}) {
+  return getRecordValue(
+    record,
+    ["dateOfVisit", "date_of_visit", "dateRecorded", "date_recorded", "visitDate", "date", "createdAt", "created_at"],
+    "",
+  );
+}
+
+function getRecordTime(record = {}) {
+  const direct = getRecordValue(record, ["timeOfVisit", "time_of_visit", "time"], "");
+  if (direct) return direct;
+
+  const recorded = getRecordValue(record, ["dateRecorded", "date_recorded"], "");
+  const match = String(recorded).match(/\d{2}:\d{2}/);
+  return match ? match[0] : "";
+}
+
+function getRecordDiagnosis(record = {}, fallback = "Not recorded") {
+  return getRecordValue(record, ["diagnosis", "initialDiagnosis", "initial_diagnosis"], fallback);
+}
+
+function getRecordChiefComplaint(record = {}, fallback = "Not recorded") {
+  return getRecordValue(record, ["chiefComplaint", "chief_complaint", "concern"], fallback);
+}
+
+function getRecordSummary(record = {}, fallback = "Not recorded") {
+  return getRecordValue(
+    record,
+    [
+      "summaryOfPresentIllness",
+      "summary_of_present_illness",
+      "physicalExamination",
+      "physical_examination",
+      "medicalHistory",
+      "medical_history",
+      "notes",
+    ],
+    fallback,
+  );
+}
+
+function getRecordNotes(record = {}, fallback = "Not recorded") {
+  return getRecordValue(record, ["consultationNotes", "consultation_notes", "notes"], fallback);
+}
+
+function getRecordInitialActions(record = {}, fallback = "Not recorded") {
+  return getRecordValue(
+    record,
+    [
+      "initialActionsTaken",
+      "initialActionTaken",
+      "initial_actions_taken",
+      "initial_action_taken",
+      "medication",
+      "treatmentNotes",
+      "treatment_notes",
+      "treatment",
+    ],
+    fallback,
+  );
+}
+
+function getRecordPractitioner(record = {}, fallback = "Not recorded") {
+  return getRecordValue(
+    record,
+    [
+      "attendingStaff",
+      "attending_staff",
+      "nameOfPractitioner",
+      "name_of_practitioner",
+      "recordedBy",
+      "recorded_by",
+    ],
+    fallback,
+  );
+}
+
+function getRecordFollowUpStatus(record = {}, fallback = "Routine Monitoring") {
+  const value = getNestedRecordValue(
+    record,
+    ["followUpStatus", "follow_up_status", "status"],
+    ["monitoringData", "monitoring_data"],
+  );
+  return value || fallback;
+}
+
+function getVitalSigns(record = {}, fallback = "") {
+  const value = getRecordValue(record, ["vitalSigns", "vital_signs"], "");
+  if (!value) {
+    const values = [
+      record?.systolicBp && record?.diastolicBp
+        ? `BP: ${record.systolicBp}/${record.diastolicBp} mmHg`
+        : "",
+      record?.temp || record?.temperature ? `Temp: ${record.temp || record.temperature} C` : "",
+      record?.pulse || record?.pulseRate ? `Pulse: ${record.pulse || record.pulseRate} bpm` : "",
+      record?.weight ? `Weight: ${record.weight} kg` : "",
+      record?.height ? `Height: ${record.height} cm` : "",
+    ].filter(Boolean);
+
+    return values.join(" | ") || fallback;
+  }
+
+  if (typeof value !== "object") return String(value);
+
+  const values = [
+    (value.systolicBp || value.systolic_bp) && (value.diastolicBp || value.diastolic_bp)
+      ? `BP: ${value.systolicBp || value.systolic_bp}/${value.diastolicBp || value.diastolic_bp} mmHg`
+      : "",
+    value.temperature ? `Temp: ${value.temperature} C` : "",
+    value.pulseRate || value.pulse_rate ? `Pulse: ${value.pulseRate || value.pulse_rate} bpm` : "",
+    value.weight ? `Weight: ${value.weight} kg` : "",
+    value.height ? `Height: ${value.height} cm` : "",
+  ].filter(Boolean);
+
+  return values.join(" | ") || fallback;
 }
 
 function VaccineStatusBadge({ administered }) {

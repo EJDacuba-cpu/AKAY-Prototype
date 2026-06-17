@@ -1,4 +1,5 @@
 export { default as ActionMenu } from "./tables/ActionMenu";
+export { default as ModuleTableCard } from "./tables/ModuleTableCard";
 export { default as ConfirmationModal } from "./modals/ConfirmationModal";
 export { default as FormGroup } from "./atoms/FormGroup";
 export { default as FormInput } from "./forms/FormInput";

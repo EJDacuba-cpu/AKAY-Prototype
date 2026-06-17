@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -24,6 +24,10 @@ import {
   getPatientsByRole,
 } from "../../services/patients";
 import { getReferrals } from "../../services/referrals";
+import {
+  formatDisplayValue,
+  formatFacilityName,
+} from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 
 const keyframes = `
@@ -43,64 +47,102 @@ const TABS = [
 export default function RHUPatientDetails() {
   const { patientId } = useParams();
   const [activeTab, setActiveTab] = useState("patient");
+  const [showAllRecords, setShowAllRecords] = useState(false);
+  const [showAllReferrals, setShowAllReferrals] = useState(false);
+
+  useEffect(() => {
+    setShowAllRecords(false);
+    setShowAllReferrals(false);
+  }, [patientId]);
 
   const {
-    data: workspace,
-    isLoading,
-    isFetching,
+    data: patientData,
+    isLoading: patientLoading,
+    isFetching: patientFetching,
   } = useQuery({
     queryKey: queryKeys.patientDetails("rhu", patientId),
     queryFn: async () => {
-      const [
-        patientDetails,
-        patientDetailsList,
-        patientList,
-        rhuRecords,
-        referralList,
-      ] = await Promise.all([
-        getPatientByIdForRole(patientId, "rhu"),
-        getPatientDetailsListByRole("rhu"),
-        getPatientsByRole("rhu"),
-        getRhuHealthRecords(),
-        getReferrals(),
-      ]);
+      const [patientDetailsResult, detailsListResult, patientListResult] =
+        await Promise.allSettled([
+          getPatientByIdForRole(patientId, "rhu"),
+          getPatientDetailsListByRole("rhu"),
+          getPatientsByRole("rhu"),
+        ]);
 
+      const patientDetails =
+        patientDetailsResult.status === "fulfilled"
+          ? patientDetailsResult.value
+          : null;
+      const patientDetailsList =
+        detailsListResult.status === "fulfilled" ? detailsListResult.value : [];
+      const patientList =
+        patientListResult.status === "fulfilled" ? patientListResult.value : [];
       const allPatients = [
         ...(Array.isArray(patientDetailsList) ? patientDetailsList : []),
         ...(Array.isArray(patientList) ? patientList : []),
       ];
 
-      const basePatient =
+      return (
         patientDetails ||
         allPatients.find((item) => sameId(item?.id, patientId)) ||
-        derivePatientFromSources(patientId, rhuRecords, referralList);
-
-      const patientName = getPatientName(basePatient);
-      const patientRecords = ensureArray(rhuRecords)
-        .filter((record) =>
-          recordBelongsToPatient(record, patientId, patientName),
-        )
-        .sort(sortByDateDesc);
-
-      const patientReferrals = ensureArray(referralList)
-        .filter((referral) =>
-          referralBelongsToPatient(referral, patientId, patientName),
-        )
-        .sort(sortByDateDesc);
-
-      return {
-        patient: basePatient,
-        records: patientRecords,
-        referrals: patientReferrals,
-      };
+        null
+      );
     },
     enabled: Boolean(patientId),
   });
 
-  const patient = workspace?.patient || null;
-  const records = useMemo(() => workspace?.records || [], [workspace]);
-  const referrals = useMemo(() => workspace?.referrals || [], [workspace]);
-  const loading = isLoading && !workspace;
+  const {
+    data: recordsData = [],
+    isLoading: recordsLoading,
+    isFetching: recordsFetching,
+    isError: recordsError,
+  } = useQuery({
+    queryKey: [...queryKeys.healthRecords("rhu"), "patient", patientId],
+    queryFn: getRhuHealthRecords,
+    enabled: Boolean(patientId),
+  });
+
+  const {
+    data: referralsData = [],
+    isLoading: referralsLoading,
+    isFetching: referralsFetching,
+    isError: referralsError,
+  } = useQuery({
+    queryKey: [...queryKeys.referrals("rhu"), "patient", patientId],
+    queryFn: getReferrals,
+    enabled: Boolean(patientId),
+  });
+
+  const rawRecords = useMemo(
+    () => (Array.isArray(recordsData) ? recordsData : []),
+    [recordsData],
+  );
+  const rawReferrals = useMemo(
+    () => (Array.isArray(referralsData) ? referralsData : []),
+    [referralsData],
+  );
+  const patient =
+    patientData || derivePatientFromSources(patientId, rawRecords, rawReferrals);
+  const patientNameForHistory = getPatientName(patient);
+  const records = useMemo(
+    () =>
+      ensureArray(rawRecords)
+        .filter((record) =>
+          recordBelongsToPatient(record, patientId, patientNameForHistory),
+        )
+        .sort(sortByDateDesc),
+    [rawRecords, patientId, patientNameForHistory],
+  );
+  const referrals = useMemo(
+    () =>
+      ensureArray(rawReferrals)
+        .filter((referral) =>
+          referralBelongsToPatient(referral, patientId, patientNameForHistory),
+        )
+        .sort(sortByDateDesc),
+    [rawReferrals, patientId, patientNameForHistory],
+  );
+  const loading = patientLoading && !patient;
 
   const latestRecord = useMemo(() => records[0] || null, [records]);
   const latestSummary = latestRecord
@@ -143,7 +185,7 @@ export default function RHUPatientDetails() {
     <DashboardLayout role="rhu" title="Patient Details">
       <style>{keyframes}</style>
       <RefreshingIndicator
-        show={isFetching && !loading}
+        show={patientFetching && !loading}
         label="Refreshing details..."
         className="mb-3"
       />
@@ -220,10 +262,26 @@ export default function RHUPatientDetails() {
         <PatientInformationTab patient={patient} />
       )}
 
-      {activeTab === "records" && <RhuRecordsTab records={records} />}
+      {activeTab === "records" && (
+        <RhuRecordsTab
+          records={records}
+          isLoading={recordsLoading}
+          isFetching={recordsFetching}
+          isError={recordsError}
+          showAll={showAllRecords}
+          onToggleShowAll={() => setShowAllRecords((value) => !value)}
+        />
+      )}
 
       {activeTab === "referrals" && (
-        <ReferralHistoryTab referrals={referrals} />
+        <ReferralHistoryTab
+          referrals={referrals}
+          isLoading={referralsLoading}
+          isFetching={referralsFetching}
+          isError={referralsError}
+          showAll={showAllReferrals}
+          onToggleShowAll={() => setShowAllReferrals((value) => !value)}
+        />
       )}
     </DashboardLayout>
   );
@@ -299,7 +357,16 @@ function PatientInformationTab({ patient }) {
   );
 }
 
-function RhuRecordsTab({ records }) {
+function RhuRecordsTab({
+  records,
+  isLoading,
+  isFetching,
+  isError,
+  showAll,
+  onToggleShowAll,
+}) {
+  const visibleRecords = showAll ? records : records.slice(0, 5);
+
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
@@ -309,7 +376,17 @@ function RhuRecordsTab({ records }) {
         </p>
       </div>
 
-      {records.length === 0 ? (
+      <RefreshingIndicator
+        show={isFetching && !isLoading && records.length > 0}
+        label="Refreshing health records..."
+        className="mx-6 mt-4"
+      />
+
+      {isLoading && records.length === 0 ? (
+        <TabLoadingState label="Loading health records..." />
+      ) : isError && records.length === 0 ? (
+        <TabErrorState message="Unable to load health records right now." />
+      ) : records.length === 0 ? (
         <div className="p-12 text-center text-sm text-slate-400">
           <FileText className="mx-auto mb-3 text-slate-300" size={32} />
           No RHU records found for this patient.
@@ -320,14 +397,14 @@ function RhuRecordsTab({ records }) {
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <th className="px-6 py-3">Date / Time of Visit</th>
-                <th className="px-6 py-3">Chief Complaint or Concern</th>
-                <th className="px-6 py-3">Status / Type</th>
-                <th className="px-6 py-3">Recorded By</th>
+                <th className="px-6 py-3">Record Type</th>
+                <th className="px-6 py-3">Chief Complaint</th>
+                <th className="px-6 py-3">Status</th>
                 <th className="px-6 py-3 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
-              {records.map((record) => {
+              {visibleRecords.map((record) => {
                 const recordId = getRecordId(record);
                 return (
                   <tr
@@ -341,22 +418,17 @@ function RhuRecordsTab({ records }) {
                       </div>
                     </td>
                     <td className="px-6 py-4 font-semibold text-[#0F172A]">
+                      <span className="text-xs font-semibold text-[#0F172A]">
+                        {getRecordType(record)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-[#0F172A]">
                       {getRecordConcern(record)}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4">
                       <StatusBadge
-                        status={
-                          record.status ||
-                          record.followUpStatus ||
-                          record.type ||
-                          "Active"
-                        }
+                        status={getRecordStatus(record)}
                       />
-                    </td>
-                    <td className="px-6 py-4 text-slate-500">
-                      {record.recordedBy ||
-                        record.attendingStaff ||
-                        "RHU Staff"}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-right">
                       <Link
@@ -371,13 +443,33 @@ function RhuRecordsTab({ records }) {
               })}
             </tbody>
           </table>
+          {records.length > 5 && (
+            <div className="border-t border-slate-100 px-6 py-3 text-center">
+              <button
+                type="button"
+                onClick={onToggleShowAll}
+                className="text-xs font-semibold text-[#B91C1C] transition hover:text-[#7F1D1D]"
+              >
+                {showAll ? "Show less" : `Show all ${records.length} records`}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function ReferralHistoryTab({ referrals }) {
+function ReferralHistoryTab({
+  referrals,
+  isLoading,
+  isFetching,
+  isError,
+  showAll,
+  onToggleShowAll,
+}) {
+  const visibleReferrals = showAll ? referrals : referrals.slice(0, 5);
+
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
@@ -387,10 +479,20 @@ function ReferralHistoryTab({ referrals }) {
         </p>
       </div>
 
-      {referrals.length === 0 ? (
+      <RefreshingIndicator
+        show={isFetching && !isLoading && referrals.length > 0}
+        label="Refreshing referrals..."
+        className="mx-6 mt-4"
+      />
+
+      {isLoading && referrals.length === 0 ? (
+        <TabLoadingState label="Loading referrals..." />
+      ) : isError && referrals.length === 0 ? (
+        <TabErrorState message="Unable to load referral history right now." />
+      ) : referrals.length === 0 ? (
         <div className="p-12 text-center text-sm text-slate-400">
           <ClipboardList className="mx-auto mb-3 text-slate-300" size={32} />
-          No referral history found.
+          No referral history found for this patient.
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -398,15 +500,15 @@ function ReferralHistoryTab({ referrals }) {
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <th className="px-6 py-3">Tracking ID</th>
-                <th className="px-6 py-3">Name of Referring HCI</th>
                 <th className="px-6 py-3">Date of Referral</th>
-                <th className="px-6 py-3">Referral Reason</th>
+                <th className="px-6 py-3">Destination Facility</th>
                 <th className="px-6 py-3">Status</th>
+                <th className="px-6 py-3">RHU Return Slip</th>
                 <th className="px-6 py-3 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
-              {referrals.map((referral) => (
+              {visibleReferrals.map((referral) => (
                 <tr
                   key={referral.trackingId || referral.id}
                   className="transition-colors hover:bg-slate-50/80"
@@ -416,22 +518,17 @@ function ReferralHistoryTab({ referrals }) {
                       {referral.trackingId || referral.id}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-slate-500">
-                    {referral.referringFacility ||
-                      referral.bhc ||
-                      "Referring BHC"}
-                  </td>
                   <td className="whitespace-nowrap px-6 py-4 text-slate-500">
                     {getReferralDate(referral)}
                   </td>
-                  <td className="px-6 py-4 font-semibold text-[#0F172A]">
-                    {referral.referralReason ||
-                      referral.chiefComplaint ||
-                      referral.concern ||
-                      "Not specified"}
+                  <td className="px-6 py-4 text-slate-500">
+                    {getReferralDestination(referral)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
                     <WorkflowBadge status={referral.status || "Pending"} />
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-4">
+                    <ReturnSlipIndicator referral={referral} />
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-right">
                     <Link
@@ -445,6 +542,19 @@ function ReferralHistoryTab({ referrals }) {
               ))}
             </tbody>
           </table>
+          {referrals.length > 5 && (
+            <div className="border-t border-slate-100 px-6 py-3 text-center">
+              <button
+                type="button"
+                onClick={onToggleShowAll}
+                className="text-xs font-semibold text-[#B91C1C] transition hover:text-[#7F1D1D]"
+              >
+                {showAll
+                  ? "Show less"
+                  : `Show all ${referrals.length} referrals`}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -460,6 +570,40 @@ function InfoChip({ icon, label }) {
   );
 }
 
+function TabLoadingState({ label }) {
+  return (
+    <div className="p-12 text-center text-sm text-slate-400">
+      <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-[#B91C1C]" />
+      {label}
+    </div>
+  );
+}
+
+function TabErrorState({ message }) {
+  return (
+    <div className="p-12 text-center text-sm text-slate-400">
+      <FileText className="mx-auto mb-3 text-slate-300" size={32} />
+      {message}
+    </div>
+  );
+}
+
+function ReturnSlipIndicator({ referral }) {
+  const hasReturnSlip = !!(referral.feedback || referral.returnSlip);
+
+  return (
+    <span
+      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+        hasReturnSlip
+          ? "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"
+          : "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]"
+      }`}
+    >
+      {hasReturnSlip ? "Return Slip Available" : "Awaiting RHU Feedback"}
+    </span>
+  );
+}
+
 function WorkflowBadge({ status }) {
   const map = {
     Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
@@ -467,6 +611,7 @@ function WorkflowBadge({ status }) {
     "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
     Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
     "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
+    "Not recorded": "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
   };
 
   return (
@@ -615,10 +760,33 @@ function derivePatientFromSources(patientId, records, referrals) {
 function getRecordConcern(record) {
   return (
     record?.chiefComplaint ||
+    record?.chief_complaint ||
     record?.concern ||
     record?.diagnosis ||
     record?.summaryOfPresentIllness ||
-    "No concern recorded"
+    "Not recorded"
+  );
+}
+
+function getRecordType(record) {
+  return formatDisplayValue(
+    record?.category ||
+      record?.classification ||
+      record?.recordType ||
+      record?.record_type ||
+      record?.patientClassification,
+    "General Consultation",
+  );
+}
+
+function getRecordStatus(record) {
+  return formatDisplayValue(
+    record?.followUpStatus ||
+      record?.follow_up_status ||
+      record?.status ||
+      record?.recordStatus ||
+      record?.type,
+    "Not recorded",
   );
 }
 
@@ -626,16 +794,20 @@ function getRecordDate(record) {
   return (
     formatDate(
       record?.dateOfVisit ||
+        record?.date_of_visit ||
+        record?.dateRecorded ||
+        record?.date_recorded ||
         record?.visitDate ||
         record?.date ||
         record?.createdAt ||
+        record?.created_at ||
         record?.dateCreated,
     ) || "No date recorded"
   );
 }
 
 function getRecordTime(record) {
-  return record?.timeOfVisit || record?.time || "No time recorded";
+  return record?.timeOfVisit || record?.time_of_visit || record?.time || "No time recorded";
 }
 
 function getReferralDate(referral) {
@@ -643,11 +815,25 @@ function getReferralDate(referral) {
     formatDate(
       referral?.preferredVisitDate ||
         referral?.dateOfReferral ||
+        referral?.date_of_referral ||
         referral?.referralDate ||
+        referral?.referral_datetime ||
         referral?.dateSubmitted ||
         referral?.date ||
-        referral?.createdAt,
+        referral?.createdAt ||
+        referral?.created_at,
     ) || "No date recorded"
+  );
+}
+
+function getReferralDestination(referral) {
+  return formatFacilityName(
+    referral?.receivingFacility ||
+      referral?.destinationFacility ||
+      referral?.destination_facility ||
+      referral?.rural_health_unit ||
+      referral?.ruralHealthUnit,
+    "Unassigned RHU",
   );
 }
 

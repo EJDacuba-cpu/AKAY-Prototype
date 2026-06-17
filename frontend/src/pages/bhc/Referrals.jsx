@@ -1,8 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardList } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ActionMenu, ListToolbar } from "../../components/common";
+import {
+  ActionMenu,
+  ListToolbar,
+  ModuleTableCard,
+  TablePagination,
+} from "../../components/common";
 import TableSkeleton from "../../components/common/loading/TableSkeleton";
 import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import { getReferrals } from "../../services/referrals";
@@ -20,6 +25,8 @@ const DEFAULT_FILTERS = {
   urgency: "All Urgency",
   dateSubmitted: "",
 };
+
+const ITEMS_PER_PAGE = 5;
 
 function getReferralClassification(referral) {
   return formatDisplayValue(
@@ -101,6 +108,7 @@ function getSubmittedDate(referral) {
 
 export default function Referrals() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const {
     data: referralsData = [],
@@ -159,6 +167,22 @@ export default function Referrals() {
       );
     });
   }, [referrals, filters]);
+
+  const totalPages = Math.ceil(filteredReferrals.length / ITEMS_PER_PAGE);
+  const paginatedReferrals = filteredReferrals.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE,
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters]);
+
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const activeFilters = [
     filters.search && { key: "search", label: `Search: ${filters.search}` },
@@ -259,54 +283,52 @@ export default function Referrals() {
       {loading ? (
         <TableSkeleton columns={8} rows={8} label="Loading referrals..." />
       ) : (
-      <div className="min-w-0 overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-[#F3F4F6] px-5 py-3">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900">
-              Referral Tracking
-            </h2>
-            <p className="text-[11px] text-slate-400">
-              {filteredReferrals.length} referral record
-              {filteredReferrals.length === 1 ? "" : "s"} shown
-            </p>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left">
+        <ModuleTableCard
+          title="Referral Tracking"
+          count={filteredReferrals.length}
+          subtitle="BHC-RHU referral records and tracking status."
+          minWidth="min-w-[1100px]"
+          footer={
+            <TablePagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
+          }
+        >
             <thead>
-              <tr className="border-b border-[#F3F4F6] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                <th className="px-6 py-3">Tracking ID</th>
-                <th className="px-4 py-3">Patient</th>
-                <th className="px-4 py-3">Referred To</th>
-                <th className="px-4 py-3">Classification</th>
-                <th className="px-4 py-3">Urgency</th>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+              <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                <th className="whitespace-nowrap px-4 py-3">Tracking ID</th>
+                <th className="whitespace-nowrap px-4 py-3">Patient</th>
+                <th className="whitespace-nowrap px-4 py-3">Referred To</th>
+                <th className="whitespace-nowrap px-4 py-3">Classification</th>
+                <th className="whitespace-nowrap px-4 py-3">Urgency</th>
+                <th className="whitespace-nowrap px-4 py-3">Date</th>
+                <th className="whitespace-nowrap px-4 py-3">Status</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-[#F8FAFC]">
               {filteredReferrals.length > 0 ? (
-                filteredReferrals.map((referral) => {
+                paginatedReferrals.map((referral) => {
                   const patientName = getReferralPatientName(referral);
                   const destinationFacility = getReferralDestination(referral);
 
                   return (
                   <tr
                     key={referral.trackingId || referral.id}
-                    className="group transition-colors duration-150 hover:bg-slate-50/80"
+                    className="group transition-colors duration-150 hover:bg-[#FAFBFD]"
                   >
-                    <td className="px-6 py-4">
-                      <span className="font-mono text-xs font-semibold text-[#0F172A]">
+                    <td className="whitespace-nowrap px-4 py-3.5">
+                      <span className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-1.5 font-mono text-[11px] font-semibold text-[#B91C1C] transition-colors duration-200 group-hover:border-[#FECACA] group-hover:bg-[#FEF2F2]">
                         {referral.trackingId}
                       </span>
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-4 py-3.5">
                       <div className="min-w-0">
-                        <p className="truncate text-[12.5px] font-semibold text-slate-800">
+                        <p className="truncate text-[13px] font-semibold text-[#111827]">
                           {patientName}
                         </p>
                         <p className="text-[11px] text-slate-400">
@@ -315,29 +337,29 @@ export default function Referrals() {
                       </div>
                     </td>
 
-                    <td className="px-4 py-4 text-[12px] text-slate-600">
+                    <td className="px-4 py-3.5 text-[13px] text-[#6B7280]">
                       {destinationFacility}
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-4 py-3.5">
                       <ClassificationBadge
                         classification={getReferralClassification(referral)}
                       />
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-4 py-3.5">
                       <UrgencyBadge urgency={getReferralUrgency(referral)} />
                     </td>
 
-                    <td className="px-4 py-4 text-[12px] text-slate-500">
+                    <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#9CA3AF]">
                       {getSubmittedDate(referral) || "—"}
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="whitespace-nowrap px-4 py-3.5">
                       <StatusBadge status={referral.status} />
                     </td>
 
-                    <td className="px-4 py-4 text-right">
+                    <td className="px-4 py-3.5 text-right">
                       <ActionMenu
                         title={patientName}
                         subtitle={referral.trackingId}
@@ -367,9 +389,7 @@ export default function Referrals() {
                 </tr>
               )}
             </tbody>
-          </table>
-        </div>
-      </div>
+        </ModuleTableCard>
       )}
     </DashboardLayout>
   );

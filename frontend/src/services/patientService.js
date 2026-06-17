@@ -24,12 +24,20 @@ function fullName(patient = {}) {
   );
 }
 
+function normalizeDate(value) {
+  if (!value) return "";
+  return String(value).split("T")[0];
+}
+
 export function normalizePatient(patient = {}) {
   const nameParts = splitName(patient.name || patient.fullName);
   const firstName = patient.first_name || patient.firstName || nameParts.firstName;
   const middleName = patient.middle_name || patient.middleName || nameParts.middleName;
   const lastName = patient.last_name || patient.lastName || nameParts.lastName;
   const name = fullName({ ...patient, first_name: firstName, middle_name: middleName, last_name: lastName });
+  const birthDate = normalizeDate(
+    patient.birthdate || patient.birthDate || patient.dateOfBirth || patient.date_of_birth || patient.dob,
+  );
   const dateRegistered =
     patient.created_at ||
     patient.date_registered ||
@@ -48,7 +56,9 @@ export function normalizePatient(patient = {}) {
     name,
     fullName: name,
     sex: patient.sex || "",
-    birthdate: patient.birthdate || patient.dateOfBirth || "",
+    birthdate: birthDate,
+    birthDate,
+    dateOfBirth: birthDate,
     age: patient.age ?? "",
     ageSex:
       patient.ageSex ||
