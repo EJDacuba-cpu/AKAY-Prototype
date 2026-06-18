@@ -14,6 +14,8 @@ class HealthRecord extends Model
         'rural_health_unit_id',
         'date_recorded',
         'vital_signs',
+        'visit_type',
+        'parent_health_record_id',
         'category',
         'maternal_data',
         'immunization_data',
@@ -43,5 +45,10 @@ class HealthRecord extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function parentRecord(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_health_record_id');
     }
 }

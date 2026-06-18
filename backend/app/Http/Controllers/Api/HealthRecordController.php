@@ -51,6 +51,7 @@ class HealthRecordController extends Controller
         $data = $request->validated();
         $patient = Patient::findOrFail($data['patient_id']);
         $this->authorizePatient($request, $patient);
+        $this->normalizeVisitTypeData($request, $data, true);
 
         $data['created_by'] = $request->user()->id;
         $data['barangay_health_center_id'] = $patient->barangay_health_center_id;
@@ -89,7 +90,9 @@ class HealthRecordController extends Controller
     public function update(HealthRecordRequest $request, HealthRecord $healthRecord, AuditLogger $auditLogger)
     {
         $this->authorizeRecord($request, $healthRecord);
-        $healthRecord->update($request->validated());
+        $data = $request->validated();
+        $this->normalizeVisitTypeData($request, $data);
+        $healthRecord->update($data);
         $auditLogger->log($request, 'updated', 'health_records', "Updated health record {$healthRecord->id}.");
 
         return response()->json(['data' => $healthRecord->fresh()->load('patient')]);
@@ -132,5 +135,43 @@ class HealthRecordController extends Controller
             || ($request->user()->isRhuStaff() && $patient->rural_health_unit_id === $request->user()->rural_health_unit_id);
 
         abort_unless($allowed, 403, 'Patient is outside your assigned facility.');
+    }
+
+    private function normalizeVisitTypeData(Request $request, array &$data, bool $defaultInitial = false): void
+    {
+        if (!$defaultInitial && !array_key_exists('visit_type', $data) && !array_key_exists('parent_health_record_id', $data)) {
+            return;
+        }
+
+        $data['visit_type'] ??= empty($data['parent_health_record_id'])
+            ? 'initial_consultation'
+            : 'follow_up_visit';
+
+        if ($data['visit_type'] === 'follow_up_visit') {
+            abort_if(empty($data['parent_health_record_id']), 422, 'Follow-up visits must be linked to an original health record.');
+
+            $parentRecord = HealthRecord::findOrFail($data['parent_health_record_id']);
+            $this->authorizeRecord($request, $parentRecord);
+            abort_unless(
+                $this->healthRecordStatus($parentRecord) === 'follow up required',
+                422,
+                'Follow-up visits can only be linked to records marked Follow-up Required.'
+            );
+        }
+
+        if ($data['visit_type'] === 'initial_consultation') {
+            $data['parent_health_record_id'] = null;
+        }
+    }
+
+    private function healthRecordStatus(HealthRecord $record): string
+    {
+        $monitoringData = $record->monitoring_data ?? [];
+        $status = $monitoringData['followUpStatus']
+            ?? $monitoringData['follow_up_status']
+            ?? $monitoringData['status']
+            ?? 'Routine Monitoring';
+
+        return str_replace(['_', '-'], ' ', strtolower(trim($status)));
     }
 }

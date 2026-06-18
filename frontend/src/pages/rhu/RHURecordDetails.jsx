@@ -31,7 +31,11 @@ import {
   getPatientsByRole,
 } from "../../services/patients";
 import { queryKeys } from "../../utils/queryKeys";
-import { formatLongDate, formatUserName } from "../../utils/formatters";
+import {
+  formatDisplayValue,
+  formatLongDate,
+  formatUserName,
+} from "../../utils/formatters";
 
 const keyframes = `
   @keyframes fadeUp {
@@ -201,6 +205,8 @@ export default function RHURecordDetails() {
   const patientName = getPatientName(patient) || getRecordPatientName(record);
   const canRecordFollowUpVisit = isFollowUpEligibleStatus(status);
   const showPatientProfileSidebar = false;
+  const visitTypeLabel = getRecordVisitTypeLabel(record);
+  const parentHealthRecordId = getParentHealthRecordId(record);
 
   return (
     <DashboardLayout role="rhu" title="Health Record Details">
@@ -340,7 +346,7 @@ export default function RHURecordDetails() {
                   </FieldWithError>
                   <FieldWithError error={formErrors.followUpStatus}>
                     <FormSelect
-                      label="Status / Type"
+                      label="Status"
                       name="followUpStatus"
                       value={form.followUpStatus || ""}
                       onChange={handleChange}
@@ -349,14 +355,10 @@ export default function RHURecordDetails() {
                       <option value="Routine Monitoring">
                         Routine Monitoring
                       </option>
-                      <option value="Under Observation">
-                        Under Observation
-                      </option>
                       <option value="Follow-up Required">
                         Follow-up Required
                       </option>
                       <option value="Completed">Completed</option>
-                      <option value="Needs Referral">Needs Referral</option>
                     </FormSelect>
                   </FieldWithError>
                   <FieldWithError error={formErrors.attendingStaff}>
@@ -442,10 +444,20 @@ export default function RHURecordDetails() {
                   <div className="grid gap-4 lg:grid-cols-2">
                     <div className="space-y-3">
                       <PatientDetailItem
+                        label="Visit Type"
+                        value={visitTypeLabel}
+                      />
+                      <PatientDetailItem
                         label="Classification"
                         value={getRecordClassification(record, patient)}
                       />
-                      <PatientDetailItem label="Status / Type" value={status} />
+                      {parentHealthRecordId && (
+                        <PatientDetailItem
+                          label="Linked to Original Record"
+                          value={`#${parentHealthRecordId}`}
+                        />
+                      )}
+                      <PatientDetailItem label="Status" value={status} />
                       <PatientDetailItem
                         label="Chief Complaint"
                         value={getRecordConcern(record)}
@@ -604,7 +616,7 @@ function validateInlineForm(form = {}) {
   const requiredFields = [
     ["category", "Classification is required."],
     ["diagnosis", "Diagnosis / Assessment is required."],
-    ["followUpStatus", "Status / Type is required."],
+    ["followUpStatus", "Status is required."],
     ["attendingStaff", "Recorded By is required."],
     ["chiefComplaint", "Chief Complaint is required."],
   ];
@@ -634,6 +646,10 @@ function FieldWithError({ error, children }) {
 function buildInlineForm(record, patient) {
   return {
     category: getRecordClassification(record, patient),
+    visitType: getRecordVisitTypeValue(record),
+    parentHealthRecordId: getParentHealthRecordId(record) || null,
+    previousRecordId: getParentHealthRecordId(record) || "",
+    isFollowUp: getRecordVisitTypeValue(record) === "follow_up_visit",
     diagnosis: getRecordDiagnosis(record, ""),
     chiefComplaint: getRecordConcern(record, ""),
     summaryOfPresentIllness: getRecordSummary(record, ""),
@@ -663,23 +679,11 @@ function normalizeHealthRecordStatus(status) {
   if (["follow up", "follow up required", "follow up after 2 days"].includes(compact)) {
     return "Follow-up Required";
   }
-  if (["under observation", "observation", "for monitoring", "monitoring"].includes(compact)) {
-    return "Under Observation";
-  }
   if (["completed", "complete", "recovered", "closed", "discharged"].includes(compact)) {
     return "Completed";
   }
-  if (["active", "routine monitoring"].includes(compact)) {
-    return "Routine Monitoring";
-  }
-  if (["for referral", "needs referral", "referral"].includes(compact)) {
-    return "Needs Referral";
-  }
-  if (["referred", "pending", "pending rhu review", "received"].includes(compact)) {
-    return "Referred/Pending";
-  }
 
-  return value;
+  return "Routine Monitoring";
 }
 
 function isFollowUpEligibleStatus(status) {
@@ -687,11 +691,7 @@ function isFollowUpEligibleStatus(status) {
 }
 
 function isMonitoringStatus(status) {
-  return [
-    "Follow-up Required",
-    "For Monitoring",
-    "Under Observation",
-  ].includes(normalizeHealthRecordStatus(status));
+  return normalizeHealthRecordStatus(status) === "Follow-up Required";
 }
 
 function HealthRecordStatusBadge({ status }) {
@@ -699,11 +699,7 @@ function HealthRecordStatusBadge({ status }) {
   const styles = {
     "Routine Monitoring": "border-blue-200 bg-blue-50 text-blue-800",
     "Follow-up Required": "border-amber-200 bg-amber-50 text-amber-800",
-    "Under Observation": "border-amber-200 bg-amber-50 text-amber-800",
     Completed: "border-emerald-200 bg-emerald-50 text-emerald-800",
-    "Needs Referral": "border-orange-200 bg-orange-50 text-orange-800",
-    "Referred/Pending": "border-blue-200 bg-blue-50 text-blue-800",
-    "For Monitoring": "border-blue-200 bg-blue-50 text-blue-800",
   };
 
   return (
@@ -871,6 +867,54 @@ function getRecordClassification(record, patient) {
     getPatientClassification(patient) ||
     "General Consultation"
   );
+}
+
+function getParentHealthRecordId(record = {}) {
+  const monitoringData = record.monitoringData || record.monitoring_data || {};
+
+  return formatDisplayValue(
+    record.parentHealthRecordId ||
+      record.parent_health_record_id ||
+      record.originalHealthRecordId ||
+      record.original_health_record_id ||
+      monitoringData.parentHealthRecordId ||
+      monitoringData.parent_health_record_id ||
+      monitoringData.previousRecordId ||
+      record.previousRecordId,
+    "",
+  );
+}
+
+function getRecordVisitTypeLabel(record = {}) {
+  return getRecordVisitTypeValue(record) === "follow_up_visit"
+    ? "Follow-up Visit"
+    : "Initial Consultation";
+}
+
+function getRecordVisitTypeValue(record = {}) {
+  const monitoringData = record.monitoringData || record.monitoring_data || {};
+  const value = String(
+    record.visitType ||
+      record.visit_type ||
+      monitoringData.visitType ||
+      monitoringData.visit_type ||
+      "",
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
+
+  if (
+    value === "follow up visit" ||
+    value === "follow up" ||
+    record.isFollowUp ||
+    record.is_follow_up ||
+    getParentHealthRecordId(record)
+  ) {
+    return "follow_up_visit";
+  }
+
+  return "initial_consultation";
 }
 
 function getAgeSex(patient, record) {

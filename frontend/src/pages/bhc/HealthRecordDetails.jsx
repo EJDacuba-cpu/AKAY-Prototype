@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  ClipboardList,
   FilePlus2,
   Pencil,
   X,
@@ -20,6 +21,10 @@ import {
   getHealthRecordById,
   updateHealthRecord,
 } from "../../services/healthRecordService";
+import {
+  getReferralByHealthRecordId,
+  getReferralByTrackingId,
+} from "../../services/referrals";
 import {
   ButtonSpinner,
   FormInput,
@@ -96,6 +101,7 @@ export default function HealthRecordDetails() {
 
   const [record, setRecord] = useState(null);
   const [patient, setPatient] = useState(null);
+  const [linkedReferral, setLinkedReferral] = useState(null);
 
   const [isEditing, setIsEditing] = useState(
     Boolean(location.state?.startInEditMode),
@@ -114,11 +120,29 @@ export default function HealthRecordDetails() {
     queryKey: queryKeys.healthRecordDetails("bhc", recordId),
     queryFn: async () => {
       const recordData = await getHealthRecordById(recordId);
+      let existingReferral;
+      try {
+        existingReferral = await getReferralByHealthRecordId(recordId);
+        const linkedTrackingId =
+          recordData?.linkedTrackingId ||
+          recordData?.linked_tracking_id ||
+          recordData?.referralTrackingId ||
+          recordData?.referral_tracking_id;
+        if (
+          !existingReferral &&
+          !recordData?.isFollowUp &&
+          linkedTrackingId
+        ) {
+          existingReferral = await getReferralByTrackingId(linkedTrackingId);
+        }
+      } catch {
+        existingReferral = null;
+      }
       const patientData = recordData?.patientId
         ? await getPatientById(recordData.patientId)
         : null;
 
-      return { record: recordData, patient: patientData };
+      return { record: recordData, patient: patientData, linkedReferral: existingReferral };
     },
     enabled: Boolean(recordId),
   });
@@ -127,6 +151,7 @@ export default function HealthRecordDetails() {
     if (!details) return;
     setRecord(details.record);
     setPatient(details.patient);
+    setLinkedReferral(details.linkedReferral);
     if (details.record) initializeForm(details.record);
   }, [details]);
 
@@ -141,6 +166,10 @@ export default function HealthRecordDetails() {
           data.patientClassification,
         "General Consultation",
       ),
+      visitType: data.visitType || data.visit_type || getRecordVisitTypeValue(data),
+      parentHealthRecordId: getParentHealthRecordId(data) || null,
+      previousRecordId: getParentHealthRecordId(data) || "",
+      isFollowUp: getRecordVisitTypeValue(data) === "follow_up_visit",
       diagnosis: getRecordDiagnosis(data, ""),
       chiefComplaint: getRecordChiefComplaint(data, ""),
       summaryOfPresentIllness: getRecordSummary(data, ""),
@@ -278,6 +307,15 @@ export default function HealthRecordDetails() {
     !followUpDateValue &&
     Boolean(patientConditionValue || monitoringNotesValue);
   const showPatientProfileSidebar = false;
+  const linkedReferralTarget =
+    linkedReferral?.trackingId ||
+    linkedReferral?.id ||
+    record.linkedTrackingId ||
+    record.linked_tracking_id ||
+    record.referralTrackingId ||
+    record.referral_tracking_id ||
+    "";
+  const hasLinkedReferral = Boolean(linkedReferralTarget);
   const isImmunizationRecord = isImmunizationClassification(record, patient);
   const immunizationGroups = getImmunizationGroups(record);
   const patientId =
@@ -298,9 +336,11 @@ export default function HealthRecordDetails() {
       record.patientClassification ||
       patient?.category ||
       patient?.patientClassification,
-    "General",
+    "General Consultation",
   );
   const patientClassification = recordCategory;
+  const visitTypeLabel = getRecordVisitTypeLabel(record);
+  const parentHealthRecordId = getParentHealthRecordId(record);
   const displayDate = formatLongDate(getRecordDateValue(record), "Not recorded");
   const displayTime = getRecordTime(record);
 
@@ -401,6 +441,15 @@ export default function HealthRecordDetails() {
                       Record Follow-up Visit
                     </Link>
                   )}
+                  {hasLinkedReferral && (
+                    <Link
+                      to={`/bhc/referrals/${linkedReferralTarget}`}
+                      className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+                    >
+                      <ClipboardList size={14} />
+                      View Referral
+                    </Link>
+                  )}
                 </>
               )}
             </div>
@@ -420,7 +469,7 @@ export default function HealthRecordDetails() {
                     <div className="grid gap-x-8 gap-y-3 md:grid-cols-2">
                       <FieldWithError error={formErrors.category}>
                         <FormSelect
-                          label="Visit Type"
+                          label="Classification"
                           name="category"
                           value={form.category || ""}
                           onChange={handleChange}
@@ -454,14 +503,10 @@ export default function HealthRecordDetails() {
                           <option value="Routine Monitoring">
                             Routine Monitoring
                           </option>
-                          <option value="Under Observation">
-                            Under Observation
-                          </option>
                           <option value="Follow-up Required">
                             Follow-up Required
                           </option>
                           <option value="Completed">Completed</option>
-                          <option value="Needs Referral">Needs Referral</option>
                         </FormSelect>
                       </FieldWithError>
                       <FieldWithError error={formErrors.attendingStaff}>
@@ -571,8 +616,18 @@ export default function HealthRecordDetails() {
                       <div className="space-y-3">
                         <PatientDetailItem
                           label="Visit Type"
+                          value={visitTypeLabel}
+                        />
+                        <PatientDetailItem
+                          label="Classification"
                           value={recordCategory}
                         />
+                        {parentHealthRecordId && (
+                          <PatientDetailItem
+                            label="Linked to Original Record"
+                            value={`#${parentHealthRecordId}`}
+                          />
+                        )}
                         <PatientDetailItem
                           label="Follow-up Status"
                           value={getRecordFollowUpStatus(record)}
@@ -810,7 +865,7 @@ export default function HealthRecordDetails() {
 function validateInlineForm(form = {}) {
   const errors = {};
   const requiredFields = [
-    ["category", "Visit Type is required."],
+    ["category", "Classification is required."],
     ["diagnosis", "Initial Diagnosis is required."],
     ["followUpStatus", "Follow-up Status is required."],
     ["attendingStaff", "Name of Practitioner is required."],
@@ -943,23 +998,11 @@ function normalizeHealthRecordStatus(status) {
   if (["follow up", "follow up required", "follow up after 2 days"].includes(compact)) {
     return "Follow-up Required";
   }
-  if (["under observation", "observation", "for monitoring", "monitoring"].includes(compact)) {
-    return "Under Observation";
-  }
   if (["completed", "complete", "recovered", "closed", "discharged"].includes(compact)) {
     return "Completed";
   }
-  if (["active", "routine monitoring"].includes(compact)) {
-    return "Routine Monitoring";
-  }
-  if (["for referral", "needs referral", "referral"].includes(compact)) {
-    return "Needs Referral";
-  }
-  if (["referred", "pending", "pending rhu review", "received"].includes(compact)) {
-    return "Referred/Pending";
-  }
 
-  return value;
+  return "Routine Monitoring";
 }
 
 function isFollowUpEligibleStatus(status) {
@@ -967,11 +1010,7 @@ function isFollowUpEligibleStatus(status) {
 }
 
 function isMonitoringStatus(status) {
-  return [
-    "Follow-up Required",
-    "For Monitoring",
-    "Under Observation",
-  ].includes(normalizeHealthRecordStatus(status));
+  return normalizeHealthRecordStatus(status) === "Follow-up Required";
 }
 
 function HealthRecordStatusBadge({ status }) {
@@ -979,11 +1018,7 @@ function HealthRecordStatusBadge({ status }) {
   const styles = {
     "Follow-up Required": "border-amber-200 bg-amber-50 text-amber-800",
     "Routine Monitoring": "border-blue-200 bg-blue-50 text-blue-800",
-    "Under Observation": "border-amber-200 bg-amber-50 text-amber-800",
     Completed: "border-emerald-200 bg-emerald-50 text-emerald-800",
-    "Needs Referral": "border-orange-200 bg-orange-50 text-orange-800",
-    "Referred/Pending": "border-blue-200 bg-blue-50 text-blue-800",
-    "For Monitoring": "border-blue-200 bg-blue-50 text-blue-800",
   };
 
   return (
@@ -996,6 +1031,54 @@ function HealthRecordStatusBadge({ status }) {
       {normalizedStatus}
     </span>
   );
+}
+
+function getParentHealthRecordId(record = {}) {
+  const monitoringData = record.monitoringData || record.monitoring_data || {};
+
+  return formatDisplayValue(
+    record.parentHealthRecordId ||
+      record.parent_health_record_id ||
+      record.originalHealthRecordId ||
+      record.original_health_record_id ||
+      monitoringData.parentHealthRecordId ||
+      monitoringData.parent_health_record_id ||
+      monitoringData.previousRecordId ||
+      record.previousRecordId,
+    "",
+  );
+}
+
+function getRecordVisitTypeLabel(record = {}) {
+  return getRecordVisitTypeValue(record) === "follow_up_visit"
+    ? "Follow-up Visit"
+    : "Initial Consultation";
+}
+
+function getRecordVisitTypeValue(record = {}) {
+  const monitoringData = record.monitoringData || record.monitoring_data || {};
+  const value = String(
+    record.visitType ||
+      record.visit_type ||
+      monitoringData.visitType ||
+      monitoringData.visit_type ||
+      "",
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
+
+  if (
+    value === "follow up visit" ||
+    value === "follow up" ||
+    record.isFollowUp ||
+    record.is_follow_up ||
+    getParentHealthRecordId(record)
+  ) {
+    return "follow_up_visit";
+  }
+
+  return "initial_consultation";
 }
 
 function getRecordValue(record = {}, keys = [], fallback = "Not recorded") {

@@ -17,6 +17,8 @@ class HealthRecordRequest extends FormRequest
             'patient_id' => [$this->isMethod('post') ? 'required' : 'sometimes', 'exists:patients,id'],
             'date_recorded' => ['nullable', 'date'],
             'vital_signs' => ['nullable', 'array'],
+            'visit_type' => ['nullable', 'string', 'in:initial_consultation,follow_up_visit'],
+            'parent_health_record_id' => ['nullable', 'exists:health_records,id'],
             'category' => ['nullable', 'string', 'max:100'],
             'maternal_data' => ['nullable', 'array'],
             'immunization_data' => ['nullable', 'array'],

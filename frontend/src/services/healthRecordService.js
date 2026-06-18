@@ -14,6 +14,24 @@ function normalizeRecord(record = {}) {
   const maternalData = record.maternal_data || record.maternalData || {};
   const immunizationData = record.immunization_data || record.immunizationData || {};
   const monitoringData = record.monitoring_data || record.monitoringData || {};
+  const parentHealthRecordId =
+    record.parent_health_record_id ||
+    record.parentHealthRecordId ||
+    record.original_health_record_id ||
+    record.originalHealthRecordId ||
+    monitoringData.parentHealthRecordId ||
+    monitoringData.parent_health_record_id ||
+    monitoringData.previousRecordId ||
+    record.previousRecordId ||
+    "";
+  const normalizedVisitType =
+    record.visit_type ||
+    record.visitType ||
+    monitoringData.visitType ||
+    monitoringData.visit_type ||
+    (parentHealthRecordId || monitoringData.isFollowUp || record.isFollowUp
+      ? "follow_up_visit"
+      : "initial_consultation");
   const needsReferral =
     record.needs_referral === true || record.needsReferral === true || record.needsReferral === "yes"
       ? "yes"
@@ -33,6 +51,10 @@ function normalizeRecord(record = {}) {
       "",
     timeOfVisit: record.timeOfVisit || "",
     dateRecorded: record.date_recorded || record.dateRecorded || "",
+    visitType: normalizedVisitType,
+    visit_type: normalizedVisitType,
+    parentHealthRecordId: parentHealthRecordId ? String(parentHealthRecordId) : "",
+    parent_health_record_id: parentHealthRecordId || null,
     category: record.category || "",
     patientClassification: record.category || record.patientClassification || "",
     chiefComplaint: record.chief_complaint || record.chiefComplaint || "",
@@ -163,7 +185,10 @@ function normalizeRecord(record = {}) {
       "",
     linkedTrackingId: monitoringData.linkedTrackingId || record.linkedTrackingId || "",
     referralTrackingId: monitoringData.referralTrackingId || record.referralTrackingId || "",
-    previousRecordId: monitoringData.previousRecordId || record.previousRecordId || "",
+    previousRecordId: parentHealthRecordId || monitoringData.previousRecordId || record.previousRecordId || "",
+    isFollowUp:
+      Boolean(record.isFollowUp || record.is_follow_up || monitoringData.isFollowUp) ||
+      normalizedVisitType === "follow_up_visit",
     createdAt: record.created_at || record.createdAt || "",
     updatedAt: record.updated_at || record.updatedAt || "",
   };
@@ -176,6 +201,17 @@ function hasAny(record = {}, keys = []) {
 function toPayload(record = {}, { partial = false } = {}) {
   const category = record.category || record.recordType || record.patientClassification || null;
   const recordTypeKey = String(category || "").toLowerCase();
+  const parentHealthRecordId =
+    record.parentHealthRecordId ||
+    record.parent_health_record_id ||
+    record.originalHealthRecordId ||
+    record.original_health_record_id ||
+    record.previousRecordId ||
+    null;
+  const visitType =
+    record.visitType ||
+    record.visit_type ||
+    (record.isFollowUp || parentHealthRecordId ? "follow_up_visit" : "initial_consultation");
   const maternalData = {
     ...(record.maternalData || record.maternal_data || {}),
     lmp: record.lmp || record.LMP || null,
@@ -201,8 +237,10 @@ function toPayload(record = {}, { partial = false } = {}) {
     referralAssessmentStatus: record.referralAssessmentStatus || null,
     linkedTrackingId: record.linkedTrackingId || null,
     referralTrackingId: record.referralTrackingId || null,
-    previousRecordId: record.previousRecordId || null,
-    isFollowUp: record.isFollowUp || false,
+    previousRecordId: parentHealthRecordId,
+    parentHealthRecordId,
+    visitType,
+    isFollowUp: record.isFollowUp || visitType === "follow_up_visit",
   };
   const needsReferral =
     record.needsReferral === true ||
@@ -228,6 +266,8 @@ function toPayload(record = {}, { partial = false } = {}) {
       weight: record.weight || null,
       height: record.height || null,
     },
+    visit_type: visitType,
+    parent_health_record_id: parentHealthRecordId,
     category,
     maternal_data: recordTypeKey === "maternal" ? maternalData : null,
     immunization_data:
@@ -283,6 +323,12 @@ function toPayload(record = {}, { partial = false } = {}) {
     delete payload.maternal_data;
     delete payload.immunization_data;
   }
+  if (!hasAny(record, ["visitType", "visit_type", "isFollowUp", "parentHealthRecordId", "parent_health_record_id", "previousRecordId"])) {
+    delete payload.visit_type;
+  }
+  if (!hasAny(record, ["parentHealthRecordId", "parent_health_record_id", "originalHealthRecordId", "original_health_record_id", "previousRecordId", "isFollowUp"])) {
+    delete payload.parent_health_record_id;
+  }
   if (
     !hasAny(record, [
       "monitoringData",
@@ -298,6 +344,10 @@ function toPayload(record = {}, { partial = false } = {}) {
       "linkedTrackingId",
       "referralTrackingId",
       "previousRecordId",
+      "parentHealthRecordId",
+      "parent_health_record_id",
+      "visitType",
+      "visit_type",
       "isFollowUp",
     ])
   ) {

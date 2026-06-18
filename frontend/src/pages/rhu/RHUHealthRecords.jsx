@@ -36,6 +36,34 @@ const DEFAULT_FILTERS = {
   date: "",
 };
 
+function normalizeVisitType(record = {}) {
+  const value = String(record.visitType || record.visit_type || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
+
+  if (
+    value === "follow up visit" ||
+    value === "follow up" ||
+    record.isFollowUp ||
+    record.is_follow_up ||
+    record.parentHealthRecordId ||
+    record.parent_health_record_id ||
+    record.previousRecordId ||
+    record.previous_record_id
+  ) {
+    return "follow_up_visit";
+  }
+
+  return "initial_consultation";
+}
+
+function formatVisitType(record = {}) {
+  return normalizeVisitType(record) === "follow_up_visit"
+    ? "Follow-up Visit"
+    : "Initial Consultation";
+}
+
 export default function RHUHealthRecords() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [currentPage, setCurrentPage] = useState(1);
@@ -65,6 +93,12 @@ export default function RHUHealthRecords() {
           ...record,
           id: recordId,
           trackingId: record.trackingId || recordId,
+          visitType: normalizeVisitType(record),
+          parentHealthRecordId:
+            record.parentHealthRecordId ||
+            record.parent_health_record_id ||
+            record.previousRecordId ||
+            "",
           patientName: formatPatientName(
             record.patientName || record.patient || record,
             "Unnamed Patient",
@@ -167,12 +201,12 @@ export default function RHUHealthRecords() {
 
   const activeFilters = [
     filters.search && { key: "search", label: `Search: ${filters.search}` },
+    filters.date && { key: "date", label: filters.date },
     filters.status && { key: "status", label: filters.status },
     filters.classification && {
       key: "classification",
       label: filters.classification,
     },
-    filters.date && { key: "date", label: filters.date },
   ].filter(Boolean);
 
   const activeFilterCount = activeFilters.filter(
@@ -181,9 +215,16 @@ export default function RHUHealthRecords() {
 
   const dropdownFilters = [
     {
+      key: "date",
+      label: "Date of Visit",
+      value: filters.date,
+      type: "date",
+    },
+    {
       key: "status",
-      label: "Record Type / Status",
+      label: "Status",
       value: filters.status,
+      type: "pills",
       options: [
         { value: "", label: "All Status" },
         { value: "Routine Monitoring", label: "Routine Monitoring" },
@@ -193,8 +234,9 @@ export default function RHUHealthRecords() {
     },
     {
       key: "classification",
-      label: "Patient Classification",
+      label: "Classification",
       value: filters.classification,
+      type: "select",
       options: [
         { value: "", label: "All Classifications" },
         { value: "General Consultation", label: "General Consultation" },
@@ -202,12 +244,6 @@ export default function RHUHealthRecords() {
         { value: "Immunization", label: "Immunization" },
         { value: "Senior Citizen", label: "Senior Citizen" },
       ],
-    },
-    {
-      key: "date",
-      label: "Date of Visit",
-      value: filters.date,
-      type: "date",
     },
   ];
 
@@ -235,7 +271,7 @@ export default function RHUHealthRecords() {
       <ListToolbar
         searchValue={filters.search}
         onSearchChange={(value) => updateFilter("search", value)}
-        searchPlaceholder="Search by patient name or record type..."
+        searchPlaceholder="Search by patient name or classification..."
         filters={dropdownFilters}
         activeFilterCount={activeFilterCount}
         activeFilters={activeFilters}
@@ -260,7 +296,7 @@ export default function RHUHealthRecords() {
           className="mb-3"
         />
         {loading ? (
-          <TableSkeleton columns={7} rows={8} label="Loading health records..." />
+          <TableSkeleton columns={8} rows={8} label="Loading health records..." />
         ) : filteredRecords.length === 0 ? (
           <div className="rounded-xl border border-[#E2E8F0] bg-white px-6 py-24 text-center shadow-sm">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
@@ -310,12 +346,13 @@ function RHUHealthRecordsTable({
   return (
     <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] text-left text-[13px]">
+        <table className="w-full min-w-[980px] text-left text-[13px]">
           <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
             <tr>
               <th className="whitespace-nowrap px-4 py-3">Record ID</th>
               <th className="whitespace-nowrap px-4 py-3">Patient</th>
-              <th className="whitespace-nowrap px-4 py-3">Record Type</th>
+              <th className="whitespace-nowrap px-4 py-3">Visit Type</th>
+              <th className="whitespace-nowrap px-4 py-3">Classification</th>
               <th className="whitespace-nowrap px-4 py-3">Date of Visit</th>
               <th className="whitespace-nowrap px-4 py-3">Provider</th>
               <th className="whitespace-nowrap px-4 py-3">Status</th>
@@ -344,6 +381,12 @@ function RHUHealthRecordsTable({
                   >
                     {formatPatientName(record.patientName, "Unnamed Patient")}
                   </Link>
+                </td>
+
+                <td className="whitespace-nowrap px-4 py-3">
+                  <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
+                    {formatVisitType(record)}
+                  </span>
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3">
@@ -547,7 +590,7 @@ function ActionMenu({ record, open, onToggle, onClose }) {
                   className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-[#4B5563] transition-colors hover:bg-[#F9FAFB] hover:text-[#111827]"
                 >
                   <FilePlus2 size={14} className="text-[#9CA3AF]" />
-                  Add Follow-up Record
+                  Record Follow-up Visit
                 </Link>
               )}
             </div>

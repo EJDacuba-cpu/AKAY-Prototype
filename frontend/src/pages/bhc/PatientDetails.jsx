@@ -225,7 +225,8 @@ export default function PatientDetails() {
     );
   }
 
-  const safeRecords = [...(records || [])]
+  const recordList = Array.isArray(records) ? records : [];
+  const safeRecords = [...recordList]
     .sort(sortByDateDesc)
     .map((record) => ({
       ...record,
@@ -236,6 +237,7 @@ export default function PatientDetails() {
   const visibleReferrals = showAllReferrals
     ? safeReferrals
     : safeReferrals.slice(0, 5);
+  const latestRecord = safeRecords[0] || null;
 
   const isUnderMonitoring = safeRecords.some(
     (r) =>
@@ -307,12 +309,10 @@ export default function PatientDetails() {
                 </span>
               </div>
 
-              <p className="text-sm text-slate-500">
-                Latest Consultation:{" "}
-                <span className="font-semibold text-[#0F172A]">
-                  {safeRecords[0]?.chiefComplaint || "No record yet"}
-                </span>
-              </p>
+              <LatestConsultationSummary
+                record={latestRecord}
+                basePath="/bhc"
+              />
             </div>
 
             <div className="flex shrink-0 gap-3">
@@ -590,11 +590,12 @@ export default function PatientDetails() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[980px] text-left border-collapse">
+                  <table className="w-full min-w-[1080px] text-left border-collapse">
                     <thead>
                       <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                        <th className="px-6 py-3">Date / Time of Visit</th>
-                        <th className="px-6 py-3">Record Type</th>
+                        <th className="px-6 py-3">Date of Visit</th>
+                        <th className="px-6 py-3">Visit Type</th>
+                        <th className="px-6 py-3">Classification</th>
                         <th className="px-6 py-3">Chief Complaint</th>
                         <th className="px-6 py-3">Status</th>
                         <th className="px-6 py-3 text-right">Action</th>
@@ -602,17 +603,17 @@ export default function PatientDetails() {
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-sm">
                       {visibleRecords.map((record) => {
-                        const currentId = record.id || record._id;
+                        const currentId = getHealthRecordId(record);
                         return (
                           <tr
                             key={currentId}
                             className="hover:bg-slate-50/80 transition-colors"
                           >
                             <td className="whitespace-nowrap px-6 py-4 font-medium text-slate-700">
-                              <div>{getHealthRecordDate(record)}</div>
-                              <div className="text-xs text-slate-400">
-                                {record.timeOfVisit || "—"}
-                              </div>
+                              {getHealthRecordDate(record)}
+                            </td>
+                            <td className="whitespace-nowrap px-6 py-4 text-xs font-semibold text-slate-600">
+                              {getHealthRecordVisitType(record)}
                             </td>
                             <td className="whitespace-nowrap px-6 py-4">
                               <span className="text-xs font-semibold text-[#0F172A]">
@@ -797,6 +798,56 @@ function TabErrorState({ message }) {
   );
 }
 
+function LatestConsultationSummary({ record, basePath }) {
+  if (!record) {
+    return (
+      <div className="border-l-2 border-[#B91C1C]/20 pl-3">
+        <p className="text-sm text-slate-500">
+          <span className="font-semibold text-[#0F172A]">
+            Latest Consultation:
+          </span>{" "}
+          No consultations recorded yet.
+        </p>
+      </div>
+    );
+  }
+
+  const recordId = getHealthRecordId(record);
+  const status = getHealthRecordStatus(record);
+  const title = getHealthRecordComplaint(record);
+  const titleContent = recordId ? (
+    <Link
+      to={`${basePath}/health-records/${recordId}`}
+      className="font-bold text-[#0F172A] underline-offset-2 transition hover:text-[#B91C1C] hover:underline"
+    >
+      {title}
+    </Link>
+  ) : (
+    <span className="font-bold text-[#0F172A]">{title}</span>
+  );
+
+  return (
+    <div className="max-w-3xl border-l-2 border-[#B91C1C]/20 pl-3">
+      <div className="min-w-0">
+        <p className="truncate text-sm text-slate-500">
+          <span className="font-semibold text-[#0F172A]">
+            Latest Consultation:
+          </span>{" "}
+          {titleContent}
+        </p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+          <span>{getHealthRecordDate(record)}</span>
+          <span className="text-slate-300">/</span>
+          <span>{getHealthRecordVisitType(record)}</span>
+          <span className="text-slate-300">/</span>
+          <span>{getHealthRecordType(record)}</span>
+          <StatusBadge status={status} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function InlineDetailInput({ label, required, readOnly, ...props }) {
   return (
     <div>
@@ -851,40 +902,96 @@ function getHealthRecordDate(record = {}) {
 }
 
 function getHealthRecordTime(record = {}) {
+  const source = record || {};
   return formatDisplayValue(
-    record.timeOfVisit || record.time_of_visit || record.time || record.visitTime,
+    source.timeOfVisit ||
+      source.time_of_visit ||
+      source.time ||
+      source.visitTime,
     "-",
   );
 }
 
+function getHealthRecordId(record) {
+  if (!record) return null;
+
+  const id =
+    record.id ||
+    record.health_record_id ||
+    record.healthRecordId ||
+    record.record_id ||
+    record.recordId ||
+    record._id;
+
+  return id ? String(id) : null;
+}
+
+function getHealthRecordVisitType(record = {}) {
+  const source = record || {};
+  const value = String(source.visitType || source.visit_type || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
+
+  if (
+    value === "follow up visit" ||
+    value === "follow up" ||
+    source.isFollowUp ||
+    source.is_follow_up ||
+    source.parentHealthRecordId ||
+    source.parent_health_record_id ||
+    source.previousRecordId
+  ) {
+    return "Follow-up Visit";
+  }
+
+  if (
+    value === "initial consultation" ||
+    value === "initial consult" ||
+    value === "consultation" ||
+    value === "general consultation"
+  ) {
+    return "Initial Consultation";
+  }
+
+  if (value) return formatDisplayValue(source.visitType || source.visit_type);
+
+  return "Initial Consultation";
+}
+
 function getHealthRecordType(record = {}) {
+  const source = record || {};
   return formatDisplayValue(
-    record.category ||
-      record.classification ||
-      record.recordType ||
-      record.record_type ||
-      record.patientClassification,
-    "General Consultation",
+    source.category ||
+      source.classification ||
+      source.recordType ||
+      source.record_type ||
+      source.healthRecordType ||
+      source.health_record_type ||
+      source.patientClassification,
+    "Not recorded",
   );
 }
 
 function getHealthRecordComplaint(record = {}) {
+  const source = record || {};
   return formatDisplayValue(
-    record.chiefComplaint ||
-      record.chief_complaint ||
-      record.concern ||
-      record.reasonForVisit ||
-      record.diagnosis,
+    source.chiefComplaint ||
+      source.chief_complaint ||
+      source.concern ||
+      source.reasonForVisit ||
+      source.diagnosis,
     "Not recorded",
   );
 }
 
 function getHealthRecordStatus(record = {}) {
+  const source = record || {};
   return normalizeHealthRecordStatus(formatDisplayValue(
-    record.followUpStatus ||
-      record.follow_up_status ||
-      record.status ||
-      record.recordStatus,
+    source.followUpStatus ||
+      source.follow_up_status ||
+      source.status ||
+      source.recordStatus,
     "Not recorded",
   ), "Not recorded");
 }

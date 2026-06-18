@@ -146,10 +146,10 @@ export default function RHUPatientDetails() {
   );
   const loading = patientLoading && !patient;
 
-  const latestRecord = useMemo(() => records[0] || null, [records]);
-  const latestSummary = latestRecord
-    ? getRecordConcern(latestRecord)
-    : "No record yet";
+  const latestRecord = useMemo(
+    () => (Array.isArray(records) ? records[0] ?? null : null),
+    [records],
+  );
 
   if (loading) {
     return (
@@ -213,11 +213,11 @@ export default function RHUPatientDetails() {
               />
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-              <span className="font-semibold text-[#0F172A]">
-                Latest RHU Record:
-              </span>
-              <span>{latestSummary}</span>
+            <div className="mt-3">
+              <LatestConsultationSummary
+                record={latestRecord}
+                basePath="/rhu"
+              />
             </div>
           </div>
 
@@ -359,6 +359,56 @@ function PatientInformationTab({ patient }) {
   );
 }
 
+function LatestConsultationSummary({ record, basePath }) {
+  if (!record) {
+    return (
+      <div className="border-l-2 border-[#B91C1C]/20 pl-3">
+        <p className="text-sm text-slate-500">
+          <span className="font-semibold text-[#0F172A]">
+            Latest Consultation:
+          </span>{" "}
+          No consultations recorded yet.
+        </p>
+      </div>
+    );
+  }
+
+  const recordId = getActionableRecordId(record);
+  const status = getRecordStatus(record);
+  const title = getRecordConcern(record);
+  const titleContent = recordId ? (
+    <Link
+      to={`${basePath}/health-records/${recordId}`}
+      className="font-bold text-[#0F172A] underline-offset-2 transition hover:text-[#B91C1C] hover:underline"
+    >
+      {title}
+    </Link>
+  ) : (
+    <span className="font-bold text-[#0F172A]">{title}</span>
+  );
+
+  return (
+    <div className="max-w-3xl border-l-2 border-[#B91C1C]/20 pl-3">
+      <div className="min-w-0">
+        <p className="truncate text-sm text-slate-500">
+          <span className="font-semibold text-[#0F172A]">
+            Latest Consultation:
+          </span>{" "}
+          {titleContent}
+        </p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+          <span>{getRecordDate(record)}</span>
+          <span className="text-slate-300">/</span>
+          <span>{getRecordVisitType(record)}</span>
+          <span className="text-slate-300">/</span>
+          <span>{getRecordType(record)}</span>
+          <StatusBadge status={status} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RhuRecordsTab({
   records,
   isLoading,
@@ -395,11 +445,12 @@ function RhuRecordsTab({
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] border-collapse text-left">
+          <table className="w-full min-w-[1080px] border-collapse text-left">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                <th className="px-6 py-3">Date / Time of Visit</th>
-                <th className="px-6 py-3">Record Type</th>
+                <th className="px-6 py-3">Date of Visit</th>
+                <th className="px-6 py-3">Visit Type</th>
+                <th className="px-6 py-3">Classification</th>
                 <th className="px-6 py-3">Chief Complaint</th>
                 <th className="px-6 py-3">Status</th>
                 <th className="px-6 py-3 text-right">Action</th>
@@ -414,10 +465,10 @@ function RhuRecordsTab({
                     className="transition-colors hover:bg-slate-50/80"
                   >
                     <td className="whitespace-nowrap px-6 py-4 font-medium text-slate-700">
-                      <div>{getRecordDate(record)}</div>
-                      <div className="text-xs text-slate-400">
-                        {getRecordTime(record)}
-                      </div>
+                      {getRecordDate(record)}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-xs font-semibold text-slate-600">
+                      {getRecordVisitType(record)}
                     </td>
                     <td className="px-6 py-4 font-semibold text-[#0F172A]">
                       <span className="text-xs font-semibold text-[#0F172A]">
@@ -674,6 +725,20 @@ function getRecordId(record) {
   return record?.id || record?.recordId || record?._id || "unknown-record";
 }
 
+function getActionableRecordId(record) {
+  if (!record) return null;
+
+  const id =
+    record.id ||
+    record.health_record_id ||
+    record.healthRecordId ||
+    record.record_id ||
+    record.recordId ||
+    record._id;
+
+  return id ? String(id) : null;
+}
+
 function getRecordPatientName(record) {
   if (!record) return "";
 
@@ -776,9 +841,43 @@ function getRecordType(record) {
       record?.classification ||
       record?.recordType ||
       record?.record_type ||
+      record?.healthRecordType ||
+      record?.health_record_type ||
       record?.patientClassification,
-    "General Consultation",
+    "Not recorded",
   );
+}
+
+function getRecordVisitType(record) {
+  const value = String(record?.visitType || record?.visit_type || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
+
+  if (
+    value === "follow up visit" ||
+    value === "follow up" ||
+    record?.isFollowUp ||
+    record?.is_follow_up ||
+    record?.parentHealthRecordId ||
+    record?.parent_health_record_id ||
+    record?.previousRecordId
+  ) {
+    return "Follow-up Visit";
+  }
+
+  if (
+    value === "initial consultation" ||
+    value === "initial consult" ||
+    value === "consultation" ||
+    value === "general consultation"
+  ) {
+    return "Initial Consultation";
+  }
+
+  if (value) return formatDisplayValue(record?.visitType || record?.visit_type);
+
+  return "Initial Consultation";
 }
 
 function getRecordStatus(record) {
@@ -805,10 +904,6 @@ function getRecordDate(record) {
       record?.dateCreated,
     "Not recorded",
   );
-}
-
-function getRecordTime(record) {
-  return record?.timeOfVisit || record?.time_of_visit || record?.time || "No time recorded";
 }
 
 function getReferralDate(referral) {

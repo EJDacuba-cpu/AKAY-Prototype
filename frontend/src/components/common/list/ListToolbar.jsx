@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
 import { formatDisplayValue } from "../../../utils/formatters";
-import FilterDrawer from "./FilterDrawer";
+import FilterPopover from "./FilterPopover";
 
 function getInitialValues(fields) {
   return fields.reduce((acc, field) => {
     acc[field.key] = field.value ?? "";
+    if (field.customDateKey) {
+      acc[field.customDateKey] = field.customDateCurrentValue ?? "";
+    }
     return acc;
   }, {});
 }
@@ -24,6 +27,9 @@ function getResetValue(field) {
 function getResetValues(fields) {
   return fields.reduce((acc, field) => {
     acc[field.key] = getResetValue(field);
+    if (field.customDateKey) {
+      acc[field.customDateKey] = "";
+    }
     return acc;
   }, {});
 }
@@ -56,6 +62,7 @@ export default function ListToolbar({
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(() => getInitialValues(filters));
+  const toolbarRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
@@ -72,21 +79,18 @@ export default function ListToolbar({
   }, [open]);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open) return;
 
-    const scrollbarWidth =
-      window.innerWidth - document.documentElement.clientWidth;
-    const originalOverflow = document.body.style.overflow;
-    const originalPaddingRight = document.body.style.paddingRight;
-
-    document.body.style.overflow = "hidden";
-    if (scrollbarWidth > 0) {
-      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    function handlePointerDown(event) {
+      if (!toolbarRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
     }
 
+    document.addEventListener("mousedown", handlePointerDown);
+
     return () => {
-      document.body.style.overflow = originalOverflow;
-      document.body.style.paddingRight = originalPaddingRight;
+      document.removeEventListener("mousedown", handlePointerDown);
     };
   }, [open]);
 
@@ -119,7 +123,7 @@ export default function ListToolbar({
 
   return (
     <div className="mb-4 rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm sm:p-4">
-      <div className="relative">
+      <div ref={toolbarRef} className="relative">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
           <div className="relative min-w-0 flex-1">
             <Search
@@ -162,7 +166,7 @@ export default function ListToolbar({
         </div>
 
         {open && (
-          <FilterDrawer
+          <FilterPopover
             filters={filters}
             draft={draft}
             hasClearableFilters={hasClearableFilters}

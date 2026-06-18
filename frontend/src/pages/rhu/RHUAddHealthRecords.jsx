@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  AlertCircle,
   ArrowLeft,
   Baby,
   Check,
@@ -19,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import { SuccessModal } from "../../components/common";
 import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
 import InlineSpinner from "../../components/common/loading/InlineSpinner";
 import {
@@ -315,13 +315,16 @@ export default function AddHealthRecord() {
   const recordId = searchParams.get("recordId");
   const preselectedPatientId = searchParams.get("patientId") || "";
   const linkedTrackingId = searchParams.get("trackingId") || "";
-  const mode = searchParams.get("mode") || "";
+  const requestedMode = searchParams.get("mode") || "";
+  const mode = requestedMode;
   const isFollowUp = !!recordId && mode === "follow-up";
+  const isOrphanFollowUpRequest = !recordId && requestedMode === "follow-up";
   const isEditingRecord = !!recordId && !isFollowUp;
 
   const [patients, setPatients] = useState([]);
   const [patientsLoading, setPatientsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -378,6 +381,16 @@ export default function AddHealthRecord() {
     mmr_dose2: false,
     feeding_status: "",
   });
+
+  useEffect(() => {
+    if (!isOrphanFollowUpRequest) return undefined;
+
+    alert(
+      "Follow-up visits must start from an existing Follow-up Required health record. Redirecting back to Health Records.",
+    );
+    const timer = window.setTimeout(() => navigate(healthRecordsPath), 0);
+    return () => window.clearTimeout(timer);
+  }, [healthRecordsPath, isOrphanFollowUpRequest, navigate]);
 
   useEffect(() => {
     let active = true;
@@ -525,6 +538,19 @@ export default function AddHealthRecord() {
     : "";
   const patientSearchInputValue =
     dropdownOpen || !selectedPatientId ? searchTerm : selectedPatientLabel;
+  const visitType = isFollowUp ? "follow_up_visit" : "initial_consultation";
+  const visitTypeLabel = isFollowUp ? "Follow-up Visit" : "Initial Consultation";
+  const followUpPatientName =
+    getPatientName(selectedPatient) ||
+    followUpRecord?.patientName ||
+    followUpRecord?.patient?.name ||
+    "Selected patient";
+  const followUpPatientId =
+    selectedPatient?.patientId ||
+    selectedPatient?.id ||
+    followUpRecord?.patientId ||
+    followUpRecord?.patient_id ||
+    "Not recorded";
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -640,9 +666,9 @@ export default function AddHealthRecord() {
   useEffect(() => {
     if (!showFollowUpMonitoringFields) {
       setFollowUpDate("");
-      setPatientCondition("");
+      if (!isFollowUp) setPatientCondition("");
     }
-  }, [showFollowUpMonitoringFields]);
+  }, [showFollowUpMonitoringFields, isFollowUp]);
 
   useEffect(() => {
     const recordLmp = maternalData.lmp;
@@ -704,12 +730,32 @@ export default function AddHealthRecord() {
 
     if (normalizedStatus !== "Follow-up Required") {
       setFollowUpDate("");
-      setPatientCondition("");
+      if (!isFollowUp) setPatientCondition("");
     }
   }
 
   async function handleSave(event) {
     event.preventDefault();
+
+    if (isOrphanFollowUpRequest) {
+      alert(
+        "Follow-up visits must start from an existing Follow-up Required health record.",
+      );
+      return;
+    }
+
+    if (
+      isFollowUp &&
+      followUpRecord &&
+      normalizePatientStatus(
+        followUpRecord.followUpStatus || followUpRecord.status,
+      ) !== "Follow-up Required"
+    ) {
+      alert(
+        "Record Follow-up Visit is only available for records marked Follow-up Required.",
+      );
+      return;
+    }
 
     if (!selectedPatientId) {
       alert("Please select a patient first.");
@@ -717,13 +763,28 @@ export default function AddHealthRecord() {
       return;
     }
 
-    if (!normalizedHealthRecordType) {
-      alert("Please select a health record type.");
+    const effectiveHealthRecordType =
+      normalizedHealthRecordType ||
+      normalizeRecordType(
+        followUpRecord?.category ||
+          followUpRecord?.recordType ||
+          followUpRecord?.patientClassification,
+      ) ||
+      (isFollowUp ? "General Consultation" : "");
+
+    if (!effectiveHealthRecordType) {
+      alert("Please select a classification.");
       return;
     }
 
     const finalChiefComplaint =
-      isImmunization && !chiefComplaint ? "Vaccination Visit" : chiefComplaint;
+      isFollowUp && !chiefComplaint
+        ? `Follow-up visit: ${
+            followUpRecord?.chiefComplaint || "Return consultation"
+          }`
+        : isImmunization && !chiefComplaint
+          ? "Vaccination Visit"
+          : chiefComplaint;
     const formattedBp = (() => {
       const sys = systolicBp || "N/A";
       const dia = diastolicBp || "N/A";
@@ -751,10 +812,16 @@ export default function AddHealthRecord() {
     try {
       const recordData = {
         patientId: selectedPatientId,
-        patientName: getPatientName(selectedPatient),
-        category: normalizedHealthRecordType,
-        recordType: normalizedHealthRecordType,
-        patientClassification: normalizedHealthRecordType,
+        patientName: isFollowUp
+          ? followUpPatientName
+          : getPatientName(selectedPatient),
+        category: effectiveHealthRecordType,
+        recordType: effectiveHealthRecordType,
+        patientClassification: effectiveHealthRecordType,
+        visitType,
+        visit_type: visitType,
+        parentHealthRecordId: isFollowUp ? recordId : null,
+        parent_health_record_id: isFollowUp ? recordId : null,
         dateOfVisit,
         timeOfVisit,
         chiefComplaint: finalChiefComplaint,
@@ -774,7 +841,8 @@ export default function AddHealthRecord() {
         followUpStatus: finalPatientStatus,
         followUpDate: showFollowUpMonitoringFields ? followUpDate : "",
         monitoringNotes,
-        patientCondition: showFollowUpMonitoringFields ? patientCondition : "",
+        patientCondition:
+          isFollowUp || showFollowUpMonitoringFields ? patientCondition : "",
         maternalData: recordMaternalData,
         lmp: recordMaternalData.lmp || null,
         pmp: recordMaternalData.pmp || null,
@@ -803,6 +871,10 @@ export default function AddHealthRecord() {
               {
                 ...recordData,
                 previousRecordId: recordId,
+                parentHealthRecordId: recordId,
+                parent_health_record_id: recordId,
+                visitType: "follow_up_visit",
+                visit_type: "follow_up_visit",
                 recordType: "Follow-up",
                 isFollowUp: true,
               },
@@ -832,11 +904,16 @@ export default function AddHealthRecord() {
         });
       }
 
-      navigate(savedId ? `/rhu/health-records/${savedId}` : healthRecordsPath);
+      setSaveSuccess({
+        recordId: savedId || recordId || "",
+        patientId: selectedPatientId,
+        status: finalPatientStatus,
+        isFollowUp,
+      });
     } catch (error) {
       console.error("Failed to save RHU health record:", error);
       alert(
-        "May error sa pag-save ng RHU health record. Pakisuri ang console.",
+        "An error occurred while saving the record. Please check the console.",
       );
     } finally {
       setSaving(false);
@@ -863,84 +940,96 @@ export default function AddHealthRecord() {
         </h1>
         <p className="mt-0.5 text-xs text-[#6B7280]">
           {isFollowUp
-            ? `Add a follow-up record for ${followUpRecord?.patientName || "this patient"}.`
+            ? "Record what happened during the patient's scheduled return visit."
             : isEditingRecord
               ? "Correct or update details in this existing RHU health record."
               : "Record a consultation, maternal record, immunization record, monitoring update, or follow-up for RHU patients."}
         </p>
-        {isFollowUp && followUpRecord && (
-          <div className="mt-3 flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 p-3">
-            <AlertCircle size={15} className="mt-0.5 shrink-0 text-[#B91C1C]" />
-            <p className="text-xs text-red-800">
-              Creating a follow-up record for{" "}
-              <span className="font-semibold">
-                {followUpRecord.patientName}
-              </span>
-              . Original record:{" "}
-              <span className="font-mono font-semibold">{recordId}</span>
-            </p>
-          </div>
-        )}
       </div>
 
       <form onSubmit={handleSave} className="relative space-y-5">
-        <div className="relative z-[90]">
-          <FormSection
-            title="Patient Selection"
-            subtitle="Search and select an existing patient profile from the registry."
-            icon={<User size={14} />}
-            delay={1}
-          >
-            <PatientSearchDropdown
-              inputRef={inputRef}
-              dropdownRef={dropdownRef}
-              disabled={isFollowUp}
-              dropdownOpen={dropdownOpen}
-              selectedPatientId={selectedPatientId}
-              selectedPatient={selectedPatient}
-              searchTerm={searchTerm}
-              inputValue={patientSearchInputValue}
-              patients={filteredPatients}
-              totalPatientCount={patients.length}
-              matchingPatientCount={matchingPatients.length}
-              visibleLimit={visiblePatientLimit}
-              loading={patientsLoading && patients.length === 0}
-              isSearching={Boolean(normalizedSearch)}
-              onSeeAll={() => navigate("/rhu/patients")}
-              highlightIndex={highlightIndex}
-              onSearchChange={handlePatientSearchChange}
-              onOpen={() => {
-                if (isFollowUp) return;
-                setSearchTerm("");
-                setDropdownOpen(true);
-              }}
-              onClear={clearSelectedPatient}
-              onSelect={selectPatient}
-              onHighlight={setHighlightIndex}
-            />
-          </FormSection>
-        </div>
+        {isFollowUp ? (
+          <FollowUpContextCard
+            patientName={followUpPatientName}
+            patientId={followUpPatientId}
+            recordId={recordId}
+            record={followUpRecord}
+          />
+        ) : (
+          <div className="relative z-[90]">
+            <FormSection
+              title="Patient Selection"
+              subtitle="Search and select an existing patient profile from the registry."
+              icon={<User size={14} />}
+              delay={1}
+            >
+              <PatientSearchDropdown
+                inputRef={inputRef}
+                dropdownRef={dropdownRef}
+                disabled={false}
+                dropdownOpen={dropdownOpen}
+                selectedPatientId={selectedPatientId}
+                selectedPatient={selectedPatient}
+                searchTerm={searchTerm}
+                inputValue={patientSearchInputValue}
+                patients={filteredPatients}
+                totalPatientCount={patients.length}
+                matchingPatientCount={matchingPatients.length}
+                visibleLimit={visiblePatientLimit}
+                loading={patientsLoading && patients.length === 0}
+                isSearching={Boolean(normalizedSearch)}
+                onSeeAll={() => navigate("/rhu/patients")}
+                highlightIndex={highlightIndex}
+                onSearchChange={handlePatientSearchChange}
+                onOpen={() => {
+                  setSearchTerm("");
+                  setDropdownOpen(true);
+                }}
+                onClear={clearSelectedPatient}
+                onSelect={selectPatient}
+                onHighlight={setHighlightIndex}
+              />
+            </FormSection>
+          </div>
+        )}
 
         <FormSection
           title="Visit Overview"
-          subtitle="Set the record type, visit schedule, and attending practitioner."
+          subtitle="Confirm the visit type, classification, schedule, and attending practitioner."
           icon={<Clock size={14} />}
           delay={2}
         >
-          <div className="grid gap-4 lg:grid-cols-4">
-            <FieldSelect
-              label="Health Record Type"
-              value={healthRecordType}
-              onChange={(event) => setHealthRecordType(event.target.value)}
-              required
-            >
-              <option value="">Select health record type</option>
-              {RECORD_TYPE_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </FieldSelect>
+          <div className="grid gap-4 lg:grid-cols-5">
+            <FieldInput label="Visit Type" value={visitTypeLabel} readOnly />
+            {isFollowUp ? (
+              <FieldInput
+                label="Classification"
+                value={
+                  normalizedHealthRecordType ||
+                  normalizeRecordType(
+                    followUpRecord?.category ||
+                      followUpRecord?.recordType ||
+                      followUpRecord?.patientClassification,
+                  ) ||
+                  "General Consultation"
+                }
+                readOnly
+              />
+            ) : (
+              <FieldSelect
+                label="Classification"
+                value={healthRecordType}
+                onChange={(event) => setHealthRecordType(event.target.value)}
+                required
+              >
+                <option value="">Select classification</option>
+                {RECORD_TYPE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </FieldSelect>
+            )}
             <FieldInput
               label="Date of Visit"
               type="date"
@@ -963,7 +1052,155 @@ export default function AddHealthRecord() {
           </div>
         </FormSection>
 
-        {isImmunization && (
+        {isFollowUp && (
+          <>
+            <FormSection
+              title="Follow-up Assessment"
+              subtitle="Record the patient's condition and findings during this return visit."
+              icon={<Stethoscope size={14} />}
+              delay={3}
+            >
+              <div className="grid gap-4 lg:grid-cols-2">
+                <FieldSelect
+                  label="Current Condition"
+                  value={patientCondition}
+                  onChange={(event) => setPatientCondition(event.target.value)}
+                >
+                  <option value="">Select condition</option>
+                  <option>Improving</option>
+                  <option>Stable</option>
+                  <option>No Improvement Observed</option>
+                  <option>Needs Further Review</option>
+                  <option>Recovered</option>
+                </FieldSelect>
+                <FieldInput
+                  label="Updated Diagnosis"
+                  value={diagnosis}
+                  onChange={(event) => setDiagnosis(event.target.value)}
+                />
+              </div>
+              <div className="mt-4">
+                <FieldTextarea
+                  label="Follow-up Findings"
+                  required
+                  value={summaryOfPresentIllness}
+                  onChange={(event) =>
+                    setSummaryOfPresentIllness(event.target.value)
+                  }
+                  placeholder="Record the patient's current symptoms, progress, examination findings, or changes since the original visit..."
+                  rows={5}
+                />
+              </div>
+            </FormSection>
+
+            <FormSection
+              title="Vital Signs"
+              subtitle="Record updated physiological measurements for this follow-up visit."
+              icon={<HeartPulse size={14} />}
+              delay={4}
+            >
+              <div className="grid gap-4 lg:grid-cols-3">
+                <BpInputGroup
+                  systolic={systolicBp}
+                  diastolic={diastolicBp}
+                  onSystolicChange={setSystolicBp}
+                  onDiastolicChange={setDiastolicBp}
+                />
+                <FieldInput
+                  label="Temperature"
+                  placeholder="e.g. 36.5 °C"
+                  value={temp}
+                  onChange={(event) => setTemp(event.target.value)}
+                />
+                <FieldInput
+                  label="Pulse Rate"
+                  placeholder="e.g. 72 bpm"
+                  value={pulse}
+                  onChange={(event) => setPulse(event.target.value)}
+                />
+              </div>
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <FieldInput
+                  label="Weight"
+                  type="number"
+                  placeholder="e.g. 60"
+                  value={weight}
+                  onChange={(event) => setWeight(event.target.value)}
+                />
+                <FieldInput
+                  label="Height"
+                  type="number"
+                  placeholder="e.g. 165"
+                  value={height}
+                  onChange={(event) => setHeight(event.target.value)}
+                />
+              </div>
+            </FormSection>
+
+            <FormSection
+              title="Treatment & Actions"
+              subtitle="Document what was done during the follow-up visit."
+              icon={<Stethoscope size={14} />}
+              delay={5}
+            >
+              <div className="grid gap-4 lg:grid-cols-2">
+                <FieldInput
+                  label="Action Taken"
+                  value={medication}
+                  onChange={(event) => setMedication(event.target.value)}
+                />
+                <FieldTextarea
+                  label="Follow-up Notes"
+                  value={consultationNotes}
+                  onChange={(event) => setConsultationNotes(event.target.value)}
+                  placeholder="Write additional instructions, advice, or return visit notes..."
+                  rows={3}
+                />
+              </div>
+            </FormSection>
+
+            <FormSection
+              title="Outcome"
+              subtitle="Set the new record status after this follow-up visit."
+              icon={<HeartPulse size={14} />}
+              delay={6}
+            >
+              <div className="grid gap-4 lg:grid-cols-2">
+                <FieldSelect
+                  label="New Health Record Status"
+                  value={followUpStatus}
+                  onChange={(event) =>
+                    handlePatientStatusChange(event.target.value)
+                  }
+                >
+                  <option>Routine Monitoring</option>
+                  <option>Follow-up Required</option>
+                  <option>Completed</option>
+                </FieldSelect>
+                {showFollowUpMonitoringFields && (
+                  <FieldInput
+                    label="Next Follow-up Date"
+                    type="date"
+                    value={followUpDate}
+                    onChange={(event) => setFollowUpDate(event.target.value)}
+                    required
+                  />
+                )}
+              </div>
+              <div className="mt-4">
+                <FieldTextarea
+                  label="Monitoring and Follow-up"
+                  value={monitoringNotes}
+                  onChange={(event) => setMonitoringNotes(event.target.value)}
+                  placeholder="Write the monitoring plan or reason for another follow-up if needed..."
+                  rows={3}
+                />
+              </div>
+            </FormSection>
+          </>
+        )}
+
+        {!isFollowUp && isImmunization && (
           <FormSection
             title="Immunization Record Tracker"
             subtitle="Digital immunization card for documenting vaccine schedule entries."
@@ -1032,7 +1269,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {isMaternal && (
+        {!isFollowUp && isMaternal && (
           <FormSection
             title="Maternal & Prenatal Assessment"
             subtitle="Monitor pregnancy progression and maternal clinical vitals."
@@ -1132,7 +1369,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isImmunization && (
+        {!isFollowUp && !isImmunization && (
           <FormSection
             title="Consultation Information"
             subtitle="Record consultation findings and observations."
@@ -1182,7 +1419,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isImmunization && (
+        {!isFollowUp && !isImmunization && (
           <>
             <FormSection
               title="Vital Signs"
@@ -1310,10 +1547,44 @@ export default function AddHealthRecord() {
                 className="transition-transform duration-300 group-hover:scale-110"
               />
             )}
-            {saving ? "Saving..." : "Save Health Record"}
+            {saving
+              ? "Saving..."
+              : isFollowUp
+                ? "Save Follow-up Visit"
+                : "Save Health Record"}
           </button>
         </div>
       </form>
+      <SuccessModal
+        open={Boolean(saveSuccess)}
+        title={
+          saveSuccess?.isFollowUp
+            ? "Follow-up Visit Saved"
+            : "Health Record Saved Successfully"
+        }
+        description={
+          saveSuccess?.isFollowUp
+            ? "The follow-up visit has been saved and linked to the original health record."
+            : "The health record has been saved successfully."
+        }
+        onClose={() => navigate(healthRecordsPath)}
+        actions={[
+          {
+            label: "View Health Record",
+            variant: "primary",
+            onClick: () =>
+              navigate(
+                saveSuccess?.recordId
+                  ? `${healthRecordsPath}/${saveSuccess.recordId}`
+                  : healthRecordsPath,
+              ),
+          },
+          {
+            label: "Back to Health Records",
+            onClick: () => navigate(healthRecordsPath),
+          },
+        ]}
+      />
     </DashboardLayout>
   );
 }
@@ -1574,6 +1845,90 @@ function SelectedPatientPreview({ patient }) {
 /* ═══════════════════════════════════════════════════════════════
    FORM SUB-COMPONENTS
    ═══════════════════════════════════════════════════════════════ */
+function FollowUpContextCard({ patientName, patientId, recordId, record }) {
+  return (
+    <div
+      className="anim-fade-up rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-6 shadow-sm"
+      style={stagger(1)}
+    >
+      <div className="flex flex-col gap-4 border-b border-amber-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+            <Lock size={16} />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-[#1A1A1A]">
+              Follow-up Context
+            </h2>
+            <p className="mt-0.5 text-xs text-[#6B7280]">
+              This follow-up visit is linked to the original health record.
+            </p>
+          </div>
+        </div>
+        <span className="inline-flex w-fit items-center rounded-full border border-amber-200 bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+          Locked Patient
+        </span>
+      </div>
+
+      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <ContextItem label="Patient" value={patientName} strong />
+        <ContextItem label="Patient ID" value={patientId} />
+        <ContextItem label="Original Health Record ID" value={recordId} />
+        <ContextItem
+          label="Original Visit Date"
+          value={record?.dateOfVisit || record?.dateRecorded || record?.date || ""}
+        />
+        <ContextItem
+          label="Original Classification"
+          value={normalizeRecordType(
+            record?.category ||
+              record?.recordType ||
+              record?.patientClassification ||
+              record?.classification,
+          )}
+        />
+        <ContextItem
+          label="Original Chief Complaint"
+          value={record?.chiefComplaint}
+          strong
+        />
+        <ContextItem label="Original Diagnosis" value={record?.diagnosis} />
+        <ContextItem
+          label="Original Status"
+          value={normalizePatientStatus(
+            record?.followUpStatus || record?.status || "Follow-up Required",
+          )}
+        />
+        <ContextItem
+          label="Scheduled Follow-up Date"
+          value={record?.followUpDate}
+        />
+        <ContextItem
+          label="Original Practitioner"
+          value={record?.attendingStaff || record?.recordedBy}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ContextItem({ label, value, strong = false }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-amber-100/80 bg-white/75 px-3.5 py-3">
+      <p className="text-[9px] font-bold uppercase tracking-widest text-[#9CA3AF]">
+        {label}
+      </p>
+      <p
+        className={`mt-1 truncate text-sm ${
+          strong ? "font-bold text-[#1F2937]" : "font-semibold text-[#475569]"
+        }`}
+      >
+        {formatDisplayValue(value, "Not recorded")}
+      </p>
+    </div>
+  );
+}
+
 function FormSection({ title, subtitle, icon, children, delay = 0, accent }) {
   const borderClass = accent === "pink" ? "border-t-2 border-t-pink-600" : "";
 
