@@ -9,18 +9,21 @@ import {
   FilePlus2,
   FileText,
   MoreHorizontal,
+  Pencil,
   Plus,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar } from "../../components/common";
+import { ListToolbar, StatusBadge } from "../../components/common";
 import TableSkeleton from "../../components/common/loading/TableSkeleton";
 import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
   formatDisplayValue,
+  formatDate,
   formatPatientName,
   formatUserName,
+  normalizeHealthRecordStatus,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 
@@ -82,12 +85,16 @@ export default function RHUHealthRecords() {
             record.followUpStatus || record.status || record.recordStatus,
           ),
           followUp: record.followUpDate || "No Follow-up",
-          date:
-            record.dateOfVisit ||
-            record.visitDate ||
-            record.date ||
-            record.createdAt ||
-            "No Date",
+	          date:
+	            record.dateOfVisit ||
+	            record.date_of_visit ||
+	            record.dateRecorded ||
+	            record.date_recorded ||
+	            record.visitDate ||
+	            record.date ||
+	            record.createdAt ||
+	            record.created_at ||
+	            "",
           provider: formatUserName(
             record.attendingStaff ||
               record.recordedBy ||
@@ -346,7 +353,7 @@ function RHUHealthRecordsTable({
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3 text-[#6B7280]">
-                  {formatDisplayDate(record.date)}
+	                  {formatDate(record.date, "Not recorded")}
                 </td>
 
                 <td className="max-w-[190px] truncate px-4 py-3 text-[#6B7280]">
@@ -429,29 +436,12 @@ function RHUHealthRecordsTable({
   );
 }
 
-function StatusBadge({ status }) {
-  const normalized = normalizeHealthRecordStatus(status);
-  const toneMap = {
-    "Routine Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    "Follow-up Required": "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
-    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide shadow-sm ${
-        toneMap[normalized] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
-      }`}
-    >
-      {normalized}
-    </span>
-  );
-}
-
 function ActionMenu({ record, open, onToggle, onClose }) {
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const btnRef = useRef(null);
   const menuRef = useRef(null);
+  const canShowFollowUpAction =
+    normalizeHealthRecordStatus(record.status) === "Follow-up Required";
 
   function updatePosition() {
     if (!btnRef.current) return;
@@ -541,13 +531,25 @@ function ActionMenu({ record, open, onToggle, onClose }) {
               </Link>
 
               <Link
-                to={`/rhu/health-records/add?recordId=${record.id}&mode=follow-up`}
+                to={`/rhu/health-records/${record.id}`}
+                state={{ startInEditMode: true }}
                 onClick={onClose}
                 className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-[#4B5563] transition-colors hover:bg-[#F9FAFB] hover:text-[#111827]"
               >
-                <FilePlus2 size={14} className="text-[#9CA3AF]" />
-                Add Follow-up Record
+                <Pencil size={14} className="text-[#9CA3AF]" />
+                Edit Record
               </Link>
+
+              {canShowFollowUpAction && (
+                <Link
+                  to={`/rhu/health-records/add?recordId=${record.id}&mode=follow-up`}
+                  onClick={onClose}
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-[#4B5563] transition-colors hover:bg-[#F9FAFB] hover:text-[#111827]"
+                >
+                  <FilePlus2 size={14} className="text-[#9CA3AF]" />
+                  Add Follow-up Record
+                </Link>
+              )}
             </div>
           </div>,
           document.body,
@@ -599,28 +601,6 @@ function inferClassification(record) {
   return "General Consultation";
 }
 
-function normalizeHealthRecordStatus(status) {
-  const value = String(status || "").trim();
-
-  if (!value) return "Routine Monitoring";
-
-  if (["Follow-up", "Follow Up", "Follow-up Required"].includes(value)) {
-    return "Follow-up Required";
-  }
-
-  if (["Completed", "Complete", "Recovered", "Closed"].includes(value)) {
-    return "Completed";
-  }
-
-  if (
-    ["For Monitoring", "Active", "Monitoring", "For Referral"].includes(value)
-  ) {
-    return "Routine Monitoring";
-  }
-
-  return value;
-}
-
 function normalizeDate(value) {
   if (!value) return "";
 
@@ -629,18 +609,4 @@ function normalizeDate(value) {
   if (Number.isNaN(parsed.getTime())) return "";
 
   return parsed.toISOString().slice(0, 10);
-}
-
-function formatDisplayDate(value) {
-  if (!value || value === "No Date") return "No Date";
-
-  const parsed = new Date(value);
-
-  if (Number.isNaN(parsed.getTime())) return value;
-
-  return parsed.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 }

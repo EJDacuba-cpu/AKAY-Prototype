@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  ClipboardList,
   FilePlus2,
   Pencil,
   X,
@@ -22,12 +21,7 @@ import {
   updateHealthRecord,
 } from "../../services/healthRecordService";
 import {
-  getReferralByHealthRecordId,
-  getReferralByTrackingId,
-} from "../../services/referrals";
-
-import {
-  ConfirmationModal,
+  ButtonSpinner,
   FormInput,
   FormSelect,
   FormTextarea,
@@ -40,6 +34,7 @@ import {
   formatDisplayValue,
   formatLongDate,
   formatPatientName,
+  formatUserName,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 
@@ -101,16 +96,15 @@ export default function HealthRecordDetails() {
 
   const [record, setRecord] = useState(null);
   const [patient, setPatient] = useState(null);
-  const [linkedReferral, setLinkedReferral] = useState(null);
 
   const [isEditing, setIsEditing] = useState(
     Boolean(location.state?.startInEditMode),
   );
-  const [openConfirm, setOpenConfirm] = useState(false);
   const [openSuccess, setOpenSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState({});
+  const [formErrors, setFormErrors] = useState({});
 
   const {
     data: details,
@@ -120,16 +114,11 @@ export default function HealthRecordDetails() {
     queryKey: queryKeys.healthRecordDetails("bhc", recordId),
     queryFn: async () => {
       const recordData = await getHealthRecordById(recordId);
-      const existingReferral =
-        (await getReferralByHealthRecordId(recordId)) ||
-        (!recordData?.isFollowUp && recordData?.linkedTrackingId
-          ? await getReferralByTrackingId(recordData.linkedTrackingId)
-          : null);
       const patientData = recordData?.patientId
         ? await getPatientById(recordData.patientId)
         : null;
 
-      return { record: recordData, patient: patientData, linkedReferral: existingReferral };
+      return { record: recordData, patient: patientData };
     },
     enabled: Boolean(recordId),
   });
@@ -138,7 +127,6 @@ export default function HealthRecordDetails() {
     if (!details) return;
     setRecord(details.record);
     setPatient(details.patient);
-    setLinkedReferral(details.linkedReferral);
     if (details.record) initializeForm(details.record);
   }, [details]);
 
@@ -146,6 +134,13 @@ export default function HealthRecordDetails() {
 
   function initializeForm(data) {
     setForm({
+      category: formatDisplayValue(
+        data.category ||
+          data.classification ||
+          data.recordType ||
+          data.patientClassification,
+        "General Consultation",
+      ),
       diagnosis: getRecordDiagnosis(data, ""),
       chiefComplaint: getRecordChiefComplaint(data, ""),
       summaryOfPresentIllness: getRecordSummary(data, ""),
@@ -153,6 +148,17 @@ export default function HealthRecordDetails() {
       medication: getRecordInitialActions(data, ""),
       vitalSigns: getVitalSigns(data, ""),
       followUpStatus: getRecordFollowUpStatus(data, "Consultation"),
+      followUpDate: getRecordValue(data, ["followUpDate", "follow_up_date"], ""),
+      patientCondition: getRecordValue(
+        data,
+        ["patientCondition", "patient_condition"],
+        "",
+      ),
+      monitoringNotes: getRecordValue(
+        data,
+        ["monitoringNotes", "monitoring_notes"],
+        "",
+      ),
       attendingStaff: getRecordPractitioner(data, ""),
       aog: getRecordValue(data, ["aog", "ageOfGestation", "age_of_gestation"], ""),
       expectedDeliveryDate: getRecordValue(
@@ -169,21 +175,33 @@ export default function HealthRecordDetails() {
       ...prev,
       [name]: value,
     }));
+    if (formErrors[name]) {
+      setFormErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+    }
   }
 
   async function handleInlineSubmit() {
+    if (saving) return;
+
+    const nextErrors = validateInlineForm(form);
+    if (Object.keys(nextErrors).length > 0) {
+      setFormErrors(nextErrors);
+      return;
+    }
+
     try {
       setSaving(true);
-      await updateHealthRecord(recordId, form);
+      const updatedRecord = await updateHealthRecord(recordId, form);
 
-      setRecord((prev) => ({
-        ...prev,
-        ...form,
-      }));
+      setRecord(updatedRecord || ((prev) => ({ ...prev, ...form })));
 
-      setOpenConfirm(false);
       setOpenSuccess(true);
       setIsEditing(false);
+      setFormErrors({});
       queryClient.invalidateQueries({
         queryKey: queryKeys.healthRecordDetails("bhc", recordId),
       });
@@ -200,6 +218,12 @@ export default function HealthRecordDetails() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleCancelEdit() {
+    initializeForm(record);
+    setFormErrors({});
+    setIsEditing(false);
   }
 
   if (loading) {
@@ -232,6 +256,27 @@ export default function HealthRecordDetails() {
     record.followUpStatus || record.status || "Consultation",
   );
   const canRecordFollowUpVisit = isFollowUpEligibleStatus(status);
+  const followUpDateValue = getRecordValue(record, ["followUpDate", "follow_up_date"], "");
+  const patientConditionValue = getRecordValue(record, [
+    "patientCondition",
+    "patient_condition",
+  ], "");
+  const monitoringNotesValue = getRecordValue(
+    record,
+    ["monitoringNotes", "monitoring_notes"],
+    "",
+  );
+  const hasFollowUpData = Boolean(
+    followUpDateValue || patientConditionValue || monitoringNotesValue,
+  );
+  const shouldShowFullMonitoringSection =
+    isMonitoringStatus(status) ||
+    (status === "Completed" && hasFollowUpData) ||
+    (status === "Routine Monitoring" && Boolean(followUpDateValue));
+  const shouldShowRoutineMonitoringNotes =
+    status === "Routine Monitoring" &&
+    !followUpDateValue &&
+    Boolean(patientConditionValue || monitoringNotesValue);
   const showPatientProfileSidebar = false;
   const isImmunizationRecord = isImmunizationClassification(record, patient);
   const immunizationGroups = getImmunizationGroups(record);
@@ -314,33 +359,37 @@ export default function HealthRecordDetails() {
                 <>
                   <button
                     type="button"
-                    onClick={() => {
-                      initializeForm(record);
-                      setIsEditing(false);
-                    }}
-                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-500 shadow-sm transition hover:bg-slate-50"
+                    onClick={handleCancelEdit}
+                    disabled={saving}
+                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-500 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     <X size={14} />
                     Cancel
                   </button>
                   <button
                     type="button"
-                    onClick={() => setOpenConfirm(true)}
-                    className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
+                    onClick={handleInlineSubmit}
+                    disabled={saving}
+                    className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    <Check size={14} />
-                    Save Changes
+                    {saving ? <ButtonSpinner /> : <Check size={14} />}
+                    {saving ? "Saving..." : "Save Changes"}
                   </button>
                 </>
               ) : (
                 <>
-                  <Link
-                    to={`/bhc/health-records/add?recordId=${record.id || record._id}&mode=edit`}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      initializeForm(record);
+                      setFormErrors({});
+                      setIsEditing(true);
+                    }}
                     className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
                   >
                     <Pencil size={14} />
                     Edit Record
-                  </Link>
+                  </button>
                   {canRecordFollowUpVisit && (
                     <Link
                       to={`/bhc/health-records/add?recordId=${record.id || record._id}&mode=follow-up`}
@@ -351,28 +400,6 @@ export default function HealthRecordDetails() {
                       <FilePlus2 size={14} />
                       Record Follow-up Visit
                     </Link>
-                  )}
-                  {linkedReferral?.trackingId ? (
-                    <Link
-                      to={`/bhc/referrals/${linkedReferral.trackingId}`}
-                      className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
-                    >
-                      <ClipboardList size={14} />
-                      View Referral
-                    </Link>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        navigate(
-                          `/bhc/referrals/create?recordId=${record.id || record._id}`,
-                        )
-                      }
-                      className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
-                    >
-                      <ClipboardList size={14} />
-                      Submit Referral
-                    </button>
                   )}
                 </>
               )}
@@ -390,43 +417,80 @@ export default function HealthRecordDetails() {
                 <div className="space-y-1">
                   <SectionDivider label="Clinical Assessment" />
                   <div className="pt-3">
-                    <div className="grid gap-5 md:grid-cols-2">
+                    <div className="grid gap-x-8 gap-y-3 md:grid-cols-2">
+                      <FieldWithError error={formErrors.category}>
+                        <FormSelect
+                          label="Visit Type"
+                          name="category"
+                          value={form.category || ""}
+                          onChange={handleChange}
+                          required
+                        >
+                          <option value="General Consultation">
+                            General Consultation
+                          </option>
+                          <option value="Maternal">Maternal</option>
+                          <option value="Immunization">Immunization</option>
+                          <option value="Senior Citizen">Senior Citizen</option>
+                        </FormSelect>
+                      </FieldWithError>
+                      <FieldWithError error={formErrors.diagnosis}>
+                        <FormInput
+                          label="Initial Diagnosis"
+                          name="diagnosis"
+                          value={form.diagnosis || ""}
+                          onChange={handleChange}
+                          required
+                        />
+                      </FieldWithError>
+                      <FieldWithError error={formErrors.followUpStatus}>
+                        <FormSelect
+                          label="Follow-up Status"
+                          name="followUpStatus"
+                          value={form.followUpStatus || ""}
+                          onChange={handleChange}
+                          required
+                        >
+                          <option value="Routine Monitoring">
+                            Routine Monitoring
+                          </option>
+                          <option value="Under Observation">
+                            Under Observation
+                          </option>
+                          <option value="Follow-up Required">
+                            Follow-up Required
+                          </option>
+                          <option value="Completed">Completed</option>
+                          <option value="Needs Referral">Needs Referral</option>
+                        </FormSelect>
+                      </FieldWithError>
+                      <FieldWithError error={formErrors.attendingStaff}>
+                        <FormInput
+                          label="Name of Practitioner"
+                          name="attendingStaff"
+                          value={form.attendingStaff || ""}
+                          onChange={handleChange}
+                          required
+                        />
+                      </FieldWithError>
+                    </div>
+                  </div>
+                  <div className="pt-2">
+                    <FieldWithError error={formErrors.chiefComplaint}>
                       <FormInput
-                        label="Diagnosis / Assessment"
-                        name="diagnosis"
-                        value={form.diagnosis}
+                        label="Chief Complaint"
+                        name="chiefComplaint"
+                        value={form.chiefComplaint || ""}
                         onChange={handleChange}
                         required
                       />
-                      <FormSelect
-                        label="Follow-up Status"
-                        name="followUpStatus"
-                        value={form.followUpStatus}
-                        onChange={handleChange}
-                        required
-                      >
-                        <option>Consultation</option>
-                        <option>Under Observation</option>
-                        <option>Follow-up After 2 Days</option>
-                        <option>Discharged</option>
-                        <option>For Referral</option>
-                      </FormSelect>
-                    </div>
+                    </FieldWithError>
                   </div>
-                  <div className="pt-4">
-                    <FormTextarea
-                      label="Chief Complaint"
-                      name="chiefComplaint"
-                      value={form.chiefComplaint}
-                      onChange={handleChange}
-                      required
-                    />
-                  </div>
-                  <div className="pt-4">
+                  <div className="pt-2">
                     <FormTextarea
                       label="Summary of Present Illness"
                       name="summaryOfPresentIllness"
-                      value={form.summaryOfPresentIllness}
+                      value={form.summaryOfPresentIllness || ""}
                       onChange={handleChange}
                       placeholder="Details of the patient's current symptoms, onset, duration, and severity..."
                     />
@@ -435,9 +499,9 @@ export default function HealthRecordDetails() {
                   <SectionDivider label="Treatment & Actions" />
                   <div className="pt-3">
                     <FormTextarea
-                      label="Initial Action Taken / Medication"
+                      label="Initial Action Taken"
                       name="medication"
-                      value={form.medication}
+                      value={form.medication || ""}
                       onChange={handleChange}
                     />
                   </div>
@@ -445,9 +509,9 @@ export default function HealthRecordDetails() {
                   <SectionDivider label="Vital Signs" />
                   <div className="pt-3">
                     <FormTextarea
-                      label="Vital Signs Summary"
+                      label="Recorded Vitals"
                       name="vitalSigns"
-                      value={form.vitalSigns}
+                      value={form.vitalSigns || ""}
                       onChange={handleChange}
                       placeholder="e.g., BP: 120/80 mmHg, Temp: 36.5°C, HR: 80 bpm, Weight: 60kg"
                     />
@@ -456,92 +520,101 @@ export default function HealthRecordDetails() {
 	                  {patientClassification === "Maternal" && (
 	                    <>
 	                      <SectionDivider label="Maternal Parameters" />
-                      <div className="grid gap-5 pt-3 md:grid-cols-2">
+                      <div className="grid gap-x-8 gap-y-3 pt-3 md:grid-cols-2">
                         <FormInput
                           label="Age of Gestation (AOG)"
                           name="aog"
-                          value={form.aog}
+                          value={form.aog || ""}
                           onChange={handleChange}
                         />
                         <FormInput
                           label="Expected Delivery Date (EDD)"
                           name="expectedDeliveryDate"
                           type="date"
-                          value={form.expectedDeliveryDate}
+                          value={form.expectedDeliveryDate || ""}
                           onChange={handleChange}
                         />
                       </div>
                     </>
                   )}
 
-                  <SectionDivider label="Attending Staff" />
-                  <div className="pt-3 pb-2">
+                  <SectionDivider label="Monitoring & Follow-up" />
+                  <div className="grid gap-x-8 gap-y-3 pt-3 md:grid-cols-2">
                     <FormInput
-                      label="Attending Staff / Midwife"
-                      name="attendingStaff"
-                      value={form.attendingStaff}
+                      label="Follow-up Date"
+                      name="followUpDate"
+                      type="date"
+                      value={form.followUpDate || ""}
                       onChange={handleChange}
-                      required
+                    />
+                    <FormInput
+                      label="Patient Condition"
+                      name="patientCondition"
+                      value={form.patientCondition || ""}
+                      onChange={handleChange}
+                    />
+                  </div>
+                  <div className="pt-2 pb-2">
+                    <FormTextarea
+                      label="Monitoring Notes"
+                      name="monitoringNotes"
+                      value={form.monitoringNotes || ""}
+                      onChange={handleChange}
                     />
                   </div>
                 </div>
               ) : (
                 /* ── View Mode ── */
-                <div className="space-y-1">
-                  <SectionDivider label="Clinical Assessment" />
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-1 pt-3">
-                    <PatientDetailItem
-                      label="Visit Type"
-                      value={recordCategory}
-                    />
-                    <PatientDetailItem
-                      label="Initial Diagnosis"
-                      value={getRecordDiagnosis(record)}
-                    />
-                    <PatientDetailItem
-                      label="Follow-up Status"
-                      value={getRecordFollowUpStatus(record)}
-                    />
-                    <PatientDetailItem
-                      label="Attending Staff"
-                      value={getRecordPractitioner(record)}
-                    />
-                  </div>
-                  <div className="pt-2">
-                    <PatientDetailItem
-                      label="Chief Complaint"
-                      value={getRecordChiefComplaint(record)}
-                    />
-                  </div>
-                  <div className="pt-2">
+                <div className="space-y-4">
+                  <DetailSection title="Clinical Assessment">
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <div className="space-y-3">
+                        <PatientDetailItem
+                          label="Visit Type"
+                          value={recordCategory}
+                        />
+                        <PatientDetailItem
+                          label="Follow-up Status"
+                          value={getRecordFollowUpStatus(record)}
+                        />
+                        <PatientDetailItem
+                          label="Chief Complaint"
+                          value={getRecordChiefComplaint(record)}
+                        />
+                      </div>
+                      <div className="space-y-3">
+                        <PatientDetailItem
+                          label="Initial Diagnosis"
+                          value={getRecordDiagnosis(record)}
+                        />
+                        <PatientDetailItem
+                          label="Name of Practitioner"
+                          value={getRecordPractitioner(record)}
+                        />
+                      </div>
+                    </div>
                     <NarrativeBox
                       label="Summary of Present Illness"
                       value={getRecordSummary(record, "")}
                       emptyText="Not recorded"
                     />
-                  </div>
+                  </DetailSection>
 
-                  <SectionDivider label="Treatment & Actions" />
-                  <div className="pt-3">
+                  <DetailSection title="Treatment & Actions">
                     <PatientDetailItem
                       label="Initial Action Taken"
                       value={getRecordInitialActions(record)}
                     />
-                  </div>
+                  </DetailSection>
 
-                  <SectionDivider label="Vital Signs" />
-                  <div className="pt-3">
-                    <NarrativeBox
-                      label="Recorded Vitals"
-                      value={getVitalSigns(record, "")}
-                      emptyText="No vital signs recorded for this visit."
-                    />
-                  </div>
+                  <DetailSection title="Vital Signs">
+                    <VitalSignsGrid items={getVitalSignItems(record)} />
+                  </DetailSection>
 
-                  {patientClassification === "Maternal" && (
-                    <>
-                      <SectionDivider label="Maternal Parameters" />
-                      <div className="grid grid-cols-2 gap-x-8 gap-y-1 pt-3">
+                  {(form.category === "Maternal" ||
+                    patientClassification === "Maternal") && (
+                    <DetailSection title="Maternal Parameters">
+                      <div className="grid gap-4 md:grid-cols-2">
                         <PatientDetailItem
                           label="Age of Gestation (AOG)"
                           value={getRecordValue(record, ["aog", "ageOfGestation", "age_of_gestation"])}
@@ -551,40 +624,58 @@ export default function HealthRecordDetails() {
                           value={formatLongDate(getRecordValue(record, ["expectedDeliveryDate", "expected_delivery_date", "edd"], ""), "Not recorded")}
                         />
 	                      </div>
-	                    </>
+	                    </DetailSection>
 	                  )}
-                    <SectionDivider label="Monitoring & Follow-up" />
-                    <div className="grid grid-cols-2 gap-x-8 gap-y-1 pt-3">
-                      <PatientDetailItem
-                        label="Follow-up Date"
-                        value={formatLongDate(
-                          getRecordValue(
-                            record,
-                            ["followUpDate", "follow_up_date"],
-                            "",
-                          ),
-                          "Not recorded",
+                    {shouldShowFullMonitoringSection && (
+                      <DetailSection title="Monitoring & Follow-up">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          {followUpDateValue && (
+                            <PatientDetailItem
+                              label="Follow-up Date"
+                              value={formatLongDate(
+                                followUpDateValue,
+                                "Not recorded",
+                              )}
+                            />
+                          )}
+                          {patientConditionValue && (
+                            <PatientDetailItem
+                              label="Patient Condition"
+                              value={patientConditionValue}
+                            />
+                          )}
+                        </div>
+                        {monitoringNotesValue && (
+                          <NarrativeBox
+                            label="Monitoring Notes"
+                            value={monitoringNotesValue}
+                          />
                         )}
-                      />
-                      <PatientDetailItem
-                        label="Patient Condition"
-                        value={getRecordValue(record, [
-                          "patientCondition",
-                          "patient_condition",
-                        ])}
-                      />
-                    </div>
-                    <div className="pt-2">
-                      <NarrativeBox
-                        label="Monitoring Notes"
-                        value={getRecordValue(
-                          record,
-                          ["monitoringNotes", "monitoring_notes"],
-                          "",
+                        {!hasFollowUpData && (
+                          <p className="text-xs text-slate-400">
+                            Follow-up details not recorded yet.
+                          </p>
                         )}
-                        emptyText="Not recorded"
-                      />
-                    </div>
+                      </DetailSection>
+                    )}
+                    {shouldShowRoutineMonitoringNotes && (
+                      <DetailSection title="Monitoring Notes">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          {patientConditionValue && (
+                            <PatientDetailItem
+                              label="Patient Condition"
+                              value={patientConditionValue}
+                            />
+                          )}
+                        </div>
+                        {monitoringNotesValue && (
+                          <NarrativeBox
+                            label="Monitoring Notes"
+                            value={monitoringNotesValue}
+                          />
+                        )}
+                      </DetailSection>
+                    )}
 	                </div>
 	              )}
             </SideCard>
@@ -702,17 +793,6 @@ export default function HealthRecordDetails() {
         </div>
       </DashboardLayout>
 
-      <ConfirmationModal
-        open={openConfirm}
-        title="Update Health Record?"
-        description="Please confirm that you want to apply the updated details to this health record."
-        confirmText="Update Record"
-        cancelText="Cancel"
-        onConfirm={handleInlineSubmit}
-        onCancel={() => setOpenConfirm(false)}
-        loading={saving}
-      />
-
       <SuccessModal
         open={openSuccess}
         title="Health Record Updated"
@@ -727,6 +807,38 @@ export default function HealthRecordDetails() {
    LOCAL HELPERS
 ──────────────────────────────────────────── */
 
+function validateInlineForm(form = {}) {
+  const errors = {};
+  const requiredFields = [
+    ["category", "Visit Type is required."],
+    ["diagnosis", "Initial Diagnosis is required."],
+    ["followUpStatus", "Follow-up Status is required."],
+    ["attendingStaff", "Name of Practitioner is required."],
+    ["chiefComplaint", "Chief Complaint is required."],
+  ];
+
+  requiredFields.forEach(([field, message]) => {
+    if (!String(form[field] || "").trim()) {
+      errors[field] = message;
+    }
+  });
+
+  return errors;
+}
+
+function FieldWithError({ error, children }) {
+  return (
+    <div>
+      {children}
+      {error && (
+        <p className="mt-1.5 text-[11px] font-medium text-[#B91C1C]">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function SectionDivider({ label }) {
   return (
     <div className="flex items-center gap-3 pt-5 first:pt-2">
@@ -734,6 +846,52 @@ function SectionDivider({ label }) {
         {label}
       </span>
       <div className="h-px flex-1 bg-slate-100" />
+    </div>
+  );
+}
+
+function DetailSection({ title, children }) {
+  return (
+    <section className="border-t border-slate-100 pt-5 first:border-t-0 first:pt-0">
+      <div className="mb-4 flex items-center gap-3">
+        <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-widest text-slate-400">
+          {title}
+        </span>
+        <div className="h-px flex-1 bg-slate-100" />
+      </div>
+      <div className="space-y-4">{children}</div>
+    </section>
+  );
+}
+
+function VitalSignsGrid({ items }) {
+  const hasRecordedVitals = items.some((item) => item.value);
+
+  if (!hasRecordedVitals) {
+    return (
+      <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/30 px-4 py-5 text-center">
+        <p className="text-xs text-slate-400">
+          No vital signs recorded for this visit.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      {items.map((item) => (
+        <div
+          key={item.label}
+          className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-3"
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            {item.label}
+          </p>
+          <p className="mt-1 text-sm font-semibold text-slate-700">
+            {item.value || "Not recorded"}
+          </p>
+        </div>
+      ))}
     </div>
   );
 }
@@ -779,41 +937,25 @@ function getImmunizationGroups(record = {}) {
 
 function normalizeHealthRecordStatus(status) {
   const value = String(status || "").trim();
+  const compact = value.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
 
-  if (!value || value === "Consultation") return "Routine Monitoring";
-  if (
-    [
-      "Follow-up",
-      "Follow Up",
-      "Follow-up Required",
-      "Follow-up After 2 Days",
-    ].includes(value)
-  ) {
+  if (!value || compact === "consultation") return "Routine Monitoring";
+  if (["follow up", "follow up required", "follow up after 2 days"].includes(compact)) {
     return "Follow-up Required";
   }
-  if (["Under Observation", "Observation"].includes(value)) {
+  if (["under observation", "observation", "for monitoring", "monitoring"].includes(compact)) {
     return "Under Observation";
   }
-  if (
-    ["Completed", "Complete", "Recovered", "Closed", "Discharged"].includes(
-      value,
-    )
-  ) {
+  if (["completed", "complete", "recovered", "closed", "discharged"].includes(compact)) {
     return "Completed";
   }
-  if (
-    ["For Monitoring", "Active", "Monitoring", "Routine Monitoring"].includes(
-      value,
-    )
-  ) {
+  if (["active", "routine monitoring"].includes(compact)) {
     return "Routine Monitoring";
   }
-  if (["For Referral", "Needs Referral"].includes(value)) {
+  if (["for referral", "needs referral", "referral"].includes(compact)) {
     return "Needs Referral";
   }
-  if (
-    ["Referred", "Pending", "Pending RHU Review", "Received"].includes(value)
-  ) {
+  if (["referred", "pending", "pending rhu review", "received"].includes(compact)) {
     return "Referred/Pending";
   }
 
@@ -821,11 +963,14 @@ function normalizeHealthRecordStatus(status) {
 }
 
 function isFollowUpEligibleStatus(status) {
+  return normalizeHealthRecordStatus(status) === "Follow-up Required";
+}
+
+function isMonitoringStatus(status) {
   return [
     "Follow-up Required",
     "For Monitoring",
     "Under Observation",
-    "Routine Monitoring",
   ].includes(normalizeHealthRecordStatus(status));
 }
 
@@ -860,6 +1005,10 @@ function getRecordValue(record = {}, keys = [], fallback = "Not recorded") {
   }
 
   return fallback;
+}
+
+function isLikelyRawId(value) {
+  return /^[0-9a-f-]{8,}$/i.test(String(value || "").trim());
 }
 
 function getNestedRecordValue(record = {}, directKeys = [], nestedKeys = []) {
@@ -939,7 +1088,19 @@ function getRecordInitialActions(record = {}, fallback = "Not recorded") {
 }
 
 function getRecordPractitioner(record = {}, fallback = "Not recorded") {
-  return getRecordValue(
+  const creatorName = formatUserName(
+    record.creator ||
+      record.createdByUser ||
+      record.created_by_user ||
+      record.user ||
+      record.practitioner ||
+      record.staff,
+    "",
+  );
+
+  if (creatorName) return creatorName;
+
+  const value = getNestedRecordValue(
     record,
     [
       "attendingStaff",
@@ -949,8 +1110,11 @@ function getRecordPractitioner(record = {}, fallback = "Not recorded") {
       "recordedBy",
       "recorded_by",
     ],
-    fallback,
+    ["monitoringData", "monitoring_data"],
   );
+
+  if (!value || isLikelyRawId(value)) return fallback;
+  return value;
 }
 
 function getRecordFollowUpStatus(record = {}, fallback = "Routine Monitoring") {
@@ -979,6 +1143,7 @@ function getVitalSigns(record = {}, fallback = "") {
   }
 
   if (typeof value !== "object") return String(value);
+  if (value.summary) return String(value.summary);
 
   const values = [
     (value.systolicBp || value.systolic_bp) && (value.diastolicBp || value.diastolic_bp)
@@ -991,6 +1156,70 @@ function getVitalSigns(record = {}, fallback = "") {
   ].filter(Boolean);
 
   return values.join(" | ") || fallback;
+}
+
+function getVitalSignItems(record = {}) {
+  const vitalSigns = record?.vitalSigns || record?.vital_signs || {};
+  const vitalObject =
+    vitalSigns && typeof vitalSigns === "object" ? vitalSigns : {};
+  const vitalText =
+    typeof vitalSigns === "string" ? vitalSigns : getVitalSigns(record, "");
+
+  const readTextValue = (patterns) => {
+    for (const pattern of patterns) {
+      const match = String(vitalText || "").match(pattern);
+      if (match?.[1]) return match[1].trim();
+    }
+    return "";
+  };
+
+  const systolic =
+    record?.systolicBp ||
+    record?.systolic_bp ||
+    vitalObject.systolicBp ||
+    vitalObject.systolic_bp;
+  const diastolic =
+    record?.diastolicBp ||
+    record?.diastolic_bp ||
+    vitalObject.diastolicBp ||
+    vitalObject.diastolic_bp;
+  const bpValue =
+    systolic && diastolic
+      ? `${systolic}/${diastolic} mmHg`
+      : readTextValue([/BP:\s*([^|,]+)/i, /Blood Pressure:\s*([^|,]+)/i]);
+  const temperatureValue =
+    record?.temperature ||
+    record?.temp ||
+    vitalObject.temperature ||
+    vitalObject.temp ||
+    readTextValue([/Temp(?:erature)?:\s*([^|,]+)/i]);
+  const pulseValue =
+    record?.pulseRate ||
+    record?.pulse_rate ||
+    record?.pulse ||
+    vitalObject.pulseRate ||
+    vitalObject.pulse_rate ||
+    vitalObject.pulse ||
+    readTextValue([/Pulse:\s*([^|,]+)/i, /HR:\s*([^|,]+)/i]);
+  const weightValue =
+    record?.weight ||
+    vitalObject.weight ||
+    readTextValue([/Weight:\s*([^|,]+)/i]);
+  const heightValue =
+    record?.height ||
+    vitalObject.height ||
+    readTextValue([/Height:\s*([^|,]+)/i]);
+
+  return [
+    { label: "BP", value: bpValue },
+    {
+      label: "Temperature",
+      value: temperatureValue ? String(temperatureValue) : "",
+    },
+    { label: "Pulse", value: pulseValue ? String(pulseValue) : "" },
+    { label: "Weight", value: weightValue ? String(weightValue) : "" },
+    { label: "Height", value: heightValue ? String(heightValue) : "" },
+  ];
 }
 
 function VaccineStatusBadge({ administered }) {

@@ -25,8 +25,10 @@ import {
 } from "../../services/patients";
 import { getReferrals } from "../../services/referrals";
 import {
+  formatDate,
   formatDisplayValue,
   formatFacilityName,
+  normalizeHealthRecordStatus,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 
@@ -780,29 +782,28 @@ function getRecordType(record) {
 }
 
 function getRecordStatus(record) {
-  return formatDisplayValue(
+  return normalizeHealthRecordStatus(formatDisplayValue(
     record?.followUpStatus ||
       record?.follow_up_status ||
       record?.status ||
       record?.recordStatus ||
       record?.type,
     "Not recorded",
-  );
+  ), "Not recorded");
 }
 
 function getRecordDate(record) {
-  return (
-    formatDate(
-      record?.dateOfVisit ||
-        record?.date_of_visit ||
-        record?.dateRecorded ||
-        record?.date_recorded ||
-        record?.visitDate ||
-        record?.date ||
-        record?.createdAt ||
-        record?.created_at ||
-        record?.dateCreated,
-    ) || "No date recorded"
+  return formatDate(
+    record?.dateOfVisit ||
+      record?.date_of_visit ||
+      record?.dateRecorded ||
+      record?.date_recorded ||
+      record?.visitDate ||
+      record?.date ||
+      record?.createdAt ||
+      record?.created_at ||
+      record?.dateCreated,
+    "Not recorded",
   );
 }
 
@@ -811,18 +812,17 @@ function getRecordTime(record) {
 }
 
 function getReferralDate(referral) {
-  return (
-    formatDate(
-      referral?.preferredVisitDate ||
-        referral?.dateOfReferral ||
-        referral?.date_of_referral ||
-        referral?.referralDate ||
-        referral?.referral_datetime ||
-        referral?.dateSubmitted ||
-        referral?.date ||
-        referral?.createdAt ||
-        referral?.created_at,
-    ) || "No date recorded"
+  return formatDate(
+    referral?.preferredVisitDate ||
+      referral?.dateOfReferral ||
+      referral?.date_of_referral ||
+      referral?.referralDate ||
+      referral?.referral_datetime ||
+      referral?.dateSubmitted ||
+      referral?.date ||
+      referral?.createdAt ||
+      referral?.created_at,
+    "Not recorded",
   );
 }
 
@@ -835,19 +835,6 @@ function getReferralDestination(referral) {
       referral?.ruralHealthUnit,
     "Unassigned RHU",
   );
-}
-
-function formatDate(value) {
-  if (!value) return "";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 function sortByDateDesc(a, b) {

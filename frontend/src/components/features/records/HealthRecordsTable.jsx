@@ -4,6 +4,7 @@ import TablePagination from "../../common/pagination/TablePagination";
 
 import { stagger } from "../../../utils/animation";
 import {
+  formatDate,
   formatDisplayValue,
   formatPatientName,
 } from "../../../utils/formatters";
@@ -194,7 +195,10 @@ export default function HealthRecordsTable({
                       record.followUp,
                       "No Follow-up",
                     );
-                    const date = formatDisplayValue(record.date, "No Date");
+                    const date = formatDate(record.date, "Not recorded");
+                    const canShowFollowUpAction =
+                      normalizeWorkflowStatus(record.status) ===
+                      "Follow-up Required";
 
                     return (
                     <tr
@@ -281,18 +285,14 @@ export default function HealthRecordsTable({
                             title={patientName}
                             subtitle={recordId}
                             viewLink={`/bhc/health-records/${record.id}`}
-                            editLink={`/bhc/health-records/add?recordId=${record.id}&mode=edit`}
+                            editLink={`/bhc/health-records/${record.id}`}
                             editLabel="Edit Record"
-                            referralLink={
-                              record.linkedReferralTrackingId
-                                ? `/bhc/referrals/${record.linkedReferralTrackingId}`
-                                : `/bhc/referrals/create?recordId=${record.id}`
+                            followUpLink={
+                              canShowFollowUpAction
+                                ? `/bhc/health-records/add?recordId=${record.id}&mode=follow-up`
+                                : undefined
                             }
-                            referralLabel={
-                              record.linkedReferralTrackingId
-                                ? "View Referral"
-                                : "Submit Referral"
-                            }
+                            followUpLabel="Record Follow-up Visit"
                           />
                         </div>
                       </td>
@@ -314,4 +314,20 @@ export default function HealthRecordsTable({
       )}
     </div>
   );
+}
+
+function normalizeWorkflowStatus(status) {
+  const compact = String(status || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+
+  if (compact === "follow up required" || compact === "follow up") {
+    return "Follow-up Required";
+  }
+  if (compact === "completed" || compact === "complete") {
+    return "Completed";
+  }
+  return "Routine Monitoring";
 }

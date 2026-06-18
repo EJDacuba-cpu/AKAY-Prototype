@@ -4,12 +4,14 @@ export default function SuccessModal({
   open,
   title,
   description,
+  actions,
   buttonText = "Continue",
   onClose,
   secondaryButtonText,
   onSecondaryAction,
 }) {
   if (!open) return null;
+  const hasCustomActions = Array.isArray(actions) && actions.length > 0;
 
   return (
     <div
@@ -109,11 +111,59 @@ export default function SuccessModal({
           </p>
 
           {/* Action */}
-          <div className="mt-6 flex flex-wrap justify-end gap-2">
-            {secondaryButtonText && onSecondaryAction && (
+          {hasCustomActions ? (
+            <div className="mt-6 grid gap-2">
+              {actions.map((action) => (
+                <button
+                  key={action.label}
+                  type="button"
+                  onClick={action.onClick}
+                  className={
+                    action.variant === "primary"
+                      ? "press-scale flex h-10 items-center justify-center rounded-lg bg-[#B91C1C] px-4 text-[13px] font-medium text-white transition-all duration-150 hover:bg-[#991B1B] active:bg-[#7F1D1D]"
+                      : "press-scale flex h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-[13px] font-medium text-slate-600 transition-all duration-150 hover:bg-slate-50 active:bg-slate-100"
+                  }
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              {secondaryButtonText && onSecondaryAction && (
+                <button
+                  type="button"
+                  onClick={onSecondaryAction}
+                  className="
+                    press-scale
+
+                    flex h-9.5
+                    items-center justify-center
+
+                    rounded-lg
+
+                    border border-slate-200
+                    bg-white
+
+                    px-4
+
+                    text-[13px]
+                    font-medium
+                    text-slate-600
+
+                    transition-all duration-150
+
+                    hover:bg-slate-50
+                    active:bg-slate-100
+                  "
+                >
+                  {secondaryButtonText}
+                </button>
+              )}
+
               <button
                 type="button"
-                onClick={onSecondaryAction}
+                onClick={onClose}
                 className="
                   press-scale
 
@@ -122,53 +172,24 @@ export default function SuccessModal({
 
                   rounded-lg
 
-                  border border-slate-200
-                  bg-white
+                  bg-[#B91C1C]
 
                   px-4
 
                   text-[13px]
                   font-medium
-                  text-slate-600
+                  text-white
 
                   transition-all duration-150
 
-                  hover:bg-slate-50
-                  active:bg-slate-100
+                  hover:bg-[#991B1B]
+                  active:bg-[#7F1D1D]
                 "
               >
-                {secondaryButtonText}
+                {buttonText}
               </button>
-            )}
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="
-                press-scale
-
-                flex h-9.5
-                items-center justify-center
-
-                rounded-lg
-
-                bg-[#B91C1C]
-
-                px-4
-
-                text-[13px]
-                font-medium
-                text-white
-
-                transition-all duration-150
-
-                hover:bg-[#991B1B]
-                active:bg-[#7F1D1D]
-              "
-            >
-              {buttonText}
-            </button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

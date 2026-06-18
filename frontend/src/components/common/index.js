@@ -6,6 +6,7 @@ export { default as FormInput } from "./forms/FormInput";
 export { default as FormSelect } from "./forms/FormSelect";
 export { default as FormTextarea } from "./forms/FormTextarea";
 export { default as Input } from "./atoms/Input";
+export { default as FilterDrawer } from "./list/FilterDrawer";
 export { default as ListToolbar } from "./list/ListToolbar";
 export { default as MedicineAlert } from "./cards/MedicineAlert";
 export { default as SectionCard } from "./cards/SectionCard";

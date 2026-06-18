@@ -10,7 +10,10 @@ import RefreshingIndicator from "../../components/common/loading/RefreshingIndic
 import HealthRecordsTable from "../../components/features/records/HealthRecordsTable";
 import { getHealthRecords } from "../../services/healthRecordService";
 import { getReferrals } from "../../services/referrals";
-import { formatPatientName } from "../../utils/formatters";
+import {
+  formatPatientName,
+  normalizeHealthRecordStatus,
+} from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 
 const DEFAULT_FILTERS = {
@@ -73,13 +76,23 @@ export default function HealthRecords() {
             (record.vaccineType
               ? `${record.vaccineType} - ${record.doseNumber || ""}`
               : "General Consultation"),
-          status:
-            record.status ||
-            (record.needsReferral === "yes"
-              ? "Routine Monitoring"
-              : record.followUpStatus || "Completed"),
+	          status: normalizeHealthRecordStatus(
+	            record.status ||
+	              (record.needsReferral === "yes"
+	                ? "Needs Referral"
+	                : record.followUpStatus || "Completed"),
+	          ),
           followUp: record.followUpDate || "No Follow-up",
-          date: record.dateOfVisit || record.date || "No Date",
+	          date:
+	            record.dateOfVisit ||
+	            record.date_of_visit ||
+	            record.dateRecorded ||
+	            record.date_recorded ||
+	            record.visitDate ||
+	            record.date ||
+	            record.createdAt ||
+	            record.created_at ||
+	            "",
           linkedReferralTrackingId:
             linkedReferral?.trackingId ||
             (!record.isFollowUp
@@ -144,10 +157,10 @@ export default function HealthRecords() {
       value: filters.status,
       options: [
         { value: "", label: "All Status" },
-        { value: "Routine Monitoring", label: "Monitoring" },
-        { value: "Follow-Up", label: "Follow-Up" },
-        { value: "For-Referral", label: "Referral" },
-        { value: "Completed", label: "Completed" },
+	        { value: "Routine Monitoring", label: "Routine Monitoring" },
+	        { value: "Follow-up Required", label: "Follow-up Required" },
+	        { value: "Needs Referral", label: "Needs Referral" },
+	        { value: "Completed", label: "Completed" },
       ],
     },
     {

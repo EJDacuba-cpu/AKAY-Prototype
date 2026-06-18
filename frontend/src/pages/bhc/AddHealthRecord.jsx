@@ -3,7 +3,6 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
-  AlertTriangle,
   ArrowLeft,
   Baby,
   Check,
@@ -13,7 +12,6 @@ import {
   Lock,
   Save,
   Search,
-  Send,
   ShieldCheck,
   Stethoscope,
   Syringe,
@@ -21,17 +19,18 @@ import {
   X,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import { SuccessModal } from "../../components/common";
 import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
 import InlineSpinner from "../../components/common/loading/InlineSpinner";
 import healthRecordService, {
   getHealthRecordById,
 } from "../../services/healthRecordService";
 import { getPatientDetailsListByRole } from "../../services/patientService";
-import { getReferralsByPatient } from "../../services/referrals";
 import { getCurrentUser } from "../../utils/auth";
 import {
   formatDisplayValue,
   formatPatientName,
+  formatUserName,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 
@@ -287,6 +286,7 @@ export default function AddHealthRecord() {
 
   const currentUser = getCurrentUser();
   const userRole = currentUser?.role || "rhu";
+  const currentUserName = formatUserName(currentUser, "");
   const basePath = userRole === "bhc" ? "/bhc" : "/rhu";
   const healthRecordsPath = `${basePath}/health-records`;
 
@@ -299,8 +299,7 @@ export default function AddHealthRecord() {
   const [patients, setPatients] = useState([]);
   const [patientsLoading, setPatientsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [checkingActiveReferral, setCheckingActiveReferral] = useState(false);
-  const [activeReferralConflict, setActiveReferralConflict] = useState(null);
+  const [saveSuccess, setSaveSuccess] = useState(null);
   const [noticeModal, setNoticeModal] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
@@ -319,7 +318,7 @@ export default function AddHealthRecord() {
   const [summaryOfPresentIllness, setSummaryOfPresentIllness] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
   const [medication, setMedication] = useState("");
-  const [attendingStaff, setAttendingStaff] = useState("");
+  const [attendingStaff, setAttendingStaff] = useState(currentUserName);
   const [consultationNotes, setConsultationNotes] = useState("");
   const [healthRecordType, setHealthRecordType] = useState("");
 
@@ -333,7 +332,6 @@ export default function AddHealthRecord() {
   const [followUpStatus, setFollowUpStatus] = useState("Routine Monitoring");
   const [followUpDate, setFollowUpDate] = useState("");
   const [monitoringNotes, setMonitoringNotes] = useState("");
-  const [needsReferral, setNeedsReferral] = useState("no");
   const [patientCondition, setPatientCondition] = useState("Improving");
 
   const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
@@ -361,9 +359,28 @@ export default function AddHealthRecord() {
   });
 
   function normalizePatientStatus(status) {
-    if (status === "Follow-up") return "Follow-up Required";
-    if (status === "For Referral") return "Routine Monitoring";
-    return status || "Routine Monitoring";
+    const value = String(status || "").trim();
+    const compact = value
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!compact) return "Routine Monitoring";
+    if (["routine monitoring", "routine", "monitoring"].includes(compact)) {
+      return "Routine Monitoring";
+    }
+    if (["follow up", "follow up required", "follow up after 2 days"].includes(compact)) {
+      return "Follow-up Required";
+    }
+    if (["completed", "complete", "recovered", "closed"].includes(compact)) {
+      return "Completed";
+    }
+    if (["needs referral", "for referral", "referral"].includes(compact)) {
+      return "Routine Monitoring";
+    }
+
+    return value || "Routine Monitoring";
   }
 
   useEffect(() => {
@@ -387,6 +404,12 @@ export default function AddHealthRecord() {
       active = false;
     };
   }, [preselectedPatientId]);
+
+  useEffect(() => {
+    if (currentUserName && !attendingStaff) {
+      setAttendingStaff(currentUserName);
+    }
+  }, [currentUserName, attendingStaff]);
 
   useEffect(() => {
     if (!recordId) return;
@@ -419,7 +442,6 @@ export default function AddHealthRecord() {
       setFollowUpStatus(normalizePatientStatus(found.followUpStatus));
       setFollowUpDate(found.followUpDate || "");
       setMonitoringNotes(found.monitoringNotes || "");
-      setNeedsReferral(found.needsReferral || "no");
       setPatientCondition(found.patientCondition || "Improving");
       const existingMaternalData = found.maternalData || found.maternal_data || {};
       setMaternalData({
@@ -600,6 +622,9 @@ export default function AddHealthRecord() {
   const recordTypeKey = normalizedHealthRecordType.toLowerCase();
   const isImmunization = recordTypeKey === "immunization";
   const isMaternal = recordTypeKey === "maternal";
+  const normalizedPatientStatus = normalizePatientStatus(followUpStatus);
+  const showFollowUpMonitoringFields =
+    normalizedPatientStatus === "Follow-up Required";
   const immunizationFIC = useMemo(
     () => isFIC(immunizationData),
     [immunizationData],
@@ -621,10 +646,19 @@ export default function AddHealthRecord() {
     }
   }, [isMaternal]);
 
-  function handlePatientStatusChange(value) {
-    setFollowUpStatus(value);
-    if (value !== "Follow-up Required") {
+  useEffect(() => {
+    if (!showFollowUpMonitoringFields) {
       setFollowUpDate("");
+      setPatientCondition("");
+    }
+  }, [showFollowUpMonitoringFields]);
+
+  function handlePatientStatusChange(value) {
+    const normalizedStatus = normalizePatientStatus(value);
+    setFollowUpStatus(normalizedStatus);
+    if (normalizedStatus !== "Follow-up Required") {
+      setFollowUpDate("");
+      setPatientCondition("");
     }
   }
 
@@ -682,18 +716,7 @@ export default function AddHealthRecord() {
     setMaternalData((prev) => ({ ...prev, [field]: value }));
   }
 
-  async function findActiveReferralForSelectedPatient() {
-    if (!selectedPatientId) return null;
-
-    const referrals = await getReferralsByPatient(selectedPatient || selectedPatientId);
-    return (
-      referrals.find((referral) =>
-        ["Pending", "Received", "For Monitoring"].includes(referral.status),
-      ) || null
-    );
-  }
-
-  async function saveHealthRecord(formData, { proceedToReferral = false } = {}) {
+  async function saveHealthRecord(formData) {
     const savedRecord = isEditingRecord
       ? await healthRecordService.updateHealthRecordById(
           recordId,
@@ -734,15 +757,7 @@ export default function AddHealthRecord() {
       });
     }
 
-    if (proceedToReferral && savedId) {
-      navigate(
-        `/bhc/referrals/create?recordId=${savedId}&patientId=${selectedPatientId}`,
-      );
-      return savedRecord;
-    }
-
-    navigate(savedId ? `${healthRecordsPath}/${savedId}` : healthRecordsPath);
-    return savedRecord;
+    return { savedRecord, savedId };
   }
 
   async function handleSave(event) {
@@ -802,14 +817,13 @@ export default function AddHealthRecord() {
       attendingStaff,
       consultationNotes,
       followUpStatus: normalizePatientStatus(followUpStatus),
-      followUpDate,
+      followUpDate: showFollowUpMonitoringFields ? followUpDate : "",
       monitoringNotes,
-      patientCondition,
-      needsReferral,
+      patientCondition: showFollowUpMonitoringFields ? patientCondition : "",
+      needsReferral: "no",
       referralReason: "",
       referralCategory: null,
-      referralAssessmentStatus:
-              needsReferral === "yes" ? "Pending RHU Assessment" : null,
+      referralAssessmentStatus: null,
       maternalData: recordMaternalData,
       lmp: recordMaternalData.lmp || null,
       pmp: recordMaternalData.pmp || null,
@@ -828,35 +842,32 @@ export default function AddHealthRecord() {
       linkedTrackingId: isFollowUp ? followUpRecord?.linkedTrackingId || "" : "",
     };
 
-    const shouldProceedToReferral =
-      needsReferral === "yes" && userRole === "bhc" && !isEditingRecord;
-
-    if (shouldProceedToReferral) {
-      setCheckingActiveReferral(true);
-      try {
-        const activeReferral = await findActiveReferralForSelectedPatient();
-        if (activeReferral) {
-          setActiveReferralConflict(activeReferral);
-          return;
-        }
-      } catch (error) {
-        console.error("Failed to check active referral:", error);
-        setNoticeModal({
-          title: "Referral Check Failed",
-          message:
-            "Unable to check existing active referrals. Please try again before saving this referral record.",
-        });
-        return;
-      } finally {
-        setCheckingActiveReferral(false);
-      }
-    }
-
     setSaving(true);
 
     try {
-      await saveHealthRecord(formData, {
-        proceedToReferral: shouldProceedToReferral,
+      const { savedRecord, savedId } = await saveHealthRecord(formData);
+      const savedRecordId =
+        savedId ||
+        savedRecord?.id ||
+        savedRecord?._id ||
+        savedRecord?.data?.id ||
+        savedRecord?.data?._id ||
+        recordId ||
+        "";
+      const savedStatus = normalizePatientStatus(
+        savedRecord?.followUpStatus ||
+          savedRecord?.status ||
+          savedRecord?.data?.followUpStatus ||
+          savedRecord?.data?.status ||
+          formData.followUpStatus,
+      );
+
+      setSaveSuccess({
+        recordId: savedRecordId,
+        patientId: selectedPatientId,
+        status: savedStatus,
+        isFollowUp,
+        isEditingRecord,
       });
     } catch (error) {
       console.error("Failed to save record:", error);
@@ -869,36 +880,18 @@ export default function AddHealthRecord() {
     }
   }
 
-  function handleViewExistingReferral() {
-    const referralTarget =
-      activeReferralConflict?.trackingId || activeReferralConflict?.id;
-
-    if (!referralTarget) return;
-
-    setActiveReferralConflict(null);
-    navigate(`/bhc/referrals/${referralTarget}`);
-  }
-
-  const activeReferralTarget =
-    activeReferralConflict?.trackingId || activeReferralConflict?.id || "";
-  const activeReferralDestination =
-    activeReferralConflict?.receivingFacility ||
-    activeReferralConflict?.destinationFacility ||
-    activeReferralConflict?.referredFacility ||
-    "—";
-  const activeReferralDate =
-    activeReferralConflict?.referralDateTime ||
-    activeReferralConflict?.date ||
-    activeReferralConflict?.createdAt ||
-    "—";
-  const isPrimaryActionLoading = checkingActiveReferral || saving;
-  const primaryActionLabel = checkingActiveReferral
-    ? "Checking..."
-    : saving
-      ? "Saving..."
-      : needsReferral === "yes" && userRole === "bhc" && !isEditingRecord
-        ? "Save and Continue to Referral"
-        : "Save Health Record";
+  const canCreateReferralAfterSave =
+    saveSuccess?.recordId &&
+    userRole === "bhc" &&
+    !saveSuccess.isFollowUp &&
+    !saveSuccess.isEditingRecord &&
+    saveSuccess.status !== "Completed";
+  const isPrimaryActionLoading = saving;
+  const primaryActionLabel = saving
+    ? "Saving..."
+    : isFollowUp
+      ? "Save Follow-up Visit"
+      : "Save Health Record";
 
   return (
     <DashboardLayout role={userRole} title="Add Health Record">
@@ -1015,7 +1008,7 @@ export default function AddHealthRecord() {
             <FieldInput
               label="Name of Practitioner"
               value={attendingStaff}
-              onChange={(event) => setAttendingStaff(event.target.value)}
+              readOnly
             />
           </div>
         </FormSection>
@@ -1301,7 +1294,7 @@ export default function AddHealthRecord() {
               <option>Follow-up Required</option>
               <option>Completed</option>
             </FieldSelect>
-            {followUpStatus === "Follow-up Required" && (
+            {showFollowUpMonitoringFields && (
               <FieldInput
                 label="Follow-up Date"
                 type="date"
@@ -1311,19 +1304,23 @@ export default function AddHealthRecord() {
               />
             )}
           </div>
-          <div className="mt-4">
-            <FieldSelect
-              label="Current Condition"
-              value={patientCondition}
-              onChange={(event) => setPatientCondition(event.target.value)}
-            >
-              <option>Improving</option>
-              <option>Stable</option>
-              <option>No Improvement Observed</option>
-              <option>Needs Further Review</option>
-              <option>Recovered</option>
-            </FieldSelect>
-          </div>
+          {showFollowUpMonitoringFields && (
+            <div className="mt-4">
+              <FieldSelect
+                label="Current Condition"
+                value={patientCondition}
+                onChange={(event) => setPatientCondition(event.target.value)}
+                required
+              >
+                <option value="">Select condition</option>
+                <option>Improving</option>
+                <option>Stable</option>
+                <option>No Improvement Observed</option>
+                <option>Needs Further Review</option>
+                <option>Recovered</option>
+              </FieldSelect>
+            </div>
+          )}
           <div className="mt-4">
             <FieldTextarea
               label="Monitoring and Follow-up"
@@ -1335,37 +1332,6 @@ export default function AddHealthRecord() {
           </div>
             </FormSection>
 
-            <FormSection
-              title="Record Action"
-              subtitle="Choose whether to save this record or submit a referral."
-              icon={<Send size={14} />}
-              delay={6}
-            >
-          <div className="grid gap-3 lg:grid-cols-2">
-            <ReferralActionOption
-              name="needsReferral"
-              value="no"
-              checked={needsReferral === "no"}
-              onChange={setNeedsReferral}
-              icon={<Save size={18} />}
-              title="Save Health Record"
-              description="Save health record and monitoring information."
-              activeClass="border-[#B91C1C] bg-red-50"
-              iconActiveClass="text-[#B91C1C]"
-            />
-            <ReferralActionOption
-              name="needsReferral"
-              value="yes"
-              checked={needsReferral === "yes"}
-              onChange={setNeedsReferral}
-              icon={<Send size={18} />}
-              title="Submit Referral"
-              description="Forward patient case to RHU for referral review."
-              activeClass="border-amber-500 bg-amber-50"
-              iconActiveClass="text-amber-600"
-            />
-          </div>
-            </FormSection>
           </>
         )}
 
@@ -1398,69 +1364,39 @@ export default function AddHealthRecord() {
         </div>
       </form>
 
-      {activeReferralConflict && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 px-4 py-5 backdrop-blur-sm">
-          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-amber-100 bg-white shadow-2xl">
-            <div className="h-1 bg-amber-500" />
-            <div className="p-5">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                  <AlertTriangle size={21} />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-slate-800">
-                    Active Referral Already Exists
-                  </h2>
-                  <p className="mt-1 text-sm leading-relaxed text-slate-600">
-                    This patient already has an active BHC-RHU referral. Please
-                    review the existing referral before creating another
-                    referral. The current save-and-refer action has been
-                    stopped.
-                  </p>
-                </div>
-              </div>
-
-              {activeReferralTarget && (
-                <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <ModalInfo
-                      label="Tracking ID"
-                      value={activeReferralConflict.trackingId || "—"}
-                      mono
-                    />
-                    <ModalInfo
-                      label="Status"
-                      value={activeReferralConflict.status || "—"}
-                      highlight
-                    />
-                    <ModalInfo label="Referred To" value={activeReferralDestination} />
-                    <ModalInfo label="Date of Referral" value={activeReferralDate} />
-                  </div>
-                </div>
-              )}
-
-              <div className="mt-5 flex flex-wrap justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setActiveReferralConflict(null)}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                {activeReferralTarget && (
-                  <button
-                    type="button"
-                    onClick={handleViewExistingReferral}
-                    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                  >
-                    View Existing Referral
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <SuccessModal
+        open={Boolean(saveSuccess)}
+        title="Health Record Saved Successfully"
+        description="The health record has been saved. You may now return to the health records list, view this record, or create a referral if needed."
+        onClose={() => navigate(healthRecordsPath)}
+        actions={[
+          {
+            label: "View Health Record",
+            variant: "primary",
+            onClick: () =>
+              navigate(
+                saveSuccess?.recordId
+                  ? `${healthRecordsPath}/${saveSuccess.recordId}`
+                  : healthRecordsPath,
+              ),
+          },
+          {
+            label: "Back to Health Records",
+            onClick: () => navigate(healthRecordsPath),
+          },
+          ...(canCreateReferralAfterSave
+            ? [
+                {
+                  label: "Create Referral",
+                  onClick: () =>
+                    navigate(
+                      `/bhc/referrals/create?recordId=${saveSuccess.recordId}&patientId=${saveSuccess.patientId}`,
+                    ),
+                },
+              ]
+            : []),
+        ]}
+      />
 
       {noticeModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 px-4 py-5 backdrop-blur-sm">
@@ -1702,23 +1638,6 @@ function PatientSearchDropdown({
   );
 }
 
-function ModalInfo({ label, value, mono, highlight }) {
-  return (
-    <div>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-        {label}
-      </p>
-      <p
-        className={`mt-1 text-sm leading-relaxed ${
-          mono ? "font-mono" : ""
-        } ${highlight ? "font-bold text-slate-800" : "font-medium text-slate-700"}`}
-      >
-        {value || "—"}
-      </p>
-    </div>
-  );
-}
-
 function SelectedPatientPreview({ patient }) {
   const display = getPatientDisplay(patient);
 
@@ -1881,46 +1800,6 @@ function BpInputGroup({
       </div>
       <p className="mt-1 text-[9px] text-[#BFBFBF]">Systolic / Diastolic</p>
     </div>
-  );
-}
-
-function ReferralActionOption({
-  name,
-  value,
-  checked,
-  onChange,
-  icon,
-  title,
-  description,
-  activeClass,
-  iconActiveClass,
-}) {
-  return (
-    <label
-      className={`flex min-h-[96px] cursor-pointer items-center gap-4 rounded-xl border p-4 transition-all duration-200 ${
-        checked ? activeClass : "border-[#E8ECF0] bg-white hover:bg-[#FAFBFC]"
-      }`}
-    >
-      <input
-        type="radio"
-        name={name}
-        value={value}
-        checked={checked}
-        onChange={(event) => onChange(event.target.value)}
-        className="sr-only"
-      />
-      <span className={checked ? iconActiveClass : "text-[#9CA3AF]"}>
-        {icon}
-      </span>
-      <span>
-        <span className="block text-sm font-semibold text-[#1A1A1A]">
-          {title}
-        </span>
-        <span className="mt-0.5 block text-xs text-[#6B7280]">
-          {description}
-        </span>
-      </span>
-    </label>
   );
 }
 

@@ -32,6 +32,7 @@ import { getCurrentUser } from "../../utils/auth";
 import {
   formatDisplayValue,
   formatPatientName,
+  formatUserName,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 
@@ -307,6 +308,7 @@ export default function AddHealthRecord() {
 
   const currentUser = getCurrentUser();
   const userRole = currentUser?.role || "rhu";
+  const currentUserName = formatUserName(currentUser, "");
   const basePath = userRole === "bhc" ? "/bhc" : "/rhu";
   const healthRecordsPath = `${basePath}/health-records`;
 
@@ -337,7 +339,7 @@ export default function AddHealthRecord() {
   const [summaryOfPresentIllness, setSummaryOfPresentIllness] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
   const [medication, setMedication] = useState("");
-  const [attendingStaff, setAttendingStaff] = useState("");
+  const [attendingStaff, setAttendingStaff] = useState(currentUserName);
   const [consultationNotes, setConsultationNotes] = useState("");
   const [healthRecordType, setHealthRecordType] = useState("");
 
@@ -398,6 +400,12 @@ export default function AddHealthRecord() {
       active = false;
     };
   }, [preselectedPatientId]);
+
+  useEffect(() => {
+    if (currentUserName && !attendingStaff) {
+      setAttendingStaff(currentUserName);
+    }
+  }, [currentUserName, attendingStaff]);
 
   useEffect(() => {
     let active = true;
@@ -616,6 +624,8 @@ export default function AddHealthRecord() {
   const recordTypeKey = normalizedHealthRecordType.toLowerCase();
   const isImmunization = recordTypeKey === "immunization";
   const isMaternal = recordTypeKey === "maternal";
+  const showFollowUpMonitoringFields =
+    normalizePatientStatus(followUpStatus) === "Follow-up Required";
   const immunizationFIC = useMemo(
     () => isFIC(immunizationData),
     [immunizationData],
@@ -626,6 +636,13 @@ export default function AddHealthRecord() {
       setFollowUpStatus("Routine Monitoring");
     }
   }, [isMaternal]);
+
+  useEffect(() => {
+    if (!showFollowUpMonitoringFields) {
+      setFollowUpDate("");
+      setPatientCondition("");
+    }
+  }, [showFollowUpMonitoringFields]);
 
   useEffect(() => {
     const recordLmp = maternalData.lmp;
@@ -687,6 +704,7 @@ export default function AddHealthRecord() {
 
     if (normalizedStatus !== "Follow-up Required") {
       setFollowUpDate("");
+      setPatientCondition("");
     }
   }
 
@@ -754,9 +772,9 @@ export default function AddHealthRecord() {
         attendingStaff,
         consultationNotes,
         followUpStatus: finalPatientStatus,
-        followUpDate,
+        followUpDate: showFollowUpMonitoringFields ? followUpDate : "",
         monitoringNotes,
-        patientCondition,
+        patientCondition: showFollowUpMonitoringFields ? patientCondition : "",
         maternalData: recordMaternalData,
         lmp: recordMaternalData.lmp || null,
         pmp: recordMaternalData.pmp || null,
@@ -940,7 +958,7 @@ export default function AddHealthRecord() {
             <FieldInput
               label="Name of Practitioner"
               value={attendingStaff}
-              onChange={(event) => setAttendingStaff(event.target.value)}
+              readOnly
             />
           </div>
         </FormSection>
@@ -1228,7 +1246,7 @@ export default function AddHealthRecord() {
               <option>Follow-up Required</option>
               <option>Completed</option>
             </FieldSelect>
-            {followUpStatus === "Follow-up Required" && (
+            {showFollowUpMonitoringFields && (
               <FieldInput
                 label="Follow-up Date"
                 type="date"
@@ -1238,19 +1256,23 @@ export default function AddHealthRecord() {
               />
             )}
           </div>
-          <div className="mt-4">
-            <FieldSelect
-              label="Current Condition"
-              value={patientCondition}
-              onChange={(event) => setPatientCondition(event.target.value)}
-            >
-              <option>Improving</option>
-              <option>Stable</option>
-              <option>No Improvement Observed</option>
-              <option>Needs Further Review</option>
-              <option>Recovered</option>
-            </FieldSelect>
-          </div>
+          {showFollowUpMonitoringFields && (
+            <div className="mt-4">
+              <FieldSelect
+                label="Current Condition"
+                value={patientCondition}
+                onChange={(event) => setPatientCondition(event.target.value)}
+                required
+              >
+                <option value="">Select condition</option>
+                <option>Improving</option>
+                <option>Stable</option>
+                <option>No Improvement Observed</option>
+                <option>Needs Further Review</option>
+                <option>Recovered</option>
+              </FieldSelect>
+            </div>
+          )}
           <div className="mt-4">
             <FieldTextarea
               label="Monitoring and Follow-up"

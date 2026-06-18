@@ -62,6 +62,10 @@ function normalizeRecord(record = {}) {
     attendingStaff:
       record.attendingStaff ||
       record.attending_staff ||
+      monitoringData.attendingStaff ||
+      monitoringData.attending_staff ||
+      monitoringData.nameOfPractitioner ||
+      monitoringData.name_of_practitioner ||
       record.nameOfPractitioner ||
       record.name_of_practitioner ||
       record.recordedBy ||
@@ -70,10 +74,26 @@ function normalizeRecord(record = {}) {
     recordedBy:
       record.recordedBy ||
       record.recorded_by ||
+      record.creator?.name ||
+      record.created_by_user?.name ||
+      record.createdByUser?.name ||
+      record.user?.name ||
       record.attendingStaff ||
       record.attending_staff ||
       "",
-    vitalSigns: record.vitalSigns || record.vital_signs || "",
+    createdBy:
+      record.createdBy ||
+      record.created_by ||
+      record.created_by_user ||
+      record.createdByUser ||
+      record.creator ||
+      record.user ||
+      null,
+    vitalSigns:
+      record.vitalSigns ||
+      record.vital_signs?.summary ||
+      record.vital_signs ||
+      "",
     vital_signs: record.vital_signs || record.vitalSigns || null,
     maternalData,
     maternal_data: maternalData,
@@ -177,6 +197,7 @@ function toPayload(record = {}, { partial = false } = {}) {
     followUpDate: record.followUpDate || null,
     monitoringNotes: record.monitoringNotes || null,
     patientCondition: record.patientCondition || null,
+    attendingStaff: record.attendingStaff || record.nameOfPractitioner || null,
     referralAssessmentStatus: record.referralAssessmentStatus || null,
     linkedTrackingId: record.linkedTrackingId || null,
     referralTrackingId: record.referralTrackingId || null,
@@ -196,6 +217,10 @@ function toPayload(record = {}, { partial = false } = {}) {
         ? `${record.dateOfVisit} ${record.timeOfVisit || "00:00"}`
         : null),
     vital_signs: {
+      summary:
+        typeof record.vitalSigns === "string"
+          ? record.vitalSigns
+          : record.vitalSigns?.summary || null,
       systolicBp: record.systolicBp || null,
       diastolicBp: record.diastolicBp || null,
       temperature: record.temperature || record.temp || null,
@@ -267,6 +292,8 @@ function toPayload(record = {}, { partial = false } = {}) {
       "followUpDate",
       "monitoringNotes",
       "patientCondition",
+      "attendingStaff",
+      "nameOfPractitioner",
       "referralAssessmentStatus",
       "linkedTrackingId",
       "referralTrackingId",

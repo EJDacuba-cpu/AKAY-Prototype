@@ -129,13 +129,27 @@ export function formatDate(value, fallback = "Not recorded") {
       value.date ||
         value.dateOfVisit ||
         value.date_of_visit ||
+        value.dateRecorded ||
+        value.date_recorded ||
+        value.visitDate ||
+        value.visit_date ||
         value.createdAt ||
         value.created_at,
       fallback,
     );
   }
 
-  const date = value instanceof Date ? value : new Date(value);
+  let date;
+
+  if (value instanceof Date) {
+    date = value;
+  } else if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split("-").map(Number);
+    date = new Date(year, month - 1, day);
+  } else {
+    date = new Date(value);
+  }
+
   if (Number.isNaN(date.getTime())) return cleanText(value) || fallback;
 
   return date.toLocaleDateString("en-US", {
@@ -154,6 +168,14 @@ export function formatLongDate(value, fallback = "—") {
         value.birthDate ||
         value.dateOfBirth ||
         value.date_of_birth ||
+        value.dateOfVisit ||
+        value.date_of_visit ||
+        value.dateRecorded ||
+        value.date_recorded ||
+        value.visitDate ||
+        value.visit_date ||
+        value.createdAt ||
+        value.created_at ||
         value.date,
       fallback,
     );
@@ -197,4 +219,39 @@ export function formatDisplayValue(value, fallback = "Not recorded") {
       value.id,
     ]) || fallback
   );
+}
+
+export function normalizeHealthRecordStatus(status, fallback = "Routine Monitoring") {
+  const raw = cleanText(status);
+  if (!raw) return fallback;
+
+  const compact = raw.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+
+  if (["follow up", "follow up required", "follow up after 2 days"].includes(compact)) {
+    return "Follow-up Required";
+  }
+
+  if (["under observation", "observation", "for monitoring", "monitoring"].includes(compact)) {
+    return "Under Observation";
+  }
+
+  if (["routine monitoring", "active", "consultation"].includes(compact)) {
+    return "Routine Monitoring";
+  }
+
+  if (["completed", "complete", "recovered", "closed", "discharged"].includes(compact)) {
+    return "Completed";
+  }
+
+  if (["needs referral", "for referral", "referral"].includes(compact)) {
+    return "Needs Referral";
+  }
+
+  if (["referred", "pending rhu review", "received"].includes(compact)) {
+    return "Referred/Pending";
+  }
+
+  if (compact === "pending") return "Pending";
+
+  return raw;
 }

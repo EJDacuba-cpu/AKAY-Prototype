@@ -29,8 +29,6 @@ import {
 
 import {
   ConfirmationModal,
-  FormInput,
-  FormSelect,
   SideCard,
   StatusBadge,
   SuccessModal
@@ -42,6 +40,7 @@ import {
   formatDisplayValue,
   formatPatientName,
   formatLongDate,
+  normalizeHealthRecordStatus,
 } from "../../utils/formatters";
 
 import { queryKeys } from "../../utils/queryKeys";
@@ -395,11 +394,7 @@ export default function PatientDetails() {
               <div className="space-y-6">
                 <SideCard
                   title="Personal Information"
-                  subtitle={
-                    isEditing
-                      ? "Modify patient profile."
-                      : "Basic details from the patient registry."
-                  }
+                  subtitle="Basic details from the patient registry."
                   icon={<User size={14} />}
                 >
                   {isEditing ? (
@@ -408,28 +403,28 @@ export default function PatientDetails() {
                         <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0F172A]">
                           General Information
                         </h3>
-                        <div className="grid gap-5 md:grid-cols-2">
-                          <FormInput
+                        <div className="grid gap-x-8 gap-y-1 md:grid-cols-2">
+                          <InlineDetailInput
                             label="First Name"
                             name="firstName"
                             value={form.firstName}
                             onChange={handleChange}
                             required
                           />
-                          <FormInput
+                          <InlineDetailInput
                             label="Middle Name"
                             name="middleName"
                             value={form.middleName}
                             onChange={handleChange}
                           />
-                          <FormInput
+                          <InlineDetailInput
                             label="Last Name"
                             name="lastName"
                             value={form.lastName}
                             onChange={handleChange}
                             required
                           />
-                          <FormInput
+                          <InlineDetailInput
                             label="Date of Birth"
                             name="birthDate"
                             type="date"
@@ -437,14 +432,14 @@ export default function PatientDetails() {
                             onChange={handleChange}
                             required
                           />
-                          <FormInput
+                          <InlineDetailInput
                             label="Age"
                             name="age"
                             type="text"
                             value={form.age ? `${form.age} years old` : ""}
                             readOnly
                           />
-                          <FormSelect
+                          <InlineDetailSelect
                             label="Sex"
                             name="sex"
                             value={form.sex}
@@ -454,7 +449,7 @@ export default function PatientDetails() {
                             <option value="">Select sex</option>
                             <option>Male</option>
                             <option>Female</option>
-                          </FormSelect>
+                          </InlineDetailSelect>
                         </div>
                       </div>
                     </div>
@@ -500,15 +495,15 @@ export default function PatientDetails() {
               <aside className="space-y-6">
                 <SideCard title="Address & Contact" icon={<MapPin size={14} />}>
                   {isEditing ? (
-                    <div className="mt-6 space-y-5">
-                      <FormInput
+                    <div className="mt-6 space-y-1">
+                      <InlineDetailInput
                         label="Street Address"
                         name="streetAddress"
                         value={form.streetAddress}
                         onChange={handleChange}
                         required
                       />
-                      <FormSelect
+                      <InlineDetailSelect
                         label="Barangay"
                         name="barangay"
                         value={form.barangay}
@@ -530,14 +525,14 @@ export default function PatientDetails() {
                         <option>Santa Ines</option>
                         <option>Taliptip</option>
                         <option>Tibig</option>
-                      </FormSelect>
-                      <FormInput
+                      </InlineDetailSelect>
+                      <InlineDetailInput
                         label="Municipality"
                         name="municipality"
                         value={form.municipality}
                         readOnly
                       />
-                      <FormInput
+                      <InlineDetailInput
                         label="Contact Number"
                         name="contactNumber"
                         value={form.contactNumber}
@@ -628,9 +623,7 @@ export default function PatientDetails() {
                               {getHealthRecordComplaint(record)}
                             </td>
                             <td className="whitespace-nowrap px-6 py-4">
-                              <RecordStatusBadge
-                                status={getHealthRecordStatus(record)}
-                              />
+                              <StatusBadge status={getHealthRecordStatus(record)} />
                             </td>
                             <td className="whitespace-nowrap px-6 py-4 text-right">
                               <button
@@ -804,6 +797,45 @@ function TabErrorState({ message }) {
   );
 }
 
+function InlineDetailInput({ label, required, readOnly, ...props }) {
+  return (
+    <div>
+      <label className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
+        {label}
+        {required && <span className="text-[#B91C1C]"> *</span>}
+      </label>
+      <input
+        {...props}
+        readOnly={readOnly}
+        required={required}
+        className={`mt-1 h-7 w-full rounded-md border px-2 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#FCA5A5] focus:ring-2 focus:ring-[#B91C1C]/10 ${
+          readOnly
+            ? "cursor-not-allowed border-slate-100 bg-slate-50 text-slate-500"
+            : "border-slate-200 bg-white"
+        }`}
+      />
+    </div>
+  );
+}
+
+function InlineDetailSelect({ label, required, children, ...props }) {
+  return (
+    <div>
+      <label className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
+        {label}
+        {required && <span className="text-[#B91C1C]"> *</span>}
+      </label>
+      <select
+        {...props}
+        required={required}
+        className="mt-1 h-7 w-full rounded-md border border-slate-200 bg-white px-2 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#FCA5A5] focus:ring-2 focus:ring-[#B91C1C]/10"
+      >
+        {children}
+      </select>
+    </div>
+  );
+}
+
 function getHealthRecordDate(record = {}) {
   return formatDate(
     record.dateOfVisit ||
@@ -848,13 +880,13 @@ function getHealthRecordComplaint(record = {}) {
 }
 
 function getHealthRecordStatus(record = {}) {
-  return formatDisplayValue(
+  return normalizeHealthRecordStatus(formatDisplayValue(
     record.followUpStatus ||
       record.follow_up_status ||
       record.status ||
       record.recordStatus,
     "Not recorded",
-  );
+  ), "Not recorded");
 }
 
 function getReferralDate(referral = {}) {
@@ -906,28 +938,6 @@ function ReturnSlipIndicator({ referral }) {
       }`}
     >
       {hasReturnSlip ? "Return Slip Available" : "Awaiting RHU Feedback"}
-    </span>
-  );
-}
-
-function RecordStatusBadge({ status }) {
-  const map = {
-    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-    Active: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-    "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    "Follow-up Required": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    "Routine Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    "Not recorded": "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
-    Consultation: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
-  };
-
-  return (
-    <span
-      className={`inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-        map[status] || map.Consultation
-      }`}
-    >
-      {status}
     </span>
   );
 }
