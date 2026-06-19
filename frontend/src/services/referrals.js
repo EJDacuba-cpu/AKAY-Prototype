@@ -35,14 +35,45 @@ function normalizeReferral(referral = {}) {
       patient.fullName ||
       patient.name ||
       referral.patientName ||
+      referral.patient_name ||
       [patient.first_name, patient.middle_name, patient.last_name]
         .filter(Boolean)
         .join(" "),
-    patientContact: patient.contact_number || patient.contactNumber || referral.patientContact || "",
+    patientContact:
+      patient.contact_number ||
+      patient.contactNumber ||
+      patient.contact ||
+      referral.patient_contact ||
+      referral.patientContact ||
+      referral.contactNumber ||
+      referral.contact ||
+      "",
+    ageSex:
+      referral.ageSex ||
+      referral.age_sex ||
+      patient.ageSex ||
+      [patient.age || referral.age, patient.sex || referral.sex]
+        .filter(Boolean)
+        .join(" / "),
+    birthDate:
+      referral.birthDate ||
+      referral.birth_date ||
+      patient.birthDate ||
+      patient.birth_date ||
+      "",
+    address:
+      referral.patientAddress ||
+      referral.patient_address ||
+      patient.address ||
+      patient.streetAddress ||
+      [patient.street_address, patient.barangay, patient.municipality]
+        .filter(Boolean)
+        .join(", "),
+    barangay: referral.barangay || referral.patientBarangay || patient.barangay || "",
     referringHci: bhc.name || referral.referringHci || "",
     receivingFacility: rhu.name || referral.receivingFacility || "",
-    barangayHealthCenterId: referral.barangay_health_center_id || "",
-    ruralHealthUnitId: referral.rural_health_unit_id || "",
+    barangayHealthCenterId: referral.barangay_health_center_id || bhc.id || "",
+    ruralHealthUnitId: referral.rural_health_unit_id || rhu.id || "",
     category: referral.referral_category || referral.category || "",
     referralCategory: referral.referral_category || referral.referralCategory || "",
     urgencyLevel: referral.urgency_level || referral.urgencyLevel || "Normal",
@@ -105,12 +136,24 @@ async function listReferrals(params = {}) {
   return unwrapList(response).map(normalizeReferral);
 }
 
+async function listIncomingReferrals(params = {}) {
+  const query = new URLSearchParams(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== ""),
+  );
+  const response = await apiRequest(`/incoming-referrals${query.size ? `?${query}` : ""}`);
+  return unwrapList(response).map(normalizeReferral);
+}
+
 export function saveReferrals(referrals) {
   return Array.isArray(referrals) ? referrals.map(normalizeReferral) : [];
 }
 
 export async function getReferrals() {
   return listReferrals();
+}
+
+export async function getIncomingReferrals(params = {}) {
+  return listIncomingReferrals(params);
 }
 
 export async function getReferralById(referralId) {
@@ -121,6 +164,17 @@ export async function getReferralById(referralId) {
 export async function getReferralByTrackingId(trackingId) {
   const response = await apiRequest(`/tracking/${encodeURIComponent(trackingId)}`);
   return normalizeReferral(unwrapData(response));
+}
+
+export async function getReferralByRouteParam(routeParam) {
+  const decoded = decodeURIComponent(String(routeParam || "").trim());
+  if (!decoded) return null;
+
+  if (/^\d+$/.test(decoded)) {
+    return getReferralById(decoded);
+  }
+
+  return getReferralByTrackingId(decoded);
 }
 
 export async function getReferralsByPatient(patient) {
@@ -196,8 +250,10 @@ export async function autoMarkNoShowReferrals() {
 
 export default {
   getReferrals,
+  getIncomingReferrals,
   getReferralById,
   getReferralByTrackingId,
+  getReferralByRouteParam,
   getReferralsByPatient,
   hasActiveReferralForPatient,
   getReferralByHealthRecordId,

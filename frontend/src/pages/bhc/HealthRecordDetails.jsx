@@ -298,14 +298,7 @@ export default function HealthRecordDetails() {
   const hasFollowUpData = Boolean(
     followUpDateValue || patientConditionValue || monitoringNotesValue,
   );
-  const shouldShowFullMonitoringSection =
-    isMonitoringStatus(status) ||
-    (status === "Completed" && hasFollowUpData) ||
-    (status === "Routine Monitoring" && Boolean(followUpDateValue));
-  const shouldShowRoutineMonitoringNotes =
-    status === "Routine Monitoring" &&
-    !followUpDateValue &&
-    Boolean(patientConditionValue || monitoringNotesValue);
+  const shouldShowMonitoringFollowUp = status !== "Completed" && hasFollowUpData;
   const showPatientProfileSidebar = false;
   const linkedReferralTarget =
     linkedReferral?.trackingId ||
@@ -333,6 +326,9 @@ export default function HealthRecordDetails() {
     record.category ||
       record.classification ||
       record.recordType ||
+      record.record_type ||
+      record.healthRecordType ||
+      record.health_record_type ||
       record.patientClassification ||
       patient?.category ||
       patient?.patientClassification,
@@ -340,9 +336,23 @@ export default function HealthRecordDetails() {
   );
   const patientClassification = recordCategory;
   const visitTypeLabel = getRecordVisitTypeLabel(record);
-  const parentHealthRecordId = getParentHealthRecordId(record);
   const displayDate = formatLongDate(getRecordDateValue(record), "Not recorded");
   const displayTime = getRecordTime(record);
+  const medicalNotesValue =
+    status === "Completed"
+      ? getCompletedRecordMedicalNotes(record, monitoringNotesValue, "")
+      : getRecordNotes(record, "");
+  const chiefComplaintValue = getRecordChiefComplaint(record, "");
+  const diagnosisValue = getRecordDiagnosis(record, "");
+  const summaryValue = getRecordSummary(record, "");
+  const hasClinicalAssessmentDetails = Boolean(
+    chiefComplaintValue || diagnosisValue || summaryValue,
+  );
+  const initialActionsValue = getRecordInitialActions(record, "");
+  const treatmentNotesValue = getRecordTreatmentNotes(record, "");
+  const hasTreatmentDetails = Boolean(
+    initialActionsValue || treatmentNotesValue || medicalNotesValue,
+  );
 
   return (
     <>
@@ -366,9 +376,10 @@ export default function HealthRecordDetails() {
             <div>
               <div className="flex flex-wrap items-center gap-2.5">
                 <h1 className="text-xl font-bold text-[#0F172A]">
-                  {record.diagnosis || "Medical Consultation"}
+                  {getRecordChiefComplaint(record, "Medical Consultation")}
                 </h1>
                 <HealthRecordStatusBadge status={status} />
+                {hasLinkedReferral && <ReferredChip />}
               </div>
 
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
@@ -454,10 +465,25 @@ export default function HealthRecordDetails() {
               )}
             </div>
           </div>
+          <div className="mt-5">
+            <VisitInfoStrip
+              visitTypeLabel={visitTypeLabel}
+              classification={recordCategory}
+              displayDate={displayDate}
+              displayTime={displayTime}
+              practitioner={getRecordPractitioner(record)}
+            />
+          </div>
         </div>
 
         {/* ─── Main Content ─── */}
-        <div className="space-y-6">
+        <div
+          className={
+            isEditing
+              ? "space-y-6"
+              : "grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"
+          }
+        >
           {/* ═══ Clinical Record — Single Card ═══ */}
           <div className="space-y-6">
             <SideCard title="Clinical Record" icon={<HeartPulse size={14} />}>
@@ -610,60 +636,62 @@ export default function HealthRecordDetails() {
                 </div>
               ) : (
                 /* ── View Mode ── */
-                <div className="space-y-4">
+                <div className="divide-y divide-slate-100">
                   <DetailSection title="Clinical Assessment">
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      <div className="space-y-3">
-                        <PatientDetailItem
-                          label="Visit Type"
-                          value={visitTypeLabel}
-                        />
-                        <PatientDetailItem
-                          label="Classification"
-                          value={recordCategory}
-                        />
-                        {parentHealthRecordId && (
+                    {hasClinicalAssessmentDetails ? (
+                      <>
+                        <div className="grid gap-4 md:grid-cols-2">
                           <PatientDetailItem
-                            label="Linked to Original Record"
-                            value={`#${parentHealthRecordId}`}
+                            label="Chief Complaint"
+                            value={chiefComplaintValue || "Not recorded"}
+                          />
+                          <PatientDetailItem
+                            label="Initial Diagnosis"
+                            value={diagnosisValue || "Not recorded"}
+                          />
+                        </div>
+                        {summaryValue && (
+                          <NarrativeBox
+                            label="Summary of Present Illness"
+                            value={summaryValue}
                           />
                         )}
-                        <PatientDetailItem
-                          label="Follow-up Status"
-                          value={getRecordFollowUpStatus(record)}
-                        />
-                        <PatientDetailItem
-                          label="Chief Complaint"
-                          value={getRecordChiefComplaint(record)}
-                        />
-                      </div>
-                      <div className="space-y-3">
-                        <PatientDetailItem
-                          label="Initial Diagnosis"
-                          value={getRecordDiagnosis(record)}
-                        />
-                        <PatientDetailItem
-                          label="Name of Practitioner"
-                          value={getRecordPractitioner(record)}
-                        />
-                      </div>
-                    </div>
-                    <NarrativeBox
-                      label="Summary of Present Illness"
-                      value={getRecordSummary(record, "")}
-                      emptyText="Not recorded"
-                    />
+                      </>
+                    ) : (
+                      <SectionEmptyState text="No clinical assessment details recorded." />
+                    )}
                   </DetailSection>
 
                   <DetailSection title="Treatment & Actions">
-                    <PatientDetailItem
-                      label="Initial Action Taken"
-                      value={getRecordInitialActions(record)}
-                    />
-                  </DetailSection>
-
-                  <DetailSection title="Vital Signs">
-                    <VitalSignsGrid items={getVitalSignItems(record)} />
+                    {hasTreatmentDetails ? (
+                      <>
+                        <PatientDetailItem
+                          label="Initial Action Taken"
+                          value={initialActionsValue || "Not recorded"}
+                        />
+                        {isDistinctRecordedValue(
+                          treatmentNotesValue,
+                          initialActionsValue,
+                        ) && (
+                          <NarrativeBox
+                            label="Treatment Notes"
+                            value={treatmentNotesValue}
+                          />
+                        )}
+                        {isDistinctRecordedValue(
+                          medicalNotesValue,
+                          initialActionsValue,
+                          treatmentNotesValue,
+                        ) && (
+                          <NarrativeBox
+                            label="Medical Notes"
+                            value={medicalNotesValue}
+                          />
+                        )}
+                      </>
+                    ) : (
+                      <SectionEmptyState text="No treatment or action details recorded." />
+                    )}
                   </DetailSection>
 
                   {(form.category === "Maternal" ||
@@ -681,45 +709,24 @@ export default function HealthRecordDetails() {
 	                      </div>
 	                    </DetailSection>
 	                  )}
-                    {shouldShowFullMonitoringSection && (
+                    {shouldShowMonitoringFollowUp && (
                       <DetailSection title="Monitoring & Follow-up">
                         <div className="grid gap-4 md:grid-cols-2">
-                          {followUpDateValue && (
+                          {(patientConditionValue ||
+                            status === "Follow-up Required") && (
+                            <PatientDetailItem
+                              label="Patient Condition"
+                              value={patientConditionValue}
+                            />
+                          )}
+                          {(followUpDateValue ||
+                            status === "Follow-up Required") && (
                             <PatientDetailItem
                               label="Follow-up Date"
                               value={formatLongDate(
                                 followUpDateValue,
                                 "Not recorded",
                               )}
-                            />
-                          )}
-                          {patientConditionValue && (
-                            <PatientDetailItem
-                              label="Patient Condition"
-                              value={patientConditionValue}
-                            />
-                          )}
-                        </div>
-                        {monitoringNotesValue && (
-                          <NarrativeBox
-                            label="Monitoring Notes"
-                            value={monitoringNotesValue}
-                          />
-                        )}
-                        {!hasFollowUpData && (
-                          <p className="text-xs text-slate-400">
-                            Follow-up details not recorded yet.
-                          </p>
-                        )}
-                      </DetailSection>
-                    )}
-                    {shouldShowRoutineMonitoringNotes && (
-                      <DetailSection title="Monitoring Notes">
-                        <div className="grid gap-4 md:grid-cols-2">
-                          {patientConditionValue && (
-                            <PatientDetailItem
-                              label="Patient Condition"
-                              value={patientConditionValue}
                             />
                           )}
                         </div>
@@ -806,6 +813,14 @@ export default function HealthRecordDetails() {
           </div>
 
           {/* ═══ Sidebar ═══ */}
+          {!isEditing && (
+            <aside className="space-y-3">
+              <QuickSummaryCard
+                vitalItems={getVitalSignItems(record)}
+              />
+            </aside>
+          )}
+
           {showPatientProfileSidebar && (
           <aside className="space-y-6">
             <SideCard title="Patient Profile" icon={<HeartPulse size={14} />}>
@@ -907,7 +922,7 @@ function SectionDivider({ label }) {
 
 function DetailSection({ title, children }) {
   return (
-    <section className="border-t border-slate-100 pt-5 first:border-t-0 first:pt-0">
+    <section className="py-5 first:pt-0 last:pb-0">
       <div className="mb-4 flex items-center gap-3">
         <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-widest text-slate-400">
           {title}
@@ -919,15 +934,106 @@ function DetailSection({ title, children }) {
   );
 }
 
-function VitalSignsGrid({ items }) {
+function VisitInfoStrip({
+  visitTypeLabel,
+  classification,
+  displayDate,
+  displayTime,
+  practitioner,
+}) {
+  return (
+    <div className="  px-3 py-2 ">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <MetadataItem label="Visit Type" value={visitTypeLabel} />
+        <MetadataItem label="Classification" value={classification} />
+        <MetadataItem label="Date of Visit" value={displayDate} />
+        <MetadataItem
+          label="Time of Visit"
+          value={displayTime || "Not recorded"}
+        />
+        <MetadataItem label="Name of Practitioner" value={practitioner} />
+      </div>
+    </div>
+  );
+}
+
+function MetadataItem({ label, value }) {
+  return (
+    <div>
+      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+        {label}
+      </p>
+      <p className="mt-1 truncate text-xs font-semibold text-slate-700">
+        {formatDisplayValue(value, "Not recorded")}
+      </p>
+    </div>
+  );
+}
+
+function QuickSummaryCard({ vitalItems }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm xl:sticky xl:top-4">
+      <div className="border-b border-slate-100 px-5 py-4">
+        <h2 className="text-sm font-bold text-[#0F172A]">Quick Summary</h2>
+      </div>
+      <div className="px-5">
+        <SummarySection title="Vital Signs">
+          <VitalSignsGrid items={vitalItems} compact />
+        </SummarySection>
+      </div>
+    </div>
+  );
+}
+
+function SummarySection({ title, children }) {
+  return (
+    <section className="py-4">
+      <h3 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+        {title}
+      </h3>
+      <div className="space-y-2">{children}</div>
+    </section>
+  );
+}
+
+function SummaryRow({ label, value }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-1">
+      <span className="text-xs font-medium text-slate-500">{label}</span>
+      <span className="max-w-[58%] text-right text-xs font-semibold text-slate-700">
+        {formatDisplayValue(value, "Not recorded")}
+      </span>
+    </div>
+  );
+}
+
+function VitalSignsGrid({ items, compact = false }) {
   const hasRecordedVitals = items.some((item) => item.value);
 
   if (!hasRecordedVitals) {
+    if (compact) {
+      return <p className="text-sm text-slate-500">No vital signs recorded.</p>;
+    }
+
     return (
       <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/30 px-4 py-5 text-center">
         <p className="text-xs text-slate-400">
           No vital signs recorded for this visit.
         </p>
+      </div>
+    );
+  }
+
+  if (compact) {
+    return (
+      <div className="space-y-2">
+        {items.map((item) => (
+          <SummaryRow
+            key={item.label}
+            label={item.label}
+            value={item.value || "Not recorded"}
+          />
+        ))}
       </div>
     );
   }
@@ -1009,10 +1115,6 @@ function isFollowUpEligibleStatus(status) {
   return normalizeHealthRecordStatus(status) === "Follow-up Required";
 }
 
-function isMonitoringStatus(status) {
-  return normalizeHealthRecordStatus(status) === "Follow-up Required";
-}
-
 function HealthRecordStatusBadge({ status }) {
   const normalizedStatus = normalizeHealthRecordStatus(status);
   const styles = {
@@ -1029,6 +1131,14 @@ function HealthRecordStatusBadge({ status }) {
       }`}
     >
       {normalizedStatus}
+    </span>
+  );
+}
+
+function ReferredChip() {
+  return (
+    <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+      Referred
     </span>
   );
 }
@@ -1150,7 +1260,40 @@ function getRecordSummary(record = {}, fallback = "Not recorded") {
 }
 
 function getRecordNotes(record = {}, fallback = "Not recorded") {
-  return getRecordValue(record, ["consultationNotes", "consultation_notes", "notes"], fallback);
+  return getRecordValue(
+    record,
+    ["consultationNotes", "consultation_notes", "medicalNotes", "medical_notes", "notes"],
+    fallback,
+  );
+}
+
+function getCompletedRecordMedicalNotes(
+  record = {},
+  monitoringNotes = "",
+  fallback = "Not recorded",
+) {
+  const notes = getRecordNotes(record, "");
+  if (notes) return notes;
+  return monitoringNotes || fallback;
+}
+
+function getRecordTreatmentNotes(record = {}, fallback = "") {
+  return getRecordValue(
+    record,
+    ["treatmentNotes", "treatment_notes", "treatment"],
+    fallback,
+  );
+}
+
+function isDistinctRecordedValue(value, ...existingValues) {
+  const normalized = String(value || "").trim();
+  if (!normalized || normalized === "Not recorded") return false;
+
+  return existingValues.every(
+    (existingValue) =>
+      String(existingValue || "").trim().toLowerCase() !==
+      normalized.toLowerCase(),
+  );
 }
 
 function getRecordInitialActions(record = {}, fallback = "Not recorded") {
@@ -1294,15 +1437,23 @@ function getVitalSignItems(record = {}) {
     readTextValue([/Height:\s*([^|,]+)/i]);
 
   return [
-    { label: "BP", value: bpValue },
+    { label: "BP", value: cleanVitalSignValue(bpValue) },
     {
       label: "Temperature",
-      value: temperatureValue ? String(temperatureValue) : "",
+      value: cleanVitalSignValue(temperatureValue),
     },
-    { label: "Pulse", value: pulseValue ? String(pulseValue) : "" },
-    { label: "Weight", value: weightValue ? String(weightValue) : "" },
-    { label: "Height", value: heightValue ? String(heightValue) : "" },
+    { label: "Pulse", value: cleanVitalSignValue(pulseValue) },
+    { label: "Weight", value: cleanVitalSignValue(weightValue) },
+    { label: "Height", value: cleanVitalSignValue(heightValue) },
   ];
+}
+
+function cleanVitalSignValue(value) {
+  const text = String(value || "").trim();
+  if (!text || /^n\/a\b/i.test(text) || /(^|[/: ])n\/a($|[ /])/i.test(text)) {
+    return "";
+  }
+  return text;
 }
 
 function VaccineStatusBadge({ administered }) {
@@ -1341,6 +1492,14 @@ function NarrativeBox({ label, value, emptyText }) {
       <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
         {value}
       </p>
+    </div>
+  );
+}
+
+function SectionEmptyState({ text }) {
+  return (
+    <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/30 px-4 py-5 text-center">
+      <p className="text-xs text-slate-400">{text}</p>
     </div>
   );
 }

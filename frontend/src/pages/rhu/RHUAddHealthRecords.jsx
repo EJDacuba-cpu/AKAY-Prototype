@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  AlertCircle,
   ArrowLeft,
   Baby,
   Check,
@@ -75,6 +76,25 @@ const EMPTY_MATERNAL_DATA = {
   preterm: "",
   abortion: "",
   living: "",
+};
+
+const EMPTY_IMMUNIZATION_DATA = {
+  bcg_vaccine: false,
+  hepb_birth: false,
+  pentavalent_dose1: false,
+  pentavalent_dose2: false,
+  pentavalent_dose3: false,
+  opv_dose1: false,
+  opv_dose2: false,
+  opv_dose3: false,
+  ipv_dose1: false,
+  ipv_dose2: false,
+  pcv_dose1: false,
+  pcv_dose2: false,
+  pcv_dose3: false,
+  mmr_dose1: false,
+  mmr_dose2: false,
+  feeding_status: "",
 };
 
 function normalizeRecordType(value) {
@@ -325,6 +345,7 @@ export default function AddHealthRecord() {
   const [patientsLoading, setPatientsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(null);
+  const [noticeModal, setNoticeModal] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -363,32 +384,19 @@ export default function AddHealthRecord() {
   const [aog, setAog] = useState("");
   const [followUpRecord, setFollowUpRecord] = useState(null);
 
-  const [immunizationData, setImmunizationData] = useState({
-    bcg_vaccine: false,
-    hepb_birth: false,
-    pentavalent_dose1: false,
-    pentavalent_dose2: false,
-    pentavalent_dose3: false,
-    opv_dose1: false,
-    opv_dose2: false,
-    opv_dose3: false,
-    ipv_dose1: false,
-    ipv_dose2: false,
-    pcv_dose1: false,
-    pcv_dose2: false,
-    pcv_dose3: false,
-    mmr_dose1: false,
-    mmr_dose2: false,
-    feeding_status: "",
-  });
+  const [immunizationData, setImmunizationData] = useState(
+    EMPTY_IMMUNIZATION_DATA,
+  );
 
   useEffect(() => {
     if (!isOrphanFollowUpRequest) return undefined;
 
-    alert(
-      "Follow-up visits must start from an existing Follow-up Required health record. Redirecting back to Health Records.",
-    );
-    const timer = window.setTimeout(() => navigate(healthRecordsPath), 0);
+    setNoticeModal({
+      title: "Original Record Required",
+      message:
+        "Follow-up visits must start from an existing Follow-up Required health record. Redirecting back to Health Records.",
+    });
+    const timer = window.setTimeout(() => navigate(healthRecordsPath), 2200);
     return () => window.clearTimeout(timer);
   }, [healthRecordsPath, isOrphanFollowUpRequest, navigate]);
 
@@ -622,7 +630,18 @@ export default function AddHealthRecord() {
     setHighlightIndex(-1);
   }
 
+  function resetClassificationSpecificState() {
+    setHealthRecordType("");
+    setMaternalData(EMPTY_MATERNAL_DATA);
+    setExpectedDeliveryDate("");
+    setAog("");
+    setImmunizationData(EMPTY_IMMUNIZATION_DATA);
+  }
+
   function selectPatient(id) {
+    if (id !== selectedPatientId) {
+      resetClassificationSpecificState();
+    }
     setSelectedPatientId(id);
     setSearchTerm("");
     setDropdownOpen(false);
@@ -631,7 +650,7 @@ export default function AddHealthRecord() {
 
   function clearSelectedPatient() {
     setSelectedPatientId("");
-    setHealthRecordType("");
+    resetClassificationSpecificState();
     setSearchTerm("");
     setDropdownOpen(true);
     requestAnimationFrame(() => inputRef.current?.focus());
@@ -640,7 +659,7 @@ export default function AddHealthRecord() {
   function handlePatientSearchChange(event) {
     if (selectedPatientId) {
       setSelectedPatientId("");
-      setHealthRecordType("");
+      resetClassificationSpecificState();
     }
     setSearchTerm(event.target.value);
     setDropdownOpen(true);
@@ -650,8 +669,59 @@ export default function AddHealthRecord() {
   const recordTypeKey = normalizedHealthRecordType.toLowerCase();
   const isImmunization = recordTypeKey === "immunization";
   const isMaternal = recordTypeKey === "maternal";
+  const patientGateLocked = !isFollowUp && !selectedPatientId;
+  const selectedPatientIsMale = !isFollowUp && isPatientMale(selectedPatient);
+  const selectedPatientSexMissing =
+    !isFollowUp && Boolean(selectedPatientId) && !hasPatientSex(selectedPatient);
+  const followUpPatientHasMaternalMismatch =
+    isFollowUp &&
+    isMaternal &&
+    isPatientMale(selectedPatient || followUpRecord?.patient || followUpRecord);
+  const showMaternalPatientWarning =
+    isMaternal &&
+    (followUpPatientHasMaternalMismatch ||
+      (!isFollowUp && selectedPatientSexMissing));
   const showFollowUpMonitoringFields =
     normalizePatientStatus(followUpStatus) === "Follow-up Required";
+  const normalizedPatientStatus = normalizePatientStatus(followUpStatus);
+  const monitoringNotesLabel =
+    normalizedPatientStatus === "Completed"
+      ? "Outcome Notes"
+      : showFollowUpMonitoringFields
+        ? "Monitoring and Follow-up Notes"
+        : "Monitoring Notes";
+  const monitoringNotesPlaceholder =
+    normalizedPatientStatus === "Completed"
+      ? "Write final outcome notes or closing instructions..."
+      : showFollowUpMonitoringFields
+        ? "Write the monitoring plan or reason for follow-up..."
+        : "Write monitoring notes if useful...";
+
+  function handleClassificationChange(event) {
+    const nextType = event.target.value;
+    const normalizedNextType = normalizeRecordType(nextType);
+
+    if (patientGateLocked) {
+      setNoticeModal({
+        title: "Patient Required",
+        message: "Please select a patient before choosing a classification.",
+      });
+      return;
+    }
+
+    if (normalizedNextType === "Maternal" && selectedPatientIsMale) {
+      resetClassificationSpecificState();
+      setNoticeModal({
+        title: "Invalid Classification",
+        message:
+          "Maternal records are for pregnancy or prenatal consultations. This patient is recorded as male. Please choose another classification.",
+      });
+      return;
+    }
+
+    setHealthRecordType(nextType);
+  }
+
   const immunizationFIC = useMemo(
     () => isFIC(immunizationData),
     [immunizationData],
@@ -738,9 +808,11 @@ export default function AddHealthRecord() {
     event.preventDefault();
 
     if (isOrphanFollowUpRequest) {
-      alert(
-        "Follow-up visits must start from an existing Follow-up Required health record.",
-      );
+      setNoticeModal({
+        title: "Original Record Required",
+        message:
+          "Follow-up visits must start from an existing Follow-up Required health record.",
+      });
       return;
     }
 
@@ -751,14 +823,21 @@ export default function AddHealthRecord() {
         followUpRecord.followUpStatus || followUpRecord.status,
       ) !== "Follow-up Required"
     ) {
-      alert(
-        "Record Follow-up Visit is only available for records marked Follow-up Required.",
-      );
+      setNoticeModal({
+        title: "Follow-up Not Available",
+        message:
+          "Record Follow-up Visit is only available for records marked Follow-up Required.",
+      });
       return;
     }
 
     if (!selectedPatientId) {
-      alert("Please select a patient first.");
+      setNoticeModal({
+        title: "Patient Required",
+        message: isFollowUp
+          ? "The original health record is still loading its patient. Please wait a moment and try again."
+          : "Please select a patient before saving the health record.",
+      });
       requestAnimationFrame(() => inputRef.current?.focus());
       return;
     }
@@ -773,7 +852,19 @@ export default function AddHealthRecord() {
       (isFollowUp ? "General Consultation" : "");
 
     if (!effectiveHealthRecordType) {
-      alert("Please select a classification.");
+      setNoticeModal({
+        title: "Classification Required",
+        message: "Please select a classification.",
+      });
+      return;
+    }
+
+    if (!isFollowUp && effectiveHealthRecordType === "Maternal" && selectedPatientIsMale) {
+      setNoticeModal({
+        title: "Invalid Classification",
+        message:
+          "Maternal records cannot be created for a patient recorded as male. Please choose another classification.",
+      });
       return;
     }
 
@@ -912,9 +1003,11 @@ export default function AddHealthRecord() {
       });
     } catch (error) {
       console.error("Failed to save RHU health record:", error);
-      alert(
-        "An error occurred while saving the record. Please check the console.",
-      );
+      setNoticeModal({
+        title: "Save Failed",
+        message:
+          "Unable to save the health record. Please review the form and try again.",
+      });
     } finally {
       setSaving(false);
     }
@@ -999,6 +1092,7 @@ export default function AddHealthRecord() {
           icon={<Clock size={14} />}
           delay={2}
         >
+          <LockedFormContent locked={patientGateLocked}>
           <div className="grid gap-4 lg:grid-cols-5">
             <FieldInput label="Visit Type" value={visitTypeLabel} readOnly />
             {isFollowUp ? (
@@ -1019,7 +1113,7 @@ export default function AddHealthRecord() {
               <FieldSelect
                 label="Classification"
                 value={healthRecordType}
-                onChange={(event) => setHealthRecordType(event.target.value)}
+                onChange={handleClassificationChange}
                 required
               >
                 <option value="">Select classification</option>
@@ -1050,6 +1144,8 @@ export default function AddHealthRecord() {
               readOnly
             />
           </div>
+          {showMaternalPatientWarning && <MaternalClassificationWarning />}
+          </LockedFormContent>
         </FormSection>
 
         {isFollowUp && (
@@ -1099,7 +1195,7 @@ export default function AddHealthRecord() {
               icon={<HeartPulse size={14} />}
               delay={4}
             >
-              <div className="grid gap-4 lg:grid-cols-3">
+              <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(4,minmax(0,1fr))]">
                 <BpInputGroup
                   systolic={systolicBp}
                   diastolic={diastolicBp}
@@ -1118,8 +1214,6 @@ export default function AddHealthRecord() {
                   value={pulse}
                   onChange={(event) => setPulse(event.target.value)}
                 />
-              </div>
-              <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <FieldInput
                   label="Weight"
                   type="number"
@@ -1189,10 +1283,10 @@ export default function AddHealthRecord() {
               </div>
               <div className="mt-4">
                 <FieldTextarea
-                  label="Monitoring and Follow-up"
+                  label={monitoringNotesLabel}
                   value={monitoringNotes}
                   onChange={(event) => setMonitoringNotes(event.target.value)}
-                  placeholder="Write the monitoring plan or reason for another follow-up if needed..."
+                  placeholder={monitoringNotesPlaceholder}
                   rows={3}
                 />
               </div>
@@ -1200,13 +1294,17 @@ export default function AddHealthRecord() {
           </>
         )}
 
-        {!isFollowUp && isImmunization && (
+        {!isFollowUp && !patientGateLocked && isImmunization && (
           <FormSection
-            title="Immunization Record Tracker"
-            subtitle="Digital immunization card for documenting vaccine schedule entries."
+            title="Classification-Specific Assessment"
+            subtitle="Immunization record tracker for vaccine schedule entries."
             icon={<Syringe size={14} />}
             delay={2}
           >
+            <ClassificationSectionIntro
+              title="Immunization Record Tracker"
+              description="Record vaccine schedule details for this immunization visit."
+            />
             <div className="mb-5 grid gap-4 lg:grid-cols-2">
               <ImmunizationSummaryCard data={immunizationData} />
               {immunizationFIC ? (
@@ -1269,19 +1367,23 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && isMaternal && (
+        {!isFollowUp && !patientGateLocked && isMaternal && !selectedPatientIsMale && (
           <FormSection
-            title="Maternal & Prenatal Assessment"
+            title="Classification-Specific Assessment"
             subtitle="Monitor pregnancy progression and maternal clinical vitals."
             icon={<HeartPulse size={14} />}
             delay={2}
             accent="pink"
           >
-            <div className="border-t border-[#F3F4F6] pt-5">
-              <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-pink-700">
-                Obstetric Profile
-              </p>
-              <div className="grid gap-4 lg:grid-cols-3">
+            <ClassificationSectionIntro
+              title="Maternal & Prenatal Assessment"
+              description="Pregnancy dating and obstetric profile are shown only for maternal records."
+              accent="pink"
+            />
+            {showMaternalPatientWarning && <MaternalClassificationWarning />}
+            <div className="grid gap-5 lg:grid-cols-2">
+              <ClinicalFieldGroup title="Pregnancy Dating" accent="pink">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <FieldInput
                   label="LMP"
                   type="date"
@@ -1316,6 +1418,10 @@ export default function AddHealthRecord() {
                   value={expectedDeliveryDate || "Calculating..."}
                   readOnly
                 />
+                </div>
+              </ClinicalFieldGroup>
+              <ClinicalFieldGroup title="Obstetric History" accent="pink">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <FieldInput
                   label="Gravida"
                   type="number"
@@ -1364,8 +1470,9 @@ export default function AddHealthRecord() {
                     handleMaternalChange("living", event.target.value)
                   }
                 />
+                </div>
+              </ClinicalFieldGroup>
               </div>
-            </div>
           </FormSection>
         )}
 
@@ -1376,6 +1483,7 @@ export default function AddHealthRecord() {
             icon={<Stethoscope size={14} />}
             delay={3}
           >
+            <LockedFormContent locked={patientGateLocked}>
             <div className="grid gap-4 lg:grid-cols-2">
               <FieldInput
                 label="Chief Complaint"
@@ -1416,6 +1524,7 @@ export default function AddHealthRecord() {
                 rows={3}
               />
             </div>
+            </LockedFormContent>
           </FormSection>
         )}
 
@@ -1427,7 +1536,8 @@ export default function AddHealthRecord() {
               icon={<HeartPulse size={14} />}
               delay={4}
             >
-          <div className="grid gap-4 lg:grid-cols-3">
+              <LockedFormContent locked={patientGateLocked}>
+          <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(4,minmax(0,1fr))]">
             <BpInputGroup
               systolic={systolicBp}
               diastolic={diastolicBp}
@@ -1446,8 +1556,6 @@ export default function AddHealthRecord() {
               value={pulse}
               onChange={(event) => setPulse(event.target.value)}
             />
-          </div>
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <FieldInput
               label="Weight"
               type="number"
@@ -1463,6 +1571,7 @@ export default function AddHealthRecord() {
               onChange={(event) => setHeight(event.target.value)}
             />
           </div>
+              </LockedFormContent>
             </FormSection>
 
             <FormSection
@@ -1471,7 +1580,12 @@ export default function AddHealthRecord() {
               icon={<HeartPulse size={14} />}
               delay={5}
             >
-          <div className="grid gap-4 lg:grid-cols-2">
+          <LockedFormContent locked={patientGateLocked}>
+          <div
+            className={`grid gap-4 ${
+              showFollowUpMonitoringFields ? "lg:grid-cols-3" : "lg:grid-cols-2"
+            }`}
+          >
             <FieldSelect
               label="Patient Status"
               value={followUpStatus}
@@ -1492,9 +1606,7 @@ export default function AddHealthRecord() {
                 required
               />
             )}
-          </div>
-          {showFollowUpMonitoringFields && (
-            <div className="mt-4">
+            {showFollowUpMonitoringFields && (
               <FieldSelect
                 label="Current Condition"
                 value={patientCondition}
@@ -1508,17 +1620,18 @@ export default function AddHealthRecord() {
                 <option>Needs Further Review</option>
                 <option>Recovered</option>
               </FieldSelect>
-            </div>
-          )}
+            )}
+          </div>
           <div className="mt-4">
             <FieldTextarea
-              label="Monitoring and Follow-up"
+              label={monitoringNotesLabel}
               value={monitoringNotes}
               onChange={(event) => setMonitoringNotes(event.target.value)}
-              placeholder="Write follow-up or monitoring notes..."
+              placeholder={monitoringNotesPlaceholder}
               rows={3}
             />
           </div>
+          </LockedFormContent>
             </FormSection>
           </>
         )}
@@ -1585,6 +1698,38 @@ export default function AddHealthRecord() {
           },
         ]}
       />
+
+      {noticeModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 px-4 py-5 backdrop-blur-sm">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-red-100 bg-white shadow-2xl">
+            <div className="h-1 bg-[#B91C1C]" />
+            <div className="p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
+                  <AlertCircle size={21} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-800">
+                    {noticeModal.title}
+                  </h2>
+                  <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                    {noticeModal.message}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-5 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setNoticeModal(null)}
+                  className="rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }
@@ -1957,6 +2102,58 @@ function FormSection({ title, subtitle, icon, children, delay = 0, accent }) {
         </div>
       </div>
       <div className="mt-5">{children}</div>
+    </div>
+  );
+}
+
+function LockedFormContent({ locked, children }) {
+  if (!locked) return children;
+
+  return (
+    <fieldset disabled className="space-y-4">
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
+        Select a patient first to continue.
+      </div>
+      <div className="pointer-events-none opacity-60">{children}</div>
+    </fieldset>
+  );
+}
+
+function ClassificationSectionIntro({ title, description, accent }) {
+  const titleClass = accent === "pink" ? "text-pink-800" : "text-[#1F2937]";
+
+  return (
+    <div className="mb-5">
+      <p className={`text-sm font-bold ${titleClass}`}>{title}</p>
+      {description && (
+        <p className="mt-1 text-xs leading-relaxed text-[#6B7280]">
+          {description}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ClinicalFieldGroup({ title, children, accent }) {
+  const titleClass = accent === "pink" ? "text-pink-700" : "text-[#B91C1C]";
+
+  return (
+    <div className="rounded-xl border border-[#EEF2F6] bg-[#FCFCFD] p-4">
+      <p className={`mb-3 text-[10px] font-bold uppercase tracking-widest ${titleClass}`}>
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function MaternalClassificationWarning() {
+  return (
+    <div className="mt-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
+      <AlertCircle size={16} className="mt-0.5 shrink-0" />
+      <p className="text-xs leading-relaxed">
+        Please verify the selected patient before creating a maternal record.
+      </p>
     </div>
   );
 }
@@ -2427,5 +2624,28 @@ function getPatientSearchText(patient = {}) {
 
 function getPatientInitial(patient = {}) {
   return getPatientName(patient).charAt(0).toUpperCase() || "P";
+}
+
+function getPatientSexText(patient = {}) {
+  return String(
+    patient.sex ||
+      patient.gender ||
+      patient.patientSex ||
+      patient.patientGender ||
+      patient.ageSex ||
+      "",
+  )
+    .trim()
+    .toLowerCase();
+}
+
+function hasPatientSex(patient = {}) {
+  return Boolean(getPatientSexText(patient));
+}
+
+function isPatientMale(patient = {}) {
+  const sexText = getPatientSexText(patient);
+
+  return sexText === "m" || /\bmale\b/.test(sexText);
 }
 

@@ -192,7 +192,6 @@ export async function getPatientByIdForRole(id) {
 
 export async function linkReferralPatientToRhu(referral) {
   if (referral?.patient) return normalizePatient(referral.patient);
-  if (referral?.patientId) return getBhcPatientById(referral.patientId);
   return null;
 }
 

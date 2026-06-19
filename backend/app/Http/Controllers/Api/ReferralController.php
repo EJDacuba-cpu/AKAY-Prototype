@@ -187,7 +187,18 @@ class ReferralController extends Controller
             'remarks' => $data['remarks'] ?? null,
         ]);
 
-        $notifications->notifyUser($referral->creator, 'Referral status updated', "Referral {$referral->tracking_id} is now {$data['status']}.", 'referral_status', $referral->id);
+        $referral->loadMissing(['patient', 'ruralHealthUnit']);
+        $patientName = $referral->patient?->full_name ?: 'The referred patient';
+        $rhuName = $referral->ruralHealthUnit?->name ?: 'the RHU';
+        $notificationTitle = 'Referral status updated';
+        $notificationMessage = "Referral {$referral->tracking_id} is now {$data['status']}.";
+
+        if ($request->user()->isRhuStaff() && $data['status'] === Referral::STATUS_RECEIVED) {
+            $notificationTitle = 'Patient checked in at RHU';
+            $notificationMessage = "{$patientName} has arrived and was checked in at {$rhuName}.";
+        }
+
+        $notifications->notifyUser($referral->creator, $notificationTitle, $notificationMessage, 'referral_status', $referral->id);
         $auditLogger->log($request, 'status_updated', 'referrals', "Updated referral {$referral->tracking_id} to {$data['status']}.");
 
         return response()->json(['data' => $referral->fresh()->load(['patient', 'healthRecord', 'updates'])]);

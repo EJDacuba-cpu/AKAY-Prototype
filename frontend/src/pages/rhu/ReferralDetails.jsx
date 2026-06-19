@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useParams } from "react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   AlertTriangle,
@@ -17,12 +17,13 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import ReferralDetailsSkeleton from "../../components/common/loading/ReferralDetailsSkeleton";
+import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import {
-  getReferrals,
+  getReferralByRouteParam,
   updateReferralByTrackingId,
 } from "../../services/referrals";
 import {
-  getRhuPatientById,
   linkReferralPatientToRhu,
 } from "../../services/patientService";
 import {
@@ -54,58 +55,33 @@ const stagger = (index) => ({ animationDelay: `${index * 55}ms` });
 export default function RHUReferralDetails() {
   const { trackingId } = useParams();
   const queryClient = useQueryClient();
-  const [referral, setReferral] = useState(null);
-  const [patient, setPatient] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
-  useEffect(() => {
-    let active = true;
+  const {
+    data: details,
+    isLoading,
+    isFetching,
+    error,
+  } = useQuery({
+    queryKey: queryKeys.referralDetails("rhu", trackingId),
+    queryFn: async () => {
+      const found = await getReferralByRouteParam(trackingId);
+      return {
+        referral: found,
+        patient: getReferralPatientSnapshot(found),
+      };
+    },
+    enabled: Boolean(trackingId),
+    retry: false,
+  });
 
-    async function loadReferral() {
-      setLoading(true);
-      setNotFound(false);
-
-      try {
-        const referrals = await getReferrals();
-        const found = referrals.find(
-          (item) => item.trackingId === trackingId || item.id === trackingId,
-        );
-
-        if (!found) {
-          if (!active) return;
-          setReferral(null);
-          setPatient(null);
-          setNotFound(true);
-          return;
-        }
-
-        const linkedPatient = found.patientId
-          ? await getRhuPatientById(found.patientId)
-          : null;
-
-        if (!active) return;
-        setReferral(found);
-        setPatient(linkedPatient);
-      } catch (error) {
-        console.error(error);
-        if (!active) return;
-        setReferral(null);
-        setPatient(null);
-        setNotFound(true);
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    loadReferral();
-
-    return () => {
-      active = false;
-    };
-  }, [trackingId]);
+  const referral = details?.referral || null;
+  const patient = details?.patient || null;
+  const loading = isLoading && !details;
+  const unauthorized = error?.status === 403;
+  const notFound = error?.status === 404 || (!loading && !error && !referral);
+  const loadError = error && !unauthorized && !notFound;
 
   async function applyStatus(nextStatus, extra = {}) {
     if (!referral || busy) return;
@@ -116,7 +92,8 @@ export default function RHUReferralDetails() {
       let patientId = referral.patientId;
 
       if (nextStatus === "Received") {
-        patientId = await linkReferralPatientToRhu(referral);
+        const linkedPatient = await linkReferralPatientToRhu(referral);
+        patientId = linkedPatient?.id || linkedPatient?.patientId || patientId;
       }
 
       const updated = await updateReferralByTrackingId(referral.trackingId, {
@@ -126,15 +103,9 @@ export default function RHUReferralDetails() {
       });
 
       if (updated) {
-        setReferral(updated);
-
-        if (patientId) {
-          setPatient(await getRhuPatientById(patientId));
-        }
-
         setMessage(getStatusMessage(nextStatus, extra));
         queryClient.invalidateQueries({
-          queryKey: queryKeys.referralDetails("rhu", referral.trackingId),
+          queryKey: queryKeys.referralDetails("rhu", trackingId),
         });
         queryClient.invalidateQueries({
           queryKey: queryKeys.referrals("bhc"),
@@ -154,41 +125,40 @@ export default function RHUReferralDetails() {
   if (loading) {
     return (
       <DashboardLayout role="rhu" title="Referral Details">
-        <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-400">
-          Loading referral details...
-        </div>
+        <ReferralDetailsSkeleton />
       </DashboardLayout>
     );
   }
 
-  if (notFound || !referral) {
+  if (unauthorized || notFound || loadError || !referral) {
     return (
-      <DashboardLayout role="rhu" title="Referral Not Found">
-        <div className="mx-auto max-w-lg py-24 text-center">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50 text-red-500">
-            <AlertTriangle size={30} />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-800">
-            Referral Not Found
-          </h1>
-          <p className="mt-3 text-sm text-slate-500">
-            No incoming referral record matches this Tracking ID.
-          </p>
-          <Link
-            to="/rhu/incoming-referrals"
-            className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
-          >
-            <ArrowLeft size={15} />
-            Back to Incoming Referrals
-          </Link>
-        </div>
-      </DashboardLayout>
+      <ReferralUnavailableState
+        title={
+          unauthorized
+            ? "Referral Access Restricted"
+            : loadError
+              ? "Unable to Load Referral"
+              : "Referral Not Found"
+        }
+        message={
+          unauthorized
+            ? "You do not have permission to view this referral."
+            : loadError
+              ? "Unable to load referral details. Please try again."
+              : "No incoming referral record matches this tracking ID."
+        }
+      />
     );
   }
 
   return (
     <DashboardLayout role="rhu" title="Referral Details">
       <style>{keyframes}</style>
+      <RefreshingIndicator
+        show={isFetching && !loading}
+        label="Refreshing details..."
+        className="mb-3"
+      />
 
       <div className="anim-fade-up mb-3" style={stagger(0)}>
         <Link
@@ -227,7 +197,6 @@ export default function RHUReferralDetails() {
           )}
 
           <SystemReference referral={referral} />
-          <PatientProfileShortcut patient={patient} />
           <ReferralActions
             referral={referral}
             busy={busy}
@@ -449,28 +418,6 @@ function SystemReference({ referral }) {
       <p className="text-center font-mono text-xs font-bold text-[#0F172A]">
         {referral.trackingId}
       </p>
-    </section>
-  );
-}
-
-function PatientProfileShortcut({ patient }) {
-  const patientId = patient?.id || patient?.patientId;
-
-  if (!patientId) return null;
-
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <h2 className="text-[13px] font-bold text-slate-800">Patient Profile</h2>
-      <p className="mt-1 text-[10.5px] leading-relaxed text-slate-400">
-        View full RHU records and referral history in the patient profile.
-      </p>
-      <Link
-        to={`/rhu/patients/${patientId}`}
-        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0F172A] hover:bg-slate-50"
-      >
-        <User size={14} />
-        View Patient Profile
-      </Link>
     </section>
   );
 }
@@ -835,6 +782,27 @@ function getDestinationFacility(referral = {}) {
   );
 }
 
+function ReferralUnavailableState({ title, message }) {
+  return (
+    <DashboardLayout role="rhu" title={title}>
+      <div className="mx-auto max-w-lg py-24 text-center">
+        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50 text-red-500">
+          <AlertTriangle size={30} />
+        </div>
+        <h1 className="text-2xl font-bold text-slate-800">{title}</h1>
+        <p className="mt-3 text-sm text-slate-500">{message}</p>
+        <Link
+          to="/rhu/incoming-referrals"
+          className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
+        >
+          <ArrowLeft size={15} />
+          Back to Incoming Referrals
+        </Link>
+      </div>
+    </DashboardLayout>
+  );
+}
+
 function getReferralDate(referral = {}) {
   const raw =
     referral.dateOfReferral ||
@@ -875,6 +843,36 @@ function getPatientName(referral = {}, patient = null) {
     referral.patientName || referral.patient || patient || referral,
     "Unknown Patient",
   );
+}
+
+function getReferralPatientSnapshot(referral = {}) {
+  if (!referral) return null;
+  if (referral.patient && typeof referral.patient === "object") {
+    return referral.patient;
+  }
+
+  if (
+    referral.patientName ||
+    referral.patientId ||
+    referral.ageSex ||
+    referral.patientContact ||
+    referral.address
+  ) {
+    return {
+      id: referral.patientId,
+      patientId: referral.patientId,
+      name: referral.patientName,
+      fullName: referral.patientName,
+      ageSex: referral.ageSex,
+      contactNumber: referral.patientContact,
+      contact: referral.patientContact,
+      address: referral.address,
+      barangay: referral.barangay,
+      birthDate: referral.birthDate,
+    };
+  }
+
+  return null;
 }
 
 function getAgeSex(referral = {}, patient = null) {

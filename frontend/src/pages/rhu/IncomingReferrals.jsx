@@ -20,10 +20,8 @@ import {
   TablePagination,
 } from "../../components/common";
 import TableSkeleton from "../../components/common/loading/TableSkeleton";
-import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import {
-  autoMarkNoShowReferrals,
-  getReferrals,
+  getIncomingReferrals,
 } from "../../services/referrals";
 import {
   formatDisplayValue,
@@ -149,7 +147,7 @@ function ActionMenu({ referral }) {
   function handleAction(item) {
     if (item.key === "view") {
       handleClose();
-      navigate(`/rhu/referrals/${referral.trackingId}`);
+      navigate(getReferralDetailsPath(referral));
       return;
     }
 
@@ -509,6 +507,15 @@ function compareReferralQueueOrder(a, b) {
   );
 }
 
+function getReferralRouteTarget(referral = {}) {
+  return String(referral.id || referral.trackingId || "").trim();
+}
+
+function getReferralDetailsPath(referral = {}) {
+  const target = getReferralRouteTarget(referral);
+  return `/rhu/referrals/${encodeURIComponent(target)}`;
+}
+
 function formatReferralSubmittedAt(referral) {
   const date = getReferralSubmittedAt(referral);
   if (!date) return "No date recorded";
@@ -586,11 +593,9 @@ export default function IncomingReferrals() {
     isFetching,
   } = useQuery({
     queryKey: queryKeys.incomingReferrals("rhu"),
-    queryFn: async () => {
-      await autoMarkNoShowReferrals();
-      return getReferrals();
-    },
-    refetchInterval: 5000,
+    queryFn: () => getIncomingReferrals(),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   const referrals = useMemo(
@@ -794,11 +799,11 @@ export default function IncomingReferrals() {
         }
       />
 
-      <RefreshingIndicator
-        show={isFetching && !loading}
-        label="Refreshing incoming referrals..."
-        className="mb-3"
-      />
+      {isFetching && !loading && referrals.length > 0 && (
+        <div className="mb-3 inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-500 shadow-sm">
+          Refreshing...
+        </div>
+      )}
 
       {loading ? (
         <TableSkeleton
@@ -878,9 +883,9 @@ export default function IncomingReferrals() {
 
                     return (
                       <tr
-                        key={referral.trackingId}
+                        key={getReferralRouteTarget(referral)}
                         onClick={() =>
-                          navigate(`/rhu/referrals/${referral.trackingId}`)
+                          navigate(getReferralDetailsPath(referral))
                         }
                         className={`group cursor-pointer transition-colors duration-150 hover:bg-[#FAFBFD] ${
                           isTerminal ? "bg-slate-50/30" : ""

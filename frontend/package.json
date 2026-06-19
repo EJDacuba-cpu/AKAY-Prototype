@@ -13,6 +13,7 @@
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/react-query": "^5.101.0",
     "chart.js": "^4.5.1",
+    "html5-qrcode": "^2.3.8",
     "lucide-react": "^1.14.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.6",

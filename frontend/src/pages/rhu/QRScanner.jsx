@@ -1,31 +1,31 @@
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
-import { Link, useNavigate } from "react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Html5Qrcode } from "html5-qrcode";
 import {
-  Activity,
   AlertCircle,
-  ArrowRight,
   Camera,
   CheckCircle2,
+  ChevronDown,
   ClipboardList,
   ExternalLink,
-  FileText,
+  Loader2,
   MonitorPlay,
   QrCode,
+  RefreshCcw,
   ScanLine,
   Search,
   ShieldCheck,
   Trash2,
   UserCheck,
-  UserX,
   X,
-  ChevronDown,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
-  autoMarkNoShowReferrals,
-  getReferrals,
+  getIncomingReferrals,
+  getReferralByTrackingId,
+  updateReferralByTrackingId,
 } from "../../services/referrals";
 import { createFacilityNotification } from "../../services/notificationService";
 import {
@@ -33,10 +33,9 @@ import {
   formatFacilityName,
   formatPatientName,
 } from "../../utils/formatters";
+import { getCurrentUser } from "../../utils/auth";
+import { queryKeys } from "../../utils/queryKeys";
 
-/* ─────────────────────────────────────────────
-   ANIMATIONS
-───────────────────────────────────────────── */
 const keyframes = `
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(14px); }
@@ -48,26 +47,11 @@ const keyframes = `
   to { opacity: 1; }
 }
 
-@keyframes modalPop {
-  from { opacity: 0; transform: translateY(10px) scale(.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
 @keyframes scanBeam {
-  0% { top: 8%; opacity: 0; }
+  0% { top: 9%; opacity: 0; }
   10% { opacity: 1; }
   90% { opacity: 1; }
   100% { top: 88%; opacity: 0; }
-}
-
-@keyframes pulseRing {
-  0% { transform: scale(1); opacity: 0.5; }
-  100% { transform: scale(1.8); opacity: 0; }
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
 }
 
 .anim-fade-up {
@@ -79,162 +63,314 @@ const keyframes = `
   animation: fadeIn .22s ease both;
 }
 
-.modal-pop {
-  animation: modalPop .22s cubic-bezier(.22,1,.36,1) both;
-}
-
 .scan-beam {
-  animation: scanBeam 2.4s cubic-bezier(.4,0,.2,1) infinite;
-}
-
-.pulse-ring {
-  animation: pulseRing 2s ease-out infinite;
-}
-
-.float-anim {
-  animation: float 4s ease-in-out infinite;
+  animation: scanBeam 2.2s cubic-bezier(.4,0,.2,1) infinite;
 }
 `;
 
-const stagger = (i) => ({ animationDelay: `${i * 80}ms` });
-
-/* ─── Tab Config ─── */
 const SCANNER_TABS = [
-  {
-    key: "camera",
-    label: "Scan with Camera",
-    icon: Camera,
-  },
-  {
-    key: "manual",
-    label: "Manual Verification",
-    icon: Search,
-  },
+  { key: "camera", label: "Scan with Camera", icon: Camera },
+  { key: "manual", label: "Manual Verification", icon: Search },
 ];
+
+const SCAN_COOLDOWN_MS = 3500;
+const CHECKED_IN_STATUSES = ["Received", "For Monitoring", "Completed"];
+const QR_READER_ELEMENT_ID = "rhu-qr-reader";
+
+const stagger = (index) => ({ animationDelay: `${index * 80}ms` });
 
 export default function QRScanner() {
   const navigate = useNavigate();
-  const [referrals, setReferrals] = useState([]);
+  const queryClient = useQueryClient();
+  const currentUser = getCurrentUser();
+
+  const scannerRef = useRef(null);
+  const scanLockedRef = useRef(false);
+  const lastScanRef = useRef({ trackingId: "", at: 0 });
+
   const [trackingInput, setTrackingInput] = useState("");
   const [selectedReferral, setSelectedReferral] = useState(null);
-  const [pendingAction, setPendingAction] = useState(null);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [activeTab, setActiveTab] = useState("camera");
-  const [isScanning, setIsScanning] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameras, setCameras] = useState([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState("");
+  const [cameraMessage, setCameraMessage] = useState("");
+  const [result, setResult] = useState({
+    type: "idle",
+    message: "",
+  });
+  const [verifying, setVerifying] = useState(false);
+  const [checkInBusy, setCheckInBusy] = useState(false);
 
-  useEffect(() => {
-    let alive = true;
+  const { data: incomingReferrals = [] } = useQuery({
+    queryKey: queryKeys.incomingReferrals("rhu"),
+    queryFn: () => getIncomingReferrals(),
+    staleTime: 30_000,
+  });
 
-    async function loadReferrals() {
+  const pendingReferrals = useMemo(
+    () =>
+      (Array.isArray(incomingReferrals) ? incomingReferrals : [])
+        .filter((referral) => referral.status === "Pending")
+        .slice(0, 3),
+    [incomingReferrals],
+  );
+
+  const selectedStatus = getOfficialStatus(selectedReferral?.status);
+  const alreadyCheckedIn = isCheckedIn(selectedReferral);
+
+  const stopCamera = useCallback(async () => {
+    const scanner = scannerRef.current;
+    scannerRef.current = null;
+
+    if (scanner) {
       try {
-        await autoMarkNoShowReferrals();
-        const all = await getReferrals();
-        if (!alive) return;
-        setReferrals(all);
-        setSelectedReferral(null);
+        await scanner.stop();
       } catch {
-        if (alive) setReferrals([]);
+        // Scanner may already be stopped; cleanup should stay quiet.
+      }
+
+      try {
+        await scanner.clear();
+      } catch {
+        // Some browsers clear the element during stop().
       }
     }
 
-    loadReferrals();
-
-    return () => {
-      alive = false;
-    };
+    scanLockedRef.current = false;
+    setCameraOpen(false);
   }, []);
 
-  /* ─────────────────────────────────────────────
-     VERIFY QR / TRACKING
-  ───────────────────────────────────────────── */
-  function verifyTrackingId(value) {
-    const normalized = value.trim().toUpperCase();
+  const refreshCameraList = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameras([]);
+      return [];
+    }
 
-    if (!normalized) {
-      setError("Please enter or scan a Tracking ID.");
-      setSelectedReferral(null);
-      setSuccess("");
+    try {
+      const devices = await Html5Qrcode.getCameras();
+      setCameras(devices);
+
+      if (!selectedDeviceId && devices[0]?.id) {
+        setSelectedDeviceId(devices[0].id);
+      }
+
+      return devices;
+    } catch {
+      setCameras([]);
+      return [];
+    }
+  }, [selectedDeviceId]);
+
+  const verifyTrackingId = useCallback(
+    async (value, source = "manual") => {
+      const trackingId = normalizeQrPayload(value);
+
+      if (!trackingId) {
+        setSelectedReferral(null);
+        setResult({
+          type: "error",
+          message:
+            source === "camera"
+              ? "Invalid QR code. Please scan a valid AKAY referral slip."
+              : "Please enter a valid AKAY referral Tracking ID.",
+        });
+        return null;
+      }
+
+      setVerifying(true);
+      setTrackingInput(trackingId);
+      setResult({ type: "loading", message: "Verifying referral..." });
+
+      try {
+        const referral = await getReferralByTrackingId(trackingId);
+        setSelectedReferral(referral);
+        setResult({
+          type: isCheckedIn(referral) ? "warning" : "success",
+          message: isCheckedIn(referral)
+            ? "This referral has already been checked in."
+            : "Referral found.",
+        });
+        return referral;
+      } catch (error) {
+        setSelectedReferral(null);
+        setResult({
+          type: "error",
+          message: getVerificationErrorMessage(error),
+        });
+        return null;
+      } finally {
+        setVerifying(false);
+      }
+    },
+    [],
+  );
+
+  const handleDetectedQr = useCallback(
+    async (rawValue) => {
+      const trackingId = normalizeQrPayload(rawValue);
+
+      if (!trackingId) {
+        stopCamera();
+        setSelectedReferral(null);
+        setResult({
+          type: "error",
+          message: "Invalid QR code. Please scan a valid AKAY referral slip.",
+        });
+        return;
+      }
+
+      const now = Date.now();
+      const isDuplicate =
+        lastScanRef.current.trackingId === trackingId &&
+        now - lastScanRef.current.at < SCAN_COOLDOWN_MS;
+
+      if (scanLockedRef.current || isDuplicate) return;
+
+      scanLockedRef.current = true;
+      lastScanRef.current = { trackingId, at: now };
+      await stopCamera();
+      await verifyTrackingId(trackingId, "camera");
+    },
+    [stopCamera, verifyTrackingId],
+  );
+
+  async function startCamera() {
+    setResult({ type: "idle", message: "" });
+    setCameraMessage("");
+    setSelectedReferral(null);
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraMessage("No camera device found. Please use Manual Verification.");
       return;
     }
 
-    const found = referrals.find(
-      (item) => item.trackingId.toUpperCase() === normalized,
-    );
+    try {
+      await stopCamera();
+      const devices = await Html5Qrcode.getCameras();
 
-    if (!found) {
-      setError("No referral record found for this Tracking ID.");
-      setSelectedReferral(null);
-      setSuccess("");
-      return;
+      if (devices.length === 0) {
+        setCameraMessage("No camera device found. Please use Manual Verification.");
+        return;
+      }
+
+      setCameras(devices);
+      const cameraId = selectedDeviceId || devices[0]?.id;
+      if (!selectedDeviceId && cameraId) setSelectedDeviceId(cameraId);
+
+      const scanner = new Html5Qrcode(QR_READER_ELEMENT_ID, {
+        verbose: false,
+      });
+      scannerRef.current = scanner;
+      scanLockedRef.current = false;
+
+      await scanner.start(
+        cameraId,
+        {
+          fps: 10,
+          qrbox: { width: 240, height: 240 },
+          aspectRatio: 1.7777778,
+        },
+        (decodedText) => {
+          void handleDetectedQr(decodedText);
+        },
+        () => {},
+      );
+
+      setCameraOpen(true);
+    } catch (error) {
+      await stopCamera();
+      setCameraMessage(getCameraErrorMessage(error));
     }
-
-    setTrackingInput(found.trackingId);
-    setSelectedReferral(found);
-    setError("");
-    setSuccess("Referral record retrieved successfully.");
-    createFacilityNotification("rhu", "rhu-bulakan", {
-      title: "Referral verified",
-      message: `Referral ${found.trackingId} was verified through QR scanning.`,
-      type: "system",
-      referenceId: `${found.trackingId}-qr-verified`,
-      link: `/rhu/referrals/${found.trackingId}`,
-      sender: "RHU QR Scanner",
-    });
   }
 
-  function simulateQRScan() {
-    const referralToScan =
-      referrals.find((item) => item.status === "Pending") || referrals[0];
+  async function handleCheckIn() {
+    if (!selectedReferral || checkInBusy) return;
 
-    if (!referralToScan) {
-      setError("No referral records available to scan.");
-      setSelectedReferral(null);
-      setSuccess("");
+    if (alreadyCheckedIn) {
+      setResult({
+        type: "warning",
+        message: "This referral has already been checked in.",
+      });
       return;
     }
 
-    setIsScanning(true);
+    setCheckInBusy(true);
+    setResult({ type: "loading", message: "Checking in patient..." });
+
+    try {
+      const updated = await updateReferralByTrackingId(selectedReferral.trackingId, {
+        status: "Received",
+        remarks: "Patient checked in at RHU via QR scanner.",
+      });
+
+      setSelectedReferral(updated);
+      setResult({
+        type: "success",
+        message: "Patient checked in successfully.",
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.incomingReferrals("rhu"),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.referralDetails("rhu", selectedReferral.trackingId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboardSummary("rhu"),
+      });
+
+      createFacilityNotification("rhu", currentUser?.ruralHealthUnitId, {
+        title: "Patient checked in",
+        message: `${getReferralPatientName(updated)} is ready for referral processing.`,
+        type: "referral",
+        referenceId: `${updated.trackingId}-rhu-check-in`,
+        link: `/rhu/referrals/${updated.trackingId}`,
+        sender: "RHU QR Scanner",
+      });
+    } catch (error) {
+      setResult({
+        type: "error",
+        message: getVerificationErrorMessage(error),
+      });
+    } finally {
+      setCheckInBusy(false);
+    }
+  }
+
+  function scanAgain() {
+    setSelectedReferral(null);
     setTrackingInput("");
-    setError("");
-    setSuccess("");
-
-    setTimeout(() => {
-      setTrackingInput(referralToScan.trackingId);
-      setIsScanning(false);
-      verifyTrackingId(referralToScan.trackingId);
-    }, 2000);
-  }
-
-  function handleConfirmAction() {
-    if (pendingAction?.referral?.trackingId) {
-      navigate(`/rhu/referrals/${pendingAction.referral.trackingId}`);
-    }
-    setPendingAction(null);
+    setResult({ type: "idle", message: "" });
+    setCameraMessage("");
+    scanLockedRef.current = false;
+    lastScanRef.current = { trackingId: "", at: 0 };
+    if (activeTab === "camera") startCamera();
   }
 
   function clearResults() {
+    stopCamera();
     setSelectedReferral(null);
     setTrackingInput("");
-    setError("");
-    setSuccess("");
-    setCameraOpen(false);
+    setResult({ type: "idle", message: "" });
+    setCameraMessage("");
   }
+
+  useEffect(() => {
+    refreshCameraList().catch(() => setCameras([]));
+  }, [refreshCameraList]);
+
+  useEffect(
+    () => () => {
+      void stopCamera();
+    },
+    [stopCamera],
+  );
 
   return (
     <DashboardLayout role="rhu" title="QR Scanner">
       <style>{keyframes}</style>
 
-      <ConfirmationModal
-        action={pendingAction}
-        onCancel={() => setPendingAction(null)}
-        onConfirm={handleConfirmAction}
-      />
-
-      {/* ══════════════════════════════════════
-          TAB BAR
-      ══════════════════════════════════════ */}
       <div
         className="anim-fade-up mb-5 flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1"
         style={stagger(1)}
@@ -246,617 +382,493 @@ export default function QRScanner() {
             <button
               key={tab.key}
               type="button"
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => {
+                setActiveTab(tab.key);
+                if (tab.key !== "camera") stopCamera();
+              }}
               className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[12px] font-semibold transition-all duration-200 ${
                 isActive
                   ? "bg-white text-[#0F172A] shadow-sm"
                   : "text-slate-400 hover:text-slate-600"
               }`}
             >
-              <Icon size={14} className={isActive ? "text-[#0F172A]" : ""} />
+              <Icon size={14} />
               {tab.label}
             </button>
           );
         })}
       </div>
 
-      {/* ══════════════════════════════════════
-          MAIN TWO-COLUMN LAYOUT
-      ══════════════════════════════════════ */}
       <div
         className="anim-fade-up grid gap-5 xl:grid-cols-2"
         style={stagger(2)}
       >
-        {/* ══════════════════════════════════════
-            LEFT: SCANNER / INPUT PANEL
-        ══════════════════════════════════════ */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-          {/* Panel Header */}
-          <div className="flex items-center gap-2.5 border-b border-slate-100 px-5 py-3.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B91C1C]">
-              {activeTab === "camera" ? (
-                <MonitorPlay size={15} />
-              ) : (
-                <Search size={15} />
-              )}
-            </div>
-            <h2 className="text-[13px] font-bold text-slate-800">
-              {activeTab === "camera" ? "Webcam" : "Manual Input"}
-            </h2>
-            {isScanning && (
-              <span className="ml-auto flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#B91C1C]">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#B91C1C] pulse-ring" />
-                Scanning
-              </span>
-            )}
-          </div>
+        <ScannerPanel
+          activeTab={activeTab}
+          cameras={cameras}
+          selectedDeviceId={selectedDeviceId}
+          setSelectedDeviceId={setSelectedDeviceId}
+          cameraOpen={cameraOpen}
+          cameraMessage={cameraMessage}
+          trackingInput={trackingInput}
+          setTrackingInput={setTrackingInput}
+          pendingReferrals={pendingReferrals}
+          verifying={verifying}
+          onStartCamera={startCamera}
+          onStopCamera={stopCamera}
+          onRetryScan={scanAgain}
+          onManualVerify={() => verifyTrackingId(trackingInput, "manual")}
+        />
 
-          {/* Panel Body */}
-          <div className="p-5">
-            {activeTab === "camera" ? (
-              /* ── CAMERA VIEW ── */
-              <div className="space-y-4">
-                {/* Camera Selector */}
-                <div className="flex items-center gap-3">
-                  <div className="relative flex-1">
-                    <select className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-8 text-[12px] text-slate-500 outline-none transition-colors focus:border-[#B91C1C]/40 focus:bg-white">
-                      <option>Camera list (permission needed)</option>
-                    </select>
-                    <ChevronDown
-                      size={14}
-                      className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-                    />
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!cameraOpen) {
-                        setCameraOpen(true);
-                        simulateQRScan();
-                      } else {
-                        setCameraOpen(false);
-                        setIsScanning(false);
-                      }
-                    }}
-                    disabled={isScanning}
-                    className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-[12px] font-semibold transition-all duration-200 ${
-                      cameraOpen && !isScanning
-                        ? "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
-                        : "bg-[#B91C1C] text-white hover:bg-[#991B1B] disabled:opacity-60"
-                    }`}
-                  >
-                    {cameraOpen && !isScanning ? (
-                      <>
-                        <X size={14} /> Close Camera
-                      </>
-                    ) : (
-                      <>
-                        <Camera size={14} /> Open Camera
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {/* Scanner Viewport */}
-                <div className="relative overflow-hidden rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50">
-                  <div className="relative mx-auto h-[300px] w-full max-w-[100%] bg-gradient-to-b from-slate-100/80 to-slate-50/50">
-                    {/* Corner brackets */}
-                    <div className="absolute left-4 top-4 h-5 w-5 border-l-[3px] border-t-[3px] border-[#B91C1C] rounded-tl-md" />
-                    <div className="absolute right-4 top-4 h-5 w-5 border-r-[3px] border-t-[3px] border-[#B91C1C] rounded-tr-md" />
-                    <div className="absolute bottom-4 left-4 h-5 w-5 border-b-[3px] border-l-[3px] border-[#B91C1C] rounded-bl-md" />
-                    <div className="absolute bottom-4 right-4 h-5 w-5 border-b-[3px] border-r-[3px] border-[#B91C1C] rounded-br-md" />
-
-                    {/* Scan beam */}
-                    {cameraOpen && (
-                      <div className="scan-beam absolute left-4 right-4 h-0.5 rounded-full bg-gradient-to-r from-transparent via-[#B91C1C] to-transparent shadow-lg shadow-[#B91C1C]/30" />
-                    )}
-
-                    {/* Center content */}
-                    <div className="flex h-full flex-col items-center justify-center">
-                      {isScanning ? (
-                        <div className="float-anim flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[#B91C1C]/10 to-red-50 text-[#0F172A]">
-                          <ScanLine size={32} className="stroke-[1.5]" />
-                        </div>
-                      ) : cameraOpen ? (
-                        <div className="text-center">
-                          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/80 text-[#0F172A]/40 shadow-sm">
-                            <ScanLine size={28} className="stroke-[1.2]" />
-                          </div>
-                          <p className="text-[12px] font-semibold text-slate-400">
-                            Camera active
-                          </p>
-                          <p className="mt-0.5 text-[11px] text-slate-300">
-                            Point at referral QR code
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="text-center">
-                          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-slate-200 shadow-sm">
-                            <Camera size={28} className="stroke-[1.2]" />
-                          </div>
-                          <p className="text-[12px] font-semibold text-slate-400">
-                            Camera not active
-                          </p>
-                          <p className="mt-1 max-w-[220px] text-[11px] leading-relaxed text-slate-300">
-                            Click "Open Camera" to start scanning referral QR
-                            codes
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Simulate button (below viewport) */}
-                {!cameraOpen && (
-                  <button
-                    type="button"
-                    onClick={simulateQRScan}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-[12px] font-semibold text-slate-600 transition-all duration-200 hover:bg-slate-100"
-                  >
-                    <QrCode size={14} />
-                    Use Saved Referral QR
-                  </button>
-                )}
-              </div>
-            ) : (
-              /* ── MANUAL INPUT VIEW ── */
-              <div className="space-y-4">
-                <div className="relative flex items-center rounded-lg border border-slate-200 bg-slate-50/50 px-3 transition-all duration-200 focus-within:border-[#B91C1C]/40 focus-within:bg-white focus-within:shadow-sm focus-within:shadow-[#B91C1C]/5">
-                  <Search
-                    size={15}
-                    className="text-slate-300 transition-colors focus-within:text-[#0F172A]/50"
-                  />
-
-                  <input
-                    value={trackingInput}
-                    onChange={(e) => {
-                      setTrackingInput(e.target.value);
-                      setError("");
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        verifyTrackingId(trackingInput);
-                      }
-                    }}
-                    placeholder="Enter Tracking ID (e.g. AKY-2026-001)"
-                    className="h-12 flex-1 border-0 bg-transparent px-3 text-[13px] font-medium text-slate-700 outline-none placeholder:text-slate-300 placeholder:font-normal"
-                  />
-
-                  {trackingInput && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTrackingInput("");
-                        setSelectedReferral(null);
-                        setError("");
-                        setSuccess("");
-                      }}
-                      className="rounded-md p-1 text-slate-300 transition-colors hover:bg-slate-100 hover:text-slate-500"
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => verifyTrackingId(trackingInput)}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 py-2.5 text-[12px] font-semibold text-white transition-all duration-200 hover:bg-[#991B1B]"
-                >
-                  <Search size={14} />
-                  Verify Tracking ID
-                </button>
-
-                {/* Feedback */}
-                {error && (
-                  <div className="anim-fade-in flex items-center gap-2.5 rounded-lg border border-red-100 bg-red-50/80 px-3.5 py-2.5">
-                    <AlertCircle
-                      size={14}
-                      className="shrink-0 text-red-500"
-                    />
-                    <p className="text-[11.5px] font-medium text-red-700">
-                      {error}
-                    </p>
-                  </div>
-                )}
-
-                {success && !error && (
-                  <div className="anim-fade-in flex items-center gap-2.5 rounded-lg border border-emerald-100 bg-emerald-50/80 px-3.5 py-2.5">
-                    <CheckCircle2
-                      size={14}
-                      className="shrink-0 text-emerald-500"
-                    />
-                    <p className="text-[11.5px] font-medium text-emerald-700">
-                      {success}
-                    </p>
-                  </div>
-                )}
-
-                {/* Recent referrals hint */}
-                <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-4">
-                  <p className="mb-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Available for scanning
-                  </p>
-                  <div className="space-y-1.5">
-                    {referrals
-                      .filter((r) => r.status === "Pending")
-                      .slice(0, 3)
-                      .map((r) => (
-                        <button
-                          key={r.trackingId}
-                          type="button"
-                          onClick={() => {
-                            setTrackingInput(r.trackingId);
-                            verifyTrackingId(r.trackingId);
-                          }}
-                          className="flex w-full items-center gap-2.5 rounded-md border border-slate-100 bg-white px-3 py-2 text-left transition-colors hover:border-[#B91C1C]/20 hover:bg-[#B91C1C]/[0.02]"
-                        >
-                          <QrCode
-                            size={12}
-                            className="shrink-0 text-slate-300"
-                          />
-                          <span className="flex-1 truncate font-mono text-[11px] font-semibold text-slate-600">
-                            {r.trackingId}
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            {getReferralPatientName(r)}
-                          </span>
-                        </button>
-                      ))}
-                    {referrals.filter((r) => r.status === "Pending").length ===
-                      0 && (
-                      <p className="py-2 text-center text-[11px] text-slate-300">
-                        No pending referrals
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ══════════════════════════════════════
-            RIGHT: RESULTS PANEL
-        ══════════════════════════════════════ */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-          {/* Panel Header */}
-          <div className="flex items-center gap-2.5 border-b border-slate-100 px-5 py-3.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-              <ClipboardList size={15} />
-            </div>
-            <h2 className="text-[13px] font-bold text-slate-800">Results</h2>
-          </div>
-
-          {/* Panel Body */}
-          <div className="p-5">
-            {!selectedReferral ? (
-              /* ── Empty State ── */
-              <div className="flex min-h-[340px] flex-col items-center justify-center text-center">
-                <div className="relative mb-5">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-50 text-slate-200">
-                    <QrCode size={34} className="stroke-[1.2]" />
-                  </div>
-                  <div className="absolute -right-1 -bottom-1 flex h-7 w-7 items-center justify-center rounded-lg border-2 border-white bg-slate-100 text-slate-400 shadow-sm">
-                    <ScanLine size={12} />
-                  </div>
-                </div>
-
-                <h3 className="text-[14px] font-bold text-slate-600">
-                  Scan a QR code to view
-                  <br />
-                  the results here.
-                </h3>
-
-                <p className="mt-2 max-w-[260px] text-[11.5px] leading-relaxed text-slate-300">
-                  Use the camera scanner or manually enter a Tracking ID to
-                  retrieve referral information.
-                </p>
-              </div>
-            ) : (
-              /* ── Referral Result ── */
-              <div className="space-y-4">
-                {/* Matched banner */}
-                <div className="flex items-center gap-2.5 rounded-lg bg-emerald-50 px-3.5 py-2.5">
-                  <CheckCircle2 size={14} className="text-emerald-600" />
-                  <span className="text-[11.5px] font-bold text-emerald-700">
-                    Referral Matched
-                  </span>
-                  <span className="ml-auto font-mono text-[10px] font-semibold text-emerald-600/70">
-                    {selectedReferral.trackingId}
-                  </span>
-                </div>
-
-                {/* Patient card */}
-                <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-bold text-slate-800">
-                        {getReferralPatientName(selectedReferral)}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-slate-400">
-                        {formatDisplayValue(
-                          selectedReferral.ageSex,
-                          "Age / Sex not recorded",
-                        )}
-                        {/*
-                        {selectedReferral.ageSex || "—"}
-                        */}
-                      </p>
-                    </div>
-                    <StatusBadge status={selectedReferral.status} />
-                  </div>
-                </div>
-
-                {/* Detail rows */}
-                <div className="space-y-2">
-                  <ResultRow
-                    label="Referring BHC"
-                    value={
-                      getReferralFacilityName(selectedReferral) ||
-                      selectedReferral.referringFacility ||
-                      selectedReferral.bhc ||
-                      "—"
-                    }
-                  />
-                  <ResultRow
-                    label="Chief Complaint"
-                    value={
-                      selectedReferral.chiefComplaint ||
-                      selectedReferral.concern ||
-                      "Not specified"
-                    }
-                  />
-                  <ResultRow
-                    label="Classification"
-                    value={
-                      selectedReferral.suggestedSpecialization ||
-                      "General Consultation"
-                    }
-                  />
-                </div>
-
-                {/* Action button */}
-                <div className="space-y-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const action = getPrimaryAction(selectedReferral);
-                      setPendingAction({
-                        referral: selectedReferral,
-                        ...action,
-                      });
-                    }}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 py-2.5 text-[12px] font-semibold text-white transition-all duration-200 hover:bg-[#991B1B]"
-                  >
-                    {getPrimaryAction(selectedReferral).buttonIcon}
-                    {getPrimaryAction(selectedReferral).buttonLabel}
-                  </button>
-
-                  <Link
-                    to="/rhu/incoming-referrals"
-                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-[12px] font-semibold text-slate-500 transition-all duration-200 hover:bg-slate-50 hover:text-slate-700"
-                  >
-                    View in Incoming Referrals
-                    <ArrowRight size={12} />
-                  </Link>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Bottom Action Bar */}
-          <div className="flex items-center gap-2 border-t border-slate-100 px-5 py-3">
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedReferral) {
-                  navigate(`/rhu/referrals/${selectedReferral.trackingId}`);
-                }
-              }}
-              disabled={!selectedReferral}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-500 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white"
-            >
-              <ExternalLink size={12} />
-              Open Link
-            </button>
-
-            <button
-              type="button"
-              onClick={clearResults}
-              disabled={!selectedReferral && !trackingInput}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-slate-500 disabled:hover:border-slate-200"
-            >
-              <Trash2 size={12} />
-              Clear
-            </button>
-          </div>
-        </div>
+        <ResultsPanel
+          referral={selectedReferral}
+          result={result}
+          status={selectedStatus}
+          verifying={verifying}
+          checkInBusy={checkInBusy}
+          alreadyCheckedIn={alreadyCheckedIn}
+          onCheckIn={handleCheckIn}
+          onScanAgain={scanAgain}
+          onClear={clearResults}
+          onOpenDetails={() =>
+            selectedReferral?.trackingId &&
+            navigate(`/rhu/referrals/${selectedReferral.trackingId}`)
+          }
+        />
       </div>
     </DashboardLayout>
   );
 }
 
-/* ─────────────────────────────────────────────
-   PRIMARY ACTION
-───────────────────────────────────────────── */
-function getReferralPatientName(referral) {
-  return formatPatientName(
-    referral?.patientName || referral?.patient || referral,
-    "Patient",
-  );
-}
-
-function getReferralFacilityName(referral) {
-  return formatFacilityName(
-    referral?.referringFacility ||
-      referral?.bhc ||
-      referral?.barangayHealthCenter ||
-      referral?.barangay_health_center,
-    "Not recorded",
-  );
-}
-
-function getPrimaryAction(referral) {
-  if (referral.status === "Pending") {
-    return {
-      title: "Ready for check-in",
-      description: "Confirm patient identity and check in.",
-      buttonLabel: "Check In Patient",
-      buttonIcon: <UserCheck size={14} />,
-      icon: <UserCheck size={15} />,
-      iconBg: "#FEF2F2",
-      iconColor: "#B91C1C",
-    };
-  }
-
-  if (referral.status === "Received") {
-    return {
-      title: "Patient already checked in",
-      description: "Continue with clinical assessment.",
-      buttonLabel: "Continue Processing",
-      buttonIcon: <CheckCircle2 size={14} />,
-      icon: <CheckCircle2 size={15} />,
-      iconBg: "#ECFDF5",
-      iconColor: "#059669",
-    };
-  }
-
-  if (referral.status === "No-Show") {
-    return {
-      title: "Late arrival option",
-      description: "Check in with late arrival notation.",
-      buttonLabel: "Check-in Late Arrival",
-      buttonIcon: <UserX size={14} />,
-      icon: <UserX size={15} />,
-      iconBg: "#FEF2F2",
-      iconColor: "#DC2626",
-    };
-  }
-
-  if (referral.status === "For Monitoring") {
-    return {
-      title: "Under monitoring",
-      description: "Continue monitoring or complete referral.",
-      buttonLabel: "Continue Monitoring",
-      buttonIcon: <Activity size={14} />,
-      icon: <Activity size={15} />,
-      iconBg: "#FFFBEB",
-      iconColor: "#D97706",
-    };
-  }
-
-  return {
-    title: "Referral completed",
-    description: "View return slip and final assessment.",
-    buttonLabel: "View Return Slip",
-    buttonIcon: <FileText size={14} />,
-    icon: <ShieldCheck size={15} />,
-    iconBg: "#ECFDF5",
-    iconColor: "#059669",
-  };
-}
-
-/* ─────────────────────────────────────────────
-   CONFIRMATION MODAL
-───────────────────────────────────────────── */
-function ConfirmationModal({ action, onCancel, onConfirm }) {
-  if (!action) return null;
-
-  return createPortal(
-    <div className="anim-fade-in fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/35 px-4">
-      <div className="modal-pop w-full max-w-md overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xl shadow-slate-900/10">
-        {/* Modal Header */}
-        <div className="border-b border-slate-100 bg-white px-6 py-5">
-          <div className="flex items-center gap-3">
-            <div>
-              <h2 className="text-[15px] font-bold text-slate-900">
-                Check In Patient
-              </h2>
-              <p className="mt-0.5 text-[11px] text-slate-500">
-                Proceed to referral check-in
-              </p>
-            </div>
-          </div>
+function ScannerPanel({
+  activeTab,
+  cameras,
+  selectedDeviceId,
+  setSelectedDeviceId,
+  cameraOpen,
+  cameraMessage,
+  trackingInput,
+  setTrackingInput,
+  pendingReferrals,
+  verifying,
+  onStartCamera,
+  onStopCamera,
+  onRetryScan,
+  onManualVerify,
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+      <div className="flex items-center gap-2.5 border-b border-slate-100 px-5 py-3.5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B91C1C]">
+          {activeTab === "camera" ? <MonitorPlay size={15} /> : <Search size={15} />}
         </div>
+        <h2 className="text-[13px] font-bold text-slate-800">
+          {activeTab === "camera" ? "Webcam Scanner" : "Manual Input"}
+        </h2>
+        {cameraOpen && (
+          <span className="ml-auto rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#B91C1C]">
+            Scanning
+          </span>
+        )}
+      </div>
 
-        {/* Modal Body */}
-        <div className="px-6 py-5">
-          <p className="text-[12.5px] leading-relaxed text-slate-500">
-            Verify the patient details below before checking in this referral.
-          </p>
-
-          <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-            <div className="flex items-center gap-3">
-              <div>
-                <p className="text-[13px] font-bold text-slate-800">
-                  {getReferralPatientName(action.referral)}
-                </p>
-                <p className="mt-0.5 font-mono text-[11px] font-semibold text-[#0F172A]/60">
-                  {action.referral.trackingId}
-                </p>
-              </div>
-            </div>
-
-            {action.referral.ageSex && (
-              <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-3">
-                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-                  {formatDisplayValue(
-                    action.referral.ageSex,
-                    "Age / Sex not recorded",
+      <div className="p-5">
+        {activeTab === "camera" ? (
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="relative flex-1">
+                <select
+                  value={selectedDeviceId}
+                  onChange={(event) => setSelectedDeviceId(event.target.value)}
+                  className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-8 text-[12px] text-slate-600 outline-none transition-colors focus:border-[#B91C1C]/40 focus:bg-white"
+                >
+                  {cameras.length === 0 ? (
+                    <option value="">Camera list (permission needed)</option>
+                  ) : (
+                    cameras.map((camera, index) => (
+                      <option key={camera.id || index} value={camera.id}>
+                        {camera.label || `Camera ${index + 1}`}
+                      </option>
+                    ))
                   )}
-                </span>
-                <StatusBadge status={action.referral.status} />
+                </select>
+                <ChevronDown
+                  size={14}
+                  className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+                />
               </div>
-            )}
-          </div>
-        </div>
 
-        {/* Modal Footer */}
-        <div className="flex gap-2 border-t border-slate-100 px-6 py-4">
+              <button
+                type="button"
+                onClick={cameraOpen ? onStopCamera : onStartCamera}
+                className={`flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[12px] font-semibold transition-all duration-200 ${
+                  cameraOpen
+                    ? "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+                    : "bg-[#B91C1C] text-white hover:bg-[#991B1B]"
+                }`}
+              >
+                {cameraOpen ? (
+                  <>
+                    <X size={14} /> Close Camera
+                  </>
+                ) : (
+                  <>
+                    <Camera size={14} /> Start Camera
+                  </>
+                )}
+              </button>
+            </div>
+
+            {cameraMessage && (
+              <Notice tone="error" icon={<AlertCircle size={14} />}>
+                {cameraMessage}
+              </Notice>
+            )}
+
+            <div className="relative overflow-hidden rounded-xl border-2 border-dashed border-slate-200 bg-slate-950">
+              <div className="relative h-[320px] w-full">
+                <div
+                  id={QR_READER_ELEMENT_ID}
+                  className={`h-full w-full overflow-hidden bg-slate-950 [&_video]:h-full [&_video]:w-full [&_video]:object-cover ${
+                    cameraOpen ? "opacity-100" : "opacity-0"
+                  }`}
+                />
+
+                <div className="pointer-events-none absolute inset-0">
+                  <div className="absolute left-5 top-5 h-7 w-7 rounded-tl-md border-l-[3px] border-t-[3px] border-[#B91C1C]" />
+                  <div className="absolute right-5 top-5 h-7 w-7 rounded-tr-md border-r-[3px] border-t-[3px] border-[#B91C1C]" />
+                  <div className="absolute bottom-5 left-5 h-7 w-7 rounded-bl-md border-b-[3px] border-l-[3px] border-[#B91C1C]" />
+                  <div className="absolute bottom-5 right-5 h-7 w-7 rounded-br-md border-b-[3px] border-r-[3px] border-[#B91C1C]" />
+                  {cameraOpen && (
+                    <div className="scan-beam absolute left-6 right-6 h-0.5 rounded-full bg-gradient-to-r from-transparent via-[#B91C1C] to-transparent shadow-lg shadow-[#B91C1C]/40" />
+                  )}
+                </div>
+
+                {!cameraOpen && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 text-center">
+                    <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-slate-200 shadow-sm">
+                      <Camera size={28} />
+                    </div>
+                    <p className="text-[12px] font-semibold text-slate-500">
+                      Camera not active
+                    </p>
+                    <p className="mt-1 max-w-[240px] text-[11px] leading-relaxed text-slate-400">
+                      Start the camera and point it at an AKAY referral slip QR code.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onRetryScan}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-[12px] font-semibold text-slate-600 transition-all duration-200 hover:bg-slate-50"
+            >
+              <RefreshCcw size={14} />
+              Retry Scan
+            </button>
+          </div>
+        ) : (
+          <ManualVerification
+            trackingInput={trackingInput}
+            setTrackingInput={setTrackingInput}
+            pendingReferrals={pendingReferrals}
+            verifying={verifying}
+            onManualVerify={onManualVerify}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ManualVerification({
+  trackingInput,
+  setTrackingInput,
+  pendingReferrals,
+  verifying,
+  onManualVerify,
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="relative flex items-center rounded-lg border border-slate-200 bg-slate-50/50 px-3 transition-all duration-200 focus-within:border-[#B91C1C]/40 focus-within:bg-white">
+        <Search size={15} className="text-slate-300" />
+        <input
+          value={trackingInput}
+          onChange={(event) => setTrackingInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") onManualVerify();
+          }}
+          placeholder="Enter Tracking ID, referral URL, or AKAY QR value"
+          className="h-12 flex-1 border-0 bg-transparent px-3 text-[13px] font-medium text-slate-700 outline-none placeholder:text-slate-300 placeholder:font-normal"
+        />
+        {trackingInput && (
           <button
             type="button"
-            onClick={onCancel}
-            className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[12px] font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+            onClick={() => setTrackingInput("")}
+            className="rounded-md p-1 text-slate-300 transition-colors hover:bg-slate-100 hover:text-slate-500"
           >
-            Cancel
+            <X size={14} />
           </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="flex-1 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition-all duration-200 hover:bg-[#991B1B]"
-          >
-            Check In
-          </button>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={onManualVerify}
+        disabled={verifying}
+        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 py-2.5 text-[12px] font-semibold text-white transition-all duration-200 hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {verifying ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+        Verify Tracking ID
+      </button>
+
+      <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-4">
+        <p className="mb-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+          Pending incoming referrals
+        </p>
+        <div className="space-y-1.5">
+          {pendingReferrals.map((referral) => (
+            <button
+              key={referral.trackingId || referral.id}
+              type="button"
+              onClick={() => setTrackingInput(referral.trackingId)}
+              className="flex w-full items-center gap-2.5 rounded-md border border-slate-100 bg-white px-3 py-2 text-left transition-colors hover:border-[#B91C1C]/20 hover:bg-[#B91C1C]/[0.02]"
+            >
+              <QrCode size={12} className="shrink-0 text-slate-300" />
+              <span className="flex-1 truncate font-mono text-[11px] font-semibold text-slate-600">
+                {referral.trackingId}
+              </span>
+              <span className="truncate text-[10px] text-slate-400">
+                {getReferralPatientName(referral)}
+              </span>
+            </button>
+          ))}
+          {pendingReferrals.length === 0 && (
+            <p className="py-2 text-center text-[11px] text-slate-300">
+              No pending referrals
+            </p>
+          )}
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
   );
 }
 
-/* ─────────────────────────────────────────────
-   SMALL COMPONENTS
-───────────────────────────────────────────── */
-function ResultRow({ label, value }) {
-  const displayValue = formatDisplayValue(value, "Not recorded");
+function ResultsPanel({
+  referral,
+  result,
+  status,
+  verifying,
+  checkInBusy,
+  alreadyCheckedIn,
+  onCheckIn,
+  onScanAgain,
+  onClear,
+  onOpenDetails,
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+      <div className="flex items-center gap-2.5 border-b border-slate-100 px-5 py-3.5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+          <ClipboardList size={15} />
+        </div>
+        <h2 className="text-[13px] font-bold text-slate-800">Results</h2>
+      </div>
+
+      <div className="p-5">
+        {!referral ? (
+          <EmptyResults result={result} verifying={verifying} />
+        ) : (
+          <div className="space-y-4">
+            <ResultNotice result={result} />
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4">
+              <div className="flex items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-bold text-slate-800">
+                    {getReferralPatientName(referral)}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    {formatDisplayValue(referral.ageSex, "Age / Sex not recorded")}
+                  </p>
+                </div>
+                <StatusBadge status={status} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <ResultRow label="Tracking ID" value={referral.trackingId} mono />
+              <ResultRow label="Referring BHC/HCI" value={getReferringHci(referral)} />
+              <ResultRow label="Destination RHU" value={getDestinationFacility(referral)} />
+              <ResultRow label="Referral Category" value={getReferralCategory(referral)} />
+              <ResultRow
+                label="Chief Complaint"
+                value={referral.chiefComplaint || referral.concern}
+              />
+              <ResultRow label="Referral Date/Time" value={formatReferralDateTime(referral)} />
+              <ResultRow label="Urgency" value={getUrgency(referral)} />
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={onCheckIn}
+                disabled={checkInBusy || alreadyCheckedIn}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 py-2.5 text-[12px] font-semibold text-white transition-all duration-200 hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+              >
+                {checkInBusy ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <UserCheck size={14} />
+                )}
+                {alreadyCheckedIn ? "Already Checked In" : "Check-in Patient"}
+              </button>
+
+              <button
+                type="button"
+                onClick={onOpenDetails}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-[12px] font-semibold text-slate-600 transition-all duration-200 hover:bg-slate-50"
+              >
+                <ExternalLink size={14} />
+                View Referral Details
+              </button>
+
+              <button
+                type="button"
+                onClick={onScanAgain}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-[12px] font-semibold text-slate-500 transition-all duration-200 hover:bg-slate-50"
+              >
+                <RefreshCcw size={14} />
+                Scan Again
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 border-t border-slate-100 px-5 py-3">
+        <button
+          type="button"
+          onClick={onOpenDetails}
+          disabled={!referral}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-500 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <ExternalLink size={12} />
+          Open Details
+        </button>
+
+        <button
+          type="button"
+          onClick={onClear}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+        >
+          <Trash2 size={12} />
+          Clear
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EmptyResults({ result, verifying }) {
+  if (result.type === "error") {
+    return (
+      <div className="flex min-h-[340px] flex-col items-center justify-center text-center">
+        <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-red-50 text-red-400">
+          <AlertCircle size={34} />
+        </div>
+        <h3 className="text-[14px] font-bold text-slate-700">Verification failed</h3>
+        <p className="mt-2 max-w-[280px] text-[12px] leading-relaxed text-slate-400">
+          {result.message}
+        </p>
+      </div>
+    );
+  }
 
   return (
+    <div className="flex min-h-[340px] flex-col items-center justify-center text-center">
+      <div className="relative mb-5">
+        <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-50 text-slate-200">
+          {verifying || result.type === "loading" ? (
+            <Loader2 size={34} className="animate-spin" />
+          ) : (
+            <QrCode size={34} />
+          )}
+        </div>
+        <div className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-lg border-2 border-white bg-slate-100 text-slate-400 shadow-sm">
+          <ScanLine size={12} />
+        </div>
+      </div>
+
+      <h3 className="text-[14px] font-bold text-slate-600">
+        {result.type === "loading" ? "Verifying referral..." : "Scan a QR code to view results."}
+      </h3>
+
+      <p className="mt-2 max-w-[260px] text-[11.5px] leading-relaxed text-slate-300">
+        Use the camera scanner or manually enter a tracking ID to retrieve
+        authorized referral information.
+      </p>
+    </div>
+  );
+}
+
+function ResultNotice({ result }) {
+  if (!result.message) return null;
+  const tone = result.type === "warning" ? "warning" : result.type === "error" ? "error" : "success";
+  const icon =
+    tone === "success" ? (
+      <CheckCircle2 size={14} />
+    ) : tone === "warning" ? (
+      <ShieldCheck size={14} />
+    ) : (
+      <AlertCircle size={14} />
+    );
+
+  return (
+    <Notice tone={tone} icon={icon}>
+      {result.message}
+    </Notice>
+  );
+}
+
+function Notice({ tone = "success", icon, children }) {
+  const styles = {
+    success: "border-emerald-100 bg-emerald-50/80 text-emerald-700",
+    warning: "border-amber-100 bg-amber-50/80 text-amber-700",
+    error: "border-red-100 bg-red-50/80 text-red-700",
+  };
+
+  return (
+    <div
+      className={`anim-fade-in flex items-center gap-2.5 rounded-lg border px-3.5 py-2.5 text-[11.5px] font-medium ${styles[tone]}`}
+    >
+      <span className="shrink-0">{icon}</span>
+      <p>{children}</p>
+    </div>
+  );
+}
+
+function ResultRow({ label, value, mono = false }) {
+  return (
     <div className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-3.5 py-2.5">
-      <p className="w-28 shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+      <p className="w-32 shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400">
         {label}
       </p>
-      <p className="flex-1 text-[12px] font-semibold text-slate-700">
-        {displayValue}
+      <p
+        className={`flex-1 text-[12px] font-semibold text-slate-700 ${
+          mono ? "font-mono" : ""
+        }`}
+      >
+        {formatDisplayValue(value, "Not recorded")}
       </p>
     </div>
   );
 }
 
 function StatusBadge({ status }) {
-  const displayStatus = formatDisplayValue(status, "Pending");
+  const displayStatus = getOfficialStatus(status);
   const map = {
     Pending: {
       bg: "#F1F5F9",
@@ -889,23 +901,185 @@ function StatusBadge({ status }) {
       border: "#FDE68A",
     },
   };
-
-  const s = map[displayStatus] || map.Pending;
+  const style = map[displayStatus] || map.Pending;
 
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
       style={{
-        backgroundColor: s.bg,
-        color: s.text,
-        borderColor: s.border,
+        backgroundColor: style.bg,
+        color: style.text,
+        borderColor: style.border,
       }}
     >
       <span
         className="inline-block h-1.5 w-1.5 rounded-full"
-        style={{ backgroundColor: s.dot }}
+        style={{ backgroundColor: style.dot }}
       />
       {displayStatus}
     </span>
   );
+}
+
+function normalizeQrPayload(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const parsedJson = parseJsonPayload(raw);
+  if (parsedJson) return normalizeQrPayload(parsedJson);
+
+  const urlTrackingId = extractTrackingIdFromUrl(raw);
+  if (urlTrackingId) return urlTrackingId;
+
+  const withoutPrefix = raw.replace(/^AKAY:REFERRAL:/i, "").trim();
+  const trackingMatch = withoutPrefix.match(/AKY-\d{8}-[A-Z0-9]+/i);
+  if (trackingMatch) return trackingMatch[0].toUpperCase();
+
+  return "";
+}
+
+function parseJsonPayload(value) {
+  if (!value.startsWith("{")) return "";
+
+  try {
+    const parsed = JSON.parse(value);
+    return (
+      parsed.trackingId ||
+      parsed.tracking_id ||
+      parsed.qrCodeValue ||
+      parsed.qr_code_value ||
+      ""
+    );
+  } catch {
+    return "";
+  }
+}
+
+function extractTrackingIdFromUrl(value) {
+  try {
+    const url = new URL(value, window.location?.origin || "http://akay.local");
+    const params = ["trackingId", "tracking_id", "id"];
+    for (const param of params) {
+      const candidate = url.searchParams.get(param);
+      const trackingId = candidate?.match(/AKY-\d{8}-[A-Z0-9]+/i)?.[0];
+      if (trackingId) return trackingId.toUpperCase();
+    }
+
+    const pathTrackingId = url.pathname.match(/AKY-\d{8}-[A-Z0-9]+/i)?.[0];
+    return pathTrackingId ? pathTrackingId.toUpperCase() : "";
+  } catch {
+    return "";
+  }
+}
+
+function getVerificationErrorMessage(error = {}) {
+  if (error.status === 403) return "This referral is not assigned to your facility.";
+  if (error.status === 404) return "No referral record matches this QR code.";
+  if (error.status === 409) return "This referral has already been checked in.";
+  return "Unable to verify referral. Please try again.";
+}
+
+function getCameraErrorMessage(error = {}) {
+  if (error.name === "NotAllowedError" || error.name === "SecurityError") {
+    return "Camera permission is required to scan referral QR codes.";
+  }
+  if (error.name === "NotFoundError" || error.name === "OverconstrainedError") {
+    return "No camera device found. Please use Manual Verification.";
+  }
+  return "Unable to start the camera. Please check browser permissions or use Manual Verification.";
+}
+
+function isCheckedIn(referral = null) {
+  return CHECKED_IN_STATUSES.includes(getOfficialStatus(referral?.status));
+}
+
+function getOfficialStatus(status) {
+  const raw = String(status || "Pending").trim().toLowerCase();
+  if (raw.includes("receive") || raw.includes("checked") || raw.includes("arrived")) {
+    return "Received";
+  }
+  if (raw.includes("monitor")) return "For Monitoring";
+  if (raw.includes("complete")) return "Completed";
+  if (raw.includes("show")) return "No-Show";
+  return "Pending";
+}
+
+function getReferralPatientName(referral = {}) {
+  return formatPatientName(
+    referral.patientName || referral.patient || referral,
+    "Patient",
+  );
+}
+
+function getReferringHci(referral = {}) {
+  return formatFacilityName(
+    referral.referringHci ||
+      referral.referringHealthCenter ||
+      referral.referringBHC ||
+      referral.bhcName ||
+      referral.sourceFacility ||
+      referral.referringFacility ||
+      referral.bhc ||
+      referral.barangayHealthCenter ||
+      referral.barangay_health_center,
+    "Not recorded",
+  );
+}
+
+function getDestinationFacility(referral = {}) {
+  return formatFacilityName(
+    referral.destinationFacility ||
+      referral.referredFacility ||
+      referral.receivingFacility ||
+      referral.ruralHealthUnit ||
+      referral.rural_health_unit,
+    "Not recorded",
+  );
+}
+
+function getReferralCategory(referral = {}) {
+  return formatDisplayValue(
+    referral.referralCategory ||
+      referral.category ||
+      referral.classification ||
+      referral.suggestedSpecialization,
+    "Uncategorized",
+  );
+}
+
+function getUrgency(referral = {}) {
+  const urgency =
+    referral.urgency ||
+    referral.urgencyLevel ||
+    referral.priorityLevel ||
+    referral.priority;
+
+  if (!urgency) return "Non-Urgent";
+  if (String(urgency).toLowerCase().includes("emergency")) return "Emergency";
+  if (String(urgency).toLowerCase().includes("urgent")) return "Urgent";
+  if (String(urgency).toLowerCase().includes("high")) return "Emergency";
+  if (String(urgency).toLowerCase().includes("medium")) return "Urgent";
+  return "Non-Urgent";
+}
+
+function formatReferralDateTime(referral = {}) {
+  const raw =
+    referral.referralDateTime ||
+    referral.referral_datetime ||
+    referral.dateOfReferral ||
+    referral.createdAt ||
+    referral.created_at;
+
+  if (!raw) return "";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+
+  return `${date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  })} / ${date.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
 }
