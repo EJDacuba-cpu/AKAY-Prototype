@@ -9,16 +9,13 @@ import {
   FileText,
   MapPin,
   Phone,
-  QrCode,
   Stethoscope,
   User,
   UserCheck,
-  UserX,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import ReferralDetailsSkeleton from "../../components/common/loading/ReferralDetailsSkeleton";
-import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
+import { SoftLoadingArea } from "../../components/common";
 import {
   getReferralByRouteParam,
   updateReferralByTrackingId,
@@ -30,6 +27,7 @@ import {
   formatDisplayValue,
   formatFacilityName,
   formatPatientName,
+  formatReferralStatus,
   formatUserName,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
@@ -125,7 +123,13 @@ export default function RHUReferralDetails() {
   if (loading) {
     return (
       <DashboardLayout role="rhu" title="Referral Details">
-        <ReferralDetailsSkeleton />
+        <SoftLoadingArea
+          isLoading
+          message="Loading details..."
+          minHeight="min-h-[520px]"
+        >
+          <div className="min-h-[520px] rounded-2xl border border-slate-200 bg-white shadow-sm" />
+        </SoftLoadingArea>
       </DashboardLayout>
     );
   }
@@ -154,11 +158,11 @@ export default function RHUReferralDetails() {
   return (
     <DashboardLayout role="rhu" title="Referral Details">
       <style>{keyframes}</style>
-      <RefreshingIndicator
-        show={isFetching && !loading}
-        label="Refreshing details..."
-        className="mb-3"
-      />
+      <SoftLoadingArea
+        isLoading={isFetching && !loading}
+        message="Refreshing details..."
+        minHeight="min-h-[520px]"
+      >
 
       <div className="anim-fade-up mb-3" style={stagger(0)}>
         <Link
@@ -170,7 +174,21 @@ export default function RHUReferralDetails() {
         </Link>
       </div>
 
-      <ReferralHeader referral={referral} patient={patient} />
+      <ReferralHeader
+        referral={referral}
+        patient={patient}
+        busy={busy}
+        onStatusChange={applyStatus}
+      />
+
+      {message && (
+        <div
+          className="anim-fade-up mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-700"
+          style={stagger(2)}
+        >
+          {message}
+        </div>
+      )}
 
       <div
         className="anim-fade-up mb-5 border-b border-slate-200"
@@ -184,32 +202,15 @@ export default function RHUReferralDetails() {
         </div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <main className="anim-fade-up min-w-0" style={stagger(3)}>
-          <ReferralRecord referral={referral} patient={patient} />
-        </main>
-
-        <aside className="space-y-4 xl:sticky xl:top-5 xl:self-start">
-          {message && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-700">
-              {message}
-            </div>
-          )}
-
-          <SystemReference referral={referral} />
-          <ReferralActions
-            referral={referral}
-            busy={busy}
-            onStatusChange={applyStatus}
-          />
-          <StatusHistory referral={referral} />
-        </aside>
-      </div>
+      <main className="anim-fade-up min-w-0" style={stagger(3)}>
+        <ReferralRecord referral={referral} patient={patient} />
+      </main>
+      </SoftLoadingArea>
     </DashboardLayout>
   );
 }
 
-function ReferralHeader({ referral, patient }) {
+function ReferralHeader({ referral, patient, busy, onStatusChange }) {
   const referralDate = getReferralDate(referral);
 
   return (
@@ -217,7 +218,7 @@ function ReferralHeader({ referral, patient }) {
       className="anim-fade-up mb-5 border-b border-slate-200 pb-5"
       style={stagger(1)}
     >
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-2xl font-bold tracking-tight text-[#0F172A]">
@@ -237,6 +238,11 @@ function ReferralHeader({ referral, patient }) {
             />
           </div>
         </div>
+        <ReferralActions
+          referral={referral}
+          busy={busy}
+          onStatusChange={onStatusChange}
+        />
       </div>
 
       <div className="mt-4 grid gap-x-6 gap-y-3 border-t border-slate-100 pt-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -403,179 +409,92 @@ function ReferralRecord({ referral, patient }) {
   );
 }
 
-function SystemReference({ referral }) {
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-4 border-b border-slate-100 pb-3">
-        <h2 className="text-[13px] font-bold text-slate-800">
-          Referral Tracking Details
-        </h2>
-        <p className="text-[10.5px] text-slate-400">QR code and tracking ID</p>
-      </div>
-      <div className="mx-auto mb-3 flex h-28 w-28 items-center justify-center rounded-xl border-2 border-dashed border-red-200 bg-red-50/50">
-        <QrCode size={56} className="text-[#0F172A]/60" />
-      </div>
-      <p className="text-center font-mono text-xs font-bold text-[#0F172A]">
-        {referral.trackingId}
-      </p>
-    </section>
-  );
-}
-
 function ReferralActions({ referral, busy, onStatusChange }) {
   const status = getOfficialStatus(referral.status);
   const button =
-    "flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60";
+    "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60";
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <h2 className="mb-3 text-[13px] font-bold text-slate-800">
-        Referral Actions
-      </h2>
+    <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+      {status === "Pending" && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() =>
+            onStatusChange("Received", {
+              receivedAt: new Date().toISOString(),
+            })
+          }
+          className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
+        >
+          <UserCheck size={14} />
+          Receive Patient
+        </button>
+      )}
 
-      <div className="space-y-2">
-        {status === "Pending" && (
-          <>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() =>
-                onStatusChange("Received", {
-                  receivedAt: new Date().toISOString(),
-                })
-              }
-              className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
-            >
-              <UserCheck size={14} />
-              Receive Patient
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() =>
-                onStatusChange("No-Show", {
-                  noShowAt: new Date().toISOString(),
-                  previousStatus: "Pending",
-                })
-              }
-              className={`${button} border border-red-100 bg-red-50 text-red-700 hover:bg-red-100`}
-            >
-              <UserX size={14} />
-              Mark as No-Show
-            </button>
-          </>
-        )}
+      {status === "No-Show" && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() =>
+            onStatusChange("Received", {
+              lateArrival: true,
+              previousStatus: "No-Show",
+              receivedAt: new Date().toISOString(),
+            })
+          }
+          className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
+        >
+          <UserCheck size={14} />
+          Receive Patient
+        </button>
+      )}
 
-        {status === "No-Show" && (
+      {status === "Received" && (
+        <>
           <button
             type="button"
             disabled={busy}
             onClick={() =>
-              onStatusChange("Received", {
-                lateArrival: true,
-                previousStatus: "No-Show",
-                receivedAt: new Date().toISOString(),
+              onStatusChange("For Monitoring", {
+                monitoringStartedAt: new Date().toISOString(),
               })
             }
             className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
           >
-            <UserCheck size={14} />
-            Receive Late Arrival
+            <Activity size={14} />
+            Start Monitoring
           </button>
-        )}
-
-        {status === "Received" && (
-          <>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() =>
-                onStatusChange("For Monitoring", {
-                  monitoringStartedAt: new Date().toISOString(),
-                })
-              }
-              className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
-            >
-              <Activity size={14} />
-              Start Monitoring
-            </button>
-            <Link
-              to={`/rhu/feedback/${referral.trackingId}`}
-              className={`${button} border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100`}
-            >
-              <FileText size={14} />
-              Submit Return Slip
-            </Link>
-          </>
-        )}
-
-        {status === "For Monitoring" && (
           <Link
             to={`/rhu/feedback/${referral.trackingId}`}
-            className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
+            className={`${button} border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100`}
           >
             <FileText size={14} />
-            End Monitoring / Submit Return Slip
+            Submit Return Slip
           </Link>
-        )}
+        </>
+      )}
 
-        {status === "Completed" && (
-          <Link
-            to={`/rhu/feedback/${referral.trackingId}`}
-            className={`${button} bg-emerald-600 text-white hover:bg-emerald-700`}
-          >
-            <FileText size={14} />
-            View Return Slip
-          </Link>
-        )}
-      </div>
-    </section>
-  );
-}
+      {status === "For Monitoring" && (
+        <Link
+          to={`/rhu/feedback/${referral.trackingId}`}
+          className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
+        >
+          <FileText size={14} />
+          End Monitoring / Submit Return Slip
+        </Link>
+      )}
 
-function StatusHistory({ referral }) {
-  const items = [
-    [
-      "BHC Referral Submitted",
-      referral.createdAt || referral.dateOfReferral || referral.referralDate,
-    ],
-    ["RHU Received", referral.receivedAt],
-    ["RHU Assessment / Monitoring", referral.monitoringStartedAt],
-    [
-      "Return Slip Sent",
-      referral.feedback?.submittedAt || referral.completedAt,
-    ],
-  ];
-
-  if (referral.noShowAt) {
-    items.splice(1, 0, ["No-Show", referral.noShowAt]);
-  }
-
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <h2 className="mb-3 text-[13px] font-bold text-slate-800">
-        Referral Progress
-      </h2>
-      <div className="space-y-3">
-        {items.map(([label, value]) => (
-          <div key={label} className="flex items-start gap-3">
-            <span
-              className={`mt-1 h-2.5 w-2.5 rounded-full ${
-                value ? "bg-[#B91C1C]" : "bg-slate-200"
-              }`}
-            />
-            <div>
-              <p className="text-xs font-semibold text-slate-700">{label}</p>
-              <p className="text-[10.5px] text-slate-400">
-                {value
-                  ? `${formatDate(value)} ${formatTime(value)}`
-                  : "Pending"}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
+      {status === "Completed" && (
+        <Link
+          to={`/rhu/feedback/${referral.trackingId}`}
+          className={`${button} bg-emerald-600 text-white hover:bg-emerald-700`}
+        >
+          <FileText size={14} />
+          View Return Slip
+        </Link>
+      )}
+    </div>
   );
 }
 
@@ -660,21 +579,22 @@ function InfoChip({ icon, value }) {
 
 function StatusBadge({ status }) {
   const officialStatus = getOfficialStatus(status);
+  const displayStatus = formatReferralStatus(officialStatus);
   const map = {
     Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
     Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
     "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    Done: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
     "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
   };
 
   return (
     <span
       className={`inline-flex items-center rounded-lg border px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide ${
-        map[officialStatus] || map.Pending
+        map[displayStatus] || map.Pending
       }`}
     >
-      {officialStatus}
+      {displayStatus}
     </span>
   );
 }

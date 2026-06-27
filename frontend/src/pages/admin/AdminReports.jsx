@@ -418,7 +418,7 @@ export default function AdminReports() {
             tone="slate"
           />
           <StatCard
-            title="Completed Cases"
+            title="Done"
             value={stats.completedCases}
             icon={<SearchCheck size={16} />}
             tone="amber"
@@ -919,7 +919,7 @@ function RhuReceivingSummaryCard({ summary }) {
         />
         <ResourceRow
           icon={<HeartPulse size={13} />}
-          label="Completed Cases"
+          label="Done"
           value={formatNumber(summary.completedCases)}
         />
         <ResourceRow
@@ -1005,7 +1005,7 @@ function BarangayReferralTable({ barangayReports }) {
               <th className="px-4 py-3">Total Referrals</th>
               <th className="px-4 py-3">Pending</th>
               <th className="px-4 py-3">Received</th>
-              <th className="px-4 py-3">Completed</th>
+              <th className="px-4 py-3">Done</th>
               <th className="px-4 py-3">No-Show</th>
               <th className="px-4 py-3">Last Activity</th>
             </tr>
@@ -1082,7 +1082,7 @@ function PrintableMhoReport({ filters, stats, barangayReports, rhuSummary }) {
         <div className="grid grid-cols-4 gap-2">
           <PrintMetric label="Total Referrals" value={stats.totalReferrals} />
           <PrintMetric label="Pending Referrals" value={stats.pendingReferrals} />
-          <PrintMetric label="Completed Cases" value={stats.completedCases} />
+          <PrintMetric label="Done" value={stats.completedCases} />
           <PrintMetric label="No-Show Cases" value={stats.noShowCases} />
         </div>
       </section>
@@ -1098,7 +1098,7 @@ function PrintableMhoReport({ filters, stats, barangayReports, rhuSummary }) {
               <th>Total Referrals</th>
               <th>Pending</th>
               <th>Received</th>
-              <th>Completed</th>
+              <th>Done</th>
               <th>No-Show</th>
               <th>Last Activity</th>
             </tr>
@@ -1129,7 +1129,7 @@ function PrintableMhoReport({ filters, stats, barangayReports, rhuSummary }) {
               <th>RHU Name</th>
               <th>Incoming Referrals</th>
               <th>Received</th>
-              <th>Completed</th>
+              <th>Done</th>
               <th>Feedback Submitted</th>
               <th>No-Show</th>
             </tr>
@@ -2430,7 +2430,7 @@ function exportMunicipalReportCsv({
     ["Summary Metrics"],
     ["Total Referrals", stats.totalReferrals],
     ["Pending Referrals", stats.pendingReferrals],
-    ["Completed Cases", stats.completedCases],
+    ["Done", stats.completedCases],
     ["No-Show Cases", stats.noShowCases],
     [],
     [

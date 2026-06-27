@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\IncomingReferralController;
 use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PatientController;
+use App\Http\Controllers\Api\PasswordResetRequestController;
 use App\Http\Controllers\Api\ReferralController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RhuPatientVolumeController;
@@ -19,8 +20,11 @@ use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/login', [AuthController::class, 'login']);
-Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
-Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
+Route::post('/auth/forgot-password', [PasswordResetRequestController::class, 'request'])->middleware('throttle:5,1');
+Route::post('/auth/reset-password', [PasswordResetRequestController::class, 'complete'])->middleware('throttle:10,1');
+Route::post('/auth/password-reset/request', [PasswordResetRequestController::class, 'request'])->middleware('throttle:5,1');
+Route::get('/auth/password-reset/verify', [PasswordResetRequestController::class, 'verify'])->middleware('throttle:20,1');
+Route::post('/auth/password-reset/complete', [PasswordResetRequestController::class, 'complete'])->middleware('throttle:10,1');
 
 Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('/auth/profile', [AuthController::class, 'profile']);
@@ -57,6 +61,14 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::apiResource('users', UserController::class);
         Route::apiResource('barangay-health-centers', BarangayHealthCenterController::class);
         Route::apiResource('rural-health-units', RuralHealthUnitController::class);
+        Route::get('/password-reset-requests', [PasswordResetRequestController::class, 'index']);
+        Route::get('/password-reset-requests/{passwordResetRequest}', [PasswordResetRequestController::class, 'show']);
+        Route::post('/password-reset-requests/{passwordResetRequest}/approve', [PasswordResetRequestController::class, 'approve']);
+        Route::post('/password-reset-requests/{passwordResetRequest}/reject', [PasswordResetRequestController::class, 'reject']);
+        Route::get('/admin/password-reset-requests', [PasswordResetRequestController::class, 'index']);
+        Route::get('/admin/password-reset-requests/{passwordResetRequest}', [PasswordResetRequestController::class, 'show']);
+        Route::post('/admin/password-reset-requests/{passwordResetRequest}/approve', [PasswordResetRequestController::class, 'approve']);
+        Route::post('/admin/password-reset-requests/{passwordResetRequest}/reject', [PasswordResetRequestController::class, 'reject']);
         Route::get('/audit-logs', [AuditLogController::class, 'index']);
         Route::get('/reports/admin', [ReportController::class, 'admin']);
     });

@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes, useParams } from "react-router";
 import Login from "./pages/Login";
+import ResetPassword from "./pages/ResetPassword";
 import { getCurrentUser } from "./utils/auth";
 import DashboardLayout from "./components/layout/DashboardLayout";
 import NotificationsPage from "./pages/bhc/NotificationsPage";
@@ -44,6 +45,7 @@ import AddUser from "./pages/admin/AddUser";
 
 import AdminReports from "./pages/admin/AdminReports";
 import AuditLogs from "./pages/admin/AuditLogs";
+import PasswordResetRequests from "./pages/admin/PasswordResetRequests";
 
 function ProtectedPage({ allowedRole, children }) {
   const user = getCurrentUser();
@@ -90,6 +92,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       {/* Admin Routes */}
       <Route
@@ -139,6 +142,14 @@ export default function App() {
         element={
           <ProtectedPage allowedRole="admin">
             <AuditLogs />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/admin/password-reset-requests"
+        element={
+          <ProtectedPage allowedRole="admin">
+            <PasswordResetRequests />
           </ProtectedPage>
         }
       />

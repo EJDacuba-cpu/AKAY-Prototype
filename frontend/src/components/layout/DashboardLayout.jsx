@@ -178,7 +178,7 @@ export default function DashboardLayout({
           {mobileDrawerOpen && (
             <div
               onClick={() => setMobileDrawerOpen(false)}
-              className="fixed inset-0 z-40 bg-black/25 backdrop-blur-sm md:hidden"
+              className="fixed inset-0 z-40 bg-slate-950/25 backdrop-blur-sm transition-opacity md:hidden"
             />
           )}
 
@@ -199,23 +199,23 @@ export default function DashboardLayout({
         }`}
       >
 <header className="relative z-30 shrink-0 border-b border-[#E5E7EB] bg-white/95 backdrop-blur-xl">
-  <div className="flex h-[62px] items-center justify-between px-5">
-<div className="flex min-w-0 items-center gap-3">
+  <div className="flex h-14 items-center justify-between px-3.5 sm:h-[62px] sm:px-5">
+<div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
   {!hideSidebar && (
     <button
       type="button"
       onClick={() => setMobileDrawerOpen(true)}
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#B91C1C] shadow-sm transition hover:bg-[#FEF2F2] md:hidden"
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white text-[#B91C1C] shadow-sm transition hover:bg-[#FEF2F2] md:hidden"
       aria-label="Open sidebar"
     >
       <Menu size={17} />
     </button>
   )}
 
-  <div className="flex min-w-0 items-center gap-3">
-    <span className="h-6 w-1 rounded-full bg-[#B91C1C]" />
+  <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+    <span className="h-5 w-1 shrink-0 rounded-full bg-[#B91C1C] sm:h-6" />
 
-    <h2 className="truncate text-base font-black tracking-tight text-[#0F172A]">
+    <h2 className="truncate text-sm font-black tracking-tight text-[#0F172A] sm:text-base">
       {title}
     </h2>
   </div>
@@ -226,7 +226,7 @@ export default function DashboardLayout({
                 <button
                   type="button"
                   onClick={() => setIsNotifOpen((prev) => !prev)}
-                  className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] shadow-sm transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
+                  className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white text-[#64748B] shadow-sm transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] sm:h-9 sm:w-9 sm:rounded-lg"
                   aria-label="Notifications"
                 >
                   <Bell size={15} />
@@ -250,7 +250,7 @@ export default function DashboardLayout({
           </div>
         </header>
 
-        <section className="akay-content-scroll min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:p-5">
+        <section className="akay-content-scroll min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4 lg:p-5">
           {children}
         </section>
       </main>

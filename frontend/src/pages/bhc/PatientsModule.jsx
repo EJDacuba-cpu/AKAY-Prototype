@@ -1,24 +1,26 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import {
   AlertCircle,
   Eye,
   FilePlus2,
-  MoreHorizontal,
+  Pencil,
   Plus,
-  RefreshCw,
   Users,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar, ModuleTableCard, TablePagination } from "../../components/common";
-import TableSkeleton from "../../components/common/loading/TableSkeleton";
+import ModuleToolbar from "../../components/common/list/ModuleToolbar";
+import {
+  DottedSpinner,
+  SoftLoadingArea,
+} from "../../components/common/loading/SoftLoadingOverlay";
 import usePatients from "../../hooks/usePatients";
 import {
   formatDisplayValue,
   formatPatientName,
 } from "../../utils/formatters";
+
 const DEFAULT_FILTERS = {
   search: "",
   sex: "All",
@@ -27,6 +29,7 @@ const DEFAULT_FILTERS = {
   civilStatus: "All Civil Status",
   dateRegistered: "",
 };
+const PATIENTS_BATCH_SIZE = 12;
 
 function uniqueOptions(items, selectors, fallback) {
   const values = items
@@ -50,11 +53,11 @@ function normalizeDate(value) {
 function formatDate(value) {
   const normalized = normalizeDate(value);
 
-  if (!normalized) return "-";
+  if (!normalized) return "Not recorded";
 
   const date = new Date(normalized);
 
-  if (Number.isNaN(date.getTime())) return "-";
+  if (Number.isNaN(date.getTime())) return "Not recorded";
 
   return date.toLocaleDateString("en-US", {
     month: "short",
@@ -74,13 +77,28 @@ function getPatientSex(patient) {
   return "";
 }
 
+function getPatientAgeSex(patient) {
+  return formatDisplayValue(
+    patient.ageSex ||
+      [patient.age, getPatientSex(patient)].filter(Boolean).join(" / "),
+    "Not recorded",
+  );
+}
+
 function getPatientContact(patient) {
   return formatDisplayValue(
     patient.contact ||
       patient.contactNumber ||
       patient.phone ||
       patient.mobileNumber,
-    "",
+    "Not recorded",
+  );
+}
+
+function getPatientBarangay(patient) {
+  return formatDisplayValue(
+    patient.barangay || patient.assignedBhc || patient.assignedBHC,
+    "Not recorded",
   );
 }
 
@@ -94,21 +112,24 @@ function getRegisteredDate(patient) {
   );
 }
 
+function getPatientDisplayId(patient) {
+  return formatDisplayValue(patient.patientId || patient.id, "Not recorded");
+}
+
 export default function PatientsModule() {
   const {
     patients,
     filteredPatients,
-    paginatedPatients,
     loading,
     filters,
     setFilters,
-    currentPage,
-    setCurrentPage,
-    totalPages,
     error,
     refetchPatients,
     isRefreshing,
   } = usePatients();
+  const [visibleCount, setVisibleCount] = useState(PATIENTS_BATCH_SIZE);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreRef = useRef(null);
 
   const barangayOptions = uniqueOptions(
     patients,
@@ -179,6 +200,46 @@ export default function PatientsModule() {
   const activeFilterCount = activeFilters.filter(
     (filter) => filter.key !== "search",
   ).length;
+  const hasAnyFilter = activeFilters.length > 0;
+  const visiblePatients = filteredPatients.slice(0, visibleCount);
+  const hasMorePatients = visibleCount < filteredPatients.length;
+  const showInitialLoading = loading && patients.length === 0;
+  const showRefreshOverlay = isRefreshing && patients.length > 0;
+  const showLoadingOverlay = showInitialLoading || showRefreshOverlay;
+
+  useEffect(() => {
+    setVisibleCount(PATIENTS_BATCH_SIZE);
+    setLoadingMore(false);
+  }, [filters]);
+
+  useEffect(() => {
+    if (!loadMoreRef.current || !hasMorePatients || loadingMore) {
+      return undefined;
+    }
+
+    let loadTimer;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+
+        setLoadingMore(true);
+        loadTimer = window.setTimeout(() => {
+          setVisibleCount((current) =>
+            Math.min(current + PATIENTS_BATCH_SIZE, filteredPatients.length),
+          );
+          setLoadingMore(false);
+        }, 220);
+      },
+      { rootMargin: "240px 0px" },
+    );
+
+    observer.observe(loadMoreRef.current);
+
+    return () => {
+      observer.disconnect();
+      if (loadTimer) window.clearTimeout(loadTimer);
+    };
+  }, [filteredPatients.length, hasMorePatients, loadingMore]);
 
   function applyDropdownFilters(nextFilters) {
     setFilters((prev) => ({ ...prev, ...nextFilters }));
@@ -203,325 +264,213 @@ export default function PatientsModule() {
 
   return (
     <DashboardLayout role="bhc" title="Patients">
-      <ListToolbar
-        searchValue={filters.search}
-        onSearchChange={(value) =>
-          setFilters((prev) => ({ ...prev, search: value }))
+      <SoftLoadingArea
+        isLoading={showLoadingOverlay}
+        message={
+          showInitialLoading ? "Loading patients..." : "Refreshing patients..."
         }
-        searchPlaceholder="Search by name, ID, contact, or barangay..."
-        filters={dropdownFilters}
-        activeFilterCount={activeFilterCount}
-        activeFilters={activeFilters}
-        onApplyFilters={applyDropdownFilters}
-        onClearFilters={clearFilters}
-        onRemoveFilter={removeFilter}
-        actions={
-          <Link
-            to="/bhc/patients/add"
-            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
-          >
-            <Plus size={14} strokeWidth={2.5} />
-            New Patient
-          </Link>
-        }
-      />
+      >
+        <ModuleToolbar
+          searchValue={filters.search}
+          onSearchChange={(value) =>
+            setFilters((prev) => ({ ...prev, search: value }))
+          }
+          searchPlaceholder="Search by name, ID, contact, or barangay..."
+          filters={dropdownFilters}
+          activeFilterCount={activeFilterCount}
+          activeFilters={activeFilters}
+          onApplyFilters={applyDropdownFilters}
+          onClearFilters={clearFilters}
+          onRemoveFilter={removeFilter}
+          filterDescription="Narrow the patient directory."
+          showSearchFilterChip={false}
+          showClearAll={false}
+          primaryActionTo="/bhc/patients/add"
+          primaryActionLabel="New Patient"
+          primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
+          disabled={showLoadingOverlay}
+        />
 
-      <div className="min-w-0">
-        {loading ? (
-          <TableSkeleton columns={6} rows={8} label="Loading patients..." />
-        ) : (
-          <BHCPatientsTable
-            patients={paginatedPatients}
+      <div className="relative min-w-0">
+        {!showInitialLoading && (
+          <PatientDirectory
+            patients={visiblePatients}
             error={error}
             onRetry={refetchPatients}
-            currentPage={currentPage}
-            totalPages={totalPages}
-            setCurrentPage={setCurrentPage}
-            filteredCount={filteredPatients.length}
-            refreshing={isRefreshing && patients.length > 0}
+            hasAnyFilter={hasAnyFilter}
+            hasMorePatients={hasMorePatients}
+            loadingMore={loadingMore}
+            loadMoreRef={loadMoreRef}
           />
         )}
       </div>
+      </SoftLoadingArea>
     </DashboardLayout>
   );
 }
 
-function BHCPatientsTable({
+function PatientDirectory({
   patients,
   error,
   onRetry,
-  currentPage,
-  totalPages,
-  setCurrentPage,
-  filteredCount,
-  refreshing,
+  hasAnyFilter,
+  hasMorePatients,
+  loadingMore,
+  loadMoreRef,
 }) {
   return (
-    <ModuleTableCard
-      title="Registered Patients"
-      count={filteredCount}
-      subtitle="Registered patient profiles accessible to this facility."
-      minWidth="min-w-[900px]"
-      refreshing={refreshing}
-      footer={
-        !error && (
-          <TablePagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={setCurrentPage}
+    <section className="anim-fade-up">
+      <div>
+        {error ? (
+          <PatientDirectoryState
+            icon={<AlertCircle size={22} className="text-[#B91C1C]" />}
+            title="Unable to load patients"
+            description="Please check your connection and try again."
+            action={
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white px-4 py-2 text-xs font-semibold text-[#475569] shadow-sm transition hover:border-[#B91C1C]/30 hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
+              >
+                Retry
+              </button>
+            }
           />
-        )
-      }
-    >
-          <thead>
-            <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              <th className="w-[120px] whitespace-nowrap px-4 py-3">ID</th>
-              <th className="w-[240px] whitespace-nowrap px-4 py-3">Patient</th>
-              <th className="w-[110px] whitespace-nowrap px-4 py-3">Age / Sex</th>
-              <th className="w-[150px] whitespace-nowrap px-4 py-3">Contact</th>
-              <th className="w-[140px] whitespace-nowrap px-4 py-3">Date Registered</th>
-              <th className="w-[90px] whitespace-nowrap px-4 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
+        ) : patients.length === 0 ? (
+          <PatientDirectoryState
+            icon={<Users size={22} className="text-[#94A3B8]" />}
+            title={hasAnyFilter ? "No patients found." : "No patients yet."}
+            description={
+              hasAnyFilter
+                ? "Try another search or filter."
+                : "Tap New Patient to start."
+            }
+            action={
+              !hasAnyFilter && (
+                <Link
+                  to="/bhc/patients/add"
+                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
+                >
+                  <Plus size={13} />
+                  New Patient
+                </Link>
+              )
+            }
+          />
+        ) : (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {patients.map((patient) => (
+                <PatientCard key={patient.id} patient={patient} />
+              ))}
+            </div>
 
-          <tbody className="divide-y divide-[#F8FAFC]">
-            {error ? (
-              <PatientTableState
-                icon={<AlertCircle size={22} className="text-[#B91C1C]" />}
-                title="Unable to load patients"
-                description="Please check your connection and try again."
-                action={
-                  <button
-                    type="button"
-                    onClick={onRetry}
-                    className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white px-4 py-2 text-xs font-semibold text-[#475569] shadow-sm transition hover:border-[#B91C1C]/30 hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
-                  >
-                    <RefreshCw size={13} />
-                    Retry
-                  </button>
-                }
-              />
-            ) : patients.length === 0 ? (
-              <PatientTableState
-                icon={<Users size={22} className="text-[#94A3B8]" />}
-                title="No patients found"
-                description="Registered patients will appear here once added."
-                action={
-                  <Link
-                    to="/bhc/patients/add"
-                    className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
-                  >
-                    <Plus size={13} />
-                    New Patient
-                  </Link>
-                }
-              />
-            ) : (
-              patients.map((patient) => {
-                const patientId = formatDisplayValue(patient.id, "");
-                const patientName = formatPatientName(
-                  patient,
-                  "Unnamed Patient",
-                );
-                const contact = getPatientContact(patient);
-                const registeredDate = getRegisteredDate(patient);
-                const ageSex = formatDisplayValue(
-                  patient.ageSex ||
-                    [patient.age, getPatientSex(patient)]
-                      .filter(Boolean)
-                      .join(" / "),
-                  "-",
-                );
-
-                return (
-                  <tr
-                    key={patientId}
-                    className="group transition-colors duration-150 hover:bg-[#FAFBFD]"
-                  >
-                    <td className="whitespace-nowrap px-4 py-3.5">
-                      <span className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-1.5 font-mono text-[11px] font-semibold text-[#B91C1C] transition-colors duration-200 group-hover:border-[#FECACA] group-hover:bg-[#FEF2F2]">
-                        {patientId}
-                      </span>
-                    </td>
-
-                    <td className="whitespace-nowrap px-4 py-3.5">
-                      <p className="text-[13px] font-semibold text-[#111827]">
-                        {patientName}
-                      </p>
-                    </td>
-
-                    <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#6B7280]">
-                      {ageSex}
-                    </td>
-
-                    <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#6B7280]">
-                      {contact || "-"}
-                    </td>
-
-                    <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#9CA3AF]">
-                      {formatDate(registeredDate)}
-                    </td>
-
-                    <td className="whitespace-nowrap px-4 py-3.5 text-right">
-                      <ActionMenu
-                        role="bhc"
-                        patientId={patientId}
-                        patientName={patientName}
-                      />
-                    </td>
-                  </tr>
-                );
-              })
+            {(loadingMore || hasMorePatients) && (
+              <div ref={loadMoreRef} className="mt-3">
+                {loadingMore ? (
+                  <div className="flex flex-col items-center justify-center gap-2 py-5">
+                    <DottedSpinner label="Loading more patients" />
+                    <span className="text-[11px] font-medium text-[#94A3B8]">
+                      Loading more patients...
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex justify-center py-3">
+                    <span className="text-[11px] font-medium text-[#94A3B8]">
+                      Scroll to load more patients
+                    </span>
+                  </div>
+                )}
+              </div>
             )}
-          </tbody>
-    </ModuleTableCard>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
-function PatientTableState({ icon, title, description, action }) {
+function PatientCard({ patient }) {
+  const routePatientId = formatDisplayValue(patient.id, "");
+  const patientName = formatPatientName(patient, "Unnamed Patient");
+  const displayId = getPatientDisplayId(patient);
+  const ageSex = getPatientAgeSex(patient);
+  const contact = getPatientContact(patient);
+  const barangay = getPatientBarangay(patient);
+  const registeredDate = formatDate(getRegisteredDate(patient));
+
   return (
-    <tr>
-      <td colSpan={6} className="px-6 py-20 text-center">
-        <div className="flex flex-col items-center justify-center">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
-            {icon}
-          </div>
-          <p className="text-[13px] font-semibold text-[#334155]">{title}</p>
-          <p className="mt-1 text-[11.5px] text-[#94A3B8]">{description}</p>
-          {action}
+    <article className="group flex min-h-[204px] flex-col rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm shadow-black/[0.015] transition-all duration-200 hover:-translate-y-0.5 hover:border-red-100 hover:shadow-md">
+      <div className="min-w-0 border-b border-[#F1F5F9] pb-3">
+        <h3 className="truncate text-sm font-bold text-[#0F172A]">
+          {patientName}
+        </h3>
+        <div className="mt-1 flex items-center gap-2">
+          <span className="rounded-md border border-red-100 bg-red-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-[#B91C1C]">
+            ID: {displayId}
+          </span>
         </div>
-      </td>
-    </tr>
+      </div>
+
+      <div className="mt-3 grid gap-2 text-[12px]">
+        <CardField label="Age / Sex" value={ageSex} />
+        <CardField label="Contact" value={contact} />
+        <CardField label="Barangay" value={barangay} />
+        <CardField label="Registered Date" value={registeredDate} />
+      </div>
+
+      <div className="mt-auto grid grid-cols-3 gap-2 pt-4">
+        <Link
+          to={`/bhc/patients/${routePatientId}`}
+          className="inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-[#B91C1C] px-1.5 text-[10px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
+        >
+          <Eye size={13} />
+          View Details
+        </Link>
+        <Link
+          to={`/bhc/patients/${routePatientId}`}
+          state={{ startInEditMode: true }}
+          className="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-[#E5E7EB] bg-white px-1.5 text-[10px] font-semibold text-[#475569] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
+        >
+          <Pencil size={13} />
+          Edit
+        </Link>
+        <Link
+          to={`/bhc/health-records/add?patientId=${routePatientId}`}
+          className="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-[#E5E7EB] bg-white px-1.5 text-[10px] font-semibold text-[#475569] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
+        >
+          <FilePlus2 size={13} />
+          Add Record
+        </Link>
+      </div>
+    </article>
   );
 }
 
-function ActionMenu({ role, patientId, patientName }) {
-  const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-  const btnRef = useRef(null);
-  const menuRef = useRef(null);
-
-  function updatePosition() {
-    if (!btnRef.current) return;
-
-    const rect = btnRef.current.getBoundingClientRect();
-    const menuWidth = 192;
-    const menuHeight = 150;
-    const padding = 12;
-
-    let top = rect.bottom + 8;
-    let left = rect.right - menuWidth;
-
-    if (left < padding) left = padding;
-
-    if (left + menuWidth > window.innerWidth - padding) {
-      left = window.innerWidth - menuWidth - padding;
-    }
-
-    if (top + menuHeight > window.innerHeight - padding) {
-      top = rect.top - menuHeight - 8;
-    }
-
-    if (top < padding) top = padding;
-
-    setPosition({ top, left });
-  }
-
-  useEffect(() => {
-    if (!open) return undefined;
-
-    function handleOutside(event) {
-      if (
-        btnRef.current?.contains(event.target) ||
-        menuRef.current?.contains(event.target)
-      ) {
-        return;
-      }
-
-      setOpen(false);
-    }
-
-    function handleWindowChange() {
-      setOpen(false);
-    }
-
-    document.addEventListener("mousedown", handleOutside);
-    window.addEventListener("scroll", handleWindowChange, true);
-    window.addEventListener("resize", handleWindowChange);
-
-    return () => {
-      document.removeEventListener("mousedown", handleOutside);
-      window.removeEventListener("scroll", handleWindowChange, true);
-      window.removeEventListener("resize", handleWindowChange);
-    };
-  }, [open]);
-
-  const displayName = formatDisplayValue(patientName, "Patient");
-  const displayPatientId = formatDisplayValue(patientId, "");
-  const basePath = role === "rhu" ? "/rhu" : "/bhc";
-  const healthRecordLabel =
-    role === "rhu" ? "Add RHU Health Record" : "Add Health Record";
-
-  const menu =
-    open &&
-    createPortal(
-      <div
-        ref={menuRef}
-        className="fixed z-[9999] w-48 origin-top-right overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-lg ring-1 ring-black/5 focus:outline-none"
-        style={{
-          top: position.top,
-          left: position.left,
-          minWidth: "180px",
-        }}
-      >
-        <div className="py-1">
-          <div className="border-b border-[#F1F5F9] px-4 py-2">
-            <p className="truncate text-xs font-semibold text-[#0F172A]">
-              {displayName}
-            </p>
-            <p className="font-mono text-[10px] text-[#94A3B8]">
-              {displayPatientId}
-            </p>
-          </div>
-
-          <Link
-            to={`${basePath}/patients/${displayPatientId}`}
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-[#475569] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A]"
-          >
-            <Eye size={14} className="text-[#94A3B8]" />
-            View Details
-          </Link>
-
-          <Link
-            to={`${basePath}/health-records/add?patientId=${displayPatientId}`}
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-[#475569] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A]"
-          >
-            <FilePlus2 size={14} className="text-[#94A3B8]" />
-            {healthRecordLabel}
-          </Link>
-        </div>
-      </div>,
-      document.body,
-    );
-
+function CardField({ label, value }) {
   return (
-    <div className="relative inline-block text-left">
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={() => {
-          if (!open) updatePosition();
-          setOpen((current) => !current);
-        }}
-        className="flex h-8 w-8 items-center justify-center rounded-full text-[#94A3B8] transition hover:bg-[#F1F5F9] hover:text-[#475569]"
-        aria-label={`Open actions for ${displayName}`}
-      >
-        <MoreHorizontal size={16} />
-      </button>
+    <div className="flex min-w-0 items-center justify-between gap-3">
+      <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+        {label}
+      </span>
+      <span className="min-w-0 truncate text-right font-semibold text-[#475569]">
+        {value}
+      </span>
+    </div>
+  );
+}
 
-      {menu}
+function PatientDirectoryState({ icon, title, description, action }) {
+  return (
+    <div className="px-6 py-20 text-center">
+      <div className="flex flex-col items-center justify-center">
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
+          {icon}
+        </div>
+        <p className="text-[13px] font-semibold text-[#334155]">{title}</p>
+        <p className="mt-1 text-[11.5px] text-[#94A3B8]">{description}</p>
+        {action}
+      </div>
     </div>
   );
 }

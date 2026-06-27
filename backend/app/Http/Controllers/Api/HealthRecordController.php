@@ -4,10 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\HealthRecordRequest;
-use App\Models\FollowUpTask;
 use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Services\AuditLogger;
+use App\Services\FollowUpTaskSyncService;
 use App\Support\StoredFunction;
 use Illuminate\Http\Request;
 
@@ -47,7 +47,11 @@ class HealthRecordController extends Controller
         return response()->json(['data' => $query->latest('date_recorded')->paginate($request->integer('per_page', 25))]);
     }
 
-    public function store(HealthRecordRequest $request, AuditLogger $auditLogger)
+    public function store(
+        HealthRecordRequest $request,
+        AuditLogger $auditLogger,
+        FollowUpTaskSyncService $followUpTasks
+    )
     {
         $data = $request->validated();
         $patient = Patient::findOrFail($data['patient_id']);
@@ -60,8 +64,8 @@ class HealthRecordController extends Controller
         $data['date_recorded'] ??= now();
 
         $record = HealthRecord::create($data);
-        $this->syncFollowUpTask($request, $record);
-        $this->fulfillParentFollowUpTask($request, $record);
+        $followUpTasks->syncRecord($record, $request->user());
+        $followUpTasks->fulfillParentTask($record, $request->user());
         $auditLogger->log($request, 'created', 'health_records', "Created health record {$record->id}.");
 
         return response()->json(['data' => $record->load('patient')], 201);
@@ -90,13 +94,18 @@ class HealthRecordController extends Controller
         return response()->json(['data' => $healthRecord->load('patient')]);
     }
 
-    public function update(HealthRecordRequest $request, HealthRecord $healthRecord, AuditLogger $auditLogger)
+    public function update(
+        HealthRecordRequest $request,
+        HealthRecord $healthRecord,
+        AuditLogger $auditLogger,
+        FollowUpTaskSyncService $followUpTasks
+    )
     {
         $this->authorizeRecord($request, $healthRecord);
         $data = $request->validated();
         $this->normalizeVisitTypeData($request, $data);
         $healthRecord->update($data);
-        $this->syncFollowUpTask($request, $healthRecord->fresh());
+        $followUpTasks->syncRecord($healthRecord->fresh(), $request->user());
         $auditLogger->log($request, 'updated', 'health_records', "Updated health record {$healthRecord->id}.");
 
         return response()->json(['data' => $healthRecord->fresh()->load('patient')]);
@@ -179,61 +188,4 @@ class HealthRecordController extends Controller
         return str_replace(['_', '-'], ' ', strtolower(trim($status)));
     }
 
-    private function followUpDate(HealthRecord $record): ?string
-    {
-        $monitoringData = $record->monitoring_data ?? [];
-        $date = $monitoringData['followUpDate']
-            ?? $monitoringData['follow_up_date']
-            ?? null;
-
-        return $date ?: null;
-    }
-
-    private function syncFollowUpTask(Request $request, HealthRecord $record): void
-    {
-        if ($record->visit_type === 'follow_up_visit') {
-            return;
-        }
-
-        $status = $this->healthRecordStatus($record);
-        $dueDate = $this->followUpDate($record);
-
-        if ($status !== 'follow up required' || ! $dueDate) {
-            FollowUpTask::where('health_record_id', $record->id)
-                ->whereIn('state', [FollowUpTask::STATE_PENDING, FollowUpTask::STATE_RESCHEDULED])
-                ->delete();
-            return;
-        }
-
-        FollowUpTask::updateOrCreate(
-            ['health_record_id' => $record->id],
-            [
-                'patient_id' => $record->patient_id,
-                'barangay_health_center_id' => $record->barangay_health_center_id,
-                'due_date' => $dueDate,
-                'state' => FollowUpTask::STATE_PENDING,
-                'no_show_at' => null,
-                'fulfilled_at' => null,
-                'fulfilled_by_health_record_id' => null,
-                'created_by' => $record->created_by,
-                'updated_by' => $request->user()->id,
-            ]
-        );
-    }
-
-    private function fulfillParentFollowUpTask(Request $request, HealthRecord $record): void
-    {
-        if ($record->visit_type !== 'follow_up_visit' || ! $record->parent_health_record_id) {
-            return;
-        }
-
-        FollowUpTask::where('health_record_id', $record->parent_health_record_id)
-            ->whereNull('fulfilled_at')
-            ->update([
-                'state' => FollowUpTask::STATE_FULFILLED,
-                'fulfilled_at' => now(),
-                'fulfilled_by_health_record_id' => $record->id,
-                'updated_by' => $request->user()->id,
-            ]);
-    }
 }

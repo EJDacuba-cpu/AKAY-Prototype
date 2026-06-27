@@ -267,7 +267,7 @@ export default function MedicineManagement() {
                       <Boxes size={20} className="text-[#9CA3AF]" />
                     </div>
                     <p className="text-sm font-semibold text-[#0F172A]">
-                      No medicines found
+                      No medicines yet. Tap Add Medicine to start.
                     </p>
                     <p className="mt-1 text-xs text-[#9CA3AF]">
                       Try adjusting your search or filters.

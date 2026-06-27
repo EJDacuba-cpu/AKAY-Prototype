@@ -4,6 +4,7 @@ import {
   CalendarDays,
   ClipboardList,
   FileText,
+  KeyRound,
   LayoutGrid,
   QrCode,
   Users,
@@ -21,11 +22,16 @@ export const menuByRole = {
     },
     {
       section: "Management",
-      items: [{ label: "Account Directory", path: "/admin/users", icon: Users }],
+      items: [{ label: "Users", path: "/admin/users", icon: Users }],
     },
     {
       section: "Accountability",
       items: [
+        {
+          label: "Password Resets",
+          path: "/admin/password-reset-requests",
+          icon: KeyRound,
+        },
         { label: "Reports", path: "/admin/reports", icon: FileText },
         { label: "Audit Logs", path: "/admin/audit-logs", icon: Activity },
       ],
@@ -71,7 +77,7 @@ export const menuByRole = {
       items: [{ label: "Dashboard", path: "/rhu/dashboard", icon: LayoutGrid }],
     },
     {
-      section: "Referral Management",
+      section: "Referrals",
       items: [
         {
           label: "Incoming Referrals",
@@ -101,7 +107,7 @@ export const menuByRole = {
       section: "Operations",
       items: [
         {
-          label: "Medicine Management",
+          label: "Medicine Availability",
           path: "/rhu/medicine-management",
           icon: Boxes,
         },

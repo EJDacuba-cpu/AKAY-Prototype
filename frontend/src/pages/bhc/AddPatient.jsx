@@ -383,9 +383,8 @@ export default function AddPatient() {
       {/* Modals */}
       <SuccessModal
         open={modals.success}
-        title="Patient Registered Successfully"
-        description="Patient Registered Successfully
-The patient profile has been created. You may now add the first health record or return to the patient list."
+        title="Patient added."
+        description="You can add the first health record or return to Patients."
         buttonText="Back to Patient List"
         onClose={() => navigate("/bhc/patients")}
         secondaryButtonText="Add Health Record"

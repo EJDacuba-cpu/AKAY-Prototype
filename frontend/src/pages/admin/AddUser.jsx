@@ -141,14 +141,14 @@
           await updateAdminAccount(existingUser.id, payload);
           setConfirmationModalOpen(false);
           setSuccessModal({
-            title: "Account Updated Successfully",
+            title: "Changes saved.",
             message: "The account information has been updated successfully.",
           });
         } else {
           await createAdminAccount(payload);
           setConfirmationModalOpen(false);
           setSuccessModal({
-            title: "Account Added Successfully",
+            title: "User added.",
             message: "The new account has been created successfully.",
           });
         }

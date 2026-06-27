@@ -13,7 +13,7 @@ export default function MobileSidebarDrawer({
 }) {
   return (
     <aside
-      className={`fixed left-0 top-0 z-50 flex h-dvh max-h-dvh w-[280px] flex-col overflow-hidden border-r border-[#E5E7EB] bg-white shadow-2xl shadow-black/15 transition-transform duration-300 ease-in-out md:hidden ${
+      className={`fixed left-0 top-0 z-50 flex h-dvh max-h-dvh w-[min(88vw,320px)] flex-col overflow-hidden border-r border-[#E5E7EB] bg-white shadow-2xl shadow-black/15 transition-transform duration-300 ease-in-out md:hidden ${
         open ? "translate-x-0" : "-translate-x-full"
       }`}
     >
@@ -34,7 +34,7 @@ export default function MobileSidebarDrawer({
         <button
           type="button"
           onClick={onClose}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-red-100 transition hover:bg-white/10 hover:text-white"
+          className="flex h-10 w-10 items-center justify-center rounded-xl text-red-100 transition hover:bg-white/10 hover:text-white"
           aria-label="Close sidebar"
         >
           <X size={17} />

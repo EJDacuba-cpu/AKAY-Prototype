@@ -17,8 +17,6 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import PatientDetailsSkeleton from "../../components/common/loading/PatientDetailsSkeleton";
-import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 
 import {
   getPatientById,
@@ -30,6 +28,8 @@ import {
 import {
   ConfirmationModal,
   SideCard,
+  SoftLoadingArea,
+  SoftLoadingOverlay,
   StatusBadge,
   SuccessModal
 } from "../../components/common";
@@ -202,7 +202,13 @@ export default function PatientDetails() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Patient Details">
-        <PatientDetailsSkeleton />
+        <SoftLoadingArea
+          isLoading
+          message="Loading details..."
+          minHeight="min-h-[520px]"
+        >
+          <div className="min-h-[520px] rounded-3xl border border-slate-100 bg-white shadow-sm" />
+        </SoftLoadingArea>
       </DashboardLayout>
     );
   }
@@ -259,11 +265,11 @@ export default function PatientDetails() {
   return (
     <>
       <DashboardLayout role="bhc" title="Patient Details">
-        <RefreshingIndicator
-          show={patientFetching && !loading}
-          label="Refreshing details..."
-          className="mb-3"
-        />
+        <SoftLoadingArea
+          isLoading={patientFetching && !loading}
+          message="Refreshing details..."
+          minHeight="min-h-[520px]"
+        >
         <div className="mb-6">
           <Link
             to="/bhc/patients"
@@ -565,7 +571,7 @@ export default function PatientDetails() {
           )}
 
           {activeTab === "records" && (
-            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
                 <h2 className="text-sm font-bold text-[#0F172A]">
                   Health Record History
@@ -574,13 +580,8 @@ export default function PatientDetails() {
                   Chronological health records linked to this patient.
                 </p>
               </div>
-              <RefreshingIndicator
-                show={recordsFetching && !recordsLoading && safeRecords.length > 0}
-                label="Refreshing health records..."
-                className="mx-6 mt-4"
-              />
               {recordsLoading && safeRecords.length === 0 ? (
-                <TabLoadingState label="Loading health records..." />
+                <div className="min-h-[240px]" />
               ) : recordsError && safeRecords.length === 0 ? (
                 <TabErrorState message="Unable to load health records right now." />
               ) : safeRecords.length === 0 ? (
@@ -657,11 +658,22 @@ export default function PatientDetails() {
                   )}
                 </div>
               )}
+              <SoftLoadingOverlay
+                isVisible={
+                  (recordsLoading && safeRecords.length === 0) ||
+                  (recordsFetching && !recordsLoading && safeRecords.length > 0)
+                }
+                message={
+                  recordsLoading
+                    ? "Loading records..."
+                    : "Refreshing records..."
+                }
+              />
             </div>
           )}
 
           {activeTab === "referrals" && (
-            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
                 <h2 className="text-sm font-bold text-[#0F172A]">
                   Referral Tracking Logs
@@ -670,13 +682,8 @@ export default function PatientDetails() {
                   BHC-RHU referral tracking logs linked to this patient.
                 </p>
               </div>
-              <RefreshingIndicator
-                show={referralsFetching && !referralsLoading && safeReferrals.length > 0}
-                label="Refreshing referrals..."
-                className="mx-6 mt-4"
-              />
               {referralsLoading && safeReferrals.length === 0 ? (
-                <TabLoadingState label="Loading referrals..." />
+                <div className="min-h-[240px]" />
               ) : referralsError && safeReferrals.length === 0 ? (
                 <TabErrorState message="Unable to load referral history right now." />
               ) : safeReferrals.length === 0 ? (
@@ -755,9 +762,23 @@ export default function PatientDetails() {
                   )}
                 </div>
               )}
+              <SoftLoadingOverlay
+                isVisible={
+                  (referralsLoading && safeReferrals.length === 0) ||
+                  (referralsFetching &&
+                    !referralsLoading &&
+                    safeReferrals.length > 0)
+                }
+                message={
+                  referralsLoading
+                    ? "Loading referrals..."
+                    : "Refreshing referrals..."
+                }
+              />
             </div>
           )}
         </div>
+        </SoftLoadingArea>
       </DashboardLayout>
 
       <ConfirmationModal
@@ -777,15 +798,6 @@ export default function PatientDetails() {
         onClose={() => setOpenSuccess(false)}
       />
     </>
-  );
-}
-
-function TabLoadingState({ label }) {
-  return (
-    <div className="p-12 text-center text-sm text-slate-400">
-      <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-[#B91C1C]" />
-      {label}
-    </div>
   );
 }
 

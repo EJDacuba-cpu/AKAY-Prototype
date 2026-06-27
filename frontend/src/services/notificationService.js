@@ -38,6 +38,7 @@ function normalizeNotification(notification = {}) {
     notification.link_url || notification.linkUrl || notification.link || "";
   const isFollowUpNotification = [
     "overdue_follow_up",
+    "follow_up_no_show",
     "follow_up_due_today",
   ].includes(type);
   const link =
@@ -75,7 +76,12 @@ function buildFollowUpNotificationLink(type, entityId, rawLink = "") {
 
   if (!params.get("task")) params.set("task", entityId);
   if (!params.get("open")) {
-    params.set("open", type === "overdue_follow_up" ? "overdue" : "due");
+    params.set(
+      "open",
+      ["overdue_follow_up", "follow_up_no_show"].includes(type)
+        ? "no_show"
+        : "due",
+    );
   }
 
   return `${path}?${params.toString()}`;

@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
-import FormSkeleton from "../../components/common/loading/FormSkeleton";
+import { SoftLoadingArea } from "../../components/common";
 
 import { getReferrals, submitReturnSlip } from "../../services/referrals";
 import {
@@ -429,7 +429,13 @@ export default function FeedbackReturnSlip() {
   if (loading) {
     return (
       <DashboardLayout role="rhu" title="Return Slip">
-        <FormSkeleton label="Loading details..." />
+        <SoftLoadingArea
+          isLoading
+          message="Loading details..."
+          minHeight="min-h-[420px]"
+        >
+          <div className="min-h-[420px] rounded-2xl border border-slate-200 bg-white shadow-sm" />
+        </SoftLoadingArea>
       </DashboardLayout>
     );
   }

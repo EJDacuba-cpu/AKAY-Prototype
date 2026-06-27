@@ -30,19 +30,25 @@ class FollowUpNotificationService
             ->with('patient')
             ->where('barangay_health_center_id', $user->barangay_health_center_id)
             ->whereIn('state', $activeStates)
-            ->whereDate('due_date', $today)
+            ->whereDate('due_date', '<', $today)
             ->get()
             ->each(function (FollowUpTask $task) use ($users): void {
                 $patientName = $task->patient?->full_name ?: 'The patient';
+                $taskDate = $task->due_date?->toDateString() ?: 'unknown-date';
+
+                $task->update([
+                    'state' => FollowUpTask::STATE_NO_SHOW,
+                    'no_show_at' => now(),
+                ]);
 
                 $this->notifications->notifyUsersOnce(
                     $users,
-                    'Follow-up Due Today',
-                    "{$patientName} is scheduled for follow-up today.",
-                    'follow_up_due_today',
+                    'No-Show',
+                    "{$patientName} missed the scheduled follow-up date.",
+                    'follow_up_no_show',
                     null,
-                    "/bhc/follow-ups?task={$task->id}&open=due",
-                    'follow_up_task',
+                    "/bhc/follow-ups?task={$task->id}&open=no_show",
+                    "follow_up_task_no_show_{$taskDate}",
                     $task->id
                 );
             });
@@ -51,19 +57,20 @@ class FollowUpNotificationService
             ->with('patient')
             ->where('barangay_health_center_id', $user->barangay_health_center_id)
             ->whereIn('state', $activeStates)
-            ->whereDate('due_date', '<', $today)
+            ->whereDate('due_date', $today)
             ->get()
             ->each(function (FollowUpTask $task) use ($users): void {
                 $patientName = $task->patient?->full_name ?: 'The patient';
+                $taskDate = $task->due_date?->toDateString() ?: 'unknown-date';
 
                 $this->notifications->notifyUsersOnce(
                     $users,
-                    'Overdue Follow-up',
-                    "{$patientName} missed the scheduled follow-up date.",
-                    'overdue_follow_up',
+                    'Follow-up Today',
+                    "{$patientName} is scheduled for follow-up today.",
+                    'follow_up_due_today',
                     null,
-                    "/bhc/follow-ups?task={$task->id}&open=overdue",
-                    'follow_up_task',
+                    "/bhc/follow-ups?task={$task->id}&open=due",
+                    "follow_up_task_due_{$taskDate}",
                     $task->id
                 );
             });

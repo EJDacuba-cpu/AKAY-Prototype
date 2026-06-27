@@ -1,4 +1,3 @@
-import { RefreshCw } from "lucide-react";
 import ActionMenu from "../../common/tables/ActionMenu";
 import ReferralIndicatorBadge from "../../common/badges/ReferralIndicatorBadge";
 import StatusBadge from "../../common/badges/StatusBadge";
@@ -20,6 +19,10 @@ export default function HealthRecordsTable({
   delay = 0,
   refreshing = false,
 }) {
+  if (loading) return null;
+
+  void refreshing;
+
   // 1. MAGSET NG MAXIMUM ITEMS BAWAT PAHINA (Max 5 records lang kada table layout)
   const ITEMS_PER_PAGE = 5;
 
@@ -47,17 +50,6 @@ export default function HealthRecordsTable({
       "
       style={stagger(delay)}
     >
-      <style>
-        {`
-          @keyframes akayTableRefresh {
-            0% { transform: translateX(-110%); }
-            100% { transform: translateX(310%); }
-          }
-          .akay-table-refresh-bar {
-            animation: akayTableRefresh 1.15s ease-in-out infinite;
-          }
-        `}
-      </style>
       {/* Header */}
       <div
         className="
@@ -93,13 +85,6 @@ export default function HealthRecordsTable({
                 {records.length}
               </span>
             )}
-            {refreshing && (
-              <RefreshCw
-                size={13}
-                className="animate-spin text-[#B91C1C]"
-                aria-label="Refreshing data"
-              />
-            )}
           </div>
 
           <p
@@ -114,22 +99,99 @@ export default function HealthRecordsTable({
         </div>
       </div>
 
-      {refreshing && (
-        <div className="h-[3px] overflow-hidden bg-red-50">
-          <div className="akay-table-refresh-bar h-full w-1/3 rounded-r-full bg-[#B91C1C]" />
-        </div>
-      )}
+      <>
+          <div className="grid gap-3 p-3 md:hidden">
+            {currentRecords.length === 0 ? (
+              <div className="rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-10 text-center text-sm text-[#94A3B8]">
+                No records found. Try another search.
+              </div>
+            ) : (
+              currentRecords.map((record) => {
+                const recordId = formatDisplayValue(record.id, "");
+                const patientName = formatPatientName(
+                  record.patientName || record.patient,
+                  "Unnamed Patient",
+                );
+                const patientId = formatDisplayValue(
+                  record.patientId || record.patient?.id,
+                  "Not linked",
+                );
+                const classification = formatDisplayValue(
+                  record.classification,
+                  "General Consultation",
+                );
+                const concern = formatDisplayValue(
+                  record.concern,
+                  "Not recorded",
+                );
+                const date = formatDate(record.date, "Not recorded");
+                const referralTarget =
+                  record.linkedReferralTrackingId || record.linkedReferralId;
 
-      {/* Loading State */}
-      {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <p className="text-sm text-[#9CA3AF]">Loading health records...</p>
-        </div>
-      ) : (
-        <>
+                return (
+                  <article
+                    key={record.id}
+                    className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3 border-b border-[#F1F5F9] pb-3">
+                      <div className="min-w-0">
+                        <span className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-1 font-mono text-[11px] font-semibold text-[#B91C1C]">
+                          {recordId}
+                        </span>
+                        <h3 className="mt-2 truncate text-sm font-bold text-[#0F172A]">
+                          {patientName}
+                        </h3>
+                        <p className="mt-0.5 truncate text-[11px] text-[#94A3B8]">
+                          {patientId}
+                        </p>
+                      </div>
+                      <StatusBadge status={record.status} />
+                    </div>
+
+                    <div className="mt-3 grid gap-2 text-[12px]">
+                      <MobileRecordField
+                        label="Classification"
+                        value={classification}
+                      />
+                      <MobileRecordField label="Chief Complaint" value={concern} />
+                      <MobileRecordField label="Date" value={date} />
+                      <div className="flex min-w-0 items-center justify-between gap-3">
+                        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+                          Referral
+                        </span>
+                        <ReferralIndicatorBadge
+                          status={record.referralStatus}
+                          hasReferral={record.hasLinkedReferral}
+                          compact
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex justify-end border-t border-[#F1F5F9] pt-3">
+                      <ActionMenu
+                        title={patientName}
+                        subtitle={recordId}
+                        viewLink={`/bhc/health-records/${record.id}`}
+                        editLink={`/bhc/health-records/${record.id}`}
+                        editLabel="Edit Record"
+                        referralLink={
+                          referralTarget
+                            ? `/bhc/referrals/${referralTarget}`
+                            : undefined
+                        }
+                        referralLabel="View Referral"
+                      />
+                    </div>
+                  </article>
+                );
+              })
+            )}
+          </div>
+
           {/* Table Container */}
           <div
             className="
+              hidden
               w-full
               overflow-x-auto
               overflow-y-visible
@@ -144,6 +206,7 @@ export default function HealthRecordsTable({
               [&::-webkit-scrollbar-thumb]:border-[#F8FAFC]
               hover:[&::-webkit-scrollbar-thumb]:bg-[#B8C4D3]
               transition-all duration-300
+              md:block
             "
           >
             <table
@@ -196,7 +259,7 @@ export default function HealthRecordsTable({
                         text-[#9CA3AF]
                       "
                     >
-                      No health records found.
+                      No records found. Try another search.
                     </td>
                   </tr>
                 ) : (
@@ -336,8 +399,20 @@ export default function HealthRecordsTable({
             totalPages={computedTotalPages}
             onPageChange={setCurrentPage}
           />
-        </>
-      )}
+      </>
+    </div>
+  );
+}
+
+function MobileRecordField({ label, value }) {
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-3">
+      <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+        {label}
+      </span>
+      <span className="min-w-0 truncate text-right font-semibold text-[#475569]">
+        {value}
+      </span>
     </div>
   );
 }

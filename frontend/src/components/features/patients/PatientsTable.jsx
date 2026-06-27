@@ -200,7 +200,7 @@ export default function PatientsTable({
                             text-[#0F172A]
                           "
                         >
-                          No patients found
+                          No patients yet.
                         </h3>
 
                         <p

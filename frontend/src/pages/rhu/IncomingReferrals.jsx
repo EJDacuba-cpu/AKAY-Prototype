@@ -17,9 +17,9 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ListToolbar,
   ModuleTableCard,
+  SoftLoadingArea,
   TablePagination,
 } from "../../components/common";
-import TableSkeleton from "../../components/common/loading/TableSkeleton";
 import {
   getIncomingReferrals,
 } from "../../services/referrals";
@@ -27,6 +27,7 @@ import {
   formatDisplayValue,
   formatFacilityName,
   formatPatientName,
+  formatReferralStatus,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 
@@ -65,7 +66,7 @@ const REFERRAL_STATUS_OPTIONS = [
   { key: "Pending", label: "Pending" },
   { key: "Received", label: "Received" },
   { key: "For Monitoring", label: "Monitoring" },
-  { key: "Completed", label: "Completed" },
+  { key: "Completed", label: "Done" },
   { key: "No-Show", label: "No-Show" },
 ];
 
@@ -221,7 +222,7 @@ function ActionMenu({ referral }) {
         createPortal(
           <div
             ref={menuRef}
-            className={`fixed z-[9999] w-[240px] origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl shadow-black/[0.12] ${
+            className={`fixed z-[80] w-[240px] origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl shadow-black/[0.12] ${
               closing ? "menu-close" : "menu-open"
             }`}
             style={{ top: position.top, left: position.left }}
@@ -276,7 +277,7 @@ function ActionMenu({ referral }) {
 }
 
 function StatusBadge({ status, animate = false }) {
-  const displayStatus = formatDisplayValue(status, "Pending");
+  const displayStatus = formatReferralStatus(formatDisplayValue(status, "Pending"));
   const map = {
     Pending: {
       bg: "#F1F5F9",
@@ -296,7 +297,7 @@ function StatusBadge({ status, animate = false }) {
       border: "#FDE68A",
       dot: "#F59E0B",
     },
-    Completed: {
+    Done: {
       bg: "#ECFDF5",
       text: "#047857",
       border: "#A7F3D0",
@@ -603,6 +604,7 @@ export default function IncomingReferrals() {
     [referralsData],
   );
   const loading = isLoading && referrals.length === 0;
+  const showLoadingOverlay = loading || (isFetching && referrals.length > 0);
 
   const handleFilterChange = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -776,36 +778,35 @@ export default function IncomingReferrals() {
     <DashboardLayout role="rhu" title="Incoming Referrals">
       <style>{keyframes}</style>
 
-      <ListToolbar
-        searchValue={filters.search}
-        onSearchChange={(value) => handleFilterChange("search", value)}
-        searchPlaceholder="Search by patient name, BHC, referral ID, or chief complaint..."
-        filters={toolbarFilters}
-        activeFilterCount={activeFilters.length}
-        activeFilters={activeFilters}
-        onApplyFilters={(nextFilters) =>
-          setFilters((prev) => ({ ...prev, ...nextFilters }))
-        }
-        onClearFilters={clearFilters}
-        onRemoveFilter={removeFilter}
-        actions={
-          <Link
-            to="/rhu/qr-scanner"
-            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
-          >
-            <QrCode size={14} strokeWidth={2.5} />
-            QR Scan
-          </Link>
-        }
-      />
-
-      {loading ? (
-        <TableSkeleton
-          columns={10}
-          rows={8}
-          label="Loading incoming referrals..."
+      <SoftLoadingArea
+        isLoading={showLoadingOverlay}
+        message={loading ? "Loading referrals..." : "Refreshing referrals..."}
+      >
+        <ListToolbar
+          searchValue={filters.search}
+          onSearchChange={(value) => handleFilterChange("search", value)}
+          searchPlaceholder="Search by patient name, BHC, referral ID, or chief complaint..."
+          filters={toolbarFilters}
+          activeFilterCount={activeFilters.length}
+          activeFilters={activeFilters}
+          onApplyFilters={(nextFilters) =>
+            setFilters((prev) => ({ ...prev, ...nextFilters }))
+          }
+          onClearFilters={clearFilters}
+          onRemoveFilter={removeFilter}
+          disabled={showLoadingOverlay}
+          actions={
+            <Link
+              to="/rhu/qr-scanner"
+              className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
+            >
+              <QrCode size={14} strokeWidth={2.5} />
+              QR Scan
+            </Link>
+          }
         />
-      ) : (
+
+        {loading ? null : (
         <ModuleTableCard
           title="Referral Tracking"
           count={filtered.length}
@@ -824,7 +825,7 @@ export default function IncomingReferrals() {
                 <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
                   <th className="whitespace-nowrap px-4 py-3">Queue No.</th>
                   <th className="whitespace-nowrap px-4 py-3">Tracking ID</th>
-                  <th className="whitespace-nowrap px-4 py-3">Date / Time Referred</th>
+                <th className="whitespace-nowrap px-4 py-3">Date / Time</th>
                   <th className="whitespace-nowrap px-4 py-3">Patient</th>
                   <th className="whitespace-nowrap px-4 py-3">Name of Referring HCI</th>
                   <th className="whitespace-nowrap px-4 py-3">{categoryColumnLabel}</th>
@@ -949,7 +950,8 @@ export default function IncomingReferrals() {
                 )}
               </tbody>
         </ModuleTableCard>
-      )}
+        )}
+      </SoftLoadingArea>
     </DashboardLayout>
   );
 }

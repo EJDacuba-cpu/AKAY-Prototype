@@ -113,7 +113,8 @@ export default function BHCReports() {
 
       const matchesStatus =
         filters.referralStatus === "All Referral Status" ||
-        log.status === filters.referralStatus;
+        log.status === filters.referralStatus ||
+        (filters.referralStatus === "Done" && normalizeStatus(log.status) === "Completed");
 
       const matchesDate =
         !filters.dateReferred ||
@@ -197,7 +198,7 @@ export default function BHCReports() {
         "Pending",
         "Received",
         "For Monitoring",
-        "Completed",
+        "Done",
         "No-Show",
       ],
     },
@@ -300,7 +301,7 @@ export default function BHCReports() {
           />
 
           <StatCard
-            title="Completed Cases"
+            title="Done"
             value={reportSummary.completedCases}
             icon={<SearchCheck size={16} />}
             tone="emerald"
@@ -801,4 +802,3 @@ function formatNumber(value) {
   if (!Number.isFinite(parsed)) return "0";
   return parsed.toLocaleString();
 }
-

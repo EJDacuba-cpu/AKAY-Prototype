@@ -616,7 +616,7 @@ export default function AddHealthRecord() {
     if (patientGateLocked) {
       setNoticeModal({
         title: "Patient Required",
-        message: "Please select a patient before choosing a classification.",
+        message: "Select patient first.",
       });
       return;
     }
@@ -842,8 +842,8 @@ export default function AddHealthRecord() {
       setNoticeModal({
         title: "Patient Required",
         message: isFollowUp
-          ? "The original health record is still loading its patient. Please wait a moment and try again."
-          : "Please select a patient before saving the health record.",
+          ? "Patient is still loading. Try again."
+          : "Select patient first.",
       });
       requestAnimationFrame(() => inputRef.current?.focus());
       return;
@@ -861,7 +861,7 @@ export default function AddHealthRecord() {
     if (!effectiveHealthRecordType) {
       setNoticeModal({
         title: "Classification Required",
-        message: "Please select a classification.",
+        message: "Select classification.",
       });
       return;
     }
@@ -917,7 +917,7 @@ export default function AddHealthRecord() {
       if (preparedVaccineEntries.length === 0) {
         setNoticeModal({
           title: "Vaccine Required",
-          message: "Please select at least one vaccine before saving.",
+          message: "Select at least one vaccine.",
         });
         return;
       }
@@ -926,7 +926,7 @@ export default function AddHealthRecord() {
         setNoticeModal({
           title: "Vaccine Details Required",
           message:
-            "Please complete the vaccine name, dose, and date given for each selected vaccine.",
+            "Complete vaccine name, dose, and date.",
         });
         return;
       }
@@ -1773,12 +1773,12 @@ export default function AddHealthRecord() {
         title={
           saveSuccess?.isFollowUp
             ? "Follow-up Visit Saved"
-            : "Health Record Saved Successfully"
+            : "Record saved."
         }
         description={
           saveSuccess?.isFollowUp
             ? "The follow-up visit has been saved and linked to the original health record."
-            : "The health record has been saved. You may now return to the health records list, view this record, or create a referral if needed."
+            : "The health record has been saved."
         }
         onClose={() => navigate(healthRecordsPath)}
         actions={[

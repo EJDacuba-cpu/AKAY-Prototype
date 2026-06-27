@@ -9,7 +9,6 @@ import {
   ADMIN_ACCOUNTS_UPDATED_EVENT,
   getAdminAccounts,
   refreshAdminAccounts,
-  updateAdminAccount,
   updateAdminAccountStatus,
 } from "../../services/adminAccountsService";
 import {
@@ -25,8 +24,6 @@ const FILTER_OPTIONS = {
 
 export default function UserManagement() {
   const [users, setUsers] = useState(() => getAdminAccounts());
-  const [noticeMessage, setNoticeMessage] = useState("");
-  const [passwordTarget, setPasswordTarget] = useState(null);
   const [filters, setFilters] = useState({
     search: "",
     role: "All Roles",
@@ -42,15 +39,6 @@ export default function UserManagement() {
   async function updateStatus(id, newStatus) {
     await updateAdminAccountStatus(id, newStatus);
     await refreshUsers();
-  }
-
-  async function handleChangePassword(user, newPassword) {
-    await updateAdminAccount(user.id, { ...user, password: newPassword });
-    await refreshUsers();
-    setPasswordTarget(null);
-    setNoticeMessage(
-      `Password updated by Admin/MHO for ${getDisplayName(user)}.`,
-    );
   }
 
   useEffect(() => {
@@ -222,38 +210,21 @@ export default function UserManagement() {
           }
         />
 
-        {noticeMessage && (
-          <div className="rounded-xl border border-red-100 bg-red-50/70 px-4 py-3 text-xs font-medium leading-relaxed text-[#0F172A]">
-            {noticeMessage}
-          </div>
-        )}
-
         <AccountsTable
           users={visibleUsers}
-          onChangePassword={setPasswordTarget}
           onUpdateStatus={updateStatus}
         />
-
-        {passwordTarget && (
-          <ChangePasswordModal
-            user={passwordTarget}
-            onClose={() => setPasswordTarget(null)}
-            onSubmit={(newPassword) =>
-              handleChangePassword(passwordTarget, newPassword)
-            }
-          />
-        )}
       </div>
     </DashboardLayout>
   );
 }
 
-function AccountsTable({ users, onChangePassword, onUpdateStatus }) {
+function AccountsTable({ users, onUpdateStatus }) {
   return (
     <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
       <TableHeader
         title="Account Directory"
-        description="MHO/Admin can update passwords, manage account status, and review role and facility assignments."
+        description="MHO/Admin can manage account status and review role and facility assignments."
         count={users.length}
       />
 
@@ -317,7 +288,6 @@ function AccountsTable({ users, onChangePassword, onUpdateStatus }) {
                   <td className="whitespace-nowrap px-6 py-3.5 text-right align-middle">
                     <AccountActions
                       user={user}
-                      onChangePassword={onChangePassword}
                       onUpdateStatus={onUpdateStatus}
                     />
                   </td>
@@ -360,7 +330,7 @@ function EmptyRow({ colSpan, message }) {
   );
 }
 
-function AccountActions({ user, onChangePassword, onUpdateStatus }) {
+function AccountActions({ user, onUpdateStatus }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const btnRef = useRef(null);
@@ -441,17 +411,14 @@ function AccountActions({ user, onChangePassword, onUpdateStatus }) {
             <p className="font-mono text-[10px] text-[#9CA3AF]">{user.id}</p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              onChangePassword(user);
-              setOpen(false);
-            }}
+          <Link
+            to="/admin/password-reset-requests"
+            onClick={() => setOpen(false)}
             className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-[#4B5563] transition-colors hover:bg-[#F9FAFB] hover:text-[#111827]"
           >
             <KeyRound size={14} className="text-[#9CA3AF]" />
-            Change Password
-          </button>
+            Password Reset Requests
+          </Link>
 
           <button
             type="button"
@@ -494,105 +461,6 @@ function AccountActions({ user, onChangePassword, onUpdateStatus }) {
 
       {menu}
     </div>
-  );
-}
-
-function ChangePasswordModal({ user, onClose, onSubmit }) {
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState("");
-
-  const fullName = getDisplayName(user);
-
-  function handleSubmit(event) {
-    event.preventDefault();
-    setError("");
-
-    if (newPassword.trim().length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-
-    onSubmit(newPassword);
-  }
-
-  return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/40 px-4 py-6 backdrop-blur-sm">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl"
-      >
-        <div className="border-b border-[#E5E7EB] px-5 py-4">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-            Admin Password Update
-          </p>
-          <h2 className="mt-1 text-lg font-bold text-[#0F172A]">
-            Change Password
-          </h2>
-          <p className="mt-1 text-xs leading-relaxed text-[#6B7280]">
-            Set a new account password for {fullName}. This action is handled by
-            the Admin/MHO.
-          </p>
-        </div>
-
-        <div className="space-y-4 px-5 py-5">
-          <div>
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              New Password
-            </label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(event) => setNewPassword(event.target.value)}
-              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-sm outline-none transition focus:border-[#B91C1C]/30 focus:bg-white focus:ring-4 focus:ring-[#B91C1C]/[0.08]"
-              placeholder="Enter new password"
-              autoFocus
-            />
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Confirm Password
-            </label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-sm outline-none transition focus:border-[#B91C1C]/30 focus:bg-white focus:ring-4 focus:ring-[#B91C1C]/[0.08]"
-              placeholder="Re-enter new password"
-            />
-          </div>
-
-          {error && (
-            <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
-              {error}
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-[#E5E7EB] bg-[#F9FAFB] px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-[#E5E7EB] bg-white px-4 py-2 text-xs font-semibold text-[#6B7280] transition hover:bg-[#F9FAFB]"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="rounded-lg bg-[#B91C1C] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#991B1B]"
-          >
-            Save Password
-          </button>
-        </div>
-      </form>
-    </div>,
-    document.body,
   );
 }
 

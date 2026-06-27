@@ -1,4 +1,5 @@
 import { apiRequest, unwrapData, unwrapList } from "./apiClient";
+import { formatReferralStatus } from "../utils/formatters";
 
 export function normalizeReferralStatus(status) {
   const raw = String(status || "Pending").trim().toLowerCase();
@@ -87,6 +88,7 @@ function normalizeReferral(referral = {}) {
     referralDateTime: referral.referral_datetime || referral.referralDateTime || "",
     date: referral.referral_datetime?.slice?.(0, 10) || referral.date || "",
     status: normalizeReferralStatus(referral.status),
+    statusDisplay: formatReferralStatus(referral.status),
     feedback: referral.feedback || null,
     statusHistory: referral.updates || referral.statusHistory || [],
     createdAt: referral.created_at || referral.createdAt || "",

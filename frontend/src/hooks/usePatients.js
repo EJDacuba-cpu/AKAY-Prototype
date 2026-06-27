@@ -84,11 +84,15 @@ export default function usePatients(role = "bhc") {
       const searchable = [
         patient.name,
         patient.id,
+        patient.patientId,
+        patient.patient_id,
         patient.barangay,
         patient.assignedBhc,
         patient.assignedBHC,
         patient.contact,
         patient.contactNumber,
+        patient.philHealthNumber,
+        patient.philhealthNumber,
       ]
         .filter(Boolean)
         .join(" ")

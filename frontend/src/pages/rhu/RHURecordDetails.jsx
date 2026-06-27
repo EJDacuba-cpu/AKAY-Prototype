@@ -18,10 +18,9 @@ import {
   FormSelect,
   FormTextarea,
   SideCard,
+  SoftLoadingArea,
   SuccessModal,
 } from "../../components/common";
-import HealthRecordDetailsSkeleton from "../../components/common/loading/HealthRecordDetailsSkeleton";
-import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 import {
   getRhuHealthRecords,
@@ -154,7 +153,13 @@ export default function RHURecordDetails() {
     return (
       <DashboardLayout role="rhu" title="Health Record Details">
         <style>{keyframes}</style>
-        <HealthRecordDetailsSkeleton showActions={false} />
+        <SoftLoadingArea
+          isLoading
+          message="Loading details..."
+          minHeight="min-h-[520px]"
+        >
+          <div className="min-h-[520px] rounded-2xl border border-slate-200 bg-white shadow-sm" />
+        </SoftLoadingArea>
       </DashboardLayout>
     );
   }
@@ -229,11 +234,11 @@ export default function RHURecordDetails() {
   return (
     <DashboardLayout role="rhu" title="Health Record Details">
       <style>{keyframes}</style>
-      <RefreshingIndicator
-        show={isFetching && !loading}
-        label="Refreshing details..."
-        className="mb-3"
-      />
+      <SoftLoadingArea
+        isLoading={isFetching && !loading}
+        message="Refreshing details..."
+        minHeight="min-h-[520px]"
+      >
 
       <div className="mb-6">
         <Link
@@ -637,6 +642,7 @@ export default function RHURecordDetails() {
         </aside>
         )}
       </div>
+      </SoftLoadingArea>
       <SuccessModal
         open={openSuccess}
         title="Health Record Updated"

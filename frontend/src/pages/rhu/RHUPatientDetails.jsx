@@ -13,9 +13,12 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { SideCard, StatusBadge } from "../../components/common";
-import PatientDetailsSkeleton from "../../components/common/loading/PatientDetailsSkeleton";
-import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
+import {
+  SideCard,
+  SoftLoadingArea,
+  SoftLoadingOverlay,
+  StatusBadge,
+} from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
@@ -155,10 +158,13 @@ export default function RHUPatientDetails() {
     return (
       <DashboardLayout role="rhu" title="Patient Details">
         <style>{keyframes}</style>
-        <PatientDetailsSkeleton
-          latestLabelWidth="w-32"
-          recordsTabWidth="w-24"
-        />
+        <SoftLoadingArea
+          isLoading
+          message="Loading details..."
+          minHeight="min-h-[520px]"
+        >
+          <div className="min-h-[520px] rounded-2xl border border-[#E8ECF0] bg-white shadow-sm" />
+        </SoftLoadingArea>
       </DashboardLayout>
     );
   }
@@ -186,11 +192,11 @@ export default function RHUPatientDetails() {
   return (
     <DashboardLayout role="rhu" title="Patient Details">
       <style>{keyframes}</style>
-      <RefreshingIndicator
-        show={patientFetching && !loading}
-        label="Refreshing details..."
-        className="mb-3"
-      />
+      <SoftLoadingArea
+        isLoading={patientFetching && !loading}
+        message="Refreshing details..."
+        minHeight="min-h-[520px]"
+      >
 
       <div className="mb-6">
         <Link
@@ -285,6 +291,7 @@ export default function RHUPatientDetails() {
           onToggleShowAll={() => setShowAllReferrals((value) => !value)}
         />
       )}
+      </SoftLoadingArea>
     </DashboardLayout>
   );
 }
@@ -420,7 +427,7 @@ function RhuRecordsTab({
   const visibleRecords = showAll ? records : records.slice(0, 5);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
         <h2 className="text-sm font-bold text-[#0F172A]">RHU Record History</h2>
         <p className="text-xs text-slate-400">
@@ -428,14 +435,8 @@ function RhuRecordsTab({
         </p>
       </div>
 
-      <RefreshingIndicator
-        show={isFetching && !isLoading && records.length > 0}
-        label="Refreshing health records..."
-        className="mx-6 mt-4"
-      />
-
       {isLoading && records.length === 0 ? (
-        <TabLoadingState label="Loading health records..." />
+        <div className="min-h-[240px]" />
       ) : isError && records.length === 0 ? (
         <TabErrorState message="Unable to load health records right now." />
       ) : records.length === 0 ? (
@@ -509,6 +510,13 @@ function RhuRecordsTab({
           )}
         </div>
       )}
+      <SoftLoadingOverlay
+        isVisible={
+          (isLoading && records.length === 0) ||
+          (isFetching && !isLoading && records.length > 0)
+        }
+        message={isLoading ? "Loading records..." : "Refreshing records..."}
+      />
     </div>
   );
 }
@@ -524,7 +532,7 @@ function ReferralHistoryTab({
   const visibleReferrals = showAll ? referrals : referrals.slice(0, 5);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
         <h2 className="text-sm font-bold text-[#0F172A]">Referral History</h2>
         <p className="text-xs text-slate-400">
@@ -532,14 +540,8 @@ function ReferralHistoryTab({
         </p>
       </div>
 
-      <RefreshingIndicator
-        show={isFetching && !isLoading && referrals.length > 0}
-        label="Refreshing referrals..."
-        className="mx-6 mt-4"
-      />
-
       {isLoading && referrals.length === 0 ? (
-        <TabLoadingState label="Loading referrals..." />
+        <div className="min-h-[240px]" />
       ) : isError && referrals.length === 0 ? (
         <TabErrorState message="Unable to load referral history right now." />
       ) : referrals.length === 0 ? (
@@ -610,6 +612,13 @@ function ReferralHistoryTab({
           )}
         </div>
       )}
+      <SoftLoadingOverlay
+        isVisible={
+          (isLoading && referrals.length === 0) ||
+          (isFetching && !isLoading && referrals.length > 0)
+        }
+        message={isLoading ? "Loading referrals..." : "Refreshing referrals..."}
+      />
     </div>
   );
 }
@@ -620,15 +629,6 @@ function InfoChip({ icon, label }) {
       {icon}
       {label || "N/A"}
     </span>
-  );
-}
-
-function TabLoadingState({ label }) {
-  return (
-    <div className="p-12 text-center text-sm text-slate-400">
-      <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-[#B91C1C]" />
-      {label}
-    </div>
   );
 }
 

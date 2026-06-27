@@ -53,6 +53,33 @@ In order to ensure that the Laravel community is welcoming to all, please review
 
 If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
 
+## AKAY Password Reset Email Configuration
+
+AKAY password reset approvals send a one-time reset link by email. The link is generated from `FRONTEND_URL`, so set it for your environment:
+
+```env
+FRONTEND_URL=http://localhost:5173
+# LAN testing example:
+# FRONTEND_URL=http://192.168.1.6:5173
+# Production should use HTTPS.
+PASSWORD_RESET_TOKEN_EXPIRES_MINUTES=60
+```
+
+Use Laravel mail environment variables for SMTP. For local development, `MAIL_MAILER=log` is safe and writes emails to the Laravel log. For Gmail, create a Gmail app password and store it only in your local `.env`; never commit real credentials:
+
+```env
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=your-address@gmail.com
+MAIL_PASSWORD=your-gmail-app-password
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS=your-address@gmail.com
+MAIL_FROM_NAME="AKAY"
+```
+
+Enable 2-Step Verification on the Gmail sender account before creating an App Password. AKAY never emails passwords and never stores reset tokens in plain text.
+
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).

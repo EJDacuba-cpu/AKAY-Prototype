@@ -15,14 +15,14 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import ReferralDetailsSkeleton from "../../components/common/loading/ReferralDetailsSkeleton";
-import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
+import { SoftLoadingArea } from "../../components/common";
 import { getReferralByTrackingId } from "../../services/referrals";
 import { getPatientById } from "../../services/patientService";
 import {
   formatDisplayValue,
   formatFacilityName,
   formatPatientName,
+  formatReferralStatus,
   formatUserName,
 } from "../../utils/formatters";
 import ReferralPrintSlip from "../../components/features/referrals/ReferralPrintSlip";
@@ -80,7 +80,13 @@ export default function ReferralDetails() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Referral Details">
-        <ReferralDetailsSkeleton />
+        <SoftLoadingArea
+          isLoading
+          message="Loading details..."
+          minHeight="min-h-[520px]"
+        >
+          <div className="min-h-[520px] rounded-2xl border border-slate-200 bg-white shadow-sm" />
+        </SoftLoadingArea>
       </DashboardLayout>
     );
   }
@@ -114,11 +120,11 @@ export default function ReferralDetails() {
   return (
     <DashboardLayout role="bhc" title="Referral Details">
       <style>{keyframes}</style>
-      <RefreshingIndicator
-        show={isFetching && !loading}
-        label="Refreshing details..."
-        className="mb-3"
-      />
+      <SoftLoadingArea
+        isLoading={isFetching && !loading}
+        message="Refreshing details..."
+        minHeight="min-h-[520px]"
+      >
 
       <div className="anim-fade-up mb-3" style={stagger(0)}>
         <Link
@@ -169,6 +175,7 @@ export default function ReferralDetails() {
       </main>
 
       <ReferralPrintSlip referral={referral} patient={patient} printOnly />
+      </SoftLoadingArea>
     </DashboardLayout>
   );
 }
@@ -494,21 +501,22 @@ function Narrative({ value, empty }) {
 
 function StatusBadge({ status }) {
   const officialStatus = getOfficialStatus(status);
+  const displayStatus = formatReferralStatus(officialStatus);
   const map = {
     Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
     Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
     "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    Done: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
     "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
   };
 
   return (
     <span
       className={`inline-flex items-center rounded-lg border px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide ${
-        map[officialStatus] || map.Pending
+        map[displayStatus] || map.Pending
       }`}
     >
-      {officialStatus}
+      {displayStatus}
     </span>
   );
 }

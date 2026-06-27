@@ -1,19 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, RefreshCcw, UserX, X } from "lucide-react";
+import { CalendarClock, RefreshCcw, X } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ActionMenu,
-  ListToolbar,
+  ModuleToolbar,
   ModuleTableCard,
+  SoftLoadingArea,
   TablePagination,
-  TableSkeleton,
 } from "../../components/common";
 import {
   getFollowUpTasks,
-  markFollowUpNoShow,
   rescheduleFollowUp,
 } from "../../services/followUpTaskService";
 import { formatDisplayValue } from "../../utils/formatters";
@@ -81,7 +80,7 @@ export default function FollowUps() {
     return tasks.filter((task) => {
       const matchesFilter =
         filters.state === "All Active"
-          ? ["upcoming", "due_today", "overdue", "rescheduled"].includes(
+          ? ["upcoming", "due_today", "no_show", "rescheduled"].includes(
               task.effectiveState,
             )
           : task.effectiveState === normalizeFilterState(filters.state);
@@ -141,7 +140,7 @@ export default function FollowUps() {
     setModal({
       type: "details",
       task: requestedTask,
-      mode: requestedOpen === "due" ? "due" : "overdue",
+      mode: requestedOpen === "due" ? "due" : "no_show",
     });
   }, [isLoading, requestedOpen, requestedTaskId, tasks]);
 
@@ -162,9 +161,8 @@ export default function FollowUps() {
       options: [
         "All Active",
         "Due Today",
-        "Overdue",
         "Upcoming",
-        "No-show",
+        "No-Show",
         "Rescheduled",
         "Fulfilled",
       ],
@@ -216,27 +214,12 @@ export default function FollowUps() {
     );
   }
 
-  function openNoShowModal(task) {
-    setModal({ type: "no_show", task });
-  }
-
   function openRescheduleModal(task) {
     setModal({ type: "reschedule", task });
   }
 
   function viewOriginalRecord(task) {
     navigate(`/bhc/health-records/${task.healthRecordId}`);
-  }
-
-  async function handleNoShow(task, notes) {
-    setSavingAction(true);
-    try {
-      await markFollowUpNoShow(task.id, notes);
-      closeModal();
-      await refreshTasks();
-    } finally {
-      setSavingAction(false);
-    }
   }
 
   async function handleReschedule(task, dueDate, notes) {
@@ -257,8 +240,6 @@ export default function FollowUps() {
         saving={savingAction}
         onClose={closeModal}
         onRecordVisit={recordFollowUpVisit}
-        onNoShow={handleNoShow}
-        onOpenNoShow={openNoShowModal}
         onReschedule={handleReschedule}
         onOpenReschedule={openRescheduleModal}
         onViewOriginal={viewOriginalRecord}
@@ -270,23 +251,27 @@ export default function FollowUps() {
         </div>
       )}
 
-      <ListToolbar
-        searchValue={filters.search}
-        onSearchChange={(value) => updateFilter("search", value)}
-        searchPlaceholder="Search by patient, original record, or chief complaint..."
-        filters={dropdownFilters}
-        activeFilterCount={activeFilterCount}
-        activeFilters={activeFilters}
-        onApplyFilters={(nextFilters) =>
-          setFilters((prev) => ({ ...prev, ...nextFilters }))
-        }
-        onClearFilters={clearFilters}
-        onRemoveFilter={removeFilter}
-      />
+      <SoftLoadingArea
+        isLoading={loading || (isFetching && tasks.length > 0)}
+        message={loading ? "Loading follow-ups..." : "Refreshing follow-ups..."}
+      >
+        <ModuleToolbar
+          searchValue={filters.search}
+          onSearchChange={(value) => updateFilter("search", value)}
+          searchPlaceholder="Search by patient or record..."
+          filters={dropdownFilters}
+          activeFilterCount={activeFilterCount}
+          activeFilters={activeFilters}
+          onApplyFilters={(nextFilters) =>
+            setFilters((prev) => ({ ...prev, ...nextFilters }))
+          }
+          onClearFilters={clearFilters}
+          onRemoveFilter={removeFilter}
+          filterDescription="Narrow the follow-up tracking list."
+          disabled={loading || (isFetching && tasks.length > 0)}
+        />
 
-      {loading ? (
-        <TableSkeleton columns={8} rows={8} label="Loading follow-ups..." />
-      ) : (
+        {loading ? null : (
         <ModuleTableCard
           title="Follow-up Tracking"
           count={filteredTasks.length}
@@ -321,7 +306,6 @@ export default function FollowUps() {
                   key={task.id}
                   task={task}
                   onRecordVisit={() => recordFollowUpVisit(task)}
-                  onNoShow={() => openNoShowModal(task)}
                   onReschedule={() => openRescheduleModal(task)}
                 />
               ))
@@ -332,27 +316,26 @@ export default function FollowUps() {
                     <CalendarClock size={20} className="text-[#94A3B8]" />
                   </div>
                   <p className="text-[13px] font-semibold text-[#334155]">
-                    No follow-ups found
+                    No follow-ups yet.
                   </p>
                   <p className="mx-auto mt-1 max-w-sm text-[11.5px] text-[#94A3B8]">
-                    Scheduled follow-ups will appear here when a health record
-                    is marked as Follow-up Required.
+                    Follow-ups appear here when a record needs a return visit.
                   </p>
                 </td>
               </tr>
             )}
           </tbody>
         </ModuleTableCard>
-      )}
+        )}
+      </SoftLoadingArea>
     </DashboardLayout>
   );
 }
 
-function FollowUpRow({ task, onRecordVisit, onNoShow, onReschedule }) {
+function FollowUpRow({ task, onRecordVisit, onReschedule }) {
   const state = task.effectiveState;
   const actions = buildTaskActions(task, {
     onRecordVisit,
-    onNoShow,
     onReschedule,
   });
 
@@ -416,41 +399,39 @@ function buildTaskActions(task, handlers) {
   if (task.effectiveState === "fulfilled") {
     if (task.fulfilledByHealthRecordId) {
       actions.push({
-        label: "View Follow-up Record",
+        label: "View Record",
         to: `/bhc/health-records/${task.fulfilledByHealthRecordId}`,
       });
     }
-    actions.push({ label: "View Original Record", to: originalRecordLink });
+    actions.push({ label: "View Original", to: originalRecordLink });
     return actions;
   }
 
-  if (["due_today", "overdue"].includes(task.effectiveState)) {
+  if (["due_today", "no_show"].includes(task.effectiveState)) {
     actions.push({
-      label: "Record Follow-up Visit",
+      label: "Record Visit",
       onClick: handlers.onRecordVisit,
     });
-    actions.push({ label: "Mark as No-show", onClick: handlers.onNoShow });
     actions.push({
-      label: "Reschedule Follow-up",
+      label: "Reschedule",
       onClick: handlers.onReschedule,
     });
-  } else if (["upcoming", "no_show", "rescheduled"].includes(task.effectiveState)) {
+  } else if (["upcoming", "rescheduled"].includes(task.effectiveState)) {
     actions.push({
-      label: "Reschedule Follow-up",
+      label: "Reschedule",
       onClick: handlers.onReschedule,
     });
   }
 
-  actions.push({ label: "View Original Record", to: originalRecordLink });
+  actions.push({ label: "View Original", to: originalRecordLink });
   return actions;
 }
 
 function StateBadge({ state }) {
   const config = {
     due_today: ["Due Today", "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]"],
-    overdue: ["Overdue", "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]"],
     upcoming: ["Upcoming", "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"],
-    no_show: ["No-show", "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]"],
+    no_show: ["No-Show", "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]"],
     rescheduled: ["Rescheduled", "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]"],
     fulfilled: ["Fulfilled", "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"],
   }[state] || ["Pending", "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"];
@@ -489,8 +470,6 @@ function ActionModal({
   saving,
   onClose,
   onRecordVisit,
-  onNoShow,
-  onOpenNoShow,
   onReschedule,
   onOpenReschedule,
   onViewOriginal,
@@ -511,14 +490,11 @@ function ActionModal({
         modal={modal}
         onClose={onClose}
         onRecordVisit={onRecordVisit}
-        onOpenNoShow={onOpenNoShow}
         onOpenReschedule={onOpenReschedule}
         onViewOriginal={onViewOriginal}
       />
     );
   }
-
-  const isReschedule = modal.type === "reschedule";
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/35 px-4">
@@ -526,7 +502,7 @@ function ActionModal({
         <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
           <div>
             <h2 className="text-base font-bold text-[#0F172A]">
-              {isReschedule ? "Reschedule Follow-up" : "Mark as No-show"}
+              Reschedule Follow-up
             </h2>
             <p className="mt-0.5 text-xs text-slate-400">
               {modal.task.patientName || "Selected patient"}
@@ -542,19 +518,17 @@ function ActionModal({
         </div>
 
         <div className="space-y-4 px-5 py-4">
-          {isReschedule && (
-            <div>
-              <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                New Follow-up Date
-              </label>
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(event) => setDueDate(event.target.value)}
-                className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-[#B91C1C]/40 focus:bg-white"
-              />
-            </div>
-          )}
+          <div>
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              New Follow-up Date
+            </label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(event) => setDueDate(event.target.value)}
+              className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-[#B91C1C]/40 focus:bg-white"
+            />
+          </div>
           <div>
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
               Remarks
@@ -564,11 +538,7 @@ function ActionModal({
               onChange={(event) => setNotes(event.target.value)}
               rows={4}
               className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-[#B91C1C]/40 focus:bg-white"
-              placeholder={
-                isReschedule
-                  ? "Reason for rescheduling..."
-                  : "No-show remarks..."
-              }
+              placeholder="Reason for rescheduling..."
             />
           </div>
         </div>
@@ -583,20 +553,12 @@ function ActionModal({
           </button>
           <button
             type="button"
-            disabled={saving || (isReschedule && !dueDate)}
-            onClick={() =>
-              isReschedule
-                ? onReschedule(modal.task, dueDate, notes)
-                : onNoShow(modal.task, notes)
-            }
+            disabled={saving || !dueDate}
+            onClick={() => onReschedule(modal.task, dueDate, notes)}
             className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isReschedule ? <RefreshCcw size={14} /> : <UserX size={14} />}
-            {saving
-              ? "Saving..."
-              : isReschedule
-                ? "Reschedule Follow-up"
-                : "Mark as No-show"}
+            <RefreshCcw size={14} />
+            {saving ? "Saving..." : "Reschedule"}
           </button>
         </div>
       </div>
@@ -608,12 +570,12 @@ function FollowUpDetailsModal({
   modal,
   onClose,
   onRecordVisit,
-  onOpenNoShow,
   onOpenReschedule,
   onViewOriginal,
 }) {
   const { task } = modal;
   const isDueToday = modal.mode === "due";
+  const isNoShow = modal.mode === "no_show";
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/35 px-4">
@@ -622,14 +584,20 @@ function FollowUpDetailsModal({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base font-bold text-[#0F172A]">
-                {isDueToday ? "Follow-up Due Today" : "Overdue Follow-up"}
+                {isDueToday
+                  ? "Follow-up Due Today"
+                  : isNoShow
+                    ? "No-Show Follow-up"
+                    : "Follow-up Details"}
               </h2>
               <StateBadge state={task.effectiveState} />
             </div>
             <p className="mt-1 text-xs text-slate-500">
               {isDueToday
                 ? "This patient has a scheduled follow-up today."
-                : "This patient missed the scheduled follow-up date."}
+                : isNoShow
+                  ? "This patient missed the scheduled follow-up date."
+                  : "Review this scheduled follow-up."}
             </p>
           </div>
           <button
@@ -673,31 +641,29 @@ function FollowUpDetailsModal({
             onClick={() => onViewOriginal(task)}
             className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
           >
-            View Original Record
+            View Original
           </button>
-          <button
-            type="button"
-            onClick={() => onOpenReschedule(task)}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-          >
-            <RefreshCcw size={14} />
-            Reschedule Follow-up
-          </button>
-          <button
-            type="button"
-            onClick={() => onOpenNoShow(task)}
-            className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100"
-          >
-            <UserX size={14} />
-            Mark as No-show
-          </button>
-          <button
-            type="button"
-            onClick={() => onRecordVisit(task)}
-            className="rounded-xl bg-[#B91C1C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#991B1B]"
-          >
-            Record Follow-up Visit
-          </button>
+          {task.effectiveState !== "fulfilled" && (
+            <>
+              <button
+                type="button"
+                onClick={() => onOpenReschedule(task)}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                <RefreshCcw size={14} />
+                Reschedule
+              </button>
+              {["due_today", "no_show"].includes(task.effectiveState) && (
+                <button
+                  type="button"
+                  onClick={() => onRecordVisit(task)}
+                  className="rounded-xl bg-[#B91C1C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#991B1B]"
+                >
+                  Record Visit
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -724,23 +690,22 @@ function DetailItem({ label, value, strong = false }) {
 function getEffectiveState(task) {
   if (task.state === "fulfilled") return "fulfilled";
   if (task.state === "no_show") return "no_show";
-  if (task.state === "rescheduled") return "rescheduled";
 
   const dueDate = normalizeDate(task.dueDate);
   const today = normalizeDate(new Date());
 
   if (!dueDate) return "upcoming";
   if (dueDate === today) return "due_today";
-  if (dueDate < today) return "overdue";
+  if (dueDate < today) return "no_show";
+  if (task.state === "rescheduled") return "rescheduled";
   return "upcoming";
 }
 
 function normalizeFilterState(value) {
   const map = {
     "Due Today": "due_today",
-    Overdue: "overdue",
     Upcoming: "upcoming",
-    "No-show": "no_show",
+    "No-Show": "no_show",
     Rescheduled: "rescheduled",
     Fulfilled: "fulfilled",
   };
@@ -751,9 +716,8 @@ function normalizeFilterState(value) {
 function formatStateLabel(state) {
   const map = {
     due_today: "Due Today",
-    overdue: "Overdue",
     upcoming: "Upcoming",
-    no_show: "No-show",
+    no_show: "No-Show",
     rescheduled: "Rescheduled",
     fulfilled: "Fulfilled",
   };
@@ -772,7 +736,7 @@ function formatDate(value) {
   const date = new Date(`${normalizeDate(value)}T00:00:00`);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleDateString("en-US", {
-    month: "short",
+    month: "long",
     day: "numeric",
     year: "numeric",
   });

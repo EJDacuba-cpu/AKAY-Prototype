@@ -5,12 +5,18 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Referral;
 use App\Services\AuditLogger;
+use App\Services\ReferralNoShowService;
 use App\Support\StoredFunction;
 use Illuminate\Http\Request;
 
 class TrackingController extends Controller
 {
-    public function show(Request $request, string $value, AuditLogger $auditLogger)
+    public function show(
+        Request $request,
+        string $value,
+        AuditLogger $auditLogger,
+        ReferralNoShowService $noShowService
+    )
     {
         $referral = Referral::where('tracking_id', $value)
             ->orWhere('qr_code_value', $value)
@@ -22,6 +28,8 @@ class TrackingController extends Controller
             || ($request->user()->isRhuStaff() && $referral->rural_health_unit_id === $request->user()->rural_health_unit_id);
 
         abort_unless($allowed, 403, 'Referral is outside your assigned facility.');
+        $noShowService->markOverduePending($referral);
+        $referral->refresh();
         $auditLogger->log($request, 'lookup', 'tracking', "Looked up referral {$referral->tracking_id}.");
 
         if (StoredFunction::available()) {

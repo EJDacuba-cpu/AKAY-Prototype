@@ -59,6 +59,7 @@ export default function ListToolbar({
   actions = null,
   filterButtonLabel = "Filters",
   accent = "#B91C1C",
+  disabled = false,
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(() => getInitialValues(filters));
@@ -77,6 +78,11 @@ export default function ListToolbar({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!disabled) return;
+    setOpen(false);
+  }, [disabled]);
 
   useEffect(() => {
     if (!open) return;
@@ -99,6 +105,7 @@ export default function ListToolbar({
   }
 
   function toggleFilters() {
+    if (disabled) return;
     setOpen((prev) => {
       if (!prev) setDraft(getInitialValues(filters));
       return !prev;
@@ -124,7 +131,7 @@ export default function ListToolbar({
   return (
     <div className="mb-4 rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm sm:p-4">
       <div ref={toolbarRef} className="relative">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:flex-nowrap">
           <div className="relative min-w-0 flex-1">
             <Search
               size={14}
@@ -135,6 +142,7 @@ export default function ListToolbar({
               value={searchValue}
               onChange={(event) => onSearchChange?.(event.target.value)}
               placeholder={searchPlaceholder}
+              disabled={disabled}
               className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] pl-9 pr-3 text-[13px] text-[#0F172A] outline-none transition-all placeholder:text-[#94A3B8] focus:border-[#FCA5A5] focus:bg-white focus:ring-2"
               style={{ "--tw-ring-color": `${accent}1A` }}
             />
@@ -144,6 +152,7 @@ export default function ListToolbar({
             <button
               type="button"
               onClick={toggleFilters}
+              disabled={disabled}
               aria-expanded={open}
               aria-haspopup="dialog"
               className={`flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition-colors ${
@@ -162,10 +171,19 @@ export default function ListToolbar({
             </button>
           )}
 
-          {actions}
+          {actions && (
+            <div
+              className={`grid w-full gap-2 sm:w-auto sm:[&>*]:w-auto [&>*]:w-full ${
+                disabled ? "pointer-events-none opacity-60" : ""
+              }`}
+              aria-disabled={disabled}
+            >
+              {actions}
+            </div>
+          )}
         </div>
 
-        {open && (
+        {open && !disabled && (
           <FilterPopover
             filters={filters}
             draft={draft}

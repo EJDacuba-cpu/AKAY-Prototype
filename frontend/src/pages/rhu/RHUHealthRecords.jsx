@@ -11,12 +11,10 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
-  RefreshCw,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar, StatusBadge } from "../../components/common";
-import TableSkeleton from "../../components/common/loading/TableSkeleton";
+import { ListToolbar, SoftLoadingArea, StatusBadge } from "../../components/common";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
   formatDisplayValue,
@@ -146,6 +144,11 @@ export default function RHUHealthRecords() {
 
   const records = Array.isArray(recordsData) ? recordsData : [];
   const loading = isLoading && records.length === 0;
+  const showLoadingOverlay = loading || (isFetching && records.length > 0);
+
+  useEffect(() => {
+    if (showLoadingOverlay) setOpenMenuId(null);
+  }, [showLoadingOverlay]);
 
   useEffect(() => {
     function fetchRecords() {
@@ -268,31 +271,33 @@ export default function RHUHealthRecords() {
 
   return (
     <DashboardLayout role="rhu" title="Health Records">
-      <ListToolbar
-        searchValue={filters.search}
-        onSearchChange={(value) => updateFilter("search", value)}
-        searchPlaceholder="Search by patient name or classification..."
-        filters={dropdownFilters}
-        activeFilterCount={activeFilterCount}
-        activeFilters={activeFilters}
-        onApplyFilters={applyDropdownFilters}
-        onClearFilters={clearFilters}
-        onRemoveFilter={removeFilter}
-        actions={
-          <Link
-            to="/rhu/health-records/add"
-            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
-          >
-            <Plus size={14} strokeWidth={2.5} />
-            Add Health Record
-          </Link>
-        }
-      />
+      <SoftLoadingArea
+        isLoading={showLoadingOverlay}
+        message={loading ? "Loading records..." : "Refreshing records..."}
+      >
+        <ListToolbar
+          searchValue={filters.search}
+          onSearchChange={(value) => updateFilter("search", value)}
+          searchPlaceholder="Search by patient name or classification..."
+          filters={dropdownFilters}
+          activeFilterCount={activeFilterCount}
+          activeFilters={activeFilters}
+          onApplyFilters={applyDropdownFilters}
+          onClearFilters={clearFilters}
+          onRemoveFilter={removeFilter}
+          disabled={showLoadingOverlay}
+          actions={
+            <Link
+              to="/rhu/health-records/add"
+              className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
+            >
+              <Plus size={14} strokeWidth={2.5} />
+              Add Health Record
+            </Link>
+          }
+        />
 
-      <div className="min-w-0">
-        {loading ? (
-          <TableSkeleton columns={8} rows={8} label="Loading health records..." />
-        ) : filteredRecords.length === 0 ? (
+        {loading ? null : filteredRecords.length === 0 ? (
           <div className="rounded-xl border border-[#E2E8F0] bg-white px-6 py-24 text-center shadow-sm">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
               <FileText size={20} className="text-[#94A3B8]" />
@@ -314,7 +319,7 @@ export default function RHUHealthRecords() {
             refreshing={isFetching && records.length > 0}
           />
         )}
-      </div>
+      </SoftLoadingArea>
     </DashboardLayout>
   );
 }
@@ -327,6 +332,8 @@ function RHUHealthRecordsTable({
   setOpenMenuId,
   refreshing,
 }) {
+  void refreshing;
+
   const totalPages = Math.max(1, Math.ceil(records.length / PER_PAGE));
   const startRecord =
     records.length === 0 ? 0 : (currentPage - 1) * PER_PAGE + 1;
@@ -342,17 +349,6 @@ function RHUHealthRecordsTable({
 
   return (
     <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
-      <style>
-        {`
-          @keyframes akayTableRefresh {
-            0% { transform: translateX(-110%); }
-            100% { transform: translateX(310%); }
-          }
-          .akay-table-refresh-bar {
-            animation: akayTableRefresh 1.15s ease-in-out infinite;
-          }
-        `}
-      </style>
       <div className="flex items-center justify-between border-b border-[#F1F5F9] px-4 py-3">
         <div>
           <div className="flex items-center gap-2">
@@ -362,24 +358,12 @@ function RHUHealthRecordsTable({
             <span className="rounded-md border border-[#E5E7EB] bg-[#F8FAFC] px-2 py-1 text-[10px] font-semibold text-[#64748B]">
               {records.length}
             </span>
-            {refreshing && (
-              <RefreshCw
-                size={13}
-                className="animate-spin text-[#B91C1C]"
-                aria-label="Refreshing data"
-              />
-            )}
           </div>
           <p className="mt-1 text-xs text-[#9CA3AF]">
             Patient visits, monitoring, consultations, and referral follow-ups.
           </p>
         </div>
       </div>
-      {refreshing && (
-        <div className="h-[3px] overflow-hidden bg-red-50">
-          <div className="akay-table-refresh-bar h-full w-1/3 rounded-r-full bg-[#B91C1C]" />
-        </div>
-      )}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[980px] text-left text-[13px]">
           <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
@@ -595,7 +579,7 @@ function ActionMenu({ record, open, onToggle, onClose }) {
         createPortal(
           <div
             ref={menuRef}
-            className="fixed z-[9999] w-48 origin-top-right overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-lg ring-1 ring-black/5 focus:outline-none"
+            className="fixed z-[80] w-48 origin-top-right overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-lg ring-1 ring-black/5 focus:outline-none"
             style={{ top: position.top, left: position.left }}
           >
             <div className="py-1">

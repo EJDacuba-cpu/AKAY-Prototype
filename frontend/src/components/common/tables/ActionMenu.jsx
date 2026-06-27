@@ -115,7 +115,7 @@ export default function ActionMenu({
     createPortal(
       <div
         ref={menuRef}
-        className={`fixed z-[9999] w-52 origin-top-right rounded-xl border border-[#E5E7EB] bg-white p-1.5 shadow-xl shadow-black/[0.08] ${
+        className={`fixed z-[80] w-52 origin-top-right rounded-xl border border-[#E5E7EB] bg-white p-1.5 shadow-xl shadow-black/[0.08] ${
           closing ? "menu-close" : "menu-open"
         }`}
         style={{

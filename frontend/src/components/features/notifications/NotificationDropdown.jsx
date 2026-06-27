@@ -33,10 +33,10 @@ export default function NotificationDropdown({
   return (
     <div
       ref={dropdownRef}
-      className="fixed top-[52px] right-2 sm:right-5 z-[9999] w-[400px] origin-top-right overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl shadow-black/20 transition-all duration-200 data-[state=open]:scale-100 data-[state=open]:opacity-100 scale-95 opacity-0"
+      className="fixed right-2 top-[52px] z-[9999] w-[calc(100vw-1rem)] origin-top-right overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl shadow-black/20 transition-all duration-200 data-[state=open]:scale-100 data-[state=open]:opacity-100 scale-95 opacity-0 sm:right-5 sm:w-[400px]"
       data-state={isOpen ? "open" : "closed"}
     >
-      <div className="max-h-[400px] overflow-y-auto divide-y divide-gray-100 bg-white [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300">
+      <div className="max-h-[min(70dvh,400px)] overflow-y-auto divide-y divide-gray-100 bg-white [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300">
         {latestNotifs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-center px-4">
             <Inbox size={24} className="text-gray-300 mb-1" />

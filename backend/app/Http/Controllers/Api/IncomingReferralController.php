@@ -4,13 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Referral;
+use App\Services\ReferralNoShowService;
 use App\Support\StoredFunction;
 use Illuminate\Http\Request;
 
 class IncomingReferralController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request, ReferralNoShowService $noShowService)
     {
+        $noShowService->markOverduePending();
+
         if (StoredFunction::available()) {
             $perPage = $request->integer('per_page', 25);
             $page = max(1, $request->integer('page', 1));

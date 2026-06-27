@@ -14,7 +14,7 @@ function normalizeReferralStatus(status, hasReferral) {
     return "Accepted";
   }
   if (["completed", "complete", "closed"].includes(compact)) {
-    return "Completed";
+    return "Done";
   }
   if (["pending", "pending rhu review", "for monitoring", "under assessment"].includes(compact)) {
     return "Pending";
@@ -34,7 +34,7 @@ export default function ReferralIndicatorBadge({
     Referred: "border-blue-200 bg-blue-50 text-blue-700",
     Pending: "border-amber-200 bg-amber-50 text-amber-800",
     Accepted: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    Completed: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    Done: "border-emerald-200 bg-emerald-50 text-emerald-800",
   };
 
   return (

@@ -31,6 +31,7 @@ export default function FilterPopover({
   onReset,
   onApply,
   onClose,
+  description = "Narrow the list.",
 }) {
   return (
     <div
@@ -44,7 +45,7 @@ export default function FilterPopover({
           <div>
             <h2 className="text-sm font-bold text-[#0F172A]">Filters</h2>
             <p className="mt-0.5 text-[11px] leading-relaxed text-[#64748B]">
-              Narrow the health records list.
+              {description}
             </p>
           </div>
           <button

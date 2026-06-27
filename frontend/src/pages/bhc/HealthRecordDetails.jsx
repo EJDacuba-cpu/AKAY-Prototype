@@ -13,8 +13,6 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import HealthRecordDetailsSkeleton from "../../components/common/loading/HealthRecordDetailsSkeleton";
-import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 
 import { getPatientById } from "../../services/patientService";
 import {
@@ -31,6 +29,7 @@ import {
   FormSelect,
   FormTextarea,
   SideCard,
+  SoftLoadingArea,
   SuccessModal
 } from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
@@ -258,7 +257,13 @@ export default function HealthRecordDetails() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Health Record Details">
-        <HealthRecordDetailsSkeleton />
+        <SoftLoadingArea
+          isLoading
+          message="Loading details..."
+          minHeight="min-h-[520px]"
+        >
+          <div className="min-h-[520px] rounded-2xl border border-slate-200 bg-white shadow-sm" />
+        </SoftLoadingArea>
       </DashboardLayout>
     );
   }
@@ -357,11 +362,11 @@ export default function HealthRecordDetails() {
   return (
     <>
       <DashboardLayout role="bhc" title="Health Record Details">
-        <RefreshingIndicator
-          show={isFetching && !loading}
-          label="Refreshing details..."
-          className="mb-3"
-        />
+        <SoftLoadingArea
+          isLoading={isFetching && !loading}
+          message="Refreshing details..."
+          minHeight="min-h-[520px]"
+        >
 
         {/* ─── Header ─── */}
         <div className="mb-6">
@@ -861,6 +866,7 @@ export default function HealthRecordDetails() {
           </aside>
           )}
         </div>
+        </SoftLoadingArea>
       </DashboardLayout>
 
       <SuccessModal

@@ -11,8 +11,12 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar, ModuleTableCard, TablePagination } from "../../components/common";
-import TableSkeleton from "../../components/common/loading/TableSkeleton";
+import {
+  ListToolbar,
+  ModuleTableCard,
+  SoftLoadingArea,
+  TablePagination,
+} from "../../components/common";
 import { getRhuPatients } from "../../services/patientService";
 import {
   formatDisplayValue,
@@ -114,6 +118,7 @@ export default function Patients() {
     [patientsData],
   );
   const loading = isLoading && allPatients.length === 0;
+  const showLoadingOverlay = loading || (isFetching && allPatients.length > 0);
 
   const civilStatusOptions = uniqueOptions(
     allPatients,
@@ -286,33 +291,35 @@ export default function Patients() {
 
   return (
     <DashboardLayout role="rhu" title="Patients">
-      <ListToolbar
-        searchValue={filters.search}
-        onSearchChange={(value) =>
-          setFilters((prev) => ({ ...prev, search: value }))
-        }
-        searchPlaceholder="Search by name, ID, or contact..."
-        filters={dropdownFilters}
-        activeFilterCount={activeFilterCount}
-        activeFilters={activeFilters}
-        onApplyFilters={applyDropdownFilters}
-        onClearFilters={clearFilters}
-        onRemoveFilter={removeFilter}
-        actions={
-          <Link
-            to="/rhu/patients/add"
-            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
-          >
-            <Plus size={14} strokeWidth={2.5} />
-            New Patient
-          </Link>
-        }
-      />
+      <SoftLoadingArea
+        isLoading={showLoadingOverlay}
+        message={loading ? "Loading patients..." : "Refreshing patients..."}
+      >
+        <ListToolbar
+          searchValue={filters.search}
+          onSearchChange={(value) =>
+            setFilters((prev) => ({ ...prev, search: value }))
+          }
+          searchPlaceholder="Search by name, ID, or contact..."
+          filters={dropdownFilters}
+          activeFilterCount={activeFilterCount}
+          activeFilters={activeFilters}
+          onApplyFilters={applyDropdownFilters}
+          onClearFilters={clearFilters}
+          onRemoveFilter={removeFilter}
+          disabled={showLoadingOverlay}
+          actions={
+            <Link
+              to="/rhu/patients/add"
+              className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
+            >
+              <Plus size={14} strokeWidth={2.5} />
+              New Patient
+            </Link>
+          }
+        />
 
-      <div className="min-w-0">
-        {loading ? (
-          <TableSkeleton columns={6} rows={8} label="Loading patients..." />
-        ) : paginatedPatients.length === 0 ? (
+        {loading ? null : paginatedPatients.length === 0 ? (
           <div className="rounded-xl border border-[#E2E8F0] bg-white px-6 py-24 text-center shadow-sm">
             <div className="flex flex-col items-center justify-center">
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
@@ -349,7 +356,7 @@ export default function Patients() {
             refreshing={isFetching && allPatients.length > 0}
           />
         )}
-      </div>
+      </SoftLoadingArea>
     </DashboardLayout>
   );
 }
@@ -582,7 +589,7 @@ function ActionMenu({ patientId, patientName }) {
     createPortal(
       <div
         ref={menuRef}
-        className="fixed z-[9999] w-48 origin-top-right overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-lg ring-1 ring-black/5 focus:outline-none"
+        className="fixed z-[80] w-48 origin-top-right overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-lg ring-1 ring-black/5 focus:outline-none"
         style={{
           top: position.top,
           left: position.left,

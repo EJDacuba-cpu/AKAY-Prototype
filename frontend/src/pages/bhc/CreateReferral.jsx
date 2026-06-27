@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
-import CreateReferralSkeleton from "../../components/common/loading/CreateReferralSkeleton";
+import { SoftLoadingArea } from "../../components/common";
 import {
   createReferral,
   getReferralByHealthRecordId,
@@ -471,7 +471,7 @@ export default function CreateReferral() {
       }
 
       console.error("Failed to submit referral:", error);
-      setSubmissionErrorNotice("Referral submission failed. Please try again.");
+      setSubmissionErrorNotice("Referral failed. Try again.");
     } finally {
       setSubmitting(false);
     }
@@ -553,7 +553,13 @@ export default function CreateReferral() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Submit Referral">
-        <CreateReferralSkeleton />
+        <SoftLoadingArea
+          isLoading
+          message="Loading details..."
+          minHeight="min-h-[520px]"
+        >
+          <div className="min-h-[520px] rounded-2xl border border-[#E8ECF0] bg-white shadow-sm" />
+        </SoftLoadingArea>
       </DashboardLayout>
     );
   }
@@ -705,7 +711,7 @@ export default function CreateReferral() {
               </svg>
             </div>
             <h1 className="text-xl font-bold text-slate-800">
-              Referral Successfully Escalated
+              Referral sent.
             </h1>
             <p className="mt-2 text-sm text-slate-500 max-w-md mx-auto">
               The consultation has been securely transmitted to the receiving
@@ -921,7 +927,7 @@ export default function CreateReferral() {
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-slate-800">
-                    Referral Submission Failed
+                    Referral failed.
                   </h2>
                   <p className="mt-1 text-sm leading-relaxed text-slate-600">
                     {submissionErrorNotice}
@@ -956,7 +962,7 @@ export default function CreateReferral() {
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-slate-800">
-                    Review Referral Before Submission
+                    Review referral
                   </h2>
                   <p className="mt-1 text-xs leading-relaxed text-slate-500">
                     Check the key details before sending this referral to the
@@ -1119,7 +1125,7 @@ export default function CreateReferral() {
                   <CheckCircle2 size={30} strokeWidth={2.4} />
                 </div>
                 <h2 className="mt-4 text-xl font-bold text-slate-900">
-                  Referral Successfully Escalated
+                    Referral sent.
                 </h2>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">
                   The consultation has been transmitted to the receiving

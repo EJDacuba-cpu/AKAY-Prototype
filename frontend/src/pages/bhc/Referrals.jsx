@@ -4,16 +4,17 @@ import { ClipboardList } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ActionMenu,
-  ListToolbar,
+  ModuleToolbar,
   ModuleTableCard,
+  SoftLoadingArea,
   TablePagination,
 } from "../../components/common";
-import TableSkeleton from "../../components/common/loading/TableSkeleton";
 import { getReferrals } from "../../services/referrals";
 import {
   formatDisplayValue,
   formatFacilityName,
   formatPatientName,
+  formatReferralStatus,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 
@@ -84,6 +85,9 @@ function matchesReferralStatus(referralStatus, selectedStatus) {
       referralStatus === "For Monitoring" ||
       referralStatus === "Under Assessment"
     );
+  }
+  if (selectedStatus === "Done") {
+    return referralStatus === "Completed" || referralStatus === "Done";
   }
 
   return referralStatus === selectedStatus;
@@ -214,7 +218,7 @@ export default function Referrals() {
         "Pending",
         "Received",
         "For Monitoring",
-        "Completed",
+        "Done",
         "No-Show",
       ],
     },
@@ -232,7 +236,7 @@ export default function Referrals() {
     },
     {
       key: "dateSubmitted",
-      label: "Date Submitted",
+      label: "Date",
       value: filters.dateSubmitted,
       type: "date",
     },
@@ -258,28 +262,32 @@ export default function Referrals() {
   }
 
   return (
-    <DashboardLayout role="bhc" title="Referral Coordination Center">
-      <ListToolbar
-        searchValue={filters.search}
-        onSearchChange={(value) => updateFilter("search", value)}
-        searchPlaceholder="Search by patient name, referral ID, or chief complaint..."
-        filters={dropdownFilters}
-        activeFilterCount={activeFilterCount}
-        activeFilters={activeFilters}
-        onApplyFilters={(nextFilters) =>
-          setFilters((prev) => ({ ...prev, ...nextFilters }))
-        }
-        onClearFilters={clearFilters}
-        onRemoveFilter={removeFilter}
-      />
+    <DashboardLayout role="bhc" title="Referrals">
+      <SoftLoadingArea
+        isLoading={loading || (isFetching && referrals.length > 0)}
+        message={loading ? "Loading referrals..." : "Refreshing referrals..."}
+      >
+        <ModuleToolbar
+          searchValue={filters.search}
+          onSearchChange={(value) => updateFilter("search", value)}
+          searchPlaceholder="Search by patient, ID, or complaint..."
+          filters={dropdownFilters}
+          activeFilterCount={activeFilterCount}
+          activeFilters={activeFilters}
+          onApplyFilters={(nextFilters) =>
+            setFilters((prev) => ({ ...prev, ...nextFilters }))
+          }
+          onClearFilters={clearFilters}
+          onRemoveFilter={removeFilter}
+          filterDescription="Narrow the referrals list."
+          disabled={loading || (isFetching && referrals.length > 0)}
+        />
 
-      {loading ? (
-        <TableSkeleton columns={8} rows={8} label="Loading referrals..." />
-      ) : (
+        {loading ? null : (
         <ModuleTableCard
-          title="Referral Tracking"
+          title="Referrals"
           count={filteredReferrals.length}
-          subtitle="BHC-RHU referral records and tracking status."
+          subtitle="Track sent referrals and RHU updates."
           minWidth="min-w-[1100px]"
           refreshing={isFetching && referrals.length > 0}
           footer={
@@ -292,9 +300,9 @@ export default function Referrals() {
         >
             <thead>
               <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                <th className="whitespace-nowrap px-4 py-3">Tracking ID</th>
+                <th className="whitespace-nowrap px-4 py-3">ID</th>
                 <th className="whitespace-nowrap px-4 py-3">Patient</th>
-                <th className="whitespace-nowrap px-4 py-3">Referred To</th>
+                <th className="whitespace-nowrap px-4 py-3">RHU</th>
                 <th className="whitespace-nowrap px-4 py-3">Classification</th>
                 <th className="whitespace-nowrap px-4 py-3">Urgency</th>
                 <th className="whitespace-nowrap px-4 py-3">Date</th>
@@ -350,7 +358,7 @@ export default function Referrals() {
                     </td>
 
                     <td className="whitespace-nowrap px-4 py-3.5">
-                      <StatusBadge status={referral.status} />
+                      <StatusBadge status={referral.statusDisplay || referral.status} />
                     </td>
 
                     <td className="px-4 py-3.5 text-right">
@@ -373,23 +381,24 @@ export default function Referrals() {
                       <ClipboardList size={20} className="text-[#94A3B8]" />
                     </div>
                     <p className="text-[13px] font-semibold text-[#334155]">
-                      No referrals found
+                      No referrals yet.
                     </p>
                     <p className="mx-auto mt-1 max-w-sm text-[11.5px] text-[#94A3B8]">
-                      Referrals generated from consultation assessments will
-                      appear here after submission to RHU.
+                      Tap Refer to start.
                     </p>
                   </td>
                 </tr>
               )}
             </tbody>
         </ModuleTableCard>
-      )}
+        )}
+      </SoftLoadingArea>
     </DashboardLayout>
   );
 }
 
 function StatusBadge({ status }) {
+  const displayStatus = formatReferralStatus(status);
   const map = {
     "Pending RHU Review": "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
     Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
@@ -397,17 +406,17 @@ function StatusBadge({ status }) {
     Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
     "Received by RHU": "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
     "Under Assessment": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    Done: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
     "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
   };
 
   return (
     <span
       className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-        map[status] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
+        map[displayStatus] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
       }`}
     >
-      {status}
+      {displayStatus}
     </span>
   );
 }

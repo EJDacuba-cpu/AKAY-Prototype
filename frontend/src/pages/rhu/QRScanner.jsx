@@ -32,6 +32,7 @@ import {
   formatDisplayValue,
   formatFacilityName,
   formatPatientName,
+  formatReferralStatus,
 } from "../../utils/formatters";
 import { getCurrentUser } from "../../utils/auth";
 import { queryKeys } from "../../utils/queryKeys";
@@ -868,7 +869,7 @@ function ResultRow({ label, value, mono = false }) {
 }
 
 function StatusBadge({ status }) {
-  const displayStatus = getOfficialStatus(status);
+  const displayStatus = formatReferralStatus(getOfficialStatus(status));
   const map = {
     Pending: {
       bg: "#F1F5F9",
@@ -888,7 +889,7 @@ function StatusBadge({ status }) {
       dot: "#F59E0B",
       border: "#FDE68A",
     },
-    Completed: {
+    Done: {
       bg: "#ECFDF5",
       text: "#047857",
       dot: "#10B981",

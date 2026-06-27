@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar, TablePagination } from "../../components/common";
+import {
+  ListToolbar,
+  SoftLoadingArea,
+  TablePagination,
+} from "../../components/common";
 import { apiRequest, unwrapList } from "../../services/apiClient";
 
 const DEFAULT_FILTERS = {
@@ -189,7 +193,7 @@ export default function AuditLogs() {
 
   return (
     <DashboardLayout role="admin" title="Audit Logs">
-      <div className="space-y-4">
+      <SoftLoadingArea isLoading={isLoading} message="Loading audit logs...">
         <ListToolbar
           searchValue={filters.search}
           onSearchChange={(value) => {
@@ -202,6 +206,7 @@ export default function AuditLogs() {
           onApplyFilters={applyDropdownFilters}
           onClearFilters={clearFilters}
           onRemoveFilter={removeFilter}
+          disabled={isLoading}
         />
 
         <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
@@ -233,45 +238,7 @@ export default function AuditLogs() {
               </thead>
 
               <tbody className="divide-y divide-[#F3F4F6]">
-                {isLoading ? (
-                  <>
-                    {Array.from({ length: LOGS_PER_PAGE }).map((_, index) => (
-                      <tr key={`audit-log-skeleton-${index}`}>
-                        <td className="px-6 py-4">
-                          <div className="h-6 w-16 animate-pulse rounded-md bg-[#F1F5F9]" />
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-20 animate-pulse rounded bg-[#F1F5F9]" />
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-16 animate-pulse rounded bg-[#F1F5F9]" />
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-24 animate-pulse rounded bg-[#F1F5F9]" />
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <div className="h-5 w-14 animate-pulse rounded-md bg-[#F1F5F9]" />
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-40 animate-pulse rounded bg-[#F1F5F9]" />
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <div className="h-4 w-28 animate-pulse rounded bg-[#F1F5F9]" />
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <div className="h-5 w-16 animate-pulse rounded-md bg-[#F1F5F9]" />
-                        </td>
-                      </tr>
-                    ))}
-                  </>
-                ) : loadError ? (
+                {isLoading ? null : loadError ? (
                   <tr>
                     <td
                       colSpan={8}
@@ -343,7 +310,7 @@ export default function AuditLogs() {
             />
           )}
         </div>
-      </div>
+      </SoftLoadingArea>
     </DashboardLayout>
   );
 }

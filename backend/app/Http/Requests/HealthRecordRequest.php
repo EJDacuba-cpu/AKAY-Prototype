@@ -31,4 +31,31 @@ class HealthRecordRequest extends FormRequest
             'notes' => ['nullable', 'string'],
         ];
     }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator): void {
+            $monitoringData = $this->input('monitoring_data', []);
+            $status = $monitoringData['followUpStatus']
+                ?? $monitoringData['follow_up_status']
+                ?? $monitoringData['status']
+                ?? null;
+            $date = $monitoringData['followUpDate']
+                ?? $monitoringData['follow_up_date']
+                ?? null;
+
+            $normalizedStatus = str_replace(
+                ['_', '-'],
+                ' ',
+                strtolower(trim((string) $status))
+            );
+
+            if ($normalizedStatus === 'follow up required' && ! $date) {
+                $validator->errors()->add(
+                    'monitoring_data.followUpDate',
+                    'Follow-up date is required when status is Follow-up Required.'
+                );
+            }
+        });
+    }
 }

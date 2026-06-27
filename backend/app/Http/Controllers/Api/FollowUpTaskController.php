@@ -6,15 +6,21 @@ use App\Http\Controllers\Controller;
 use App\Models\FollowUpTask;
 use App\Services\AuditLogger;
 use App\Services\FollowUpNotificationService;
+use App\Services\FollowUpTaskSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class FollowUpTaskController extends Controller
 {
-    public function index(Request $request, FollowUpNotificationService $followUpNotifications)
+    public function index(
+        Request $request,
+        FollowUpNotificationService $followUpNotifications,
+        FollowUpTaskSyncService $followUpTasks
+    )
     {
         abort_unless($request->user()->isBhw() || $request->user()->isAdmin(), 403);
 
+        $followUpTasks->syncEligibleRecordsForUser($request->user());
         $followUpNotifications->notifyDueForUser($request->user());
 
         $query = FollowUpTask::query()

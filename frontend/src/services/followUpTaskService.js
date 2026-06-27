@@ -84,14 +84,6 @@ export async function getFollowUpTasks(params = {}) {
   return unwrapList(response).map(normalizeFollowUpTask);
 }
 
-export async function markFollowUpNoShow(taskId, notes = "") {
-  const response = await apiRequest(`/follow-up-tasks/${taskId}/no-show`, {
-    method: "PATCH",
-    body: { notes },
-  });
-  return normalizeFollowUpTask(unwrapData(response));
-}
-
 export async function rescheduleFollowUp(taskId, dueDate, notes = "") {
   const response = await apiRequest(`/follow-up-tasks/${taskId}/reschedule`, {
     method: "PATCH",
@@ -102,6 +94,5 @@ export async function rescheduleFollowUp(taskId, dueDate, notes = "") {
 
 export default {
   getFollowUpTasks,
-  markFollowUpNoShow,
   rescheduleFollowUp,
 };

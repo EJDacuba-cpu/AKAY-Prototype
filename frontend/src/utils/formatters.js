@@ -153,7 +153,7 @@ export function formatDate(value, fallback = "Not recorded") {
   if (Number.isNaN(date.getTime())) return cleanText(value) || fallback;
 
   return date.toLocaleDateString("en-US", {
-    month: "short",
+    month: "long",
     day: "numeric",
     year: "numeric",
   });
@@ -252,6 +252,24 @@ export function normalizeHealthRecordStatus(status, fallback = "Routine Monitori
   }
 
   if (compact === "pending") return "Pending";
+
+  return raw;
+}
+
+export function formatReferralStatus(status, fallback = "Pending") {
+  const raw = cleanText(status);
+  if (!raw) return fallback;
+
+  const compact = raw
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (compact.includes("receive")) return "Received";
+  if (compact.includes("show")) return "No-Show";
+  if (compact.includes("complete") || compact === "done") return "Done";
+  if (compact.includes("pending")) return "Pending";
 
   return raw;
 }

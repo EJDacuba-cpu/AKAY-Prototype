@@ -1,11 +1,9 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router";
 import { FileText, Plus } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar } from "../../components/common";
-import TableSkeleton from "../../components/common/loading/TableSkeleton";
+import { ModuleToolbar, SoftLoadingArea } from "../../components/common";
 import HealthRecordsTable from "../../components/features/records/HealthRecordsTable";
 import { getHealthRecords } from "../../services/healthRecordService";
 import { getReferrals } from "../../services/referrals";
@@ -385,31 +383,28 @@ export default function HealthRecords() {
 
   return (
     <DashboardLayout role="bhc" title="Health Records">
-      <ListToolbar
-        searchValue={filters.search}
-        onSearchChange={(value) => updateFilter("search", value)}
-        searchPlaceholder="Search by patient name or classification..."
-        filters={dropdownFilters}
-        activeFilterCount={activeFilterCount}
-        activeFilters={activeFilters}
-        onApplyFilters={applyDropdownFilters}
-        onClearFilters={clearFilters}
-        onRemoveFilter={removeFilter}
-        actions={
-          <Link
-            to="/bhc/health-records/add"
-            className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
-          >
-            <Plus size={14} strokeWidth={2.5} />
-            Add Health Record
-          </Link>
-        }
-      />
+      <SoftLoadingArea
+        isLoading={loading || (isFetching && records.length > 0)}
+        message={loading ? "Loading records..." : "Refreshing records..."}
+      >
+        <ModuleToolbar
+          searchValue={filters.search}
+          onSearchChange={(value) => updateFilter("search", value)}
+          searchPlaceholder="Search by patient or classification..."
+          filters={dropdownFilters}
+          activeFilterCount={activeFilterCount}
+          activeFilters={activeFilters}
+          onApplyFilters={applyDropdownFilters}
+          onClearFilters={clearFilters}
+          onRemoveFilter={removeFilter}
+          filterDescription="Narrow the health records list."
+          primaryActionTo="/bhc/health-records/add"
+          primaryActionLabel="Add Health Record"
+          primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
+          disabled={loading || (isFetching && records.length > 0)}
+        />
 
-      <div className="min-w-0">
-        {loading ? (
-          <TableSkeleton columns={8} rows={8} label="Loading health records..." />
-        ) : filteredRecords.length === 0 ? (
+        {loading ? null : filteredRecords.length === 0 ? (
           <div className="rounded-xl border border-[#E2E8F0] bg-white px-6 py-24 text-center shadow-sm">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
               <FileText size={20} className="text-[#94A3B8]" />
@@ -429,7 +424,7 @@ export default function HealthRecords() {
             refreshing={isFetching && records.length > 0}
           />
         )}
-      </div>
+      </SoftLoadingArea>
     </DashboardLayout>
   );
 }

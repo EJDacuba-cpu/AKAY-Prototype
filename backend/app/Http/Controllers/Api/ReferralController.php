@@ -10,6 +10,7 @@ use App\Models\Referral;
 use App\Models\ReferralUpdate;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\ReferralNoShowService;
 use App\Services\ReferralService;
 use App\Services\UserNotificationService;
 use App\Support\StoredFunction;
@@ -18,8 +19,10 @@ use Illuminate\Http\Request;
 
 class ReferralController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request, ReferralNoShowService $noShowService)
     {
+        $noShowService->markOverduePending();
+
         if (StoredFunction::available()) {
             $perPage = $request->integer('per_page', 25);
             $page = max(1, $request->integer('page', 1));
@@ -162,9 +165,11 @@ class ReferralController extends Controller
         return $this->storeResponse($referral, 201);
     }
 
-    public function show(Request $request, Referral $referral)
+    public function show(Request $request, Referral $referral, ReferralNoShowService $noShowService)
     {
         $this->authorizeReferral($request, $referral);
+        $noShowService->markOverduePending($referral);
+        $referral->refresh();
 
         if (StoredFunction::available()) {
             $data = StoredFunction::selectJson(
