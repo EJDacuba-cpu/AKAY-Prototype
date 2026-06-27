@@ -13,7 +13,6 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar, ModuleTableCard, TablePagination } from "../../components/common";
 import TableSkeleton from "../../components/common/loading/TableSkeleton";
-import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import { getRhuPatients } from "../../services/patientService";
 import {
   formatDisplayValue,
@@ -311,11 +310,6 @@ export default function Patients() {
       />
 
       <div className="min-w-0">
-        <RefreshingIndicator
-          show={isFetching && !loading}
-          label="Refreshing patients..."
-          className="mb-3"
-        />
         {loading ? (
           <TableSkeleton columns={6} rows={8} label="Loading patients..." />
         ) : paginatedPatients.length === 0 ? (
@@ -352,6 +346,7 @@ export default function Patients() {
             sortKey={sortKey}
             sortDir={sortDir}
             onSort={handleSort}
+            refreshing={isFetching && allPatients.length > 0}
           />
         )}
       </div>
@@ -368,6 +363,7 @@ function RHUPatientsTable({
   sortKey,
   sortDir,
   onSort,
+  refreshing,
 }) {
   return (
     <ModuleTableCard
@@ -375,6 +371,7 @@ function RHUPatientsTable({
       count={filteredCount}
       subtitle="Registered patient profiles accessible to this facility."
       minWidth="min-w-[900px]"
+      refreshing={refreshing}
       footer={
         <TablePagination
           currentPage={currentPage}

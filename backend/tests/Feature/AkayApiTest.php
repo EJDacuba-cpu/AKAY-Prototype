@@ -176,7 +176,9 @@ class AkayApiTest extends TestCase
         $this->assertSame(1, Referral::where('client_submission_id', 'offline-draft-123')->count());
         $this->assertSame(1, Referral::count());
         $this->assertDatabaseCount('referral_updates', 1);
-        $this->assertDatabaseCount('notifications', 1);
+        $this->assertDatabaseHas('notifications', ['type' => 'incoming_referral']);
+        $this->assertDatabaseHas('notifications', ['type' => 'referral_submitted']);
+        $this->assertDatabaseCount('notifications', 2);
         $this->assertDatabaseCount('audit_logs', 1);
     }
 

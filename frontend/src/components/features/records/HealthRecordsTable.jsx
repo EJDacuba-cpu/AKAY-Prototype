@@ -1,3 +1,4 @@
+import { RefreshCw } from "lucide-react";
 import ActionMenu from "../../common/tables/ActionMenu";
 import ReferralIndicatorBadge from "../../common/badges/ReferralIndicatorBadge";
 import StatusBadge from "../../common/badges/StatusBadge";
@@ -17,6 +18,7 @@ export default function HealthRecordsTable({
   totalPages, // Ginagamit kung ang kabuuang pahina ay galing sa backend api
   setCurrentPage = () => {}, // Safe fallback function para iwas sa "onPageChange is not a function" error
   delay = 0,
+  refreshing = false,
 }) {
   // 1. MAGSET NG MAXIMUM ITEMS BAWAT PAHINA (Max 5 records lang kada table layout)
   const ITEMS_PER_PAGE = 5;
@@ -45,6 +47,17 @@ export default function HealthRecordsTable({
       "
       style={stagger(delay)}
     >
+      <style>
+        {`
+          @keyframes akayTableRefresh {
+            0% { transform: translateX(-110%); }
+            100% { transform: translateX(310%); }
+          }
+          .akay-table-refresh-bar {
+            animation: akayTableRefresh 1.15s ease-in-out infinite;
+          }
+        `}
+      </style>
       {/* Header */}
       <div
         className="
@@ -80,6 +93,13 @@ export default function HealthRecordsTable({
                 {records.length}
               </span>
             )}
+            {refreshing && (
+              <RefreshCw
+                size={13}
+                className="animate-spin text-[#B91C1C]"
+                aria-label="Refreshing data"
+              />
+            )}
           </div>
 
           <p
@@ -89,10 +109,16 @@ export default function HealthRecordsTable({
               text-[#9CA3AF]
             "
           >
-            Patient visits, monitoring, consultations, and referral follow-ups.
+            Patient visit history, consultations, monitoring, and referral status.
           </p>
         </div>
       </div>
+
+      {refreshing && (
+        <div className="h-[3px] overflow-hidden bg-red-50">
+          <div className="akay-table-refresh-bar h-full w-1/3 rounded-r-full bg-[#B91C1C]" />
+        </div>
+      )}
 
       {/* Loading State */}
       {loading ? (
@@ -122,7 +148,7 @@ export default function HealthRecordsTable({
           >
             <table
               className="
-                w-full min-w-[1460px]
+                w-full min-w-[1120px]
                 text-left
                 border-separate
                 border-spacing-0
@@ -142,7 +168,6 @@ export default function HealthRecordsTable({
                 >
                   <th className="px-4 py-3 whitespace-nowrap">Record</th>
                   <th className="px-4 py-3 whitespace-nowrap">Patient</th>
-                  <th className="px-4 py-3 whitespace-nowrap">Visit Type</th>
                   <th className="px-4 py-3 whitespace-nowrap">
                     Classification
                   </th>
@@ -151,7 +176,6 @@ export default function HealthRecordsTable({
                   </th>
                   <th className="px-4 py-3 whitespace-nowrap">Status</th>
                   <th className="px-4 py-3 whitespace-nowrap">Referral</th>
-                  <th className="px-4 py-3 whitespace-nowrap">Follow-up</th>
                   <th className="px-4 py-3 whitespace-nowrap">Date</th>
                   <th className="px-4 py-3 text-right whitespace-nowrap">
                     Actions
@@ -164,7 +188,7 @@ export default function HealthRecordsTable({
                 {currentRecords.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={10}
+                      colSpan={8}
                       className="
                         px-4 py-12
                         text-center
@@ -190,19 +214,11 @@ export default function HealthRecordsTable({
                       record.classification,
                       "General Consultation",
                     );
-                    const visitType = formatVisitType(record);
                     const concern = formatDisplayValue(
                       record.concern,
                       "Not recorded",
                     );
-                    const followUp = formatDisplayValue(
-                      record.followUp,
-                      "No Follow-up",
-                    );
                     const date = formatDate(record.date, "Not recorded");
-                    const canShowFollowUpAction =
-                      normalizeWorkflowStatus(record.status) ===
-                      "Follow-up Required";
                     const referralTarget =
                       record.linkedReferralTrackingId || record.linkedReferralId;
 
@@ -259,11 +275,6 @@ export default function HealthRecordsTable({
                         </div>
                       </td>
 
-                      {/* Visit Type */}
-                      <td className="px-4 py-3.5 text-[13px] text-[#475569] whitespace-nowrap">
-                        {visitType}
-                      </td>
-
                       {/* Classification */}
                       <td className="px-4 py-3.5 text-[13px] text-[#6B7280] whitespace-nowrap">
                         {classification}
@@ -288,11 +299,6 @@ export default function HealthRecordsTable({
                         />
                       </td>
 
-                      {/* Follow-up Info */}
-                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#9CA3AF]">
-                        {followUp}
-                      </td>
-
                       {/* Date of Visit */}
                       <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#9CA3AF]">
                         {date}
@@ -307,12 +313,6 @@ export default function HealthRecordsTable({
                             viewLink={`/bhc/health-records/${record.id}`}
                             editLink={`/bhc/health-records/${record.id}`}
                             editLabel="Edit Record"
-                            followUpLink={
-                              canShowFollowUpAction
-                                ? `/bhc/health-records/add?recordId=${record.id}&mode=follow-up`
-                                : undefined
-                            }
-                            followUpLabel="Record Follow-up Visit"
                             referralLink={
                               referralTarget
                                 ? `/bhc/referrals/${referralTarget}`
@@ -340,41 +340,4 @@ export default function HealthRecordsTable({
       )}
     </div>
   );
-}
-
-function normalizeWorkflowStatus(status) {
-  const compact = String(status || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ");
-
-  if (compact === "follow up required" || compact === "follow up") {
-    return "Follow-up Required";
-  }
-  if (compact === "completed" || compact === "complete") {
-    return "Completed";
-  }
-  return "Routine Monitoring";
-}
-
-function formatVisitType(record = {}) {
-  const value = String(record.visitType || record.visit_type || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, " ");
-
-  if (
-    value === "follow up visit" ||
-    value === "follow up" ||
-    record.isFollowUp ||
-    record.is_follow_up ||
-    record.parentHealthRecordId ||
-    record.parent_health_record_id ||
-    record.previousRecordId
-  ) {
-    return "Follow-up Visit";
-  }
-
-  return "Initial Consultation";
 }

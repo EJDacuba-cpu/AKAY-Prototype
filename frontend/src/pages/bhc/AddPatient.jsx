@@ -1,23 +1,26 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  UserPlus,
+  Check,
+  ChevronDown,
   MapPinHouse,
+  UserPlus,
 } from "lucide-react"; // FIXED: Added missing icons
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConfirmationModal,
   FormInput,
-  FormSelect,
   SuccessModal
 } from "../../components/common";
 
 // Import extracted utils and components
 import {
   calculateAge,
+  formatAgeDisplay,
   normalizePhilippineContact,
   formatFullName,
 } from "../../utils/patientUtils";
@@ -33,6 +36,33 @@ import { queryKeys } from "../../utils/queryKeys";
 const stagger = (i) => ({
   animationDelay: `${i * 80}ms`,
 });
+
+const SEX_OPTIONS = [
+  { value: "Male", label: "Male" },
+  { value: "Female", label: "Female" },
+];
+
+const CIVIL_STATUS_OPTIONS = [
+  { value: "Single", label: "Single" },
+  { value: "Married", label: "Married" },
+];
+
+const BARANGAY_OPTIONS = [
+  "Bagumbayan",
+  "Balubad",
+  "Bambang",
+  "Matungao",
+  "Maysantol",
+  "Perez",
+  "Pitpitan",
+  "San Francisco",
+  "San Jose",
+  "San Nicolas",
+  "Santa Ana",
+  "Santa Ines",
+  "Taliptip",
+  "Tibig",
+].map((barangay) => ({ value: barangay, label: barangay }));
 
 // Initial State Definition
 const INITIAL_FORM_STATE = {
@@ -61,31 +91,79 @@ export default function AddPatient() {
   const [saving, setSaving] = useState(false);
   const [createdPatientId, setCreatedPatientId] = useState("");
   const [form, setForm] = useState(INITIAL_FORM_STATE);
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  const ageDisplay = formatAgeDisplay(form.birthDate);
+  const currentDate = new Date();
+  const todayIso = [
+    currentDate.getFullYear(),
+    String(currentDate.getMonth() + 1).padStart(2, "0"),
+    String(currentDate.getDate()).padStart(2, "0"),
+  ].join("-");
 
 
   // --- HANDLERS ---
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    setFieldErrors((prev) => ({ ...prev, [name]: "" }));
 
     setForm((prev) => {
       // Phone Normalization
-      if (name === "contactNumber" || name === "guardianContact") {
+      if (name === "contactNumber") {
         return { ...prev, [name]: normalizePhilippineContact(value) };
       }
 
       // Age Calculation
       if (name === "birthDate") {
+        const calculatedAge = calculateAge(value);
+
         return {
           ...prev,
           birthDate: value,
-          age: calculateAge(value),
+          age: calculatedAge,
         };
       }
 
       return { ...prev, [name]: value };
     });
   };
+
+  function handleSelectChange(name, value) {
+    setFieldErrors((prev) => ({ ...prev, [name]: "" }));
+    setForm((prev) => ({ ...prev, [name]: value }));
+  }
+
+  function validateForm() {
+    const nextErrors = {};
+
+    if (!form.firstName.trim()) nextErrors.firstName = "First name is required.";
+    if (!form.lastName.trim()) nextErrors.lastName = "Last name is required.";
+    if (!form.birthDate) nextErrors.birthDate = "Date of Birth is required.";
+    if (form.birthDate && form.birthDate > todayIso) {
+      nextErrors.birthDate = "Date of Birth cannot be in the future.";
+      setFieldErrors(nextErrors);
+      return false;
+    }
+    if (!form.sex) nextErrors.sex = "Sex is required.";
+    if (!form.civilStatus) {
+      nextErrors.civilStatus = "Civil status is required.";
+    }
+    if (!form.streetAddress.trim()) {
+      nextErrors.streetAddress = "Street address is required.";
+    }
+    if (!form.barangay) nextErrors.barangay = "Barangay is required.";
+
+    setFieldErrors(nextErrors);
+
+    return Object.keys(nextErrors).length === 0;
+  }
+
+  function handleFormSubmit(e) {
+    e.preventDefault();
+    if (!validateForm()) return;
+    setModals({ ...modals, confirm: true });
+  }
 
   const handleSubmit = async () => {
     try {
@@ -143,10 +221,8 @@ export default function AddPatient() {
         </div>
 
         <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            setModals({ ...modals, confirm: true });
-          }}
+          noValidate
+          onSubmit={handleFormSubmit}
           className="space-y-6"
         >
           {/* SECTION 1: BASIC INFO */}
@@ -166,6 +242,7 @@ export default function AddPatient() {
                 name="firstName"
                 value={form.firstName}
                 onChange={handleChange}
+                error={fieldErrors.firstName}
                 required
               />
               <FormInput
@@ -179,6 +256,7 @@ export default function AddPatient() {
                 name="lastName"
                 value={form.lastName}
                 onChange={handleChange}
+                error={fieldErrors.lastName}
                 required
               />
 
@@ -188,39 +266,39 @@ export default function AddPatient() {
                 type="date"
                 value={form.birthDate}
                 onChange={handleChange}
+                max={todayIso}
+                error={fieldErrors.birthDate}
                 required
               />
               <FormInput
                 label="Age"
                 name="age"
                 type="text"
-                value={form.age ? `${form.age} years old` : ""}
+                value={ageDisplay}
                 readOnly
                 className="bg-gray-50"
               />
-              <FormSelect
+              <ModernSelect
                 label="Sex"
                 name="sex"
                 value={form.sex}
-                onChange={handleChange}
+                onChange={handleSelectChange}
+                options={SEX_OPTIONS}
+                placeholder="Select sex"
+                error={fieldErrors.sex}
                 required
-              >
-                <option value="">Select sex</option>
-                <option>Male</option>
-                <option>Female</option>
-              </FormSelect>
+              />
 
-              <FormSelect
+              <ModernSelect
                 label="Civil Status"
                 name="civilStatus"
                 value={form.civilStatus}
-                onChange={handleChange}
+                onChange={handleSelectChange}
+                options={CIVIL_STATUS_OPTIONS}
+                placeholder="Select civil status"
+                error={fieldErrors.civilStatus}
                 required
-              >
-                <option value="">Select Civil Status</option>
-                <option>Single</option>
-                <option>Married</option>
-              </FormSelect>
+              />
 
               <div className="lg:col-span-2">
                 <PhilippineContactInput
@@ -251,35 +329,22 @@ export default function AddPatient() {
                 value={form.streetAddress}
                 onChange={handleChange}
                 placeholder="House No., Purok, Street"
+                error={fieldErrors.streetAddress}
                 required
               />
 
               <div className="lg:col-span-2">
                 <div className="grid gap-5 md:grid-cols-2">
-                  <FormSelect
+                  <ModernSelect
                     label="Barangay"
                     name="barangay"
                     value={form.barangay}
-                    onChange={handleChange}
+                    onChange={handleSelectChange}
+                    options={BARANGAY_OPTIONS}
+                    placeholder="Select barangay"
+                    error={fieldErrors.barangay}
                     required
-                  >
-                    <option value="">Select barangay</option>
-                    {/* Options */}
-                    <option>Bagumbayan</option>
-                    <option>Balubad</option>
-                    <option>Bambang</option>
-                    <option>Matungao</option>
-                    <option>Maysantol</option>
-                    <option>Perez</option>
-                    <option>Pitpitan</option>
-                    <option>San Francisco</option>
-                    <option>San Jose</option>
-                    <option>San Nicolas</option>
-                    <option>Santa Ana</option>
-                    <option>Santa Ines</option>
-                    <option>Taliptip</option>
-                    <option>Tibig</option>
-                  </FormSelect>
+                  />
                   <FormInput
                     label="Municipality"
                     name="municipality"
@@ -295,7 +360,7 @@ export default function AddPatient() {
           {/* ACTIONS */}
           <div
             className="anim-fade-up flex items-center justify-end gap-4 pt-4"
-            style={stagger(5)}
+            style={stagger(4)}
           >
             <button
               type="button"
@@ -339,5 +404,205 @@ The patient profile has been created. You may now add the first health record or
         loading={saving}
       />
     </>
+  );
+}
+
+function ModernSelect({
+  label,
+  name,
+  value,
+  onChange,
+  options,
+  placeholder,
+  required,
+  error,
+}) {
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const [menuPosition, setMenuPosition] = useState(null);
+  const wrapperRef = useRef(null);
+  const buttonRef = useRef(null);
+  const menuRef = useRef(null);
+  const selectedOption = options.find((option) => option.value === value);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      const clickedTrigger = wrapperRef.current?.contains(event.target);
+      const clickedMenu = menuRef.current?.contains(event.target);
+
+      if (!clickedTrigger && !clickedMenu) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const selectedIndex = options.findIndex((option) => option.value === value);
+    setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
+  }, [open, options, value]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function updateMenuPosition() {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const gap = 6;
+      const viewportPadding = 12;
+      const optionHeight = 40;
+      const preferredHeight = Math.min(256, options.length * optionHeight + 8);
+      const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
+      const spaceAbove = rect.top - viewportPadding;
+      const opensUp = spaceBelow < preferredHeight && spaceAbove > spaceBelow;
+      const availableSpace = Math.max(
+        120,
+        (opensUp ? spaceAbove : spaceBelow) - gap,
+      );
+      const menuHeight = Math.min(preferredHeight, availableSpace);
+
+      setMenuPosition({
+        left: Math.min(
+          Math.max(viewportPadding, rect.left),
+          window.innerWidth - rect.width - viewportPadding,
+        ),
+        top: opensUp ? rect.top - gap - menuHeight : rect.bottom + gap,
+        width: rect.width,
+        maxHeight: menuHeight,
+      });
+    }
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [open, options.length]);
+
+  function selectOption(option) {
+    onChange(name, option.value);
+    setOpen(false);
+  }
+
+  function handleKeyDown(event) {
+    if (event.key === "Escape") {
+      setOpen(false);
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((prev) => (prev + 1) % options.length);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((prev) => (prev <= 0 ? options.length - 1 : prev - 1));
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (open && activeIndex >= 0) {
+        selectOption(options[activeIndex]);
+      } else {
+        setOpen(true);
+      }
+    }
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+        {label}
+        {required && <span className="text-red-400"> *</span>}
+      </label>
+      <button
+        ref={buttonRef}
+        type="button"
+        role="combobox"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-controls={`${name}-options`}
+        onClick={() => setOpen((prev) => !prev)}
+        onKeyDown={handleKeyDown}
+        className={`flex h-10 w-full items-center justify-between gap-2 rounded-lg border bg-[#F8FAFC] px-3 text-left text-sm text-[#0F172A] outline-none transition-all duration-200 hover:border-[#CBD5E1] focus:border-[#FCA5A5] focus:bg-white focus:ring-3 focus:ring-[#B91C1C]/[0.08] ${
+          error ? "border-[#FCA5A5] bg-white" : "border-[#E5E7EB]"
+        }`}
+      >
+        <span
+          className={`min-w-0 truncate ${
+            selectedOption ? "text-[#0F172A]" : "text-[#94A3B8]"
+          }`}
+        >
+          {selectedOption?.label || placeholder}
+        </span>
+        <ChevronDown
+          size={15}
+          className={`shrink-0 text-[#94A3B8] transition-transform duration-200 ${
+            open ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+
+      {open && menuPosition && createPortal(
+        <div
+          ref={menuRef}
+          id={`${name}-options`}
+          role="listbox"
+          aria-label={label}
+          className="overflow-y-auto rounded-lg border border-[#E5E7EB] bg-white py-1 shadow-xl shadow-slate-900/[0.10]"
+          style={{
+            position: "fixed",
+            zIndex: 9999,
+            top: `${menuPosition.top}px`,
+            left: `${menuPosition.left}px`,
+            width: `${menuPosition.width}px`,
+            maxHeight: `${menuPosition.maxHeight}px`,
+          }}
+        >
+          {options.map((option, index) => {
+            const selected = option.value === value;
+            const active = index === activeIndex;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => selectOption(option)}
+                className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                  active ? "bg-[#FEF2F2]" : "hover:bg-[#F8FAFC]"
+                } ${selected ? "font-semibold text-[#B91C1C]" : "text-[#334155]"}`}
+              >
+                <span className="min-w-0 truncate">{option.label}</span>
+                {selected && (
+                  <Check size={14} className="shrink-0 text-[#B91C1C]" />
+                )}
+              </button>
+            );
+          })}
+        </div>,
+        document.body,
+      )}
+
+      {error && (
+        <p className="mt-1 text-[10px] font-medium leading-relaxed text-[#B91C1C]">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

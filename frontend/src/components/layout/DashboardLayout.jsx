@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Bell, MapPin, Menu } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Bell, Menu } from "lucide-react";
 import { useLocation, useNavigate } from "react-router";
 import { getCurrentUser, logoutUser } from "../../utils/auth";
 import {
@@ -8,6 +9,7 @@ import {
   formatUserName,
 } from "../../utils/formatters";
 import { useNotifications } from "../../hooks/useNotificationsContext";
+import { ConfirmationModal } from "../common";
 import NotificationDropdown from "../features/notifications/NotificationDropdown";
 import NotificationModal from "../features/notifications/NotificationModal";
 import {
@@ -27,6 +29,7 @@ export default function DashboardLayout({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
 
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(sidebarExpandedMemory);
@@ -41,6 +44,8 @@ export default function DashboardLayout({
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [logoutLoading, setLogoutLoading] = useState(false);
 
   const menuSections = menuByRole[role] || [];
   const user = getCurrentUser() || {
@@ -51,14 +56,24 @@ export default function DashboardLayout({
   const displayUser = {
     ...user,
     name: formatUserName(user, "AKAY User"),
-    position: formatDisplayValue(user.position || user.role, "Personnel"),
+    position: formatDisplayValue(
+      user.position || roleLabel[role] || user.role,
+      "Personnel",
+    ),
+    roleLabel: roleLabel[role] || formatDisplayValue(user.role, "Personnel"),
     facility: formatFacilityName(
-      user.facility ||
+      user.facility_name ||
+        user.facilityName ||
+        user.assigned_facility ||
+        user.assignedFacility ||
+        user.facility ||
+        user.assignedBarangayHealthCenter ||
+        user.assignedRuralHealthUnit ||
         user.barangayHealthCenter ||
         user.barangay_health_center ||
         user.ruralHealthUnit ||
         user.rural_health_unit,
-      "Bulakan, Bulacan",
+      role === "admin" ? "Municipal Health Office" : "No facility assigned",
     ),
   };
 
@@ -66,9 +81,27 @@ export default function DashboardLayout({
     sidebarExpandedMemory = sidebarExpanded;
   }, [sidebarExpanded]);
 
-  function handleLogout() {
-    logoutUser();
-    navigate("/login");
+  function handleLogoutRequest() {
+    if (logoutLoading) return;
+    setIsNotifOpen(false);
+    setMobileDrawerOpen(false);
+    setLogoutModalOpen(true);
+  }
+
+  async function handleConfirmLogout() {
+    if (logoutLoading) return;
+
+    setLogoutLoading(true);
+    try {
+      await logoutUser();
+    } catch (error) {
+      console.error("Logout request failed; clearing local session.", error);
+    } finally {
+      queryClient.clear();
+      setLogoutModalOpen(false);
+      setLogoutLoading(false);
+      navigate("/login", { replace: true });
+    }
   }
 
   function isMenuActive(path) {
@@ -99,7 +132,7 @@ export default function DashboardLayout({
   };
 
   return (
-    <div className="relative h-screen overflow-hidden bg-[#F8FAFC] text-[#0F172A]">
+    <div className="relative flex h-dvh overflow-hidden bg-[#F8FAFC] text-[#0F172A]">
       <style>
         {`
           .akay-sidebar-scroll {
@@ -139,7 +172,7 @@ export default function DashboardLayout({
             user={displayUser}
             isMenuActive={isMenuActive}
             onToggle={() => setSidebarExpanded((prev) => !prev)}
-            onLogout={handleLogout}
+            onLogout={handleLogoutRequest}
           />
 
           {mobileDrawerOpen && (
@@ -155,13 +188,13 @@ export default function DashboardLayout({
             user={displayUser}
             isMenuActive={isMenuActive}
             onClose={() => setMobileDrawerOpen(false)}
-            onLogout={handleLogout}
+            onLogout={handleLogoutRequest}
           />
         </>
       )}
 
       <main
-        className={`flex h-screen min-w-0 flex-col transition-[margin] duration-300 ease-in-out ${
+        className={`flex h-dvh min-w-0 flex-1 flex-col transition-[margin] duration-300 ease-in-out ${
           hideSidebar ? "" : sidebarExpanded ? "md:ml-60" : "md:ml-[72px]"
         }`}
       >
@@ -189,17 +222,6 @@ export default function DashboardLayout({
 </div>
 
             <div className="flex items-center gap-2">
-              <div className="hidden h-8 items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 shadow-sm sm:flex">
-                <MapPin size={12} className="text-[#B91C1C]" />
-                <span className="max-w-[140px] truncate text-[10px] font-semibold text-[#4B5563]">
-                  {displayUser.facility}
-                </span>
-              </div>
-
-              <span className="hidden h-8 items-center rounded-lg border border-[#E5E7EB] bg-white px-2.5 py-2 text-[10px] font-semibold text-[#64748B] shadow-sm md:inline-flex">
-                {roleLabel[role]}
-              </span>
-
               <div className="relative z-[100]">
                 <button
                   type="button"
@@ -228,7 +250,7 @@ export default function DashboardLayout({
           </div>
         </header>
 
-        <section className="akay-content-scroll flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:p-5">
+        <section className="akay-content-scroll min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:p-5">
           {children}
         </section>
       </main>
@@ -244,6 +266,20 @@ export default function DashboardLayout({
           }
         }}
         onDelete={deleteNotification}
+      />
+
+      <ConfirmationModal
+        open={logoutModalOpen}
+        title="Log out?"
+        description="Are you sure you want to log out of AKAY?"
+        confirmText="Log out"
+        cancelText="Cancel"
+        loading={logoutLoading}
+        loadingText="Logging out..."
+        onCancel={() => {
+          if (!logoutLoading) setLogoutModalOpen(false);
+        }}
+        onConfirm={handleConfirmLogout}
       />
     </div>
   );

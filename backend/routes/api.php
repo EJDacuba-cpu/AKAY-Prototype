@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BarangayHealthCenterController;
 use App\Http\Controllers\Api\FeedbackController;
+use App\Http\Controllers\Api\FollowUpTaskController;
 use App\Http\Controllers\Api\HealthRecordController;
 use App\Http\Controllers\Api\IncomingReferralController;
 use App\Http\Controllers\Api\MedicineController;
@@ -46,6 +47,9 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     });
 
     Route::middleware('role:bhw')->group(function () {
+        Route::get('/follow-up-tasks', [FollowUpTaskController::class, 'index']);
+        Route::patch('/follow-up-tasks/{followUpTask}/no-show', [FollowUpTaskController::class, 'markNoShow']);
+        Route::patch('/follow-up-tasks/{followUpTask}/reschedule', [FollowUpTaskController::class, 'reschedule']);
         Route::get('/reports/bhw', [ReportController::class, 'bhw']);
     });
 

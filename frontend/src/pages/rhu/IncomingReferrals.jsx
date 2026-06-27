@@ -799,12 +799,6 @@ export default function IncomingReferrals() {
         }
       />
 
-      {isFetching && !loading && referrals.length > 0 && (
-        <div className="mb-3 inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-500 shadow-sm">
-          Refreshing...
-        </div>
-      )}
-
       {loading ? (
         <TableSkeleton
           columns={10}
@@ -817,6 +811,7 @@ export default function IncomingReferrals() {
           count={filtered.length}
           subtitle="BHC-RHU referral records and tracking status."
           minWidth="min-w-[1360px]"
+          refreshing={isFetching && referrals.length > 0}
           footer={
             <TablePagination
               currentPage={currentPage}

@@ -14,7 +14,6 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar, ModuleTableCard, TablePagination } from "../../components/common";
 import TableSkeleton from "../../components/common/loading/TableSkeleton";
-import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import usePatients from "../../hooks/usePatients";
 import {
   formatDisplayValue,
@@ -228,11 +227,6 @@ export default function PatientsModule() {
       />
 
       <div className="min-w-0">
-        <RefreshingIndicator
-          show={isRefreshing}
-          label="Refreshing patients..."
-          className="mb-3"
-        />
         {loading ? (
           <TableSkeleton columns={6} rows={8} label="Loading patients..." />
         ) : (
@@ -244,6 +238,7 @@ export default function PatientsModule() {
             totalPages={totalPages}
             setCurrentPage={setCurrentPage}
             filteredCount={filteredPatients.length}
+            refreshing={isRefreshing && patients.length > 0}
           />
         )}
       </div>
@@ -259,6 +254,7 @@ function BHCPatientsTable({
   totalPages,
   setCurrentPage,
   filteredCount,
+  refreshing,
 }) {
   return (
     <ModuleTableCard
@@ -266,6 +262,7 @@ function BHCPatientsTable({
       count={filteredCount}
       subtitle="Registered patient profiles accessible to this facility."
       minWidth="min-w-[900px]"
+      refreshing={refreshing}
       footer={
         !error && (
           <TablePagination

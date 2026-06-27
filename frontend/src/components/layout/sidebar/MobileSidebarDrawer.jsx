@@ -13,11 +13,11 @@ export default function MobileSidebarDrawer({
 }) {
   return (
     <aside
-      className={`fixed left-0 top-0 z-50 flex h-full w-[280px] flex-col overflow-hidden border-r border-[#E5E7EB] bg-white shadow-2xl shadow-black/15 transition-transform duration-300 ease-in-out md:hidden ${
+      className={`fixed left-0 top-0 z-50 flex h-dvh max-h-dvh w-[280px] flex-col overflow-hidden border-r border-[#E5E7EB] bg-white shadow-2xl shadow-black/15 transition-transform duration-300 ease-in-out md:hidden ${
         open ? "translate-x-0" : "-translate-x-full"
       }`}
     >
-      <div className="flex h-16 items-center justify-between border-b border-[#991B1B] bg-[#B91C1C] px-4">
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#991B1B] bg-[#B91C1C] px-4">
         <div className="flex min-w-0 items-center gap-2.5">
           <LogoMark />
 

@@ -10,6 +10,7 @@ import PatientsModule from "./pages/bhc/PatientsModule";
 import HealthRecords from "./pages/bhc/HealthRecords";
 import AddHealthRecord from "./pages/bhc/AddHealthRecord";
 import AddPatient from "./pages/bhc/AddPatient";
+import FollowUps from "./pages/bhc/FollowUps";
 import Referrals from "./pages/bhc/Referrals";
 import CreateReferral from "./pages/bhc/CreateReferral";
 import ReferralDetails from "./pages/bhc/ReferralDetails";
@@ -188,6 +189,14 @@ export default function App() {
         element={
           <ProtectedPage allowedRole="bhc">
             <AddHealthRecord />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/bhc/follow-ups"
+        element={
+          <ProtectedPage allowedRole="bhc">
+            <FollowUps />
           </ProtectedPage>
         }
       />

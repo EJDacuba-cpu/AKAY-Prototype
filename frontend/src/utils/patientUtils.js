@@ -8,6 +8,7 @@ export const calculateAge = (birthDate) => {
 
   const today = new Date();
   const dob = new Date(birthDate);
+  if (Number.isNaN(dob.getTime()) || dob > today) return "";
 
   let age = today.getFullYear() - dob.getFullYear();
   const monthDifference = today.getMonth() - dob.getMonth();
@@ -18,6 +19,67 @@ export const calculateAge = (birthDate) => {
   }
 
   return age;
+};
+
+/**
+ * Calculates full months elapsed from date of birth.
+ * @param {string} birthDate - ISO date string
+ * @returns {number|string} Age in months or empty string
+ */
+export const calculateAgeInMonths = (birthDate) => {
+  if (!birthDate) return "";
+
+  const today = new Date();
+  const dob = new Date(birthDate);
+  if (Number.isNaN(dob.getTime()) || dob > today) return "";
+
+  let months =
+    (today.getFullYear() - dob.getFullYear()) * 12 +
+    (today.getMonth() - dob.getMonth());
+
+  if (today.getDate() < dob.getDate()) {
+    months -= 1;
+  }
+
+  return Math.max(months, 0);
+};
+
+/**
+ * Formats patient age for display, including month-based ages for children under 2.
+ * @param {string} birthDate - ISO date string
+ * @returns {string} Human-readable age
+ */
+export const formatAgeDisplay = (birthDate) => {
+  const ageYears = calculateAge(birthDate);
+  const ageMonths = calculateAgeInMonths(birthDate);
+
+  if (ageYears === "" || ageMonths === "") return "";
+
+  if (ageMonths < 12) {
+    return `${ageMonths} month${ageMonths === 1 ? "" : "s"} old`;
+  }
+
+  if (ageMonths < 24) {
+    const years = Math.floor(ageMonths / 12);
+    const months = ageMonths % 12;
+    const yearText = `${years} year${years === 1 ? "" : "s"}`;
+    const monthText =
+      months > 0 ? `, ${months} month${months === 1 ? "" : "s"}` : "";
+
+    return `${yearText}${monthText} old`;
+  }
+
+  return `${ageYears} year${ageYears === 1 ? "" : "s"} old`;
+};
+
+/**
+ * Checks if a birthdate belongs to a minor patient.
+ * @param {string} birthDate - ISO date string
+ * @returns {boolean}
+ */
+export const isMinorPatient = (birthDate) => {
+  const age = calculateAge(birthDate);
+  return age !== "" && age < 18;
 };
 
 /**

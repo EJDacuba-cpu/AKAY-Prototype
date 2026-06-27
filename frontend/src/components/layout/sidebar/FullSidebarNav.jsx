@@ -2,7 +2,7 @@ import { Link } from "react-router";
 
 export default function FullSidebarNav({ menuSections, isMenuActive, onNavigate }) {
   return (
-    <nav className="akay-sidebar-scroll flex-1 overflow-y-auto px-3 py-4">
+    <nav className="akay-sidebar-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3">
       {menuSections.map((section) => (
         <div key={section.section} className="mb-5">
           <p className="mb-2 px-2 text-[9px] font-bold uppercase tracking-[0.18em] text-[#9CA3AF]">

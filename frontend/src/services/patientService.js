@@ -70,6 +70,19 @@ export function normalizePatient(patient = {}) {
     barangay: patient.barangay || "",
     municipality: patient.municipality || "",
     civilStatus: patient.civil_status || patient.civilStatus || "",
+    guardianName: patient.guardian_name || patient.guardianName || "",
+    guardianRelationship:
+      patient.guardian_relationship || patient.guardianRelationship || "",
+    guardianContactNumber:
+      patient.guardian_contact_number ||
+      patient.guardianContactNumber ||
+      patient.guardianContact ||
+      "",
+    guardianContact:
+      patient.guardian_contact_number ||
+      patient.guardianContactNumber ||
+      patient.guardianContact ||
+      "",
     philHealthNumber: patient.philhealth_number || patient.philHealthNumber || "",
     philhealthNumber: patient.philhealth_number || patient.philhealthNumber || "",
     philHealthCategory: patient.philhealth_category || patient.philHealthCategory || "",

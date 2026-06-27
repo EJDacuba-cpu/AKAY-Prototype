@@ -12,7 +12,7 @@ export default function DesktopSidebar({
 }) {
   return (
     <aside
-      className={`fixed left-0 top-0 z-40 hidden h-full flex-col overflow-visible border-r border-[#E5E7EB] bg-white shadow-[0_18px_50px_-42px_rgba(15,23,42,0.35)] transition-[width] duration-300 ease-in-out md:flex ${
+      className={`fixed left-0 top-0 z-40 hidden h-dvh max-h-dvh flex-col overflow-visible border-r border-[#E5E7EB] bg-white shadow-[0_18px_50px_-42px_rgba(15,23,42,0.35)] transition-[width] duration-300 ease-in-out md:flex ${
         expanded ? "w-60" : "w-[72px]"
       }`}
     >
@@ -43,7 +43,7 @@ export default function DesktopSidebar({
         </div>
       </div>
 
-      <nav className="akay-sidebar-scroll flex-1 overflow-visible px-3 py-4">
+      <nav className="akay-sidebar-scroll min-h-0 flex-1 overflow-y-auto overflow-x-visible px-3 py-3">
         {menuSections.map((section) => (
           <div key={section.section} className="mb-5">
             <p
@@ -111,30 +111,29 @@ export default function DesktopSidebar({
         ))}
       </nav>
 
-      <div className="shrink-0 border-t border-[#F1F5F9] p-3">
-        <div
-          className={`overflow-hidden transition-all duration-300 ease-in-out ${
-            expanded
-              ? "mb-2 max-h-16 opacity-100 delay-75"
-              : "mb-0 max-h-0 opacity-0"
-          }`}
-        >
-          <div className="rounded-xl bg-[#F8FAFC] px-3 py-2.5 ring-1 ring-[#E5E7EB]">
-            <p className="truncate text-[12px] font-semibold text-[#0F172A]">
-              {user.name}
-            </p>
-            <p className="mt-0.5 truncate text-[10px] font-medium text-[#94A3B8]">
-              {user.position}
-            </p>
+      <div className="shrink-0 border-t border-[#F1F5F9] p-2.5">
+        {expanded && (
+          <div className="mb-2 overflow-hidden rounded-xl bg-[#F8FAFC] px-2.5 py-2 ring-1 ring-[#E5E7EB] transition-all duration-300 ease-in-out">
+            <div className="min-w-0">
+              <p className="truncate text-[12px] font-bold text-[#0F172A]">
+                {user.name}
+              </p>
+              <p className="mt-0.5 truncate text-[10px] font-medium text-[#64748B]">
+                {user.facility}
+              </p>
+              <p className="truncate text-[10px] font-medium text-[#94A3B8]">
+                {user.roleLabel || user.position}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         <button
           type="button"
           onClick={onLogout}
           title="Sign out"
           aria-label="Sign out"
-          className={`flex h-10 w-full items-center rounded-xl text-[#B91C1C] transition hover:bg-[#FEF2F2] ${
+          className={`flex h-9 w-full items-center rounded-xl text-[#B91C1C] transition hover:bg-[#FEF2F2] ${
             expanded ? "gap-2 px-3" : "justify-center px-0"
           }`}
         >

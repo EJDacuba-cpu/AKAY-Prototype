@@ -9,7 +9,6 @@ import {
   TablePagination,
 } from "../../components/common";
 import TableSkeleton from "../../components/common/loading/TableSkeleton";
-import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import { getReferrals } from "../../services/referrals";
 import {
   formatDisplayValue,
@@ -274,12 +273,6 @@ export default function Referrals() {
         onRemoveFilter={removeFilter}
       />
 
-      <RefreshingIndicator
-        show={isFetching && !loading}
-        label="Refreshing referrals..."
-        className="mb-3"
-      />
-
       {loading ? (
         <TableSkeleton columns={8} rows={8} label="Loading referrals..." />
       ) : (
@@ -288,6 +281,7 @@ export default function Referrals() {
           count={filteredReferrals.length}
           subtitle="BHC-RHU referral records and tracking status."
           minWidth="min-w-[1100px]"
+          refreshing={isFetching && referrals.length > 0}
           footer={
             <TablePagination
               currentPage={currentPage}

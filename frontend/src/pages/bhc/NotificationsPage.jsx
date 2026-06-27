@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { Bell, Inbox, Eye, Trash2 } from "lucide-react";
+import { CheckCheck, Inbox, Eye, Trash2 } from "lucide-react";
 import { useNotifications } from "../../hooks/useNotificationsContext";
 import NotificationModal from "../../components/features/notifications/NotificationModal";
 
 export default function NotificationsPage() {
-  const { notifications, markAsRead, clearAll, deleteNotification } =
+  const { notifications, markAsRead, markAllAsRead, clearAll, deleteNotification } =
     useNotifications();
   const [selectedNotif, setSelectedNotif] = useState(null);
   const navigate = useNavigate();
@@ -14,6 +14,10 @@ export default function NotificationsPage() {
 
   const handleViewNotification = (notif) => {
     markAsRead(notif.id);
+    if (notif.link) {
+      navigate(notif.link);
+      return;
+    }
     setSelectedNotif(notif);
   };
 
@@ -31,11 +35,9 @@ export default function NotificationsPage() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between  border-gray-200 p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50">
-            <Bell size={16} className="text-[#991B1B]" />
-          </div>
+   
           <div>
             <h1 className="text-base font-bold text-gray-900">
               Notification Inbox
@@ -54,6 +56,13 @@ export default function NotificationsPage() {
               </span>{" "}
               notification{unreadCount !== 1 ? "s" : ""} remaining
             </p>
+            <button
+              onClick={markAllAsRead}
+              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-xs font-semibold text-gray-600 transition-all hover:border-red-200 hover:bg-red-50 hover:text-[#B91C1C]"
+            >
+              <CheckCheck size={14} />
+              Mark all as read
+            </button>
             <button
               onClick={clearAll}
               className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-semibold text-red-700 transition-all hover:bg-red-100"
@@ -108,7 +117,14 @@ export default function NotificationsPage() {
                       {notif.timestamp}
                     </span>
                   </div>
-                  <p className="mt-1 text-sm text-gray-600">{notif.title}</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-700">
+                    {notif.title}
+                  </p>
+                  {notif.message && (
+                    <p className="mt-1 text-sm text-gray-500">
+                      {notif.message}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}

@@ -4,12 +4,15 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\UserNotification;
+use App\Services\FollowUpNotificationService;
 use Illuminate\Http\Request;
 
 class NotificationController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request, FollowUpNotificationService $followUpNotifications)
     {
+        $followUpNotifications->notifyDueForUser($request->user());
+
         return response()->json([
             'data' => $request->user()->notifications()->latest()->paginate($request->integer('per_page', 25)),
         ]);

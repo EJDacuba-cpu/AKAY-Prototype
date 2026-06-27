@@ -79,6 +79,8 @@ export function storeAuthSession({ token, user }) {
 export function clearAuthSession() {
   window.localStorage.removeItem(TOKEN_KEY);
   window.localStorage.removeItem(USER_KEY);
+  window.sessionStorage.removeItem(TOKEN_KEY);
+  window.sessionStorage.removeItem(USER_KEY);
 }
 
 export async function apiRequest(endpoint, options = {}) {

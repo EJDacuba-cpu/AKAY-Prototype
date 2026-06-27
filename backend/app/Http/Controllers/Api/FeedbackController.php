@@ -7,6 +7,7 @@ use App\Http\Requests\FeedbackRequest;
 use App\Models\Feedback;
 use App\Models\Referral;
 use App\Models\ReferralUpdate;
+use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\UserNotificationService;
 use Illuminate\Http\Request;
@@ -48,7 +49,21 @@ class FeedbackController extends Controller
             'remarks' => 'Feedback submitted.',
         ]);
 
-        $notifications->notifyUser($referral->creator, 'Feedback submitted', "RHU feedback was submitted for referral {$referral->tracking_id}.", 'feedback_submitted', $referral->id);
+        $referral->loadMissing(['patient', 'ruralHealthUnit']);
+        $patientName = $referral->patient?->full_name ?: 'The referred patient';
+        $rhuName = $referral->ruralHealthUnit?->name ?: 'Rural Health Unit Bulakan';
+
+        $notifications->notifyUsersOnce(
+            $this->bhcUsers($referral),
+            'RHU Return Slip Received',
+            "{$rhuName} submitted feedback for {$patientName}.",
+            'rhu_return_slip_received',
+            $referral->id,
+            "/bhc/referrals/{$referral->tracking_id}",
+            'referral_feedback',
+            $referral->id
+        );
+
         $auditLogger->log($request, 'submitted', 'feedback', "Submitted feedback for referral {$referral->tracking_id}.");
 
         return response()->json(['data' => $feedback->load('referral.patient')], 201);
@@ -68,5 +83,13 @@ class FeedbackController extends Controller
             || ($request->user()->isRhuStaff() && $referral->rural_health_unit_id === $request->user()->rural_health_unit_id);
 
         abort_unless($allowed, 403, 'Referral is outside your assigned facility.');
+    }
+
+    private function bhcUsers(Referral $referral)
+    {
+        return User::where('role', User::ROLE_BHW)
+            ->where('barangay_health_center_id', $referral->barangay_health_center_id)
+            ->where('status', User::STATUS_ACTIVE)
+            ->get();
     }
 }

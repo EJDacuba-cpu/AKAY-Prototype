@@ -47,6 +47,9 @@ export const PhilippineContactInput = ({
   value,
   onChange,
   required = false,
+  disabled = false,
+  helperText,
+  error,
 }) => {
   return (
     <div className="flex flex-col gap-1.5">
@@ -54,7 +57,11 @@ export const PhilippineContactInput = ({
         {label}
         {required && <span className="ml-1 text-[#B91C1C]">*</span>}
       </label>
-      <div className="group relative flex h-11 overflow-hidden rounded-lg border border-gray-300 bg-gray-50/50 transition-all duration-200 focus-within:border-[#B91C1C] focus-within:ring-2 focus-within:ring-[#B91C1C]/20">
+      <div
+        className={`group relative flex h-11 overflow-hidden rounded-lg border bg-gray-50/50 transition-all duration-200 focus-within:border-[#B91C1C] focus-within:ring-2 focus-within:ring-[#B91C1C]/20 ${
+          error ? "border-[#FCA5A5]" : "border-gray-300"
+        } ${disabled ? "bg-slate-100 opacity-75" : ""}`}
+      >
         <div className="flex shrink-0 items-center gap-2 border-r border-gray-300 bg-white px-3 text-sm font-medium text-gray-500 group-focus-within:bg-gray-50">
           <PhilippinesFlag />
           <span>+63</span>
@@ -68,9 +75,20 @@ export const PhilippineContactInput = ({
           maxLength={10}
           placeholder="912 345 6789"
           required={required}
-          className="min-w-0 flex-1 bg-transparent px-3 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+          disabled={disabled}
+          className="min-w-0 flex-1 bg-transparent px-3 text-sm text-gray-900 outline-none placeholder:text-gray-400 disabled:cursor-not-allowed disabled:text-slate-500"
         />
       </div>
+      {error && (
+        <p className="text-[10px] font-medium leading-relaxed text-[#B91C1C]">
+          {error}
+        </p>
+      )}
+      {helperText && (
+        <p className="text-[10px] leading-relaxed text-[#64748B]">
+          {helperText}
+        </p>
+      )}
     </div>
   );
 };

@@ -7,6 +7,10 @@ export default function FormInput({
   placeholder,
   required,
   readOnly,
+  helperText,
+  error,
+  className = "",
+  ...props
 }) {
   return (
     <div>
@@ -24,6 +28,7 @@ export default function FormInput({
         placeholder={placeholder}
         required={required}
         readOnly={readOnly}
+        {...props}
         className={`
           h-10 w-full rounded-lg
           border border-[#E5E7EB]
@@ -36,12 +41,28 @@ export default function FormInput({
           focus:ring-[#B91C1C]/[0.08]
 
           ${
+            error
+              ? "border-[#FCA5A5] bg-white focus:border-[#B91C1C] focus:ring-[#B91C1C]/10"
+              : ""
+          }
+          ${
             readOnly
               ? "cursor-not-allowed border-[#E5E7EB] bg-[#F1F5F9] text-[#64748B]"
               : "bg-[#F8FAFC] hover:border-[#CBD5E1]"
           }
+          ${className}
         `}
       />
+      {error && (
+        <p className="mt-1 text-[10px] font-medium leading-relaxed text-[#B91C1C]">
+          {error}
+        </p>
+      )}
+      {helperText && (
+        <p className="mt-1 text-[10px] leading-relaxed text-[#64748B]">
+          {helperText}
+        </p>
+      )}
     </div>
   );
 }

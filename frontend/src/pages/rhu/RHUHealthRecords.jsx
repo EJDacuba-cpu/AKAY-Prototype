@@ -11,12 +11,12 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  RefreshCw,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar, StatusBadge } from "../../components/common";
 import TableSkeleton from "../../components/common/loading/TableSkeleton";
-import RefreshingIndicator from "../../components/common/loading/RefreshingIndicator";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
   formatDisplayValue,
@@ -290,11 +290,6 @@ export default function RHUHealthRecords() {
       />
 
       <div className="min-w-0">
-        <RefreshingIndicator
-          show={isFetching && !loading}
-          label="Refreshing health records..."
-          className="mb-3"
-        />
         {loading ? (
           <TableSkeleton columns={8} rows={8} label="Loading health records..." />
         ) : filteredRecords.length === 0 ? (
@@ -316,6 +311,7 @@ export default function RHUHealthRecords() {
             setCurrentPage={setCurrentPage}
             openMenuId={openMenuId}
             setOpenMenuId={setOpenMenuId}
+            refreshing={isFetching && records.length > 0}
           />
         )}
       </div>
@@ -329,6 +325,7 @@ function RHUHealthRecordsTable({
   setCurrentPage,
   openMenuId,
   setOpenMenuId,
+  refreshing,
 }) {
   const totalPages = Math.max(1, Math.ceil(records.length / PER_PAGE));
   const startRecord =
@@ -345,6 +342,44 @@ function RHUHealthRecordsTable({
 
   return (
     <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
+      <style>
+        {`
+          @keyframes akayTableRefresh {
+            0% { transform: translateX(-110%); }
+            100% { transform: translateX(310%); }
+          }
+          .akay-table-refresh-bar {
+            animation: akayTableRefresh 1.15s ease-in-out infinite;
+          }
+        `}
+      </style>
+      <div className="flex items-center justify-between border-b border-[#F1F5F9] px-4 py-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-[#0F172A]">
+              Recent Health Records
+            </h2>
+            <span className="rounded-md border border-[#E5E7EB] bg-[#F8FAFC] px-2 py-1 text-[10px] font-semibold text-[#64748B]">
+              {records.length}
+            </span>
+            {refreshing && (
+              <RefreshCw
+                size={13}
+                className="animate-spin text-[#B91C1C]"
+                aria-label="Refreshing data"
+              />
+            )}
+          </div>
+          <p className="mt-1 text-xs text-[#9CA3AF]">
+            Patient visits, monitoring, consultations, and referral follow-ups.
+          </p>
+        </div>
+      </div>
+      {refreshing && (
+        <div className="h-[3px] overflow-hidden bg-red-50">
+          <div className="akay-table-refresh-bar h-full w-1/3 rounded-r-full bg-[#B91C1C]" />
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[980px] text-left text-[13px]">
           <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">

@@ -21,6 +21,7 @@ export default function ActionMenu({
   referralLabel = "Submit Referral",
   /* 2. BAGONG DEFAULT LABEL */
   editPatientLabel = "Edit Patient",
+  actions = [],
 }) {
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -188,6 +189,31 @@ export default function ActionMenu({
           >
             {referralLabel}
           </Link>
+        )}
+
+        {actions.map((action) =>
+          action.to ? (
+            <Link
+              key={action.label}
+              to={action.to}
+              onClick={closeMenu}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-semibold text-[#334155] transition-all duration-150 hover:bg-[#FEF2F2] hover:text-[#B91C1C] active:scale-[0.98]"
+            >
+              {action.label}
+            </Link>
+          ) : (
+            <button
+              key={action.label}
+              type="button"
+              onClick={() => {
+                closeMenu();
+                action.onClick?.();
+              }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-semibold text-[#334155] transition-all duration-150 hover:bg-[#FEF2F2] hover:text-[#B91C1C] active:scale-[0.98]"
+            >
+              {action.label}
+            </button>
+          ),
         )}
       </div>,
       document.body,

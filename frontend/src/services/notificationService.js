@@ -12,24 +12,73 @@ function emitUpdate() {
   }
 }
 
+function formatNotificationTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function normalizeNotification(notification = {}) {
   const isRead = Boolean(
     notification.is_read ?? notification.isRead ?? notification.read,
   );
+  const createdAt = notification.created_at || notification.createdAt || "";
+  const message = notification.message || notification.description || "";
+  const type = notification.type || "system";
+  const entityType = notification.entity_type || notification.entityType || "";
+  const entityId = notification.entity_id || notification.entityId || "";
+  const rawLink =
+    notification.link_url || notification.linkUrl || notification.link || "";
+  const isFollowUpNotification = [
+    "overdue_follow_up",
+    "follow_up_due_today",
+  ].includes(type);
+  const link =
+    isFollowUpNotification && entityId
+      ? buildFollowUpNotificationLink(type, entityId, rawLink)
+      : rawLink;
 
   return {
     ...notification,
     id: notification.id ? String(notification.id) : "",
     title: notification.title || "",
-    message: notification.message || notification.description || "",
-    description: notification.message || notification.description || "",
-    type: notification.type || "system",
+    message,
+    description: message,
+    type,
     isRead,
     read: isRead,
-    createdAt: notification.created_at || notification.createdAt || "",
+    createdAt,
+    timestamp: notification.timestamp || formatNotificationTime(createdAt),
+    sender: notification.sender || "AKAY",
+    link,
+    linkUrl: link,
+    entityType,
+    entityId,
     relatedReferralId:
       notification.related_referral_id || notification.relatedReferralId || "",
   };
+}
+
+function buildFollowUpNotificationLink(type, entityId, rawLink = "") {
+  const baseLink = rawLink && rawLink.includes("/bhc/follow-ups")
+    ? rawLink
+    : "/bhc/follow-ups";
+  const [path, query = ""] = baseLink.split("?");
+  const params = new URLSearchParams(query);
+
+  if (!params.get("task")) params.set("task", entityId);
+  if (!params.get("open")) {
+    params.set("open", type === "overdue_follow_up" ? "overdue" : "due");
+  }
+
+  return `${path}?${params.toString()}`;
 }
 
 export function normalizeRole(role = "") {

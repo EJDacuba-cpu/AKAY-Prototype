@@ -130,12 +130,33 @@ class ReferralController extends Controller
             'remarks' => 'Referral submitted.',
         ]);
 
-        $rhuUsers = User::where('role', User::ROLE_RHU_STAFF)
-            ->where('rural_health_unit_id', $referral->rural_health_unit_id)
-            ->where('status', User::STATUS_ACTIVE)
-            ->get();
+        $referral->loadMissing(['patient', 'barangayHealthCenter', 'ruralHealthUnit']);
+        $patientName = $this->patientName($referral);
+        $bhcName = $this->bhcName($referral);
 
-        $notifications->notifyUsers($rhuUsers, 'New referral submitted', "Referral {$referral->tracking_id} was submitted.", 'referral_submitted', $referral->id);
+        $notifications->notifyUsersOnce(
+            $this->rhuUsers($referral),
+            'New Incoming Referral',
+            "{$bhcName} sent a referral for {$patientName}.",
+            'incoming_referral',
+            $referral->id,
+            $this->rhuReferralLink($referral),
+            'referral',
+            $referral->id
+        );
+
+        $notifications->notifyUsersOnce(
+            $this->bhcUsers($referral),
+            'Referral Submitted',
+            'The referral was successfully sent to RHU.',
+            'referral_submitted',
+            $referral->id,
+            $this->bhcReferralLink($referral),
+            'referral',
+            $referral->id
+        );
+
+        // TODO: Add admin-level referral activity notifications once an admin referral destination page is defined.
         $auditLogger->log($request, 'submitted', 'referrals', "Submitted referral {$referral->tracking_id}.");
 
         return $this->storeResponse($referral, 201);
@@ -188,17 +209,47 @@ class ReferralController extends Controller
         ]);
 
         $referral->loadMissing(['patient', 'ruralHealthUnit']);
-        $patientName = $referral->patient?->full_name ?: 'The referred patient';
-        $rhuName = $referral->ruralHealthUnit?->name ?: 'the RHU';
-        $notificationTitle = 'Referral status updated';
-        $notificationMessage = "Referral {$referral->tracking_id} is now {$data['status']}.";
 
-        if ($request->user()->isRhuStaff() && $data['status'] === Referral::STATUS_RECEIVED) {
-            $notificationTitle = 'Patient checked in at RHU';
-            $notificationMessage = "{$patientName} has arrived and was checked in at {$rhuName}.";
+        if ($previous !== Referral::STATUS_RECEIVED && $data['status'] === Referral::STATUS_RECEIVED) {
+            $patientName = $this->patientName($referral);
+            $rhuName = $this->rhuName($referral);
+
+            $notifications->notifyUsersOnce(
+                $this->bhcUsers($referral),
+                'Referral Received by RHU',
+                "{$rhuName} has received the referral for {$patientName}.",
+                'referral_received_by_rhu',
+                $referral->id,
+                $this->bhcReferralLink($referral),
+                'referral_received',
+                $referral->id
+            );
+
+            if ($request->user()->isRhuStaff()) {
+                $notifications->notifyUsersOnce(
+                    $this->bhcUsers($referral),
+                    'Patient Checked In at RHU',
+                    "{$patientName} has arrived and was checked in at {$rhuName}.",
+                    'patient_checked_in_rhu',
+                    $referral->id,
+                    $this->bhcReferralLink($referral),
+                    'referral_check_in_bhc',
+                    $referral->id
+                );
+
+                $notifications->notifyUsersOnce(
+                    $this->rhuUsers($referral),
+                    'Patient Checked In',
+                    "{$patientName} is ready for referral processing.",
+                    'patient_checked_in',
+                    $referral->id,
+                    $this->rhuReferralLink($referral),
+                    'referral_check_in_rhu',
+                    $referral->id
+                );
+            }
         }
 
-        $notifications->notifyUser($referral->creator, $notificationTitle, $notificationMessage, 'referral_status', $referral->id);
         $auditLogger->log($request, 'status_updated', 'referrals', "Updated referral {$referral->tracking_id} to {$data['status']}.");
 
         return response()->json(['data' => $referral->fresh()->load(['patient', 'healthRecord', 'updates'])]);
@@ -248,5 +299,46 @@ class ReferralController extends Controller
             || ($request->user()->isRhuStaff() && $referral->rural_health_unit_id === $request->user()->rural_health_unit_id);
 
         abort_unless($allowed, 403, 'Referral is outside your assigned facility.');
+    }
+
+    private function bhcUsers(Referral $referral)
+    {
+        return User::where('role', User::ROLE_BHW)
+            ->where('barangay_health_center_id', $referral->barangay_health_center_id)
+            ->where('status', User::STATUS_ACTIVE)
+            ->get();
+    }
+
+    private function rhuUsers(Referral $referral)
+    {
+        return User::where('role', User::ROLE_RHU_STAFF)
+            ->where('rural_health_unit_id', $referral->rural_health_unit_id)
+            ->where('status', User::STATUS_ACTIVE)
+            ->get();
+    }
+
+    private function patientName(Referral $referral): string
+    {
+        return $referral->patient?->full_name ?: 'The referred patient';
+    }
+
+    private function bhcName(Referral $referral): string
+    {
+        return $referral->barangayHealthCenter?->name ?: 'BHC';
+    }
+
+    private function rhuName(Referral $referral): string
+    {
+        return $referral->ruralHealthUnit?->name ?: 'Rural Health Unit Bulakan';
+    }
+
+    private function bhcReferralLink(Referral $referral): string
+    {
+        return "/bhc/referrals/{$referral->tracking_id}";
+    }
+
+    private function rhuReferralLink(Referral $referral): string
+    {
+        return "/rhu/referrals/{$referral->tracking_id}";
     }
 }

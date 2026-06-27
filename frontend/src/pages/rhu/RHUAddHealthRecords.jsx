@@ -4,7 +4,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   ArrowLeft,
-  Baby,
   Check,
   ChevronDown,
   Clock,
@@ -12,7 +11,6 @@ import {
   Lock,
   Save,
   Search,
-  ShieldCheck,
   Stethoscope,
   Syringe,
   User,
@@ -95,6 +93,41 @@ const EMPTY_IMMUNIZATION_DATA = {
   mmr_dose1: false,
   mmr_dose2: false,
   feeding_status: "",
+  vaccineEntries: [
+    {
+      vaccineName: "",
+      customVaccineName: "",
+      dose: "",
+      dateGiven: "",
+      nextScheduleDate: "",
+      siteRoute: "",
+      reason: "",
+      remarks: "",
+    },
+  ],
+};
+
+const ADULT_IMMUNIZATION_MIN_AGE_YEARS = 18;
+const CHILD_VACCINE_OPTIONS = [
+  "BCG",
+  "Hepatitis B",
+  "Pentavalent",
+  "OPV",
+  "PCV",
+  "IPV",
+  "MMR",
+  "Vitamin A",
+  "Other",
+];
+const EMPTY_VACCINE_ENTRY = {
+  vaccineName: "",
+  customVaccineName: "",
+  dose: "",
+  dateGiven: "",
+  nextScheduleDate: "",
+  siteRoute: "",
+  reason: "",
+  remarks: "",
 };
 
 function normalizeRecordType(value) {
@@ -112,212 +145,92 @@ function normalizeRecordType(value) {
   return raw;
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   IMMUNIZATION — CONSTANTS & HELPERS
-   ═══════════════════════════════════════════════════════════════ */
-const VACCINE_FIELDS = [
-  "bcg_vaccine",
-  "hepb_birth",
-  "pentavalent_dose1",
-  "pentavalent_dose2",
-  "pentavalent_dose3",
-  "opv_dose1",
-  "opv_dose2",
-  "opv_dose3",
-  "ipv_dose1",
-  "ipv_dose2",
-  "pcv_dose1",
-  "pcv_dose2",
-  "pcv_dose3",
-  "mmr_dose1",
-  "mmr_dose2",
-];
-
-const VACCINE_SERIES = {
-  pentavalent: ["pentavalent_dose1", "pentavalent_dose2", "pentavalent_dose3"],
-  opv: ["opv_dose1", "opv_dose2", "opv_dose3"],
-  pcv: ["pcv_dose1", "pcv_dose2", "pcv_dose3"],
-  ipv: ["ipv_dose1", "ipv_dose2"],
-  mmr: ["mmr_dose1", "mmr_dose2"],
-};
-
-const VACCINE_TIMELINE = [
-  {
-    id: "birth",
-    label: "At Birth",
-    sublabel: "0 weeks",
-    vaccines: [
-      { field: "bcg_vaccine", label: "BCG Vaccine" },
-      { field: "hepb_birth", label: "Hep B Birth Dose" },
-    ],
-  },
-  {
-    id: "week6",
-    label: "6 Weeks",
-    sublabel: "1.5 months",
-    vaccines: [
-      { field: "pentavalent_dose1", label: "Pentavalent Dose 1" },
-      { field: "opv_dose1", label: "OPV Dose 1" },
-      { field: "pcv_dose1", label: "PCV Dose 1" },
-      { field: "ipv_dose1", label: "IPV Dose 1" },
-    ],
-  },
-  {
-    id: "week10",
-    label: "10 Weeks",
-    sublabel: "2.5 months",
-    vaccines: [
-      { field: "pentavalent_dose2", label: "Pentavalent Dose 2" },
-      { field: "opv_dose2", label: "OPV Dose 2" },
-      { field: "pcv_dose2", label: "PCV Dose 2" },
-    ],
-  },
-  {
-    id: "week14",
-    label: "14 Weeks",
-    sublabel: "3.5 months",
-    vaccines: [
-      { field: "pentavalent_dose3", label: "Pentavalent Dose 3" },
-      { field: "opv_dose3", label: "OPV Dose 3" },
-      { field: "pcv_dose3", label: "PCV Dose 3" },
-      { field: "ipv_dose2", label: "IPV Dose 2" },
-    ],
-  },
-  {
-    id: "month9",
-    label: "9 Months",
-    sublabel: "36 weeks",
-    vaccines: [{ field: "mmr_dose1", label: "MMR Dose 1" }],
-  },
-  {
-    id: "month12",
-    label: "12–15 Months",
-    sublabel: "Catch-up",
-    vaccines: [{ field: "mmr_dose2", label: "MMR Dose 2" }],
-  },
-];
-
-function isVaccineEligible(field, data) {
-  for (const seriesFields of Object.values(VACCINE_SERIES)) {
-    const index = seriesFields.indexOf(field);
-    if (index === -1) continue;
-    return seriesFields
-      .slice(0, index)
-      .every((previousField) => data[previousField]);
-  }
-  return true;
-}
-
-function getTimelineOrder(field) {
-  for (
-    let groupIndex = 0;
-    groupIndex < VACCINE_TIMELINE.length;
-    groupIndex += 1
-  ) {
-    const vaccineIndex = VACCINE_TIMELINE[groupIndex].vaccines.findIndex(
-      (vaccine) => vaccine.field === field,
-    );
-    if (vaccineIndex !== -1) return groupIndex * 100 + vaccineIndex;
-  }
-  return -1;
-}
-
-function getVaccineStatus(field, data) {
-  if (data[field]) return "administered";
-  if (!isVaccineEligible(field, data)) return "locked";
-
-  const currentOrder = getTimelineOrder(field);
-  const hasLaterChecked = VACCINE_TIMELINE.some((group) =>
-    group.vaccines.some(
-      (vaccine) =>
-        getTimelineOrder(vaccine.field) > currentOrder && data[vaccine.field],
-    ),
-  );
-
-  return hasLaterChecked ? "behind" : "upcoming";
-}
-
-function applyAutomation(data) {
-  const next = { ...data };
-
-  for (const seriesFields of Object.values(VACCINE_SERIES)) {
-    const highestCheckedIndex = seriesFields.reduce(
-      (highest, field, index) => (next[field] ? index : highest),
-      -1,
-    );
-
-    if (highestCheckedIndex > 0) {
-      for (let i = 0; i < highestCheckedIndex; i += 1) {
-        next[seriesFields[i]] = true;
-      }
-    }
-  }
-
-  return next;
-}
-
-function getNextInSchedule(data) {
-  for (const group of VACCINE_TIMELINE) {
-    for (const vaccine of group.vaccines) {
-      if (getVaccineStatus(vaccine.field, data) === "behind") {
-        return { ...vaccine, groupLabel: group.label, priority: "behind" };
-      }
-    }
-  }
-
-  for (const group of VACCINE_TIMELINE) {
-    for (const vaccine of group.vaccines) {
-      if (getVaccineStatus(vaccine.field, data) === "upcoming") {
-        return { ...vaccine, groupLabel: group.label, priority: "upcoming" };
-      }
-    }
-  }
-
-  return null;
-}
-
-function isFIC(data) {
-  return VACCINE_FIELDS.every((field) => data[field]);
-}
-
-function getImmunizationStats(data) {
-  const completed = VACCINE_FIELDS.filter((field) => data[field]).length;
-  const total = VACCINE_FIELDS.length;
-  const remaining = total - completed;
-  const pct = Math.round((completed / total) * 100);
-  return { completed, remaining, total, pct };
-}
-
 function normalizePatientStatus(status) {
   const value = String(status || "").trim();
+  const compact = value
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  if (["Follow-up", "Follow Up", "Follow-up Required"].includes(value)) {
+  if (!compact) return "Routine Monitoring";
+  if (["routine monitoring", "routine", "monitoring"].includes(compact)) {
+    return "Routine Monitoring";
+  }
+  if (["follow up", "follow up required", "follow up after 2 days"].includes(compact)) {
     return "Follow-up Required";
   }
-
-  if (["Completed", "Complete", "Recovered", "Closed"].includes(value)) {
+  if (["completed", "complete", "recovered", "closed"].includes(compact)) {
     return "Completed";
   }
-
-  if (
-    ["For Monitoring", "Active", "Monitoring", "For Referral"].includes(value)
-  ) {
+  if (["needs referral", "for referral", "referral"].includes(compact)) {
     return "Routine Monitoring";
   }
 
   return value || "Routine Monitoring";
 }
 
-function getTimelineNodeStatus(group, data) {
-  const statuses = group.vaccines.map((vaccine) =>
-    getVaccineStatus(vaccine.field, data),
-  );
-  if (statuses.every((status) => status === "administered")) return "completed";
-  if (statuses.some((status) => status === "administered"))
-    return "in-progress";
-  return "pending";
+function calculateAgeInYears(birthdate, referenceDate = new Date()) {
+  if (!birthdate) return null;
+  const birth = new Date(birthdate);
+  const reference = new Date(referenceDate);
+  if (Number.isNaN(birth.getTime()) || Number.isNaN(reference.getTime())) {
+    return null;
+  }
+
+  let age = reference.getFullYear() - birth.getFullYear();
+  const monthDelta = reference.getMonth() - birth.getMonth();
+  if (
+    monthDelta < 0 ||
+    (monthDelta === 0 && reference.getDate() < birth.getDate())
+  ) {
+    age -= 1;
+  }
+  return age;
 }
 
+function getPatientAgeInYears(patient, referenceDate) {
+  if (!patient) return null;
+  const birthdate =
+    patient.birthdate ||
+    patient.birthDate ||
+    patient.dateOfBirth ||
+    patient.date_of_birth ||
+    patient.dob;
+  const ageFromBirthdate = calculateAgeInYears(birthdate, referenceDate);
+  if (ageFromBirthdate !== null) return ageFromBirthdate;
+
+  const ageText = String(patient.age || patient.ageSex || "").trim();
+  const ageMatch = ageText.match(/\d+(?:\.\d+)?/);
+  return ageMatch ? Number(ageMatch[0]) : null;
+}
+
+function getImmunizationPatientMode(patient, referenceDate) {
+  const age = getPatientAgeInYears(patient, referenceDate);
+  if (age === null) return { age: null, mode: "unknown" };
+  return {
+    age,
+    mode: age >= ADULT_IMMUNIZATION_MIN_AGE_YEARS ? "adult" : "child",
+  };
+}
+
+function getAdultImmunizationMessage(age) {
+  const ageText = Number.isFinite(age) ? `${age}` : "18 or more";
+  return `Immunization records are intended for child vaccination schedule entries. This patient is recorded as ${ageText} years old. Please choose another classification.`;
+}
+
+function getVaccineEntries(data) {
+  const entries = Array.isArray(data?.vaccineEntries)
+    ? data.vaccineEntries
+    : Array.isArray(data?.vaccinesGiven)
+      ? data.vaccinesGiven
+      : [];
+  return entries;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   IMMUNIZATION — CONSTANTS & HELPERS
+   ═══════════════════════════════════════════════════════════════ */
 /* ═══════════════════════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════ */
@@ -352,6 +265,7 @@ export default function AddHealthRecord() {
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const dropdownRef = useRef(null);
   const inputRef = useRef(null);
+  const classificationRef = useRef(null);
 
   const [dateOfVisit, setDateOfVisit] = useState(
     new Date().toISOString().split("T")[0],
@@ -715,6 +629,21 @@ export default function AddHealthRecord() {
         title: "Invalid Classification",
         message:
           "Maternal records are for pregnancy or prenatal consultations. This patient is recorded as male. Please choose another classification.",
+        onClose: () => classificationRef.current?.focus(),
+      });
+      return;
+    }
+
+    if (
+      normalizedNextType === "Immunization" &&
+      immunizationPatientInfo.mode === "adult"
+    ) {
+      resetClassificationSpecificState();
+      setNoticeModal({
+        title: "Invalid Classification",
+        message: getAdultImmunizationMessage(immunizationPatientInfo.age),
+        onClose: () => classificationRef.current?.focus(),
+        buttonLabel: "Okay",
       });
       return;
     }
@@ -722,8 +651,12 @@ export default function AddHealthRecord() {
     setHealthRecordType(nextType);
   }
 
-  const immunizationFIC = useMemo(
-    () => isFIC(immunizationData),
+  const immunizationPatientInfo = useMemo(
+    () => getImmunizationPatientMode(selectedPatient, dateOfVisit),
+    [selectedPatient, dateOfVisit],
+  );
+  const immunizationVaccineEntries = useMemo(
+    () => getVaccineEntries(immunizationData),
     [immunizationData],
   );
 
@@ -785,8 +718,41 @@ export default function AddHealthRecord() {
 
   function handleVaccineChange(field, value) {
     setImmunizationData((prev) => {
-      const updated = { ...prev, [field]: value };
-      return typeof value === "boolean" ? applyAutomation(updated) : updated;
+      return { ...prev, [field]: value };
+    });
+  }
+
+  function handleVaccineEntryChange(index, field, value) {
+    setImmunizationData((prev) => {
+      const entries = getVaccineEntries(prev).map((entry, entryIndex) =>
+        entryIndex === index ? { ...entry, [field]: value } : entry,
+      );
+      return {
+        ...prev,
+        vaccineEntries: entries,
+        vaccinesGiven: entries,
+      };
+    });
+  }
+
+  function handleVaccineToggle(vaccineName, checked) {
+    setImmunizationData((prev) => {
+      const existingEntries = getVaccineEntries(prev);
+      const entries = checked
+        ? [
+            ...existingEntries,
+            {
+              ...EMPTY_VACCINE_ENTRY,
+              vaccineName,
+              dateGiven: dateOfVisit,
+            },
+          ]
+        : existingEntries.filter((entry) => entry.vaccineName !== vaccineName);
+      return {
+        ...prev,
+        vaccineEntries: entries,
+        vaccinesGiven: entries,
+      };
     });
   }
 
@@ -868,6 +834,96 @@ export default function AddHealthRecord() {
       return;
     }
 
+    if (
+      !isFollowUp &&
+      effectiveHealthRecordType === "Immunization" &&
+      immunizationPatientInfo.mode === "adult"
+    ) {
+      setHealthRecordType("");
+      setNoticeModal({
+        title: "Invalid Classification",
+        message: getAdultImmunizationMessage(immunizationPatientInfo.age),
+        onClose: () => classificationRef.current?.focus(),
+        buttonLabel: "Okay",
+      });
+      return;
+    }
+
+    const preparedVaccineEntries = immunizationVaccineEntries.map((entry) => ({
+      ...entry,
+      vaccineName:
+        entry.vaccineName === "Other"
+          ? entry.customVaccineName || entry.vaccineName
+          : entry.vaccineName,
+      dateGiven: entry.dateGiven || dateOfVisit,
+    }));
+    const preparedImmunizationData = {
+      ...immunizationData,
+      patientAgeYears: immunizationPatientInfo.age,
+      immunizationFormType: "child",
+      vaccineEntries: preparedVaccineEntries,
+      vaccinesGiven: preparedVaccineEntries,
+    };
+
+    if (!isFollowUp && effectiveHealthRecordType === "Immunization") {
+      const missingRequiredVaccineDetails = preparedVaccineEntries.some(
+        (entry) =>
+          !String(entry.vaccineName || "").trim() ||
+          !String(entry.dose || "").trim() ||
+          !String(entry.dateGiven || "").trim(),
+      );
+
+      if (preparedVaccineEntries.length === 0) {
+        setNoticeModal({
+          title: "Vaccine Required",
+          message: "Please select at least one vaccine before saving.",
+        });
+        return;
+      }
+
+      if (missingRequiredVaccineDetails) {
+        setNoticeModal({
+          title: "Vaccine Details Required",
+          message:
+            "Please complete the vaccine name, dose, and date given for each selected vaccine.",
+        });
+        return;
+      }
+    }
+
+    const immunizationNextScheduleDate =
+      preparedVaccineEntries.find((entry) => entry.nextScheduleDate)
+        ?.nextScheduleDate || "";
+    const effectiveFollowUpDate =
+      showFollowUpMonitoringFields && !followUpDate && immunizationNextScheduleDate
+        ? immunizationNextScheduleDate
+        : followUpDate;
+
+    if (
+      !isFollowUp &&
+      effectiveHealthRecordType === "Immunization" &&
+      showFollowUpMonitoringFields &&
+      !followUpDate &&
+      immunizationNextScheduleDate
+    ) {
+      setFollowUpDate(immunizationNextScheduleDate);
+    }
+
+    if (
+      !isFollowUp &&
+      effectiveHealthRecordType === "Immunization" &&
+      showFollowUpMonitoringFields &&
+      !followUpDate &&
+      !immunizationNextScheduleDate
+    ) {
+      setNoticeModal({
+        title: "Follow-up Date Required",
+        message:
+          "Please enter a follow-up date or next schedule date for Follow-up Required status.",
+      });
+      return;
+    }
+
     const finalChiefComplaint =
       isFollowUp && !chiefComplaint
         ? `Follow-up visit: ${
@@ -929,8 +985,8 @@ export default function AddHealthRecord() {
         initialActionsTaken: medication,
         attendingStaff,
         consultationNotes,
-        followUpStatus: finalPatientStatus,
-        followUpDate: showFollowUpMonitoringFields ? followUpDate : "",
+      followUpStatus: finalPatientStatus,
+      followUpDate: showFollowUpMonitoringFields ? effectiveFollowUpDate : "",
         monitoringNotes,
         patientCondition:
           isFollowUp || showFollowUpMonitoringFields ? patientCondition : "",
@@ -947,7 +1003,7 @@ export default function AddHealthRecord() {
         tpal: recordMaternalData.tpal || null,
         expectedDeliveryDate,
         aog,
-        immunizationData,
+      immunizationData: preparedImmunizationData,
         linkedTrackingId,
         previousRecordId: isFollowUp ? recordId : "",
         status: finalPatientStatus,
@@ -1113,6 +1169,7 @@ export default function AddHealthRecord() {
               <FieldSelect
                 label="Classification"
                 value={healthRecordType}
+                ref={classificationRef}
                 onChange={handleClassificationChange}
                 required
               >
@@ -1297,70 +1354,81 @@ export default function AddHealthRecord() {
         {!isFollowUp && !patientGateLocked && isImmunization && (
           <FormSection
             title="Classification-Specific Assessment"
-            subtitle="Immunization record tracker for vaccine schedule entries."
+            subtitle="Record vaccines given as part of this health record visit."
             icon={<Syringe size={14} />}
             delay={2}
           >
             <ClassificationSectionIntro
-              title="Immunization Record Tracker"
-              description="Record vaccine schedule details for this immunization visit."
+              title="Child Immunization Details"
+              description="Select the vaccines given during this immunization visit."
             />
-            <div className="mb-5 grid gap-4 lg:grid-cols-2">
-              <ImmunizationSummaryCard data={immunizationData} />
-              {immunizationFIC ? (
-                <FICCard />
-              ) : (
-                <ScheduleStatusPanel data={immunizationData} />
+            <ImmunizationVisitFields
+              ageInfo={immunizationPatientInfo}
+              entries={immunizationVaccineEntries}
+              dateOfVisit={dateOfVisit}
+              feedingStatus={immunizationData.feeding_status}
+              consultationNotes={consultationNotes}
+              onFeedingStatusChange={(value) =>
+                handleVaccineChange("feeding_status", value)
+              }
+              onEntryChange={handleVaccineEntryChange}
+              onToggleVaccine={handleVaccineToggle}
+              onNotesChange={setConsultationNotes}
+            />
+          </FormSection>
+        )}
+
+        {!isFollowUp && !patientGateLocked && isImmunization && (
+          <FormSection
+            title="Patient Monitoring"
+            subtitle="Set the immunization visit outcome and follow-up schedule if another dose is needed."
+            icon={<HeartPulse size={14} />}
+            delay={3}
+          >
+            <div
+              className={`grid gap-4 ${
+                showFollowUpMonitoringFields ? "lg:grid-cols-3" : "lg:grid-cols-2"
+              }`}
+            >
+              <FieldSelect
+                label="Patient Status"
+                value={followUpStatus}
+                onChange={(event) => handlePatientStatusChange(event.target.value)}
+              >
+                <option>Routine Monitoring</option>
+                <option>Follow-up Required</option>
+                <option>Completed</option>
+              </FieldSelect>
+              {showFollowUpMonitoringFields && (
+                <FieldInput
+                  label="Follow-up Date"
+                  type="date"
+                  value={followUpDate}
+                  onChange={(event) => setFollowUpDate(event.target.value)}
+                />
+              )}
+              {showFollowUpMonitoringFields && (
+                <FieldSelect
+                  label="Current Condition"
+                  value={patientCondition}
+                  onChange={(event) => setPatientCondition(event.target.value)}
+                  required
+                >
+                  <option value="">Select condition</option>
+                  <option>Improving</option>
+                  <option>Stable</option>
+                  <option>No Improvement Observed</option>
+                  <option>Needs Further Review</option>
+                  <option>Recovered</option>
+                </FieldSelect>
               )}
             </div>
-
-            <div className="mb-6 max-w-sm">
-              <FieldSelect
-                label="Feeding Status"
-                value={immunizationData.feeding_status}
-                onChange={(event) =>
-                  handleVaccineChange("feeding_status", event.target.value)
-                }
-              >
-                <option value="">Select status</option>
-                <option>Breastfeeding</option>
-                <option>Formula Milk</option>
-                <option>Mixed Feeding</option>
-              </FieldSelect>
-            </div>
-
-            <div className="rounded-2xl border border-[#F0F0F0] bg-[#FCFCFC] p-5">
-              <div className="mb-5 flex items-center gap-2.5">
-                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-red-50">
-                  <Syringe size={11} className="text-[#B91C1C]" />
-                </div>
-                <div>
-                  <h3 className="text-[11px] font-bold tracking-wide text-[#1F2937]">
-                    Vaccine Schedule
-                  </h3>
-                  <p className="text-[9px] text-[#C9C9C9]">
-                    Based on the standard immunization schedule
-                  </p>
-                </div>
-              </div>
-              <VaccineTimeline
-                data={immunizationData}
-                onChange={handleVaccineChange}
-              />
-            </div>
-
-            <p className="mt-3 text-center text-[9px] text-[#D4D4D4]">
-              <Lock size={8} className="mr-1 inline-block -mt-px" />
-              Checking a higher dose automatically fills in previous doses in
-              the same series.
-            </p>
-
-            <div className="mt-5">
+            <div className="mt-4">
               <FieldTextarea
-                label="Remarks / Notes"
-                value={consultationNotes}
-                onChange={(event) => setConsultationNotes(event.target.value)}
-                placeholder="Write immunization notes, guardian remarks, or post-vaccination observations..."
+                label={monitoringNotesLabel}
+                value={monitoringNotes}
+                onChange={(event) => setMonitoringNotes(event.target.value)}
+                placeholder={monitoringNotesPlaceholder}
                 rows={3}
               />
             </div>
@@ -1720,11 +1788,9 @@ export default function AddHealthRecord() {
               <div className="mt-5 flex justify-end">
                 <button
                   type="button"
-                  onClick={() => setNoticeModal(null)}
+                  onClick={() => { const onClose = noticeModal.onClose; setNoticeModal(null); onClose?.(); }}
                   className="rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
-                >
-                  OK
-                </button>
+                >{noticeModal.buttonLabel || "OK"}</button>
               </div>
             </div>
           </div>
@@ -2158,6 +2224,149 @@ function MaternalClassificationWarning() {
   );
 }
 
+function ImmunizationVisitFields({
+  ageInfo,
+  entries,
+  dateOfVisit,
+  feedingStatus,
+  consultationNotes,
+  onFeedingStatusChange,
+  onEntryChange,
+  onToggleVaccine,
+  onNotesChange,
+}) {
+  const showAgeWarning = ageInfo.mode === "unknown";
+  const selectedVaccines = new Set(entries.map((entry) => entry.vaccineName));
+
+  return (
+    <div className="space-y-5">
+      {showAgeWarning && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
+          <AlertCircle size={16} className="mt-0.5 shrink-0" />
+          <p className="text-xs leading-relaxed">
+            Patient age is not available. Please verify the patient's
+            birthdate before recording immunization details.
+          </p>
+        </div>
+      )}
+
+      <ClinicalFieldGroup title="Vaccines Given This Visit">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {CHILD_VACCINE_OPTIONS.map((vaccineName) => {
+            const checked = selectedVaccines.has(vaccineName);
+            return (
+              <label
+                key={vaccineName}
+                className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${
+                  checked
+                    ? "border-[#FECACA] bg-[#FEF2F2] text-[#991B1B]"
+                    : "border-[#E8ECF0] bg-white text-[#475569] hover:border-[#D1D5DB]"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(event) =>
+                    onToggleVaccine(vaccineName, event.target.checked)
+                  }
+                  className="h-4 w-4 rounded border-[#D1D5DB] text-[#B91C1C] focus:ring-[#B91C1C]"
+                />
+                <span>{vaccineName}</span>
+              </label>
+            );
+          })}
+        </div>
+
+        {entries.length === 0 ? (
+          <p className="mt-4 rounded-xl border border-dashed border-[#E5E7EB] bg-white px-4 py-3 text-xs text-[#64748B]">
+            Select at least one vaccine given during this visit.
+          </p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {entries.map((entry, index) => (
+              <div
+                key={entry.vaccineName || `vaccine-entry-${index}`}
+                className="rounded-xl border border-[#E8ECF0] bg-white p-4"
+              >
+                <p className="mb-3 text-xs font-bold text-[#1F2937]">
+                  {entry.vaccineName}
+                </p>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {entry.vaccineName === "Other" && (
+                    <FieldInput
+                      label="Specify Vaccine"
+                      required
+                      value={entry.customVaccineName || ""}
+                      onChange={(event) =>
+                        onEntryChange(index, "customVaccineName", event.target.value)
+                      }
+                      placeholder="Enter vaccine name"
+                    />
+                  )}
+                  <FieldInput
+                    label="Dose"
+                    required
+                    value={entry.dose}
+                    onChange={(event) =>
+                      onEntryChange(index, "dose", event.target.value)
+                    }
+                    placeholder="e.g. 1st dose, 2nd dose, booster"
+                  />
+                  <FieldInput
+                    label="Date Given"
+                    type="date"
+                    required
+                    value={entry.dateGiven || dateOfVisit}
+                    onChange={(event) =>
+                      onEntryChange(index, "dateGiven", event.target.value)
+                    }
+                  />
+                  <FieldInput
+                    label="Next Schedule Date"
+                    type="date"
+                    value={entry.nextScheduleDate}
+                    onChange={(event) =>
+                      onEntryChange(index, "nextScheduleDate", event.target.value)
+                    }
+                  />
+                  <FieldInput
+                    label="Remarks"
+                    value={entry.remarks}
+                    onChange={(event) =>
+                      onEntryChange(index, "remarks", event.target.value)
+                    }
+                    placeholder="Optional remarks"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </ClinicalFieldGroup>
+
+      <div className="max-w-sm">
+        <FieldSelect
+          label="Feeding Status"
+          value={feedingStatus}
+          onChange={(event) => onFeedingStatusChange(event.target.value)}
+        >
+          <option value="">Select status</option>
+          <option>Breastfeeding</option>
+          <option>Formula Milk</option>
+          <option>Mixed Feeding</option>
+        </FieldSelect>
+      </div>
+
+      <FieldTextarea
+        label="Clinical Notes / Remarks"
+        value={consultationNotes}
+        onChange={(event) => onNotesChange(event.target.value)}
+        placeholder="Write immunization notes, guardian remarks, or post-vaccination observations..."
+        rows={3}
+      />
+    </div>
+  );
+}
 function FieldInput({ label, required, ...props }) {
   return (
     <div>
@@ -2243,322 +2452,6 @@ function BpInputGroup({
 /* ═══════════════════════════════════════════════════════════════
    IMMUNIZATION SUB-COMPONENTS
    ═══════════════════════════════════════════════════════════════ */
-function StatusChip({ status, compact }) {
-  const map = {
-    administered: {
-      label: "Administered",
-      bg: "bg-emerald-50",
-      text: "text-emerald-700",
-      icon: <Check size={compact ? 8 : 9} strokeWidth={3} />,
-    },
-    upcoming: {
-      label: "Upcoming",
-      bg: "bg-amber-50",
-      text: "text-amber-700",
-      icon: <Clock size={compact ? 8 : 9} />,
-    },
-    behind: {
-      label: "Behind Schedule",
-      bg: "bg-red-50",
-      text: "text-red-600",
-      icon: <X size={compact ? 8 : 9} strokeWidth={3} />,
-    },
-    locked: {
-      label: "Not Yet Available",
-      bg: "bg-gray-100",
-      text: "text-gray-400",
-      icon: <Lock size={compact ? 8 : 9} />,
-    },
-  };
-  const config = map[status];
-  if (!config) return null;
-  const size = compact
-    ? "rounded-md px-1.5 py-0.5 text-[9px]"
-    : "rounded-lg px-2 py-0.5 text-[10px]";
-  return (
-    <span
-      className={`inline-flex items-center gap-1 whitespace-nowrap font-semibold ${config.bg} ${config.text} ${size}`}
-    >
-      {config.icon}
-      {config.label}
-    </span>
-  );
-}
-
-function ImmunizationSummaryCard({ data }) {
-  const stats = getImmunizationStats(data);
-  const nextItem = getNextInSchedule(data);
-  const fic = isFIC(data);
-
-  return (
-    <div className="rounded-2xl border border-[#E8ECF0] bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between">
-        <div className="min-w-0">
-          <h3 className="text-sm font-bold text-[#1A1A1A]">
-            Immunization Record Summary
-          </h3>
-          <p className="mt-0.5 text-xs text-[#6B7280]">
-            <span className="font-semibold text-[#1F2937]">
-              {stats.completed}
-            </span>{" "}
-            vaccine
-            {stats.completed !== 1 ? "s" : ""} recorded
-            <span className="mx-1.5 text-[#D4D4D4]">·</span>
-            <span className="font-semibold text-[#1F2937]">
-              {stats.remaining}
-            </span>{" "}
-            in schedule
-          </p>
-        </div>
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50">
-          <Baby size={18} className="text-[#B91C1C]" />
-        </div>
-      </div>
-
-      <div className="mt-4">
-        <div className="mb-1.5 flex items-center justify-between">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-            Vaccine Count
-          </span>
-          <span
-            className={`text-sm font-bold tabular-nums ${fic ? "text-emerald-600" : "text-[#B91C1C]"}`}
-          >
-            {stats.completed} of {stats.total}
-          </span>
-        </div>
-        <div className="h-2 w-full overflow-hidden rounded-full bg-[#F3F4F6]">
-          <div
-            className={`h-full rounded-full transition-all duration-700 ease-out ${fic ? "bg-emerald-500" : "bg-[#B91C1C]"}`}
-            style={{ width: `${stats.pct}%` }}
-          />
-        </div>
-      </div>
-
-      {nextItem && !fic && (
-        <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2.5">
-          <Clock size={13} className="shrink-0 text-amber-600" />
-          <p className="min-w-0 text-[11px] leading-snug text-amber-800">
-            Next in schedule:{" "}
-            <span className="font-bold">{nextItem.label}</span>
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function FICCard() {
-  return (
-    <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5 shadow-sm">
-      <div className="flex items-center gap-3.5">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-100">
-          <ShieldCheck size={20} className="text-emerald-600" />
-        </div>
-        <div>
-          <h3 className="text-sm font-bold text-emerald-800">
-            Fully Immunized Child
-          </h3>
-          <p className="mt-0.5 text-xs leading-relaxed text-emerald-600">
-            All {VACCINE_FIELDS.length} vaccines in the schedule have been
-            recorded.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ScheduleStatusPanel({ data }) {
-  const nextItem = getNextInSchedule(data);
-  if (!nextItem || isFIC(data)) return null;
-
-  const isBehind = nextItem.priority === "behind";
-
-  return (
-    <div
-      className={`rounded-2xl border p-4 shadow-sm ${
-        isBehind
-          ? "border-red-200 bg-red-50/40"
-          : "border-amber-200 bg-amber-50/40"
-      }`}
-    >
-      <div className="mb-2.5 flex items-center gap-2">
-        <div
-          className={`flex h-6 w-6 items-center justify-center rounded-lg ${
-            isBehind ? "bg-red-100" : "bg-amber-100"
-          }`}
-        >
-          {isBehind ? (
-            <X size={12} className="text-red-600" strokeWidth={3} />
-          ) : (
-            <Clock size={12} className="text-amber-700" />
-          )}
-        </div>
-        <h4
-          className={`text-[10px] font-bold uppercase tracking-widest ${
-            isBehind ? "text-red-700" : "text-amber-800"
-          }`}
-        >
-          {isBehind ? "Behind Schedule" : "Next in Schedule"}
-        </h4>
-      </div>
-      <p
-        className={`text-sm font-bold ${isBehind ? "text-red-900" : "text-amber-900"}`}
-      >
-        {nextItem.label}
-      </p>
-      <p
-        className={`mt-1 text-xs leading-relaxed ${isBehind ? "text-red-700" : "text-amber-700"}`}
-      >
-        {isBehind
-          ? "A later vaccine in this series was recorded without this dose. Please verify with the immunization card."
-          : `Scheduled at ${nextItem.groupLabel}.`}
-      </p>
-    </div>
-  );
-}
-
-function SmartVaccineCheckbox({
-  label,
-  field,
-  checked,
-  status,
-  isNext,
-  isBehind,
-  onChange,
-}) {
-  const isLocked = status === "locked";
-
-  return (
-    <button
-      type="button"
-      onClick={() => !isLocked && onChange(field, !checked)}
-      disabled={isLocked}
-      className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all duration-200
-        ${isNext ? "anim-pulse-next border border-amber-200 bg-amber-50/70" : ""}
-        ${isBehind && !isNext ? "border border-red-200 bg-red-50/50" : ""}
-        ${checked && !isNext && !isBehind ? "bg-emerald-50/40" : ""}
-        ${!checked && !isNext && !isBehind ? "bg-[#FAFAFA] hover:bg-[#F5F5F5]" : ""}
-        ${isLocked ? "cursor-not-allowed opacity-50" : "cursor-pointer"}
-        ${!isNext && !isBehind ? "border border-transparent" : ""}
-      `}
-    >
-      <div
-        className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border transition-all duration-200 ${
-          checked
-            ? "border-[#B91C1C] bg-[#B91C1C]"
-            : "border-[#D4D4D4] bg-white group-hover:border-[#BFBFBF]"
-        }`}
-      >
-        {checked && <Check size={10} className="text-white" strokeWidth={3} />}
-      </div>
-      <span
-        className={`min-w-0 flex-1 text-xs font-medium ${checked ? "text-[#991B1B]" : "text-[#6B7280]"}`}
-      >
-        {label}
-      </span>
-      <StatusChip status={status} compact />
-      {isNext && (
-        <span className="shrink-0 rounded-md bg-amber-100 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-widest text-amber-700">
-          Next
-        </span>
-      )}
-      {isBehind && !isNext && (
-        <span className="shrink-0 rounded-md bg-red-100 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-widest text-red-700">
-          Behind
-        </span>
-      )}
-    </button>
-  );
-}
-
-function VaccineTimelineNode({ group, data, nextField, onChange }) {
-  const nodeStatus = getTimelineNodeStatus(group, data);
-  const doneCount = group.vaccines.filter(
-    (vaccine) => data[vaccine.field],
-  ).length;
-  const totalCount = group.vaccines.length;
-
-  const dotStyles = {
-    completed: "border-emerald-500 bg-emerald-500",
-    "in-progress": "border-amber-500 bg-amber-500",
-    pending: "border-[#D4D4D4] bg-white",
-  };
-
-  const nodeChip = {
-    completed: {
-      label: "Completed",
-      bg: "bg-emerald-50",
-      text: "text-emerald-700",
-    },
-    "in-progress": {
-      label: `${doneCount}/${totalCount}`,
-      bg: "bg-amber-50",
-      text: "text-amber-700",
-    },
-    pending: { label: "Pending", bg: "bg-gray-100", text: "text-gray-400" },
-  };
-  const chip = nodeChip[nodeStatus];
-
-  return (
-    <div className="relative pb-7 last:pb-0">
-      <div
-        className={`absolute left-[-22px] top-[8px] h-3 w-3 rounded-full border-2 transition-colors duration-300 ${dotStyles[nodeStatus]}`}
-      />
-      <div className="mb-2.5 flex items-center gap-2.5">
-        <h3 className="text-xs font-bold tracking-wide text-[#1F2937]">
-          {group.label}
-        </h3>
-        <span className="text-[10px] font-medium text-[#C9C9C9]">
-          {group.sublabel}
-        </span>
-        <span
-          className={`ml-auto rounded-lg px-2 py-0.5 text-[10px] font-semibold ${chip.bg} ${chip.text}`}
-        >
-          {chip.label}
-        </span>
-      </div>
-      <div className="space-y-1.5">
-        {group.vaccines.map((vaccine) => {
-          const status = getVaccineStatus(vaccine.field, data);
-          return (
-            <SmartVaccineCheckbox
-              key={vaccine.field}
-              label={vaccine.label}
-              field={vaccine.field}
-              checked={data[vaccine.field]}
-              status={status}
-              isNext={vaccine.field === nextField}
-              isBehind={status === "behind"}
-              onChange={onChange}
-            />
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function VaccineTimeline({ data, onChange }) {
-  const nextItem = getNextInSchedule(data);
-  const nextField = nextItem?.field || null;
-
-  return (
-    <div className="relative ml-1 pl-6">
-      <div className="absolute left-[-0.5px] top-2 bottom-2 w-px bg-[#E8ECF0]" />
-      {VACCINE_TIMELINE.map((group) => (
-        <VaccineTimelineNode
-          key={group.id}
-          group={group}
-          data={data}
-          nextField={nextField}
-          onChange={onChange}
-        />
-      ))}
-    </div>
-  );
-}
-
 /* ═══════════════════════════════════════════════════════════════
    PATIENT DISPLAY HELPERS
    ═══════════════════════════════════════════════════════════════ */

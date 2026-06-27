@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class HealthRecord extends Model
 {
@@ -50,5 +52,15 @@ class HealthRecord extends Model
     public function parentRecord(): BelongsTo
     {
         return $this->belongsTo(self::class, 'parent_health_record_id');
+    }
+
+    public function followUpTask(): HasOne
+    {
+        return $this->hasOne(FollowUpTask::class);
+    }
+
+    public function childRecords(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_health_record_id');
     }
 }

@@ -45,6 +45,11 @@ export const menuByRole = {
           path: "/bhc/health-records",
           icon: FileText,
         },
+        {
+          label: "Follow-ups",
+          path: "/bhc/follow-ups",
+          icon: CalendarDays,
+        },
         { label: "Referrals", path: "/bhc/referrals", icon: ClipboardList },
       ],
     },
@@ -107,7 +112,7 @@ export const menuByRole = {
 };
 
 export const roleLabel = {
-  admin: "Municipal Health Officer",
-  bhc: "Barangay Health Worker",
-  rhu: "Rural Health Unit",
+  admin: "Admin / MHO",
+  bhc: "BHC Worker",
+  rhu: "RHU Staff",
 };
