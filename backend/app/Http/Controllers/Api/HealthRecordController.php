@@ -57,6 +57,7 @@ class HealthRecordController extends Controller
         $patient = Patient::findOrFail($data['patient_id']);
         $this->authorizePatient($request, $patient);
         $this->normalizeVisitTypeData($request, $data, true);
+        $this->normalizeMaternalSupplements($request, $data);
 
         $data['created_by'] = $request->user()->id;
         $data['barangay_health_center_id'] = $patient->barangay_health_center_id;
@@ -104,6 +105,7 @@ class HealthRecordController extends Controller
         $this->authorizeRecord($request, $healthRecord);
         $data = $request->validated();
         $this->normalizeVisitTypeData($request, $data);
+        $this->normalizeMaternalSupplements($request, $data);
         $healthRecord->update($data);
         $followUpTasks->syncRecord($healthRecord->fresh(), $request->user());
         $auditLogger->log($request, 'updated', 'health_records', "Updated health record {$healthRecord->id}.");
@@ -175,6 +177,34 @@ class HealthRecordController extends Controller
         if ($data['visit_type'] === 'initial_consultation') {
             $data['parent_health_record_id'] = null;
         }
+    }
+
+    private function normalizeMaternalSupplements(Request $request, array &$data): void
+    {
+        if (! array_key_exists('maternal_data', $data) || ! is_array($data['maternal_data'])) {
+            return;
+        }
+
+        $supplements = $data['maternal_data']['supplements_given'] ?? null;
+        if (! is_array($supplements)) {
+            return;
+        }
+
+        $user = $request->user();
+        $data['maternal_data']['supplements_given'] = array_values(array_map(
+            fn (array $supplement): array => [
+                ...$supplement,
+                'supplement_type' => $supplement['supplement_type'] ?? '',
+                'supplement_name' => $supplement['supplement_name'] ?? '',
+                'quantity' => $supplement['quantity'] ?? null,
+                'unit' => $supplement['unit'] ?? '',
+                'date_given' => $supplement['date_given'] ?? null,
+                'remarks' => $supplement['remarks'] ?? '',
+                'given_by_id' => $supplement['given_by_id'] ?? $user?->id,
+                'given_by_name' => $supplement['given_by_name'] ?? $user?->name,
+            ],
+            $supplements
+        ));
     }
 
     private function healthRecordStatus(HealthRecord $record): string

@@ -244,6 +244,8 @@ export default function PatientDetails() {
     ? safeReferrals
     : safeReferrals.slice(0, 5);
   const latestRecord = safeRecords[0] || null;
+  const maternalSupplementHistory = getMaternalSupplementHistory(safeRecords);
+  const hasMaternalRecords = safeRecords.some(isMaternalHealthRecord);
 
   const isUnderMonitoring = safeRecords.some(
     (r) =>
@@ -497,6 +499,20 @@ export default function PatientDetails() {
                     </div>
                   )}
                 </SideCard>
+                {(hasMaternalRecords ||
+                  maternalSupplementHistory.length > 0) && (
+                  <SideCard
+                    title="Vitamins / Supplements History"
+                    subtitle="Maternal supplement distribution recorded during visits."
+                    icon={<CalendarDays size={14} />}
+                  >
+                    <div className="mt-5">
+                      <MaternalSupplementHistory
+                        supplements={maternalSupplementHistory}
+                      />
+                    </div>
+                  </SideCard>
+                )}
               </div>
               <aside className="space-y-6">
                 <SideCard title="Address & Contact" icon={<MapPin size={14} />}>
@@ -810,6 +826,70 @@ function TabErrorState({ message }) {
   );
 }
 
+function MaternalSupplementHistory({ supplements }) {
+  if (!supplements.length) {
+    return (
+      <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/30 px-4 py-6 text-center">
+        <p className="text-xs text-slate-400">
+          No vitamins or supplements were recorded for this patient.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {supplements.map((item, index) => (
+        <div
+          key={`${item.recordId || "record"}-${item.supplement_type}-${index}`}
+          className="rounded-xl border border-pink-100 bg-pink-50/30 p-4"
+        >
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-sm font-bold text-[#0F172A]">
+                {item.supplement_name || "Supplement"}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {formatDisplayValue(item.quantity, "Not recorded")}{" "}
+                {formatDisplayValue(item.unit, "")}
+              </p>
+            </div>
+            <span className="w-fit rounded-lg border border-pink-100 bg-white px-2.5 py-1 text-[11px] font-semibold text-pink-700">
+              {formatDate(item.date_given, "Date not recorded")}
+            </span>
+          </div>
+          <div className="mt-3 grid gap-3 text-xs md:grid-cols-2">
+            <PatientDetailItem
+              label="Visit Date"
+              value={item.visitDate || "Not recorded"}
+            />
+            <PatientDetailItem
+              label="Weeks AOG"
+              value={item.aog || "Not recorded"}
+            />
+            <PatientDetailItem
+              label="Given By"
+              value={item.given_by_name || "Not recorded"}
+            />
+            <PatientDetailItem
+              label="Remarks"
+              value={item.remarks || "Not recorded"}
+            />
+          </div>
+          {item.recordId && (
+            <Link
+              to={`/bhc/health-records/${item.recordId}`}
+              className="mt-3 inline-flex text-xs font-semibold text-[#B91C1C] transition hover:text-[#7F1D1D] hover:underline"
+            >
+              View health record
+            </Link>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function LatestConsultationSummary({ record, basePath }) {
   if (!record) {
     return (
@@ -897,6 +977,49 @@ function InlineDetailSelect({ label, required, children, ...props }) {
       </select>
     </div>
   );
+}
+
+function isMaternalHealthRecord(record = {}) {
+  return (
+    String(
+      record.category ||
+        record.classification ||
+        record.recordType ||
+        record.record_type ||
+        record.patientClassification ||
+        "",
+    ).toLowerCase() === "maternal"
+  );
+}
+
+function getMaternalSupplementHistory(records = []) {
+  return records.flatMap((record) => {
+    if (!isMaternalHealthRecord(record)) return [];
+
+    const maternalData = record.maternalData || record.maternal_data || {};
+    const supplements =
+      record.supplementsGiven ||
+      record.supplements_given ||
+      maternalData.supplementsGiven ||
+      maternalData.supplements_given ||
+      [];
+
+    if (!Array.isArray(supplements)) return [];
+
+    const recordId = getHealthRecordId(record);
+    return supplements.filter(Boolean).map((item = {}) => ({
+      supplement_type: item.supplement_type || item.supplementType || "",
+      supplement_name: item.supplement_name || item.supplementName || "",
+      quantity: item.quantity || "",
+      unit: item.unit || "",
+      date_given: item.date_given || item.dateGiven || "",
+      remarks: item.remarks || item.notes || "",
+      given_by_name: item.given_by_name || item.givenByName || "",
+      aog: maternalData.aog || record.aog || "",
+      visitDate: getHealthRecordDate(record),
+      recordId,
+    }));
+  });
 }
 
 function getHealthRecordDate(record = {}) {

@@ -8,10 +8,44 @@ function firstPresent(values = []) {
   return values.find((value) => value !== undefined && value !== null && value !== "") || "";
 }
 
+function normalizeSupplementsGiven(record = {}, maternalData = {}) {
+  const supplements =
+    record.supplementsGiven ||
+    record.supplements_given ||
+    maternalData.supplementsGiven ||
+    maternalData.supplements_given ||
+    [];
+
+  if (!Array.isArray(supplements)) return [];
+
+  return supplements.map((item = {}) => ({
+    ...item,
+    supplementType: item.supplementType || item.supplement_type || "",
+    supplement_type: item.supplement_type || item.supplementType || "",
+    supplementName: item.supplementName || item.supplement_name || "",
+    supplement_name: item.supplement_name || item.supplementName || "",
+    quantity: item.quantity || "",
+    unit: item.unit || "",
+    dateGiven: item.dateGiven || item.date_given || "",
+    date_given: item.date_given || item.dateGiven || "",
+    remarks: item.remarks || item.notes || "",
+    givenById: item.givenById || item.given_by_id || "",
+    given_by_id: item.given_by_id || item.givenById || "",
+    givenByName: item.givenByName || item.given_by_name || "",
+    given_by_name: item.given_by_name || item.givenByName || "",
+  }));
+}
+
 function normalizeRecord(record = {}) {
   const vitalSigns = record.vital_signs || record.vitalSigns || {};
   const patient = record.patient ? normalizePatient(record.patient) : null;
   const maternalData = record.maternal_data || record.maternalData || {};
+  const supplementsGiven = normalizeSupplementsGiven(record, maternalData);
+  const normalizedMaternalData = {
+    ...maternalData,
+    supplements_given: supplementsGiven,
+    supplementsGiven,
+  };
   const immunizationData = record.immunization_data || record.immunizationData || {};
   const monitoringData = record.monitoring_data || record.monitoringData || {};
   const parentHealthRecordId =
@@ -117,24 +151,26 @@ function normalizeRecord(record = {}) {
       record.vital_signs ||
       "",
     vital_signs: record.vital_signs || record.vitalSigns || null,
-    maternalData,
-    maternal_data: maternalData,
-    lmp: maternalData.lmp || record.lmp || "",
-    pmp: maternalData.pmp || record.pmp || "",
-    cycleDuration: maternalData.cycleDuration || record.cycleDuration || "",
-    gravida: maternalData.gravida || record.gravida || "",
-    para: maternalData.para || record.para || "",
-    term: maternalData.term || record.term || "",
-    preterm: maternalData.preterm || record.preterm || "",
-    abortion: maternalData.abortion || record.abortion || "",
-    living: maternalData.living || record.living || "",
-    tpal: maternalData.tpal || record.tpal || "",
+    maternalData: normalizedMaternalData,
+    maternal_data: normalizedMaternalData,
+    supplementsGiven,
+    supplements_given: supplementsGiven,
+    lmp: normalizedMaternalData.lmp || record.lmp || "",
+    pmp: normalizedMaternalData.pmp || record.pmp || "",
+    cycleDuration: normalizedMaternalData.cycleDuration || record.cycleDuration || "",
+    gravida: normalizedMaternalData.gravida || record.gravida || "",
+    para: normalizedMaternalData.para || record.para || "",
+    term: normalizedMaternalData.term || record.term || "",
+    preterm: normalizedMaternalData.preterm || record.preterm || "",
+    abortion: normalizedMaternalData.abortion || record.abortion || "",
+    living: normalizedMaternalData.living || record.living || "",
+    tpal: normalizedMaternalData.tpal || record.tpal || "",
     expectedDeliveryDate:
-      maternalData.expectedDeliveryDate ||
-      maternalData.expected_delivery_date ||
+      normalizedMaternalData.expectedDeliveryDate ||
+      normalizedMaternalData.expected_delivery_date ||
       record.expectedDeliveryDate ||
       "",
-    aog: maternalData.aog || record.aog || "",
+    aog: normalizedMaternalData.aog || record.aog || "",
     immunizationData,
     immunization_data: immunizationData,
     monitoringData,
@@ -227,6 +263,19 @@ function toPayload(record = {}, { partial = false } = {}) {
     expectedDeliveryDate: record.expectedDeliveryDate || null,
     aog: record.aog || null,
   };
+  maternalData.supplements_given = normalizeSupplementsGiven(
+    record,
+    maternalData,
+  ).map((item) => ({
+    supplement_type: item.supplement_type,
+    supplement_name: item.supplement_name,
+    quantity: item.quantity,
+    unit: item.unit,
+    date_given: item.date_given,
+    remarks: item.remarks || "",
+    given_by_id: item.given_by_id || null,
+    given_by_name: item.given_by_name || "",
+  }));
   const monitoringData = {
     ...(record.monitoringData || record.monitoring_data || {}),
     followUpStatus: record.followUpStatus || record.status || null,

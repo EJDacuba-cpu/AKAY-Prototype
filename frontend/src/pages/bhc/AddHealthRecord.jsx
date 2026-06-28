@@ -73,6 +73,52 @@ const EMPTY_MATERNAL_DATA = {
   living: "",
 };
 
+const MATERNAL_SUPPLEMENT_OPTIONS = [
+  {
+    type: "iron_folic_acid",
+    name: "Iron-Folic Acid",
+    note: "Record IFA actually given during this visit.",
+  },
+  {
+    type: "calcium_carbonate",
+    name: "Calcium Carbonate",
+    note: "Record if calcium was provided.",
+  },
+  {
+    type: "iodine_supplement",
+    name: "Iodine Supplement",
+    note: "Record if applicable for this patient.",
+  },
+  {
+    type: "vitamin_a",
+    name: "Vitamin A",
+    note: "Record postpartum vitamin A if given.",
+  },
+  {
+    type: "other",
+    name: "Other",
+    note: "Use for any other supplement provided.",
+  },
+];
+
+const MATERNAL_SUPPLEMENT_UNITS = [
+  "tablets",
+  "capsules",
+  "dose",
+  "bottle",
+  "sachet",
+  "other",
+];
+
+const EMPTY_SUPPLEMENT_ENTRY = {
+  supplement_type: "",
+  supplement_name: "",
+  quantity: "",
+  unit: "",
+  date_given: "",
+  remarks: "",
+};
+
 const EMPTY_IMMUNIZATION_DATA = {
   bcg_vaccine: false,
   hepb_birth: false,
@@ -225,6 +271,32 @@ function getVaccineEntries(data) {
   return entries;
 }
 
+function normalizeSupplementEntries(data = {}) {
+  const supplements = Array.isArray(data?.supplements_given)
+    ? data.supplements_given
+    : Array.isArray(data?.supplementsGiven)
+      ? data.supplementsGiven
+      : [];
+
+  return supplements
+    .filter(Boolean)
+    .map((entry) => ({
+      ...EMPTY_SUPPLEMENT_ENTRY,
+      supplement_type: entry.supplement_type || entry.supplementType || "",
+      supplement_name: entry.supplement_name || entry.supplementName || "",
+      quantity: entry.quantity || "",
+      unit: entry.unit || "",
+      date_given: entry.date_given || entry.dateGiven || "",
+      remarks: entry.remarks || entry.notes || "",
+      given_by_id: entry.given_by_id || entry.givenById || "",
+      given_by_name: entry.given_by_name || entry.givenByName || "",
+    }));
+}
+
+function getSupplementOption(type) {
+  return MATERNAL_SUPPLEMENT_OPTIONS.find((option) => option.type === type);
+}
+
 /* ═══════════════════════════════════════════════════════════════
    IMMUNIZATION — CONSTANTS & HELPERS
    ═══════════════════════════════════════════════════════════════ */
@@ -291,6 +363,7 @@ export default function AddHealthRecord() {
   const [patientCondition, setPatientCondition] = useState("Improving");
 
   const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
+  const [supplementsGiven, setSupplementsGiven] = useState([]);
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
   const [aog, setAog] = useState("");
   const [followUpRecord, setFollowUpRecord] = useState(null);
@@ -385,6 +458,7 @@ export default function AddHealthRecord() {
         abortion: existingMaternalData.abortion || found.abortion || "",
         living: existingMaternalData.living || found.living || "",
       });
+      setSupplementsGiven(normalizeSupplementEntries(existingMaternalData));
       setExpectedDeliveryDate(
         existingMaternalData.expectedDeliveryDate ||
           found.expectedDeliveryDate ||
@@ -539,6 +613,7 @@ export default function AddHealthRecord() {
   function resetClassificationSpecificState() {
     setHealthRecordType("");
     setMaternalData(EMPTY_MATERNAL_DATA);
+    setSupplementsGiven([]);
     setExpectedDeliveryDate("");
     setAog("");
     setImmunizationData(EMPTY_IMMUNIZATION_DATA);
@@ -758,6 +833,73 @@ export default function AddHealthRecord() {
     setMaternalData((prev) => ({ ...prev, [field]: value }));
   }
 
+  function handleSupplementToggle(type, checked) {
+    const option = getSupplementOption(type);
+    setSupplementsGiven((prev) => {
+      if (!checked) {
+        return prev.filter((entry) => entry.supplement_type !== type);
+      }
+
+      if (prev.some((entry) => entry.supplement_type === type)) return prev;
+
+      return [
+        ...prev,
+        {
+          ...EMPTY_SUPPLEMENT_ENTRY,
+          supplement_type: type,
+          supplement_name: type === "other" ? "" : option?.name || "",
+          date_given: dateOfVisit,
+        },
+      ];
+    });
+  }
+
+  function handleSupplementChange(type, field, value) {
+    setSupplementsGiven((prev) =>
+      prev.map((entry) =>
+        entry.supplement_type === type ? { ...entry, [field]: value } : entry,
+      ),
+    );
+  }
+
+  function getPreparedSupplements() {
+    return supplementsGiven.map((entry) => {
+      const option = getSupplementOption(entry.supplement_type);
+      return {
+        supplement_type: entry.supplement_type,
+        supplement_name:
+          entry.supplement_type === "other"
+            ? String(entry.supplement_name || "").trim()
+            : option?.name || entry.supplement_name,
+        quantity: entry.quantity,
+        unit: entry.unit,
+        date_given: entry.date_given || dateOfVisit,
+        remarks: entry.remarks || "",
+      };
+    });
+  }
+
+  function validatePreparedSupplements(entries) {
+    const invalidEntry = entries.find((entry) => {
+      const quantity = Number(entry.quantity);
+      return (
+        !entry.supplement_type ||
+        !Number.isFinite(quantity) ||
+        quantity <= 0 ||
+        !entry.unit ||
+        !entry.date_given ||
+        (entry.supplement_type === "other" && !entry.supplement_name)
+      );
+    });
+
+    if (!invalidEntry) return null;
+
+    return invalidEntry.supplement_type === "other" &&
+      !invalidEntry.supplement_name
+      ? "Enter the supplement name for Other."
+      : "Complete quantity, unit, and date given for each selected supplement.";
+  }
+
   async function saveHealthRecord(formData) {
     const savedRecord = isEditingRecord
       ? await healthRecordService.updateHealthRecordById(
@@ -974,10 +1116,26 @@ export default function AddHealthRecord() {
           ? "Vaccination Visit"
           : chiefComplaint;
 
+    const preparedSupplements =
+      !isFollowUp && effectiveHealthRecordType === "Maternal"
+        ? getPreparedSupplements()
+        : [];
+    const supplementValidationMessage =
+      validatePreparedSupplements(preparedSupplements);
+
+    if (supplementValidationMessage) {
+      setNoticeModal({
+        title: "Supplement Details Required",
+        message: supplementValidationMessage,
+      });
+      return;
+    }
+
     const recordMaternalData = {
       ...maternalData,
       expectedDeliveryDate,
       aog,
+      supplements_given: preparedSupplements,
       tpal: [
         maternalData.term || 0,
         maternalData.preterm || 0,
@@ -1577,6 +1735,14 @@ export default function AddHealthRecord() {
                 </div>
               </ClinicalFieldGroup>
               </div>
+            <div className="mt-5">
+              <MaternalSupplementsGivenFields
+                entries={supplementsGiven}
+                dateOfVisit={dateOfVisit}
+                onToggle={handleSupplementToggle}
+                onChange={handleSupplementChange}
+              />
+            </div>
           </FormSection>
         )}
 
@@ -2251,6 +2417,123 @@ function ClinicalFieldGroup({ title, children, accent }) {
       </p>
       {children}
     </div>
+  );
+}
+
+function MaternalSupplementsGivenFields({
+  entries,
+  dateOfVisit,
+  onToggle,
+  onChange,
+}) {
+  const selectedEntries = new Map(
+    entries.map((entry) => [entry.supplement_type, entry]),
+  );
+
+  return (
+    <ClinicalFieldGroup title="Vitamins / Supplements Given" accent="pink">
+      <div className="space-y-3">
+        {MATERNAL_SUPPLEMENT_OPTIONS.map((option) => {
+          const entry = selectedEntries.get(option.type);
+          const checked = Boolean(entry);
+
+          return (
+            <div
+              key={option.type}
+              className={`rounded-xl border p-3 transition ${
+                checked
+                  ? "border-pink-200 bg-pink-50/50"
+                  : "border-[#E8ECF0] bg-white"
+              }`}
+            >
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(event) =>
+                    onToggle(option.type, event.target.checked)
+                  }
+                  className="mt-0.5 h-4 w-4 rounded border-[#D1D5DB] text-[#B91C1C] focus:ring-[#B91C1C]"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold text-[#1F2937]">
+                    {option.name}
+                  </span>
+                  <span className="mt-0.5 block text-xs leading-relaxed text-[#6B7280]">
+                    {option.note}
+                  </span>
+                </span>
+              </label>
+
+              {checked && (
+                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  {option.type === "other" && (
+                    <div className="md:col-span-2 xl:col-span-4">
+                      <FieldInput
+                        label="Supplement Name"
+                        value={entry.supplement_name}
+                        onChange={(event) =>
+                          onChange(
+                            option.type,
+                            "supplement_name",
+                            event.target.value,
+                          )
+                        }
+                        required
+                      />
+                    </div>
+                  )}
+                  <FieldInput
+                    label="Quantity Given"
+                    type="number"
+                    min="1"
+                    value={entry.quantity}
+                    onChange={(event) =>
+                      onChange(option.type, "quantity", event.target.value)
+                    }
+                    required
+                  />
+                  <FieldSelect
+                    label="Unit"
+                    value={entry.unit}
+                    onChange={(event) =>
+                      onChange(option.type, "unit", event.target.value)
+                    }
+                    required
+                  >
+                    <option value="">Select unit</option>
+                    {MATERNAL_SUPPLEMENT_UNITS.map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unit}
+                      </option>
+                    ))}
+                  </FieldSelect>
+                  <FieldInput
+                    label="Date Given"
+                    type="date"
+                    value={entry.date_given || dateOfVisit}
+                    onChange={(event) =>
+                      onChange(option.type, "date_given", event.target.value)
+                    }
+                    required
+                  />
+                  <div className="md:col-span-2 xl:col-span-1">
+                    <FieldTextarea
+                      label="Remarks / Notes"
+                      value={entry.remarks}
+                      onChange={(event) =>
+                        onChange(option.type, "remarks", event.target.value)
+                      }
+                      rows={2}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </ClinicalFieldGroup>
   );
 }
 

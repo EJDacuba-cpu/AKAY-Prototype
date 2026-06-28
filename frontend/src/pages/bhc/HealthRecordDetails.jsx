@@ -194,6 +194,8 @@ export default function HealthRecordDetails() {
         ["expectedDeliveryDate", "expected_delivery_date", "edd"],
         "",
       ),
+      maternalData: getMaternalData(data),
+      supplementsGiven: getMaternalSupplements(data),
     });
   }
 
@@ -358,6 +360,9 @@ export default function HealthRecordDetails() {
   const hasTreatmentDetails = Boolean(
     initialActionsValue || treatmentNotesValue || medicalNotesValue,
   );
+  const isMaternalRecord =
+    form.category === "Maternal" || patientClassification === "Maternal";
+  const maternalSupplements = getMaternalSupplements(record);
 
   return (
     <>
@@ -699,8 +704,7 @@ export default function HealthRecordDetails() {
                     )}
                   </DetailSection>
 
-                  {(form.category === "Maternal" ||
-                    patientClassification === "Maternal") && (
+                  {isMaternalRecord && (
                     <DetailSection title="Maternal Parameters">
                       <div className="grid gap-4 md:grid-cols-2">
                         <PatientDetailItem
@@ -714,6 +718,13 @@ export default function HealthRecordDetails() {
 	                      </div>
 	                    </DetailSection>
 	                  )}
+                    {isMaternalRecord && (
+                      <DetailSection title="Vitamins / Supplements Given">
+                        <MaternalSupplementsList
+                          supplements={maternalSupplements}
+                        />
+                      </DetailSection>
+                    )}
                     {shouldShowMonitoringFollowUp && (
                       <DetailSection title="Monitoring & Follow-up">
                         <div className="grid gap-4 md:grid-cols-2">
@@ -1224,6 +1235,34 @@ function getNestedRecordValue(record = {}, directKeys = [], nestedKeys = []) {
   return "";
 }
 
+function getMaternalData(record = {}) {
+  return record.maternalData || record.maternal_data || {};
+}
+
+function getMaternalSupplements(record = {}) {
+  const maternalData = getMaternalData(record);
+  const supplements =
+    record.supplementsGiven ||
+    record.supplements_given ||
+    maternalData.supplementsGiven ||
+    maternalData.supplements_given ||
+    [];
+
+  if (!Array.isArray(supplements)) return [];
+
+  return supplements
+    .filter(Boolean)
+    .map((item = {}) => ({
+      supplement_type: item.supplement_type || item.supplementType || "",
+      supplement_name: item.supplement_name || item.supplementName || "",
+      quantity: item.quantity || "",
+      unit: item.unit || "",
+      date_given: item.date_given || item.dateGiven || "",
+      remarks: item.remarks || item.notes || "",
+      given_by_name: item.given_by_name || item.givenByName || "",
+    }));
+}
+
 function getRecordDateValue(record = {}) {
   return getRecordValue(
     record,
@@ -1452,6 +1491,50 @@ function getVitalSignItems(record = {}) {
     { label: "Weight", value: cleanVitalSignValue(weightValue) },
     { label: "Height", value: cleanVitalSignValue(heightValue) },
   ];
+}
+
+function MaternalSupplementsList({ supplements }) {
+  if (!supplements.length) {
+    return (
+      <SectionEmptyState text="No vitamins or supplements were recorded for this visit." />
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {supplements.map((supplement, index) => (
+        <div
+          key={`${supplement.supplement_type || "supplement"}-${index}`}
+          className="rounded-xl border border-pink-100 bg-pink-50/30 p-4"
+        >
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-sm font-bold text-[#0F172A]">
+                {supplement.supplement_name || "Supplement"}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {formatDisplayValue(supplement.quantity, "Not recorded")}{" "}
+                {formatDisplayValue(supplement.unit, "")}
+              </p>
+            </div>
+            <span className="w-fit rounded-lg border border-pink-100 bg-white px-2.5 py-1 text-[11px] font-semibold text-pink-700">
+              {formatLongDate(supplement.date_given, "Date not recorded")}
+            </span>
+          </div>
+          <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
+            <PatientDetailItem
+              label="Given By"
+              value={supplement.given_by_name || "Not recorded"}
+            />
+            <PatientDetailItem
+              label="Remarks"
+              value={supplement.remarks || "Not recorded"}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function cleanVitalSignValue(value) {
