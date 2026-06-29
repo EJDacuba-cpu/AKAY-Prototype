@@ -188,7 +188,6 @@ export default function Referrals() {
   }, [currentPage, totalPages]);
 
   const activeFilters = [
-    filters.search && { key: "search", label: `Search: ${filters.search}` },
     filters.status !== "All" && { key: "status", label: filters.status },
     filters.classification !== "All" && {
       key: "classification",

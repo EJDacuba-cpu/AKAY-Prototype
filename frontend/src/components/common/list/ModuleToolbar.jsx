@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
+import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import FilterPopover from "./FilterPopover";
 import { formatDisplayValue } from "../../../utils/formatters";
@@ -39,15 +39,11 @@ export default function ModuleToolbar({
   showFilters = true,
   filtersLabel = "Filters",
   filters = [],
-  activeFilters = [],
   activeFilterCount = 0,
-  showSearchFilterChip = true,
-  showClearAll = true,
   filtersOpen: controlledFiltersOpen,
   onFilterClick,
   onApplyFilters,
   onClearFilters,
-  onRemoveFilter,
   filterDescription = "Narrow the list.",
   primaryActionLabel,
   primaryActionTo,
@@ -176,10 +172,6 @@ export default function ModuleToolbar({
       </button>
     );
   }
-  const visibleActiveFilters = activeFilters.filter(
-    (filter) => showSearchFilterChip || filter.key !== "search",
-  );
-
   return (
     <div ref={toolbarRef} className="relative z-20 mb-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
@@ -269,32 +261,6 @@ export default function ModuleToolbar({
         />
       )}
 
-      {visibleActiveFilters.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {visibleActiveFilters.map((filter) => (
-            <button
-              key={filter.key}
-              type="button"
-              onClick={() => onRemoveFilter?.(filter.key)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-red-100 bg-red-50 px-3 py-1.5 text-[11px] font-semibold text-[#B91C1C] transition-colors hover:bg-red-100/70"
-            >
-              {formatDisplayValue(filter.label, "Not recorded")}
-              <X size={10} />
-            </button>
-          ))}
-
-          {showClearAll && (
-            <button
-              type="button"
-              onClick={onClearFilters}
-              className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#64748B] transition-colors hover:text-[#B91C1C]"
-            >
-              <RotateCcw size={11} />
-              Clear all filters
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

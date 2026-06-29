@@ -164,7 +164,6 @@ export default function UserManagement() {
   ];
 
   const activeFilters = [
-    filters.search && { key: "search", label: `Search: ${filters.search}` },
     filters.role !== "All Roles" && { key: "role", label: filters.role },
     filters.position !== "All Positions" && {
       key: "position",

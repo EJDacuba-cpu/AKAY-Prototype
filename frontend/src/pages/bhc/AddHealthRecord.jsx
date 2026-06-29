@@ -5,7 +5,6 @@ import {
   AlertCircle,
   ArrowLeft,
   Check,
-  ChevronDown,
   Clock,
   HeartPulse,
   Lock,
@@ -1298,41 +1297,37 @@ export default function AddHealthRecord() {
             record={followUpRecord}
           />
         ) : (
-          <div className="relative z-[90]">
-            <FormSection
-              title="Patient Selection"
-              subtitle="Search and select an existing patient profile from the registry."
-              icon={<User size={14} />}
-              delay={1}
-            >
-              <PatientSearchDropdown
-                inputRef={inputRef}
-                dropdownRef={dropdownRef}
-                disabled={isEditingRecord}
-                dropdownOpen={dropdownOpen}
-                selectedPatientId={selectedPatientId}
-                selectedPatient={selectedPatient}
-                searchTerm={searchTerm}
-                inputValue={patientSearchInputValue}
-                patients={filteredPatients}
-                totalPatientCount={patients.length}
-                matchingPatientCount={matchingPatients.length}
-                visibleLimit={visiblePatientLimit}
-                loading={patientsLoading && patients.length === 0}
-                isSearching={Boolean(normalizedSearch)}
-                onSeeAll={() => navigate("/bhc/patients")}
-                highlightIndex={highlightIndex}
-                onSearchChange={handlePatientSearchChange}
-                onOpen={() => {
-                  if (isEditingRecord) return;
-                  setSearchTerm("");
-                  setDropdownOpen(true);
-                }}
-                onClear={clearSelectedPatient}
-                onSelect={selectPatient}
-                onHighlight={setHighlightIndex}
-              />
-            </FormSection>
+          <div
+            className="anim-fade-up relative z-[90] w-full max-w-3xl"
+            style={stagger(1)}
+          >
+            <PatientSearchDropdown
+              inputRef={inputRef}
+              dropdownRef={dropdownRef}
+              disabled={isEditingRecord}
+              dropdownOpen={dropdownOpen}
+              selectedPatientId={selectedPatientId}
+              selectedPatient={selectedPatient}
+              searchTerm={searchTerm}
+              inputValue={patientSearchInputValue}
+              patients={filteredPatients}
+              totalPatientCount={patients.length}
+              matchingPatientCount={matchingPatients.length}
+              visibleLimit={visiblePatientLimit}
+              loading={patientsLoading && patients.length === 0}
+              isSearching={Boolean(normalizedSearch)}
+              onSeeAll={() => navigate("/bhc/patients")}
+              highlightIndex={highlightIndex}
+              onSearchChange={handlePatientSearchChange}
+              onOpen={() => {
+                if (isEditingRecord) return;
+                setSearchTerm("");
+                setDropdownOpen(true);
+              }}
+              onClear={clearSelectedPatient}
+              onSelect={selectPatient}
+              onHighlight={setHighlightIndex}
+            />
           </div>
         )}
 
@@ -1547,15 +1542,12 @@ export default function AddHealthRecord() {
 
         {!isFollowUp && !patientGateLocked && isImmunization && (
           <FormSection
-            title="Classification-Specific Assessment"
-            subtitle="Record vaccines given as part of this health record visit."
+            title="Child Immunization Details"
+            subtitle="Select the vaccines given during this immunization visit."
             icon={<Syringe size={14} />}
             delay={2}
           >
-            <ClassificationSectionIntro
-              title="Child Immunization Details"
-              description="Select the vaccines given during this immunization visit."
-            />
+
             <ImmunizationVisitFields
               ageInfo={immunizationPatientInfo}
               entries={immunizationVaccineEntries}
@@ -2012,13 +2004,105 @@ export default function AddHealthRecord() {
 /* ═══════════════════════════════════════════════════════════════
    PATIENT SEARCH DROPDOWN
    ═══════════════════════════════════════════════════════════════ */
+// eslint-disable-next-line no-unused-vars
+function PatientSelectionStep({
+  selectedPatient,
+  selectedPatientId,
+  onCancel,
+  onProceed,
+  ...dropdownProps
+}) {
+  const display = getPatientDisplay(selectedPatient || {});
+  const displayId = display.id || selectedPatientId || "Not recorded";
+
+  return (
+    <section className="anim-fade-up mx-auto w-full max-w-[720px] pt-4 sm:pt-8" style={stagger(1)}>
+      <div className="relative z-[90] rounded-2xl border border-[#E8ECF0] bg-white p-5 shadow-sm sm:p-6">
+        <div className="mb-5 text-center">
+          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-red-50 text-[#B91C1C]">
+            <User size={20} />
+          </div>
+          <h2 className="text-lg font-bold text-[#1A1A1A]">Select Patient</h2>
+          <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-[#6B7280]">
+            Search and select the patient before recording a visit.
+          </p>
+        </div>
+
+        <PatientSearchDropdown
+          {...dropdownProps}
+          selectedPatientId={selectedPatientId}
+          disabled={false}
+        />
+
+        {selectedPatientId && (
+          <div className="mt-4 rounded-xl border border-[#F0F2F5] bg-[#FAFBFC] px-3.5 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#B91C1C]">
+              Selected Patient
+            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-sm font-bold text-[#111827]">
+                {display.name || "Selected patient"}
+              </span>
+              <span className="text-slate-300">•</span>
+              <span className="font-mono text-[11px] font-semibold text-slate-600">
+                {displayId}
+              </span>
+              {display.age && (
+                <>
+                  <span className="text-slate-300">•</span>
+                  <span className="text-xs font-medium text-[#6B7280]">
+                    {display.age}
+                  </span>
+                </>
+              )}
+              {display.barangay && (
+                <>
+                  <span className="text-slate-300">•</span>
+                  <span className="text-xs font-medium text-[#6B7280]">
+                    {display.barangay}
+                  </span>
+                </>
+              )}
+              {display.contact && (
+                <>
+                  <span className="text-slate-300">•</span>
+                  <span className="text-xs font-medium text-[#6B7280]">
+                    {display.contact}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-xl border border-[#E8ECF0] bg-white px-4 py-2.5 text-sm font-semibold text-[#6B7280] shadow-sm transition hover:border-[#D1D5DB] hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onProceed}
+            disabled={!selectedPatientId}
+            className="rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Proceed to Health Record
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function PatientSearchDropdown({
   inputRef,
   dropdownRef,
   disabled,
   dropdownOpen,
   selectedPatientId,
-  selectedPatient,
   searchTerm,
   inputValue,
   patients,
@@ -2061,7 +2145,7 @@ function PatientSearchDropdown({
           }`}
         />
 
-        {selectedPatientId && !disabled ? (
+        {selectedPatientId && !disabled && (
           <button
             type="button"
             onClick={onClear}
@@ -2070,15 +2154,6 @@ function PatientSearchDropdown({
           >
             <X size={14} />
           </button>
-        ) : (
-          !disabled && (
-            <ChevronDown
-              size={14}
-              className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 transition-colors duration-200 ${
-                dropdownOpen ? "text-[#B91C1C]" : "text-[#9CA3AF]"
-              }`}
-            />
-          )
         )}
       </div>
 
@@ -2209,58 +2284,10 @@ function PatientSearchDropdown({
         </div>
       )}
 
-      {selectedPatient && <SelectedPatientPreview patient={selectedPatient} />}
     </div>
   );
 }
 
-function SelectedPatientPreview({ patient }) {
-  const display = getPatientDisplay(patient);
-
-  return (
-    <div className="anim-fade-up mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3 py-2">
-      <span className="text-[9px] font-bold uppercase tracking-widest text-[#B91C1C]">
-        Selected Patient
-      </span>
-      <span className="text-slate-300">•</span>
-      <span className="text-xs font-bold text-[#1A1A1A]">{display.name}</span>
-      {display.age && (
-        <>
-          <span className="text-slate-300">•</span>
-          <span className="text-xs text-[#6B7280]">{display.age}</span>
-        </>
-      )}
-      {display.cls && (
-        <>
-          <span className="text-slate-300">•</span>
-          <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-[#B91C1C]">
-            {display.cls}
-          </span>
-        </>
-      )}
-      {display.contact && (
-        <>
-          <span className="text-slate-300">•</span>
-          <span className="text-xs text-[#6B7280]">{display.contact}</span>
-        </>
-      )}
-      {display.barangay && (
-        <>
-          <span className="text-slate-300">•</span>
-          <span className="text-xs text-[#6B7280]">{display.barangay}</span>
-        </>
-      )}
-      {display.id && (
-        <>
-          <span className="text-slate-300">•</span>
-          <span className="font-mono text-[10px] font-semibold text-[#0F172A]">
-            {display.id}
-          </span>
-        </>
-      )}
-    </div>
-  );
-}
 
 function FollowUpContextCard({ patientName, patientId, recordId, record }) {
   return (

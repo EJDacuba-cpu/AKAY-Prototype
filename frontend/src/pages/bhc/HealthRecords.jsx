@@ -281,7 +281,6 @@ export default function HealthRecords() {
   });
 
   const activeFilters = [
-    filters.search && { key: "search", label: `Search: ${filters.search}` },
     filters.dateRange && {
       key: "dateRange",
       label: formatVisitDateFilterLabel(filters.dateRange, filters.date),

@@ -1825,6 +1825,7 @@ function PatientSearchDropdown({
   onClear,
   onSelect,
   onHighlight,
+  showSelectedPreview = true,
 }) {
   return (
     <div className="relative z-[9999]">
@@ -2000,7 +2001,9 @@ function PatientSearchDropdown({
         </div>
       )}
 
-      {selectedPatient && <SelectedPatientPreview patient={selectedPatient} />}
+      {showSelectedPreview && selectedPatient && (
+        <SelectedPatientPreview patient={selectedPatient} />
+      )}
     </div>
   );
 }

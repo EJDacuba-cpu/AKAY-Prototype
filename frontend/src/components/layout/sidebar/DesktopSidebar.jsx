@@ -1,5 +1,6 @@
 import { LogOut } from "lucide-react";
 import { Link } from "react-router";
+import { useState } from "react";
 import LogoMark from "./LogoMark";
 
 export default function DesktopSidebar({
@@ -10,9 +11,25 @@ export default function DesktopSidebar({
   onToggle,
   onLogout,
 }) {
+  const [hoverLabel, setHoverLabel] = useState(null);
+
+  function showCollapsedLabel(event, label) {
+    if (expanded) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    setHoverLabel({
+      label,
+      top: rect.top + rect.height / 2,
+    });
+  }
+
+  function hideCollapsedLabel() {
+    setHoverLabel(null);
+  }
+
   return (
     <aside
-      className={`fixed left-0 top-0 z-40 hidden h-dvh max-h-dvh flex-col overflow-visible border-r border-[#E5E7EB] bg-white shadow-[0_18px_50px_-42px_rgba(15,23,42,0.35)] transition-[width] duration-300 ease-in-out md:flex ${
+      className={`fixed left-0 top-0 z-50 hidden h-dvh max-h-dvh flex-col overflow-visible border-r border-[#E5E7EB] bg-white shadow-[0_18px_50px_-42px_rgba(15,23,42,0.35)] transition-[width] duration-300 ease-in-out md:flex ${
         expanded ? "w-60" : "w-[72px]"
       }`}
     >
@@ -63,8 +80,13 @@ export default function DesktopSidebar({
                   <Link
                     key={`${section.section}-${item.label}`}
                     to={item.path}
-                    title={!expanded ? item.label : undefined}
                     aria-label={item.label}
+                    onMouseEnter={(event) =>
+                      showCollapsedLabel(event, item.label)
+                    }
+                    onMouseLeave={hideCollapsedLabel}
+                    onFocus={(event) => showCollapsedLabel(event, item.label)}
+                    onBlur={hideCollapsedLabel}
                     className={`group relative flex h-10 w-full items-center rounded-xl transition-all duration-200 ${
                       expanded ? "px-3" : "justify-center px-0"
                     } ${
@@ -94,15 +116,6 @@ export default function DesktopSidebar({
                     >
                       {item.label}
                     </span>
-
-                    {!expanded && (
-                      <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 flex -translate-y-1/2 translate-x-1 items-center opacity-0 transition-all duration-200 ease-out group-hover:translate-x-0 group-hover:opacity-100">
-                        <span className="h-2 w-2 rotate-45 rounded-[2px] bg-[#0F172A]" />
-                        <span className="-ml-1 whitespace-nowrap rounded-lg bg-[#0F172A] px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-lg shadow-slate-900/20">
-                          {item.label}
-                        </span>
-                      </span>
-                    )}
                   </Link>
                 );
               })}
@@ -131,8 +144,11 @@ export default function DesktopSidebar({
         <button
           type="button"
           onClick={onLogout}
-          title="Sign out"
           aria-label="Sign out"
+          onMouseEnter={(event) => showCollapsedLabel(event, "Sign out")}
+          onMouseLeave={hideCollapsedLabel}
+          onFocus={(event) => showCollapsedLabel(event, "Sign out")}
+          onBlur={hideCollapsedLabel}
           className={`flex h-9 w-full items-center rounded-xl text-[#B91C1C] transition hover:bg-[#FEF2F2] ${
             expanded ? "gap-2 px-3" : "justify-center px-0"
           }`}
@@ -150,6 +166,19 @@ export default function DesktopSidebar({
           </span>
         </button>
       </div>
+
+      {!expanded && hoverLabel && (
+        <div
+          className="pointer-events-none fixed left-[84px] z-[70] flex -translate-y-1/2 translate-x-0 items-center opacity-100 transition-all duration-150 ease-out"
+          style={{ top: hoverLabel.top }}
+          role="tooltip"
+        >
+          <span className="h-2.5 w-2.5 rotate-45 rounded-[2px] border-b border-l border-[#E5E7EB] bg-white shadow-sm" />
+          <span className="-ml-1 whitespace-nowrap rounded-lg border border-[#E5E7EB] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#0F172A] shadow-xl shadow-slate-900/10">
+            {hoverLabel.label}
+          </span>
+        </div>
+      )}
     </aside>
   );
 }

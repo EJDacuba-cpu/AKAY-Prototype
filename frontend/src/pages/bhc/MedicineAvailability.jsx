@@ -81,7 +81,6 @@ export default function MedicineAvailability() {
   ).length;
 
   const activeFilters = [
-    filters.search && { key: "search", label: `Search: ${filters.search}` },
     filters.category !== "All Categories" && {
       key: "category",
       label: filters.category,

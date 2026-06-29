@@ -188,7 +188,6 @@ export default function RHUReports() {
   ];
 
   const activeFilters = [
-    filters.search && { key: "search", label: `Search: ${filters.search}` },
     filters.barangay !== "All Barangays" && {
       key: "barangay",
       label: filters.barangay,

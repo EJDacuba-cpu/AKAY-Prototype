@@ -145,7 +145,6 @@ export default function FollowUps() {
   }, [isLoading, requestedOpen, requestedTaskId, tasks]);
 
   const activeFilters = [
-    filters.search && { key: "search", label: `Search: ${filters.search}` },
     filters.state !== "All Active" && { key: "state", label: filters.state },
   ].filter(Boolean);
 

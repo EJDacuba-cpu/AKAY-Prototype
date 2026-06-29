@@ -139,7 +139,6 @@ export default function AuditLogs() {
   );
 
   const activeFilters = [
-    filters.search && { key: "search", label: `Search: ${filters.search}` },
     filters.module !== "All Modules" && {
       key: "module",
       label: filters.module,

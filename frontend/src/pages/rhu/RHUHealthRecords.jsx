@@ -203,7 +203,6 @@ export default function RHUHealthRecords() {
   });
 
   const activeFilters = [
-    filters.search && { key: "search", label: `Search: ${filters.search}` },
     filters.date && { key: "date", label: filters.date },
     filters.status && { key: "status", label: filters.status },
     filters.classification && {

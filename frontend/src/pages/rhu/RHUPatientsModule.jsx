@@ -269,7 +269,6 @@ export default function Patients() {
   ];
 
   const activeFilters = [
-    filters.search && { key: "search", label: `Search: ${filters.search}` },
     filters.sex !== "All" && { key: "sex", label: filters.sex },
     filters.ageGroup !== "All Age Groups" && {
       key: "ageGroup",

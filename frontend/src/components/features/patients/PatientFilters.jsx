@@ -1,24 +1,6 @@
-import { RotateCcw, Search, X } from "lucide-react";
+import { Search } from "lucide-react";
 
 export default function PatientFilters({ filters, setFilters, action = null }) {
-  const hasActiveFilters =
-    filters.search !== "" ||
-    filters.sex !== "All";
-
-  const activeFilters = [
-    filters.search && { key: "search", label: filters.search },
-    filters.sex !== "All" && { key: "sex", label: filters.sex },
-  ].filter(Boolean);
-
-  const clearFilters = () => {
-    setFilters({ search: "", sex: "All" });
-  };
-
-  function removeFilter(key) {
-    if (key === "search") setFilters((prev) => ({ ...prev, search: "" }));
-    if (key === "sex") setFilters((prev) => ({ ...prev, sex: "All" }));
-  }
-
   return (
     <div className="mb-4 rounded-xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
@@ -65,33 +47,6 @@ export default function PatientFilters({ filters, setFilters, action = null }) {
 
         {action}
       </div>
-
-      {activeFilters.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#F3F4F6] pt-3">
-          {activeFilters.map((filter) => (
-            <button
-              key={filter.key}
-              type="button"
-              onClick={() => removeFilter(filter.key)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-red-100 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-[#B91C1C] transition-colors hover:bg-red-100"
-            >
-              {filter.label}
-              <X size={10} />
-            </button>
-          ))}
-
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#64748B] transition-colors hover:text-[#B91C1C]"
-            >
-              <RotateCcw size={11} />
-              Clear all
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

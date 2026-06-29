@@ -83,7 +83,6 @@ export default function PasswordResetRequests() {
   }, [loadRequests]);
 
   const activeFilters = [
-    filters.search && { key: "search", label: `Search: ${filters.search}` },
     filters.status !== "all" && {
       key: "status",
       label:

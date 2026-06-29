@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
+import { Search, SlidersHorizontal } from "lucide-react";
 import { formatDisplayValue } from "../../../utils/formatters";
 import FilterPopover from "./FilterPopover";
 
@@ -55,7 +55,6 @@ export default function ListToolbar({
   activeFilters = [],
   onApplyFilters,
   onClearFilters,
-  onRemoveFilter,
   actions = null,
   filterButtonLabel = "Filters",
   accent = "#B91C1C",
@@ -197,30 +196,6 @@ export default function ListToolbar({
         )}
       </div>
 
-      {activeFilters.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#F3F4F6] pt-3">
-          {activeFilters.map((filter) => (
-            <button
-              key={filter.key}
-              type="button"
-              onClick={() => onRemoveFilter?.(filter.key)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-red-100 bg-red-50 px-3 py-1.5 text-[11px] font-semibold text-[#B91C1C] transition-colors hover:bg-red-100/70"
-            >
-              {formatDisplayValue(filter.label, "Not recorded")}
-              <X size={10} />
-            </button>
-          ))}
-
-          <button
-            type="button"
-            onClick={onClearFilters}
-            className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#64748B] transition-colors hover:text-[#B91C1C]"
-          >
-            <RotateCcw size={11} />
-            Clear all filters
-          </button>
-        </div>
-      )}
     </div>
   );
 }

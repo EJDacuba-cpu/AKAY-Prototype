@@ -177,7 +177,6 @@ export default function PatientsModule() {
   ];
 
   const activeFilters = [
-    filters.search && { key: "search", label: `Search: ${filters.search}` },
     filters.barangay !== "All Barangays" && {
       key: "barangay",
       label: filters.barangay,
@@ -283,8 +282,6 @@ export default function PatientsModule() {
           onClearFilters={clearFilters}
           onRemoveFilter={removeFilter}
           filterDescription="Narrow the patient directory."
-          showSearchFilterChip={false}
-          showClearAll={false}
           primaryActionTo="/bhc/patients/add"
           primaryActionLabel="New Patient"
           primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}

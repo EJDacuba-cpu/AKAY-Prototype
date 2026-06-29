@@ -621,14 +621,6 @@ export default function IncomingReferrals() {
     });
   };
 
-  const hasActiveFilters =
-    filters.search !== "" ||
-    filters.status !== "All Status" ||
-    filters.category !== "All Categories" ||
-    filters.urgency !== "All Urgency" ||
-    filters.date !== "All Dates" ||
-    filters.referringBhc !== "All Referring BHCs";
-
   const activeFilters = [
     filters.status !== "All Status" && {
       key: "status",
@@ -852,15 +844,6 @@ export default function IncomingReferrals() {
                         Try adjusting your search or filters
                       </p>
 
-                      {hasActiveFilters && (
-                        <button
-                          type="button"
-                          onClick={clearFilters}
-                          className="mt-3 text-[11px] font-semibold text-[#B91C1C] hover:text-[#7F1D1D] hover:underline"
-                        >
-                          Clear all filters
-                        </button>
-                      )}
                     </td>
                   </tr>
                 ) : (

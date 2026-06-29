@@ -211,7 +211,6 @@ export default function BHCReports() {
   ];
 
   const activeFilters = [
-    filters.search && { key: "search", label: `Search: ${filters.search}` },
     filters.reportPeriod !== DEFAULT_FILTERS.reportPeriod && {
       key: "reportPeriod",
       label: `Period: ${filters.reportPeriod}`,
