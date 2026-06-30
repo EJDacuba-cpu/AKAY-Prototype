@@ -4,6 +4,7 @@ import { ClipboardList } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ActionMenu,
+  DataTableEmptyState,
   ModuleToolbar,
   ModuleTableCard,
   SoftLoadingArea,
@@ -265,22 +266,25 @@ export default function Referrals() {
       <SoftLoadingArea
         isLoading={loading || (isFetching && referrals.length > 0)}
         message={loading ? "Loading referrals..." : "Refreshing referrals..."}
+        scope="page"
       >
-        <ModuleToolbar
-          searchValue={filters.search}
-          onSearchChange={(value) => updateFilter("search", value)}
-          searchPlaceholder="Search by patient, ID, or complaint..."
-          filters={dropdownFilters}
-          activeFilterCount={activeFilterCount}
-          activeFilters={activeFilters}
-          onApplyFilters={(nextFilters) =>
-            setFilters((prev) => ({ ...prev, ...nextFilters }))
-          }
-          onClearFilters={clearFilters}
-          onRemoveFilter={removeFilter}
-          filterDescription="Narrow the referrals list."
-          disabled={loading || (isFetching && referrals.length > 0)}
-        />
+        {!loading && (
+          <ModuleToolbar
+            searchValue={filters.search}
+            onSearchChange={(value) => updateFilter("search", value)}
+            searchPlaceholder="Search by patient, ID, or complaint..."
+            filters={dropdownFilters}
+            activeFilterCount={activeFilterCount}
+            activeFilters={activeFilters}
+            onApplyFilters={(nextFilters) =>
+              setFilters((prev) => ({ ...prev, ...nextFilters }))
+            }
+            onClearFilters={clearFilters}
+            onRemoveFilter={removeFilter}
+            filterDescription="Narrow the referrals list."
+            disabled={loading || (isFetching && referrals.length > 0)}
+          />
+        )}
 
         {loading ? null : (
         <ModuleTableCard
@@ -374,19 +378,12 @@ export default function Referrals() {
                   );
                 })
               ) : (
-                <tr>
-                  <td colSpan={8} className="px-6 py-24 text-center">
-                    <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
-                      <ClipboardList size={20} className="text-[#94A3B8]" />
-                    </div>
-                    <p className="text-[13px] font-semibold text-[#334155]">
-                      No referrals yet.
-                    </p>
-                    <p className="mx-auto mt-1 max-w-sm text-[11.5px] text-[#94A3B8]">
-                      Tap Refer to start.
-                    </p>
-                  </td>
-                </tr>
+                <DataTableEmptyState
+                  colSpan={8}
+                  icon={<ClipboardList size={20} className="text-[#94A3B8]" />}
+                  title="No referrals yet."
+                  description="Tap Refer to start."
+                />
               )}
             </tbody>
         </ModuleTableCard>

@@ -1,64 +1,32 @@
 import { useEffect, useState } from "react";
 import AkayLogoLoader from "./AkayLogoLoader";
 
-const blurClasses = {
-  none: "",
-  sm: "backdrop-blur-sm",
-  md: "backdrop-blur-md",
+const overlayToneClasses = {
+  none: "bg-white/50",
+  sm: "bg-white/55",
+  md: "bg-white/60",
 };
 
 const loaderViewportStyle = {
   minHeight: "min(560px, calc(100dvh - 11rem))",
 };
 
-const spinnerSizes = {
-  sm: {
-    container: "h-6 w-6",
-    dot: "h-1.5 w-1.5",
-    radius: 10,
-  },
-  md: {
-    container: "h-8 w-8",
-    dot: "h-2 w-2",
-    radius: 13,
-  },
-  lg: {
-    container: "h-10 w-10",
-    dot: "h-2.5 w-2.5",
-    radius: 16,
-  },
-};
-
 export function DottedSpinner({ label = "Loading", size = "md" }) {
-  const spinnerSize = spinnerSizes[size] || spinnerSizes.md;
+  return <AkayLogoLoader label={label} size={size} showLabel={false} />;
+}
 
-  return (
-    <span
-      className={`relative inline-block shrink-0 animate-[akayDottedSpin_900ms_linear_infinite] ${spinnerSize.container}`}
-      role="status"
-      aria-label={label}
-    >
-      {Array.from({ length: 8 }).map((_, index) => (
-        <span
-          key={index}
-          className={`absolute left-1/2 top-1/2 rounded-full bg-[#B91C1C] ${spinnerSize.dot}`}
-          style={{
-            opacity: 0.28 + index * 0.08,
-            transform: `rotate(${index * 45}deg) translateY(-${spinnerSize.radius}px)`,
-            transformOrigin: "0 0",
-          }}
-        />
-      ))}
-      <style>
-        {`
-          @keyframes akayDottedSpin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
-        `}
-      </style>
-    </span>
-  );
+function inferVariant(message, fallback = "fetch") {
+  const text = String(message || "").toLowerCase();
+  if (text.includes("refresh")) return "refresh";
+  if (
+    text.includes("sav") ||
+    text.includes("submit") ||
+    text.includes("cach")
+  ) {
+    return "save";
+  }
+  if (text.includes("success") || text.includes("complete")) return "success";
+  return fallback;
 }
 
 export default function SoftLoadingOverlay({
@@ -68,17 +36,25 @@ export default function SoftLoadingOverlay({
   message = "Loading...",
   blocking = true,
   blur = "sm",
+  scope = "area",
   className = "",
   panelClassName = "",
+  variant,
+  size = "lg",
   children,
 }) {
   const shouldShow = isVisible ?? isLoading ?? visible;
   const [isMounted, setIsMounted] = useState(Boolean(shouldShow));
   const [isActive, setIsActive] = useState(false);
+  const isPageScope = scope === "page";
 
   useEffect(() => {
     if (shouldShow) {
       setIsMounted(true);
+      if (scope === "page" && blocking) {
+        window.dispatchEvent(new CustomEvent("akay:blocking-loading-start"));
+      }
+
       const animationFrame = window.requestAnimationFrame(() => {
         setIsActive(true);
       });
@@ -89,29 +65,39 @@ export default function SoftLoadingOverlay({
     setIsActive(false);
     const timer = window.setTimeout(() => setIsMounted(false), 180);
     return () => window.clearTimeout(timer);
-  }, [shouldShow]);
+  }, [blocking, scope, shouldShow]);
 
   if (!isMounted) return null;
 
   return (
     <div
-      className={`absolute inset-0 z-[90] min-h-[calc(100dvh-11rem)] rounded-xl bg-white/60 px-4 transition-opacity duration-200 ease-out ${blurClasses[blur] || blurClasses.sm} ${
+      className={`${
+        isPageScope
+          ? "fixed inset-0 z-[999] min-h-dvh rounded-none"
+          : "absolute inset-0 z-[90] min-h-[calc(100dvh-11rem)] rounded-xl"
+      } px-4 transition-opacity duration-200 ease-out ${overlayToneClasses[blur] || overlayToneClasses.sm} ${
         isActive ? "opacity-100" : "opacity-0"
       } ${blocking && isActive ? "pointer-events-auto" : "pointer-events-none"} ${className}`}
       aria-live="polite"
       aria-busy="true"
     >
       <div
-        className="sticky top-4 flex min-w-0 items-center justify-center py-8"
-        style={loaderViewportStyle}
+        className={`flex min-w-0 items-center justify-center py-8 ${
+          isPageScope ? "h-full min-h-dvh" : "sticky top-4"
+        }`}
+        style={isPageScope ? undefined : loaderViewportStyle}
       >
         {children || (
           <div
-            className={`flex flex-col items-center justify-center rounded-2xl border border-[#E8ECF0]/90 bg-white/85 px-5 py-4 text-center shadow-md shadow-slate-900/[0.06] backdrop-blur-sm transition-transform duration-200 ease-out ${
+            className={`flex flex-col items-center justify-center rounded-2xl border border-[#E8ECF0]/90 bg-white px-5 py-4 text-center shadow-md shadow-slate-900/[0.06] transition-transform duration-200 ease-out ${
               isActive ? "translate-y-0 scale-100" : "translate-y-1 scale-[0.98]"
             } ${panelClassName}`}
           >
-            <AkayLogoLoader message={message} size="lg" />
+            <AkayLogoLoader
+              label={message}
+              size={size}
+              variant={variant || inferVariant(message)}
+            />
           </div>
         )}
       </div>
@@ -124,8 +110,10 @@ export function SoftLoadingArea({
   message = "Loading...",
   blocking = true,
   blur = "sm",
+  scope = "area",
   minHeight = "min-h-[calc(100dvh-11rem)]",
   className = "",
+  variant,
   children,
 }) {
   return (
@@ -136,6 +124,8 @@ export function SoftLoadingArea({
         message={message}
         blocking={blocking}
         blur={blur}
+        scope={scope}
+        variant={variant || inferVariant(message)}
       />
     </div>
   );

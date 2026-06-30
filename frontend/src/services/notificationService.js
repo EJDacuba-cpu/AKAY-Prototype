@@ -161,26 +161,39 @@ export function createFacilityNotification(role, facilityId, notification) {
   return createNotification(notification);
 }
 
-export function markNotificationAsRead(notificationId) {
+export async function markNotificationAsRead(notificationId) {
   notificationCache = notificationCache.map((notification) =>
     notification.id === String(notificationId)
       ? { ...notification, isRead: true, read: true }
       : notification,
   );
   emitUpdate();
-  apiRequest(`/notifications/${notificationId}/read`, {
-    method: "PATCH",
-  }).catch(() => {});
+
+  try {
+    await apiRequest(`/notifications/${notificationId}/read`, {
+      method: "PATCH",
+    });
+  } finally {
+    await refreshNotifications({ force: true, maxAgeMs: 0 });
+  }
+
+  return notificationCache;
 }
 
-export function markAllNotificationsAsRead() {
+export async function markAllNotificationsAsRead() {
   notificationCache = notificationCache.map((notification) => ({
     ...notification,
     isRead: true,
     read: true,
   }));
   emitUpdate();
-  apiRequest("/notifications/read-all", { method: "PATCH" }).catch(() => {});
+
+  try {
+    await apiRequest("/notifications/read-all", { method: "PATCH" });
+  } finally {
+    await refreshNotifications({ force: true, maxAgeMs: 0 });
+  }
+
   return notificationCache;
 }
 
@@ -189,18 +202,31 @@ export function getUnreadNotificationCount() {
     .length;
 }
 
-export function deleteNotification(notificationId) {
+export async function deleteNotification(notificationId) {
   notificationCache = notificationCache.filter(
     (notification) => notification.id !== String(notificationId),
   );
   emitUpdate();
-  apiRequest(`/notifications/${notificationId}`, { method: "DELETE" }).catch(() => {});
+
+  try {
+    await apiRequest(`/notifications/${notificationId}`, { method: "DELETE" });
+  } finally {
+    await refreshNotifications({ force: true, maxAgeMs: 0 });
+  }
+
+  return notificationCache;
 }
 
-export function clearNotificationsForUser() {
+export async function clearNotificationsForUser() {
   notificationCache = [];
-  lastFetchedAt = Date.now();
   emitUpdate();
+
+  try {
+    await apiRequest("/notifications", { method: "DELETE" });
+  } finally {
+    await refreshNotifications({ force: true, maxAgeMs: 0 });
+  }
+
   return notificationCache;
 }
 

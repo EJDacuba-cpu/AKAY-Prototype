@@ -1,4 +1,5 @@
 export { default as ActionMenu } from "./tables/ActionMenu";
+export { default as DataTableEmptyState } from "./tables/DataTableEmptyState";
 export { default as ModuleTableCard } from "./tables/ModuleTableCard";
 export { default as ConfirmationModal } from "./modals/ConfirmationModal";
 export { default as FormGroup } from "./atoms/FormGroup";
@@ -19,6 +20,7 @@ export { default as StatusBadge } from "./badges/StatusBadge";
 export { default as SuccessModal } from "./modals/SuccessModal";
 export { default as TablePagination } from "./pagination/TablePagination";
 export { default as AkayLogoLoader } from "./loading/AkayLogoLoader";
+export { default as AkayLoader } from "./loading/AkayLoader";
 export { default as ButtonSpinner } from "./loading/ButtonSpinner";
 export { default as InlineSpinner } from "./loading/InlineSpinner";
 export { default as SoftLoadingOverlay } from "./loading/SoftLoadingOverlay";

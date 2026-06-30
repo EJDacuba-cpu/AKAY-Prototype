@@ -316,6 +316,10 @@ export default function HealthRecordDetails() {
     record.referral_tracking_id ||
     "";
   const hasLinkedReferral = Boolean(linkedReferralTarget);
+  const needsRhuReferral =
+    record.needs_referral === true ||
+    record.needsReferral === true ||
+    record.needsReferral === "yes";
   const isImmunizationRecord = isImmunizationClassification(record, patient);
   const immunizationGroups = getImmunizationGroups(record);
   const patientId =
@@ -469,6 +473,15 @@ export default function HealthRecordDetails() {
                     >
                       <ClipboardList size={14} />
                       View Referral
+                    </Link>
+                  )}
+                  {!hasLinkedReferral && needsRhuReferral && (
+                    <Link
+                      to={`/bhc/referrals/create?recordId=${record.id || record._id}&patientId=${patientId || ""}`}
+                      className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
+                    >
+                      <FilePlus2 size={14} />
+                      Create Referral
                     </Link>
                   )}
                 </>

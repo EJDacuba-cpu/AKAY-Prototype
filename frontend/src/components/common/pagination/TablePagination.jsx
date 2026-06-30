@@ -1,134 +1,114 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+function getPaginationRange(currentPage, totalPages) {
+  const safeTotalPages = Math.max(Number(totalPages) || 0, 1);
+  const safeCurrentPage = Math.min(
+    Math.max(Number(currentPage) || 1, 1),
+    Math.max(safeTotalPages, 1),
+  );
+  const visiblePageCount = 5;
+
+  if (safeTotalPages <= visiblePageCount) {
+    return Array.from({ length: safeTotalPages }, (_, index) => index + 1);
+  }
+
+  const siblings = 1;
+  const leftSiblingIndex = Math.max(safeCurrentPage - siblings, 1);
+  const rightSiblingIndex = Math.min(
+    safeCurrentPage + siblings,
+    safeTotalPages,
+  );
+  const showLeftEllipsis = leftSiblingIndex > 2;
+  const showRightEllipsis = rightSiblingIndex < safeTotalPages - 1;
+
+  if (!showLeftEllipsis && showRightEllipsis) {
+    return [1, 2, 3, "...", safeTotalPages];
+  }
+
+  if (showLeftEllipsis && !showRightEllipsis) {
+    return [
+      1,
+      "...",
+      safeTotalPages - 2,
+      safeTotalPages - 1,
+      safeTotalPages,
+    ];
+  }
+
+  return [
+    1,
+    "...",
+    ...Array.from(
+      { length: rightSiblingIndex - leftSiblingIndex + 1 },
+      (_, index) => leftSiblingIndex + index,
+    ),
+    "...",
+    safeTotalPages,
+  ];
+}
+
 export default function TablePagination({
   currentPage = 1,
   totalPages = 1,
-  onPageChange = () => {}, // Fallback function para iwas crash
+  onPageChange = () => {},
 }) {
-  // FUNCTION PARA BUOIN ANG ARRAY NA MAY NUMERO AT ELLIPSES (...)
-  const getPaginationRange = () => {
-    const totalPageNumbers = 5; // Bilang ng buttons na gustong ipakita kasama ang ...
+  const displayTotalPages = Math.max(Number(totalPages) || 0, 1);
 
-    // Siguraduhin na kahit 0 o mas mababa ang totalPages, may minimum na [1] para sa button
-    const safeTotalPages = Math.max(totalPages, 1);
-
-    // Kung maliit lang ang kabuuang pages, ipakita na lang lahat (e.g., 1, 2, 3)
-    if (safeTotalPages <= totalPageNumbers) {
-      return Array.from({ length: safeTotalPages }, (_, i) => i + 1);
-    }
-
-    const siblings = 1; // Bilang ng katabing numero sa kaliwa at kanan ng active page
-    const leftSiblingIndex = Math.max(currentPage - siblings, 1);
-    const rightSiblingIndex = Math.min(currentPage + siblings, safeTotalPages);
-
-    const showLeftEllipsis = leftSiblingIndex > 2;
-    const showRightEllipsis = rightSiblingIndex < safeTotalPages - 1;
-
-    // Case 1: May "..." lang sa kanan (Nasa simulaing mga pahina ang user)
-    if (!showLeftEllipsis && showRightEllipsis) {
-      let leftItemCount = 3;
-      let leftRange = Array.from({ length: leftItemCount }, (_, i) => i + 1);
-      return [...leftRange, "...", safeTotalPages];
-    }
-
-    // Case 2: May "..." lang sa kaliwa (Nasa hulihang mga pahina na ang user)
-    if (showLeftEllipsis && !showRightEllipsis) {
-      let rightItemCount = 3;
-      let rightRange = Array.from(
-        { length: rightItemCount },
-        (_, i) => safeTotalPages - rightItemCount + i + 1,
-      );
-      return [1, "...", ...rightRange];
-    }
-
-    // Case 3: May "..." sa parehong kaliwa at kanan (Nasa gitnang pahina ang user)
-    if (showLeftEllipsis && showRightEllipsis) {
-      let middleRange = Array.from(
-        { length: rightSiblingIndex - leftSiblingIndex + 1 },
-        (_, i) => leftSiblingIndex + i,
-      );
-      return [1, "...", ...middleRange, "...", safeTotalPages];
-    }
-  };
-
-  // Kung walang valid na total pages, default natin sa 1 ang text
-  const displayTotalPages = Math.max(totalPages, 1);
-  const paginationRange = getPaginationRange();
+  const safeCurrentPage = Math.min(
+    Math.max(Number(currentPage) || 1, 1),
+    displayTotalPages,
+  );
+  const paginationRange = getPaginationRange(safeCurrentPage, displayTotalPages);
+  const isFirstPage = safeCurrentPage <= 1;
+  const isLastPage = safeCurrentPage >= displayTotalPages;
 
   return (
-    <div className="flex items-center justify-between border-t border-[#F1F5F9] bg-white px-4 py-3 select-none">
-      {/* Kaliwang Bahagi: Text Indicator */}
+    <div className="flex flex-col gap-3 border-t border-[#F1F5F9] bg-white px-4 py-3 select-none sm:flex-row sm:items-center sm:justify-between">
       <span className="text-xs font-medium text-[#6B7280]">
-        Page <span className="font-bold text-[#B91C1C]">{currentPage}</span>{" "}
-        of{" "}
-        <span className="font-bold text-[#0F172A]">
-          {displayTotalPages}
-        </span>
+        Page{" "}
+        <span className="font-bold text-[#B91C1C]">{safeCurrentPage}</span> of{" "}
+        <span className="font-bold text-[#0F172A]">{displayTotalPages}</span>
       </span>
 
-      {/* Kanang Bahagi: Pagination Controls */}
-      <div className="flex items-center gap-1.5">
-        {/* Previous Button */}
+      <div className="flex flex-wrap items-center gap-1.5">
         <button
           type="button"
-          onClick={() => currentPage > 1 && onPageChange?.(currentPage - 1)}
-          disabled={currentPage === 1} // Naka-disable kung nasa page 1
-          className="
-            flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] transition shadow-sm
-            hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]
-            disabled:pointer-events-none disabled:opacity-40
-          "
+          onClick={() => !isFirstPage && onPageChange(safeCurrentPage - 1)}
+          disabled={isFirstPage}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] shadow-sm transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] disabled:pointer-events-none disabled:opacity-40"
+          aria-label="Previous page"
         >
           <ChevronLeft size={14} />
         </button>
 
-        {/* Dynamic Page Numbers & Ellipses */}
-        {paginationRange &&
-          paginationRange.map((pageNumber, index) => {
-            // Kung ito ay ellipses "...", i-render bilang text lang (hindi clickable)
-            if (pageNumber === "...") {
-              return (
-                <span
-                  key={`ellipsis-${index}`}
-                  className="px-2 text-xs font-semibold text-[#9CA3AF]"
-                >
-                  ...
-                </span>
-              );
-            }
+        {paginationRange.map((pageNumber, index) =>
+          pageNumber === "..." ? (
+            <span
+              key={`ellipsis-${index}`}
+              className="px-2 text-xs font-semibold text-[#9CA3AF]"
+            >
+              ...
+            </span>
+          ) : (
+            <button
+              key={`page-${pageNumber}`}
+              type="button"
+              onClick={() => onPageChange(pageNumber)}
+              data-active={safeCurrentPage === pageNumber}
+              disabled={displayTotalPages <= 1}
+              className="flex h-8 min-w-[32px] items-center justify-center rounded-lg border border-[#E5E7EB] bg-white px-2 text-xs font-semibold text-[#64748B] shadow-sm transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] data-[active=true]:border-[#B91C1C] data-[active=true]:bg-[#B91C1C] data-[active=true]:text-white data-[active=true]:shadow-none disabled:pointer-events-none disabled:opacity-60"
+            >
+              {pageNumber}
+            </button>
+          ),
+        )}
 
-            // Kung numero, i-render bilang clickable button
-            return (
-              <button
-                key={`page-${pageNumber}`}
-                type="button"
-                onClick={() => onPageChange?.(pageNumber)}
-                data-active={currentPage === pageNumber}
-                disabled={displayTotalPages <= 1} // Naka-disable ang page number button kung 1 page lang lahat
-                className="
-                flex h-8 min-w-[32px] items-center justify-center rounded-lg border border-[#E5E7EB] bg-white px-2 text-xs font-semibold text-[#64748B] transition shadow-sm
-                hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]
-                data-[active=true]:border-[#B91C1C] data-[active=true]:bg-[#B91C1C] data-[active=true]:text-white data-[active=true]:shadow-none
-                disabled:opacity-60 disabled:pointer-events-none
-              "
-              >
-                {pageNumber}
-              </button>
-            );
-          })}
-
-        {/* Next Button */}
         <button
           type="button"
-          onClick={() =>
-            currentPage < displayTotalPages && onPageChange?.(currentPage + 1)
-          }
-          disabled={currentPage === displayTotalPages || displayTotalPages <= 1} // Naka-disable kung nasa dulo o kung 1 page lang talaga
-          className="
-            flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] transition shadow-sm
-            hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]
-            disabled:pointer-events-none disabled:opacity-40
-          "
+          onClick={() => !isLastPage && onPageChange(safeCurrentPage + 1)}
+          disabled={isLastPage}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] shadow-sm transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] disabled:pointer-events-none disabled:opacity-40"
+          aria-label="Next page"
         >
           <ChevronRight size={14} />
         </button>

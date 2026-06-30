@@ -18,11 +18,13 @@ class UserNotification extends Model
         'entity_type',
         'entity_id',
         'is_read',
+        'cleared_at',
         'related_referral_id',
     ];
 
     protected $casts = [
         'is_read' => 'boolean',
+        'cleared_at' => 'datetime',
     ];
 
     public function user(): BelongsTo

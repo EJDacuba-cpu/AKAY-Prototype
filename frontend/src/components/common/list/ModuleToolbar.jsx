@@ -7,6 +7,9 @@ import { formatDisplayValue } from "../../../utils/formatters";
 function getInitialValues(fields) {
   return fields.reduce((acc, field) => {
     acc[field.key] = field.value ?? "";
+    if (field.customDateKey) {
+      acc[field.customDateKey] = field.customDateCurrentValue ?? "";
+    }
     return acc;
   }, {});
 }
@@ -49,6 +52,7 @@ export default function ModuleToolbar({
   primaryActionTo,
   primaryActionIcon,
   onPrimaryAction,
+  actions = null,
   disabled = false,
 }) {
   const [searchOpen, setSearchOpen] = useState(Boolean(searchValue));
@@ -245,7 +249,17 @@ export default function ModuleToolbar({
           )}
         </div>
 
-        {primaryAction && <div className="w-full sm:w-auto">{primaryAction}</div>}
+        {(primaryAction || actions) && (
+          <div
+            className={`grid w-full gap-2 sm:w-auto sm:[&>*]:w-auto [&>*]:w-full ${
+              disabled ? "pointer-events-none opacity-60" : ""
+            }`}
+            aria-disabled={disabled}
+          >
+            {primaryAction}
+            {actions}
+          </div>
+        )}
       </div>
 
       {filtersOpen && filters.length > 0 && !onFilterClick && !disabled && (

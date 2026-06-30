@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import { KeyRound, MoreHorizontal, Plus, UserCheck, UserX } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar } from "../../components/common";
+import { ListToolbar, TablePagination } from "../../components/common";
 import {
   ADMIN_ACCOUNTS_UPDATED_EVENT,
   getAdminAccounts,
@@ -220,14 +220,14 @@ export default function UserManagement() {
 
 function AccountsTable({ users, onUpdateStatus }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
+    <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
       <TableHeader
         title="Account Directory"
         description="MHO/Admin can manage account status and review role and facility assignments."
         count={users.length}
       />
 
-      <div className="w-full overflow-x-auto">
+      <div className="w-full flex-1 overflow-x-auto">
         <table className="w-full min-w-[980px] text-left">
           <thead>
             <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
@@ -297,6 +297,10 @@ function AccountsTable({ users, onUpdateStatus }) {
           </tbody>
         </table>
       </div>
+
+      <div className="mt-auto">
+        <TablePagination currentPage={1} totalPages={1} />
+      </div>
     </div>
   );
 }
@@ -321,9 +325,11 @@ function EmptyRow({ colSpan, message }) {
     <tr>
       <td
         colSpan={colSpan}
-        className="px-6 py-12 text-center text-sm text-[#9CA3AF]"
+        className="px-6 py-0 text-center text-sm text-[#9CA3AF]"
       >
-        {message}
+        <div className="flex min-h-[260px] items-center justify-center">
+          {message}
+        </div>
       </td>
     </tr>
   );

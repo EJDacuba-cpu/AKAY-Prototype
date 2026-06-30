@@ -11,7 +11,7 @@ import {
   XCircle,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar } from "../../components/common";
+import { ListToolbar, TablePagination } from "../../components/common";
 import MedicineFormModal from "../../components/features/medicine/MedicineFormModal";
 import {
   addRhuMedicine,
@@ -225,7 +225,7 @@ export default function MedicineManagement() {
         })}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
+      <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
         <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
           <div>
             <h2 className="text-sm font-semibold text-[#0F172A]">
@@ -242,7 +242,7 @@ export default function MedicineManagement() {
           </span>
         </div>
 
-        <div className="w-full overflow-x-auto">
+        <div className="w-full flex-1 overflow-x-auto">
           <table className="w-full min-w-[1160px] text-left">
             <thead>
               <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
@@ -261,16 +261,18 @@ export default function MedicineManagement() {
             <tbody className="divide-y divide-[#F3F4F6]">
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-20 text-center">
-                    <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F3F4F6]">
-                      <Boxes size={20} className="text-[#9CA3AF]" />
+                  <td colSpan={9} className="px-6 py-0 text-center">
+                    <div className="flex min-h-[260px] flex-col items-center justify-center">
+                      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F3F4F6]">
+                        <Boxes size={20} className="text-[#9CA3AF]" />
+                      </div>
+                      <p className="text-sm font-semibold text-[#0F172A]">
+                        No medicines yet. Tap Add Medicine to start.
+                      </p>
+                      <p className="mt-1 text-xs text-[#9CA3AF]">
+                        Try adjusting your search or filters.
+                      </p>
                     </div>
-                    <p className="text-sm font-semibold text-[#0F172A]">
-                      No medicines yet. Tap Add Medicine to start.
-                    </p>
-                    <p className="mt-1 text-xs text-[#9CA3AF]">
-                      Try adjusting your search or filters.
-                    </p>
                   </td>
                 </tr>
               ) : (
@@ -340,6 +342,10 @@ export default function MedicineManagement() {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="mt-auto">
+          <TablePagination currentPage={1} totalPages={1} />
         </div>
       </div>
 

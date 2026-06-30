@@ -192,23 +192,30 @@ export default function AuditLogs() {
 
   return (
     <DashboardLayout role="admin" title="Audit Logs">
-      <SoftLoadingArea isLoading={isLoading} message="Loading audit logs...">
-        <ListToolbar
-          searchValue={filters.search}
-          onSearchChange={(value) => {
-            updateFilters((prev) => ({ ...prev, search: value }));
-          }}
-          searchPlaceholder="Search action, user, module, role, or details..."
-          filters={dropdownFilters}
-          activeFilterCount={activeFilterCount}
-          activeFilters={activeFilters}
-          onApplyFilters={applyDropdownFilters}
-          onClearFilters={clearFilters}
-          onRemoveFilter={removeFilter}
-          disabled={isLoading}
-        />
+      <SoftLoadingArea
+        isLoading={isLoading}
+        message="Loading audit logs..."
+        scope="page"
+      >
+        {!isLoading && (
+          <ListToolbar
+            searchValue={filters.search}
+            onSearchChange={(value) => {
+              updateFilters((prev) => ({ ...prev, search: value }));
+            }}
+            searchPlaceholder="Search action, user, module, role, or details..."
+            filters={dropdownFilters}
+            activeFilterCount={activeFilterCount}
+            activeFilters={activeFilters}
+            onApplyFilters={applyDropdownFilters}
+            onClearFilters={clearFilters}
+            onRemoveFilter={removeFilter}
+            disabled={isLoading}
+          />
+        )}
 
-        <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
+        {!isLoading && (
+        <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
           <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
             <div>
               <h2 className="text-sm font-semibold text-[#0F172A]">
@@ -221,7 +228,7 @@ export default function AuditLogs() {
             </div>
           </div>
 
-          <div className="w-full overflow-x-auto">
+          <div className="w-full flex-1 overflow-x-auto">
             <table className="w-full min-w-[1050px] text-left">
               <thead>
                 <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
@@ -241,18 +248,22 @@ export default function AuditLogs() {
                   <tr>
                     <td
                       colSpan={8}
-                      className="px-6 py-12 text-center text-sm text-[#B91C1C]"
+                      className="px-6 py-0 text-center text-sm text-[#B91C1C]"
                     >
-                      {loadError}
+                      <div className="flex min-h-[260px] items-center justify-center">
+                        {loadError}
+                      </div>
                     </td>
                   </tr>
                 ) : paginatedLogs.length === 0 ? (
                   <tr>
                     <td
                       colSpan={8}
-                      className="px-6 py-12 text-center text-sm text-[#9CA3AF]"
+                      className="px-6 py-0 text-center text-sm text-[#9CA3AF]"
                     >
-                      No audit logs found.
+                      <div className="flex min-h-[260px] items-center justify-center">
+                        No audit logs found.
+                      </div>
                     </td>
                   </tr>
                 ) : (
@@ -301,7 +312,7 @@ export default function AuditLogs() {
             </table>
           </div>
 
-          {!isLoading && !loadError && pagination.total > 0 && (
+          {!isLoading && !loadError && (
             <TablePagination
               currentPage={currentPage}
               totalPages={totalPages}
@@ -309,6 +320,7 @@ export default function AuditLogs() {
             />
           )}
         </div>
+        )}
       </SoftLoadingArea>
     </DashboardLayout>
   );

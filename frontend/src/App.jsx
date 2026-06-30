@@ -350,12 +350,16 @@ export default function App() {
         }
       />
       <Route
-        path="/rhu/doctor-schedule"
+        path="/rhu/doctor-availability"
         element={
           <ProtectedPage allowedRole="rhu">
             <DoctorSchedule />
           </ProtectedPage>
         }
+      />
+      <Route
+        path="/rhu/doctor-schedule"
+        element={<Navigate to="/rhu/doctor-availability" replace />}
       />
       <Route
         path="/rhu/medicine-management"

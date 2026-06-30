@@ -79,9 +79,17 @@ const INITIAL_FORM_STATE = {
   municipality: "Bulakan",
 };
 
-export default function AddPatient() {
+export function PatientRegistrationPage({
+  role = "bhc",
+  basePath = "/bhc",
+  createPatient = createBhcPatient,
+  queryRole = "bhc",
+  systemDescription = "Register a new patient profile into the Barangay Health Center system.",
+}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const patientsPath = `${basePath}/patients`;
+  const addHealthRecordPath = `${basePath}/health-records/add`;
 
   // Unified State Management
   const [modals, setModals] = useState({
@@ -176,13 +184,13 @@ export default function AddPatient() {
         ageSex: `${form.age || calculateAge(form.birthDate)} / ${form.sex}`,
       };
 
-      const created = await createBhcPatient(patientData);
+      const created = await createPatient(patientData);
       const nextId =
         created?.id || created?.details?.id || created?.patient?.id || patientData.id;
 
-      queryClient.invalidateQueries({ queryKey: queryKeys.patients("bhc") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.patients(queryRole) });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.dashboardSummary("bhc"),
+        queryKey: queryKeys.dashboardSummary(queryRole),
       });
       setCreatedPatientId(nextId);
       setModals({ ...modals, confirm: false, success: true });
@@ -197,12 +205,12 @@ export default function AddPatient() {
 
   return (
     <>
-      <DashboardLayout role="bhc" title="Add Patient">
+      <DashboardLayout role={role} title="Add Patient">
         {/* Header */}
         <div className="anim-fade-up mb-8" style={stagger(0)}>
           <div className="flex flex-col gap-2">
             <Link
-              to="/bhc/patients"
+              to={patientsPath}
               className="inline-flex w-fit items-center gap-2 text-xs font-semibold text-gray-500 transition-colors hover:text-[#B91C1C]"
             >
               <ArrowLeft size={14} />
@@ -213,8 +221,7 @@ export default function AddPatient() {
                 Add New Patient
               </h1>
               <p className="mt-1 text-sm text-gray-500">
-                Register a new patient profile into the Barangay Health Center
-                system.
+                {systemDescription}
               </p>
             </div>
           </div>
@@ -364,7 +371,7 @@ export default function AddPatient() {
           >
             <button
               type="button"
-              onClick={() => navigate("/bhc/patients")}
+              onClick={() => navigate(patientsPath)}
               className="rounded-lg border border-gray-300 bg-white px-6 py-2.5 text-xs font-semibold text-gray-700 transition-all hover:bg-gray-50"
             >
               Cancel
@@ -386,10 +393,10 @@ export default function AddPatient() {
         title="Patient added."
         description="You can add the first health record or return to Patients."
         buttonText="Back to Patient List"
-        onClose={() => navigate("/bhc/patients")}
+        onClose={() => navigate(patientsPath)}
         secondaryButtonText="Add Health Record"
         onSecondaryAction={() =>
-          navigate(`/bhc/health-records/add?patientId=${createdPatientId}`)
+          navigate(`${addHealthRecordPath}?patientId=${createdPatientId}`)
         }
       />
       <ConfirmationModal
@@ -404,6 +411,10 @@ export default function AddPatient() {
       />
     </>
   );
+}
+
+export default function AddPatient() {
+  return <PatientRegistrationPage />;
 }
 
 function ModernSelect({

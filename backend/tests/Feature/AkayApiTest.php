@@ -7,6 +7,7 @@ use App\Models\Patient;
 use App\Models\Referral;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Models\UserNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -126,6 +127,92 @@ class AkayApiTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['module' => 'referrals', 'action' => 'submitted']);
     }
 
+    public function test_notification_read_and_clear_actions_are_persisted_and_scoped_to_user(): void
+    {
+        $rhu = RuralHealthUnit::create(['name' => 'Bulakan RHU']);
+        $rhuStaff = User::create([
+            'name' => 'RHU Staff',
+            'email' => 'notifications-rhu@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_RHU_STAFF,
+            'status' => User::STATUS_ACTIVE,
+            'rural_health_unit_id' => $rhu->id,
+        ]);
+        $otherStaff = User::create([
+            'name' => 'Other RHU Staff',
+            'email' => 'notifications-other@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_RHU_STAFF,
+            'status' => User::STATUS_ACTIVE,
+            'rural_health_unit_id' => $rhu->id,
+        ]);
+
+        $first = UserNotification::create([
+            'user_id' => $rhuStaff->id,
+            'title' => 'Incoming referral',
+            'message' => 'A referral is waiting.',
+            'type' => 'incoming_referral',
+        ]);
+        $second = UserNotification::create([
+            'user_id' => $rhuStaff->id,
+            'title' => 'Medicine alert',
+            'message' => 'Stock needs review.',
+            'type' => 'medicine',
+        ]);
+        $otherNotification = UserNotification::create([
+            'user_id' => $otherStaff->id,
+            'title' => 'Other user alert',
+            'message' => 'Should stay untouched.',
+            'type' => 'incoming_referral',
+        ]);
+
+        $this->actingAs($rhuStaff, 'sanctum')
+            ->patchJson("/api/notifications/{$first->id}/read")
+            ->assertOk()
+            ->assertJsonPath('data.is_read', true);
+
+        $this->assertDatabaseHas('notifications', [
+            'id' => $first->id,
+            'user_id' => $rhuStaff->id,
+            'is_read' => true,
+        ]);
+
+        $this->actingAs($rhuStaff, 'sanctum')
+            ->deleteJson("/api/notifications/{$first->id}")
+            ->assertOk();
+
+        $this->assertDatabaseHas('notifications', [
+            'id' => $first->id,
+            'user_id' => $rhuStaff->id,
+        ]);
+        $this->assertNotNull($first->fresh()->cleared_at);
+
+        $this->actingAs($rhuStaff, 'sanctum')
+            ->getJson('/api/notifications')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.id', $second->id);
+
+        $this->actingAs($rhuStaff, 'sanctum')
+            ->patchJson('/api/notifications/read-all')
+            ->assertOk();
+
+        $this->assertTrue($second->fresh()->is_read);
+        $this->assertFalse($otherNotification->fresh()->is_read);
+
+        $this->actingAs($rhuStaff, 'sanctum')
+            ->deleteJson('/api/notifications')
+            ->assertOk();
+
+        $this->assertNotNull($second->fresh()->cleared_at);
+        $this->assertNull($otherNotification->fresh()->cleared_at);
+
+        $this->actingAs($rhuStaff, 'sanctum')
+            ->getJson('/api/notifications')
+            ->assertOk()
+            ->assertJsonCount(0, 'data.data');
+    }
+
     public function test_referral_creation_is_idempotent_by_client_submission_id(): void
     {
         $bhc = BarangayHealthCenter::create(['name' => 'Pitpitan BHC']);
@@ -180,6 +267,68 @@ class AkayApiTest extends TestCase
         $this->assertDatabaseHas('notifications', ['type' => 'referral_submitted']);
         $this->assertDatabaseCount('notifications', 2);
         $this->assertDatabaseCount('audit_logs', 1);
+    }
+
+    public function test_rhu_received_referral_links_existing_patient_to_rhu_without_duplicates(): void
+    {
+        $bhc = BarangayHealthCenter::create(['name' => 'Pitpitan BHC']);
+        $rhu = RuralHealthUnit::create(['name' => 'Bulakan RHU']);
+        $rhuStaff = User::create([
+            'name' => 'RHU Staff',
+            'email' => 'received-rhu@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_RHU_STAFF,
+            'status' => User::STATUS_ACTIVE,
+            'rural_health_unit_id' => $rhu->id,
+        ]);
+        User::create([
+            'name' => 'BHW',
+            'email' => 'received-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHW,
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+        $patient = Patient::create([
+            'first_name' => 'Checked',
+            'last_name' => 'Patient',
+            'sex' => 'Female',
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+        $referral = Referral::create([
+            'tracking_id' => 'AKAY-TEST-RECEIVED',
+            'qr_code_value' => 'AKAY:REFERRAL:AKAY-TEST-RECEIVED',
+            'patient_id' => $patient->id,
+            'barangay_health_center_id' => $bhc->id,
+            'rural_health_unit_id' => $rhu->id,
+            'status' => Referral::STATUS_PENDING,
+            'reason_for_referral' => 'RHU check-in.',
+        ]);
+
+        $this->actingAs($rhuStaff, 'sanctum')
+            ->patchJson("/api/referrals/{$referral->id}/status", [
+                'status' => Referral::STATUS_RECEIVED,
+                'remarks' => 'Patient received.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.status', Referral::STATUS_RECEIVED);
+
+        $this->assertSame($rhu->id, $patient->fresh()->rural_health_unit_id);
+        $this->assertSame(1, Patient::where('first_name', 'Checked')->where('last_name', 'Patient')->count());
+
+        $this->actingAs($rhuStaff, 'sanctum')
+            ->patchJson("/api/referrals/{$referral->id}/status", [
+                'status' => Referral::STATUS_RECEIVED,
+                'remarks' => 'Repeated receive.',
+            ])
+            ->assertOk();
+
+        $this->assertSame(1, Patient::where('first_name', 'Checked')->where('last_name', 'Patient')->count());
+
+        $this->actingAs($rhuStaff, 'sanctum')
+            ->getJson('/api/patients')
+            ->assertOk()
+            ->assertJsonPath('data.data.0.id', $patient->id);
     }
 
     public function test_empty_reports_return_zero_counts(): void

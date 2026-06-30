@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -59,6 +59,25 @@ const RECORD_TYPE_OPTIONS = [
   "Immunization",
   "Senior Citizen",
 ];
+
+const RECORD_TYPE_DETAILS = {
+  "General Consultation": {
+    description: "For routine check-up, symptoms, and general concerns.",
+    icon: Stethoscope,
+  },
+  Maternal: {
+    description: "For prenatal, pregnancy, postpartum, and maternal monitoring.",
+    icon: HeartPulse,
+  },
+  Immunization: {
+    description: "For child vaccination schedule entries.",
+    icon: Syringe,
+  },
+  "Senior Citizen": {
+    description: "For senior citizen monitoring and related visits.",
+    icon: User,
+  },
+};
 
 const EMPTY_MATERNAL_DATA = {
   lmp: "",
@@ -315,6 +334,12 @@ export default function AddHealthRecord() {
 
   const recordId = searchParams.get("recordId");
   const preselectedPatientId = searchParams.get("patientId") || "";
+  const preselectedClassification = normalizeRecordType(
+    searchParams.get("classification") ||
+      searchParams.get("category") ||
+      searchParams.get("recordType") ||
+      searchParams.get("healthRecordType"),
+  );
   const requestedMode =
     searchParams.get("mode") || (recordId ? "follow-up" : "create");
   const mode = requestedMode;
@@ -329,6 +354,9 @@ export default function AddHealthRecord() {
   const [noticeModal, setNoticeModal] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [setupComplete, setSetupComplete] = useState(
+    Boolean(recordId) || Boolean(preselectedPatientId && preselectedClassification),
+  );
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const dropdownRef = useRef(null);
@@ -347,7 +375,9 @@ export default function AddHealthRecord() {
   const [medication, setMedication] = useState("");
   const [attendingStaff, setAttendingStaff] = useState(currentUserName);
   const [consultationNotes, setConsultationNotes] = useState("");
-  const [healthRecordType, setHealthRecordType] = useState("");
+  const [healthRecordType, setHealthRecordType] = useState(
+    preselectedClassification,
+  );
 
   const [systolicBp, setSystolicBp] = useState("");
   const [diastolicBp, setDiastolicBp] = useState("");
@@ -360,6 +390,8 @@ export default function AddHealthRecord() {
   const [followUpDate, setFollowUpDate] = useState("");
   const [monitoringNotes, setMonitoringNotes] = useState("");
   const [patientCondition, setPatientCondition] = useState("Improving");
+  const [careDecisionStep, setCareDecisionStep] = useState(false);
+  const [needsReferral, setNeedsReferral] = useState(false);
 
   const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
   const [supplementsGiven, setSupplementsGiven] = useState([]);
@@ -621,6 +653,9 @@ export default function AddHealthRecord() {
   function selectPatient(id) {
     if (id !== selectedPatientId) {
       resetClassificationSpecificState();
+      setSetupComplete(false);
+      setCareDecisionStep(false);
+      setNeedsReferral(false);
     }
     setSelectedPatientId(id);
     setSearchTerm("");
@@ -631,6 +666,9 @@ export default function AddHealthRecord() {
   function clearSelectedPatient() {
     setSelectedPatientId("");
     resetClassificationSpecificState();
+    setSetupComplete(false);
+    setCareDecisionStep(false);
+    setNeedsReferral(false);
     setSearchTerm("");
     setDropdownOpen(true);
     requestAnimationFrame(() => inputRef.current?.focus());
@@ -640,6 +678,9 @@ export default function AddHealthRecord() {
     if (selectedPatientId) {
       setSelectedPatientId("");
       resetClassificationSpecificState();
+      setSetupComplete(false);
+      setCareDecisionStep(false);
+      setNeedsReferral(false);
     }
     setSearchTerm(event.target.value);
     setDropdownOpen(true);
@@ -664,6 +705,7 @@ export default function AddHealthRecord() {
   const normalizedPatientStatus = normalizePatientStatus(followUpStatus);
   const showFollowUpMonitoringFields =
     normalizedPatientStatus === "Follow-up Required";
+  const usesCareDecisionStep = !isFollowUp && !isEditingRecord;
   const immunizationPatientInfo = useMemo(
     () => getImmunizationPatientMode(selectedPatient, dateOfVisit),
     [selectedPatient, dateOfVisit],
@@ -683,8 +725,7 @@ export default function AddHealthRecord() {
     pulse || "N/A"
   } bpm | Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
 
-  function handleClassificationChange(event) {
-    const nextType = event.target.value;
+  function handleClassificationSelect(nextType) {
     const normalizedNextType = normalizeRecordType(nextType);
 
     if (patientGateLocked) {
@@ -720,7 +761,22 @@ export default function AddHealthRecord() {
       return;
     }
 
+    if (normalizedNextType !== normalizedHealthRecordType) {
+      setMaternalData(EMPTY_MATERNAL_DATA);
+      setSupplementsGiven([]);
+      setExpectedDeliveryDate("");
+      setAog("");
+      setImmunizationData(EMPTY_IMMUNIZATION_DATA);
+    }
+
     setHealthRecordType(nextType);
+  }
+
+  function handleProceedFromSetup() {
+    if (!selectedPatientId || !normalizedHealthRecordType) return;
+    setSetupComplete(true);
+    setCareDecisionStep(false);
+    setDropdownOpen(false);
   }
 
   useEffect(() => {
@@ -739,10 +795,18 @@ export default function AddHealthRecord() {
   function handlePatientStatusChange(value) {
     const normalizedStatus = normalizePatientStatus(value);
     setFollowUpStatus(normalizedStatus);
+    if (normalizedStatus === "Completed") {
+      setNeedsReferral(false);
+    }
     if (normalizedStatus !== "Follow-up Required") {
       setFollowUpDate("");
       if (!isFollowUp) setPatientCondition("");
     }
+  }
+
+  function handleProceedToCareDecision(event) {
+    event.preventDefault();
+    setCareDecisionStep(true);
   }
 
   useEffect(() => {
@@ -1007,6 +1071,24 @@ export default function AddHealthRecord() {
       return;
     }
 
+    if (usesCareDecisionStep) {
+      if (!normalizedPatientStatus) {
+        setNoticeModal({
+          title: "Patient Status Required",
+          message: "Select the patient status before saving.",
+        });
+        return;
+      }
+
+      if (showFollowUpMonitoringFields && !followUpDate) {
+        setNoticeModal({
+          title: "Follow-up Date Required",
+          message: "Enter a follow-up date for Follow-up Required status.",
+        });
+        return;
+      }
+    }
+
     if (!isFollowUp && effectiveHealthRecordType === "Maternal" && selectedPatientIsMale) {
       setNoticeModal({
         title: "Invalid Classification",
@@ -1143,6 +1225,11 @@ export default function AddHealthRecord() {
       ].join("-"),
     };
 
+    const finalNeedsReferral =
+      usesCareDecisionStep &&
+      normalizedPatientStatus !== "Completed" &&
+      Boolean(needsReferral);
+
     const formData = {
       patientId: selectedPatientId,
       patientName: isFollowUp
@@ -1176,7 +1263,8 @@ export default function AddHealthRecord() {
       monitoringNotes,
       patientCondition:
         isFollowUp || showFollowUpMonitoringFields ? patientCondition : "",
-      needsReferral: "no",
+      needsReferral: finalNeedsReferral,
+      needs_referral: finalNeedsReferral,
       referralReason: "",
       referralCategory: null,
       referralAssessmentStatus: null,
@@ -1218,10 +1306,12 @@ export default function AddHealthRecord() {
           formData.followUpStatus,
       );
 
+      setCareDecisionStep(false);
       setSaveSuccess({
         recordId: savedRecordId,
         patientId: selectedPatientId,
         status: savedStatus,
+        needsReferral: formData.needs_referral === true,
         isFollowUp,
         isEditingRecord,
       });
@@ -1241,13 +1331,38 @@ export default function AddHealthRecord() {
     saveSuccess?.recordId &&
     userRole === "bhc" &&
     !saveSuccess.isEditingRecord &&
-    saveSuccess.status !== "Completed";
+    saveSuccess.needsReferral === true;
   const isPrimaryActionLoading = saving;
   const primaryActionLabel = saving
     ? "Saving..."
     : isFollowUp
       ? "Save Follow-up Visit"
-      : "Save Health Record";
+      : usesCareDecisionStep
+        ? "Proceed to Care Decision"
+        : "Save Health Record";
+  const pageStepLabel = usesCareDecisionStep
+    ? careDecisionStep
+      ? "Step 3 of 3"
+      : setupComplete
+        ? "Step 2 of 3"
+        : "Step 1 of 3"
+    : null;
+  const pageTitle = isFollowUp
+    ? "Follow-up Health Record"
+    : isEditingRecord
+      ? "Edit Health Record"
+      : careDecisionStep && usesCareDecisionStep
+        ? "Review & Care Decision"
+        : "Add Health Record";
+  const pageSubtitle = isFollowUp
+    ? "Record what happened during the patient's scheduled return visit."
+    : isEditingRecord
+      ? "Correct or update details in this existing health record."
+      : careDecisionStep && usesCareDecisionStep
+        ? "Review the visit summary and choose what should happen after this record is saved."
+        : setupComplete
+          ? "Complete the clinical details for this visit."
+          : "Search patient and choose the record classification before recording a visit.";
   const monitoringNotesLabel =
     normalizedPatientStatus === "Completed"
       ? "Outcome Notes"
@@ -1261,74 +1376,116 @@ export default function AddHealthRecord() {
         ? "Write the monitoring plan or reason for follow-up..."
         : "Write monitoring notes if useful...";
 
+  function handleStepBack() {
+    if (careDecisionStep && usesCareDecisionStep) {
+      setCareDecisionStep(false);
+      return;
+    }
+
+    if (setupComplete && usesCareDecisionStep) {
+      setSetupComplete(false);
+      setCareDecisionStep(false);
+      setDropdownOpen(false);
+      return;
+    }
+
+    navigate(healthRecordsPath);
+  }
+
   return (
     <DashboardLayout role={userRole} title="Add Health Record">
       <style>{keyframes}</style>
 
-      <div className="anim-fade-up mb-6" style={stagger(0)}>
-        <Link
-          to={healthRecordsPath}
+      <div
+        className="anim-fade-up mx-auto mb-5 w-full max-w-6xl"
+        style={stagger(0)}
+      >
+        <button
+          type="button"
+          onClick={handleStepBack}
           className="mb-2 inline-flex items-center gap-2 text-[13px] font-semibold text-[#B91C1C] transition-all duration-200 hover:gap-2.5 hover:text-[#991B1B]"
         >
-          <ArrowLeft size={16} /> Back to Health Records
-        </Link>
-        <h1 className="text-lg font-bold tracking-tight text-[#1A1A1A]">
-          {isFollowUp
-            ? "Follow-up Health Record"
-            : isEditingRecord
-              ? "Edit Health Record"
-              : "Add Health Record"}
-        </h1>
-        <p className="mt-0.5 text-xs text-[#6B7280]">
-          {isFollowUp
-            ? "Record what happened during the patient's scheduled return visit."
-            : isEditingRecord
-              ? "Correct or update details in this existing health record."
-              : "Record a consultation, maternal record, immunization record, monitoring update, follow-up, or referral basis."}
-        </p>
+          <ArrowLeft size={16} /> Back
+        </button>
+        <div className="px-1 py-2">
+          {pageStepLabel && (
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#B91C1C]">
+              {pageStepLabel}
+            </p>
+          )}
+          <h1 className="text-lg font-bold tracking-tight text-[#1A1A1A]">
+            {pageTitle}
+          </h1>
+          <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-[#6B7280]">
+            {pageSubtitle}
+          </p>
+        </div>
       </div>
 
-      <form onSubmit={handleSave} className="relative space-y-5">
-        {isFollowUp ? (
+      {!isFollowUp && !isEditingRecord && !setupComplete ? (
+        <HealthRecordSetupStep
+          selectedPatientId={selectedPatientId}
+          selectedPatient={selectedPatient}
+          patientSearchProps={{
+            inputRef,
+            dropdownRef,
+            disabled: false,
+            dropdownOpen,
+            selectedPatientId,
+            searchTerm,
+            inputValue: patientSearchInputValue,
+            patients: filteredPatients,
+            totalPatientCount: patients.length,
+            matchingPatientCount: matchingPatients.length,
+            visibleLimit: visiblePatientLimit,
+            loading: patientsLoading && patients.length === 0,
+            isSearching: Boolean(normalizedSearch),
+            onSeeAll: () => navigate("/bhc/patients"),
+            highlightIndex,
+            onSearchChange: handlePatientSearchChange,
+            onOpen: () => {
+              setSearchTerm("");
+              setDropdownOpen(true);
+            },
+            onClear: clearSelectedPatient,
+            onSelect: selectPatient,
+            onHighlight: setHighlightIndex,
+          }}
+          classification={healthRecordType}
+          onClassificationSelect={handleClassificationSelect}
+          onProceed={handleProceedFromSetup}
+        />
+      ) : (
+      <>
+      {careDecisionStep && usesCareDecisionStep ? (
+        <CareDecisionStep
+          patientName={getPatientName(selectedPatient)}
+          patientMeta={getPatientDisplay(selectedPatient).age}
+          classification={normalizedHealthRecordType}
+          dateOfVisit={dateOfVisit}
+          timeOfVisit={timeOfVisit}
+          status={followUpStatus}
+          followUpDate={followUpDate}
+          needsReferral={needsReferral}
+          saving={saving}
+          referralLabel="Needs RHU Referral"
+          onStatusChange={handlePatientStatusChange}
+          onFollowUpDateChange={setFollowUpDate}
+          onNeedsReferralChange={setNeedsReferral}
+          onSave={handleSave}
+        />
+      ) : (
+      <form
+        onSubmit={usesCareDecisionStep ? handleProceedToCareDecision : handleSave}
+        className="relative mx-auto w-full max-w-6xl space-y-5"
+      >
+        {isFollowUp && (
           <FollowUpContextCard
             patientName={followUpPatientName}
             patientId={followUpPatientId}
             recordId={recordId}
             record={followUpRecord}
           />
-        ) : (
-          <div
-            className="anim-fade-up relative z-[90] w-full max-w-3xl"
-            style={stagger(1)}
-          >
-            <PatientSearchDropdown
-              inputRef={inputRef}
-              dropdownRef={dropdownRef}
-              disabled={isEditingRecord}
-              dropdownOpen={dropdownOpen}
-              selectedPatientId={selectedPatientId}
-              selectedPatient={selectedPatient}
-              searchTerm={searchTerm}
-              inputValue={patientSearchInputValue}
-              patients={filteredPatients}
-              totalPatientCount={patients.length}
-              matchingPatientCount={matchingPatients.length}
-              visibleLimit={visiblePatientLimit}
-              loading={patientsLoading && patients.length === 0}
-              isSearching={Boolean(normalizedSearch)}
-              onSeeAll={() => navigate("/bhc/patients")}
-              highlightIndex={highlightIndex}
-              onSearchChange={handlePatientSearchChange}
-              onOpen={() => {
-                if (isEditingRecord) return;
-                setSearchTerm("");
-                setDropdownOpen(true);
-              }}
-              onClear={clearSelectedPatient}
-              onSelect={selectPatient}
-              onHighlight={setHighlightIndex}
-            />
-          </div>
         )}
 
         <FormSection
@@ -1338,9 +1495,15 @@ export default function AddHealthRecord() {
           delay={2}
         >
           <LockedFormContent locked={patientGateLocked}>
-          <div className="grid gap-4 lg:grid-cols-5">
+          <div
+            className={`grid gap-4 ${
+              isFollowUp || isEditingRecord
+                ? "lg:grid-cols-5"
+                : "sm:grid-cols-2 lg:grid-cols-4"
+            }`}
+          >
             <FieldInput label="Visit Type" value={visitTypeLabel} readOnly />
-            {isFollowUp ? (
+            {(isFollowUp || isEditingRecord) && (
               <FieldInput
                 label="Classification"
                 value={
@@ -1354,21 +1517,6 @@ export default function AddHealthRecord() {
                 }
                 readOnly
               />
-            ) : (
-              <FieldSelect
-                label="Classification"
-                value={healthRecordType}
-                ref={classificationRef}
-                onChange={handleClassificationChange}
-                required
-              >
-                <option value="">Select classification</option>
-                {RECORD_TYPE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </FieldSelect>
             )}
             <FieldInput
               label="Date of Visit"
@@ -1564,7 +1712,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !patientGateLocked && isImmunization && (
+        {!isFollowUp && !patientGateLocked && !usesCareDecisionStep && isImmunization && (
           <FormSection
             title="Patient Monitoring"
             subtitle="Set the immunization visit outcome and follow-up schedule if another dose is needed."
@@ -1836,6 +1984,7 @@ export default function AddHealthRecord() {
               </LockedFormContent>
             </FormSection>
 
+            {!usesCareDecisionStep && (
             <FormSection
         title="Patient Monitoring"
         subtitle="Track patient progress and follow-up schedules."
@@ -1893,6 +2042,7 @@ export default function AddHealthRecord() {
           </div>
           </LockedFormContent>
             </FormSection>
+            )}
 
           </>
         )}
@@ -1901,13 +2051,15 @@ export default function AddHealthRecord() {
           className="anim-fade-up flex items-center justify-end gap-3 pt-1 pb-4"
           style={stagger(7)}
         >
-          <button
-            type="button"
-            onClick={() => navigate(healthRecordsPath)}
-            className="rounded-xl border border-[#E8ECF0] bg-white px-5 py-2.5 text-sm font-semibold text-[#6B7280] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#D1D5DB] hover:shadow-md active:scale-[0.97]"
-          >
-            Cancel
-          </button>
+          {!usesCareDecisionStep && (
+            <button
+              type="button"
+              onClick={() => navigate(healthRecordsPath)}
+              className="rounded-xl border border-[#E8ECF0] bg-white px-5 py-2.5 text-sm font-semibold text-[#6B7280] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#D1D5DB] hover:shadow-md active:scale-[0.97]"
+            >
+              Cancel
+            </button>
+          )}
           <button
             type="submit"
             disabled={isPrimaryActionLoading}
@@ -1925,47 +2077,63 @@ export default function AddHealthRecord() {
           </button>
         </div>
       </form>
+      )}
+      </>
+      )}
 
       <SuccessModal
         open={Boolean(saveSuccess)}
         title={
           saveSuccess?.isFollowUp
             ? "Follow-up Visit Saved"
-            : "Record saved."
+            : "Health Record Saved Successfully"
         }
         description={
           saveSuccess?.isFollowUp
             ? "The follow-up visit has been saved and linked to the original health record."
-            : "The health record has been saved."
+            : saveSuccess?.needsReferral
+              ? "Health record saved successfully. This record is marked for RHU referral."
+              : "Health record saved successfully."
         }
         onClose={() => navigate(healthRecordsPath)}
-        actions={[
-          {
-            label: "View Health Record",
-            variant: "primary",
-            onClick: () =>
-              navigate(
-                saveSuccess?.recordId
-                  ? `${healthRecordsPath}/${saveSuccess.recordId}`
-                  : healthRecordsPath,
-              ),
-          },
-          {
-            label: "Back to Health Records",
-            onClick: () => navigate(healthRecordsPath),
-          },
-          ...(canCreateReferralAfterSave
+        actions={
+          canCreateReferralAfterSave
             ? [
                 {
-                  label: "Create Referral if Needed",
+                  label: "Create Referral",
+                  variant: "primary",
                   onClick: () =>
                     navigate(
                       `/bhc/referrals/create?recordId=${saveSuccess.recordId}&patientId=${saveSuccess.patientId}`,
                     ),
                 },
+                {
+                  label: "View Health Record",
+                  onClick: () =>
+                    navigate(
+                      saveSuccess?.recordId
+                        ? `${healthRecordsPath}/${saveSuccess.recordId}`
+                        : healthRecordsPath,
+                    ),
+                },
               ]
-            : []),
-        ]}
+            : [
+                {
+                  label: "View Health Record",
+                  variant: "primary",
+                  onClick: () =>
+                    navigate(
+                      saveSuccess?.recordId
+                        ? `${healthRecordsPath}/${saveSuccess.recordId}`
+                        : healthRecordsPath,
+                    ),
+                },
+                {
+                  label: "Back to Health Records",
+                  onClick: () => navigate(healthRecordsPath),
+                },
+              ]
+        }
       />
 
       {noticeModal && (
@@ -2004,6 +2172,284 @@ export default function AddHealthRecord() {
 /* ═══════════════════════════════════════════════════════════════
    PATIENT SEARCH DROPDOWN
    ═══════════════════════════════════════════════════════════════ */
+function HealthRecordSetupStep({
+  selectedPatientId,
+  patientSearchProps,
+  classification,
+  onClassificationSelect,
+  onProceed,
+}) {
+  const normalizedClassification = normalizeRecordType(classification);
+  const canProceed = Boolean(selectedPatientId && normalizedClassification);
+
+  return (
+    <section
+      className="anim-fade-up mx-auto w-full max-w-6xl"
+      style={stagger(1)}
+    >
+      <div className=" p-1 ">
+        <div className="relative z-30 ">
+          <PatientSearchDropdown {...patientSearchProps} />
+        </div>
+
+        <div className="mt-5">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
+            Choose Classification
+          </p>
+          <p className="mt-0.5 text-xs text-[#64748B]">
+            The selected card controls which clinical fields appear next.
+          </p>
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {RECORD_TYPE_OPTIONS.map((option) => (
+              <ClassificationCard
+                key={option}
+                option={option}
+                selected={normalizedClassification === option}
+                onSelect={() => onClassificationSelect(option)}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-[#F3F4F6] pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs font-medium text-[#94A3B8]">
+            {canProceed
+              ? "Ready to continue to the clinical record."
+              : "Select a patient and classification to continue."}
+          </p>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={onProceed}
+              disabled={!canProceed}
+              className="rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Proceed
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ClassificationCard({ option, selected, onSelect }) {
+  const config = RECORD_TYPE_DETAILS[option] || {};
+  const Icon = config.icon || Stethoscope;
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={`group flex min-h-[112px] rounded-xl border p-3.5 text-left shadow-sm transition-all duration-200 ${
+        selected
+          ? "border-[#FCA5A5] bg-[#FEF2F2] shadow-[#B91C1C]/10 ring-2 ring-[#B91C1C]/10"
+          : "border-[#E8ECF0] bg-white hover:-translate-y-0.5 hover:border-[#FECACA] hover:shadow-md"
+      }`}
+    >
+      <span
+        className={`mr-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
+          selected
+            ? "bg-[#B91C1C] text-white"
+            : "bg-[#F8FAFC] text-[#64748B] group-hover:bg-red-50 group-hover:text-[#B91C1C]"
+        }`}
+      >
+        <Icon size={16} />
+      </span>
+      <span className="flex min-w-0 flex-1 items-start justify-between gap-3">
+        <span className="min-w-0">
+          <span className="block text-sm font-bold text-[#0F172A]">
+            {option}
+          </span>
+          <span className="mt-1 block text-[11.5px] leading-relaxed text-[#64748B]">
+            {config.description}
+          </span>
+        </span>
+        {selected && (
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B91C1C] text-white">
+            <Check size={12} strokeWidth={3} />
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+
+function CareDecisionStep({
+  patientName,
+  patientMeta,
+  classification,
+  dateOfVisit,
+  timeOfVisit,
+  status,
+  followUpDate,
+  needsReferral,
+  saving,
+  referralLabel,
+  onStatusChange,
+  onFollowUpDateChange,
+  onNeedsReferralChange,
+  onSave,
+}) {
+  const normalizedStatus = normalizePatientStatus(status);
+  const followUpRequired = normalizedStatus === "Follow-up Required";
+  const completed = normalizedStatus === "Completed";
+  const formattedVisitDate = dateOfVisit
+    ? new Date(dateOfVisit).toLocaleDateString([], {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "Not recorded";
+  const statusOptions = [
+    {
+      value: "Completed",
+      title: "Completed",
+      description: "No follow-up, monitoring, or referral needed.",
+    },
+    {
+      value: "Routine Monitoring",
+      title: "Routine Monitoring",
+      description: "Patient remains under routine observation.",
+    },
+    {
+      value: "Follow-up Required",
+      title: "Follow-up Required",
+      description: "Patient needs to return for another visit.",
+    },
+  ];
+
+  return (
+    <form
+      onSubmit={onSave}
+      className="anim-fade-up mx-auto w-full max-w-6xl"
+      style={stagger(2)}
+    >
+      <div className="rounded-2xl border border-[#E8ECF0] bg-white p-5 shadow-sm sm:p-6">
+        <div className="rounded-xl border border-[#F1F5F9] bg-[#FAFBFC] px-4 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
+            Patient Summary
+          </p>
+          <div className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <SummaryItem label="Patient" value={patientName || "Selected patient"} />
+            <SummaryItem label="Classification" value={classification || "Not selected"} />
+            <SummaryItem label="Date of Visit" value={formattedVisitDate} />
+            <SummaryItem label="Time of Visit" value={timeOfVisit || "Not recorded"} />
+            {patientMeta && <SummaryItem label="Age / Sex" value={patientMeta} />}
+          </div>
+        </div>
+
+        <div className="mt-5 space-y-5">
+          <div>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
+              Patient Status
+            </p>
+            <div className="grid gap-3 md:grid-cols-3">
+              {statusOptions.map((option) => {
+                const selected = normalizedStatus === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => onStatusChange(option.value)}
+                    className={`rounded-xl border p-4 text-left transition ${
+                      selected
+                        ? "border-[#B91C1C] bg-red-50 ring-2 ring-[#B91C1C]/10"
+                        : "border-[#E8ECF0] bg-white hover:border-red-100 hover:bg-[#FEF2F2]/40"
+                    }`}
+                  >
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-bold text-[#0F172A]">
+                        {option.title}
+                      </span>
+                      {selected && (
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#B91C1C] text-white">
+                          <Check size={12} strokeWidth={3} />
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-1 block text-xs leading-relaxed text-[#64748B]">
+                      {option.description}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {followUpRequired && (
+            <FieldInput
+              label="Follow-up Date"
+              type="date"
+              required
+              value={followUpDate}
+              onChange={(event) => onFollowUpDateChange(event.target.value)}
+            />
+          )}
+
+          {!completed && (
+            <div>
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
+                {referralLabel}
+              </p>
+              <div className="inline-grid w-full max-w-sm grid-cols-2 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white p-1">
+                {[
+                  { value: false, title: "No" },
+                  { value: true, title: "Yes" },
+                ].map((option) => {
+                  const selected = needsReferral === option.value;
+                  return (
+                    <button
+                      key={String(option.value)}
+                      type="button"
+                      onClick={() => onNeedsReferralChange(option.value)}
+                      className={`rounded-lg px-4 py-2.5 text-sm font-bold transition ${
+                        selected
+                          ? "bg-[#B91C1C] text-white shadow-sm"
+                          : "text-[#64748B] hover:bg-red-50 hover:text-[#B91C1C]"
+                      }`}
+                    >
+                      {option.title}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 flex justify-end border-t border-[#F3F4F6] pt-4">
+          <button
+            type="submit"
+            disabled={saving}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {saving ? <ButtonSpinner /> : <Save size={15} />}
+            {saving ? "Saving..." : "Save Health Record"}
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function SummaryItem({ label, value }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
+        {label}
+      </p>
+      <p className="mt-0.5 truncate font-semibold text-[#0F172A]">
+        {formatDisplayValue(value, "Not recorded")}
+      </p>
+    </div>
+  );
+}
+
+
 // eslint-disable-next-line no-unused-vars
 function PatientSelectionStep({
   selectedPatient,

@@ -27,6 +27,7 @@ import {
   getReferralByTrackingId,
   updateReferralByTrackingId,
 } from "../../services/referrals";
+import { linkReferralPatientToRhu } from "../../services/patientService";
 import { createFacilityNotification } from "../../services/notificationService";
 import {
   formatDisplayValue,
@@ -300,8 +301,15 @@ export default function QRScanner() {
     setResult({ type: "loading", message: "Checking in patient..." });
 
     try {
+      const linkedPatient = await linkReferralPatientToRhu(selectedReferral);
+      const patientId =
+        linkedPatient?.id ||
+        linkedPatient?.patientId ||
+        selectedReferral.patientId ||
+        selectedReferral.patient_id;
       const updated = await updateReferralByTrackingId(selectedReferral.trackingId, {
         status: "Received",
+        patientId,
         remarks: "Patient checked in at RHU via QR scanner.",
       });
 
@@ -316,6 +324,9 @@ export default function QRScanner() {
       });
       queryClient.invalidateQueries({
         queryKey: queryKeys.referralDetails("rhu", selectedReferral.trackingId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.patients("rhu"),
       });
       queryClient.invalidateQueries({
         queryKey: queryKeys.dashboardSummary("rhu"),

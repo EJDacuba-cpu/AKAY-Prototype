@@ -1,7 +1,9 @@
 import ActionMenu from "../../common/tables/ActionMenu";
+import DataTableEmptyState from "../../common/tables/DataTableEmptyState";
 import ReferralIndicatorBadge from "../../common/badges/ReferralIndicatorBadge";
 import StatusBadge from "../../common/badges/StatusBadge";
 import TablePagination from "../../common/pagination/TablePagination";
+import { FileText } from "lucide-react";
 
 import { stagger } from "../../../utils/animation";
 import {
@@ -13,9 +15,9 @@ import {
 export default function HealthRecordsTable({
   records = [],
   loading,
-  currentPage = 1, // Default sa page 1 kung walang ipinasang value
-  totalPages, // Ginagamit kung ang kabuuang pahina ay galing sa backend api
-  setCurrentPage = () => {}, // Safe fallback function para iwas sa "onPageChange is not a function" error
+  currentPage = 1,
+  totalPages,
+  setCurrentPage = () => {},
   delay = 0,
   refreshing = false,
 }) {
@@ -23,14 +25,9 @@ export default function HealthRecordsTable({
 
   void refreshing;
 
-  // 1. MAGSET NG MAXIMUM ITEMS BAWAT PAHINA (Max 5 records lang kada table layout)
   const ITEMS_PER_PAGE = 5;
-
-  // 2. AWTOMATIKONG UTUKIN ANG TOTAL PAGES KUNG HINDI ITO IPINASA MULA SA BACKEND/PARENT
   const computedTotalPages =
     totalPages || Math.ceil(records.length / ITEMS_PER_PAGE);
-
-  // 3. I-SLICE ANG RECORDS ARRAY PARA KUNG ANONG PAHINA LANG ANG AKTIBO, YUN LANG ANG IPAPAKITA
   const indexOfLastItem = currentPage * ITEMS_PER_PAGE;
   const indexOfFirstItem = indexOfLastItem - ITEMS_PER_PAGE;
   const currentRecords = records.slice(indexOfFirstItem, indexOfLastItem);
@@ -41,6 +38,7 @@ export default function HealthRecordsTable({
         anim-fade-up
         relative
         z-0
+        flex min-h-[420px] flex-col
         overflow-visible
         rounded-xl
         border border-[#E5E7EB]
@@ -69,22 +67,6 @@ export default function HealthRecordsTable({
             >
               Recent Health Records
             </h2>
-
-            {!loading && (
-              <span
-                className="
-                  rounded-md
-                  border border-[#E5E7EB]
-                  bg-[#F8FAFC]
-                  px-2 py-1
-                  text-[10px]
-                  font-semibold
-                  text-[#64748B]
-                "
-              >
-                {records.length}
-              </span>
-            )}
           </div>
 
           <p
@@ -101,9 +83,17 @@ export default function HealthRecordsTable({
 
       <>
           <div className="grid gap-3 p-3 md:hidden">
-            {currentRecords.length === 0 ? (
-              <div className="rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-10 text-center text-sm text-[#94A3B8]">
-                No records found. Try another search.
+            {records.length === 0 ? (
+              <div className="rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-10 text-center">
+                <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-white">
+                  <FileText size={18} className="text-[#94A3B8]" />
+                </div>
+                <p className="text-[13px] font-semibold text-[#334155]">
+                  No Matching Records
+                </p>
+                <p className="mt-1 text-[11.5px] text-[#94A3B8]">
+                  Try adjusting your search or filter criteria.
+                </p>
               </div>
             ) : (
               currentRecords.map((record) => {
@@ -193,6 +183,8 @@ export default function HealthRecordsTable({
             className="
               hidden
               w-full
+              flex-1
+              min-h-[280px]
               overflow-x-auto
               overflow-y-visible
               scroll-smooth
@@ -247,21 +239,13 @@ export default function HealthRecordsTable({
               </thead>
 
               <tbody className="divide-y divide-[#F8FAFC]">
-                {/* Dito binabasa ang naka-slice na dataset para mag-work ang page dynamic rows */}
                 {currentRecords.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="
-                        px-4 py-12
-                        text-center
-                        text-sm
-                        text-[#9CA3AF]
-                      "
-                    >
-                      No records found. Try another search.
-                    </td>
-                  </tr>
+                  <DataTableEmptyState
+                    colSpan={8}
+                    icon={<FileText size={20} className="text-[#94A3B8]" />}
+                    title="No Matching Records"
+                    description="Try adjusting your search or filter criteria."
+                  />
                 ) : (
                   currentRecords.map((record) => {
                     const recordId = formatDisplayValue(record.id, "");

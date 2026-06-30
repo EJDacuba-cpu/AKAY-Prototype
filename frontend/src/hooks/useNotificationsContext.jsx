@@ -108,9 +108,15 @@ export function NotificationProvider({ children }) {
             : notification,
         ),
       );
-      markNotificationAsRead(id);
+      void markNotificationAsRead(id)
+        .then((nextNotifications) => {
+          if (isMountedRef.current) setNotifications(nextNotifications);
+        })
+        .catch(() => {
+          void refreshNotifications({ force: true, maxAgeMs: 0 });
+        });
     },
-    [],
+    [refreshNotifications],
   );
 
   const markAllAsRead = useCallback(() => {
@@ -121,26 +127,44 @@ export function NotificationProvider({ children }) {
         read: true,
       })),
     );
-    markAllNotificationsAsRead(userContext.role, userContext.facilityId);
-  }, [userContext.facilityId, userContext.role]);
+    void markAllNotificationsAsRead(userContext.role, userContext.facilityId)
+      .then((nextNotifications) => {
+        if (isMountedRef.current) setNotifications(nextNotifications);
+      })
+      .catch(() => {
+        void refreshNotifications({ force: true, maxAgeMs: 0 });
+      });
+  }, [refreshNotifications, userContext.facilityId, userContext.role]);
 
   const deleteNotification = useCallback(
     (id) => {
       setNotifications((prev) =>
         prev.filter((notification) => notification.id !== String(id)),
       );
-      deleteStoredNotification(id);
+      void deleteStoredNotification(id)
+        .then((nextNotifications) => {
+          if (isMountedRef.current) setNotifications(nextNotifications);
+        })
+        .catch(() => {
+          void refreshNotifications({ force: true, maxAgeMs: 0 });
+        });
       setSelectedNotif((prev) =>
         prev?.id === String(id) || prev?.id === id ? null : prev,
       );
     },
-    [],
+    [refreshNotifications],
   );
 
   const clearAll = useCallback(() => {
     setNotifications([]);
-    clearNotificationsForUser(userContext.role, userContext.facilityId);
-  }, [userContext.facilityId, userContext.role]);
+    void clearNotificationsForUser(userContext.role, userContext.facilityId)
+      .then((nextNotifications) => {
+        if (isMountedRef.current) setNotifications(nextNotifications);
+      })
+      .catch(() => {
+        void refreshNotifications({ force: true, maxAgeMs: 0 });
+      });
+  }, [refreshNotifications, userContext.facilityId, userContext.role]);
 
   const value = useMemo(
     () => ({

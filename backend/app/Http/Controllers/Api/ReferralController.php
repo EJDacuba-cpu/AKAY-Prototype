@@ -219,6 +219,16 @@ class ReferralController extends Controller
             $patientName = $this->patientName($referral);
             $rhuName = $this->rhuName($referral);
 
+            if (
+                $request->user()->isRhuStaff()
+                && $referral->patient
+                && (int) $referral->patient->rural_health_unit_id !== (int) $referral->rural_health_unit_id
+            ) {
+                $referral->patient->update([
+                    'rural_health_unit_id' => $referral->rural_health_unit_id,
+                ]);
+            }
+
             $notifications->notifyUsersOnce(
                 $this->bhcUsers($referral),
                 'Referral Received by RHU',

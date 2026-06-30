@@ -3,8 +3,6 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
-  ChevronLeft,
-  ChevronRight,
   Eye,
   FilePlus2,
   FileText,
@@ -14,7 +12,14 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar, SoftLoadingArea, StatusBadge } from "../../components/common";
+import {
+  DataTableEmptyState,
+  ListToolbar,
+  ModuleTableCard,
+  SoftLoadingArea,
+  StatusBadge,
+  TablePagination,
+} from "../../components/common";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
   formatDisplayValue,
@@ -273,42 +278,33 @@ export default function RHUHealthRecords() {
       <SoftLoadingArea
         isLoading={showLoadingOverlay}
         message={loading ? "Loading records..." : "Refreshing records..."}
+        scope="page"
       >
-        <ListToolbar
-          searchValue={filters.search}
-          onSearchChange={(value) => updateFilter("search", value)}
-          searchPlaceholder="Search by patient name or classification..."
-          filters={dropdownFilters}
-          activeFilterCount={activeFilterCount}
-          activeFilters={activeFilters}
-          onApplyFilters={applyDropdownFilters}
-          onClearFilters={clearFilters}
-          onRemoveFilter={removeFilter}
-          disabled={showLoadingOverlay}
-          actions={
-            <Link
-              to="/rhu/health-records/add"
-              className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
-            >
-              <Plus size={14} strokeWidth={2.5} />
-              Add Health Record
-            </Link>
-          }
-        />
+        {!loading && (
+          <ListToolbar
+            searchValue={filters.search}
+            onSearchChange={(value) => updateFilter("search", value)}
+            searchPlaceholder="Search by patient name or classification..."
+            filters={dropdownFilters}
+            activeFilterCount={activeFilterCount}
+            activeFilters={activeFilters}
+            onApplyFilters={applyDropdownFilters}
+            onClearFilters={clearFilters}
+            onRemoveFilter={removeFilter}
+            disabled={showLoadingOverlay}
+            actions={
+              <Link
+                to="/rhu/health-records/add"
+                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
+              >
+                <Plus size={14} strokeWidth={2.5} />
+                Add Health Record
+              </Link>
+            }
+          />
+        )}
 
-        {loading ? null : filteredRecords.length === 0 ? (
-          <div className="rounded-xl border border-[#E2E8F0] bg-white px-6 py-24 text-center shadow-sm">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
-              <FileText size={20} className="text-[#94A3B8]" />
-            </div>
-            <p className="text-[13px] font-semibold text-[#334155]">
-              No Matching Records
-            </p>
-            <p className="mt-1 text-[11.5px] text-[#94A3B8]">
-              Try adjusting your search or filter criteria.
-            </p>
-          </div>
-        ) : (
+        {loading ? null : (
           <RHUHealthRecordsTable
             records={filteredRecords}
             currentPage={currentPage}
@@ -331,40 +327,30 @@ function RHUHealthRecordsTable({
   setOpenMenuId,
   refreshing,
 }) {
-  void refreshing;
-
-  const totalPages = Math.max(1, Math.ceil(records.length / PER_PAGE));
-  const startRecord =
-    records.length === 0 ? 0 : (currentPage - 1) * PER_PAGE + 1;
-  const endRecord = Math.min(currentPage * PER_PAGE, records.length);
+  const totalPages = Math.ceil(records.length / PER_PAGE);
   const paginatedRecords = records.slice(
     (currentPage - 1) * PER_PAGE,
     currentPage * PER_PAGE,
   );
 
   useEffect(() => {
-    if (currentPage > totalPages) setCurrentPage(totalPages);
+    if (totalPages > 0 && currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, setCurrentPage, totalPages]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-[#F1F5F9] px-4 py-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-[#0F172A]">
-              Recent Health Records
-            </h2>
-            <span className="rounded-md border border-[#E5E7EB] bg-[#F8FAFC] px-2 py-1 text-[10px] font-semibold text-[#64748B]">
-              {records.length}
-            </span>
-          </div>
-          <p className="mt-1 text-xs text-[#9CA3AF]">
-            Patient visits, monitoring, consultations, and referral follow-ups.
-          </p>
-        </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] text-left text-[13px]">
+    <ModuleTableCard
+      title="Recent Health Records"
+      subtitle="Patient visits, monitoring, consultations, and referral follow-ups."
+      minWidth="min-w-[980px]"
+      refreshing={refreshing}
+      footer={
+        <TablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+        />
+      }
+    >
           <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
             <tr>
               <th className="whitespace-nowrap px-4 py-3">Record ID</th>
@@ -381,7 +367,15 @@ function RHUHealthRecordsTable({
           </thead>
 
           <tbody className="divide-y divide-[#F3F4F6]">
-            {paginatedRecords.map((record) => (
+            {paginatedRecords.length === 0 ? (
+              <DataTableEmptyState
+                colSpan={8}
+                icon={<FileText size={20} className="text-[#94A3B8]" />}
+                title="No Matching Records"
+                description="Try adjusting your search or filter criteria."
+              />
+            ) : (
+            paginatedRecords.map((record) => (
               <tr
                 key={record.id}
                 className="transition-colors hover:bg-[#F9FAFB]"
@@ -436,64 +430,10 @@ function RHUHealthRecordsTable({
                   />
                 </td>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {totalPages > 1 && (
-        <div className="flex flex-col gap-3 border-t border-[#E2E8F0] bg-[#F8FAFC] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-[#64748B]">
-            Showing{" "}
-            <span className="font-medium text-[#0F172A]">{startRecord}</span> to{" "}
-            <span className="font-medium text-[#0F172A]">{endRecord}</span> of{" "}
-            <span className="font-medium text-[#0F172A]">{records.length}</span>{" "}
-            records
-          </p>
-
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-              disabled={currentPage === 1}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#94A3B8] transition hover:border-[#94A3B8] hover:text-[#475569] disabled:cursor-not-allowed disabled:opacity-40"
-              aria-label="Previous page"
-            >
-              <ChevronLeft size={14} />
-            </button>
-
-            {Array.from({ length: totalPages }, (_, index) => index + 1).map(
-              (pageNumber) => (
-                <button
-                  key={pageNumber}
-                  type="button"
-                  onClick={() => setCurrentPage(pageNumber)}
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition ${
-                    pageNumber === currentPage
-                      ? "bg-[#B91C1C] text-white shadow-sm"
-                      : "text-[#475569] hover:bg-white"
-                  }`}
-                >
-                  {pageNumber}
-                </button>
-              ),
+            ))
             )}
-
-            <button
-              type="button"
-              onClick={() =>
-                setCurrentPage((page) => Math.min(totalPages, page + 1))
-              }
-              disabled={currentPage === totalPages}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#CBD5E1] bg-white text-[#94A3B8] transition hover:border-[#94A3B8] hover:text-[#475569] disabled:cursor-not-allowed disabled:opacity-40"
-              aria-label="Next page"
-            >
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+          </tbody>
+    </ModuleTableCard>
   );
 }
 

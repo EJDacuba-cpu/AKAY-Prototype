@@ -15,6 +15,7 @@ import {
 import { Link, useNavigate } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
+  DataTableEmptyState,
   ListToolbar,
   ModuleTableCard,
   SoftLoadingArea,
@@ -773,30 +774,33 @@ export default function IncomingReferrals() {
       <SoftLoadingArea
         isLoading={showLoadingOverlay}
         message={loading ? "Loading referrals..." : "Refreshing referrals..."}
+        scope="page"
       >
-        <ListToolbar
-          searchValue={filters.search}
-          onSearchChange={(value) => handleFilterChange("search", value)}
-          searchPlaceholder="Search by patient name, BHC, referral ID, or chief complaint..."
-          filters={toolbarFilters}
-          activeFilterCount={activeFilters.length}
-          activeFilters={activeFilters}
-          onApplyFilters={(nextFilters) =>
-            setFilters((prev) => ({ ...prev, ...nextFilters }))
-          }
-          onClearFilters={clearFilters}
-          onRemoveFilter={removeFilter}
-          disabled={showLoadingOverlay}
-          actions={
-            <Link
-              to="/rhu/qr-scanner"
-              className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
-            >
-              <QrCode size={14} strokeWidth={2.5} />
-              QR Scan
-            </Link>
-          }
-        />
+        {!loading && (
+          <ListToolbar
+            searchValue={filters.search}
+            onSearchChange={(value) => handleFilterChange("search", value)}
+            searchPlaceholder="Search by patient name, BHC, referral ID, or chief complaint..."
+            filters={toolbarFilters}
+            activeFilterCount={activeFilters.length}
+            activeFilters={activeFilters}
+            onApplyFilters={(nextFilters) =>
+              setFilters((prev) => ({ ...prev, ...nextFilters }))
+            }
+            onClearFilters={clearFilters}
+            onRemoveFilter={removeFilter}
+            disabled={showLoadingOverlay}
+            actions={
+              <Link
+                to="/rhu/qr-scanner"
+                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] active:bg-[#7F1D1D]"
+              >
+                <QrCode size={14} strokeWidth={2.5} />
+                QR Scan
+              </Link>
+            }
+          />
+        )}
 
         {loading ? null : (
         <ModuleTableCard
@@ -830,22 +834,12 @@ export default function IncomingReferrals() {
 
               <tbody className="divide-y divide-[#F8FAFC]">
                 {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} className="px-6 py-24 text-center">
-                      <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
-                        <Search size={20} className="text-slate-400" />
-                      </div>
-
-                      <p className="text-[13px] font-semibold text-slate-700">
-                        No referrals match your filters
-                      </p>
-
-                      <p className="mt-1 text-[11.5px] text-slate-400">
-                        Try adjusting your search or filters
-                      </p>
-
-                    </td>
-                  </tr>
+                  <DataTableEmptyState
+                    colSpan={10}
+                    icon={<Search size={20} className="text-[#94A3B8]" />}
+                    title="No referrals match your filters"
+                    description="Try adjusting your search or filters."
+                  />
                 ) : (
                   paginatedReferrals.map((referral, index) => {
                     const animated = animatedIds.has(referral.trackingId);

@@ -12,6 +12,7 @@ import {
   ConfirmationModal,
   ListToolbar,
   SoftLoadingArea,
+  TablePagination,
 } from "../../components/common";
 import {
   approvePasswordResetRequest,
@@ -146,27 +147,32 @@ export default function PasswordResetRequests() {
       <SoftLoadingArea
         isLoading={showLoadingOverlay}
         message={loading ? "Loading requests..." : "Refreshing requests..."}
+        scope="page"
       >
-        <ListToolbar
-          searchValue={filters.search}
-          onSearchChange={(value) => updateFilters({ search: value })}
-          searchPlaceholder="Search by user, email, role, or facility..."
-          filters={dropdownFilters}
-          activeFilterCount={filters.status === "all" ? 0 : 1}
-          activeFilters={activeFilters}
-          onApplyFilters={updateFilters}
-          onClearFilters={clearFilters}
-          onRemoveFilter={removeFilter}
-          disabled={showLoadingOverlay}
-        />
+        {!loading && (
+          <ListToolbar
+            searchValue={filters.search}
+            onSearchChange={(value) => updateFilters({ search: value })}
+            searchPlaceholder="Search by user, email, role, or facility..."
+            filters={dropdownFilters}
+            activeFilterCount={filters.status === "all" ? 0 : 1}
+            activeFilters={activeFilters}
+            onApplyFilters={updateFilters}
+            onClearFilters={clearFilters}
+            onRemoveFilter={removeFilter}
+            disabled={showLoadingOverlay}
+          />
+        )}
 
-        <div className="mb-4 grid gap-3 sm:grid-cols-3">
-          <SummaryCard label="Pending Review" value={pendingCount} />
-          <SummaryCard label="Visible Requests" value={requests.length} />
-          <SummaryCard label="Security" value="Admin approval required" text />
-        </div>
+        {!loading && (
+          <>
+            <div className="mb-4 grid gap-3 sm:grid-cols-3">
+              <SummaryCard label="Pending Review" value={pendingCount} />
+              <SummaryCard label="Visible Requests" value={requests.length} />
+              <SummaryCard label="Security" value="Admin approval required" text />
+            </div>
 
-        <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
+        <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-[#F1F5F9] px-4 py-3">
             <div>
               <h2 className="text-sm font-semibold text-[#0F172A]">
@@ -185,7 +191,7 @@ export default function PasswordResetRequests() {
             </div>
           )}
 
-          <div className="hidden overflow-x-auto md:block">
+          <div className="hidden flex-1 overflow-x-auto md:block">
             <table className="w-full min-w-[980px] text-left text-[13px]">
               <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
                 <tr>
@@ -265,7 +271,13 @@ export default function PasswordResetRequests() {
               ))
             )}
           </div>
+
+          <div className="mt-auto">
+            <TablePagination currentPage={1} totalPages={1} />
+          </div>
         </div>
+          </>
+        )}
       </SoftLoadingArea>
 
       {selectedRequest && (
@@ -322,11 +334,13 @@ function SummaryCard({ label, value, text = false }) {
 function EmptyRow() {
   return (
     <tr>
-      <td colSpan={7} className="px-6 py-16 text-center">
-        <Search size={22} className="mx-auto mb-2 text-[#CBD5E1]" />
-        <p className="text-sm font-semibold text-[#64748B]">
-          No password reset requests found.
-        </p>
+      <td colSpan={7} className="px-6 py-0 text-center">
+        <div className="flex min-h-[260px] flex-col items-center justify-center">
+          <Search size={22} className="mb-2 text-[#CBD5E1]" />
+          <p className="text-sm font-semibold text-[#64748B]">
+            No password reset requests found.
+          </p>
+        </div>
       </td>
     </tr>
   );

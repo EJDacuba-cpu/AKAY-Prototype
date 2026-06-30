@@ -10,7 +10,7 @@ import {
   Users,
 } from "lucide-react";
 
-export const LOGO_SRC = "/akay-logo-only.png";
+export const LOGO_SRC = "/akay-logo-only.svg";
 
 export const menuByRole = {
   admin: [
@@ -98,7 +98,7 @@ export const menuByRole = {
         },
         {
           label: "Doctor Availability",
-          path: "/rhu/doctor-schedule",
+          path: "/rhu/doctor-availability",
           icon: CalendarDays,
         },
       ],

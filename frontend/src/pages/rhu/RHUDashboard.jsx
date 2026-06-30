@@ -17,6 +17,7 @@ import PatientVolumeCard from "../../components/features/volume/PatientVolumeCar
 import { getRhuVolumeSnapshot } from "../../services/volumeService";
 import { getCurrentUser } from "../../utils/auth";
 import {
+  formatExpectedAvailableAt,
   getDoctorAvailability,
   listenDoctorAvailabilityUpdates,
 } from "../../services/doctorAvailability";
@@ -579,7 +580,7 @@ function DoctorScheduleCard({ delay = 0 }) {
   }, []);
 
   const doctors = Array.isArray(doctorAvailability.doctors)
-    ? doctorAvailability.doctors
+    ? doctorAvailability.doctors.filter((doctor) => doctor.active !== false)
     : [];
 
   return (
@@ -605,7 +606,7 @@ function DoctorScheduleCard({ delay = 0 }) {
       <div className="space-y-3">
         {doctors.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[#F3F4F6] bg-[#FAFBFC] p-4 text-xs text-[#9CA3AF]">
-            No doctors encoded yet.
+            No doctor records yet.
           </div>
         ) : (
           doctors.map((doctor) => (
@@ -624,12 +625,22 @@ function DoctorScheduleCard({ delay = 0 }) {
                   </p>
 
                   <p className="mt-1 text-[11px] text-[#6B7280]">
-                    {doctor.doctorType || doctor.role}
+                    {doctor.designation ||
+                      doctor.doctorType ||
+                      doctor.role ||
+                      "General Practitioner"}
                   </p>
 
-                  {doctor.availabilityNote && (
+                  {(doctor.expectedAvailableAt ||
+                    doctor.expected_available_at ||
+                    doctor.availabilityNote) && (
                     <p className="mt-1 text-[10px] text-[#9CA3AF]">
-                      {doctor.availabilityNote}
+                      Unavailable until{" "}
+                      {formatExpectedAvailableAt(
+                        doctor.expectedAvailableAt ||
+                          doctor.expected_available_at ||
+                          doctor.availabilityNote,
+                      )}
                     </p>
                   )}
 
@@ -646,7 +657,7 @@ function DoctorScheduleCard({ delay = 0 }) {
       </div>
 
       <Link
-        to="/rhu/doctor-schedule"
+        to="/rhu/doctor-availability"
         className="mt-5 flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98]"
       >
         Manage Availability
@@ -876,10 +887,7 @@ function SourceBadge({ source }) {
 function DoctorBadge({ status }) {
   const map = {
     Available: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-    "On Duty": "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-    "Fully Booked": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    "Not Available": "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
-    "On Leave": "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
+    Unavailable: "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
   };
 
   return (

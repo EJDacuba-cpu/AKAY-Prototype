@@ -6,7 +6,7 @@ import {
   verifyPasswordResetToken,
 } from "../services/passwordResetService";
 
-const LOGO_SRC = "/akay-logo-only.png";
+const LOGO_SRC = "/akay-logo-only.svg";
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();

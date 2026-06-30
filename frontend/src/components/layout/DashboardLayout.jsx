@@ -81,6 +81,25 @@ export default function DashboardLayout({
     sidebarExpandedMemory = sidebarExpanded;
   }, [sidebarExpanded]);
 
+  useEffect(() => {
+    function handleBlockingLoadingStart() {
+      setIsNotifOpen(false);
+      setMobileDrawerOpen(false);
+    }
+
+    window.addEventListener(
+      "akay:blocking-loading-start",
+      handleBlockingLoadingStart,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "akay:blocking-loading-start",
+        handleBlockingLoadingStart,
+      );
+    };
+  }, []);
+
   function handleLogoutRequest() {
     if (logoutLoading) return;
     setIsNotifOpen(false);

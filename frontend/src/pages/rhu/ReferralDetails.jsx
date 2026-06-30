@@ -112,6 +112,9 @@ export default function RHUReferralDetails() {
           queryKey: queryKeys.incomingReferrals("rhu"),
         });
         queryClient.invalidateQueries({
+          queryKey: queryKeys.patients("rhu"),
+        });
+        queryClient.invalidateQueries({
           queryKey: queryKeys.dashboardSummary("rhu"),
         });
       }

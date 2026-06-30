@@ -14,7 +14,11 @@ class NotificationController extends Controller
         $followUpNotifications->notifyDueForUser($request->user());
 
         return response()->json([
-            'data' => $request->user()->notifications()->latest()->paginate($request->integer('per_page', 25)),
+            'data' => $request->user()
+                ->notifications()
+                ->whereNull('cleared_at')
+                ->latest()
+                ->paginate($request->integer('per_page', 25)),
         ]);
     }
 
@@ -28,16 +32,35 @@ class NotificationController extends Controller
 
     public function markAllRead(Request $request)
     {
-        $request->user()->notifications()->update(['is_read' => true]);
+        $request->user()
+            ->notifications()
+            ->whereNull('cleared_at')
+            ->update(['is_read' => true]);
 
         return response()->json(['message' => 'Notifications marked as read.']);
+    }
+
+    public function clearAll(Request $request)
+    {
+        $request->user()
+            ->notifications()
+            ->whereNull('cleared_at')
+            ->update([
+                'is_read' => true,
+                'cleared_at' => now(),
+            ]);
+
+        return response()->json(['message' => 'Notifications cleared.']);
     }
 
     public function destroy(Request $request, UserNotification $notification)
     {
         abort_unless($notification->user_id === $request->user()->id, 403);
-        $notification->delete();
+        $notification->update([
+            'is_read' => true,
+            'cleared_at' => now(),
+        ]);
 
-        return response()->json(status: 204);
+        return response()->json(['message' => 'Notification cleared.']);
     }
 }

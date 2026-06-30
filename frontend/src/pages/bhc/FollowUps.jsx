@@ -6,6 +6,7 @@ import { CalendarClock, RefreshCcw, X } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ActionMenu,
+  DataTableEmptyState,
   ModuleToolbar,
   ModuleTableCard,
   SoftLoadingArea,
@@ -253,22 +254,25 @@ export default function FollowUps() {
       <SoftLoadingArea
         isLoading={loading || (isFetching && tasks.length > 0)}
         message={loading ? "Loading follow-ups..." : "Refreshing follow-ups..."}
+        scope="page"
       >
-        <ModuleToolbar
-          searchValue={filters.search}
-          onSearchChange={(value) => updateFilter("search", value)}
-          searchPlaceholder="Search by patient or record..."
-          filters={dropdownFilters}
-          activeFilterCount={activeFilterCount}
-          activeFilters={activeFilters}
-          onApplyFilters={(nextFilters) =>
-            setFilters((prev) => ({ ...prev, ...nextFilters }))
-          }
-          onClearFilters={clearFilters}
-          onRemoveFilter={removeFilter}
-          filterDescription="Narrow the follow-up tracking list."
-          disabled={loading || (isFetching && tasks.length > 0)}
-        />
+        {!loading && (
+          <ModuleToolbar
+            searchValue={filters.search}
+            onSearchChange={(value) => updateFilter("search", value)}
+            searchPlaceholder="Search by patient or record..."
+            filters={dropdownFilters}
+            activeFilterCount={activeFilterCount}
+            activeFilters={activeFilters}
+            onApplyFilters={(nextFilters) =>
+              setFilters((prev) => ({ ...prev, ...nextFilters }))
+            }
+            onClearFilters={clearFilters}
+            onRemoveFilter={removeFilter}
+            filterDescription="Narrow the follow-up tracking list."
+            disabled={loading || (isFetching && tasks.length > 0)}
+          />
+        )}
 
         {loading ? null : (
         <ModuleTableCard
@@ -309,19 +313,12 @@ export default function FollowUps() {
                 />
               ))
             ) : (
-              <tr>
-                <td colSpan={8} className="px-6 py-24 text-center">
-                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
-                    <CalendarClock size={20} className="text-[#94A3B8]" />
-                  </div>
-                  <p className="text-[13px] font-semibold text-[#334155]">
-                    No follow-ups yet.
-                  </p>
-                  <p className="mx-auto mt-1 max-w-sm text-[11.5px] text-[#94A3B8]">
-                    Follow-ups appear here when a record needs a return visit.
-                  </p>
-                </td>
-              </tr>
+              <DataTableEmptyState
+                colSpan={8}
+                icon={<CalendarClock size={20} className="text-[#94A3B8]" />}
+                title="No follow-ups yet."
+                description="Follow-ups appear here when a record needs a return visit."
+              />
             )}
           </tbody>
         </ModuleTableCard>

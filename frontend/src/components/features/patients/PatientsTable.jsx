@@ -1,5 +1,7 @@
 import { Phone, Users, Inbox } from "lucide-react";
+import AkayLogoLoader from "../../common/loading/AkayLogoLoader";
 import ActionMenu from "../../common/tables/ActionMenu";
+import DataTableEmptyState from "../../common/tables/DataTableEmptyState";
 import TablePagination from "../../common/pagination/TablePagination";
 import {
   formatDisplayValue,
@@ -33,6 +35,7 @@ export default function PatientsTable({
         anim-fade-up
         relative
         z-0
+        flex min-h-[420px] flex-col
         overflow-visible
         rounded-xl
         border border-[#E5E7EB]
@@ -67,19 +70,6 @@ export default function PatientsTable({
             Patient Records
           </h2>
 
-          <span
-            className="
-              rounded-md
-              border border-[#E5E7EB]
-              bg-[#F8FAFC]
-              px-2 py-1
-              text-[10px]
-              font-semibold
-              text-[#64748B]
-            "
-          >
-            {patients.length}
-          </span>
         </div>
       </div>
 
@@ -92,14 +82,7 @@ export default function PatientsTable({
             py-16
           "
         >
-          <p
-            className="
-              text-sm
-              text-[#9CA3AF]
-            "
-          >
-            Loading patients...
-          </p>
+          <AkayLogoLoader label="Loading patients..." variant="fetch" size="md" />
         </div>
       ) : (
         <>
@@ -107,6 +90,8 @@ export default function PatientsTable({
           <div
             className="
               w-full
+              flex-1
+              min-h-[280px]
               overflow-x-auto
               overflow-y-visible
               scroll-smooth
@@ -170,51 +155,12 @@ export default function PatientsTable({
               {/* Body */}
               <tbody className="divide-y divide-[#F8FAFC]">
                 {patients.length === 0 ? (
-                  <tr>
-                  <td colSpan={5} className="px-4 py-12">
-                      <div
-                        className="
-                          flex flex-col
-                          items-center
-                          justify-center
-                          text-center
-                        "
-                      >
-                        <div
-                          className="
-                            mb-4
-                            flex h-14 w-14
-                            items-center
-                            justify-center
-                            rounded-xl
-                            bg-[#F8FAFC]
-                          "
-                        >
-                          <Inbox size={24} className="text-[#BCC3CD]" />
-                        </div>
-
-                        <h3
-                          className="
-                            text-sm
-                            font-semibold
-                            text-[#0F172A]
-                          "
-                        >
-                          No patients yet.
-                        </h3>
-
-                        <p
-                          className="
-                            mt-1
-                            text-[13px]
-                            text-[#9CA3AF]
-                          "
-                        >
-                          Try adjusting filters or add a patient.
-                        </p>
-                      </div>
-                    </td>
-                  </tr>
+                  <DataTableEmptyState
+                    colSpan={5}
+                    icon={<Inbox size={22} className="text-[#94A3B8]" />}
+                    title="No patients yet."
+                    description="Try adjusting filters or add a patient."
+                  />
               ) : (
                 patients.map((patient) => {
                     const patientId = formatDisplayValue(patient.id, "");

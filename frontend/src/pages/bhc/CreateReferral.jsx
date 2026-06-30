@@ -31,8 +31,10 @@ import {
 import { getPatients } from "../../services/patientService";
 import {
   createDoctorAvailabilitySnapshot,
+  formatExpectedAvailableAt,
   getDoctorAvailability,
   listenDoctorAvailabilityUpdates,
+  normalizeStatus,
 } from "../../services/doctorAvailability";
 import { getCurrentUser } from "../../utils/auth";
 import ReferralQrCode from "../../components/features/referrals/ReferralQrCode";
@@ -230,12 +232,24 @@ export default function CreateReferral() {
     return rawDoctors.map((doctor, index) => ({
       id: doctor.doctorId || doctor.id || `DOC-${String(index + 1).padStart(3, "0")}`,
       name: doctor.doctorName || doctor.name || `Doctor ${index + 1}`,
-      role: doctor.doctorType || doctor.role || "General Practitioner",
-      status:
-        (doctor.availabilityStatus || doctor.status) === "Not Available"
-          ? "Not Available"
-          : "Available",
-      note: doctor.availabilityNote || doctor.note || "",
+      role:
+        doctor.designation ||
+        doctor.doctorType ||
+        doctor.role ||
+        "General Practitioner",
+      status: normalizeStatus(doctor.availabilityStatus || doctor.status),
+      expectedAvailableAt:
+        doctor.expectedAvailableAt ||
+        doctor.expected_available_at ||
+        doctor.availabilityNote ||
+        doctor.note ||
+        "",
+      note:
+        doctor.expectedAvailableAt ||
+        doctor.expected_available_at ||
+        doctor.availabilityNote ||
+        doctor.note ||
+        "",
       updatedAt: doctor.updatedAt || rhuDoctorAvailability?.updatedAt || null,
     }));
   }, [rhuDoctorAvailability]);
@@ -245,7 +259,7 @@ export default function CreateReferral() {
     (doctor) => doctor.status === "Available",
   ).length;
   const doctorAvailabilityStatus =
-    availableDoctorCount > 0 ? "Available" : "Not Available";
+    availableDoctorCount > 0 ? "Available" : "Unavailable";
   const doctorAvailabilitySummary = `${availableDoctorCount} of ${totalDoctorCount} doctors available`;
   const selectedRhuDoctor = rhuDoctors.find(
     (doctor) => doctor.id === form.preferredRhuDoctorId,
@@ -265,7 +279,7 @@ export default function CreateReferral() {
 
     setForm((prev) => ({ ...prev, preferredRhuDoctorId: doctorId }));
 
-    if (nextDoctor?.status === "Not Available") {
+    if (nextDoctor?.status === "Unavailable") {
       setUnavailableDoctorNotice(nextDoctor);
       setShowUnavailableDoctorModal(true);
     }
@@ -761,7 +775,7 @@ export default function CreateReferral() {
               />
               <Info label="Urgency" value={form.urgencyLevel} />
               <Info
-                label="Preferred RHU Doctor"
+                label="Preferred RHU Doctor (Optional)"
                 value={preferredRhuDoctorLabel}
               />
               <Info
@@ -988,7 +1002,7 @@ export default function CreateReferral() {
                 />
                 <Info label="Urgency" value={form.urgencyLevel} highlight />
                 <Info
-                  label="Preferred RHU Doctor"
+                  label="Preferred RHU Doctor (Optional)"
                   value={preferredRhuDoctorLabel}
                 />
                 <Info
@@ -1004,7 +1018,7 @@ export default function CreateReferral() {
                 </div>
               </div>
 
-              {selectedRhuDoctor?.status === "Not Available" && (
+              {selectedRhuDoctor?.status === "Unavailable" && (
                 <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">
                     Doctor Availability Notice
@@ -1013,7 +1027,7 @@ export default function CreateReferral() {
                     <span className="font-semibold text-slate-900">
                       {selectedRhuDoctor.name}
                     </span>{" "}
-                    is currently not available
+                    is currently unavailable
                     {selectedRhuDoctor.note
                       ? ` — ${selectedRhuDoctor.note}`
                       : " — No note provided."}
@@ -1061,7 +1075,7 @@ export default function CreateReferral() {
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-slate-800">
-                    Doctor Currently Not Available
+                    Doctor Currently Unavailable
                   </h2>
                   <p className="mt-1 text-xs leading-relaxed text-slate-500">
                     RHU staff marked this doctor as unavailable.
@@ -1079,10 +1093,14 @@ export default function CreateReferral() {
 
                 <div className="mt-3 rounded-lg bg-white/70 px-3 py-2">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">
-                    RHU Note
+                    Expected Available At
                   </p>
                   <p className="mt-1 text-xs leading-relaxed text-slate-700">
-                    {unavailableDoctorNotice.note || "No note provided."}
+                    {unavailableDoctorNotice.expectedAvailableAt
+                      ? formatExpectedAvailableAt(
+                          unavailableDoctorNotice.expectedAvailableAt,
+                        )
+                      : "Not specified."}
                   </p>
                 </div>
               </div>
@@ -1182,7 +1200,7 @@ export default function CreateReferral() {
                     highlight
                   />
                   <Info
-                    label="Preferred RHU Doctor"
+                    label="Preferred RHU Doctor (Optional)"
                     value={successPreferredDoctor}
                   />
                   <Info label="PhilHealth" value={successPhilHealth} />
@@ -1747,7 +1765,7 @@ function RhuDoctorPreferenceSelect({
   return (
     <div>
       <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-        Preferred RHU Doctor
+        Preferred RHU Doctor (Optional)
       </label>
 
       <select
@@ -1755,17 +1773,27 @@ function RhuDoctorPreferenceSelect({
         value={selectedDoctorId}
         onChange={onChange}
         className={`h-11 w-full rounded-xl border bg-white px-4 text-sm text-slate-800 outline-none transition-all focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
-          selectedDoctor?.status === "Not Available"
+          selectedDoctor?.status === "Unavailable"
             ? "border-amber-300"
             : "border-slate-200"
         }`}
       >
         <option value="">RHU to assign</option>
-        {doctors.map((doctor) => (
-          <option key={doctor.id} value={doctor.id}>
-            {doctor.name} — {doctor.status}
-          </option>
-        ))}
+        {doctors.map((doctor) => {
+          const unavailable = doctor.status === "Unavailable";
+          const doctorStatusLabel =
+            unavailable && doctor.expectedAvailableAt
+              ? `Unavailable until ${formatExpectedAvailableAt(
+                  doctor.expectedAvailableAt,
+                )}`
+              : doctor.status;
+
+          return (
+            <option key={doctor.id} value={doctor.id} disabled={unavailable}>
+              {doctor.name} - {doctorStatusLabel}
+            </option>
+          );
+        })}
       </select>
 
       <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">

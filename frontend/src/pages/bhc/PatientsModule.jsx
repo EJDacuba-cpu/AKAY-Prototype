@@ -1,13 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import {
-  AlertCircle,
-  Eye,
-  FilePlus2,
-  Pencil,
-  Plus,
-  Users,
-} from "lucide-react";
+import { AlertCircle, Plus, Users } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ModuleToolbar from "../../components/common/list/ModuleToolbar";
@@ -15,11 +8,9 @@ import {
   DottedSpinner,
   SoftLoadingArea,
 } from "../../components/common/loading/SoftLoadingOverlay";
+import PatientDirectoryCard from "../../components/features/patients/PatientDirectoryCard";
 import usePatients from "../../hooks/usePatients";
-import {
-  formatDisplayValue,
-  formatPatientName,
-} from "../../utils/formatters";
+import { formatDisplayValue } from "../../utils/formatters";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -38,82 +29,6 @@ function uniqueOptions(items, selectors, fallback) {
     .filter(Boolean);
 
   return [fallback, ...new Set(values)];
-}
-
-function normalizeDate(value) {
-  if (!value) return "";
-
-  const parsed = new Date(value);
-
-  if (Number.isNaN(parsed.getTime())) return "";
-
-  return parsed.toISOString().slice(0, 10);
-}
-
-function formatDate(value) {
-  const normalized = normalizeDate(value);
-
-  if (!normalized) return "Not recorded";
-
-  const date = new Date(normalized);
-
-  if (Number.isNaN(date.getTime())) return "Not recorded";
-
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function getPatientSex(patient) {
-  if (patient.sex) return formatDisplayValue(patient.sex, "");
-
-  const ageSex = (patient.ageSex || "").toLowerCase();
-
-  if (ageSex.endsWith("/f") || ageSex.includes("female")) return "Female";
-  if (ageSex.endsWith("/m") || ageSex.includes("male")) return "Male";
-
-  return "";
-}
-
-function getPatientAgeSex(patient) {
-  return formatDisplayValue(
-    patient.ageSex ||
-      [patient.age, getPatientSex(patient)].filter(Boolean).join(" / "),
-    "Not recorded",
-  );
-}
-
-function getPatientContact(patient) {
-  return formatDisplayValue(
-    patient.contact ||
-      patient.contactNumber ||
-      patient.phone ||
-      patient.mobileNumber,
-    "Not recorded",
-  );
-}
-
-function getPatientBarangay(patient) {
-  return formatDisplayValue(
-    patient.barangay || patient.assignedBhc || patient.assignedBHC,
-    "Not recorded",
-  );
-}
-
-function getRegisteredDate(patient) {
-  return normalizeDate(
-    patient.dateRegistered ||
-      patient.date_registered ||
-      patient.created_at ||
-      patient.createdAt ||
-      patient.registeredAt,
-  );
-}
-
-function getPatientDisplayId(patient) {
-  return formatDisplayValue(patient.patientId || patient.id, "Not recorded");
 }
 
 export default function PatientsModule() {
@@ -268,25 +183,28 @@ export default function PatientsModule() {
         message={
           showInitialLoading ? "Loading patients..." : "Refreshing patients..."
         }
+        scope="page"
       >
-        <ModuleToolbar
-          searchValue={filters.search}
-          onSearchChange={(value) =>
-            setFilters((prev) => ({ ...prev, search: value }))
-          }
-          searchPlaceholder="Search by name, ID, contact, or barangay..."
-          filters={dropdownFilters}
-          activeFilterCount={activeFilterCount}
-          activeFilters={activeFilters}
-          onApplyFilters={applyDropdownFilters}
-          onClearFilters={clearFilters}
-          onRemoveFilter={removeFilter}
-          filterDescription="Narrow the patient directory."
-          primaryActionTo="/bhc/patients/add"
-          primaryActionLabel="New Patient"
-          primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
-          disabled={showLoadingOverlay}
-        />
+        {!showInitialLoading && (
+          <ModuleToolbar
+            searchValue={filters.search}
+            onSearchChange={(value) =>
+              setFilters((prev) => ({ ...prev, search: value }))
+            }
+            searchPlaceholder="Search by name, ID, contact, or barangay..."
+            filters={dropdownFilters}
+            activeFilterCount={activeFilterCount}
+            activeFilters={activeFilters}
+            onApplyFilters={applyDropdownFilters}
+            onClearFilters={clearFilters}
+            onRemoveFilter={removeFilter}
+            filterDescription="Narrow the patient directory."
+            primaryActionTo="/bhc/patients/add"
+            primaryActionLabel="New Patient"
+            primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
+            disabled={showLoadingOverlay}
+          />
+        )}
 
       <div className="relative min-w-0">
         {!showInitialLoading && (
@@ -358,7 +276,11 @@ function PatientDirectory({
           <>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
               {patients.map((patient) => (
-                <PatientCard key={patient.id} patient={patient} />
+                <PatientDirectoryCard
+                  key={patient.id || patient.patientId}
+                  patient={patient}
+                  basePath="/bhc"
+                />
               ))}
             </div>
 
@@ -384,76 +306,6 @@ function PatientDirectory({
         )}
       </div>
     </section>
-  );
-}
-
-function PatientCard({ patient }) {
-  const routePatientId = formatDisplayValue(patient.id, "");
-  const patientName = formatPatientName(patient, "Unnamed Patient");
-  const displayId = getPatientDisplayId(patient);
-  const ageSex = getPatientAgeSex(patient);
-  const contact = getPatientContact(patient);
-  const barangay = getPatientBarangay(patient);
-  const registeredDate = formatDate(getRegisteredDate(patient));
-
-  return (
-    <article className="group flex min-h-[204px] flex-col rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm shadow-black/[0.015] transition-all duration-200 hover:-translate-y-0.5 hover:border-red-100 hover:shadow-md">
-      <div className="min-w-0 border-b border-[#F1F5F9] pb-3">
-        <h3 className="truncate text-sm font-bold text-[#0F172A]">
-          {patientName}
-        </h3>
-        <div className="mt-1 flex items-center gap-2">
-          <span className="rounded-md border border-red-100 bg-red-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-[#B91C1C]">
-            ID: {displayId}
-          </span>
-        </div>
-      </div>
-
-      <div className="mt-3 grid gap-2 text-[12px]">
-        <CardField label="Age / Sex" value={ageSex} />
-        <CardField label="Contact" value={contact} />
-        <CardField label="Barangay" value={barangay} />
-        <CardField label="Registered Date" value={registeredDate} />
-      </div>
-
-      <div className="mt-auto grid grid-cols-3 gap-2 pt-4">
-        <Link
-          to={`/bhc/patients/${routePatientId}`}
-          className="inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-[#B91C1C] px-1.5 text-[10px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
-        >
-          <Eye size={13} />
-          View Details
-        </Link>
-        <Link
-          to={`/bhc/patients/${routePatientId}`}
-          state={{ startInEditMode: true }}
-          className="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-[#E5E7EB] bg-white px-1.5 text-[10px] font-semibold text-[#475569] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-        >
-          <Pencil size={13} />
-          Edit
-        </Link>
-        <Link
-          to={`/bhc/health-records/add?patientId=${routePatientId}`}
-          className="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-[#E5E7EB] bg-white px-1.5 text-[10px] font-semibold text-[#475569] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-        >
-          <FilePlus2 size={13} />
-          Add Record
-        </Link>
-      </div>
-    </article>
-  );
-}
-
-function CardField({ label, value }) {
-  return (
-    <div className="flex min-w-0 items-center justify-between gap-3">
-      <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
-        {label}
-      </span>
-      <span className="min-w-0 truncate text-right font-semibold text-[#475569]">
-        {value}
-      </span>
-    </div>
   );
 }
 

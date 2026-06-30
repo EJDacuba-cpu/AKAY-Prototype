@@ -1,6 +1,7 @@
 import ActionMenu from "../../common/tables/ActionMenu";
 import StatusBadge from "../../common/badges/StatusBadge";
 import TablePagination from "../../common/pagination/TablePagination";
+import AkayLogoLoader from "../../common/loading/AkayLogoLoader";
 
 import { stagger } from "../../../utils/animation";
 import {
@@ -11,19 +12,14 @@ import {
 export default function HealthRecordsTable({
   records = [],
   loading,
-  currentPage = 1, // Default sa page 1 kung walang ipinasang value
-  totalPages, // Ginagamit kung ang kabuuang pahina ay galing sa backend api
-  setCurrentPage = () => {}, // Safe fallback function para iwas sa "onPageChange is not a function" error
+  currentPage = 1,
+  totalPages,
+  setCurrentPage = () => {},
   delay = 0,
 }) {
-  // 1. MAGSET NG MAXIMUM ITEMS BAWAT PAHINA (Max 5 records lang kada table layout)
   const ITEMS_PER_PAGE = 5;
-
-  // 2. AWTOMATIKONG UTUKIN ANG TOTAL PAGES KUNG HINDI ITO IPINASA MULA SA BACKEND/PARENT
   const computedTotalPages =
     totalPages || Math.ceil(records.length / ITEMS_PER_PAGE);
-
-  // 3. I-SLICE ANG RECORDS ARRAY PARA KUNG ANONG PAHINA LANG ANG AKTIBO, YUN LANG ANG IPAPAKITA
   const indexOfLastItem = currentPage * ITEMS_PER_PAGE;
   const indexOfFirstItem = indexOfLastItem - ITEMS_PER_PAGE;
   const currentRecords = records.slice(indexOfFirstItem, indexOfLastItem);
@@ -34,6 +30,7 @@ export default function HealthRecordsTable({
         anim-fade-up
         relative
         z-0
+        flex min-h-[420px] flex-col
         overflow-visible
         rounded-xl
         border border-[#E5E7EB]
@@ -62,21 +59,6 @@ export default function HealthRecordsTable({
               Recent Health Records
             </h2>
 
-            {!loading && (
-              <span
-                className="
-                  rounded-lg
-                  border border-red-100
-                  bg-red-50
-                  px-2 py-1
-                  text-[10px]
-                  font-semibold
-                  text-[#B91C1C]
-                "
-              >
-                {records.length}
-              </span>
-            )}
           </div>
 
           <p
@@ -94,7 +76,11 @@ export default function HealthRecordsTable({
       {/* Loading State */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <p className="text-sm text-[#9CA3AF]">Loading health records...</p>
+          <AkayLogoLoader
+            label="Loading health records..."
+            variant="fetch"
+            size="md"
+          />
         </div>
       ) : (
         <>
@@ -102,6 +88,8 @@ export default function HealthRecordsTable({
           <div
             className="
               w-full
+              flex-1
+              min-h-[280px]
               overflow-x-auto
               overflow-y-visible
               scroll-smooth

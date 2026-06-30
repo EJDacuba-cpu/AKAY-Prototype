@@ -33,6 +33,7 @@ import {
   getMedicineAlerts,
 } from "../../services/dashboardService";
 import {
+  formatExpectedAvailableAt,
   formatDoctorAvailabilityDate,
   formatDoctorAvailabilitySummary,
   getDoctorAvailability,
@@ -562,6 +563,9 @@ function RHUReadinessCard({ availability, medicineAlerts, loading }) {
       .toLowerCase()
       .includes("unavailable"),
   ).length;
+  const doctors = Array.isArray(availability.doctors)
+    ? availability.doctors.filter((doctor) => doctor.active !== false)
+    : [];
 
   return (
     <SideCard title="RHU Readiness" badge="coordination">
@@ -575,7 +579,7 @@ function RHUReadinessCard({ availability, medicineAlerts, loading }) {
               <div className="flex flex-wrap items-center gap-2">
                 <span
                   className={`rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-                    availability.status === "Not Available"
+                    availability.status === "Unavailable"
                       ? "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]"
                       : "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"
                   }`}
@@ -590,11 +594,58 @@ function RHUReadinessCard({ availability, medicineAlerts, loading }) {
               <p className="mt-2 text-xs font-bold text-[#334155]">
                 {formatDoctorAvailabilitySummary(availability)}.
               </p>
-              <p className="mt-1 text-[11px] leading-relaxed text-[#64748B]">
-                {availability.note || "No RHU note provided."}
-              </p>
             </div>
           </div>
+        </div>
+
+        <div className="space-y-2">
+          {doctors.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-3 py-3 text-[11px] leading-relaxed text-[#64748B]">
+              No doctor records yet. RHU has not added doctor availability.
+            </div>
+          ) : (
+            doctors.map((doctor) => {
+              const status = doctor.availabilityStatus || doctor.status;
+              const expectedAt =
+                doctor.expectedAvailableAt || doctor.expected_available_at;
+              const unavailable = status === "Unavailable";
+
+              return (
+                <div
+                  key={doctor.doctorId || doctor.id}
+                  className="rounded-xl border border-[#F1F5F9] bg-white px-3 py-2.5"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-bold text-[#0F172A]">
+                        {doctor.doctorName || doctor.name}
+                      </p>
+                      <p className="mt-0.5 truncate text-[10.5px] text-[#64748B]">
+                        {doctor.designation ||
+                          doctor.doctorType ||
+                          doctor.role ||
+                          "General Practitioner"}
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                        unavailable
+                          ? "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]"
+                          : "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"
+                      }`}
+                    >
+                      {unavailable ? "Unavailable" : "Available"}
+                    </span>
+                  </div>
+                  {unavailable && expectedAt && (
+                    <p className="mt-1 text-[10.5px] font-semibold text-[#B45309]">
+                      Unavailable until {formatExpectedAvailableAt(expectedAt)}
+                    </p>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-2">

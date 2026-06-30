@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { FileText, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ModuleToolbar, SoftLoadingArea } from "../../components/common";
@@ -385,37 +385,28 @@ export default function HealthRecords() {
       <SoftLoadingArea
         isLoading={loading || (isFetching && records.length > 0)}
         message={loading ? "Loading records..." : "Refreshing records..."}
+        scope="page"
       >
-        <ModuleToolbar
-          searchValue={filters.search}
-          onSearchChange={(value) => updateFilter("search", value)}
-          searchPlaceholder="Search by patient or classification..."
-          filters={dropdownFilters}
-          activeFilterCount={activeFilterCount}
-          activeFilters={activeFilters}
-          onApplyFilters={applyDropdownFilters}
-          onClearFilters={clearFilters}
-          onRemoveFilter={removeFilter}
-          filterDescription="Narrow the health records list."
-          primaryActionTo="/bhc/health-records/add"
-          primaryActionLabel="Add Health Record"
-          primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
-          disabled={loading || (isFetching && records.length > 0)}
-        />
+        {!loading && (
+          <ModuleToolbar
+            searchValue={filters.search}
+            onSearchChange={(value) => updateFilter("search", value)}
+            searchPlaceholder="Search by patient or classification..."
+            filters={dropdownFilters}
+            activeFilterCount={activeFilterCount}
+            activeFilters={activeFilters}
+            onApplyFilters={applyDropdownFilters}
+            onClearFilters={clearFilters}
+            onRemoveFilter={removeFilter}
+            filterDescription="Narrow the health records list."
+            primaryActionTo="/bhc/health-records/add"
+            primaryActionLabel="Add Health Record"
+            primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
+            disabled={loading || (isFetching && records.length > 0)}
+          />
+        )}
 
-        {loading ? null : filteredRecords.length === 0 ? (
-          <div className="rounded-xl border border-[#E2E8F0] bg-white px-6 py-24 text-center shadow-sm">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
-              <FileText size={20} className="text-[#94A3B8]" />
-            </div>
-            <p className="text-[13px] font-semibold text-[#334155]">
-              No Matching Records
-            </p>
-            <p className="mt-1 text-[11.5px] text-[#94A3B8]">
-              Try adjusting your search or filter criteria.
-            </p>
-          </div>
-        ) : (
+        {loading ? null : (
           <HealthRecordsTable
             records={filteredRecords}
             currentPage={currentPage}
