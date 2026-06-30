@@ -13,7 +13,7 @@ export default function FormInput({
   ...props
 }) {
   return (
-    <div>
+    <div className="min-w-0">
       <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
         {label}
 
@@ -26,35 +26,35 @@ export default function FormInput({
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        required={required}
         readOnly={readOnly}
         {...props}
         className={`
-          h-10 w-full rounded-lg
-          border border-[#E5E7EB]
-          px-3 text-sm text-[#0F172A]
+          h-10 w-full rounded-xl
+          border border-[#E8ECF0]
+          bg-[#FAFBFC] px-3.5 text-sm text-[#1F2937]
           outline-none transition-all duration-200
+          placeholder:text-[#9CA3AF]
 
-          focus:border-[#FCA5A5]
+          focus:border-[#B91C1C]
           focus:bg-white
-          focus:ring-3
-          focus:ring-[#B91C1C]/[0.08]
+          focus:ring-2
+          focus:ring-[#B91C1C]/10
 
           ${
             error
-              ? "border-[#FCA5A5] bg-white focus:border-[#B91C1C] focus:ring-[#B91C1C]/10"
+              ? "border-[#B91C1C] bg-red-50/30 ring-2 ring-[#B91C1C]/10"
               : ""
           }
           ${
             readOnly
-              ? "cursor-not-allowed border-[#E5E7EB] bg-[#F1F5F9] text-[#64748B]"
-              : "bg-[#F8FAFC] hover:border-[#CBD5E1]"
+              ? "cursor-not-allowed border-[#E8ECF0] bg-[#F3F4F6] text-[#64748B]"
+              : "hover:border-[#D1D5DB]"
           }
           ${className}
         `}
       />
       {error && (
-        <p className="mt-1 text-[10px] font-medium leading-relaxed text-[#B91C1C]">
+        <p className="mt-1 text-[11px] font-medium leading-relaxed text-[#B91C1C]">
           {error}
         </p>
       )}

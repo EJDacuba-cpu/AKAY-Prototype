@@ -18,6 +18,10 @@ import {
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { SuccessModal } from "../../components/common";
+import {
+  DatePickerField,
+  TimePickerField,
+} from "../../components/common/forms/DatePickerField";
 import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
 import InlineSpinner from "../../components/common/loading/InlineSpinner";
 import {
@@ -164,6 +168,11 @@ function normalizeRecordType(value) {
   return raw;
 }
 
+function closeDateTimePopovers() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("akay:datetime-popover-close"));
+}
+
 function normalizePatientStatus(status) {
   const value = String(status || "").trim();
   const compact = value
@@ -284,6 +293,7 @@ export default function AddHealthRecord() {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(null);
   const [noticeModal, setNoticeModal] = useState(null);
+  const [validationErrors, setValidationErrors] = useState({});
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [setupComplete, setSetupComplete] = useState(
@@ -585,6 +595,7 @@ export default function AddHealthRecord() {
   }
 
   function selectPatient(id) {
+    clearValidationError("selectedPatientId");
     if (id !== selectedPatientId) {
       resetClassificationSpecificState();
       setSetupComplete(false);
@@ -654,6 +665,7 @@ export default function AddHealthRecord() {
         : "Write monitoring notes if useful...";
 
   function handleClassificationSelect(nextType) {
+    clearValidationError("healthRecordType");
     const normalizedNextType = normalizeRecordType(nextType);
 
     if (patientGateLocked) {
@@ -700,20 +712,25 @@ export default function AddHealthRecord() {
   }
 
   function handleProceedFromSetup() {
-    if (!selectedPatientId || !normalizedHealthRecordType) return;
+    closeDateTimePopovers();
+    const errors = {};
+    if (!selectedPatientId) errors.selectedPatientId = "Select a patient first.";
+    if (!normalizedHealthRecordType) {
+      errors.healthRecordType = "Select a classification first.";
+    }
+
+    if (setValidationErrorsAndFocus(errors)) return;
+
     setSetupComplete(true);
     setCareDecisionStep(false);
     setDropdownOpen(false);
   }
 
-  const immunizationPatientInfo = useMemo(
-    () => getImmunizationPatientMode(selectedPatient, dateOfVisit),
-    [selectedPatient, dateOfVisit],
+  const immunizationPatientInfo = getImmunizationPatientMode(
+    selectedPatient,
+    dateOfVisit,
   );
-  const immunizationVaccineEntries = useMemo(
-    () => getVaccineEntries(immunizationData),
-    [immunizationData],
-  );
+  const immunizationVaccineEntries = getVaccineEntries(immunizationData);
 
   useEffect(() => {
     if (isMaternal) {
@@ -772,12 +789,15 @@ export default function AddHealthRecord() {
   }, [maternalData.lmp, dateOfVisit]);
 
   function handleVaccineChange(field, value) {
+    clearValidationError(field);
     setImmunizationData((prev) => {
       return { ...prev, [field]: value };
     });
   }
 
   function handleVaccineEntryChange(index, field, value) {
+    clearValidationError(`vaccineEntries.${index}.${field}`);
+    clearValidationError("vaccineEntries");
     setImmunizationData((prev) => {
       const entries = getVaccineEntries(prev).map((entry, entryIndex) =>
         entryIndex === index ? { ...entry, [field]: value } : entry,
@@ -791,6 +811,7 @@ export default function AddHealthRecord() {
   }
 
   function handleVaccineToggle(vaccineName, checked) {
+    clearValidationError("vaccineEntries");
     setImmunizationData((prev) => {
       const existingEntries = getVaccineEntries(prev);
       const entries = checked
@@ -812,10 +833,12 @@ export default function AddHealthRecord() {
   }
 
   function handleMaternalChange(field, value) {
+    clearValidationError(field);
     setMaternalData((prev) => ({ ...prev, [field]: value }));
   }
 
   function handlePatientStatusChange(value) {
+    clearValidationError("followUpStatus");
     const normalizedStatus = normalizePatientStatus(value);
     setFollowUpStatus(normalizedStatus);
     if (normalizedStatus === "Completed") {
@@ -830,11 +853,108 @@ export default function AddHealthRecord() {
 
   function handleProceedToCareDecision(event) {
     event.preventDefault();
+    closeDateTimePopovers();
+    const clinicalErrors = getClinicalValidationErrors();
+    if (setValidationErrorsAndFocus(clinicalErrors)) return;
+
     setCareDecisionStep(true);
+  }
+
+  function clearValidationError(field) {
+    setValidationErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }
+
+  function setValidationErrorsAndFocus(errors) {
+    const nextErrors = Object.fromEntries(
+      Object.entries(errors).filter(([, value]) => Boolean(value)),
+    );
+    setValidationErrors(nextErrors);
+
+    const firstField = Object.keys(nextErrors)[0];
+    if (!firstField) return false;
+
+    window.requestAnimationFrame(() => {
+      const selector = `[name="${firstField}"], [data-field="${firstField}"]`;
+      const element = document.querySelector(selector);
+      element?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (typeof element?.focus === "function") {
+        element.focus({ preventScroll: true });
+      }
+    });
+
+    return true;
+  }
+
+  function getClinicalValidationErrors() {
+    const errors = {};
+
+    if (!dateOfVisit) errors.dateOfVisit = "Date of visit is required.";
+    if (!timeOfVisit) errors.timeOfVisit = "Time of visit is required.";
+
+    if (isFollowUp) {
+      if (!summaryOfPresentIllness.trim()) {
+        errors.summaryOfPresentIllness = "Follow-up findings are required.";
+      }
+      return errors;
+    }
+
+    if (isImmunization) {
+      const preparedEntries = immunizationVaccineEntries.map((entry) => ({
+        ...entry,
+        dateGiven: entry.dateGiven || dateOfVisit,
+      }));
+
+      if (preparedEntries.length === 0) {
+        errors.vaccineEntries = "Select at least one vaccine.";
+      }
+
+      preparedEntries.forEach((entry, index) => {
+        if (entry.vaccineName === "Other" && !entry.customVaccineName?.trim()) {
+          errors[`vaccineEntries.${index}.customVaccineName`] =
+            "Specify the vaccine name.";
+        }
+        if (!String(entry.dose || "").trim()) {
+          errors[`vaccineEntries.${index}.dose`] = "Dose is required.";
+        }
+        if (!String(entry.dateGiven || "").trim()) {
+          errors[`vaccineEntries.${index}.dateGiven`] =
+            "Date given is required.";
+        }
+      });
+
+      return errors;
+    }
+
+    if (!chiefComplaint.trim()) {
+      errors.chiefComplaint = "Chief complaint is required.";
+    }
+    if (!summaryOfPresentIllness.trim()) {
+      errors.summaryOfPresentIllness =
+        "Summary of present illness is required.";
+    }
+
+    return errors;
+  }
+
+  function getCareDecisionValidationErrors() {
+    const errors = {};
+    if (!normalizePatientStatus(followUpStatus)) {
+      errors.followUpStatus = "Select the patient status.";
+    }
+    if (showFollowUpMonitoringFields && !followUpDate) {
+      errors.followUpDate = "Follow-up date is required.";
+    }
+    return errors;
   }
 
   async function handleSave(event) {
     event.preventDefault();
+    closeDateTimePopovers();
 
     if (isOrphanFollowUpRequest) {
       setNoticeModal({
@@ -861,13 +981,11 @@ export default function AddHealthRecord() {
     }
 
     if (!selectedPatientId) {
-      setNoticeModal({
-        title: "Patient Required",
-        message: isFollowUp
+      setValidationErrorsAndFocus({
+        selectedPatientId: isFollowUp
           ? "Patient is still loading. Try again."
-          : "Select patient first.",
+          : "Select a patient first.",
       });
-      requestAnimationFrame(() => inputRef.current?.focus());
       return;
     }
 
@@ -881,30 +999,18 @@ export default function AddHealthRecord() {
       (isFollowUp ? "General Consultation" : "");
 
     if (!effectiveHealthRecordType) {
-      setNoticeModal({
-        title: "Classification Required",
-        message: "Select classification.",
+      setValidationErrorsAndFocus({
+        healthRecordType: "Select a classification first.",
       });
       return;
     }
 
-    if (usesCareDecisionStep) {
-      if (!normalizedPatientStatus) {
-        setNoticeModal({
-          title: "Patient Status Required",
-          message: "Select the patient status before saving.",
-        });
-        return;
-      }
+    const clientErrors = {
+      ...getClinicalValidationErrors(),
+      ...(usesCareDecisionStep ? getCareDecisionValidationErrors() : {}),
+    };
 
-      if (showFollowUpMonitoringFields && !followUpDate) {
-        setNoticeModal({
-          title: "Follow-up Date Required",
-          message: "Enter a follow-up date for Follow-up Required status.",
-        });
-        return;
-      }
-    }
+    if (setValidationErrorsAndFocus(clientErrors)) return;
 
     if (!isFollowUp && effectiveHealthRecordType === "Maternal" && selectedPatientIsMale) {
       setNoticeModal({
@@ -955,19 +1061,14 @@ export default function AddHealthRecord() {
       );
 
       if (preparedVaccineEntries.length === 0) {
-        setNoticeModal({
-          title: "Vaccine Required",
-          message: "Select at least one vaccine.",
+        setValidationErrorsAndFocus({
+          vaccineEntries: "Select at least one vaccine.",
         });
         return;
       }
 
       if (missingRequiredVaccineDetails) {
-        setNoticeModal({
-          title: "Vaccine Details Required",
-          message:
-            "Complete vaccine name, dose, and date.",
-        });
+        setValidationErrorsAndFocus(getClinicalValidationErrors());
         return;
       }
     }
@@ -997,10 +1098,9 @@ export default function AddHealthRecord() {
       !followUpDate &&
       !immunizationNextScheduleDate
     ) {
-      setNoticeModal({
-        title: "Follow-up Date Required",
-        message:
-          "Please enter a follow-up date or next schedule date for Follow-up Required status.",
+      setValidationErrorsAndFocus({
+        followUpDate:
+          "Enter a follow-up date or next schedule date for Follow-up Required status.",
       });
       return;
     }
@@ -1148,6 +1248,15 @@ export default function AddHealthRecord() {
       });
     } catch (error) {
       console.error("Failed to save RHU health record:", error);
+      if (error?.status === 422 && error?.errors) {
+        const backendErrors = Object.fromEntries(
+          Object.entries(error.errors).map(([field, messages]) => [
+            field,
+            Array.isArray(messages) ? messages[0] : String(messages),
+          ]),
+        );
+        if (setValidationErrorsAndFocus(backendErrors)) return;
+      }
       setNoticeModal({
         title: "Save Failed",
         message:
@@ -1183,6 +1292,7 @@ export default function AddHealthRecord() {
           : "Search patient and choose the record classification before recording a visit.";
 
   function handleStepBack() {
+    closeDateTimePopovers();
     if (careDecisionStep && usesCareDecisionStep) {
       setCareDecisionStep(false);
       return;
@@ -1203,7 +1313,7 @@ export default function AddHealthRecord() {
       <style>{keyframes}</style>
 
       <div
-        className="anim-fade-up mx-auto mb-5 w-full max-w-6xl"
+        className="anim-fade-up mb-5 ml-0 mr-auto w-full max-w-6xl"
         style={stagger(0)}
       >
         <button
@@ -1259,6 +1369,7 @@ export default function AddHealthRecord() {
           }}
           classification={healthRecordType}
           onClassificationSelect={handleClassificationSelect}
+          errors={validationErrors}
           onProceed={handleProceedFromSetup}
         />
       ) : (
@@ -1275,16 +1386,23 @@ export default function AddHealthRecord() {
           needsReferral={needsReferral}
           saving={saving}
           referralLabel="Needs Referral"
+          errors={validationErrors}
           onStatusChange={handlePatientStatusChange}
-          onFollowUpDateChange={setFollowUpDate}
+          onFollowUpDateChange={(value) => {
+            clearValidationError("followUpDate");
+            setFollowUpDate(value);
+          }}
           onNeedsReferralChange={setNeedsReferral}
           onSave={handleSave}
         />
       ) : (
       <form
         onSubmit={usesCareDecisionStep ? handleProceedToCareDecision : handleSave}
-        className="relative mx-auto w-full max-w-6xl space-y-5"
+        noValidate
+        className="relative ml-0 mr-auto w-full max-w-6xl space-y-5"
       >
+        {Object.keys(validationErrors).length > 0 && <ValidationAlert />}
+
         {isFollowUp && (
           <FollowUpContextCard
             patientName={followUpPatientName}
@@ -1324,19 +1442,27 @@ export default function AddHealthRecord() {
                 readOnly
               />
             )}
-            <FieldInput
+            <DatePickerField
               label="Date of Visit"
-              type="date"
               required
+              name="dateOfVisit"
+              error={validationErrors.dateOfVisit}
               value={dateOfVisit}
-              onChange={(event) => setDateOfVisit(event.target.value)}
+              onChange={(value) => {
+                clearValidationError("dateOfVisit");
+                setDateOfVisit(value);
+              }}
             />
-            <FieldInput
+            <TimePickerField
               label="Time of Visit"
-              type="time"
               required
+              name="timeOfVisit"
+              error={validationErrors.timeOfVisit}
               value={timeOfVisit}
-              onChange={(event) => setTimeOfVisit(event.target.value)}
+              onChange={(value) => {
+                clearValidationError("timeOfVisit");
+                setTimeOfVisit(value);
+              }}
             />
             <FieldInput
               label="Name of Practitioner"
@@ -1379,9 +1505,14 @@ export default function AddHealthRecord() {
                 <FieldTextarea
                   label="Follow-up Findings"
                   required
+                  name="summaryOfPresentIllness"
+                  error={validationErrors.summaryOfPresentIllness}
                   value={summaryOfPresentIllness}
                   onChange={(event) =>
-                    setSummaryOfPresentIllness(event.target.value)
+                    {
+                      clearValidationError("summaryOfPresentIllness");
+                      setSummaryOfPresentIllness(event.target.value);
+                    }
                   }
                   placeholder="Record the patient's current symptoms, progress, examination findings, or changes since the original visit..."
                   rows={5}
@@ -1510,9 +1641,10 @@ export default function AddHealthRecord() {
               entries={immunizationVaccineEntries}
               dateOfVisit={dateOfVisit}
               feedingStatus={immunizationData.feeding_status}
-              consultationNotes={consultationNotes}
-              onFeedingStatusChange={(value) =>
-                handleVaccineChange("feeding_status", value)
+            consultationNotes={consultationNotes}
+            errors={validationErrors}
+            onFeedingStatusChange={(value) =>
+              handleVaccineChange("feeding_status", value)
               }
               onEntryChange={handleVaccineEntryChange}
               onToggleVaccine={handleVaccineToggle}
@@ -1700,8 +1832,13 @@ export default function AddHealthRecord() {
                 label="Chief Complaint"
                 placeholder="e.g. Fever, vomiting, cough"
                 required
+                name="chiefComplaint"
+                error={validationErrors.chiefComplaint}
                 value={chiefComplaint}
-                onChange={(event) => setChiefComplaint(event.target.value)}
+                onChange={(event) => {
+                  clearValidationError("chiefComplaint");
+                  setChiefComplaint(event.target.value);
+                }}
               />
               <FieldInput
                 label="Initial Diagnosis"
@@ -1713,9 +1850,14 @@ export default function AddHealthRecord() {
               <FieldTextarea
                 label="Summary of Present Illness and Physical Examination"
                 required
+                name="summaryOfPresentIllness"
+                error={validationErrors.summaryOfPresentIllness}
                 value={summaryOfPresentIllness}
                 onChange={(event) =>
-                  setSummaryOfPresentIllness(event.target.value)
+                  {
+                    clearValidationError("summaryOfPresentIllness");
+                    setSummaryOfPresentIllness(event.target.value);
+                  }
                 }
                 placeholder="Record the detailed history of the present illness and physical examination findings here..."
                 rows={5}
@@ -1814,7 +1956,12 @@ export default function AddHealthRecord() {
                 label="Follow-up Date"
                 type="date"
                 value={followUpDate}
-                onChange={(event) => setFollowUpDate(event.target.value)}
+                name="followUpDate"
+                error={validationErrors.followUpDate}
+                onChange={(event) => {
+                  clearValidationError("followUpDate");
+                  setFollowUpDate(event.target.value);
+                }}
                 required
               />
             )}
@@ -1960,6 +2107,7 @@ function HealthRecordSetupStep({
   patientSearchProps,
   classification,
   onClassificationSelect,
+  errors = {},
   onProceed,
 }) {
   const normalizedClassification = normalizeRecordType(classification);
@@ -1967,15 +2115,36 @@ function HealthRecordSetupStep({
 
   return (
     <section
-      className="anim-fade-up mx-auto w-full max-w-6xl"
+      className="anim-fade-up ml-0 mr-auto w-full max-w-6xl"
       style={stagger(1)}
     >
       <div className="rounded-2xl border border-[#E8ECF0] bg-white p-5 shadow-sm sm:p-6">
-        <div className="relative z-30 rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] p-4">
+        {(errors.selectedPatientId || errors.healthRecordType) && (
+          <ValidationAlert />
+        )}
+
+        <div
+          className={`relative z-30 rounded-xl border p-4 ${
+            errors.selectedPatientId
+              ? "border-[#B91C1C] bg-[#FEF2F2]/40 ring-2 ring-[#B91C1C]/10"
+              : "border-[#E8ECF0] bg-[#FAFBFC]"
+          }`}
+          data-field="selectedPatientId"
+          tabIndex={errors.selectedPatientId ? -1 : undefined}
+        >
           <PatientSearchDropdown {...patientSearchProps} />
+          {errors.selectedPatientId && (
+            <p className="mt-2 text-[11px] font-medium text-[#B91C1C]">
+              {errors.selectedPatientId}
+            </p>
+          )}
         </div>
 
-        <div className="mt-5">
+        <div
+          className="mt-5"
+          data-field="healthRecordType"
+          tabIndex={errors.healthRecordType ? -1 : undefined}
+        >
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
             Choose Classification
           </p>
@@ -1993,6 +2162,11 @@ function HealthRecordSetupStep({
               />
             ))}
           </div>
+          {errors.healthRecordType && (
+            <p className="mt-2 text-[11px] font-medium text-[#B91C1C]">
+              {errors.healthRecordType}
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col gap-3 border-t border-[#F3F4F6] pt-4 sm:flex-row sm:items-center sm:justify-between">
@@ -2071,6 +2245,7 @@ function CareDecisionStep({
   needsReferral,
   saving,
   referralLabel,
+  errors = {},
   onStatusChange,
   onFollowUpDateChange,
   onNeedsReferralChange,
@@ -2107,10 +2282,12 @@ function CareDecisionStep({
   return (
     <form
       onSubmit={onSave}
-      className="anim-fade-up mx-auto w-full max-w-6xl"
+      noValidate
+      className="anim-fade-up ml-0 mr-auto w-full max-w-6xl"
       style={stagger(2)}
     >
       <div className="rounded-2xl border border-[#E8ECF0] bg-white p-5 shadow-sm sm:p-6">
+        {(errors.followUpStatus || errors.followUpDate) && <ValidationAlert />}
         <div className="rounded-xl border border-[#F1F5F9] bg-[#FAFBFC] px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
             Patient Summary
@@ -2125,7 +2302,10 @@ function CareDecisionStep({
         </div>
 
         <div className="mt-5 space-y-5">
-          <div>
+          <div
+            data-field="followUpStatus"
+            tabIndex={errors.followUpStatus ? -1 : undefined}
+          >
             <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
               Patient Status
             </p>
@@ -2160,6 +2340,11 @@ function CareDecisionStep({
                 );
               })}
             </div>
+            {errors.followUpStatus && (
+              <p className="mt-2 text-[11px] font-medium text-[#B91C1C]">
+                {errors.followUpStatus}
+              </p>
+            )}
           </div>
 
           {followUpRequired && (
@@ -2167,6 +2352,8 @@ function CareDecisionStep({
               label="Follow-up Date"
               type="date"
               required
+              name="followUpDate"
+              error={errors.followUpDate}
               value={followUpDate}
               onChange={(event) => onFollowUpDateChange(event.target.value)}
             />
@@ -2661,6 +2848,7 @@ function ImmunizationVisitFields({
   dateOfVisit,
   feedingStatus,
   consultationNotes,
+  errors = {},
   onFeedingStatusChange,
   onEntryChange,
   onToggleVaccine,
@@ -2682,6 +2870,15 @@ function ImmunizationVisitFields({
       )}
 
       <ClinicalFieldGroup title="Vaccines Given This Visit">
+        {errors.vaccineEntries && (
+          <p
+            className="mb-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-[#B91C1C]"
+            data-field="vaccineEntries"
+            tabIndex={-1}
+          >
+            {errors.vaccineEntries}
+          </p>
+        )}
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {CHILD_VACCINE_OPTIONS.map((vaccineName) => {
             const checked = selectedVaccines.has(vaccineName);
@@ -2727,6 +2924,10 @@ function ImmunizationVisitFields({
                     <FieldInput
                       label="Specify Vaccine"
                       required
+                      name={`vaccineEntries.${index}.customVaccineName`}
+                      error={
+                        errors[`vaccineEntries.${index}.customVaccineName`]
+                      }
                       value={entry.customVaccineName || ""}
                       onChange={(event) =>
                         onEntryChange(index, "customVaccineName", event.target.value)
@@ -2737,6 +2938,8 @@ function ImmunizationVisitFields({
                   <FieldInput
                     label="Dose"
                     required
+                    name={`vaccineEntries.${index}.dose`}
+                    error={errors[`vaccineEntries.${index}.dose`]}
                     value={entry.dose}
                     onChange={(event) =>
                       onEntryChange(index, "dose", event.target.value)
@@ -2747,6 +2950,8 @@ function ImmunizationVisitFields({
                     label="Date Given"
                     type="date"
                     required
+                    name={`vaccineEntries.${index}.dateGiven`}
+                    error={errors[`vaccineEntries.${index}.dateGiven`]}
                     value={entry.dateGiven || dateOfVisit}
                     onChange={(event) =>
                       onEntryChange(index, "dateGiven", event.target.value)
@@ -2798,7 +3003,22 @@ function ImmunizationVisitFields({
     </div>
   );
 }
-function FieldInput({ label, required, ...props }) {
+function ValidationAlert() {
+  return (
+    <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 px-3.5 py-3 text-[#B91C1C]">
+      <AlertCircle size={15} className="mt-0.5 shrink-0" />
+      <p className="text-xs font-medium">
+        Please complete the highlighted required fields.
+      </p>
+    </div>
+  );
+}
+
+function FieldInput({ label, required, error, className = "", ...props }) {
+  const inputClass = error
+    ? "border-[#B91C1C] bg-[#FEF2F2]/40 ring-2 ring-[#B91C1C]/10"
+    : "border-[#E8ECF0] bg-[#FAFBFC] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10";
+
   return (
     <div>
       <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
@@ -2806,13 +3026,21 @@ function FieldInput({ label, required, ...props }) {
       </label>
       <input
         {...props}
-        className="h-10 w-full rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:opacity-60"
+        aria-invalid={Boolean(error)}
+        className={`h-10 w-full rounded-xl border px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] disabled:cursor-not-allowed disabled:opacity-60 ${inputClass} ${className}`}
       />
+      {error && (
+        <p className="mt-1 text-[11px] font-medium text-[#B91C1C]">{error}</p>
+      )}
     </div>
   );
 }
 
-function FieldSelect({ label, required, children, ...props }) {
+function FieldSelect({ label, required, error, children, className = "", ...props }) {
+  const selectClass = error
+    ? "border-[#B91C1C] bg-[#FEF2F2]/40 ring-2 ring-[#B91C1C]/10"
+    : "border-[#E8ECF0] bg-[#FAFBFC] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10";
+
   return (
     <div>
       <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
@@ -2820,16 +3048,23 @@ function FieldSelect({ label, required, children, ...props }) {
       </label>
       <select
         {...props}
-        required={required}
-        className="h-10 w-full appearance-none rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:opacity-60"
+        aria-invalid={Boolean(error)}
+        className={`h-10 w-full appearance-none rounded-xl border px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 ${selectClass} ${className}`}
       >
         {children}
       </select>
+      {error && (
+        <p className="mt-1 text-[11px] font-medium text-[#B91C1C]">{error}</p>
+      )}
     </div>
   );
 }
 
-function FieldTextarea({ label, required, rows = 3, ...props }) {
+function FieldTextarea({ label, required, error, rows = 3, className = "", ...props }) {
+  const textareaClass = error
+    ? "border-[#B91C1C] bg-[#FEF2F2]/40 ring-2 ring-[#B91C1C]/10"
+    : "border-[#E8ECF0] bg-[#FAFBFC] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10";
+
   return (
     <div>
       <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
@@ -2837,10 +3072,13 @@ function FieldTextarea({ label, required, rows = 3, ...props }) {
       </label>
       <textarea
         {...props}
-        required={required}
+        aria-invalid={Boolean(error)}
         rows={rows}
-        className="w-full resize-none rounded-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 py-3 text-sm leading-relaxed text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10"
+        className={`w-full resize-none rounded-xl border px-3.5 py-3 text-sm leading-relaxed text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] ${textareaClass} ${className}`}
       />
+      {error && (
+        <p className="mt-1 text-[11px] font-medium text-[#B91C1C]">{error}</p>
+      )}
     </div>
   );
 }

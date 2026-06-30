@@ -40,7 +40,7 @@ export default function PasswordResetRequests() {
   const [requests, setRequests] = useState([]);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
@@ -140,14 +140,14 @@ export default function PasswordResetRequests() {
     }
   }
 
-  const showLoadingOverlay = loading || refreshing;
+  const showLoadingOverlay = loading;
 
   return (
     <DashboardLayout role="admin" title="Password Reset Requests">
       <SoftLoadingArea
         isLoading={showLoadingOverlay}
-        message={loading ? "Loading requests..." : "Refreshing requests..."}
-        scope="page"
+        message="Loading requests..."
+        scope="area"
       >
         {!loading && (
           <ListToolbar
@@ -160,7 +160,6 @@ export default function PasswordResetRequests() {
             onApplyFilters={updateFilters}
             onClearFilters={clearFilters}
             onRemoveFilter={removeFilter}
-            disabled={showLoadingOverlay}
           />
         )}
 

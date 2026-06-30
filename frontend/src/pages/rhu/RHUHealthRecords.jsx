@@ -149,11 +149,11 @@ export default function RHUHealthRecords() {
 
   const records = Array.isArray(recordsData) ? recordsData : [];
   const loading = isLoading && records.length === 0;
-  const showLoadingOverlay = loading || (isFetching && records.length > 0);
+  const refreshing = isFetching && records.length > 0;
 
   useEffect(() => {
-    if (showLoadingOverlay) setOpenMenuId(null);
-  }, [showLoadingOverlay]);
+    if (loading || refreshing) setOpenMenuId(null);
+  }, [loading, refreshing]);
 
   useEffect(() => {
     function fetchRecords() {
@@ -276,9 +276,10 @@ export default function RHUHealthRecords() {
   return (
     <DashboardLayout role="rhu" title="Health Records">
       <SoftLoadingArea
-        isLoading={showLoadingOverlay}
-        message={loading ? "Loading records..." : "Refreshing records..."}
-        scope="page"
+        isLoading={loading}
+        message="Loading records..."
+        scope="area"
+        className="space-y-4"
       >
         {!loading && (
           <ListToolbar
@@ -291,7 +292,6 @@ export default function RHUHealthRecords() {
             onApplyFilters={applyDropdownFilters}
             onClearFilters={clearFilters}
             onRemoveFilter={removeFilter}
-            disabled={showLoadingOverlay}
             actions={
               <Link
                 to="/rhu/health-records/add"
@@ -304,14 +304,14 @@ export default function RHUHealthRecords() {
           />
         )}
 
-        {loading ? null : (
+        {!loading && (
           <RHUHealthRecordsTable
             records={filteredRecords}
             currentPage={currentPage}
             setCurrentPage={setCurrentPage}
             openMenuId={openMenuId}
             setOpenMenuId={setOpenMenuId}
-            refreshing={isFetching && records.length > 0}
+            refreshing={refreshing}
           />
         )}
       </SoftLoadingArea>

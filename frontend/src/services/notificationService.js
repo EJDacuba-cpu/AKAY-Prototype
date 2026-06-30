@@ -180,6 +180,32 @@ export async function markNotificationAsRead(notificationId) {
   return notificationCache;
 }
 
+export async function markNotificationsAsRead(notificationIds = []) {
+  const ids = notificationIds.map(String).filter(Boolean);
+  if (ids.length === 0) return notificationCache;
+
+  notificationCache = notificationCache.map((notification) =>
+    ids.includes(String(notification.id))
+      ? { ...notification, isRead: true, read: true }
+      : notification,
+  );
+  emitUpdate();
+
+  try {
+    await Promise.all(
+      ids.map((id) =>
+        apiRequest(`/notifications/${id}/read`, {
+          method: "PATCH",
+        }),
+      ),
+    );
+  } finally {
+    await refreshNotifications({ force: true, maxAgeMs: 0 });
+  }
+
+  return notificationCache;
+}
+
 export async function markAllNotificationsAsRead() {
   notificationCache = notificationCache.map((notification) => ({
     ...notification,
@@ -217,6 +243,26 @@ export async function deleteNotification(notificationId) {
   return notificationCache;
 }
 
+export async function deleteNotifications(notificationIds = []) {
+  const ids = notificationIds.map(String).filter(Boolean);
+  if (ids.length === 0) return notificationCache;
+
+  notificationCache = notificationCache.filter(
+    (notification) => !ids.includes(String(notification.id)),
+  );
+  emitUpdate();
+
+  try {
+    await Promise.all(
+      ids.map((id) => apiRequest(`/notifications/${id}`, { method: "DELETE" })),
+    );
+  } finally {
+    await refreshNotifications({ force: true, maxAgeMs: 0 });
+  }
+
+  return notificationCache;
+}
+
 export async function clearNotificationsForUser() {
   notificationCache = [];
   emitUpdate();
@@ -244,7 +290,11 @@ export default {
   createRoleNotification,
   createFacilityNotification,
   markNotificationAsRead,
+  markNotificationsAsRead,
   markAllNotificationsAsRead,
   getUnreadNotificationCount,
+  deleteNotification,
+  deleteNotifications,
+  clearNotificationsForUser,
   subscribeToNotifications,
 };

@@ -605,7 +605,8 @@ export default function IncomingReferrals() {
     [referralsData],
   );
   const loading = isLoading && referrals.length === 0;
-  const showLoadingOverlay = loading || (isFetching && referrals.length > 0);
+  const showLoadingOverlay = loading;
+  const isBackgroundRefreshing = isFetching && referrals.length > 0;
 
   const handleFilterChange = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -773,8 +774,8 @@ export default function IncomingReferrals() {
 
       <SoftLoadingArea
         isLoading={showLoadingOverlay}
-        message={loading ? "Loading referrals..." : "Refreshing referrals..."}
-        scope="page"
+        message="Loading referrals..."
+        scope="area"
       >
         {!loading && (
           <ListToolbar
@@ -789,7 +790,6 @@ export default function IncomingReferrals() {
             }
             onClearFilters={clearFilters}
             onRemoveFilter={removeFilter}
-            disabled={showLoadingOverlay}
             actions={
               <Link
                 to="/rhu/qr-scanner"
@@ -808,7 +808,7 @@ export default function IncomingReferrals() {
           count={filtered.length}
           subtitle="BHC-RHU referral records and tracking status."
           minWidth="min-w-[1360px]"
-          refreshing={isFetching && referrals.length > 0}
+          refreshing={isBackgroundRefreshing}
           footer={
             <TablePagination
               currentPage={currentPage}

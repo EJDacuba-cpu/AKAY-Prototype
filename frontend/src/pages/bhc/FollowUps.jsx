@@ -252,9 +252,9 @@ export default function FollowUps() {
       )}
 
       <SoftLoadingArea
-        isLoading={loading || (isFetching && tasks.length > 0)}
-        message={loading ? "Loading follow-ups..." : "Refreshing follow-ups..."}
-        scope="page"
+        isLoading={loading}
+        message="Loading follow-ups..."
+        scope="area"
       >
         {!loading && (
           <ModuleToolbar
@@ -270,7 +270,6 @@ export default function FollowUps() {
             onClearFilters={clearFilters}
             onRemoveFilter={removeFilter}
             filterDescription="Narrow the follow-up tracking list."
-            disabled={loading || (isFetching && tasks.length > 0)}
           />
         )}
 

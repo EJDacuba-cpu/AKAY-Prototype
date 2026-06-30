@@ -11,9 +11,11 @@ import { useLocation } from "react-router";
 import { getCurrentUser } from "../utils/auth";
 import {
   clearNotificationsForUser,
+  deleteNotifications as deleteStoredNotifications,
   deleteNotification as deleteStoredNotification,
   getNotificationsForUser,
   markAllNotificationsAsRead,
+  markNotificationsAsRead,
   markNotificationAsRead,
   normalizeFacilityId,
   normalizeRole,
@@ -100,7 +102,7 @@ export function NotificationProvider({ children }) {
   );
 
   const markAsRead = useCallback(
-    (id) => {
+    async (id) => {
       setNotifications((prev) =>
         prev.map((notification) =>
           notification.id === String(id)
@@ -108,18 +110,43 @@ export function NotificationProvider({ children }) {
             : notification,
         ),
       );
-      void markNotificationAsRead(id)
+      return markNotificationAsRead(id)
         .then((nextNotifications) => {
           if (isMountedRef.current) setNotifications(nextNotifications);
+          return nextNotifications;
         })
         .catch(() => {
           void refreshNotifications({ force: true, maxAgeMs: 0 });
+          throw new Error("Unable to mark notification as read.");
         });
     },
     [refreshNotifications],
   );
 
-  const markAllAsRead = useCallback(() => {
+  const markSelectedAsRead = useCallback(
+    async (ids) => {
+      const normalizedIds = ids.map(String);
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          normalizedIds.includes(String(notification.id))
+            ? { ...notification, isRead: true, read: true }
+            : notification,
+        ),
+      );
+      return markNotificationsAsRead(normalizedIds)
+        .then((nextNotifications) => {
+          if (isMountedRef.current) setNotifications(nextNotifications);
+          return nextNotifications;
+        })
+        .catch(() => {
+          void refreshNotifications({ force: true, maxAgeMs: 0 });
+          throw new Error("Unable to mark selected notifications as read.");
+        });
+    },
+    [refreshNotifications],
+  );
+
+  const markAllAsRead = useCallback(async () => {
     setNotifications((prev) =>
       prev.map((notification) => ({
         ...notification,
@@ -127,42 +154,70 @@ export function NotificationProvider({ children }) {
         read: true,
       })),
     );
-    void markAllNotificationsAsRead(userContext.role, userContext.facilityId)
+    return markAllNotificationsAsRead(userContext.role, userContext.facilityId)
       .then((nextNotifications) => {
         if (isMountedRef.current) setNotifications(nextNotifications);
+        return nextNotifications;
       })
       .catch(() => {
         void refreshNotifications({ force: true, maxAgeMs: 0 });
+        throw new Error("Unable to mark all notifications as read.");
       });
   }, [refreshNotifications, userContext.facilityId, userContext.role]);
 
   const deleteNotification = useCallback(
-    (id) => {
+    async (id) => {
       setNotifications((prev) =>
         prev.filter((notification) => notification.id !== String(id)),
       );
-      void deleteStoredNotification(id)
+      return deleteStoredNotification(id)
         .then((nextNotifications) => {
           if (isMountedRef.current) setNotifications(nextNotifications);
+          return nextNotifications;
         })
         .catch(() => {
           void refreshNotifications({ force: true, maxAgeMs: 0 });
+          throw new Error("Unable to delete notification.");
         });
-      setSelectedNotif((prev) =>
-        prev?.id === String(id) || prev?.id === id ? null : prev,
-      );
     },
     [refreshNotifications],
   );
 
-  const clearAll = useCallback(() => {
+  const deleteSelected = useCallback(
+    async (ids) => {
+      const normalizedIds = ids.map(String);
+      setNotifications((prev) =>
+        prev.filter(
+          (notification) => !normalizedIds.includes(String(notification.id)),
+        ),
+      );
+      return deleteStoredNotifications(normalizedIds)
+        .then((nextNotifications) => {
+          if (isMountedRef.current) setNotifications(nextNotifications);
+          setSelectedNotif((prev) =>
+            prev && normalizedIds.includes(String(prev.id)) ? null : prev,
+          );
+          return nextNotifications;
+        })
+        .catch(() => {
+          void refreshNotifications({ force: true, maxAgeMs: 0 });
+          throw new Error("Unable to delete selected notifications.");
+        });
+    },
+    [refreshNotifications],
+  );
+
+  const clearAll = useCallback(async () => {
     setNotifications([]);
-    void clearNotificationsForUser(userContext.role, userContext.facilityId)
+    return clearNotificationsForUser(userContext.role, userContext.facilityId)
       .then((nextNotifications) => {
         if (isMountedRef.current) setNotifications(nextNotifications);
+        setSelectedNotif(null);
+        return nextNotifications;
       })
       .catch(() => {
         void refreshNotifications({ force: true, maxAgeMs: 0 });
+        throw new Error("Unable to clear notifications.");
       });
   }, [refreshNotifications, userContext.facilityId, userContext.role]);
 
@@ -173,8 +228,10 @@ export function NotificationProvider({ children }) {
       getLatestNotifications,
       refreshNotifications,
       markAsRead,
+      markSelectedAsRead,
       markAllAsRead,
       deleteNotification,
+      deleteSelected,
       clearAll,
       selectedNotif,
       setSelectedNotif,
@@ -182,9 +239,11 @@ export function NotificationProvider({ children }) {
     [
       clearAll,
       deleteNotification,
+      deleteSelected,
       getLatestNotifications,
       markAllAsRead,
       markAsRead,
+      markSelectedAsRead,
       notifications,
       refreshNotifications,
       selectedNotif,

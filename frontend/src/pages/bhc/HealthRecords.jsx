@@ -383,9 +383,10 @@ export default function HealthRecords() {
   return (
     <DashboardLayout role="bhc" title="Health Records">
       <SoftLoadingArea
-        isLoading={loading || (isFetching && records.length > 0)}
-        message={loading ? "Loading records..." : "Refreshing records..."}
-        scope="page"
+        isLoading={loading}
+        message="Loading records..."
+        scope="area"
+        className="space-y-4"
       >
         {!loading && (
           <ModuleToolbar
@@ -402,11 +403,10 @@ export default function HealthRecords() {
             primaryActionTo="/bhc/health-records/add"
             primaryActionLabel="Add Health Record"
             primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
-            disabled={loading || (isFetching && records.length > 0)}
           />
         )}
 
-        {loading ? null : (
+        {!loading && (
           <HealthRecordsTable
             records={filteredRecords}
             currentPage={currentPage}

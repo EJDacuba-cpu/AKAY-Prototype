@@ -264,9 +264,9 @@ export default function Referrals() {
   return (
     <DashboardLayout role="bhc" title="Referrals">
       <SoftLoadingArea
-        isLoading={loading || (isFetching && referrals.length > 0)}
-        message={loading ? "Loading referrals..." : "Refreshing referrals..."}
-        scope="page"
+        isLoading={loading}
+        message="Loading referrals..."
+        scope="area"
       >
         {!loading && (
           <ModuleToolbar
@@ -282,7 +282,6 @@ export default function Referrals() {
             onClearFilters={clearFilters}
             onRemoveFilter={removeFilter}
             filterDescription="Narrow the referrals list."
-            disabled={loading || (isFetching && referrals.length > 0)}
           />
         )}
 

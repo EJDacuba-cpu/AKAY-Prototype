@@ -13,15 +13,15 @@ export const THEME = {
 
 // --- SECTION HEADER COMPONENT ---
 export const SectionHeader = ({ icon: Icon, title, description }) => (
-  <div className="mb-6">
-    <div className="flex items-center gap-3">
-      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B91C1C]">
-        <Icon size={18} />
-      </div>
-      <div>
-        <h2 className="text-sm font-bold text-gray-900">{title}</h2>
-        <p className="text-xs text-gray-500">{description}</p>
-      </div>
+  <div className="mb-5 flex min-w-0 items-center gap-2.5 border-b border-[#F3F4F6] pb-4">
+    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-50 text-[#B91C1C]">
+      <Icon size={14} />
+    </div>
+    <div className="min-w-0">
+      <h2 className="text-sm font-bold text-[#1A1A1A]">{title}</h2>
+      {description && (
+        <p className="truncate text-xs text-[#6B7280]">{description}</p>
+      )}
     </div>
   </div>
 );
@@ -52,17 +52,19 @@ export const PhilippineContactInput = ({
   error,
 }) => {
   return (
-    <div className="flex flex-col gap-1.5">
-      <label className="block text-xs font-semibold text-gray-700">
+    <div className="min-w-0">
+      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
         {label}
-        {required && <span className="ml-1 text-[#B91C1C]">*</span>}
+        {required && <span className="ml-1 text-red-500">*</span>}
       </label>
       <div
-        className={`group relative flex h-11 overflow-hidden rounded-lg border bg-gray-50/50 transition-all duration-200 focus-within:border-[#B91C1C] focus-within:ring-2 focus-within:ring-[#B91C1C]/20 ${
-          error ? "border-[#FCA5A5]" : "border-gray-300"
+        className={`group relative flex h-10 min-w-0 overflow-hidden rounded-xl border bg-[#FAFBFC] transition-all duration-200 focus-within:border-[#B91C1C] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#B91C1C]/10 ${
+          error
+            ? "border-[#B91C1C] bg-red-50/30 ring-2 ring-[#B91C1C]/10"
+            : "border-[#E8ECF0] hover:border-[#D1D5DB]"
         } ${disabled ? "bg-slate-100 opacity-75" : ""}`}
       >
-        <div className="flex shrink-0 items-center gap-2 border-r border-gray-300 bg-white px-3 text-sm font-medium text-gray-500 group-focus-within:bg-gray-50">
+        <div className="flex shrink-0 items-center gap-2 border-r border-[#E8ECF0] bg-white px-3 text-sm font-medium text-[#6B7280] group-focus-within:bg-[#FAFBFC]">
           <PhilippinesFlag />
           <span>+63</span>
         </div>
@@ -76,16 +78,16 @@ export const PhilippineContactInput = ({
           placeholder="912 345 6789"
           required={required}
           disabled={disabled}
-          className="min-w-0 flex-1 bg-transparent px-3 text-sm text-gray-900 outline-none placeholder:text-gray-400 disabled:cursor-not-allowed disabled:text-slate-500"
+          className="min-w-0 flex-1 bg-transparent px-3.5 text-sm text-[#1F2937] outline-none placeholder:text-[#9CA3AF] disabled:cursor-not-allowed disabled:text-slate-500"
         />
       </div>
       {error && (
-        <p className="text-[10px] font-medium leading-relaxed text-[#B91C1C]">
+        <p className="mt-1 text-[11px] font-medium leading-relaxed text-[#B91C1C]">
           {error}
         </p>
       )}
       {helperText && (
-        <p className="text-[10px] leading-relaxed text-[#64748B]">
+        <p className="mt-1 text-[10px] leading-relaxed text-[#64748B]">
           {helperText}
         </p>
       )}

@@ -119,7 +119,6 @@ export default function PatientsModule() {
   const hasMorePatients = visibleCount < filteredPatients.length;
   const showInitialLoading = loading && patients.length === 0;
   const showRefreshOverlay = isRefreshing && patients.length > 0;
-  const showLoadingOverlay = showInitialLoading || showRefreshOverlay;
 
   useEffect(() => {
     setVisibleCount(PATIENTS_BATCH_SIZE);
@@ -179,11 +178,10 @@ export default function PatientsModule() {
   return (
     <DashboardLayout role="bhc" title="Patients">
       <SoftLoadingArea
-        isLoading={showLoadingOverlay}
-        message={
-          showInitialLoading ? "Loading patients..." : "Refreshing patients..."
-        }
-        scope="page"
+        isLoading={showInitialLoading}
+        message="Loading patients..."
+        scope="area"
+        className="space-y-4"
       >
         {!showInitialLoading && (
           <ModuleToolbar
@@ -202,13 +200,17 @@ export default function PatientsModule() {
             primaryActionTo="/bhc/patients/add"
             primaryActionLabel="New Patient"
             primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
-            disabled={showLoadingOverlay}
           />
         )}
 
-      <div className="relative min-w-0">
-        {!showInitialLoading && (
-          <PatientDirectory
+        <div className="relative min-w-0">
+          {showRefreshOverlay && (
+            <div className="pointer-events-none absolute right-0 top-0 z-10 rounded-full border border-red-100 bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#B91C1C] shadow-sm">
+              Refreshing
+            </div>
+          )}
+          {!showInitialLoading && (
+            <PatientDirectory
             patients={visiblePatients}
             error={error}
             onRetry={refetchPatients}
@@ -217,8 +219,8 @@ export default function PatientsModule() {
             loadingMore={loadingMore}
             loadMoreRef={loadMoreRef}
           />
-        )}
-      </div>
+          )}
+        </div>
       </SoftLoadingArea>
     </DashboardLayout>
   );

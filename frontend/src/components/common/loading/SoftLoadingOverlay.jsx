@@ -12,7 +12,17 @@ const loaderViewportStyle = {
 };
 
 export function DottedSpinner({ label = "Loading", size = "md" }) {
-  return <AkayLogoLoader label={label} size={size} showLabel={false} />;
+  const sizeClass = size === "sm" ? "h-3 w-3" : "h-4 w-4";
+
+  return (
+    <span className="inline-flex items-center gap-2 text-[12px] font-medium text-slate-500">
+      <span
+        className={`${sizeClass} animate-spin rounded-full border-2 border-slate-200 border-t-[#B91C1C]`}
+        aria-hidden="true"
+      />
+      {label}
+    </span>
+  );
 }
 
 function inferVariant(message, fallback = "fetch") {
@@ -46,12 +56,12 @@ export default function SoftLoadingOverlay({
   const shouldShow = isVisible ?? isLoading ?? visible;
   const [isMounted, setIsMounted] = useState(Boolean(shouldShow));
   const [isActive, setIsActive] = useState(false);
-  const isPageScope = scope === "page";
+  const isViewportScope = scope === "viewport";
 
   useEffect(() => {
     if (shouldShow) {
       setIsMounted(true);
-      if (scope === "page" && blocking) {
+      if (isViewportScope && blocking) {
         window.dispatchEvent(new CustomEvent("akay:blocking-loading-start"));
       }
 
@@ -65,16 +75,16 @@ export default function SoftLoadingOverlay({
     setIsActive(false);
     const timer = window.setTimeout(() => setIsMounted(false), 180);
     return () => window.clearTimeout(timer);
-  }, [blocking, scope, shouldShow]);
+  }, [blocking, isViewportScope, shouldShow]);
 
   if (!isMounted) return null;
 
   return (
     <div
       className={`${
-        isPageScope
+        isViewportScope
           ? "fixed inset-0 z-[999] min-h-dvh rounded-none"
-          : "absolute inset-0 z-[90] min-h-[calc(100dvh-11rem)] rounded-xl"
+          : "absolute inset-0 z-20 min-h-[calc(100dvh-11rem)] rounded-xl"
       } px-4 transition-opacity duration-200 ease-out ${overlayToneClasses[blur] || overlayToneClasses.sm} ${
         isActive ? "opacity-100" : "opacity-0"
       } ${blocking && isActive ? "pointer-events-auto" : "pointer-events-none"} ${className}`}
@@ -83,9 +93,9 @@ export default function SoftLoadingOverlay({
     >
       <div
         className={`flex min-w-0 items-center justify-center py-8 ${
-          isPageScope ? "h-full min-h-dvh" : "sticky top-4"
+          isViewportScope ? "h-full min-h-dvh" : "sticky top-4"
         }`}
-        style={isPageScope ? undefined : loaderViewportStyle}
+        style={isViewportScope ? undefined : loaderViewportStyle}
       >
         {children || (
           <div

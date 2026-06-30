@@ -112,7 +112,7 @@ export default function Patients() {
   );
 
   const loading = isLoading && allPatients.length === 0;
-  const showLoadingOverlay = loading || (isFetching && allPatients.length > 0);
+  const refreshing = isFetching && allPatients.length > 0;
 
   const barangayOptions = uniqueOptions(
     allPatients,
@@ -306,9 +306,10 @@ export default function Patients() {
   return (
     <DashboardLayout role="rhu" title="Patients">
       <SoftLoadingArea
-        isLoading={showLoadingOverlay}
-        message={loading ? "Loading patients..." : "Refreshing patients..."}
-        scope="page"
+        isLoading={loading}
+        message="Loading patients..."
+        scope="area"
+        className="space-y-4"
       >
         {!loading && (
           <ModuleToolbar
@@ -327,7 +328,6 @@ export default function Patients() {
             primaryActionTo="/rhu/patients/add"
             primaryActionLabel="New Patient"
             primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
-            disabled={showLoadingOverlay}
           />
         )}
 
@@ -339,7 +339,7 @@ export default function Patients() {
               hasMorePatients={hasMorePatients}
               loadingMore={loadingMore}
               loadMoreRef={loadMoreRef}
-              refreshing={isFetching && allPatients.length > 0}
+              refreshing={refreshing}
             />
           )}
         </div>

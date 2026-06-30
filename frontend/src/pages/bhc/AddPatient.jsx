@@ -13,6 +13,7 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConfirmationModal,
+  DatePickerField,
   FormInput,
   SuccessModal
 } from "../../components/common";
@@ -142,6 +143,15 @@ export function PatientRegistrationPage({
     setForm((prev) => ({ ...prev, [name]: value }));
   }
 
+  function handleBirthDateChange(value) {
+    setFieldErrors((prev) => ({ ...prev, birthDate: "" }));
+    setForm((prev) => ({
+      ...prev,
+      birthDate: value,
+      age: calculateAge(value),
+    }));
+  }
+
   function validateForm() {
     const nextErrors = {};
 
@@ -207,20 +217,23 @@ export function PatientRegistrationPage({
     <>
       <DashboardLayout role={role} title="Add Patient">
         {/* Header */}
-        <div className="anim-fade-up mb-8" style={stagger(0)}>
+        <div
+          className="anim-fade-up mb-6 ml-0 mr-auto w-full max-w-7xl min-w-0"
+          style={stagger(0)}
+        >
           <div className="flex flex-col gap-2">
             <Link
               to={patientsPath}
-              className="inline-flex w-fit items-center gap-2 text-xs font-semibold text-gray-500 transition-colors hover:text-[#B91C1C]"
+              className="inline-flex w-fit items-center gap-2 text-[13px] font-semibold text-[#B91C1C] transition-all duration-200 hover:gap-2.5 hover:text-[#991B1B]"
             >
-              <ArrowLeft size={14} />
+              <ArrowLeft size={16} />
               Back to Patients
             </Link>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-gray-900">
+              <h1 className="text-lg font-bold tracking-tight text-[#1A1A1A]">
                 Add New Patient
               </h1>
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-[#6B7280]">
                 {systemDescription}
               </p>
             </div>
@@ -230,11 +243,11 @@ export function PatientRegistrationPage({
         <form
           noValidate
           onSubmit={handleFormSubmit}
-          className="space-y-6"
+          className="ml-0 mr-auto w-full max-w-7xl min-w-0 space-y-5"
         >
           {/* SECTION 1: BASIC INFO */}
           <section
-            className="anim-fade-up rounded-xl border border-gray-200 border-t-4 border-t-[#B91C1C] bg-white p-6 shadow-sm"
+            className="anim-fade-up w-full min-w-0 rounded-2xl border border-[#E8ECF0] bg-white p-5 shadow-sm sm:p-6"
             style={stagger(1)}
           >
             <SectionHeader
@@ -243,7 +256,7 @@ export function PatientRegistrationPage({
               description="Personal identity and demographic details."
             />
 
-            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               <FormInput
                 label="First Name"
                 name="firstName"
@@ -267,13 +280,12 @@ export function PatientRegistrationPage({
                 required
               />
 
-              <FormInput
+              <DatePickerField
                 label="Date of Birth"
                 name="birthDate"
-                type="date"
                 value={form.birthDate}
-                onChange={handleChange}
                 max={todayIso}
+                onChange={handleBirthDateChange}
                 error={fieldErrors.birthDate}
                 required
               />
@@ -307,7 +319,7 @@ export function PatientRegistrationPage({
                 required
               />
 
-              <div className="lg:col-span-2">
+              <div className="min-w-0 xl:col-span-2">
                 <PhilippineContactInput
                   label="Contact Number"
                   name="contactNumber"
@@ -320,7 +332,7 @@ export function PatientRegistrationPage({
 
           {/* SECTION 2: ADDRESS */}
           <section
-            className="anim-fade-up rounded-xl border border-gray-200 border-t-4 border-t-[#B91C1C] bg-white p-6 shadow-sm"
+            className="anim-fade-up w-full min-w-0 rounded-2xl border border-[#E8ECF0] bg-white p-5 shadow-sm sm:p-6"
             style={stagger(2)}
           >
             <SectionHeader
@@ -329,7 +341,7 @@ export function PatientRegistrationPage({
               description="Current residential address details."
             />
 
-            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               <FormInput
                 label="Street Address"
                 name="streetAddress"
@@ -340,8 +352,8 @@ export function PatientRegistrationPage({
                 required
               />
 
-              <div className="lg:col-span-2">
-                <div className="grid gap-5 md:grid-cols-2">
+              <div className="min-w-0 xl:col-span-2">
+                <div className="grid min-w-0 gap-4 sm:grid-cols-2">
                   <ModernSelect
                     label="Barangay"
                     name="barangay"
@@ -366,21 +378,24 @@ export function PatientRegistrationPage({
 
           {/* ACTIONS */}
           <div
-            className="anim-fade-up flex items-center justify-end gap-4 pt-4"
+            className="anim-fade-up flex min-w-0 flex-col-reverse gap-3 pt-1 pb-4 sm:flex-row sm:items-center sm:justify-end"
             style={stagger(4)}
           >
             <button
               type="button"
               onClick={() => navigate(patientsPath)}
-              className="rounded-lg border border-gray-300 bg-white px-6 py-2.5 text-xs font-semibold text-gray-700 transition-all hover:bg-gray-50"
+              className="w-full rounded-xl border border-[#E8ECF0] bg-white px-5 py-2.5 text-sm font-semibold text-[#6B7280] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#D1D5DB] hover:shadow-md active:scale-[0.97] sm:w-auto"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex items-center gap-2 rounded-lg bg-[#B91C1C] px-6 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-[#991B1B]"
+              className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98] sm:w-auto"
             >
-              <UserPlus size={14} />
+              <UserPlus
+                size={15}
+                className="transition-transform duration-300 group-hover:scale-110"
+              />
               Register Patient
             </button>
           </div>
@@ -532,7 +547,7 @@ function ModernSelect({
   }
 
   return (
-    <div ref={wrapperRef} className="relative">
+    <div ref={wrapperRef} className="relative min-w-0">
       <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
         {label}
         {required && <span className="text-red-400"> *</span>}
@@ -546,8 +561,8 @@ function ModernSelect({
         aria-controls={`${name}-options`}
         onClick={() => setOpen((prev) => !prev)}
         onKeyDown={handleKeyDown}
-        className={`flex h-10 w-full items-center justify-between gap-2 rounded-lg border bg-[#F8FAFC] px-3 text-left text-sm text-[#0F172A] outline-none transition-all duration-200 hover:border-[#CBD5E1] focus:border-[#FCA5A5] focus:bg-white focus:ring-3 focus:ring-[#B91C1C]/[0.08] ${
-          error ? "border-[#FCA5A5] bg-white" : "border-[#E5E7EB]"
+        className={`flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-xl border bg-[#FAFBFC] px-3.5 text-left text-sm text-[#1F2937] outline-none transition-all duration-200 hover:border-[#D1D5DB] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 ${
+          error ? "border-[#B91C1C] bg-red-50/30 ring-2 ring-[#B91C1C]/10" : "border-[#E8ECF0]"
         }`}
       >
         <span
@@ -571,7 +586,7 @@ function ModernSelect({
           id={`${name}-options`}
           role="listbox"
           aria-label={label}
-          className="overflow-y-auto rounded-lg border border-[#E5E7EB] bg-white py-1 shadow-xl shadow-slate-900/[0.10]"
+          className="overflow-y-auto rounded-xl border border-[#E8ECF0] bg-white py-1 shadow-xl shadow-slate-900/[0.10]"
           style={{
             position: "fixed",
             zIndex: 9999,
@@ -609,7 +624,7 @@ function ModernSelect({
       )}
 
       {error && (
-        <p className="mt-1 text-[10px] font-medium leading-relaxed text-[#B91C1C]">
+        <p className="mt-1 text-[11px] font-medium leading-relaxed text-[#B91C1C]">
           {error}
         </p>
       )}
