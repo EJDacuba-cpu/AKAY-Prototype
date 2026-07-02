@@ -22,16 +22,16 @@ export default function FormSelect({
         className="
           h-10 w-full appearance-none
           rounded-lg border border-[#E5E7EB]
-          bg-[#F8FAFC]
-          px-3 pr-8 text-sm text-[#0F172A]
+          bg-white
+          px-3.5 pr-8 text-sm text-[#1F2937]
           outline-none transition-all duration-200
 
-          hover:border-[#BCC3CD]
+          hover:border-[#D1D5DB]
 
-          focus:border-[#FCA5A5]
+          focus:border-[#B91C1C]
           focus:bg-white
-          focus:ring-3
-          focus:ring-[#B91C1C]/[0.08]
+          focus:ring-2
+          focus:ring-[#B91C1C]/10
         "
         style={{
           backgroundImage:

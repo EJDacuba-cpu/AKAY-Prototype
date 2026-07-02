@@ -74,7 +74,8 @@ const RECORD_TYPE_DETAILS = {
     icon: HeartPulse,
   },
   Immunization: {
-    description: "For child vaccination schedule entries.",
+    title: "Immunization / Child Health EPI",
+    description: "For child vaccination schedules, EPI entries, and growth monitoring.",
     icon: Syringe,
   },
   "Senior Citizen": {
@@ -164,31 +165,63 @@ const EMPTY_IMMUNIZATION_DATA = {
       customVaccineName: "",
       dose: "",
       dateGiven: "",
+      weight: "",
+      height: "",
+      temperature: "",
       nextScheduleDate: "",
       siteRoute: "",
       reason: "",
       remarks: "",
     },
   ],
+  breastfeedingMonitoring: {
+    month1: "",
+    month2: "",
+    month3: "",
+    month4: "",
+    month5: "",
+    month6: "",
+  },
 };
 
 const ADULT_IMMUNIZATION_MIN_AGE_YEARS = 18;
 const CHILD_VACCINE_OPTIONS = [
+  "Newborn Screening",
   "BCG",
   "Hepatitis B",
-  "Pentavalent",
-  "OPV",
-  "PCV",
-  "IPV",
+  "OPV 1",
+  "OPV 2",
+  "OPV 3",
+  "Pentavalent 1",
+  "Pentavalent 2",
+  "Pentavalent 3",
+  "PCV 1",
+  "PCV 2",
+  "PCV 3",
+  "IPV 1",
+  "IPV 2",
+  "MCV 1",
+  "MCV 2",
   "MMR",
   "Vitamin A",
   "Other",
+];
+const BREASTFEEDING_MONTHS = [
+  { key: "month1", label: "1 Month" },
+  { key: "month2", label: "2 Months" },
+  { key: "month3", label: "3 Months" },
+  { key: "month4", label: "4 Months" },
+  { key: "month5", label: "5 Months" },
+  { key: "month6", label: "6 Months" },
 ];
 const EMPTY_VACCINE_ENTRY = {
   vaccineName: "",
   customVaccineName: "",
   dose: "",
   dateGiven: "",
+  weight: "",
+  height: "",
+  temperature: "",
   nextScheduleDate: "",
   siteRoute: "",
   reason: "",
@@ -995,9 +1028,24 @@ export default function AddHealthRecord() {
     });
   }
 
+  function handleBreastfeedingChange(monthKey, value) {
+    setImmunizationData((prev) => ({
+      ...prev,
+      breastfeedingMonitoring: {
+        ...(prev.breastfeedingMonitoring || {}),
+        [monthKey]: value,
+      },
+    }));
+  }
+
   function handleVaccineEntryChange(index, field, value) {
     clearValidationError(`vaccineEntries.${index}.${field}`);
     clearValidationError("vaccineEntries");
+    if (field === "nextScheduleDate" && value) {
+      clearValidationError("followUpDate");
+      setFollowUpStatus("Follow-up Required");
+      setFollowUpDate(value);
+    }
     setImmunizationData((prev) => {
       const entries = getVaccineEntries(prev).map((entry, entryIndex) =>
         entryIndex === index ? { ...entry, [field]: value } : entry,
@@ -1617,8 +1665,9 @@ export default function AddHealthRecord() {
       <form
         onSubmit={usesCareDecisionStep ? handleProceedToCareDecision : handleSave}
         noValidate
-        className="relative ml-0 mr-auto w-full max-w-7xl space-y-5"
+        className="relative ml-0 mr-auto w-full max-w-7xl"
       >
+        <div className="space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
         {Object.keys(validationErrors).length > 0 && <ValidationAlert />}
 
         {isFollowUp && (
@@ -1856,11 +1905,13 @@ export default function AddHealthRecord() {
             entries={immunizationVaccineEntries}
             dateOfVisit={dateOfVisit}
             feedingStatus={immunizationData.feeding_status}
+            breastfeedingMonitoring={immunizationData.breastfeedingMonitoring}
             consultationNotes={consultationNotes}
             errors={validationErrors}
             onFeedingStatusChange={(value) =>
               handleVaccineChange("feeding_status", value)
               }
+              onBreastfeedingChange={handleBreastfeedingChange}
               onEntryChange={handleVaccineEntryChange}
               onToggleVaccine={handleVaccineToggle}
               onNotesChange={setConsultationNotes}
@@ -2248,6 +2299,7 @@ export default function AddHealthRecord() {
             {primaryActionLabel}
           </button>
         </div>
+        </div>
       </form>
       )}
       </>
@@ -2411,7 +2463,7 @@ function HealthRecordSetupStep({
           )}
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-[#F3F4F6] pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs font-medium text-[#94A3B8]">
             {canProceed
               ? "Ready to continue to the clinical record."
@@ -2460,7 +2512,7 @@ function ClassificationCard({ option, selected, onSelect }) {
       <span className="flex min-w-0 flex-1 items-start justify-between gap-3">
         <span className="min-w-0">
           <span className="block text-sm font-bold text-[#0F172A]">
-            {option}
+            {config.title || option}
           </span>
           <span className="mt-1 block text-[11.5px] leading-relaxed text-[#64748B]">
             {config.description}
@@ -2633,7 +2685,7 @@ function CareDecisionStep({
           )}
         </div>
 
-        <div className="mt-6 flex justify-end border-t border-[#F3F4F6] pt-4">
+        <div className="mt-6 flex justify-end pt-4">
           <button
             type="submit"
             disabled={saving}
@@ -3033,20 +3085,16 @@ function ContextItem({ label, value, strong = false }) {
    FORM SUB-COMPONENTS
    ═══════════════════════════════════════════════════════════════ */
 function FormSection({ title, subtitle, icon, children, delay = 0, accent }) {
-  const borderClass = accent === "pink" ? "border-t-2 border-t-pink-600" : "";
+  const accentClass = accent === "pink" ? "text-pink-700 bg-pink-50" : "text-[#B91C1C] bg-red-50";
 
   return (
     <div
-      className={`anim-fade-up rounded-2xl border border-[#E8ECF0] bg-white p-6 shadow-sm ${borderClass}`}
+      className="anim-fade-up space-y-4 pb-6"
       style={stagger(delay)}
     >
-      <div className="flex items-center gap-2.5 border-b border-[#F3F4F6] pb-4">
+      <div className="flex items-center gap-2.5">
         <div
-          className={`flex h-7 w-7 items-center justify-center rounded-lg ${
-            accent === "pink"
-              ? "bg-pink-50 text-pink-600"
-              : "bg-red-50 text-[#B91C1C]"
-          }`}
+          className={`flex h-6 w-6 items-center justify-center rounded-md ${accentClass}`}
         >
           {icon}
         </div>
@@ -3059,7 +3107,7 @@ function FormSection({ title, subtitle, icon, children, delay = 0, accent }) {
           {subtitle && <p className="text-xs text-[#6B7280]">{subtitle}</p>}
         </div>
       </div>
-      <div className="mt-5">{children}</div>
+      <div>{children}</div>
     </div>
   );
 }
@@ -3258,9 +3306,11 @@ function ImmunizationVisitFields({
   entries,
   dateOfVisit,
   feedingStatus,
+  breastfeedingMonitoring = {},
   consultationNotes,
   errors = {},
   onFeedingStatusChange,
+  onBreastfeedingChange,
   onEntryChange,
   onToggleVaccine,
   onNotesChange,
@@ -3369,6 +3419,36 @@ function ImmunizationVisitFields({
                     }
                   />
                   <FieldInput
+                    label="Weight"
+                    type="number"
+                    step="0.01"
+                    value={entry.weight || ""}
+                    onChange={(event) =>
+                      onEntryChange(index, "weight", event.target.value)
+                    }
+                    placeholder="kg"
+                  />
+                  <FieldInput
+                    label="Height"
+                    type="number"
+                    step="0.01"
+                    value={entry.height || ""}
+                    onChange={(event) =>
+                      onEntryChange(index, "height", event.target.value)
+                    }
+                    placeholder="cm"
+                  />
+                  <FieldInput
+                    label="Temperature"
+                    type="number"
+                    step="0.1"
+                    value={entry.temperature || ""}
+                    onChange={(event) =>
+                      onEntryChange(index, "temperature", event.target.value)
+                    }
+                    placeholder="°C"
+                  />
+                  <FieldInput
                     label="Next Schedule Date"
                     type="date"
                     value={entry.nextScheduleDate}
@@ -3404,6 +3484,25 @@ function ImmunizationVisitFields({
         </FieldSelect>
       </div>
 
+      <ClinicalFieldGroup title="Exclusive Breastfeeding Monitoring">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {BREASTFEEDING_MONTHS.map((month) => (
+            <FieldSelect
+              key={month.key}
+              label={month.label}
+              value={breastfeedingMonitoring?.[month.key] || ""}
+              onChange={(event) =>
+                onBreastfeedingChange(month.key, event.target.value)
+              }
+            >
+              <option value="">Not recorded</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </FieldSelect>
+          ))}
+        </div>
+      </ClinicalFieldGroup>
+
       <FieldTextarea
         label="Clinical Notes / Remarks"
         value={consultationNotes}
@@ -3427,8 +3526,8 @@ function ValidationAlert() {
 
 function FieldInput({ label, required, error, className = "", ...props }) {
   const inputClass = error
-    ? "border-[#B91C1C] bg-[#FEF2F2]/40 ring-2 ring-[#B91C1C]/10"
-    : "border-[#E8ECF0] bg-[#FAFBFC] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10";
+    ? "border-[#B91C1C] bg-white ring-2 ring-[#B91C1C]/10"
+    : "border-[#E5E7EB] bg-white focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10";
 
   return (
     <div>
@@ -3438,7 +3537,7 @@ function FieldInput({ label, required, error, className = "", ...props }) {
       <input
         {...props}
         aria-invalid={Boolean(error)}
-        className={`h-10 w-full rounded-xl border px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] disabled:cursor-not-allowed disabled:opacity-60 ${inputClass} ${className}`}
+        className={`h-10 w-full rounded-lg border px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] disabled:cursor-not-allowed disabled:opacity-60 ${inputClass} ${className}`}
       />
       {error && (
         <p className="mt-1 text-[11px] font-medium text-[#B91C1C]">{error}</p>
@@ -3449,8 +3548,8 @@ function FieldInput({ label, required, error, className = "", ...props }) {
 
 function FieldSelect({ label, required, error, children, className = "", ...props }) {
   const selectClass = error
-    ? "border-[#B91C1C] bg-[#FEF2F2]/40 ring-2 ring-[#B91C1C]/10"
-    : "border-[#E8ECF0] bg-[#FAFBFC] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10";
+    ? "border-[#B91C1C] bg-white ring-2 ring-[#B91C1C]/10"
+    : "border-[#E5E7EB] bg-white focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10";
 
   return (
     <div>
@@ -3460,7 +3559,7 @@ function FieldSelect({ label, required, error, children, className = "", ...prop
       <select
         {...props}
         aria-invalid={Boolean(error)}
-        className={`h-10 w-full appearance-none rounded-xl border px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 ${selectClass} ${className}`}
+        className={`h-10 w-full appearance-none rounded-lg border px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 ${selectClass} ${className}`}
       >
         {children}
       </select>
@@ -3473,8 +3572,8 @@ function FieldSelect({ label, required, error, children, className = "", ...prop
 
 function FieldTextarea({ label, required, error, rows = 3, className = "", ...props }) {
   const textareaClass = error
-    ? "border-[#B91C1C] bg-[#FEF2F2]/40 ring-2 ring-[#B91C1C]/10"
-    : "border-[#E8ECF0] bg-[#FAFBFC] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10";
+    ? "border-[#B91C1C] bg-white ring-2 ring-[#B91C1C]/10"
+    : "border-[#E5E7EB] bg-white focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10";
 
   return (
     <div>
@@ -3485,7 +3584,7 @@ function FieldTextarea({ label, required, error, rows = 3, className = "", ...pr
         {...props}
         aria-invalid={Boolean(error)}
         rows={rows}
-        className={`w-full resize-none rounded-xl border px-3.5 py-3 text-sm leading-relaxed text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] ${textareaClass} ${className}`}
+        className={`w-full resize-none rounded-lg border px-3.5 py-3 text-sm leading-relaxed text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] ${textareaClass} ${className}`}
       />
       {error && (
         <p className="mt-1 text-[11px] font-medium text-[#B91C1C]">{error}</p>
@@ -3511,9 +3610,9 @@ function BpInputGroup({
           placeholder="Systolic"
           value={systolic}
           onChange={(event) => onSystolicChange(event.target.value)}
-          className="h-10 w-full rounded-l-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="h-10 w-full rounded-l-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center border-y border-[#E8ECF0] bg-[#F3F4F6] text-sm font-bold text-[#6B7280]">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center border-y border-[#E5E7EB] bg-[#F9FAFB] text-sm font-bold text-[#6B7280]">
           /
         </div>
         <input
@@ -3521,7 +3620,7 @@ function BpInputGroup({
           placeholder="Diastolic"
           value={diastolic}
           onChange={(event) => onDiastolicChange(event.target.value)}
-          className="h-10 w-full rounded-r-xl border border-[#E8ECF0] bg-[#FAFBFC] px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="h-10 w-full rounded-r-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
       </div>
       <p className="mt-1 text-[9px] text-[#BFBFBF]">Systolic / Diastolic</p>

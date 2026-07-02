@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Calendar,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -24,6 +25,7 @@ const MONTH_LABELS = [
 ];
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const YEAR_PAGE_SIZE = 12;
 let popoverIdCounter = 0;
 
 function pad(value) {
@@ -83,6 +85,15 @@ function getCalendarDays(monthDate) {
     date.setDate(start.getDate() + index);
     return date;
   });
+}
+
+function getYearPageStart(year) {
+  return year - 5;
+}
+
+function normalizeDateOnly(date) {
+  if (!date) return null;
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
 function clamp(value, min, max) {
@@ -200,18 +211,18 @@ function useFloatingPopover({
       );
     }
 
-    function handleScroll() {
-      onClose();
+    function handleScrollOrResize() {
+      updatePosition();
     }
 
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", handleScroll, true);
+      updatePosition();
+      window.addEventListener("resize", handleScrollOrResize);
+      window.addEventListener("scroll", handleScrollOrResize, true);
 
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", handleScroll, true);
-    };
+      return () => {
+        window.removeEventListener("resize", handleScrollOrResize);
+        window.removeEventListener("scroll", handleScrollOrResize, true);
+      };
   }, [estimatedHeight, maxWidth, minWidth, onClose, open, triggerRef]);
 
   useEffect(() => {
@@ -259,10 +270,10 @@ function FieldError({ error }) {
 }
 
 function getTriggerClasses(error, disabled) {
-  return `flex h-10 w-full items-center justify-between rounded-xl border bg-[#FAFBFC] px-3.5 text-left text-sm outline-none transition-all duration-200 ${
+  return `flex h-10 w-full items-center justify-between rounded-lg border bg-white px-3.5 text-left text-sm outline-none transition-all duration-200 ${
     error
-      ? "border-[#B91C1C] bg-red-50/30 text-[#1F2937] ring-2 ring-[#B91C1C]/10"
-      : "border-[#E8ECF0] text-[#1F2937] hover:border-[#D1D5DB] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10"
+      ? "border-[#B91C1C] text-[#1F2937] ring-2 ring-[#B91C1C]/10"
+      : "border-[#E5E7EB] text-[#1F2937] hover:border-[#D1D5DB] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
   } ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`;
 }
 
@@ -278,16 +289,43 @@ export function DatePickerField({
   allowClear = false,
   min,
   max,
+  minDate: minDateProp,
+  maxDate: maxDateProp,
+  disableFuture = false,
+  mode = "default",
+  variant,
+  initialView,
+  yearRangeStart,
+  yearRangeEnd,
 }) {
   const selectedDate = useMemo(() => parseDateValue(value), [value]);
-  const minDate = useMemo(() => parseDateValue(min), [min]);
-  const maxDate = useMemo(() => parseDateValue(max), [max]);
+  const today = useMemo(() => normalizeDateOnly(new Date()), []);
+  const minDate = useMemo(
+    () => parseDateValue(minDateProp || min),
+    [min, minDateProp],
+  );
+  const explicitMaxDate = useMemo(
+    () => parseDateValue(maxDateProp || max),
+    [max, maxDateProp],
+  );
+  const maxDate = disableFuture && !explicitMaxDate ? today : explicitMaxDate;
+  const isBirthdateMode = mode === "birthdate" || variant === "birthdate";
   const [open, setOpen] = useState(false);
+  const [view, setView] = useState("days");
   const [monthDate, setMonthDate] = useState(selectedDate || new Date());
+  const [draftDate, setDraftDate] = useState(selectedDate);
+  const [yearPageStart, setYearPageStart] = useState(() =>
+    getYearPageStart((selectedDate || new Date()).getFullYear()),
+  );
   const wrapperRef = useRef(null);
   const triggerRef = useRef(null);
-  const today = useMemo(() => new Date(), []);
   const calendarDays = useMemo(() => getCalendarDays(monthDate), [monthDate]);
+  const activeDate = isBirthdateMode ? draftDate || selectedDate : selectedDate;
+  const yearOptions = useMemo(
+    () =>
+      Array.from({ length: YEAR_PAGE_SIZE }, (_, index) => yearPageStart + index),
+    [yearPageStart],
+  );
   const { popoverRef, position } = useFloatingPopover({
     open,
     triggerRef,
@@ -298,17 +336,137 @@ export function DatePickerField({
   });
 
   useEffect(() => {
-    if (selectedDate && open) setMonthDate(selectedDate);
-  }, [open, selectedDate]);
+    if (!open) return;
+    const baseDate = selectedDate || maxDate || today;
+    setMonthDate(baseDate);
+    setDraftDate(selectedDate);
+    setYearPageStart(
+      yearRangeStart || getYearPageStart(baseDate.getFullYear()),
+    );
+    setView(
+      initialView ||
+        (isBirthdateMode && !selectedDate ? "years" : "days"),
+    );
+  }, [
+    initialView,
+    isBirthdateMode,
+    maxDate,
+    open,
+    selectedDate,
+    today,
+    yearRangeStart,
+  ]);
 
   function selectDate(date) {
     if ((minDate && date < minDate) || (maxDate && date > maxDate)) return;
+    if (isBirthdateMode) {
+      setDraftDate(date);
+      setMonthDate(date);
+      return;
+    }
+
     onChange(formatDateValue(date));
     setOpen(false);
+  }
+function isDateOutOfRange(date) {
+  if (!date) return true;
+
+  const normalizedDate = normalizeDateOnly(date);
+
+  return (
+    (minDate && normalizedDate < minDate) ||
+    (maxDate && normalizedDate > maxDate)
+  );
+}
+
+  function buildDraftDate(year, month) {
+    const baseDate = draftDate || selectedDate;
+
+    if (!baseDate) return null;
+
+    const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+    const safeDay = Math.min(baseDate.getDate(), lastDayOfMonth);
+    const nextDate = new Date(year, month, safeDay);
+
+    if (isDateOutOfRange(nextDate)) return null;
+
+    return nextDate;
   }
 
   function moveMonth(offset) {
     setMonthDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
+  }
+
+  function selectMonth(month) {
+    const nextMonthDate = new Date(monthDate.getFullYear(), month, 1);
+
+    setMonthDate(nextMonthDate);
+
+    if (isBirthdateMode) {
+      const nextDraftDate = buildDraftDate(
+        nextMonthDate.getFullYear(),
+        nextMonthDate.getMonth(),
+      );
+
+      if (nextDraftDate) {
+        setDraftDate(nextDraftDate);
+      }
+    }
+
+    setView("days");
+  }
+
+  function selectYear(year) {
+    const nextMonthDate = new Date(year, monthDate.getMonth(), 1);
+
+    setMonthDate(nextMonthDate);
+
+    if (isBirthdateMode) {
+      const nextDraftDate = buildDraftDate(
+        nextMonthDate.getFullYear(),
+        nextMonthDate.getMonth(),
+      );
+
+      if (nextDraftDate) {
+        setDraftDate(nextDraftDate);
+      }
+    }
+
+    setYearPageStart(getYearPageStart(year));
+    setView(isBirthdateMode ? "months" : "days");
+  }
+
+  function applyDraftDate() {
+    if (!draftDate || isDateOutOfRange(draftDate)) return;
+
+    onChange(formatDateValue(draftDate));
+    setOpen(false);
+  }
+
+  function monthOutOfRange(month) {
+    const candidate = new Date(monthDate.getFullYear(), month, 1);
+    const monthStart = new Date(candidate.getFullYear(), candidate.getMonth(), 1);
+    const monthEnd = new Date(candidate.getFullYear(), candidate.getMonth() + 1, 0);
+    return (minDate && monthEnd < minDate) || (maxDate && monthStart > maxDate);
+  }
+
+  function yearOutOfRange(year) {
+    if (yearRangeStart && year < yearRangeStart) return true;
+    if (yearRangeEnd && year > yearRangeEnd) return true;
+    const yearStart = new Date(year, 0, 1);
+    const yearEnd = new Date(year, 11, 31);
+    return (minDate && yearEnd < minDate) || (maxDate && yearStart > maxDate);
+  }
+
+  function moveYearPage(offset) {
+    setYearPageStart((prev) => {
+      const next = prev + offset * YEAR_PAGE_SIZE;
+      if (yearRangeStart && next + YEAR_PAGE_SIZE - 1 < yearRangeStart) {
+        return prev;
+      }
+      if (yearRangeEnd && next > yearRangeEnd) return prev;
+      return next;
+    });
   }
 
   return (
@@ -345,28 +503,119 @@ export function DatePickerField({
           <div className="mb-2.5 flex items-center justify-between">
             <button
               type="button"
-              onClick={() => moveMonth(-1)}
+              onClick={() =>
+                view === "years" ? moveYearPage(-1) : moveMonth(-1)
+              }
               className="flex h-7 w-7 items-center justify-center rounded-lg text-[#64748B] transition hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
-              aria-label="Previous month"
+              aria-label={view === "years" ? "Previous years" : "Previous month"}
             >
               <ChevronLeft size={16} />
             </button>
-            <div className="text-center">
-              <p className="text-[13px] font-bold text-[#0F172A]">
-                {MONTH_LABELS[monthDate.getMonth()]} {monthDate.getFullYear()}
-              </p>
-            </div>
+            {view === "years" ? (
+              <button
+                type="button"
+                onClick={() => setView("days")}
+                className="rounded-lg px-3 py-1.5 text-[13px] font-bold text-[#0F172A] transition hover:bg-[#F8FAFC]"
+              >
+                {yearOptions[0]} - {yearOptions.at(-1)}
+              </button>
+            ) : (
+              <div className="flex items-center justify-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setView(view === "months" ? "days" : "months")}
+                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[13px] font-bold transition ${
+                    view === "months"
+                      ? "bg-red-50 text-[#B91C1C]"
+                      : "text-[#0F172A] hover:bg-[#F8FAFC]"
+                  }`}
+                >
+                  {MONTH_LABELS[monthDate.getMonth()].slice(0, 3)}
+                  <ChevronDown size={13} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setYearPageStart(getYearPageStart(monthDate.getFullYear()));
+                    setView("years");
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[13px] font-bold text-[#0F172A] transition hover:bg-[#F8FAFC]"
+                >
+                  {monthDate.getFullYear()}
+                  <ChevronDown size={13} />
+                </button>
+              </div>
+            )}
             <button
               type="button"
-              onClick={() => moveMonth(1)}
+              onClick={() =>
+                view === "years" ? moveYearPage(1) : moveMonth(1)
+              }
               className="flex h-7 w-7 items-center justify-center rounded-lg text-[#64748B] transition hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
-              aria-label="Next month"
+              aria-label={view === "years" ? "Next years" : "Next month"}
             >
               <ChevronRight size={16} />
             </button>
           </div>
 
-          <div className="grid grid-cols-7 gap-1 text-center">
+          {view === "months" && (
+            <div className="grid grid-cols-3 gap-1.5">
+              {MONTH_LABELS.map((month, index) => {
+                const selected = monthDate.getMonth() === index;
+                const disabledMonth = monthOutOfRange(index);
+                return (
+                  <button
+                    key={month}
+                    type="button"
+                    disabled={disabledMonth}
+                    onClick={() => selectMonth(index)}
+                    className={`rounded-lg px-2 py-2 text-xs font-bold transition ${
+                      selected
+                        ? "bg-[#B91C1C] text-white shadow-sm shadow-[#B91C1C]/20"
+                        : "text-[#334155] hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
+                    } ${
+                      disabledMonth
+                        ? "cursor-not-allowed opacity-30 hover:bg-transparent hover:text-[#334155]"
+                        : ""
+                    }`}
+                  >
+                    {month.slice(0, 3)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {view === "years" && (
+            <div className="grid grid-cols-3 gap-1.5">
+              {yearOptions.map((year) => {
+                const selected = monthDate.getFullYear() === year;
+                const disabledYear = yearOutOfRange(year);
+                return (
+                  <button
+                    key={year}
+                    type="button"
+                    disabled={disabledYear}
+                    onClick={() => selectYear(year)}
+                    className={`rounded-lg px-2 py-2 text-xs font-bold transition ${
+                      selected
+                        ? "bg-[#B91C1C] text-white shadow-sm shadow-[#B91C1C]/20"
+                        : "text-[#334155] hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
+                    } ${
+                      disabledYear
+                        ? "cursor-not-allowed opacity-30 hover:bg-transparent hover:text-[#334155]"
+                        : ""
+                    }`}
+                  >
+                    {year}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {view === "days" && (
+            <div className="grid grid-cols-7 gap-1 text-center">
             {WEEKDAY_LABELS.map((weekday) => (
               <span
                 key={weekday}
@@ -376,7 +625,7 @@ export function DatePickerField({
               </span>
             ))}
             {calendarDays.map((date) => {
-              const isSelected = isSameDate(date, selectedDate);
+              const isSelected = isSameDate(date, activeDate);
               const isToday = isSameDate(date, today);
               const isCurrentMonth = date.getMonth() === monthDate.getMonth();
               const outOfRange =
@@ -404,33 +653,54 @@ export function DatePickerField({
                 </button>
               );
             })}
-          </div>
+            </div>
+          )}
 
-          <div className="mt-2.5 flex items-center justify-between border-t border-[#F1F5F9] pt-2.5">
-            {allowClear ? (
+          {isBirthdateMode ? (
+            <div className="mt-2.5 flex items-center justify-end gap-2 pt-2.5">
               <button
                 type="button"
-                onClick={() => {
-                  onChange("");
-                  setOpen(false);
-                }}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[#64748B] transition hover:bg-[#F8FAFC]"
+                onClick={() => setOpen(false)}
+                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-[#64748B] transition hover:bg-[#F8FAFC]"
               >
-                <X size={12} />
-                Clear
+                Cancel
               </button>
-            ) : (
-              <span />
-            )}
-            <button
-              type="button"
-              onClick={() => selectDate(new Date())}
-              disabled={(minDate && today < minDate) || (maxDate && today > maxDate)}
-              className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-bold text-[#B91C1C] transition hover:bg-red-100"
-            >
-              Today
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={applyDraftDate}
+                disabled={!draftDate}
+                className="rounded-lg bg-[#B91C1C] px-3 py-1.5 text-xs font-bold text-white shadow-sm shadow-[#B91C1C]/15 transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Done
+              </button>
+            </div>
+          ) : (
+            <div className="mt-2.5 flex items-center justify-between pt-2.5">
+              {allowClear ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange("");
+                    setOpen(false);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[#64748B] transition hover:bg-[#F8FAFC]"
+                >
+                  <X size={12} />
+                  Clear
+                </button>
+              ) : (
+                <span />
+              )}
+              <button
+                type="button"
+                onClick={() => selectDate(new Date())}
+                disabled={(minDate && today < minDate) || (maxDate && today > maxDate)}
+                className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-bold text-[#B91C1C] transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Today
+              </button>
+            </div>
+          )}
         </div>,
         document.body,
       )}
@@ -580,7 +850,7 @@ export function TimePickerField({
                 max="12"
                 value={draft.hour}
                 onChange={(event) => updateDraft("hour", event.target.value)}
-                className="h-8 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-2 text-center text-sm font-bold text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10"
+                className="h-8 w-full rounded-lg border border-[#E5E7EB] bg-white px-2 text-center text-sm font-bold text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
               />
             </div>
             <span className="pb-1.5 text-base font-bold text-[#CBD5E1]">:</span>
@@ -594,7 +864,7 @@ export function TimePickerField({
                 max="59"
                 value={draft.minute}
                 onChange={(event) => updateDraft("minute", event.target.value)}
-                className="h-8 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-2 text-center text-sm font-bold text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10"
+                className="h-8 w-full rounded-lg border border-[#E5E7EB] bg-white px-2 text-center text-sm font-bold text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
               />
             </div>
           </div>
@@ -616,7 +886,7 @@ export function TimePickerField({
             ))}
           </div>
 
-          <div className="mt-2 flex justify-end border-t border-[#F1F5F9] pt-2">
+          <div className="mt-2 flex justify-end pt-2">
             <button
               type="button"
               onClick={() => applyTime()}

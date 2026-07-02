@@ -4,9 +4,12 @@ import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  
   Check,
   ChevronDown,
+  ClipboardList,
   MapPinHouse,
+  Users,
   UserPlus,
 } from "lucide-react"; // FIXED: Added missing icons
 
@@ -15,12 +18,14 @@ import {
   ConfirmationModal,
   DatePickerField,
   FormInput,
-  SuccessModal
+  SuccessModal,
+  TimePickerField,
 } from "../../components/common";
 
 // Import extracted utils and components
 import {
   calculateAge,
+  calculateAgeInMonths,
   formatAgeDisplay,
   normalizePhilippineContact,
   formatFullName,
@@ -37,11 +42,6 @@ import { queryKeys } from "../../utils/queryKeys";
 const stagger = (i) => ({
   animationDelay: `${i * 80}ms`,
 });
-
-const SEX_OPTIONS = [
-  { value: "Male", label: "Male" },
-  { value: "Female", label: "Female" },
-];
 
 const CIVIL_STATUS_OPTIONS = [
   { value: "Single", label: "Single" },
@@ -65,6 +65,28 @@ const BARANGAY_OPTIONS = [
   "Tibig",
 ].map((barangay) => ({ value: barangay, label: barangay }));
 
+const OCCUPATION_OPTIONS = [
+  "Student",
+  "Unemployed",
+  "Housewife",
+  "Farmer",
+  "Fisherman",
+  "Vendor",
+  "Driver",
+  "Laborer",
+  "Teacher",
+  "Government Employee",
+  "Private Employee",
+  "Self-employed",
+  "Senior Citizen",
+].map((occupation) => ({ value: occupation, label: occupation }));
+
+const NHTS_OPTIONS = [
+  { value: "NHTS", label: "NHTS" },
+  { value: "Non-NHTS", label: "Non-NHTS" },
+  { value: "Unknown", label: "Unknown" },
+];
+
 // Initial State Definition
 const INITIAL_FORM_STATE = {
   firstName: "",
@@ -74,12 +96,27 @@ const INITIAL_FORM_STATE = {
   age: "",
   sex: "",
   civilStatus: "",
+  occupation: "",
+  spouseName: "",
+  spouseOccupation: "",
   contactNumber: "",
+  philHealthStatus: "",
+  philHealthNumber: "",
+
   streetAddress: "",
   barangay: "",
   municipality: "Bulakan",
-};
 
+  motherName: "",
+  motherBirthDate: "",
+  fatherName: "",
+  fatherBirthDate: "",
+  familySerialNumber: "",
+
+  birthPlace: "",
+  birthTime: "",
+  nhtsStatus: "",
+};
 export function PatientRegistrationPage({
   role = "bhc",
   basePath = "/bhc",
@@ -103,6 +140,13 @@ export function PatientRegistrationPage({
   const [fieldErrors, setFieldErrors] = useState({});
 
   const ageDisplay = formatAgeDisplay(form.birthDate);
+  const ageYears = calculateAge(form.birthDate);
+  const ageInMonths = calculateAgeInMonths(form.birthDate);
+  const hasBirthDate = Boolean(form.birthDate);
+  const isChildRegistration =
+    hasBirthDate && ageYears !== "" && Number(ageYears) < 18;
+  const isEpiTargetAge =
+    hasBirthDate && ageInMonths !== "" && Number(ageInMonths) < 60;
   const currentDate = new Date();
   const todayIso = [
     currentDate.getFullYear(),
@@ -140,19 +184,76 @@ export function PatientRegistrationPage({
 
   function handleSelectChange(name, value) {
     setFieldErrors((prev) => ({ ...prev, [name]: "" }));
-    setForm((prev) => ({ ...prev, [name]: value }));
-  }
-
-  function handleBirthDateChange(value) {
-    setFieldErrors((prev) => ({ ...prev, birthDate: "" }));
     setForm((prev) => ({
       ...prev,
-      birthDate: value,
-      age: calculateAge(value),
+      [name]: value,
+      ...(name === "civilStatus" && value !== "Married"
+        ? { spouseName: "", spouseOccupation: "" }
+        : {}),
+      ...(name === "philHealthStatus" && value !== "With PhilHealth"
+        ? { philHealthNumber: "" }
+        : {}),
     }));
   }
 
-  function validateForm() {
+function handleBirthDateChange(valueOrEvent) {
+  const value =
+    typeof valueOrEvent === "string"
+      ? valueOrEvent
+      : valueOrEvent?.target?.value || "";
+
+  const nextAgeYears = calculateAge(value);
+  const nextAgeMonths = calculateAgeInMonths(value);
+
+  const nextIsChild =
+    Boolean(value) && nextAgeYears !== "" && Number(nextAgeYears) < 18;
+  const nextIsAdult = Boolean(value) && !nextIsChild;
+
+  const nextIsEpiTarget =
+    Boolean(value) && nextAgeMonths !== "" && Number(nextAgeMonths) < 60;
+
+  setFieldErrors((prev) => ({
+    ...prev,
+    birthDate: "",
+  }));
+
+  setForm((prev) => ({
+    ...prev,
+    birthDate: value,
+    age: nextAgeYears,
+
+    // child/adult field behavior
+    civilStatus: nextIsChild ? "Single" : nextIsAdult ? prev.civilStatus : "",
+
+    occupation: nextIsAdult ? prev.occupation : "",
+    spouseName:
+      nextIsAdult && prev.civilStatus === "Married" ? prev.spouseName : "",
+    spouseOccupation:
+      nextIsAdult && prev.civilStatus === "Married"
+        ? prev.spouseOccupation
+        : "",
+
+    // clear child-only fields kapag adult na yung bagong DOB
+    motherName: nextIsChild ? prev.motherName : "",
+    motherBirthDate: nextIsChild ? prev.motherBirthDate : "",
+    fatherName: nextIsChild ? prev.fatherName : "",
+    fatherBirthDate: nextIsChild ? prev.fatherBirthDate : "",
+    familySerialNumber: nextIsChild ? prev.familySerialNumber : "",
+
+    // clear EPI-only fields kapag hindi na EPI age
+    birthPlace: nextIsEpiTarget ? prev.birthPlace : "",
+    birthTime: nextIsEpiTarget ? prev.birthTime : "",
+    nhtsStatus: nextIsEpiTarget ? prev.nhtsStatus : "",
+  }));
+}
+  function handleParentBirthDateChange(name, value) {
+    setFieldErrors((prev) => ({ ...prev, [name]: "" }));
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  }
+    function validateForm() {
     const nextErrors = {};
 
     if (!form.firstName.trim()) nextErrors.firstName = "First name is required.";
@@ -164,13 +265,37 @@ export function PatientRegistrationPage({
       return false;
     }
     if (!form.sex) nextErrors.sex = "Sex is required.";
-    if (!form.civilStatus) {
+    if (hasBirthDate && !isChildRegistration && !form.civilStatus) {
       nextErrors.civilStatus = "Civil status is required.";
+    }
+    if (
+      form.philHealthStatus === "With PhilHealth" &&
+      !form.philHealthNumber.trim()
+    ) {
+      nextErrors.philHealthNumber =
+        "PhilHealth number is required if marked with PhilHealth.";
     }
     if (!form.streetAddress.trim()) {
       nextErrors.streetAddress = "Street address is required.";
     }
     if (!form.barangay) nextErrors.barangay = "Barangay is required.";
+    if (!form.municipality.trim()) {
+  nextErrors.municipality = "Municipality is required.";
+}
+    if (isChildRegistration) {
+      if (!form.motherName.trim()) {
+        nextErrors.motherName = "Mother name is required.";
+      }
+
+      if (form.motherBirthDate && form.motherBirthDate > todayIso) {
+        nextErrors.motherBirthDate = "Mother birthdate cannot be in the future.";
+      }
+
+      if (form.fatherBirthDate && form.fatherBirthDate > todayIso) {
+        nextErrors.fatherBirthDate = "Father birthdate cannot be in the future.";
+      }
+    }
+
 
     setFieldErrors(nextErrors);
 
@@ -186,13 +311,56 @@ export function PatientRegistrationPage({
   const handleSubmit = async () => {
     try {
       setSaving(true);
+      const childPatientData = isChildRegistration
+        ? {
+            registrationType: "child",
+            patientClassification: "Child Patient",
 
-      const patientData = {
-        ...form,
-        id: Date.now().toString(),
-        name: formatFullName(form.firstName, form.middleName, form.lastName),
-        ageSex: `${form.age || calculateAge(form.birthDate)} / ${form.sex}`,
-      };
+            motherName: form.motherName || null,
+            motherBirthDate: form.motherBirthDate || null,
+            fatherName: form.fatherName || null,
+            fatherBirthDate: form.fatherBirthDate || null,
+            familySerialNumber: form.familySerialNumber || null,
+
+            birthPlace: isEpiTargetAge ? form.birthPlace || null : null,
+            birthTime: isEpiTargetAge ? form.birthTime || null : null,
+            nhtsStatus: isEpiTargetAge ? form.nhtsStatus || null : null,
+          }
+        : {
+            registrationType: "general",
+            patientClassification: form.patientClassification || "",
+
+            motherName: null,
+            motherBirthDate: null,
+            fatherName: null,
+            fatherBirthDate: null,
+            familySerialNumber: null,
+
+            birthPlace: null,
+            birthTime: null,
+            nhtsStatus: null,
+          };
+          
+        const patientData = {
+          ...form,
+          ...childPatientData,
+          philHealthNumber:
+            form.philHealthStatus === "With PhilHealth"
+              ? form.philHealthNumber || null
+              : null,
+          civilStatus: isChildRegistration ? "Single" : form.civilStatus,
+          spouseName:
+            !isChildRegistration && form.civilStatus === "Married"
+              ? form.spouseName || null
+              : null,
+          spouseOccupation:
+            !isChildRegistration && form.civilStatus === "Married"
+              ? form.spouseOccupation || null
+              : null,
+          id: Date.now().toString(),
+          name: formatFullName(form.firstName, form.middleName, form.lastName),
+          ageSex: `${form.age || calculateAge(form.birthDate)} / ${form.sex}`,
+        };
 
       const created = await createPatient(patientData);
       const nextId =
@@ -243,18 +411,19 @@ export function PatientRegistrationPage({
         <form
           noValidate
           onSubmit={handleFormSubmit}
-          className="ml-0 mr-auto w-full max-w-7xl min-w-0 space-y-5"
+          className="ml-0 mr-auto w-full max-w-7xl min-w-0"
         >
+          <div className="rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
           {/* SECTION 1: BASIC INFO */}
           <section
-            className="anim-fade-up w-full min-w-0 rounded-2xl border border-[#E8ECF0] bg-white p-5 shadow-sm sm:p-6"
+            className="anim-fade-up w-full min-w-0 space-y-4 pb-6"
             style={stagger(1)}
           >
-            <SectionHeader
-              icon={UserPlus}
-              title="Basic Information"
-              description="Personal identity and demographic details."
-            />
+          <SectionHeader
+            icon={UserPlus}
+            title="Basic Information"
+            description="Personal identity and demographic details."
+          />
 
             <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               <FormInput
@@ -284,7 +453,9 @@ export function PatientRegistrationPage({
                 label="Date of Birth"
                 name="birthDate"
                 value={form.birthDate}
-                max={todayIso}
+                mode="birthdate"
+                maxDate={todayIso}
+                disableFuture
                 onChange={handleBirthDateChange}
                 error={fieldErrors.birthDate}
                 required
@@ -297,43 +468,124 @@ export function PatientRegistrationPage({
                 readOnly
                 className="bg-gray-50"
               />
-              <ModernSelect
+
+              <SexRadioGroup
                 label="Sex"
                 name="sex"
                 value={form.sex}
                 onChange={handleSelectChange}
-                options={SEX_OPTIONS}
-                placeholder="Select sex"
                 error={fieldErrors.sex}
                 required
               />
 
-              <ModernSelect
-                label="Civil Status"
-                name="civilStatus"
-                value={form.civilStatus}
-                onChange={handleSelectChange}
-                options={CIVIL_STATUS_OPTIONS}
-                placeholder="Select civil status"
-                error={fieldErrors.civilStatus}
-                required
+              {hasBirthDate && !isChildRegistration && (
+                <ModernSelect
+                  label="Civil Status"
+                  name="civilStatus"
+                  value={form.civilStatus}
+                  onChange={handleSelectChange}
+                  options={CIVIL_STATUS_OPTIONS}
+                  placeholder="Select civil status"
+                  error={fieldErrors.civilStatus}
+                  required
+                />
+                
+              )}
+
+            {hasBirthDate && !isChildRegistration && (
+              <div>
+                <FormInput
+                  label="Occupation"
+                  name="occupation"
+                  value={form.occupation}
+                  onChange={handleChange}
+                  placeholder="Select or type occupation"
+                  list="occupation-options"
+                  error={fieldErrors.occupation}
+                />
+
+                <datalist id="occupation-options">
+                  {OCCUPATION_OPTIONS.map((occupation) => (
+                    <option key={occupation.value} value={occupation.value} />
+                  ))}
+                </datalist>
+              </div>
+            )}
+                        </div>
+          </section>
+
+          {hasBirthDate && !isChildRegistration && form.civilStatus === "Married" && (
+            <section
+              className="anim-fade-up w-full min-w-0 space-y-4 py-6"
+              style={stagger(2)}
+            >
+              <SectionHeader
+                icon={Users}
+                title="Husband Information"
+                description="Additional husband details for married adult patients."
               />
 
-              <div className="min-w-0 xl:col-span-2">
-                <PhilippineContactInput
-                  label="Contact Number"
-                  name="contactNumber"
-                  value={form.contactNumber}
+              <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <FormInput
+                  label="Husband Name"
+                  name="spouseName"
+                  value={form.spouseName}
+                  onChange={handleChange}
+                />
+                <FormInput
+                  label="Husband Occupation"
+                  name="spouseOccupation"
+                  value={form.spouseOccupation}
                   onChange={handleChange}
                 />
               </div>
+            </section>
+          )}
+
+          {/* SECTION 2: CONTACT & IDENTIFICATION */}
+          <section
+            className="anim-fade-up w-full min-w-0 space-y-4 py-6"
+            style={stagger(3)}
+          >
+            <SectionHeader
+              icon={ClipboardList}
+              title="Contact & Identification"
+              description="Contact details and PhilHealth membership information."
+            />
+
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <PhilippineContactInput
+                label="Contact Number"
+                name="contactNumber"
+                value={form.contactNumber}
+                onChange={handleChange}
+              />
+
+              <PhilHealthRadioGroup
+                label="PhilHealth Membership"
+                name="philHealthStatus"
+                value={form.philHealthStatus}
+                onChange={handleSelectChange}
+                error={fieldErrors.philHealthStatus}
+              />
+
+              {form.philHealthStatus === "With PhilHealth" && (
+                <FormInput
+                  label="PhilHealth Number"
+                  name="philHealthNumber"
+                  value={form.philHealthNumber}
+                  onChange={handleChange}
+                  error={fieldErrors.philHealthNumber}
+                  required
+                />
+              )}
             </div>
           </section>
 
-          {/* SECTION 2: ADDRESS */}
+          {/* SECTION 3: ADDRESS */}
           <section
-            className="anim-fade-up w-full min-w-0 rounded-2xl border border-[#E8ECF0] bg-white p-5 shadow-sm sm:p-6"
-            style={stagger(2)}
+            className="anim-fade-up w-full min-w-0 space-y-4 py-6"
+            style={stagger(4)}
           >
             <SectionHeader
               icon={MapPinHouse}
@@ -354,31 +606,149 @@ export function PatientRegistrationPage({
 
               <div className="min-w-0 xl:col-span-2">
                 <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-                  <ModernSelect
+                <div>
+                  <FormInput
                     label="Barangay"
                     name="barangay"
                     value={form.barangay}
-                    onChange={handleSelectChange}
-                    options={BARANGAY_OPTIONS}
-                    placeholder="Select barangay"
+                    onChange={handleChange}
+                    placeholder="Select or type barangay"
+                    list="barangay-options"
                     error={fieldErrors.barangay}
                     required
                   />
+
+                  <datalist id="barangay-options">
+                    {BARANGAY_OPTIONS.map((barangay) => (
+                      <option key={barangay.value} value={barangay.value} />
+                    ))}
+                  </datalist> 
+                </div>
+
                   <FormInput
                     label="Municipality"
                     name="municipality"
                     value={form.municipality}
-                    readOnly
-                    className="bg-gray-50"
+                    onChange={handleChange}
+                    placeholder="Enter municipality"
+                    error={fieldErrors.municipality}
+                    required
                   />
+
                 </div>
               </div>
             </div>
           </section>
 
+        {isChildRegistration && (
+          <>
+            <section
+              className="anim-fade-up w-full min-w-0 space-y-4 py-6"
+              style={stagger(4)}
+            >
+              <SectionHeader
+                icon={Users}
+                title="Parent / Household Information"
+                description="Additional parent and household details for child patients."
+              />
+
+              <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <FormInput
+                  label="Name of Mother"
+                  name="motherName"
+                  value={form.motherName}
+                  onChange={handleChange}
+                  error={fieldErrors.motherName}
+                  required
+                />
+
+                <FormInput
+                  label="Name of Father"
+                  name="fatherName"
+                  value={form.fatherName}
+                  onChange={handleChange}
+                />
+                <FormInput
+                  label="Family Number / Serial Number"
+                  name="familySerialNumber"
+                  value={form.familySerialNumber}
+                  onChange={handleChange}
+                  placeholder="Optional household serial"
+                />
+
+                <DatePickerField
+                  label="Mother Date of Birth"
+                  name="motherBirthDate"
+                  value={form.motherBirthDate}
+                  mode="birthdate"
+                  maxDate={todayIso}
+                  disableFuture
+                  onChange={(value) =>
+                    handleParentBirthDateChange("motherBirthDate", value)
+                  }
+                  error={fieldErrors.motherBirthDate}
+                />
+
+                <DatePickerField
+                  label="Father Date of Birth"
+                  name="fatherBirthDate"
+                  value={form.fatherBirthDate}
+                  mode="birthdate"
+                  maxDate={todayIso}
+                  disableFuture
+                  onChange={(value) =>
+                    handleParentBirthDateChange("fatherBirthDate", value)
+                  }
+                  error={fieldErrors.fatherBirthDate}
+                />
+              </div>
+            </section>
+
+            {isEpiTargetAge && (
+              <section
+                className="anim-fade-up w-full min-w-0 space-y-4 py-6"
+                style={stagger(5)}
+              >
+                <SectionHeader
+                  icon={ClipboardList}
+                  title="Birth / EPI Details"
+                  description="Basic birth and household details for child registration."
+                />
+
+                <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  <FormInput
+                    label="Birth Place"
+                    name="birthPlace"
+                    value={form.birthPlace}
+                    onChange={handleChange}
+                  />
+
+                  <TimePickerField
+                    label="Time of Birth"
+                    name="birthTime"
+                    value={form.birthTime}
+                    onChange={(value) => {
+                      setFieldErrors((prev) => ({ ...prev, birthTime: "" }));
+                      setForm((prev) => ({ ...prev, birthTime: value }));
+                    }}
+                  />
+
+                  <ModernSelect
+                    label="NHTS Status"
+                    name="nhtsStatus"
+                    value={form.nhtsStatus}
+                    onChange={handleSelectChange}
+                    options={NHTS_OPTIONS}
+                    placeholder="Select status"
+                  />
+                </div>
+              </section>
+            )}
+          </>
+        )}
           {/* ACTIONS */}
           <div
-            className="anim-fade-up flex min-w-0 flex-col-reverse gap-3 pt-1 pb-4 sm:flex-row sm:items-center sm:justify-end"
+            className="anim-fade-up flex min-w-0 flex-col-reverse gap-3 pt-6 sm:flex-row sm:items-center sm:justify-end"
             style={stagger(4)}
           >
             <button
@@ -398,6 +768,7 @@ export function PatientRegistrationPage({
               />
               Register Patient
             </button>
+          </div>
           </div>
         </form>
       </DashboardLayout>
@@ -430,6 +801,118 @@ export function PatientRegistrationPage({
 
 export default function AddPatient() {
   return <PatientRegistrationPage />;
+}
+
+function SexRadioGroup({
+  label,
+  name,
+  value,
+  onChange,
+  required,
+  error,
+}) {
+  const options = [
+    { value: "Male", label: "Male" },
+    { value: "Female", label: "Female" },
+  ];
+
+  return (
+    <div className="min-w-0" data-field={name}>
+      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+        {label}
+        {required && <span className="text-red-400"> *</span>}
+      </label>
+
+      <div className="flex h-10 items-center gap-6">
+        {options.map((option) => (
+          <label
+            key={option.value}
+            className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#475569]"
+          >
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={value === option.value}
+              onChange={() => onChange(name, option.value)}
+              className="h-4 w-4 accent-[#B91C1C]"
+            />
+            <span
+              className={
+                value === option.value
+                  ? "text-[#B91C1C] font-semibold"
+                  : "text-[#475569]"
+              }
+            >
+              {option.label}
+            </span>
+          </label>
+        ))}
+      </div>
+
+      {error && (
+        <p className="mt-1 text-[11px] font-medium leading-relaxed text-[#B91C1C]">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function PhilHealthRadioGroup({
+  label,
+  name,
+  value,
+  onChange,
+  required,
+  error,
+}) {
+  const options = [
+    { value: "With PhilHealth", label: "With PhilHealth" },
+    { value: "Without PhilHealth", label: "Without PhilHealth" },
+  ];
+
+  return (
+    <div className="min-w-0" data-field={name}>
+      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+        {label}
+        {required && <span className="text-red-400"> *</span>}
+      </label>
+
+      <div className="flex min-h-10 flex-wrap items-center gap-x-6 gap-y-2">
+        {options.map((option) => (
+          <label
+            key={option.value}
+            className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#475569]"
+          >
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={value === option.value}
+              onChange={() => onChange(name, option.value)}
+              className="h-4 w-4 accent-[#B91C1C]"
+            />
+            <span
+              className={
+                value === option.value
+                  ? "font-semibold text-[#B91C1C]"
+                  : "text-[#475569]"
+              }
+            >
+              {option.label}
+            </span>
+          </label>
+        ))}
+      </div>
+
+      {error && (
+        <p className="mt-1 text-[11px] font-medium leading-relaxed text-[#B91C1C]">
+          {error}
+        </p>
+      )}
+    </div>
+  );
 }
 
 function ModernSelect({
@@ -561,8 +1044,8 @@ function ModernSelect({
         aria-controls={`${name}-options`}
         onClick={() => setOpen((prev) => !prev)}
         onKeyDown={handleKeyDown}
-        className={`flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-xl border bg-[#FAFBFC] px-3.5 text-left text-sm text-[#1F2937] outline-none transition-all duration-200 hover:border-[#D1D5DB] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 ${
-          error ? "border-[#B91C1C] bg-red-50/30 ring-2 ring-[#B91C1C]/10" : "border-[#E8ECF0]"
+        className={`flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-lg border bg-white px-3.5 text-left text-sm text-[#1F2937] outline-none transition-all duration-200 hover:border-[#D1D5DB] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
+          error ? "border-[#B91C1C] ring-2 ring-[#B91C1C]/10" : "border-[#E5E7EB]"
         }`}
       >
         <span
@@ -586,7 +1069,7 @@ function ModernSelect({
           id={`${name}-options`}
           role="listbox"
           aria-label={label}
-          className="overflow-y-auto rounded-xl border border-[#E8ECF0] bg-white py-1 shadow-xl shadow-slate-900/[0.10]"
+          className="overflow-y-auto rounded-lg border border-[#E5E7EB] bg-white py-1 shadow-lg shadow-slate-900/[0.08]"
           style={{
             position: "fixed",
             zIndex: 9999,

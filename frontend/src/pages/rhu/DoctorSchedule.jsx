@@ -278,7 +278,7 @@ export default function DoctorSchedule() {
 
           <aside className="space-y-4 xl:sticky xl:top-5">
             <section className="rounded-xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3 border-b border-[#F1F5F9] pb-3">
+              <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-semibold text-[#0F172A]">
                     Availability Controls
@@ -452,8 +452,8 @@ function FieldInput({ label, error, required, ...props }) {
       </label>
       <input
         {...props}
-        className={`h-10 w-full rounded-lg border bg-[#F8FAFC] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 ${
-          error ? "border-[#FCA5A5]" : "border-[#E2E8F0]"
+        className={`h-10 w-full rounded-lg border bg-white px-3.5 text-sm text-[#1F2937] outline-none transition placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
+          error ? "border-[#B91C1C]" : "border-[#E5E7EB]"
         }`}
       />
       {error && <p className="mt-1 text-[11px] text-[#B91C1C]">{error}</p>}
@@ -469,8 +469,8 @@ function FieldSelect({ label, error, required, children, ...props }) {
       </label>
       <select
         {...props}
-        className={`h-10 w-full rounded-lg border bg-[#F8FAFC] px-3 text-sm text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 ${
-          error ? "border-[#FCA5A5]" : "border-[#E2E8F0]"
+        className={`h-10 w-full rounded-lg border bg-white px-3.5 text-sm text-[#1F2937] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
+          error ? "border-[#B91C1C]" : "border-[#E5E7EB]"
         }`}
       >
         {children}

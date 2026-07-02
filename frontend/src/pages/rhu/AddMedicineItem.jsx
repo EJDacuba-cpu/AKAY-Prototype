@@ -76,8 +76,9 @@ export default function AddMedicineItem() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <section className="rounded-xl border border-[#E8ECF0] bg-white p-6">
+      <form onSubmit={handleSubmit}>
+        <div className="space-y-6 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
+        <section className="pb-6">
           <h2 className="text-sm font-semibold text-[#0F172A]">
             Item Information
           </h2>
@@ -162,7 +163,7 @@ export default function AddMedicineItem() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-[#E8ECF0] bg-white p-6">
+        <section className="py-6">
           <h2 className="text-sm font-semibold text-[#0F172A]">
             Availability Status
           </h2>
@@ -196,7 +197,7 @@ export default function AddMedicineItem() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-[#E8ECF0] bg-white p-6">
+        <section className="py-6">
           <h2 className="text-sm font-semibold text-[#0F172A]">Notes</h2>
 
           <div className="mt-5">
@@ -204,7 +205,7 @@ export default function AddMedicineItem() {
               name="notes"
               value={form.notes}
               onChange={handleChange}
-              className="min-h-28 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 py-3 text-sm outline-none focus:border-[#B91C1C]/20 focus:bg-white focus:ring-4 focus:ring-[#B91C1C]/[0.04]"
+              className="min-h-28 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 py-3 text-sm text-[#1F2937] outline-none placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
               placeholder="Example: Available for fever cases, limited supply, for referral-related use only..."
             />
           </div>
@@ -241,6 +242,7 @@ export default function AddMedicineItem() {
             {saving ? "Saving..." : "Save Item"}
           </button>
         </div>
+        </div>
       </form>
     </DashboardLayout>
   );
@@ -267,7 +269,7 @@ function FieldInput({
         onChange={onChange}
         placeholder={placeholder}
         required={required}
-        className="h-10 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 text-sm outline-none focus:border-[#B91C1C]/20 focus:bg-white focus:ring-4 focus:ring-[#B91C1C]/[0.04]"
+        className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
       />
     </div>
   );
@@ -284,7 +286,7 @@ function FieldSelect({ label, name, value, onChange, children, required }) {
         value={value}
         onChange={onChange}
         required={required}
-        className="h-10 w-full rounded-lg border border-[#E8ECF0] bg-[#FAFBFC] px-3 text-sm outline-none focus:border-[#B91C1C]/20 focus:bg-white focus:ring-4 focus:ring-[#B91C1C]/[0.04]"
+        className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
       >
         {children}
       </select>

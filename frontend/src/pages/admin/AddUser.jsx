@@ -778,7 +778,7 @@ function FormSection({ title, subtitle, icon, aside, children, delay = 0 }) {
       className="anim-fade-up overflow-hidden rounded-2xl border border-[#E8ECF0] bg-white shadow-[0_18px_45px_-34px_rgba(15,23,42,0.45)]"
       style={stagger(delay)}
     >
-      <div className="border-b border-slate-100 bg-white px-5 py-5 sm:px-6">
+      <div className="bg-white px-5 pt-5 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
             {icon && (
@@ -801,7 +801,7 @@ function FormSection({ title, subtitle, icon, aside, children, delay = 0 }) {
         </div>
       </div>
 
-      <div className="p-5 sm:p-6">{children}</div>
+      <div className="p-5 pt-4 sm:p-6 sm:pt-4">{children}</div>
     </section>
   );
 }

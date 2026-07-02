@@ -20,17 +20,17 @@ export default function FormTextarea({
           min-h-[100px]
           w-full resize-none
           rounded-lg border border-[#E5E7EB]
-          bg-[#F8FAFC]
-          px-3 py-3 text-sm
-          leading-relaxed text-[#0F172A]
+          bg-white
+          px-3.5 py-3 text-sm
+          leading-relaxed text-[#1F2937]
           outline-none transition-all duration-200
 
-          placeholder:text-[#BCC3CD]
+          placeholder:text-[#9CA3AF]
 
-          focus:border-[#FCA5A5]
+          focus:border-[#B91C1C]
           focus:bg-white
-          focus:ring-3
-          focus:ring-[#B91C1C]/[0.08]
+          focus:ring-2
+          focus:ring-[#B91C1C]/10
         "
       />
     </div>

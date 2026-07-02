@@ -1333,7 +1333,8 @@ export default function CreateReferral() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
           {/* ═══════════════════════════════════
               SECTION 1: Referral Information
           ═══════════════════════════════════ */}
@@ -1551,7 +1552,7 @@ export default function CreateReferral() {
 
           {/* ─── Actions ─── */}
           <div
-            className="anim-fade-up flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-6 py-4"
+            className="anim-fade-up flex items-center justify-between pt-5"
             style={stagger(5)}
           >
             <div className="flex items-center gap-3">
@@ -1578,6 +1579,7 @@ export default function CreateReferral() {
               </button>
             </div>
           </div>
+          </div>
         </form>
       </div>
 
@@ -1599,12 +1601,12 @@ export default function CreateReferral() {
 function FormDocument({ title, subtitle, icon, headerRight, children, delay }) {
   return (
     <div
-      className="anim-fade-up rounded-2xl border border-slate-200 bg-white"
+      className="anim-fade-up pb-5 last:pb-0"
       style={stagger(delay)}
     >
-      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-50 text-[#B91C1C]">
+          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-red-50 text-[#B91C1C]">
             {icon}
           </div>
           <div>
@@ -1616,7 +1618,7 @@ function FormDocument({ title, subtitle, icon, headerRight, children, delay }) {
         </div>
         {headerRight}
       </div>
-      <div className="px-5 py-1">{children}</div>
+      <div className="py-1">{children}</div>
     </div>
   );
 }
@@ -1627,7 +1629,6 @@ function SectionDivider({ label }) {
       <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-widest text-slate-400">
         {label}
       </span>
-      <div className="h-px flex-1 bg-slate-100" />
     </div>
   );
 }
@@ -1705,7 +1706,7 @@ function FieldInput({
         onChange={onChange}
         required={required}
         placeholder={placeholder}
-        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition-all placeholder:text-slate-300 focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+        className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition-all placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
       />
     </div>
   );
@@ -1722,7 +1723,7 @@ function FieldSelect({ label, name, value, onChange, children, required }) {
         value={value}
         onChange={onChange}
         required={required}
-        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition-all focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+        className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition-all focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
       >
         {children}
       </select>
@@ -1750,7 +1751,7 @@ function FieldTextarea({
         placeholder={placeholder}
         required={required}
         rows={5}
-        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-relaxed text-slate-800 outline-none transition-all focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 resize-none"
+        className="w-full resize-none rounded-lg border border-[#E5E7EB] bg-white px-3.5 py-3 text-sm leading-relaxed text-[#1F2937] outline-none transition-all placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
       />
     </div>
   );

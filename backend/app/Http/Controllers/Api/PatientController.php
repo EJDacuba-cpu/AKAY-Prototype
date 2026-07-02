@@ -8,6 +8,7 @@ use App\Models\Patient;
 use App\Services\AuditLogger;
 use App\Support\StoredFunction;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class PatientController extends Controller
 {
@@ -55,7 +56,7 @@ class PatientController extends Controller
 
     public function store(PatientRequest $request, AuditLogger $auditLogger)
     {
-        $data = $request->validated();
+        $data = $this->normalizeProfileFields($request->validated());
         $user = $request->user();
         $data['created_by'] = $user->id;
 
@@ -99,7 +100,7 @@ class PatientController extends Controller
     public function update(PatientRequest $request, Patient $patient, AuditLogger $auditLogger)
     {
         $this->authorizePatient($request, $patient);
-        $patient->update($request->validated());
+        $patient->update($this->normalizeProfileFields($request->validated(), $patient));
         $auditLogger->log($request, 'updated', 'patients', "Updated patient {$patient->full_name}.");
 
         return response()->json(['data' => $patient->fresh()]);
@@ -134,5 +135,59 @@ class PatientController extends Controller
             || ($request->user()->isRhuStaff() && $patient->rural_health_unit_id === $request->user()->rural_health_unit_id);
 
         abort_unless($allowed, 403, 'Patient is outside your assigned facility.');
+    }
+
+    private function normalizeProfileFields(array $data, ?Patient $patient = null): array
+    {
+        foreach ([
+            'occupation',
+            'philhealth_status',
+            'philhealth_number',
+            'spouse_name',
+            'spouse_occupation',
+        ] as $field) {
+            if (array_key_exists($field, $data) && $data[$field] === '') {
+                $data[$field] = null;
+            }
+        }
+
+        $effectiveRegistrationType = $data['registration_type'] ?? $patient?->registration_type;
+        $effectiveBirthdate = $data['birthdate'] ?? $patient?->birthdate;
+        $effectiveCivilStatus = $data['civil_status'] ?? $patient?->civil_status;
+        $effectivePhilhealthStatus =
+            $data['philhealth_status'] ?? $patient?->philhealth_status;
+
+        $isChild = $effectiveRegistrationType === 'child';
+
+        if (! $isChild && $effectiveBirthdate) {
+            $isChild = Carbon::parse($effectiveBirthdate)->age < 18;
+        }
+
+        if (
+            array_key_exists('philhealth_status', $data)
+            && $effectivePhilhealthStatus !== 'With PhilHealth'
+        ) {
+            $data['philhealth_number'] = null;
+        }
+
+        $profileDecisionChanged = $patient === null
+            || array_key_exists('registration_type', $data)
+            || array_key_exists('birthdate', $data)
+            || array_key_exists('civil_status', $data);
+
+        if ($isChild && $profileDecisionChanged) {
+            $data['occupation'] = null;
+            $data['spouse_name'] = null;
+            $data['spouse_occupation'] = null;
+
+            return $data;
+        }
+
+        if ($profileDecisionChanged && $effectiveCivilStatus !== 'Married') {
+            $data['spouse_name'] = null;
+            $data['spouse_occupation'] = null;
+        }
+
+        return $data;
     }
 }

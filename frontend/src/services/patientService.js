@@ -70,6 +70,21 @@ export function normalizePatient(patient = {}) {
     barangay: patient.barangay || "",
     municipality: patient.municipality || "",
     civilStatus: patient.civil_status || patient.civilStatus || "",
+    occupation: patient.occupation || "",
+    philHealthStatus:
+      patient.philhealth_status ||
+      patient.philHealthStatus ||
+      patient.philhealthStatus ||
+      "",
+    spouseName: patient.spouse_name || patient.spouseName || "",
+    spouseOccupation:
+      patient.spouse_occupation || patient.spouseOccupation || "",
+    registrationType:
+      patient.registration_type || patient.registrationType || patient.patientType || "",
+    patientType:
+      patient.registration_type || patient.registrationType || patient.patientType || "",
+    motherName: patient.mother_name || patient.motherName || "",
+    fatherName: patient.father_name || patient.fatherName || "",
     guardianName: patient.guardian_name || patient.guardianName || "",
     guardianRelationship:
       patient.guardian_relationship || patient.guardianRelationship || "",
@@ -83,6 +98,13 @@ export function normalizePatient(patient = {}) {
       patient.guardianContactNumber ||
       patient.guardianContact ||
       "",
+    familySerialNumber:
+      patient.family_serial_number || patient.familySerialNumber || "",
+    birthPlace: patient.birth_place || patient.birthPlace || "",
+    birthTime: patient.birth_time || patient.birthTime || "",
+    birthWeight: patient.birth_weight || patient.birthWeight || "",
+    birthHeight: patient.birth_height || patient.birthHeight || "",
+    nhtsStatus: patient.nhts_status || patient.nhtsStatus || "",
     philHealthNumber: patient.philhealth_number || patient.philHealthNumber || "",
     philhealthNumber: patient.philhealth_number || patient.philhealthNumber || "",
     philHealthCategory: patient.philhealth_category || patient.philHealthCategory || "",
@@ -106,6 +128,11 @@ export function normalizePatient(patient = {}) {
 function toPayload(patient = {}) {
   const parts = splitName(patient.name || patient.fullName);
   const ageSexParts = String(patient.ageSex || "").split("/");
+  const philHealthStatus =
+    patient.philHealthStatus || patient.philhealthStatus || patient.philhealth_status || null;
+  const hasExplicitPhilHealthStatus = Boolean(philHealthStatus);
+  const shouldSendPhilHealthNumber =
+    !hasExplicitPhilHealthStatus || philHealthStatus === "With PhilHealth";
   const payload = {
     first_name: patient.firstName || parts.firstName,
     middle_name: patient.middleName || parts.middleName || null,
@@ -117,7 +144,33 @@ function toPayload(patient = {}) {
     barangay: patient.barangay || patient.patientBarangay || null,
     municipality: patient.municipality || null,
     civil_status: patient.civilStatus || null,
-    philhealth_number: patient.philHealthNumber || patient.philhealthNumber || null,
+    occupation: patient.occupation || null,
+    philhealth_status: philHealthStatus,
+    spouse_name: patient.spouseName || patient.spouse_name || null,
+    spouse_occupation:
+      patient.spouseOccupation || patient.spouse_occupation || null,
+    registration_type:
+      patient.registrationType || patient.patientType || patient.patient_type || "general",
+    mother_name: patient.motherName || patient.mother_name || null,
+    father_name: patient.fatherName || patient.father_name || null,
+    guardian_name: patient.guardianName || patient.guardian_name || null,
+    guardian_relationship:
+      patient.guardianRelationship || patient.guardian_relationship || null,
+    guardian_contact_number:
+      patient.guardianContactNumber ||
+      patient.guardianContact ||
+      patient.guardian_contact_number ||
+      null,
+    family_serial_number:
+      patient.familySerialNumber || patient.family_serial_number || null,
+    birth_place: patient.birthPlace || patient.birth_place || null,
+    birth_time: patient.birthTime || patient.birth_time || null,
+    birth_weight: patient.birthWeight || patient.birth_weight || null,
+    birth_height: patient.birthHeight || patient.birth_height || null,
+    nhts_status: patient.nhtsStatus || patient.nhts_status || null,
+    philhealth_number: shouldSendPhilHealthNumber
+      ? patient.philHealthNumber || patient.philhealthNumber || null
+      : null,
     philhealth_category: patient.philHealthCategory || null,
     status: patient.status || undefined,
     barangay_health_center_id: patient.barangayHealthCenterId || patient.bhcId || null,

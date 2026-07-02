@@ -213,7 +213,7 @@ function FieldInput({
         placeholder={placeholder}
         list={list}
         required={required}
-        className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all duration-200 placeholder:text-slate-300 focus:border-slate-300 focus:bg-white focus:ring-2 focus:ring-slate-100"
+        className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
       />
     </div>
   );
@@ -231,7 +231,7 @@ function FieldSelect({ label, name, value, onChange, children, required }) {
         value={value}
         onChange={onChange}
         required={required}
-        className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition-all duration-200 focus:border-slate-300 focus:bg-white focus:ring-2 focus:ring-slate-100"
+        className="h-10 w-full appearance-none rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
       >
         {children}
       </select>
@@ -261,7 +261,7 @@ function FieldTextarea({
         placeholder={placeholder}
         required={required}
         rows={rows}
-        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700 outline-none transition-all duration-200 placeholder:text-slate-300 focus:border-slate-300 focus:bg-white focus:ring-2 focus:ring-slate-100"
+        className="w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 py-3 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
       />
     </div>
   );

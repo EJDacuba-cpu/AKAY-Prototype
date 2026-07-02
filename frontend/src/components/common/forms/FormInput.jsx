@@ -29,9 +29,9 @@ export default function FormInput({
         readOnly={readOnly}
         {...props}
         className={`
-          h-10 w-full rounded-xl
-          border border-[#E8ECF0]
-          bg-[#FAFBFC] px-3.5 text-sm text-[#1F2937]
+          h-10 w-full rounded-lg
+          border border-[#E5E7EB]
+          bg-white px-3.5 text-sm text-[#1F2937]
           outline-none transition-all duration-200
           placeholder:text-[#9CA3AF]
 
@@ -42,12 +42,12 @@ export default function FormInput({
 
           ${
             error
-              ? "border-[#B91C1C] bg-red-50/30 ring-2 ring-[#B91C1C]/10"
+              ? "border-[#B91C1C] bg-white ring-2 ring-[#B91C1C]/10"
               : ""
           }
           ${
             readOnly
-              ? "cursor-not-allowed border-[#E8ECF0] bg-[#F3F4F6] text-[#64748B]"
+              ? "cursor-not-allowed border-[#E5E7EB] bg-[#F9FAFB] text-[#64748B]"
               : "hover:border-[#D1D5DB]"
           }
           ${className}

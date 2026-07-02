@@ -86,6 +86,133 @@ class AkayApiTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_patient_creation_saves_adult_profile_fields(): void
+    {
+        $bhc = BarangayHealthCenter::create(['name' => 'Profile BHC']);
+        $bhw = User::create([
+            'name' => 'BHW',
+            'email' => 'profile-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHW,
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+
+        $this->actingAs($bhw, 'sanctum')
+            ->postJson('/api/patients', [
+                'first_name' => 'Married',
+                'last_name' => 'Patient',
+                'sex' => 'Female',
+                'birthdate' => now()->subYears(30)->toDateString(),
+                'civil_status' => 'Married',
+                'occupation' => 'Teacher',
+                'philhealth_status' => 'With PhilHealth',
+                'philhealth_number' => '12-345678901-2',
+                'spouse_name' => 'Partner Patient',
+                'spouse_occupation' => 'Engineer',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.occupation', 'Teacher')
+            ->assertJsonPath('data.philhealth_status', 'With PhilHealth')
+            ->assertJsonPath('data.philhealth_number', '12-345678901-2')
+            ->assertJsonPath('data.spouse_name', 'Partner Patient')
+            ->assertJsonPath('data.spouse_occupation', 'Engineer');
+
+        $this->assertDatabaseHas('patients', [
+            'first_name' => 'Married',
+            'occupation' => 'Teacher',
+            'philhealth_status' => 'With PhilHealth',
+            'philhealth_number' => '12-345678901-2',
+            'spouse_name' => 'Partner Patient',
+            'spouse_occupation' => 'Engineer',
+        ]);
+    }
+
+    public function test_patient_creation_without_philhealth_and_single_status_clears_conditional_fields(): void
+    {
+        $bhc = BarangayHealthCenter::create(['name' => 'Conditional BHC']);
+        $bhw = User::create([
+            'name' => 'BHW',
+            'email' => 'conditional-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHW,
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+
+        $this->actingAs($bhw, 'sanctum')
+            ->postJson('/api/patients', [
+                'first_name' => 'Single',
+                'last_name' => 'Patient',
+                'sex' => 'Male',
+                'birthdate' => now()->subYears(25)->toDateString(),
+                'civil_status' => 'Single',
+                'occupation' => 'Driver',
+                'philhealth_status' => 'Without PhilHealth',
+                'philhealth_number' => '99-999999999-9',
+                'spouse_name' => 'Should Clear',
+                'spouse_occupation' => 'Should Clear',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.occupation', 'Driver')
+            ->assertJsonPath('data.philhealth_status', 'Without PhilHealth')
+            ->assertJsonPath('data.philhealth_number', null)
+            ->assertJsonPath('data.spouse_name', null)
+            ->assertJsonPath('data.spouse_occupation', null);
+
+        $this->assertDatabaseHas('patients', [
+            'first_name' => 'Single',
+            'occupation' => 'Driver',
+            'philhealth_status' => 'Without PhilHealth',
+            'philhealth_number' => null,
+            'spouse_name' => null,
+            'spouse_occupation' => null,
+        ]);
+    }
+
+    public function test_child_patient_creation_clears_adult_profile_fields(): void
+    {
+        $bhc = BarangayHealthCenter::create(['name' => 'Child Profile BHC']);
+        $bhw = User::create([
+            'name' => 'BHW',
+            'email' => 'child-profile-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHW,
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+
+        $this->actingAs($bhw, 'sanctum')
+            ->postJson('/api/patients', [
+                'first_name' => 'Child',
+                'last_name' => 'Patient',
+                'sex' => 'Female',
+                'birthdate' => now()->subYears(5)->toDateString(),
+                'civil_status' => 'Single',
+                'registration_type' => 'child',
+                'occupation' => 'Should Clear',
+                'philhealth_status' => 'Without PhilHealth',
+                'philhealth_number' => '88-888888888-8',
+                'spouse_name' => 'Should Clear',
+                'spouse_occupation' => 'Should Clear',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.occupation', null)
+            ->assertJsonPath('data.philhealth_status', 'Without PhilHealth')
+            ->assertJsonPath('data.philhealth_number', null)
+            ->assertJsonPath('data.spouse_name', null)
+            ->assertJsonPath('data.spouse_occupation', null);
+
+        $this->assertDatabaseHas('patients', [
+            'first_name' => 'Child',
+            'occupation' => null,
+            'philhealth_status' => 'Without PhilHealth',
+            'philhealth_number' => null,
+            'spouse_name' => null,
+            'spouse_occupation' => null,
+        ]);
+    }
+
     public function test_referral_creation_generates_tracking_notification_and_audit_log(): void
     {
         $bhc = BarangayHealthCenter::create(['name' => 'Pitpitan BHC']);

@@ -12,6 +12,29 @@ class PatientRequest extends FormRequest
         return (bool) $this->user();
     }
 
+    protected function prepareForValidation(): void
+    {
+        $aliases = [
+            'civilStatus' => 'civil_status',
+            'philHealthStatus' => 'philhealth_status',
+            'philHealthNumber' => 'philhealth_number',
+            'spouseName' => 'spouse_name',
+            'spouseOccupation' => 'spouse_occupation',
+        ];
+
+        $mapped = [];
+
+        foreach ($aliases as $source => $target) {
+            if ($this->has($source) && ! $this->has($target)) {
+                $mapped[$target] = $this->input($source);
+            }
+        }
+
+        if ($mapped !== []) {
+            $this->merge($mapped);
+        }
+    }
+
     public function rules(): array
     {
         $required = $this->isMethod('post') ? 'required' : 'sometimes';
@@ -27,9 +50,22 @@ class PatientRequest extends FormRequest
             'barangay' => ['nullable', 'string', 'max:255'],
             'municipality' => ['nullable', 'string', 'max:255'],
             'civil_status' => ['nullable', 'string', 'max:100'],
+            'occupation' => ['nullable', 'string', 'max:255'],
+            'philhealth_status' => ['nullable', 'string', 'max:255'],
+            'spouse_name' => ['nullable', 'string', 'max:255'],
+            'spouse_occupation' => ['nullable', 'string', 'max:255'],
+            'registration_type' => ['nullable', Rule::in(['general', 'child'])],
+            'mother_name' => ['nullable', 'string', 'max:255'],
+            'father_name' => ['nullable', 'string', 'max:255'],
             'guardian_name' => ['nullable', 'string', 'max:255'],
             'guardian_relationship' => ['nullable', 'string', 'max:100'],
             'guardian_contact_number' => ['nullable', 'string', 'max:50'],
+            'family_serial_number' => ['nullable', 'string', 'max:100'],
+            'birth_place' => ['nullable', 'string', 'max:255'],
+            'birth_time' => ['nullable', 'date_format:H:i'],
+            'birth_weight' => ['nullable', 'numeric', 'min:0', 'max:999.99'],
+            'birth_height' => ['nullable', 'numeric', 'min:0', 'max:999.99'],
+            'nhts_status' => ['nullable', Rule::in(['NHTS', 'Non-NHTS'])],
             'philhealth_number' => ['nullable', 'string', 'max:100'],
             'philhealth_category' => ['nullable', 'string', 'max:100'],
             'patient_category' => ['nullable', 'string', 'max:100'],

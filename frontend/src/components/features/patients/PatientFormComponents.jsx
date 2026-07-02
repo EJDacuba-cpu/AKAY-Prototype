@@ -13,14 +13,14 @@ export const THEME = {
 
 // --- SECTION HEADER COMPONENT ---
 export const SectionHeader = ({ icon: Icon, title, description }) => (
-  <div className="mb-5 flex min-w-0 items-center gap-2.5 border-b border-[#F3F4F6] pb-4">
-    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-50 text-[#B91C1C]">
+  <div className="mb-4 flex min-w-0 items-center gap-2.5">
+    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-red-50 text-[#B91C1C]">
       <Icon size={14} />
     </div>
     <div className="min-w-0">
       <h2 className="text-sm font-bold text-[#1A1A1A]">{title}</h2>
       {description && (
-        <p className="truncate text-xs text-[#6B7280]">{description}</p>
+        <p className="text-xs leading-relaxed text-[#6B7280]">{description}</p>
       )}
     </div>
   </div>
@@ -58,13 +58,13 @@ export const PhilippineContactInput = ({
         {required && <span className="ml-1 text-red-500">*</span>}
       </label>
       <div
-        className={`group relative flex h-10 min-w-0 overflow-hidden rounded-xl border bg-[#FAFBFC] transition-all duration-200 focus-within:border-[#B91C1C] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#B91C1C]/10 ${
+        className={`group relative flex h-10 min-w-0 overflow-hidden rounded-lg border bg-white transition-all duration-200 focus-within:border-[#B91C1C] focus-within:ring-2 focus-within:ring-[#B91C1C]/10 ${
           error
-            ? "border-[#B91C1C] bg-red-50/30 ring-2 ring-[#B91C1C]/10"
-            : "border-[#E8ECF0] hover:border-[#D1D5DB]"
-        } ${disabled ? "bg-slate-100 opacity-75" : ""}`}
+            ? "border-[#B91C1C] ring-2 ring-[#B91C1C]/10"
+            : "border-[#E5E7EB] hover:border-[#D1D5DB]"
+        } ${disabled ? "bg-[#F9FAFB] opacity-75" : ""}`}
       >
-        <div className="flex shrink-0 items-center gap-2 border-r border-[#E8ECF0] bg-white px-3 text-sm font-medium text-[#6B7280] group-focus-within:bg-[#FAFBFC]">
+        <div className="flex shrink-0 items-center gap-2 border-r border-[#E5E7EB] bg-[#F9FAFB] px-3 text-sm font-medium text-[#6B7280]">
           <PhilippinesFlag />
           <span>+63</span>
         </div>
