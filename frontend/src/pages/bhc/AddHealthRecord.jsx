@@ -59,29 +59,110 @@ const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 
 const RECORD_TYPE_OPTIONS = [
   "General Consultation",
-  "Maternal",
   "Immunization",
+  "Maternal",
+  "Family Planning",
   "Senior Citizen",
+  "TB DOTS / TB Monitoring",
 ];
 
 const RECORD_TYPE_DETAILS = {
   "General Consultation": {
-    description: "For routine check-up, symptoms, and general concerns.",
+    title: "General Consultation",
+    description:
+      "For check-ups, symptoms, diagnosis, morbidity, and notifiable cases.",
     icon: Stethoscope,
   },
   Maternal: {
+    title: "Maternal / Prenatal",
     description: "For prenatal, pregnancy, postpartum, and maternal monitoring.",
     icon: HeartPulse,
   },
   Immunization: {
-    title: "Immunization / Child Health EPI",
-    description: "For child vaccination schedules, EPI entries, and growth monitoring.",
+    title: "Child Health / EPI",
+    description: "For vaccines, child care, EPI entries, and growth monitoring.",
     icon: Syringe,
   },
   "Senior Citizen": {
-    description: "For senior citizen monitoring and related visits.",
+    title: "NCD Monitoring",
+    description: "For hypertension, diabetes, maintenance monitoring, and follow-up.",
     icon: User,
   },
+  "Family Planning": {
+    title: "Family Planning",
+    description: "For counseling, method provision, follow-up, and FP service visits.",
+    icon: Stethoscope,
+  },
+  "TB DOTS / TB Monitoring": {
+    title: "TB DOTS / TB Monitoring",
+    description: "For TB screening, treatment monitoring, and follow-up.",
+    icon: Stethoscope,
+    comingSoon: true,
+  },
+};
+
+const FAMILY_PLANNING_CLIENT_TYPES = [
+  "New Acceptor",
+  "Current User",
+  "Returning User",
+  "Changing Method",
+  "Discontinued / Dropout",
+  "For Counseling",
+];
+
+const FAMILY_PLANNING_METHODS = [
+  "DMPA / Injectable",
+  "Pills",
+  "Condom",
+  "Implant",
+  "IUD",
+  "LAM",
+  "Natural Family Planning",
+  "BTL",
+  "NSV",
+  "Other",
+];
+
+const FAMILY_PLANNING_PREVIOUS_METHODS = [
+  "None",
+  "Pills",
+  "Injectable",
+  "Condom",
+  "Implant",
+  "IUD",
+  "LAM",
+  "Natural Method",
+  "Other",
+];
+
+const FAMILY_PLANNING_VISIT_TYPES = [
+  "Counseling",
+  "Initial Visit",
+  "Follow-up",
+  "Method Provided",
+  "Changing Method",
+  "Side-effect Concern",
+  "Referral",
+  "Other",
+];
+
+const FAMILY_PLANNING_SOURCES = ["Public", "Private", "Other"];
+
+const EMPTY_FAMILY_PLANNING_DATA = {
+  clientType: "",
+  methodUsed: "",
+  previousMethod: "",
+  fpVisitType: "",
+  source: "",
+  dateRegistered: "",
+  dateOfVisit: "",
+  nextAppointmentDate: "",
+  remarks: "",
+  actionTaken: "",
+  hasClinicalConcern: "No",
+  concern: "",
+  findings: "",
+  adviceGiven: "",
 };
 
 const EMPTY_MATERNAL_DATA = {
@@ -235,6 +316,7 @@ function normalizeRecordType(value) {
   if (!raw) return "";
   if (lower.includes("immun")) return "Immunization";
   if (lower.includes("maternal") || lower.includes("prenatal")) return "Maternal";
+  if (lower.includes("family") || lower.includes("planning")) return "Family Planning";
   if (lower.includes("senior")) return "Senior Citizen";
   if (lower.includes("general") || lower.includes("consult")) {
     return "General Consultation";
@@ -320,6 +402,28 @@ function getImmunizationPatientMode(patient, referenceDate) {
 function getAdultImmunizationMessage(age) {
   const ageText = Number.isFinite(age) ? `${age}` : "18 or more";
   return `Immunization records are intended for child vaccination schedule entries. This patient is recorded as ${ageText} years old. Please choose another classification.`;
+}
+
+function getFamilyPlanningEligibility(patient, referenceDate) {
+  if (!patient) return { eligible: true };
+
+  if (isPatientMale(patient)) {
+    return {
+      eligible: false,
+      message:
+        "Family Planning records are for female reproductive health clients. Please choose another classification.",
+    };
+  }
+
+  const age = getPatientAgeInYears(patient, referenceDate);
+  if (age !== null && age < 10) {
+    return {
+      eligible: false,
+      message: `Family Planning records are intended for adolescent or adult reproductive health clients. This patient is recorded as ${age} years old. Please choose another classification.`,
+    };
+  }
+
+  return { eligible: true };
 }
 
 function getVaccineEntries(data) {
@@ -438,6 +542,9 @@ export default function AddHealthRecord() {
 
   const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
   const [supplementsGiven, setSupplementsGiven] = useState([]);
+  const [familyPlanningData, setFamilyPlanningData] = useState(
+    EMPTY_FAMILY_PLANNING_DATA,
+  );
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
   const [aog, setAog] = useState("");
   const [followUpRecord, setFollowUpRecord] = useState(null);
@@ -539,6 +646,58 @@ export default function AddHealthRecord() {
           "",
       );
       setAog(existingMaternalData.aog || found.aog || "");
+      const existingFamilyPlanningData =
+        found.familyPlanningData || found.family_planning_data || {};
+      setFamilyPlanningData({
+        clientType:
+          existingFamilyPlanningData.clientType ||
+          existingFamilyPlanningData.client_type ||
+          "",
+        methodUsed:
+          existingFamilyPlanningData.methodUsed ||
+          existingFamilyPlanningData.method_used ||
+          "",
+        previousMethod:
+          existingFamilyPlanningData.previousMethod ||
+          existingFamilyPlanningData.previous_method ||
+          "",
+        fpVisitType:
+          existingFamilyPlanningData.fpVisitType ||
+          existingFamilyPlanningData.fp_visit_type ||
+          existingFamilyPlanningData.visitType ||
+          existingFamilyPlanningData.visit_type ||
+          "",
+        source: existingFamilyPlanningData.source || "",
+        dateRegistered:
+          existingFamilyPlanningData.dateRegistered ||
+          existingFamilyPlanningData.date_registered ||
+          "",
+        dateOfVisit:
+          existingFamilyPlanningData.dateOfVisit ||
+          existingFamilyPlanningData.date_of_visit ||
+          "",
+        nextAppointmentDate:
+          existingFamilyPlanningData.nextAppointmentDate ||
+          existingFamilyPlanningData.next_appointment_date ||
+          "",
+        remarks: existingFamilyPlanningData.remarks || "",
+        actionTaken:
+          existingFamilyPlanningData.actionTaken ||
+          existingFamilyPlanningData.action_taken ||
+          "",
+        hasClinicalConcern:
+          existingFamilyPlanningData.hasClinicalConcern ||
+          existingFamilyPlanningData.has_clinical_concern ||
+          (existingFamilyPlanningData.fpVisitType === "Side-effect Concern"
+            ? "Yes"
+            : "No"),
+        concern: existingFamilyPlanningData.concern || "",
+        findings: existingFamilyPlanningData.findings || "",
+        adviceGiven:
+          existingFamilyPlanningData.adviceGiven ||
+          existingFamilyPlanningData.advice_given ||
+          "",
+      });
       setHealthRecordType(
         normalizeRecordType(
           found.category ||
@@ -601,7 +760,6 @@ export default function AddHealthRecord() {
   const patientSearchInputValue =
     dropdownOpen || !selectedPatientId ? searchTerm : selectedPatientLabel;
   const visitType = isFollowUp ? "follow_up_visit" : "initial_consultation";
-  const visitTypeLabel = isFollowUp ? "Follow-up Visit" : "Initial Consultation";
   const followUpPatientName =
     getPatientName(selectedPatient) ||
     followUpRecord?.patientName ||
@@ -691,6 +849,7 @@ export default function AddHealthRecord() {
     setExpectedDeliveryDate("");
     setAog("");
     setImmunizationData(EMPTY_IMMUNIZATION_DATA);
+    setFamilyPlanningData(EMPTY_FAMILY_PLANNING_DATA);
   }
 
   function selectPatient(id) {
@@ -734,6 +893,7 @@ export default function AddHealthRecord() {
   const recordTypeKey = normalizedHealthRecordType.toLowerCase();
   const isImmunization = recordTypeKey === "immunization";
   const isMaternal = recordTypeKey === "maternal";
+  const isFamilyPlanning = recordTypeKey === "family planning";
   const patientGateLocked = !isFollowUp && !selectedPatientId;
   const selectedPatientIsMale = !isFollowUp && isPatientMale(selectedPatient);
   const selectedPatientSexMissing =
@@ -754,6 +914,10 @@ export default function AddHealthRecord() {
     selectedPatient,
     dateOfVisit,
   );
+  const familyPlanningEligibility = getFamilyPlanningEligibility(
+    selectedPatient,
+    dateOfVisit,
+  );
   const immunizationVaccineEntries = getVaccineEntries(immunizationData);
 
   const formattedBp = (() => {
@@ -769,36 +933,20 @@ export default function AddHealthRecord() {
   function handleClassificationSelect(nextType) {
     clearValidationError("healthRecordType");
     const normalizedNextType = normalizeRecordType(nextType);
+    const config = RECORD_TYPE_DETAILS[nextType] || {};
 
     if (patientGateLocked) {
       setNoticeModal({
         title: "Patient Required",
-        message: "Select patient first.",
+        message: "Please select a patient first before choosing a record type.",
       });
       return;
     }
 
-    if (normalizedNextType === "Maternal" && selectedPatientIsMale) {
-      resetClassificationSpecificState();
+    if (config.comingSoon) {
       setNoticeModal({
-        title: "Invalid Classification",
-        message:
-          "Maternal records are for pregnancy or prenatal consultations. This patient is recorded as male. Please choose another classification.",
-        onClose: () => classificationRef.current?.focus(),
-      });
-      return;
-    }
-
-    if (
-      normalizedNextType === "Immunization" &&
-      immunizationPatientInfo.mode === "adult"
-    ) {
-      resetClassificationSpecificState();
-      setNoticeModal({
-        title: "Invalid Classification",
-        message: getAdultImmunizationMessage(immunizationPatientInfo.age),
-        onClose: () => classificationRef.current?.focus(),
-        buttonLabel: "Okay",
+        title: "Form Not Available",
+        message: "TB DOTS / TB Monitoring form is not yet available.",
       });
       return;
     }
@@ -809,6 +957,7 @@ export default function AddHealthRecord() {
       setExpectedDeliveryDate("");
       setAog("");
       setImmunizationData(EMPTY_IMMUNIZATION_DATA);
+      setFamilyPlanningData(EMPTY_FAMILY_PLANNING_DATA);
     }
 
     setHealthRecordType(nextType);
@@ -816,13 +965,28 @@ export default function AddHealthRecord() {
 
   function handleProceedFromSetup() {
     closeDateTimePopovers();
-    const errors = {};
-    if (!selectedPatientId) errors.selectedPatientId = "Select a patient first.";
-    if (!normalizedHealthRecordType) {
-      errors.healthRecordType = "Select a classification first.";
+
+    if (!selectedPatientId) {
+      setValidationErrorsAndFocus({
+        selectedPatientId: "Please select a patient first before proceeding.",
+      });
+      setNoticeModal({
+        title: "Patient Required",
+        message: "Please select a patient first before proceeding.",
+      });
+      return;
     }
 
-    if (setValidationErrorsAndFocus(errors)) return;
+    if (!normalizedHealthRecordType) {
+      setValidationErrorsAndFocus({
+        healthRecordType: "Please choose a record type before proceeding.",
+      });
+      setNoticeModal({
+        title: "Record Type Required",
+        message: "Please choose a record type before proceeding.",
+      });
+      return;
+    }
 
     setSetupComplete(true);
     setCareDecisionStep(false);
@@ -934,6 +1098,19 @@ export default function AddHealthRecord() {
       return errors;
     }
 
+    if (isFamilyPlanning) {
+      const hasConcern =
+        familyPlanningData.hasClinicalConcern === "Yes" ||
+        familyPlanningData.fpVisitType === "Side-effect Concern";
+
+      if (hasConcern && !String(familyPlanningData.concern || "").trim()) {
+        errors.familyPlanningConcern =
+          "Concern or side-effect notes are required when clinical concern is marked Yes.";
+      }
+
+      return errors;
+    }
+
     if (!chiefComplaint.trim()) {
       errors.chiefComplaint = "Chief complaint is required.";
     }
@@ -1021,13 +1198,6 @@ export default function AddHealthRecord() {
     setAog(`${weekStr}${dayStr}`);
   }, [maternalData.lmp, dateOfVisit]);
 
-  function handleVaccineChange(field, value) {
-    clearValidationError(field);
-    setImmunizationData((prev) => {
-      return { ...prev, [field]: value };
-    });
-  }
-
   function handleBreastfeedingChange(monthKey, value) {
     setImmunizationData((prev) => ({
       ...prev,
@@ -1083,6 +1253,19 @@ export default function AddHealthRecord() {
   function handleMaternalChange(field, value) {
     clearValidationError(field);
     setMaternalData((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function handleFamilyPlanningChange(field, value) {
+    setFamilyPlanningData((prev) => ({
+      ...prev,
+      [field]: value,
+      ...(field === "fpVisitType" && value === "Side-effect Concern"
+        ? { hasClinicalConcern: "Yes" }
+        : {}),
+      ...(field === "hasClinicalConcern" && value !== "Yes"
+        ? { concern: "", findings: "", adviceGiven: "" }
+        : {}),
+    }));
   }
 
   function handleSupplementToggle(type, checked) {
@@ -1185,6 +1368,9 @@ export default function AddHealthRecord() {
 
     queryClient.invalidateQueries({
       queryKey: queryKeys.healthRecords(userRole),
+    });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.familyPlanningRecords(userRole),
     });
     if (userRole === "bhc") {
       queryClient.invalidateQueries({
@@ -1292,6 +1478,21 @@ export default function AddHealthRecord() {
       return;
     }
 
+    if (
+      !isFollowUp &&
+      effectiveHealthRecordType === "Family Planning" &&
+      !familyPlanningEligibility.eligible
+    ) {
+      setHealthRecordType("");
+      setNoticeModal({
+        title: "Invalid Classification",
+        message: familyPlanningEligibility.message,
+        onClose: () => classificationRef.current?.focus(),
+        buttonLabel: "Okay",
+      });
+      return;
+    }
+
     const preparedVaccineEntries = immunizationVaccineEntries.map((entry) => ({
       ...entry,
       vaccineName:
@@ -1368,6 +1569,10 @@ export default function AddHealthRecord() {
           }`
         : isImmunization && !chiefComplaint
           ? "Vaccination Visit"
+          : effectiveHealthRecordType === "Family Planning" && !chiefComplaint
+            ? familyPlanningData.fpVisitType === "Side-effect Concern"
+              ? familyPlanningData.concern || "Family Planning Concern"
+              : "Family Planning Visit"
           : chiefComplaint;
 
     const preparedSupplements =
@@ -1395,6 +1600,29 @@ export default function AddHealthRecord() {
         maternalData.abortion || 0,
         maternalData.living || 0,
       ].join("-"),
+    };
+
+    const recordFamilyPlanningData = {
+      ...familyPlanningData,
+      client_type: familyPlanningData.clientType || "",
+      method_used: familyPlanningData.methodUsed || "",
+      previous_method: familyPlanningData.previousMethod || "",
+      fp_visit_type: familyPlanningData.fpVisitType || "",
+      visitType: familyPlanningData.fpVisitType || "",
+      visit_type: familyPlanningData.fpVisitType || "",
+      source: familyPlanningData.source || "",
+      dateRegistered: familyPlanningData.dateRegistered || dateOfVisit,
+      date_registered: familyPlanningData.dateRegistered || dateOfVisit,
+      dateOfVisit: familyPlanningData.dateOfVisit || dateOfVisit,
+      date_of_visit: familyPlanningData.dateOfVisit || dateOfVisit,
+      next_appointment_date: familyPlanningData.nextAppointmentDate || "",
+      remarks: familyPlanningData.remarks || "",
+      action_taken: familyPlanningData.actionTaken || "",
+      hasClinicalConcern: familyPlanningData.hasClinicalConcern === "Yes",
+      has_clinical_concern: familyPlanningData.hasClinicalConcern === "Yes",
+      concern: familyPlanningData.concern || "",
+      findings: familyPlanningData.findings || "",
+      advice_given: familyPlanningData.adviceGiven || "",
     };
 
     const finalNeedsReferral =
@@ -1454,6 +1682,10 @@ export default function AddHealthRecord() {
       expectedDeliveryDate,
       aog,
       immunizationData: preparedImmunizationData,
+      familyPlanningData:
+        effectiveHealthRecordType === "Family Planning"
+          ? recordFamilyPlanningData
+          : null,
       createdByRole: userRole,
       linkedTrackingId: isFollowUp ? followUpRecord?.linkedTrackingId || "" : "",
     };
@@ -1681,34 +1913,12 @@ export default function AddHealthRecord() {
 
         <FormSection
           title="Visit Overview"
-          subtitle="Confirm the visit type, classification, schedule, and attending practitioner."
+          subtitle="Confirm the visit schedule and attending practitioner."
           icon={<Clock size={14} />}
           delay={2}
         >
           <LockedFormContent locked={patientGateLocked}>
-          <div
-            className={`grid gap-4 ${
-              isFollowUp || isEditingRecord
-                ? "lg:grid-cols-5"
-                : "sm:grid-cols-2 lg:grid-cols-4"
-            }`}
-          >
-            <FieldInput label="Visit Type" value={visitTypeLabel} readOnly />
-            {(isFollowUp || isEditingRecord) && (
-              <FieldInput
-                label="Classification"
-                value={
-                  normalizedHealthRecordType ||
-                  normalizeRecordType(
-                    followUpRecord?.category ||
-                      followUpRecord?.recordType ||
-                      followUpRecord?.patientClassification,
-                  ) ||
-                  "General Consultation"
-                }
-                readOnly
-              />
-            )}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <DatePickerField
               label="Date of Visit"
               required
@@ -1894,8 +2104,8 @@ export default function AddHealthRecord() {
 
         {!isFollowUp && !patientGateLocked && isImmunization && (
           <FormSection
-            title="Child Immunization Details"
-            subtitle="Select the vaccines given during this immunization visit."
+            title="EPI Vaccines Given"
+            subtitle="Select the EPI vaccines given during this visit."
             icon={<Syringe size={14} />}
             delay={2}
           >
@@ -1904,13 +2114,15 @@ export default function AddHealthRecord() {
             ageInfo={immunizationPatientInfo}
             entries={immunizationVaccineEntries}
             dateOfVisit={dateOfVisit}
-            feedingStatus={immunizationData.feeding_status}
+            temperature={temp}
+            weight={weight}
+            height={height}
             breastfeedingMonitoring={immunizationData.breastfeedingMonitoring}
             consultationNotes={consultationNotes}
             errors={validationErrors}
-            onFeedingStatusChange={(value) =>
-              handleVaccineChange("feeding_status", value)
-              }
+            onTemperatureChange={setTemp}
+            onWeightChange={setWeight}
+            onHeightChange={setHeight}
               onBreastfeedingChange={handleBreastfeedingChange}
               onEntryChange={handleVaccineEntryChange}
               onToggleVaccine={handleVaccineToggle}
@@ -2094,7 +2306,167 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !isImmunization && (
+        {!isFollowUp && !patientGateLocked && isFamilyPlanning && (
+          <FormSection
+            title="Family Planning Details"
+            subtitle="Record the family planning service type, method, source, schedule, and action taken."
+            icon={<Stethoscope size={14} />}
+            delay={3}
+          >
+            <LockedFormContent locked={patientGateLocked}>
+              <div className="grid gap-4 lg:grid-cols-3">
+                <FieldSelect
+                  label="Client Type"
+                  value={familyPlanningData.clientType}
+                  onChange={(event) =>
+                    handleFamilyPlanningChange("clientType", event.target.value)
+                  }
+                >
+                  <option value="">Select client type</option>
+                  {FAMILY_PLANNING_CLIENT_TYPES.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </FieldSelect>
+                <FieldSelect
+                  label="Method Used / Accepted"
+                  value={familyPlanningData.methodUsed}
+                  onChange={(event) =>
+                    handleFamilyPlanningChange("methodUsed", event.target.value)
+                  }
+                >
+                  <option value="">Select method</option>
+                  {FAMILY_PLANNING_METHODS.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </FieldSelect>
+                <FieldSelect
+                  label="Previous Method"
+                  value={familyPlanningData.previousMethod}
+                  onChange={(event) =>
+                    handleFamilyPlanningChange(
+                      "previousMethod",
+                      event.target.value,
+                    )
+                  }
+                >
+                  <option value="">Select previous method</option>
+                  {FAMILY_PLANNING_PREVIOUS_METHODS.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </FieldSelect>
+                <FieldSelect
+                  label="FP Visit Type"
+                  value={familyPlanningData.fpVisitType}
+                  onChange={(event) =>
+                    handleFamilyPlanningChange("fpVisitType", event.target.value)
+                  }
+                >
+                  <option value="">Select visit type</option>
+                  {FAMILY_PLANNING_VISIT_TYPES.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </FieldSelect>
+                <FieldSelect
+                  label="Source"
+                  value={familyPlanningData.source}
+                  onChange={(event) =>
+                    handleFamilyPlanningChange("source", event.target.value)
+                  }
+                >
+                  <option value="">Select source</option>
+                  {FAMILY_PLANNING_SOURCES.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </FieldSelect>
+                <DatePickerField
+                  label="Date Registered / Date of Visit"
+                  value={familyPlanningData.dateRegistered || dateOfVisit}
+                  onChange={(value) => {
+                    handleFamilyPlanningChange("dateRegistered", value);
+                    handleFamilyPlanningChange("dateOfVisit", value);
+                  }}
+                />
+                <DatePickerField
+                  label="Next Appointment Date"
+                  value={familyPlanningData.nextAppointmentDate}
+                  onChange={(value) =>
+                    handleFamilyPlanningChange("nextAppointmentDate", value)
+                  }
+                />
+              </div>
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <FieldTextarea
+                  label="Remarks"
+                  value={familyPlanningData.remarks}
+                  onChange={(event) =>
+                    handleFamilyPlanningChange("remarks", event.target.value)
+                  }
+                  placeholder="Brief administrative notes for this family planning visit..."
+                  rows={3}
+                />
+                <FieldTextarea
+                  label="Action Taken"
+                  value={familyPlanningData.actionTaken}
+                  onChange={(event) =>
+                    handleFamilyPlanningChange("actionTaken", event.target.value)
+                  }
+                  placeholder="Record counseling, method provision, advice, or next action..."
+                  rows={3}
+                />
+              </div>
+              <div className="mt-4">
+                <YesNoRadioGroup
+                  label="Has complaint, side-effect, or clinical concern?"
+                  name="familyPlanningConcernToggle"
+                  value={familyPlanningData.hasClinicalConcern}
+                  onChange={(value) =>
+                    handleFamilyPlanningChange("hasClinicalConcern", value)
+                  }
+                />
+              </div>
+              {(familyPlanningData.hasClinicalConcern === "Yes" ||
+                familyPlanningData.fpVisitType === "Side-effect Concern") && (
+                <div className="mt-5 rounded-xl border border-amber-100 bg-amber-50/30 p-4">
+                  <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-amber-700">
+                    Clinical Concern / Side-effect Notes
+                  </p>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <FieldInput
+                      label="Concern / Complaint"
+                      name="familyPlanningConcern"
+                      error={validationErrors.familyPlanningConcern}
+                      value={familyPlanningData.concern}
+                      onChange={(event) => {
+                        clearValidationError("familyPlanningConcern");
+                        handleFamilyPlanningChange("concern", event.target.value);
+                      }}
+                      required
+                    />
+                    <FieldInput
+                      label="Advice Given"
+                      value={familyPlanningData.adviceGiven}
+                      onChange={(event) =>
+                        handleFamilyPlanningChange("adviceGiven", event.target.value)
+                      }
+                    />
+                    <div className="lg:col-span-2">
+                      <FieldTextarea
+                        label="Findings / Notes"
+                        value={familyPlanningData.findings}
+                        onChange={(event) =>
+                          handleFamilyPlanningChange("findings", event.target.value)
+                        }
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </LockedFormContent>
+          </FormSection>
+        )}
+
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && (
           <FormSection
             title="Consultation Information"
             subtitle="Record consultation findings and observations."
@@ -2156,7 +2528,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !isImmunization && (
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && (
           <>
             <FormSection
               title="Vital Signs"
@@ -2398,6 +2770,7 @@ export default function AddHealthRecord() {
    ═══════════════════════════════════════════════════════════════ */
 function HealthRecordSetupStep({
   selectedPatientId,
+  selectedPatient,
   patientSearchProps,
   classification,
   onClassificationSelect,
@@ -2426,7 +2799,11 @@ function HealthRecordSetupStep({
           data-field="selectedPatientId"
           tabIndex={errors.selectedPatientId ? -1 : undefined}
         >
-          <PatientSearchDropdown {...patientSearchProps} />
+          <PatientSearchDropdown
+            {...patientSearchProps}
+            selectedPatient={selectedPatient}
+            showSelectedPreview={false}
+          />
           {errors.selectedPatientId && (
             <p className="mt-2 text-[11px] font-medium text-[#B91C1C]">
               {errors.selectedPatientId}
@@ -2440,22 +2817,21 @@ function HealthRecordSetupStep({
           tabIndex={errors.healthRecordType ? -1 : undefined}
         >
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
-            Choose Classification
+            Select Record Type
           </p>
           <p className="mt-0.5 text-xs text-[#64748B]">
-            The selected card controls which clinical fields appear next.
+            Choose the health service record to encode for this patient.
           </p>
 
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {RECORD_TYPE_OPTIONS.map((option) => (
-              <ClassificationCard
-                key={option}
-                option={option}
-                selected={normalizedClassification === option}
-                onSelect={() => onClassificationSelect(option)}
-              />
-            ))}
+          <div className="mt-3">
+            <ServiceCardGroup
+              options={RECORD_TYPE_OPTIONS}
+              normalizedClassification={normalizedClassification}
+              onClassificationSelect={onClassificationSelect}
+              cardGridClass="sm:grid-cols-2 xl:grid-cols-3"
+            />
           </div>
+
           {errors.healthRecordType && (
             <p className="mt-2 text-[11px] font-medium text-[#B91C1C]">
               {errors.healthRecordType}
@@ -2464,17 +2840,18 @@ function HealthRecordSetupStep({
         </div>
 
         <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs font-medium text-[#94A3B8]">
-            {canProceed
-              ? "Ready to continue to the clinical record."
-              : "Select a patient and classification to continue."}
-          </p>
+          <div>
+            <p className="text-xs font-medium text-[#94A3B8]">
+              {canProceed
+                ? "Ready to continue to the selected record form."
+                : "Select a patient and record type to continue."}
+            </p>
+          </div>
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <button
               type="button"
               onClick={onProceed}
-              disabled={!canProceed}
-              className="rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
             >
               Proceed
             </button>
@@ -2485,19 +2862,59 @@ function HealthRecordSetupStep({
   );
 }
 
+function ServiceCardGroup({
+  title,
+  helper,
+  options,
+  normalizedClassification,
+  onClassificationSelect,
+  cardGridClass = "sm:grid-cols-2 xl:grid-cols-3",
+}) {
+  return (
+    <div>
+      {title && (
+        <div className="mb-2 flex flex-col gap-0.5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h3 className="text-xs font-bold text-[#0F172A]">{title}</h3>
+            {helper && (
+              <p className="text-[11px] leading-relaxed text-[#94A3B8]">
+                {helper}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+      <div className={`grid gap-3 ${cardGridClass}`}>
+        {options.map((option) => (
+          <ClassificationCard
+            key={option}
+            option={option}
+            selected={normalizedClassification === option}
+            onSelect={() => onClassificationSelect(option)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ClassificationCard({ option, selected, onSelect }) {
   const config = RECORD_TYPE_DETAILS[option] || {};
   const Icon = config.icon || Stethoscope;
+  const comingSoon = Boolean(config.comingSoon);
 
   return (
     <button
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      className={`group flex min-h-[112px] rounded-xl border p-3.5 text-left shadow-sm transition-all duration-200 ${
+      aria-disabled={comingSoon}
+      className={`group flex min-h-[124px] rounded-xl border p-3.5 text-left shadow-sm transition-all duration-200 ${
         selected
           ? "border-[#FCA5A5] bg-[#FEF2F2] shadow-[#B91C1C]/10 ring-2 ring-[#B91C1C]/10"
-          : "border-[#E8ECF0] bg-white hover:-translate-y-0.5 hover:border-[#FECACA] hover:shadow-md"
+          : comingSoon
+            ? "border-[#E8ECF0] bg-[#FAFBFC] opacity-85 hover:border-[#E2E8F0]"
+            : "border-[#E8ECF0] bg-white hover:-translate-y-0.5 hover:border-[#FECACA] hover:shadow-md"
       }`}
     >
       <span
@@ -2521,6 +2938,11 @@ function ClassificationCard({ option, selected, onSelect }) {
         {selected && (
           <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B91C1C] text-white">
             <Check size={12} strokeWidth={3} />
+          </span>
+        )}
+        {comingSoon && (
+          <span className="shrink-0 rounded-full border border-[#E2E8F0] bg-white px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#64748B]">
+            Coming soon
           </span>
         )}
       </span>
@@ -3305,11 +3727,15 @@ function ImmunizationVisitFields({
   ageInfo,
   entries,
   dateOfVisit,
-  feedingStatus,
+  temperature,
+  weight,
+  height,
   breastfeedingMonitoring = {},
   consultationNotes,
   errors = {},
-  onFeedingStatusChange,
+  onTemperatureChange,
+  onWeightChange,
+  onHeightChange,
   onBreastfeedingChange,
   onEntryChange,
   onToggleVaccine,
@@ -3344,33 +3770,36 @@ function ImmunizationVisitFields({
           {CHILD_VACCINE_OPTIONS.map((vaccineName) => {
             const checked = selectedVaccines.has(vaccineName);
             return (
-              <label
+              <button
                 key={vaccineName}
-                className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${
+                type="button"
+                onClick={() => onToggleVaccine(vaccineName, !checked)}
+                aria-pressed={checked}
+                className={`flex min-h-[46px] items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition ${
                   checked
-                    ? "border-[#FECACA] bg-[#FEF2F2] text-[#991B1B]"
-                    : "border-[#E8ECF0] bg-white text-[#475569] hover:border-[#D1D5DB]"
+                    ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#991B1B] ring-1 ring-[#B91C1C]/10"
+                    : "border-[#E8ECF0] bg-white text-[#475569] hover:border-[#FECACA] hover:bg-red-50/30"
                 }`}
               >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={(event) =>
-                    onToggleVaccine(vaccineName, event.target.checked)
-                  }
-                  className="h-4 w-4 rounded border-[#D1D5DB] text-[#B91C1C] focus:ring-[#B91C1C]"
-                />
+                <span
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                    checked ? "bg-[#B91C1C] text-white" : "bg-[#F1F5F9] text-transparent"
+                  }`}
+                >
+                  <Check size={12} strokeWidth={3} />
+                </span>
                 <span>{vaccineName}</span>
-              </label>
+              </button>
             );
           })}
         </div>
 
-        {entries.length === 0 ? (
+        {entries.length === 0 && (
           <p className="mt-4 rounded-xl border border-dashed border-[#E5E7EB] bg-white px-4 py-3 text-xs text-[#64748B]">
             Select at least one vaccine given during this visit.
           </p>
-        ) : (
+        )}
+        {entries.some((entry) => entry.__legacyDetailsVisible === "showLegacyDetails") && (
           <div className="mt-4 space-y-3">
             {entries.map((entry, index) => (
               <div
@@ -3469,37 +3898,87 @@ function ImmunizationVisitFields({
             ))}
           </div>
         )}
+        {entries.map((entry, index) =>
+          entry.vaccineName === "Other" ? (
+            <div key="other-vaccine-name" className="mt-4 max-w-md">
+              <FieldInput
+                label="Other Vaccine Name"
+                required
+                name={`vaccineEntries.${index}.customVaccineName`}
+                error={errors[`vaccineEntries.${index}.customVaccineName`]}
+                value={entry.customVaccineName || ""}
+                onChange={(event) =>
+                  onEntryChange(index, "customVaccineName", event.target.value)
+                }
+                placeholder="Enter vaccine name"
+              />
+            </div>
+          ) : null,
+        )}
       </ClinicalFieldGroup>
 
-      <div className="max-w-sm">
-        <FieldSelect
-          label="Feeding Status"
-          value={feedingStatus}
-          onChange={(event) => onFeedingStatusChange(event.target.value)}
-        >
-          <option value="">Select status</option>
-          <option>Breastfeeding</option>
-          <option>Formula Milk</option>
-          <option>Mixed Feeding</option>
-        </FieldSelect>
-      </div>
+      <ClinicalFieldGroup title="Basic Monitoring">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <FieldInput
+            label="Weight"
+            type="number"
+            step="0.01"
+            value={weight}
+            onChange={(event) => onWeightChange(event.target.value)}
+            placeholder="kg"
+          />
+          <FieldInput
+            label="Height"
+            type="number"
+            step="0.01"
+            value={height}
+            onChange={(event) => onHeightChange(event.target.value)}
+            placeholder="cm"
+          />
+          <FieldInput
+            label="Temperature"
+            type="number"
+            step="0.1"
+            value={temperature}
+            onChange={(event) => onTemperatureChange(event.target.value)}
+            placeholder="C"
+          />
+        </div>
+      </ClinicalFieldGroup>
 
       <ClinicalFieldGroup title="Exclusive Breastfeeding Monitoring">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {BREASTFEEDING_MONTHS.map((month) => (
-            <FieldSelect
-              key={month.key}
-              label={month.label}
-              value={breastfeedingMonitoring?.[month.key] || ""}
-              onChange={(event) =>
-                onBreastfeedingChange(month.key, event.target.value)
-              }
-            >
-              <option value="">Not recorded</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </FieldSelect>
-          ))}
+        <p className="mb-3 text-xs leading-relaxed text-[#64748B]">
+          Select the months where exclusive breastfeeding was confirmed.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {BREASTFEEDING_MONTHS.map((month) => {
+            const checked =
+              breastfeedingMonitoring?.[month.key] === true ||
+              breastfeedingMonitoring?.[month.key] === "yes";
+
+            return (
+              <button
+                key={month.key}
+                type="button"
+                onClick={() => onBreastfeedingChange(month.key, !checked)}
+                aria-pressed={checked}
+                className={`flex min-h-[42px] items-center gap-2.5 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition ${
+                  checked
+                    ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#991B1B] ring-1 ring-[#B91C1C]/10"
+                    : "border-[#E8ECF0] bg-white text-[#475569] hover:border-[#FECACA] hover:bg-red-50/30"
+                }`}
+              >
+                <span
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                    checked ? "bg-[#B91C1C] text-white" : "bg-[#F1F5F9] text-transparent"
+                  }`}
+                >
+                  <Check size={12} strokeWidth={3} />
+                </span>
+                <span>{month.label}</span>
+              </button>
+            );
+          })}
         </div>
       </ClinicalFieldGroup>
 
@@ -3589,6 +4068,42 @@ function FieldTextarea({ label, required, error, rows = 3, className = "", ...pr
       {error && (
         <p className="mt-1 text-[11px] font-medium text-[#B91C1C]">{error}</p>
       )}
+    </div>
+  );
+}
+
+function YesNoRadioGroup({ label, name, value, onChange }) {
+  return (
+    <div data-field={name}>
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+        {label}
+      </p>
+      <div className="flex min-h-10 flex-wrap items-center gap-x-6 gap-y-2">
+        {["No", "Yes"].map((option) => (
+          <label
+            key={option}
+            className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#475569]"
+          >
+            <input
+              type="radio"
+              name={name}
+              value={option}
+              checked={(value || "No") === option}
+              onChange={() => onChange(option)}
+              className="h-4 w-4 accent-[#B91C1C]"
+            />
+            <span
+              className={
+                (value || "No") === option
+                  ? "font-semibold text-[#B91C1C]"
+                  : "text-[#475569]"
+              }
+            >
+              {option}
+            </span>
+          </label>
+        ))}
+      </div>
     </div>
   );
 }

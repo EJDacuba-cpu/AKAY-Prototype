@@ -26,6 +26,7 @@ import { Bar, Chart, Doughnut } from "react-chartjs-2";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar } from "../../components/common";
+import { FamilyPlanningReportSection } from "../shared/FamilyPlanningList";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import { getRhuPatients } from "../../services/patientService";
 import { getReferrals } from "../../services/referrals";
@@ -376,6 +377,12 @@ export default function RHUReports() {
             />
           </aside>
         </div>
+
+        <FamilyPlanningReportSection
+          role="rhu"
+          basePath="/rhu"
+          reportFilters={filters}
+        />
       </div>
     </DashboardLayout>
   );

@@ -351,6 +351,7 @@ export default function HealthRecords() {
         { value: "Maternal", label: "Maternal" },
         { value: "Immunization", label: "Immunization" },
         { value: "Senior Citizen", label: "Senior Citizen" },
+        { value: "Family Planning", label: "Family Planning" },
       ],
     },
   ];

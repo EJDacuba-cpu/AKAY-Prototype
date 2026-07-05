@@ -19,6 +19,7 @@ class Patient extends Model
         'street_address',
         'barangay',
         'municipality',
+        'purok_area',
         'civil_status',
         'occupation',
         'philhealth_status',

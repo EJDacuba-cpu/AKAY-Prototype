@@ -230,6 +230,11 @@ export default function RHURecordDetails() {
   const hasTreatmentDetails = Boolean(
     initialActionsValue || treatmentNotesValue || medicalNotesValue,
   );
+  const isFamilyPlanningRecord = recordClassification === "Family Planning";
+  const familyPlanningDetails = getFamilyPlanningDetails(record);
+  const hasFamilyPlanningDetails = familyPlanningDetails.some(
+    (item) => item.value,
+  );
 
   return (
     <DashboardLayout role="rhu" title="Health Record Details">
@@ -382,6 +387,7 @@ export default function RHURecordDetails() {
                       <option value="Maternal">Maternal</option>
                       <option value="Immunization">Immunization</option>
                       <option value="Senior Citizen">Senior Citizen</option>
+                      <option value="Family Planning">Family Planning</option>
                     </FormSelect>
                   </FieldWithError>
                   <FieldWithError error={formErrors.diagnosis}>
@@ -546,6 +552,24 @@ export default function RHURecordDetails() {
                     <SectionEmptyState text="No treatment or action details recorded." />
                   )}
                 </DetailSection>
+
+                {isFamilyPlanningRecord && (
+                  <DetailSection title="Family Planning Details">
+                    {hasFamilyPlanningDetails ? (
+                      <div className="grid gap-4 md:grid-cols-2">
+                        {familyPlanningDetails.map((item) => (
+                          <PatientDetailItem
+                            key={item.label}
+                            label={item.label}
+                            value={item.value}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <SectionEmptyState text="No family planning details recorded." />
+                    )}
+                  </DetailSection>
+                )}
 
                 {shouldShowMonitoringFollowUp && (
                   <DetailSection title="Monitoring & Follow-up">
@@ -1017,6 +1041,82 @@ function getRecordClassification(record, patient) {
     getPatientClassification(patient) ||
     "General Consultation"
   );
+}
+
+function getFamilyPlanningDetails(record = {}) {
+  const data = record.familyPlanningData || record.family_planning_data || {};
+
+  return [
+    {
+      label: "Client Type",
+      value: getRecordValue(data, ["clientType", "client_type"], ""),
+    },
+    {
+      label: "Method Used / Accepted",
+      value: getRecordValue(data, ["methodUsed", "method_used"], ""),
+    },
+    {
+      label: "Visit Type",
+      value: getRecordValue(
+        data,
+        ["fpVisitType", "fp_visit_type", "visitType", "visit_type"],
+        "",
+      ),
+    },
+    {
+      label: "Previous Method",
+      value: getRecordValue(data, ["previousMethod", "previous_method"], ""),
+    },
+    {
+      label: "Source",
+      value: getRecordValue(data, ["source"], ""),
+    },
+    {
+      label: "Date Registered",
+      value: formatLongDate(
+        getRecordValue(data, ["dateRegistered", "date_registered"], ""),
+        "",
+      ),
+    },
+    {
+      label: "Date of Visit",
+      value: formatLongDate(
+        getRecordValue(data, ["dateOfVisit", "date_of_visit"], ""),
+        "",
+      ),
+    },
+    {
+      label: "Next Appointment Date",
+      value: formatLongDate(
+        getRecordValue(
+          data,
+          ["nextAppointmentDate", "next_appointment_date"],
+          "",
+        ),
+        "",
+      ),
+    },
+    {
+      label: "Remarks / Notes",
+      value: getRecordValue(data, ["remarks", "notes"], ""),
+    },
+    {
+      label: "Action Taken",
+      value: getRecordValue(data, ["actionTaken", "action_taken"], ""),
+    },
+    {
+      label: "Concern / Complaint",
+      value: getRecordValue(data, ["concern"], ""),
+    },
+    {
+      label: "Findings / Notes",
+      value: getRecordValue(data, ["findings"], ""),
+    },
+    {
+      label: "Advice Given",
+      value: getRecordValue(data, ["adviceGiven", "advice_given"], ""),
+    },
+  ];
 }
 
 function getParentHealthRecordId(record = {}) {

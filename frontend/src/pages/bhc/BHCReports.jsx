@@ -24,6 +24,7 @@ import { Chart, PolarArea } from "react-chartjs-2";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar } from "../../components/common";
+import { FamilyPlanningReportSection } from "../shared/FamilyPlanningList";
 
 ChartJS.register(
   CategoryScale,
@@ -187,6 +188,7 @@ export default function BHCReports() {
         "Maternal",
         "Immunization",
         "Senior Citizen",
+        "Family Planning",
       ],
     },
     {
@@ -357,6 +359,12 @@ export default function BHCReports() {
             </ReportChartCard>
           </aside>
         </div>
+
+        <FamilyPlanningReportSection
+          role="bhc"
+          basePath="/bhc"
+          reportFilters={filters}
+        />
       </div>
     </DashboardLayout>
   );

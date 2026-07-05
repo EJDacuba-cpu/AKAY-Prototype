@@ -48,6 +48,8 @@ function normalizeRecord(record = {}) {
   };
   const immunizationData = record.immunization_data || record.immunizationData || {};
   const monitoringData = record.monitoring_data || record.monitoringData || {};
+  const familyPlanningData =
+    record.family_planning_data || record.familyPlanningData || {};
   const parentHealthRecordId =
     record.parent_health_record_id ||
     record.parentHealthRecordId ||
@@ -175,6 +177,8 @@ function normalizeRecord(record = {}) {
     immunization_data: immunizationData,
     monitoringData,
     monitoring_data: monitoringData,
+    familyPlanningData,
+    family_planning_data: familyPlanningData,
     needsReferral,
     needs_referral: record.needs_referral,
     systolicBp: vitalSigns.systolicBp || vitalSigns.systolic_bp || record.systolicBp || "",
@@ -291,6 +295,180 @@ function toPayload(record = {}, { partial = false } = {}) {
     visitType,
     isFollowUp: record.isFollowUp || visitType === "follow_up_visit",
   };
+  const familyPlanningData = {
+    ...(record.familyPlanningData || record.family_planning_data || {}),
+    clientType:
+      record.familyPlanningClientType ||
+      record.clientType ||
+      record.client_type ||
+      record.familyPlanningData?.clientType ||
+      record.family_planning_data?.client_type ||
+      null,
+    client_type:
+      record.familyPlanningClientType ||
+      record.clientType ||
+      record.client_type ||
+      record.familyPlanningData?.clientType ||
+      record.family_planning_data?.client_type ||
+      null,
+    methodUsed:
+      record.familyPlanningMethodUsed ||
+      record.methodUsed ||
+      record.method_used ||
+      record.familyPlanningData?.methodUsed ||
+      record.family_planning_data?.method_used ||
+      null,
+    method_used:
+      record.familyPlanningMethodUsed ||
+      record.methodUsed ||
+      record.method_used ||
+      record.familyPlanningData?.methodUsed ||
+      record.family_planning_data?.method_used ||
+      null,
+    previousMethod:
+      record.familyPlanningPreviousMethod ||
+      record.previousMethod ||
+      record.previous_method ||
+      record.familyPlanningData?.previousMethod ||
+      record.family_planning_data?.previous_method ||
+      null,
+    previous_method:
+      record.familyPlanningPreviousMethod ||
+      record.previousMethod ||
+      record.previous_method ||
+      record.familyPlanningData?.previousMethod ||
+      record.family_planning_data?.previous_method ||
+      null,
+    fpVisitType:
+      record.familyPlanningFpVisitType ||
+      record.fpVisitType ||
+      record.fp_visit_type ||
+      record.familyPlanningVisitType ||
+      record.familyPlanningData?.fpVisitType ||
+      record.family_planning_data?.fp_visit_type ||
+      record.familyPlanningData?.visitType ||
+      record.family_planning_data?.visit_type ||
+      null,
+    fp_visit_type:
+      record.familyPlanningFpVisitType ||
+      record.fpVisitType ||
+      record.fp_visit_type ||
+      record.familyPlanningVisitType ||
+      record.familyPlanningData?.fpVisitType ||
+      record.family_planning_data?.fp_visit_type ||
+      record.familyPlanningData?.visitType ||
+      record.family_planning_data?.visit_type ||
+      null,
+    visitType:
+      record.familyPlanningVisitType ||
+      record.fpVisitType ||
+      record.familyPlanningData?.visitType ||
+      record.familyPlanningData?.fpVisitType ||
+      record.family_planning_data?.visit_type ||
+      record.family_planning_data?.fp_visit_type ||
+      null,
+    visit_type:
+      record.familyPlanningVisitType ||
+      record.fpVisitType ||
+      record.familyPlanningData?.visitType ||
+      record.familyPlanningData?.fpVisitType ||
+      record.family_planning_data?.visit_type ||
+      record.family_planning_data?.fp_visit_type ||
+      null,
+    source:
+      record.familyPlanningSource ||
+      record.source ||
+      record.familyPlanningData?.source ||
+      record.family_planning_data?.source ||
+      null,
+    dateRegistered:
+      record.familyPlanningDateRegistered ||
+      record.dateRegistered ||
+      record.date_registered ||
+      record.familyPlanningData?.dateRegistered ||
+      record.family_planning_data?.date_registered ||
+      record.dateOfVisit ||
+      null,
+    date_registered:
+      record.familyPlanningDateRegistered ||
+      record.dateRegistered ||
+      record.date_registered ||
+      record.familyPlanningData?.dateRegistered ||
+      record.family_planning_data?.date_registered ||
+      record.dateOfVisit ||
+      null,
+    dateOfVisit:
+      record.familyPlanningDateOfVisit ||
+      record.familyPlanningData?.dateOfVisit ||
+      record.family_planning_data?.date_of_visit ||
+      record.dateOfVisit ||
+      null,
+    date_of_visit:
+      record.familyPlanningDateOfVisit ||
+      record.familyPlanningData?.dateOfVisit ||
+      record.family_planning_data?.date_of_visit ||
+      record.dateOfVisit ||
+      null,
+    nextAppointmentDate:
+      record.familyPlanningNextAppointmentDate ||
+      record.nextAppointmentDate ||
+      record.familyPlanningData?.nextAppointmentDate ||
+      record.family_planning_data?.next_appointment_date ||
+      null,
+    next_appointment_date:
+      record.familyPlanningNextAppointmentDate ||
+      record.nextAppointmentDate ||
+      record.familyPlanningData?.nextAppointmentDate ||
+      record.family_planning_data?.next_appointment_date ||
+      null,
+    remarks:
+      record.familyPlanningRemarks ||
+      record.familyPlanningData?.remarks ||
+      record.family_planning_data?.remarks ||
+      null,
+    actionTaken:
+      record.familyPlanningActionTaken ||
+      record.actionTaken ||
+      record.action_taken ||
+      record.familyPlanningData?.actionTaken ||
+      record.family_planning_data?.action_taken ||
+      null,
+    action_taken:
+      record.familyPlanningActionTaken ||
+      record.actionTaken ||
+      record.action_taken ||
+      record.familyPlanningData?.actionTaken ||
+      record.family_planning_data?.action_taken ||
+      null,
+    hasClinicalConcern:
+      record.familyPlanningData?.hasClinicalConcern ??
+      record.family_planning_data?.has_clinical_concern ??
+      false,
+    has_clinical_concern:
+      record.familyPlanningData?.hasClinicalConcern ??
+      record.family_planning_data?.has_clinical_concern ??
+      false,
+    concern:
+      record.familyPlanningConcern ||
+      record.familyPlanningData?.concern ||
+      record.family_planning_data?.concern ||
+      null,
+    findings:
+      record.familyPlanningFindings ||
+      record.familyPlanningData?.findings ||
+      record.family_planning_data?.findings ||
+      null,
+    adviceGiven:
+      record.familyPlanningAdviceGiven ||
+      record.familyPlanningData?.adviceGiven ||
+      record.family_planning_data?.advice_given ||
+      null,
+    advice_given:
+      record.familyPlanningAdviceGiven ||
+      record.familyPlanningData?.adviceGiven ||
+      record.family_planning_data?.advice_given ||
+      null,
+  };
   const needsReferral =
     record.needsReferral === true ||
     record.needsReferral === "yes" ||
@@ -324,6 +502,8 @@ function toPayload(record = {}, { partial = false } = {}) {
         ? record.immunizationData || record.immunization_data || {}
         : null,
     monitoring_data: monitoringData,
+    family_planning_data:
+      recordTypeKey === "family planning" ? familyPlanningData : null,
     needs_referral: needsReferral,
     chief_complaint: record.chiefComplaint || null,
     diagnosis: record.diagnosis || null,
@@ -371,6 +551,35 @@ function toPayload(record = {}, { partial = false } = {}) {
     delete payload.category;
     delete payload.maternal_data;
     delete payload.immunization_data;
+    delete payload.family_planning_data;
+  }
+  if (!hasAny(record, [
+    "familyPlanningData",
+    "family_planning_data",
+    "familyPlanningClientType",
+    "clientType",
+    "client_type",
+    "familyPlanningMethodUsed",
+    "methodUsed",
+    "method_used",
+    "previousMethod",
+    "previous_method",
+    "fpVisitType",
+    "fp_visit_type",
+    "familyPlanningVisitType",
+    "source",
+    "dateRegistered",
+    "date_registered",
+    "familyPlanningNextAppointmentDate",
+    "nextAppointmentDate",
+    "familyPlanningRemarks",
+    "actionTaken",
+    "action_taken",
+    "familyPlanningConcern",
+    "familyPlanningFindings",
+    "familyPlanningAdviceGiven",
+  ])) {
+    delete payload.family_planning_data;
   }
   if (!hasAny(record, ["visitType", "visit_type", "isFollowUp", "parentHealthRecordId", "parent_health_record_id", "previousRecordId"])) {
     delete payload.visit_type;
@@ -474,6 +683,11 @@ export async function getHealthRecords(role = "bhc") {
   return listRecords();
 }
 
+export async function getFamilyPlanningHealthRecords(role = "bhc") {
+  void role;
+  return listRecords({ category: "Family Planning", per_page: 500 });
+}
+
 export async function getHealthRecordById(recordId) {
   const response = await apiRequest(`/health-records/${recordId}`);
   return normalizeRecord(unwrapData(response));
@@ -529,6 +743,7 @@ export default {
   saveBhcHealthRecords,
   saveRhuHealthRecords,
   getHealthRecords,
+  getFamilyPlanningHealthRecords,
   getHealthRecordById,
   getHealthRecordsByPatient,
   createBhcHealthRecord,

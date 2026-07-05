@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\BarangayHealthCenter;
+use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\Referral;
 use App\Models\RuralHealthUnit;
@@ -106,6 +107,9 @@ class AkayApiTest extends TestCase
                 'birthdate' => now()->subYears(30)->toDateString(),
                 'civil_status' => 'Married',
                 'occupation' => 'Teacher',
+                'nhts_status' => 'NHTS',
+                'purok_area' => 'Purok 3',
+                'family_serial_number' => 'FSN-001',
                 'philhealth_status' => 'With PhilHealth',
                 'philhealth_number' => '12-345678901-2',
                 'spouse_name' => 'Partner Patient',
@@ -113,6 +117,9 @@ class AkayApiTest extends TestCase
             ])
             ->assertCreated()
             ->assertJsonPath('data.occupation', 'Teacher')
+            ->assertJsonPath('data.nhts_status', 'NHTS')
+            ->assertJsonPath('data.purok_area', 'Purok 3')
+            ->assertJsonPath('data.family_serial_number', 'FSN-001')
             ->assertJsonPath('data.philhealth_status', 'With PhilHealth')
             ->assertJsonPath('data.philhealth_number', '12-345678901-2')
             ->assertJsonPath('data.spouse_name', 'Partner Patient')
@@ -121,6 +128,9 @@ class AkayApiTest extends TestCase
         $this->assertDatabaseHas('patients', [
             'first_name' => 'Married',
             'occupation' => 'Teacher',
+            'nhts_status' => 'NHTS',
+            'purok_area' => 'Purok 3',
+            'family_serial_number' => 'FSN-001',
             'philhealth_status' => 'With PhilHealth',
             'philhealth_number' => '12-345678901-2',
             'spouse_name' => 'Partner Patient',
@@ -170,7 +180,7 @@ class AkayApiTest extends TestCase
         ]);
     }
 
-    public function test_child_patient_creation_clears_adult_profile_fields(): void
+    public function test_non_epi_child_patient_creation_keeps_profile_fields(): void
     {
         $bhc = BarangayHealthCenter::create(['name' => 'Child Profile BHC']);
         $bhw = User::create([
@@ -190,24 +200,75 @@ class AkayApiTest extends TestCase
                 'birthdate' => now()->subYears(5)->toDateString(),
                 'civil_status' => 'Single',
                 'registration_type' => 'child',
-                'occupation' => 'Should Clear',
+                'occupation' => 'Student',
+                'nhts_status' => 'Non-NHTS',
+                'purok_area' => 'Purok 5',
+                'family_serial_number' => 'FSN-CHILD',
                 'philhealth_status' => 'Without PhilHealth',
                 'philhealth_number' => '88-888888888-8',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.occupation', 'Student')
+            ->assertJsonPath('data.nhts_status', 'Non-NHTS')
+            ->assertJsonPath('data.purok_area', 'Purok 5')
+            ->assertJsonPath('data.family_serial_number', 'FSN-CHILD')
+            ->assertJsonPath('data.philhealth_status', 'Without PhilHealth')
+            ->assertJsonPath('data.philhealth_number', null);
+
+        $this->assertDatabaseHas('patients', [
+            'first_name' => 'Child',
+            'occupation' => 'Student',
+            'nhts_status' => 'Non-NHTS',
+            'purok_area' => 'Purok 5',
+            'family_serial_number' => 'FSN-CHILD',
+            'philhealth_status' => 'Without PhilHealth',
+            'philhealth_number' => null,
+        ]);
+    }
+
+    public function test_epi_infant_patient_creation_clears_adult_profile_fields(): void
+    {
+        $bhc = BarangayHealthCenter::create(['name' => 'Infant Profile BHC']);
+        $bhw = User::create([
+            'name' => 'BHW',
+            'email' => 'infant-profile-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHW,
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+
+        $this->actingAs($bhw, 'sanctum')
+            ->postJson('/api/patients', [
+                'first_name' => 'Infant',
+                'last_name' => 'Patient',
+                'sex' => 'Female',
+                'birthdate' => now()->subMonths(6)->toDateString(),
+                'civil_status' => 'Married',
+                'registration_type' => 'child',
+                'occupation' => 'Should Clear',
+                'nhts_status' => 'NHTS',
+                'purok_area' => 'Purok 1',
+                'family_serial_number' => 'FSN-INFANT',
                 'spouse_name' => 'Should Clear',
                 'spouse_occupation' => 'Should Clear',
             ])
             ->assertCreated()
+            ->assertJsonPath('data.civil_status', 'Single')
             ->assertJsonPath('data.occupation', null)
-            ->assertJsonPath('data.philhealth_status', 'Without PhilHealth')
-            ->assertJsonPath('data.philhealth_number', null)
+            ->assertJsonPath('data.nhts_status', null)
+            ->assertJsonPath('data.purok_area', 'Purok 1')
+            ->assertJsonPath('data.family_serial_number', null)
             ->assertJsonPath('data.spouse_name', null)
             ->assertJsonPath('data.spouse_occupation', null);
 
         $this->assertDatabaseHas('patients', [
-            'first_name' => 'Child',
+            'first_name' => 'Infant',
+            'civil_status' => 'Single',
             'occupation' => null,
-            'philhealth_status' => 'Without PhilHealth',
-            'philhealth_number' => null,
+            'nhts_status' => null,
+            'purok_area' => 'Purok 1',
+            'family_serial_number' => null,
             'spouse_name' => null,
             'spouse_occupation' => null,
         ]);
@@ -456,6 +517,63 @@ class AkayApiTest extends TestCase
             ->getJson('/api/patients')
             ->assertOk()
             ->assertJsonPath('data.data.0.id', $patient->id);
+    }
+
+    public function test_family_planning_health_record_saves_json_payload_and_can_be_filtered(): void
+    {
+        $bhc = BarangayHealthCenter::create(['name' => 'Family Planning BHC']);
+        $bhw = User::create([
+            'name' => 'BHW',
+            'email' => 'family-planning-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHW,
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+        $patient = Patient::create([
+            'first_name' => 'Family',
+            'last_name' => 'Planning',
+            'sex' => 'Female',
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+
+        $response = $this->actingAs($bhw, 'sanctum')
+            ->postJson('/api/health-records', [
+                'patient_id' => $patient->id,
+                'category' => 'Family Planning',
+                'chief_complaint' => 'Family planning counseling',
+                'family_planning_data' => [
+                    'clientType' => 'New Acceptor',
+                    'methodUsed' => 'DMPA / Injectable',
+                    'previousMethod' => 'None',
+                    'fpVisitType' => 'Counseling',
+                    'source' => 'Public',
+                    'dateOfVisit' => now()->toDateString(),
+                    'nextAppointmentDate' => now()->addMonth()->toDateString(),
+                    'remarks' => 'Counseling completed.',
+                    'actionTaken' => 'Method counseling done.',
+                ],
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.category', 'Family Planning')
+            ->assertJsonPath('data.family_planning_data.clientType', 'New Acceptor')
+            ->assertJsonPath('data.family_planning_data.method_used', 'DMPA / Injectable')
+            ->assertJsonPath('data.family_planning_data.previous_method', 'None')
+            ->assertJsonPath('data.family_planning_data.fp_visit_type', 'Counseling')
+            ->assertJsonPath('data.family_planning_data.source', 'Public');
+
+        $recordId = $response->json('data.id');
+        $this->assertSame(1, HealthRecord::where('category', 'Family Planning')->count());
+        $this->assertDatabaseHas('health_records', [
+            'id' => $recordId,
+            'category' => 'Family Planning',
+        ]);
+
+        $this->actingAs($bhw, 'sanctum')
+            ->getJson('/api/health-records?category=Family%20Planning')
+            ->assertOk()
+            ->assertJsonPath('data.data.0.id', $recordId)
+            ->assertJsonPath('data.data.0.category', 'Family Planning');
     }
 
     public function test_empty_reports_return_zero_counts(): void

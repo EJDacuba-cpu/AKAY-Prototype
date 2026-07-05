@@ -145,22 +145,25 @@ class PatientController extends Controller
             'philhealth_number',
             'spouse_name',
             'spouse_occupation',
+            'purok_area',
+            'nhts_status',
+            'family_serial_number',
         ] as $field) {
             if (array_key_exists($field, $data) && $data[$field] === '') {
                 $data[$field] = null;
             }
         }
 
-        $effectiveRegistrationType = $data['registration_type'] ?? $patient?->registration_type;
         $effectiveBirthdate = $data['birthdate'] ?? $patient?->birthdate;
         $effectiveCivilStatus = $data['civil_status'] ?? $patient?->civil_status;
         $effectivePhilhealthStatus =
             $data['philhealth_status'] ?? $patient?->philhealth_status;
 
-        $isChild = $effectiveRegistrationType === 'child';
+        $isEpiInfant = false;
 
-        if (! $isChild && $effectiveBirthdate) {
-            $isChild = Carbon::parse($effectiveBirthdate)->age < 18;
+        if ($effectiveBirthdate) {
+            $isEpiInfant = Carbon::parse($effectiveBirthdate)
+                ->diffInMonths(now()) <= 12;
         }
 
         if (
@@ -175,8 +178,11 @@ class PatientController extends Controller
             || array_key_exists('birthdate', $data)
             || array_key_exists('civil_status', $data);
 
-        if ($isChild && $profileDecisionChanged) {
+        if ($isEpiInfant && $profileDecisionChanged) {
+            $data['civil_status'] = 'Single';
             $data['occupation'] = null;
+            $data['nhts_status'] = null;
+            $data['family_serial_number'] = null;
             $data['spouse_name'] = null;
             $data['spouse_occupation'] = null;
 

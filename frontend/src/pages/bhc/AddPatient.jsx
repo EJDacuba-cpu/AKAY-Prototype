@@ -81,12 +81,6 @@ const OCCUPATION_OPTIONS = [
   "Senior Citizen",
 ].map((occupation) => ({ value: occupation, label: occupation }));
 
-const NHTS_OPTIONS = [
-  { value: "NHTS", label: "NHTS" },
-  { value: "Non-NHTS", label: "Non-NHTS" },
-  { value: "Unknown", label: "Unknown" },
-];
-
 // Initial State Definition
 const INITIAL_FORM_STATE = {
   firstName: "",
@@ -102,6 +96,7 @@ const INITIAL_FORM_STATE = {
   contactNumber: "",
   philHealthStatus: "",
   philHealthNumber: "",
+  purokArea: "",
 
   streetAddress: "",
   barangay: "",
@@ -146,7 +141,8 @@ export function PatientRegistrationPage({
   const isChildRegistration =
     hasBirthDate && ageYears !== "" && Number(ageYears) < 18;
   const isEpiTargetAge =
-    hasBirthDate && ageInMonths !== "" && Number(ageInMonths) < 60;
+    hasBirthDate && ageInMonths !== "" && Number(ageInMonths) <= 12;
+  const showGeneralProfileFields = !isEpiTargetAge;
   const currentDate = new Date();
   const todayIso = [
     currentDate.getFullYear(),
@@ -205,12 +201,10 @@ function handleBirthDateChange(valueOrEvent) {
   const nextAgeYears = calculateAge(value);
   const nextAgeMonths = calculateAgeInMonths(value);
 
+  const nextIsEpiTarget =
+    Boolean(value) && nextAgeMonths !== "" && Number(nextAgeMonths) <= 12;
   const nextIsChild =
     Boolean(value) && nextAgeYears !== "" && Number(nextAgeYears) < 18;
-  const nextIsAdult = Boolean(value) && !nextIsChild;
-
-  const nextIsEpiTarget =
-    Boolean(value) && nextAgeMonths !== "" && Number(nextAgeMonths) < 60;
 
   setFieldErrors((prev) => ({
     ...prev,
@@ -222,14 +216,17 @@ function handleBirthDateChange(valueOrEvent) {
     birthDate: value,
     age: nextAgeYears,
 
-    // child/adult field behavior
-    civilStatus: nextIsChild ? "Single" : nextIsAdult ? prev.civilStatus : "",
-
-    occupation: nextIsAdult ? prev.occupation : "",
+    // EPI-age patients use child registration fields instead of general profile fields.
+    civilStatus: nextIsEpiTarget ? "Single" : prev.civilStatus,
+    occupation: nextIsEpiTarget ? "" : prev.occupation,
+    nhtsStatus: nextIsEpiTarget ? "" : prev.nhtsStatus,
+    familySerialNumber: nextIsEpiTarget ? "" : prev.familySerialNumber,
     spouseName:
-      nextIsAdult && prev.civilStatus === "Married" ? prev.spouseName : "",
+      !nextIsEpiTarget && prev.civilStatus === "Married"
+        ? prev.spouseName
+        : "",
     spouseOccupation:
-      nextIsAdult && prev.civilStatus === "Married"
+      !nextIsEpiTarget && prev.civilStatus === "Married"
         ? prev.spouseOccupation
         : "",
 
@@ -238,12 +235,10 @@ function handleBirthDateChange(valueOrEvent) {
     motherBirthDate: nextIsChild ? prev.motherBirthDate : "",
     fatherName: nextIsChild ? prev.fatherName : "",
     fatherBirthDate: nextIsChild ? prev.fatherBirthDate : "",
-    familySerialNumber: nextIsChild ? prev.familySerialNumber : "",
 
     // clear EPI-only fields kapag hindi na EPI age
     birthPlace: nextIsEpiTarget ? prev.birthPlace : "",
     birthTime: nextIsEpiTarget ? prev.birthTime : "",
-    nhtsStatus: nextIsEpiTarget ? prev.nhtsStatus : "",
   }));
 }
   function handleParentBirthDateChange(name, value) {
@@ -265,7 +260,7 @@ function handleBirthDateChange(valueOrEvent) {
       return false;
     }
     if (!form.sex) nextErrors.sex = "Sex is required.";
-    if (hasBirthDate && !isChildRegistration && !form.civilStatus) {
+    if (showGeneralProfileFields && hasBirthDate && !form.civilStatus) {
       nextErrors.civilStatus = "Civil status is required.";
     }
     if (
@@ -320,11 +315,9 @@ function handleBirthDateChange(valueOrEvent) {
             motherBirthDate: form.motherBirthDate || null,
             fatherName: form.fatherName || null,
             fatherBirthDate: form.fatherBirthDate || null,
-            familySerialNumber: form.familySerialNumber || null,
 
             birthPlace: isEpiTargetAge ? form.birthPlace || null : null,
             birthTime: isEpiTargetAge ? form.birthTime || null : null,
-            nhtsStatus: isEpiTargetAge ? form.nhtsStatus || null : null,
           }
         : {
             registrationType: "general",
@@ -334,11 +327,9 @@ function handleBirthDateChange(valueOrEvent) {
             motherBirthDate: null,
             fatherName: null,
             fatherBirthDate: null,
-            familySerialNumber: null,
 
             birthPlace: null,
             birthTime: null,
-            nhtsStatus: null,
           };
           
         const patientData = {
@@ -348,13 +339,19 @@ function handleBirthDateChange(valueOrEvent) {
             form.philHealthStatus === "With PhilHealth"
               ? form.philHealthNumber || null
               : null,
-          civilStatus: isChildRegistration ? "Single" : form.civilStatus,
+          civilStatus: isEpiTargetAge ? "Single" : form.civilStatus,
+          occupation: isEpiTargetAge ? null : form.occupation || null,
+          nhtsStatus: isEpiTargetAge ? null : form.nhtsStatus || null,
+          purokArea: form.purokArea || null,
+          familySerialNumber: isEpiTargetAge
+            ? null
+            : form.familySerialNumber || null,
           spouseName:
-            !isChildRegistration && form.civilStatus === "Married"
+            showGeneralProfileFields && form.civilStatus === "Married"
               ? form.spouseName || null
               : null,
           spouseOccupation:
-            !isChildRegistration && form.civilStatus === "Married"
+            showGeneralProfileFields && form.civilStatus === "Married"
               ? form.spouseOccupation || null
               : null,
           id: Date.now().toString(),
@@ -477,8 +474,21 @@ function handleBirthDateChange(valueOrEvent) {
                 error={fieldErrors.sex}
                 required
               />
+            </div>
+          </section>
 
-              {hasBirthDate && !isChildRegistration && (
+          {showGeneralProfileFields && (
+            <section
+              className="anim-fade-up w-full min-w-0 space-y-4 py-6"
+              style={stagger(2)}
+            >
+              <SectionHeader
+                icon={ClipboardList}
+                title="Socio-Demographic Information"
+                description="Profile and household background details used for reporting."
+              />
+
+              <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <ModernSelect
                   label="Civil Status"
                   name="civilStatus"
@@ -487,34 +497,47 @@ function handleBirthDateChange(valueOrEvent) {
                   options={CIVIL_STATUS_OPTIONS}
                   placeholder="Select civil status"
                   error={fieldErrors.civilStatus}
-                  required
+                  required={hasBirthDate}
                 />
-                
-              )}
 
-            {hasBirthDate && !isChildRegistration && (
-              <div>
+                <div>
+                  <FormInput
+                    label="Occupation"
+                    name="occupation"
+                    value={form.occupation}
+                    onChange={handleChange}
+                    placeholder="Select or type occupation"
+                    list="occupation-options"
+                    error={fieldErrors.occupation}
+                  />
+
+                  <datalist id="occupation-options">
+                    {OCCUPATION_OPTIONS.map((occupation) => (
+                      <option key={occupation.value} value={occupation.value} />
+                    ))}
+                  </datalist>
+                </div>
+
+                <NhtsRadioGroup
+                  label="NHTS Status"
+                  name="nhtsStatus"
+                  value={form.nhtsStatus}
+                  onChange={handleSelectChange}
+                  error={fieldErrors.nhtsStatus}
+                />
+
                 <FormInput
-                  label="Occupation"
-                  name="occupation"
-                  value={form.occupation}
+                  label="Family Serial Number"
+                  name="familySerialNumber"
+                  value={form.familySerialNumber}
                   onChange={handleChange}
-                  placeholder="Select or type occupation"
-                  list="occupation-options"
-                  error={fieldErrors.occupation}
+                  placeholder="Optional household serial"
                 />
-
-                <datalist id="occupation-options">
-                  {OCCUPATION_OPTIONS.map((occupation) => (
-                    <option key={occupation.value} value={occupation.value} />
-                  ))}
-                </datalist>
               </div>
-            )}
-                        </div>
-          </section>
+            </section>
+          )}
 
-          {hasBirthDate && !isChildRegistration && form.civilStatus === "Married" && (
+          {showGeneralProfileFields && form.civilStatus === "Married" && (
             <section
               className="anim-fade-up w-full min-w-0 space-y-4 py-6"
               style={stagger(2)}
@@ -593,50 +616,53 @@ function handleBirthDateChange(valueOrEvent) {
               description="Current residential address details."
             />
 
-            <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <FormInput
                 label="Street Address"
                 name="streetAddress"
                 value={form.streetAddress}
                 onChange={handleChange}
-                placeholder="House No., Purok, Street"
+                placeholder="House No., Street, Sitio"
                 error={fieldErrors.streetAddress}
                 required
               />
 
-              <div className="min-w-0 xl:col-span-2">
-                <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-                <div>
-                  <FormInput
-                    label="Barangay"
-                    name="barangay"
-                    value={form.barangay}
-                    onChange={handleChange}
-                    placeholder="Select or type barangay"
-                    list="barangay-options"
-                    error={fieldErrors.barangay}
-                    required
-                  />
+              <FormInput
+                label="Purok / Area"
+                name="purokArea"
+                value={form.purokArea}
+                onChange={handleChange}
+                placeholder="e.g. Purok 3"
+              />
 
-                  <datalist id="barangay-options">
-                    {BARANGAY_OPTIONS.map((barangay) => (
-                      <option key={barangay.value} value={barangay.value} />
-                    ))}
-                  </datalist> 
-                </div>
+              <div>
+                <FormInput
+                  label="Barangay"
+                  name="barangay"
+                  value={form.barangay}
+                  onChange={handleChange}
+                  placeholder="Select or type barangay"
+                  list="barangay-options"
+                  error={fieldErrors.barangay}
+                  required
+                />
 
-                  <FormInput
-                    label="Municipality"
-                    name="municipality"
-                    value={form.municipality}
-                    onChange={handleChange}
-                    placeholder="Enter municipality"
-                    error={fieldErrors.municipality}
-                    required
-                  />
-
-                </div>
+                <datalist id="barangay-options">
+                  {BARANGAY_OPTIONS.map((barangay) => (
+                    <option key={barangay.value} value={barangay.value} />
+                  ))}
+                </datalist>
               </div>
+
+              <FormInput
+                label="Municipality / City"
+                name="municipality"
+                value={form.municipality}
+                onChange={handleChange}
+                placeholder="Enter municipality"
+                error={fieldErrors.municipality}
+                required
+              />
             </div>
           </section>
 
@@ -667,13 +693,6 @@ function handleBirthDateChange(valueOrEvent) {
                   name="fatherName"
                   value={form.fatherName}
                   onChange={handleChange}
-                />
-                <FormInput
-                  label="Family Number / Serial Number"
-                  name="familySerialNumber"
-                  value={form.familySerialNumber}
-                  onChange={handleChange}
-                  placeholder="Optional household serial"
                 />
 
                 <DatePickerField
@@ -733,14 +752,6 @@ function handleBirthDateChange(valueOrEvent) {
                     }}
                   />
 
-                  <ModernSelect
-                    label="NHTS Status"
-                    name="nhtsStatus"
-                    value={form.nhtsStatus}
-                    onChange={handleSelectChange}
-                    options={NHTS_OPTIONS}
-                    placeholder="Select status"
-                  />
                 </div>
               </section>
             )}
@@ -870,6 +881,62 @@ function PhilHealthRadioGroup({
   const options = [
     { value: "With PhilHealth", label: "With PhilHealth" },
     { value: "Without PhilHealth", label: "Without PhilHealth" },
+  ];
+
+  return (
+    <div className="min-w-0" data-field={name}>
+      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+        {label}
+        {required && <span className="text-red-400"> *</span>}
+      </label>
+
+      <div className="flex min-h-10 flex-wrap items-center gap-x-6 gap-y-2">
+        {options.map((option) => (
+          <label
+            key={option.value}
+            className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#475569]"
+          >
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={value === option.value}
+              onChange={() => onChange(name, option.value)}
+              className="h-4 w-4 accent-[#B91C1C]"
+            />
+            <span
+              className={
+                value === option.value
+                  ? "font-semibold text-[#B91C1C]"
+                  : "text-[#475569]"
+              }
+            >
+              {option.label}
+            </span>
+          </label>
+        ))}
+      </div>
+
+      {error && (
+        <p className="mt-1 text-[11px] font-medium leading-relaxed text-[#B91C1C]">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function NhtsRadioGroup({
+  label,
+  name,
+  value,
+  onChange,
+  required,
+  error,
+}) {
+  const options = [
+    { value: "NHTS", label: "NHTS" },
+    { value: "Non-NHTS", label: "Non-NHTS" },
   ];
 
   return (

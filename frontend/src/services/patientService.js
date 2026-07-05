@@ -69,6 +69,8 @@ export function normalizePatient(patient = {}) {
     address: patient.street_address || patient.streetAddress || patient.address || "",
     barangay: patient.barangay || "",
     municipality: patient.municipality || "",
+    purokArea: patient.purok_area || patient.purokArea || "",
+    purok_area: patient.purok_area || patient.purokArea || "",
     civilStatus: patient.civil_status || patient.civilStatus || "",
     occupation: patient.occupation || "",
     philHealthStatus:
@@ -143,6 +145,7 @@ function toPayload(patient = {}) {
     street_address: patient.streetAddress || patient.address || null,
     barangay: patient.barangay || patient.patientBarangay || null,
     municipality: patient.municipality || null,
+    purok_area: patient.purokArea || patient.purok_area || null,
     civil_status: patient.civilStatus || null,
     occupation: patient.occupation || null,
     philhealth_status: philHealthStatus,

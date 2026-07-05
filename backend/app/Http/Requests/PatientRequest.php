@@ -20,6 +20,9 @@ class PatientRequest extends FormRequest
             'philHealthNumber' => 'philhealth_number',
             'spouseName' => 'spouse_name',
             'spouseOccupation' => 'spouse_occupation',
+            'husbandName' => 'spouse_name',
+            'husbandOccupation' => 'spouse_occupation',
+            'purokArea' => 'purok_area',
         ];
 
         $mapped = [];
@@ -49,6 +52,7 @@ class PatientRequest extends FormRequest
             'street_address' => ['nullable', 'string', 'max:255'],
             'barangay' => ['nullable', 'string', 'max:255'],
             'municipality' => ['nullable', 'string', 'max:255'],
+            'purok_area' => ['nullable', 'string', 'max:255'],
             'civil_status' => ['nullable', 'string', 'max:100'],
             'occupation' => ['nullable', 'string', 'max:255'],
             'philhealth_status' => ['nullable', 'string', 'max:255'],

@@ -22,6 +22,7 @@ class HealthRecord extends Model
         'maternal_data',
         'immunization_data',
         'monitoring_data',
+        'family_planning_data',
         'needs_referral',
         'chief_complaint',
         'diagnosis',
@@ -36,6 +37,7 @@ class HealthRecord extends Model
         'maternal_data' => 'array',
         'immunization_data' => 'array',
         'monitoring_data' => 'array',
+        'family_planning_data' => 'array',
         'needs_referral' => 'boolean',
     ];
 

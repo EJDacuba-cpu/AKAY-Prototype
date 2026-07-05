@@ -6,6 +6,7 @@ export const queryKeys = {
     patientId,
   ],
   healthRecords: (role = "bhc") => ["health-records", role],
+  familyPlanningRecords: (role = "bhc") => ["family-planning-records", role],
   healthRecordDetails: (role = "bhc", recordId) => [
     "health-record-details",
     role,

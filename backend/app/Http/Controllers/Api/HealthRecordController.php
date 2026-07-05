@@ -58,6 +58,7 @@ class HealthRecordController extends Controller
         $this->authorizePatient($request, $patient);
         $this->normalizeVisitTypeData($request, $data, true);
         $this->normalizeMaternalSupplements($request, $data);
+        $this->normalizeFamilyPlanningData($data);
 
         $data['created_by'] = $request->user()->id;
         $data['barangay_health_center_id'] = $patient->barangay_health_center_id;
@@ -106,6 +107,7 @@ class HealthRecordController extends Controller
         $data = $request->validated();
         $this->normalizeVisitTypeData($request, $data);
         $this->normalizeMaternalSupplements($request, $data);
+        $this->normalizeFamilyPlanningData($data, $healthRecord);
         $healthRecord->update($data);
         $followUpTasks->syncRecord($healthRecord->fresh(), $request->user());
         $auditLogger->log($request, 'updated', 'health_records', "Updated health record {$healthRecord->id}.");
@@ -205,6 +207,58 @@ class HealthRecordController extends Controller
             ],
             $supplements
         ));
+    }
+
+    private function normalizeFamilyPlanningData(array &$data, ?HealthRecord $record = null): void
+    {
+        $category = $data['category'] ?? $record?->category;
+        $categoryKey = strtolower(trim((string) $category));
+
+        if ($categoryKey !== 'family planning') {
+            if (array_key_exists('category', $data) || $record === null) {
+                $data['family_planning_data'] = null;
+            }
+            return;
+        }
+
+        if (! array_key_exists('family_planning_data', $data)) {
+            return;
+        }
+
+        if (! is_array($data['family_planning_data'])) {
+            $data['family_planning_data'] = [];
+            return;
+        }
+
+        $familyPlanning = $data['family_planning_data'];
+        $data['family_planning_data'] = [
+            'clientType' => $familyPlanning['clientType'] ?? $familyPlanning['client_type'] ?? null,
+            'client_type' => $familyPlanning['client_type'] ?? $familyPlanning['clientType'] ?? null,
+            'methodUsed' => $familyPlanning['methodUsed'] ?? $familyPlanning['method_used'] ?? null,
+            'method_used' => $familyPlanning['method_used'] ?? $familyPlanning['methodUsed'] ?? null,
+            'previousMethod' => $familyPlanning['previousMethod'] ?? $familyPlanning['previous_method'] ?? null,
+            'previous_method' => $familyPlanning['previous_method'] ?? $familyPlanning['previousMethod'] ?? null,
+            'fpVisitType' => $familyPlanning['fpVisitType'] ?? $familyPlanning['fp_visit_type'] ?? $familyPlanning['visitType'] ?? $familyPlanning['visit_type'] ?? null,
+            'fp_visit_type' => $familyPlanning['fp_visit_type'] ?? $familyPlanning['fpVisitType'] ?? $familyPlanning['visitType'] ?? $familyPlanning['visit_type'] ?? null,
+            'visitType' => $familyPlanning['visitType'] ?? $familyPlanning['visit_type'] ?? $familyPlanning['fpVisitType'] ?? $familyPlanning['fp_visit_type'] ?? null,
+            'visit_type' => $familyPlanning['visit_type'] ?? $familyPlanning['visitType'] ?? $familyPlanning['fpVisitType'] ?? $familyPlanning['fp_visit_type'] ?? null,
+            'source' => $familyPlanning['source'] ?? null,
+            'dateRegistered' => $familyPlanning['dateRegistered'] ?? $familyPlanning['date_registered'] ?? null,
+            'date_registered' => $familyPlanning['date_registered'] ?? $familyPlanning['dateRegistered'] ?? null,
+            'dateOfVisit' => $familyPlanning['dateOfVisit'] ?? $familyPlanning['date_of_visit'] ?? null,
+            'date_of_visit' => $familyPlanning['date_of_visit'] ?? $familyPlanning['dateOfVisit'] ?? null,
+            'nextAppointmentDate' => $familyPlanning['nextAppointmentDate'] ?? $familyPlanning['next_appointment_date'] ?? null,
+            'next_appointment_date' => $familyPlanning['next_appointment_date'] ?? $familyPlanning['nextAppointmentDate'] ?? null,
+            'remarks' => $familyPlanning['remarks'] ?? $familyPlanning['notes'] ?? null,
+            'actionTaken' => $familyPlanning['actionTaken'] ?? $familyPlanning['action_taken'] ?? null,
+            'action_taken' => $familyPlanning['action_taken'] ?? $familyPlanning['actionTaken'] ?? null,
+            'hasClinicalConcern' => $familyPlanning['hasClinicalConcern'] ?? $familyPlanning['has_clinical_concern'] ?? false,
+            'has_clinical_concern' => $familyPlanning['has_clinical_concern'] ?? $familyPlanning['hasClinicalConcern'] ?? false,
+            'concern' => $familyPlanning['concern'] ?? null,
+            'findings' => $familyPlanning['findings'] ?? null,
+            'adviceGiven' => $familyPlanning['adviceGiven'] ?? $familyPlanning['advice_given'] ?? null,
+            'advice_given' => $familyPlanning['advice_given'] ?? $familyPlanning['adviceGiven'] ?? null,
+        ];
     }
 
     private function healthRecordStatus(HealthRecord $record): string
