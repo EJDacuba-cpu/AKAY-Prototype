@@ -7,16 +7,11 @@ import { ModuleToolbar, SoftLoadingArea } from "../../components/common";
 import HealthRecordsTable from "../../components/features/records/HealthRecordsTable";
 import { getHealthRecords } from "../../services/healthRecordService";
 import { getReferrals } from "../../services/referrals";
-import {
-  formatPatientName,
-  normalizeHealthRecordStatus,
-} from "../../utils/formatters";
+import { formatPatientName, formatUserName } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 
 const DEFAULT_FILTERS = {
   search: "",
-  status: "",
-  referral: "",
   classification: "",
   dateRange: "",
   date: "",
@@ -63,13 +58,6 @@ function sameId(a, b) {
   return String(a || "") === String(b || "");
 }
 
-function normalizeOfficialStatus(status) {
-  const normalized = normalizeHealthRecordStatus(status);
-  if (normalized === "Follow-up Required") return "Follow-up Required";
-  if (normalized === "Completed") return "Completed";
-  return "Routine Monitoring";
-}
-
 function normalizeVisitType(record = {}) {
   const value = String(record.visitType || record.visit_type || "")
     .trim()
@@ -98,15 +86,6 @@ function formatVisitDateFilterLabel(value, customDate) {
     this_week: "Visit Date: This Week",
     this_month: "Visit Date: This Month",
     custom_visit_date: customDate ? `Visit Date: ${customDate}` : "Custom Visit Date",
-  };
-
-  return labels[value] || value;
-}
-
-function formatReferralFilterLabel(value) {
-  const labels = {
-    with_referral: "With referral",
-    without_referral: "Without referral",
   };
 
   return labels[value] || value;
@@ -198,8 +177,22 @@ export default function HealthRecords() {
             (record.vaccineType
               ? `${record.vaccineType} - ${record.doseNumber || ""}`
               : "General Consultation"),
-          status: normalizeOfficialStatus(
-            record.followUpStatus || record.status || "Completed",
+          nextFollowUpDate:
+            record.followUpDate ||
+            record.follow_up_date ||
+            record.monitoringData?.followUpDate ||
+            record.monitoring_data?.followUpDate ||
+            record.monitoring_data?.follow_up_date ||
+            "",
+          practitioner: formatUserName(
+            record.attendingStaff ||
+              record.attending_staff ||
+              record.recordedBy ||
+              record.recorded_by ||
+              record.createdBy ||
+              record.created_by ||
+              record.practitioner,
+            "Not recorded",
           ),
 	          date:
 	            record.dateOfVisit ||
@@ -254,11 +247,6 @@ export default function HealthRecords() {
       record.concern?.toLowerCase().includes(searchLower);
     const visitDate = getDateValue(record.date);
     const today = getTodayValue();
-    const matchesStatus = !filters.status || record.status === filters.status;
-    const matchesReferral =
-      !filters.referral ||
-      (filters.referral === "with_referral" && record.hasLinkedReferral) ||
-      (filters.referral === "without_referral" && !record.hasLinkedReferral);
     const matchesClassification =
       !filters.classification ||
       record.classification === filters.classification;
@@ -273,8 +261,6 @@ export default function HealthRecords() {
 
     return (
       matchesSearch &&
-      matchesStatus &&
-      matchesReferral &&
       matchesClassification &&
       matchesVisitDate
     );
@@ -285,11 +271,6 @@ export default function HealthRecords() {
       key: "dateRange",
       label: formatVisitDateFilterLabel(filters.dateRange, filters.date),
     },
-    filters.referral && {
-      key: "referral",
-      label: formatReferralFilterLabel(filters.referral),
-    },
-    filters.status && { key: "status", label: filters.status },
     filters.classification && {
       key: "classification",
       label: filters.classification,
@@ -315,29 +296,6 @@ export default function HealthRecords() {
         { value: "this_week", label: "This week" },
         { value: "this_month", label: "This month" },
         { value: "custom_visit_date", label: "Custom date" },
-      ],
-    },
-    {
-      key: "referral",
-      label: "Referral",
-      value: filters.referral,
-      type: "referral",
-      options: [
-        { value: "", label: "All records" },
-        { value: "with_referral", label: "With referral" },
-        { value: "without_referral", label: "Without referral" },
-      ],
-    },
-    {
-      key: "status",
-      label: "Status",
-      value: filters.status,
-      type: "pills",
-      options: [
-        { value: "", label: "All Status" },
-        { value: "Routine Monitoring", label: "Routine Monitoring" },
-        { value: "Follow-up Required", label: "Follow-up Required" },
-        { value: "Completed", label: "Completed" },
       ],
     },
     {

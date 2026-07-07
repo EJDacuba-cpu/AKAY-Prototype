@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Calendar,
@@ -201,13 +201,20 @@ function useFloatingPopover({
     if (!open) return undefined;
 
     function updatePosition() {
-      setPosition(
-        getPopoverPosition(
-          triggerRef.current,
-          minWidth,
-          maxWidth,
-          estimatedHeight,
-        ),
+      const nextPosition = getPopoverPosition(
+        triggerRef.current,
+        minWidth,
+        maxWidth,
+        estimatedHeight,
+      );
+
+      setPosition((prev) =>
+        prev.top === nextPosition.top &&
+        prev.left === nextPosition.left &&
+        prev.width === nextPosition.width &&
+        prev.maxHeight === nextPosition.maxHeight
+          ? prev
+          : nextPosition,
       );
     }
 
@@ -319,6 +326,7 @@ export function DatePickerField({
   );
   const wrapperRef = useRef(null);
   const triggerRef = useRef(null);
+  const closePopover = useCallback(() => setOpen(false), []);
   const calendarDays = useMemo(() => getCalendarDays(monthDate), [monthDate]);
   const activeDate = isBirthdateMode ? draftDate || selectedDate : selectedDate;
   const yearOptions = useMemo(
@@ -329,7 +337,7 @@ export function DatePickerField({
   const { popoverRef, position } = useFloatingPopover({
     open,
     triggerRef,
-    onClose: () => setOpen(false),
+    onClose: closePopover,
     minWidth: 300,
     maxWidth: 328,
     estimatedHeight: 300,
@@ -765,10 +773,11 @@ export function TimePickerField({
   const [draft, setDraft] = useState(parseTimeValue(value));
   const wrapperRef = useRef(null);
   const triggerRef = useRef(null);
+  const closePopover = useCallback(() => setOpen(false), []);
   const { popoverRef, position } = useFloatingPopover({
     open,
     triggerRef,
-    onClose: () => setOpen(false),
+    onClose: closePopover,
     minWidth: 260,
     maxWidth: 280,
     estimatedHeight: 210,

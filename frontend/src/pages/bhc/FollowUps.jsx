@@ -161,10 +161,10 @@ export default function FollowUps() {
       options: [
         "All Active",
         "Due Today",
-        "Upcoming",
-        "No-Show",
-        "Rescheduled",
-        "Fulfilled",
+        "Pending",
+        "No Show",
+        "Completed",
+        "Cancelled",
       ],
     },
   ];
@@ -278,7 +278,7 @@ export default function FollowUps() {
           title="Follow-up Tracking"
           count={filteredTasks.length}
           subtitle="Scheduled patient follow-ups and return visit tracking."
-          minWidth="min-w-[1180px]"
+          minWidth="min-w-[900px]"
           refreshing={isFetching && tasks.length > 0}
           footer={
             <TablePagination
@@ -291,12 +291,9 @@ export default function FollowUps() {
           <thead>
             <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
               <th className="whitespace-nowrap px-4 py-3">Patient</th>
-              <th className="whitespace-nowrap px-4 py-3">Original Record</th>
-              <th className="whitespace-nowrap px-4 py-3">Chief Complaint</th>
-              <th className="whitespace-nowrap px-4 py-3">Classification</th>
-              <th className="whitespace-nowrap px-4 py-3">Follow-up Date</th>
-              <th className="whitespace-nowrap px-4 py-3">Follow-up State</th>
-              <th className="whitespace-nowrap px-4 py-3">Contact</th>
+              <th className="whitespace-nowrap px-4 py-3">Record Type</th>
+              <th className="whitespace-nowrap px-4 py-3">Next Follow-up Date</th>
+              <th className="whitespace-nowrap px-4 py-3">Status</th>
               <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
@@ -313,7 +310,7 @@ export default function FollowUps() {
               ))
             ) : (
               <DataTableEmptyState
-                colSpan={8}
+                colSpan={5}
                 icon={<CalendarClock size={20} className="text-[#94A3B8]" />}
                 title="No follow-ups yet."
                 description="Follow-ups appear here when a record needs a return visit."
@@ -345,21 +342,6 @@ function FollowUpRow({ task, onRecordVisit, onReschedule }) {
         </div>
       </td>
 
-      <td className="whitespace-nowrap px-4 py-3.5">
-        <span
-          className="inline-flex cursor-default rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-1.5 font-mono text-[11px] font-semibold text-[#475569]"
-          aria-label={`Original record number ${task.healthRecordId}`}
-        >
-          #{task.healthRecordId}
-        </span>
-      </td>
-
-      <td className="max-w-[240px] px-4 py-3.5 text-[13px] font-medium text-[#6B7280]">
-        <span className="line-clamp-2">
-          {formatDisplayValue(task.healthRecord?.chiefComplaint, "Not recorded")}
-        </span>
-      </td>
-
       <td className="px-4 py-3.5">
         <ClassificationBadge classification={getTaskClassification(task)} />
       </td>
@@ -370,10 +352,6 @@ function FollowUpRow({ task, onRecordVisit, onReschedule }) {
 
       <td className="whitespace-nowrap px-4 py-3.5">
         <StateBadge state={state} />
-      </td>
-
-      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#6B7280]">
-        {formatDisplayValue(task.contact, "Not recorded")}
       </td>
 
       <td className="px-4 py-3.5 text-right">
@@ -394,17 +372,17 @@ function buildTaskActions(task, handlers) {
   if (task.effectiveState === "fulfilled") {
     if (task.fulfilledByHealthRecordId) {
       actions.push({
-        label: "View Record",
+        label: "View Health Record",
         to: `/bhc/health-records/${task.fulfilledByHealthRecordId}`,
       });
     }
-    actions.push({ label: "View Original", to: originalRecordLink });
+    actions.push({ label: "View Health Record", to: originalRecordLink });
     return actions;
   }
 
   if (["due_today", "no_show"].includes(task.effectiveState)) {
     actions.push({
-      label: "Record Visit",
+      label: "Create Health Record",
       onClick: handlers.onRecordVisit,
     });
     actions.push({
@@ -418,17 +396,18 @@ function buildTaskActions(task, handlers) {
     });
   }
 
-  actions.push({ label: "View Original", to: originalRecordLink });
+  actions.push({ label: "View Health Record", to: originalRecordLink });
   return actions;
 }
 
 function StateBadge({ state }) {
   const config = {
     due_today: ["Due Today", "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]"],
-    upcoming: ["Upcoming", "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"],
-    no_show: ["No-Show", "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]"],
-    rescheduled: ["Rescheduled", "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]"],
-    fulfilled: ["Fulfilled", "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"],
+    upcoming: ["Pending", "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"],
+    no_show: ["No Show", "border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]"],
+    rescheduled: ["Pending", "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]"],
+    fulfilled: ["Completed", "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"],
+    cancelled: ["Cancelled", "border-[#CBD5E1] bg-[#F8FAFC] text-[#64748B]"],
   }[state] || ["Pending", "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"];
 
   return (
@@ -608,23 +587,15 @@ function FollowUpDetailsModal({
         <div className="grid gap-3 px-5 py-5 sm:grid-cols-2">
           <DetailItem label="Patient" value={task.patientName} strong />
           <DetailItem
-            label="Original Record"
-            value={task.healthRecordId ? `#${task.healthRecordId}` : ""}
-          />
-          <DetailItem
-            label="Chief Complaint"
-            value={task.healthRecord?.chiefComplaint}
-          />
-          <DetailItem
             label="Classification"
             value={getTaskClassification(task)}
           />
           <DetailItem
-            label="Scheduled Follow-up Date"
+            label="Next Follow-up Date"
             value={formatDate(task.dueDate)}
           />
           <DetailItem
-            label="Follow-up State"
+            label="Status"
             value={formatStateLabel(task.effectiveState)}
           />
           <DetailItem label="Contact Number" value={task.contact} />
@@ -636,7 +607,7 @@ function FollowUpDetailsModal({
             onClick={() => onViewOriginal(task)}
             className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
           >
-            View Original
+            View Health Record
           </button>
           {task.effectiveState !== "fulfilled" && (
             <>
@@ -654,7 +625,7 @@ function FollowUpDetailsModal({
                   onClick={() => onRecordVisit(task)}
                   className="rounded-xl bg-[#B91C1C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#991B1B]"
                 >
-                  Record Visit
+                  Create Health Record
                 </button>
               )}
             </>
@@ -685,6 +656,7 @@ function DetailItem({ label, value, strong = false }) {
 function getEffectiveState(task) {
   if (task.state === "fulfilled") return "fulfilled";
   if (task.state === "no_show") return "no_show";
+  if (task.state === "cancelled" || task.state === "canceled") return "cancelled";
 
   const dueDate = normalizeDate(task.dueDate);
   const today = normalizeDate(new Date());
@@ -699,10 +671,10 @@ function getEffectiveState(task) {
 function normalizeFilterState(value) {
   const map = {
     "Due Today": "due_today",
-    Upcoming: "upcoming",
-    "No-Show": "no_show",
-    Rescheduled: "rescheduled",
-    Fulfilled: "fulfilled",
+    Pending: "upcoming",
+    "No Show": "no_show",
+    Completed: "fulfilled",
+    Cancelled: "cancelled",
   };
 
   return map[value] || "all_active";
@@ -711,10 +683,11 @@ function normalizeFilterState(value) {
 function formatStateLabel(state) {
   const map = {
     due_today: "Due Today",
-    upcoming: "Upcoming",
-    no_show: "No-Show",
-    rescheduled: "Rescheduled",
-    fulfilled: "Fulfilled",
+    upcoming: "Pending",
+    no_show: "No Show",
+    rescheduled: "Pending",
+    fulfilled: "Completed",
+    cancelled: "Cancelled",
   };
 
   return map[state] || "Pending";

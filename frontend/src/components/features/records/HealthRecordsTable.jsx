@@ -1,7 +1,5 @@
 import ActionMenu from "../../common/tables/ActionMenu";
 import DataTableEmptyState from "../../common/tables/DataTableEmptyState";
-import ReferralIndicatorBadge from "../../common/badges/ReferralIndicatorBadge";
-import StatusBadge from "../../common/badges/StatusBadge";
 import TablePagination from "../../common/pagination/TablePagination";
 import { FileText } from "lucide-react";
 
@@ -115,6 +113,11 @@ export default function HealthRecordsTable({
                   "Not recorded",
                 );
                 const date = formatDate(record.date, "Not recorded");
+                const practitioner = formatDisplayValue(
+                  record.practitioner || record.provider || record.attendingStaff,
+                  "Not recorded",
+                );
+                const nextFollowUp = formatNextFollowUp(record);
                 const referralTarget =
                   record.linkedReferralTrackingId || record.linkedReferralId;
 
@@ -123,7 +126,7 @@ export default function HealthRecordsTable({
                     key={record.id}
                     className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm"
                   >
-                    <div className="flex items-start justify-between gap-3 border-b border-[#F1F5F9] pb-3">
+                    <div className="border-b border-[#F1F5F9] pb-3">
                       <div className="min-w-0">
                         <span className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-1 font-mono text-[11px] font-semibold text-[#B91C1C]">
                           {recordId}
@@ -135,26 +138,14 @@ export default function HealthRecordsTable({
                           {patientId}
                         </p>
                       </div>
-                      <StatusBadge status={record.status} />
                     </div>
 
                     <div className="mt-3 grid gap-2 text-[12px]">
-                      <MobileRecordField
-                        label="Classification"
-                        value={classification}
-                      />
+                      <MobileRecordField label="Record Type" value={classification} />
                       <MobileRecordField label="Chief Complaint" value={concern} />
                       <MobileRecordField label="Date" value={date} />
-                      <div className="flex min-w-0 items-center justify-between gap-3">
-                        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
-                          Referral
-                        </span>
-                        <ReferralIndicatorBadge
-                          status={record.referralStatus}
-                          hasReferral={record.hasLinkedReferral}
-                          compact
-                        />
-                      </div>
+                      <MobileRecordField label="Practitioner" value={practitioner} />
+                      <MobileRecordField label="Next Follow-up" value={nextFollowUp} />
                     </div>
 
                     <div className="mt-4 flex justify-end border-t border-[#F1F5F9] pt-3">
@@ -203,7 +194,7 @@ export default function HealthRecordsTable({
           >
             <table
               className="
-                w-full min-w-[1120px]
+                w-full min-w-[980px]
                 text-left
                 border-separate
                 border-spacing-0
@@ -221,17 +212,11 @@ export default function HealthRecordsTable({
                     text-[#9CA3AF]
                   "
                 >
-                  <th className="px-4 py-3 whitespace-nowrap">Record</th>
-                  <th className="px-4 py-3 whitespace-nowrap">Patient</th>
-                  <th className="px-4 py-3 whitespace-nowrap">
-                    Classification
-                  </th>
-                  <th className="px-4 py-3 whitespace-nowrap">
-                    Chief Complaint
-                  </th>
-                  <th className="px-4 py-3 whitespace-nowrap">Status</th>
-                  <th className="px-4 py-3 whitespace-nowrap">Referral</th>
                   <th className="px-4 py-3 whitespace-nowrap">Date</th>
+                  <th className="px-4 py-3 whitespace-nowrap">Patient</th>
+                  <th className="px-4 py-3 whitespace-nowrap">Record Type</th>
+                  <th className="px-4 py-3 whitespace-nowrap">Practitioner</th>
+                  <th className="px-4 py-3 whitespace-nowrap">Next Follow-up</th>
                   <th className="px-4 py-3 text-right whitespace-nowrap">
                     Actions
                   </th>
@@ -241,7 +226,7 @@ export default function HealthRecordsTable({
               <tbody className="divide-y divide-[#F8FAFC]">
                 {currentRecords.length === 0 ? (
                   <DataTableEmptyState
-                    colSpan={8}
+                    colSpan={6}
                     icon={<FileText size={20} className="text-[#94A3B8]" />}
                     title="No Matching Records"
                     description="Try adjusting your search or filter criteria."
@@ -261,11 +246,14 @@ export default function HealthRecordsTable({
                       record.classification,
                       "General Consultation",
                     );
-                    const concern = formatDisplayValue(
-                      record.concern,
+                    const date = formatDate(record.date, "Not recorded");
+                    const practitioner = formatDisplayValue(
+                      record.practitioner ||
+                        record.provider ||
+                        record.attendingStaff,
                       "Not recorded",
                     );
-                    const date = formatDate(record.date, "Not recorded");
+                    const nextFollowUp = formatNextFollowUp(record);
                     const referralTarget =
                       record.linkedReferralTrackingId || record.linkedReferralId;
 
@@ -278,24 +266,15 @@ export default function HealthRecordsTable({
                         hover:bg-[#FAFBFD]
                       "
                     >
-                      {/* Record ID */}
                       <td className="whitespace-nowrap px-4 py-3.5">
-                        <span
-                          className="
-                            rounded-lg
-                            border border-[#E5E7EB]
-                            bg-[#F8FAFC]
-                            px-2.5 py-1.5
-                            font-mono text-[11px]
-                            font-semibold
-                            text-[#B91C1C]
-                            transition-colors duration-200
-                            group-hover:border-[#FECACA]
-                            group-hover:bg-[#FEF2F2]
-                          "
-                        >
-                          {recordId}
-                        </span>
+                        <div>
+                          <p className="text-[13px] font-semibold text-[#475569]">
+                            {date}
+                          </p>
+                          <p className="mt-0.5 font-mono text-[10px] font-semibold text-[#B91C1C]">
+                            #{recordId}
+                          </p>
+                        </div>
                       </td>
 
                       {/* Patient Details */}
@@ -322,33 +301,16 @@ export default function HealthRecordsTable({
                         </div>
                       </td>
 
-                      {/* Classification */}
                       <td className="px-4 py-3.5 text-[13px] text-[#6B7280] whitespace-nowrap">
                         {classification}
                       </td>
 
-                      {/* Chief Complaint / Concern */}
-                      <td className="px-4 py-3.5 text-[13px] text-[#6B7280] whitespace-nowrap">
-                        {concern}
+                      <td className="max-w-[180px] truncate px-4 py-3.5 text-[13px] text-[#6B7280] whitespace-nowrap">
+                        {practitioner}
                       </td>
 
-                      {/* Status Badge */}
-                      <td className="whitespace-nowrap px-4 py-3.5">
-                        <StatusBadge status={record.status} />
-                      </td>
-
-                      {/* Referral Link Info */}
-                      <td className="whitespace-nowrap px-4 py-3.5">
-                        <ReferralIndicatorBadge
-                          status={record.referralStatus}
-                          hasReferral={record.hasLinkedReferral}
-                          compact
-                        />
-                      </td>
-
-                      {/* Date of Visit */}
-                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#9CA3AF]">
-                        {date}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#64748B]">
+                        {nextFollowUp}
                       </td>
 
                       {/* Actions ActionMenu Button */}
@@ -399,4 +361,17 @@ function MobileRecordField({ label, value }) {
       </span>
     </div>
   );
+}
+
+function formatNextFollowUp(record = {}) {
+  const value =
+    record.nextFollowUpDate ||
+    record.followUpDate ||
+    record.follow_up_date ||
+    record.monitoringData?.followUpDate ||
+    record.monitoring_data?.followUpDate ||
+    record.monitoring_data?.follow_up_date ||
+    "";
+
+  return value ? `Next: ${formatDate(value, value)}` : "—";
 }

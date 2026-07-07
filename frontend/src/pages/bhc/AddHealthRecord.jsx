@@ -27,9 +27,11 @@ import healthRecordService, {
   getHealthRecordById,
 } from "../../services/healthRecordService";
 import { getPatientDetailsListByRole } from "../../services/patientService";
+import { createReferral } from "../../services/referrals";
 import { getCurrentUser } from "../../utils/auth";
 import {
   formatDisplayValue,
+  formatFacilityName,
   formatPatientName,
   formatUserName,
 } from "../../utils/formatters";
@@ -177,6 +179,19 @@ const EMPTY_MATERNAL_DATA = {
   living: "",
 };
 
+function toDateInputValue(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function toTimeInputValue(date = new Date()) {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")}`;
+}
+
 const MATERNAL_SUPPLEMENT_OPTIONS = [
   {
     type: "iron_folic_acid",
@@ -240,21 +255,8 @@ const EMPTY_IMMUNIZATION_DATA = {
   mmr_dose1: false,
   mmr_dose2: false,
   feeding_status: "",
-  vaccineEntries: [
-    {
-      vaccineName: "",
-      customVaccineName: "",
-      dose: "",
-      dateGiven: "",
-      weight: "",
-      height: "",
-      temperature: "",
-      nextScheduleDate: "",
-      siteRoute: "",
-      reason: "",
-      remarks: "",
-    },
-  ],
+  vaccineEntries: [],
+  vaccinesGiven: [],
   breastfeedingMonitoring: {
     month1: "",
     month2: "",
@@ -269,13 +271,13 @@ const ADULT_IMMUNIZATION_MIN_AGE_YEARS = 18;
 const CHILD_VACCINE_OPTIONS = [
   "Newborn Screening",
   "BCG",
-  "Hepatitis B",
+  "HEPA B",
   "OPV 1",
   "OPV 2",
   "OPV 3",
-  "Pentavalent 1",
-  "Pentavalent 2",
-  "Pentavalent 3",
+  "PENTA 1",
+  "PENTA 2",
+  "PENTA 3",
   "PCV 1",
   "PCV 2",
   "PCV 3",
@@ -283,9 +285,6 @@ const CHILD_VACCINE_OPTIONS = [
   "IPV 2",
   "MCV 1",
   "MCV 2",
-  "MMR",
-  "Vitamin A",
-  "Other",
 ];
 const BREASTFEEDING_MONTHS = [
   { key: "month1", label: "1 Month" },
@@ -432,7 +431,7 @@ function getVaccineEntries(data) {
     : Array.isArray(data?.vaccinesGiven)
       ? data.vaccinesGiven
       : [];
-  return entries;
+  return entries.filter((entry) => String(entry?.vaccineName || "").trim());
 }
 
 function normalizeSupplementEntries(data = {}) {
@@ -539,6 +538,32 @@ export default function AddHealthRecord() {
   const [patientCondition, setPatientCondition] = useState("Improving");
   const [careDecisionStep, setCareDecisionStep] = useState(false);
   const [needsReferral, setNeedsReferral] = useState(false);
+  const [referralDetailsStep, setReferralDetailsStep] = useState(false);
+  const [pendingReferralDraft, setPendingReferralDraft] = useState(null);
+  const [referralValidationErrors, setReferralValidationErrors] = useState({});
+  const [referralForm, setReferralForm] = useState({
+    receivingFacility:
+      currentUser?.assignedRuralHealthUnit ||
+      currentUser?.ruralHealthUnit ||
+      "",
+    urgencyLevel: "Non-urgent",
+    dateOfReferral: toDateInputValue(),
+    timeOfReferral: toTimeInputValue(),
+    referringHci: "",
+    philHealthNumber: "",
+    referringPractitioner: currentUserName,
+    patientName: "",
+    birthDate: "",
+    address: "",
+    ageSexCivilStatus: "",
+    philHealthCategory: "",
+    chiefComplaint: "",
+    initialDiagnosis: "",
+    initialActionsTaken: "",
+    reasonForReferral: "",
+    clinicalSummary: "",
+    preferredDoctor: "",
+  });
 
   const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
   const [supplementsGiven, setSupplementsGiven] = useState([]);
@@ -909,7 +934,7 @@ export default function AddHealthRecord() {
   const normalizedPatientStatus = normalizePatientStatus(followUpStatus);
   const showFollowUpMonitoringFields =
     normalizedPatientStatus === "Follow-up Required";
-  const usesCareDecisionStep = !isFollowUp && !isEditingRecord;
+  const usesCareDecisionStep = false;
   const immunizationPatientInfo = getImmunizationPatientMode(
     selectedPatient,
     dateOfVisit,
@@ -1000,7 +1025,7 @@ export default function AddHealthRecord() {
   }, [isMaternal]);
 
   useEffect(() => {
-    if (!showFollowUpMonitoringFields) {
+    if (isFollowUp && !showFollowUpMonitoringFields) {
       setFollowUpDate("");
       if (!isFollowUp) setPatientCondition("");
     }
@@ -1017,15 +1042,6 @@ export default function AddHealthRecord() {
       setFollowUpDate("");
       if (!isFollowUp) setPatientCondition("");
     }
-  }
-
-  function handleProceedToCareDecision(event) {
-    event.preventDefault();
-    closeDateTimePopovers();
-    const clinicalErrors = getClinicalValidationErrors();
-    if (setValidationErrorsAndFocus(clinicalErrors)) return;
-
-    setCareDecisionStep(true);
   }
 
   function clearValidationError(field) {
@@ -1063,6 +1079,9 @@ export default function AddHealthRecord() {
 
     if (!dateOfVisit) errors.dateOfVisit = "Date of visit is required.";
     if (!timeOfVisit) errors.timeOfVisit = "Time of visit is required.";
+    if (!String(attendingStaff || "").trim()) {
+      errors.attendingStaff = "Name of practitioner is required.";
+    }
 
     if (isFollowUp) {
       if (!summaryOfPresentIllness.trim()) {
@@ -1072,28 +1091,14 @@ export default function AddHealthRecord() {
     }
 
     if (isImmunization) {
-      const preparedEntries = immunizationVaccineEntries.map((entry) => ({
-        ...entry,
-        dateGiven: entry.dateGiven || dateOfVisit,
-      }));
+      const preparedEntries = immunizationVaccineEntries.filter((entry) =>
+        String(entry.dateGiven || "").trim(),
+      );
 
-      if (preparedEntries.length === 0) {
-        errors.vaccineEntries = "Select at least one vaccine.";
+      if (preparedEntries.length === 0 && !consultationNotes.trim()) {
+        errors.vaccineEntries =
+          "Select at least one vaccine or enter remarks if no vaccine was given.";
       }
-
-      preparedEntries.forEach((entry, index) => {
-        if (entry.vaccineName === "Other" && !entry.customVaccineName?.trim()) {
-          errors[`vaccineEntries.${index}.customVaccineName`] =
-            "Specify the vaccine name.";
-        }
-        if (!String(entry.dose || "").trim()) {
-          errors[`vaccineEntries.${index}.dose`] = "Dose is required.";
-        }
-        if (!String(entry.dateGiven || "").trim()) {
-          errors[`vaccineEntries.${index}.dateGiven`] =
-            "Date given is required.";
-        }
-      });
 
       return errors;
     }
@@ -1144,15 +1149,67 @@ export default function AddHealthRecord() {
     return errors;
   }
 
-  function getCareDecisionValidationErrors() {
+  function getReferralValidationErrors() {
     const errors = {};
-    if (!normalizePatientStatus(followUpStatus)) {
-      errors.followUpStatus = "Select the patient status.";
+    if (!String(referralForm.dateOfReferral || "").trim()) {
+      errors.dateOfReferral = "Date of referral is required.";
     }
-    if (showFollowUpMonitoringFields && !followUpDate) {
-      errors.followUpDate = "Follow-up date is required.";
+    if (!String(referralForm.timeOfReferral || "").trim()) {
+      errors.timeOfReferral = "Time of referral is required.";
+    }
+    if (!String(referralForm.referringHci || "").trim()) {
+      errors.referringHci = "Name of referring HCI is required.";
+    }
+    if (!String(referralForm.referringPractitioner || "").trim()) {
+      errors.referringPractitioner = "Referring practitioner is required.";
+    }
+    if (!String(referralForm.reasonForReferral || "").trim()) {
+      errors.reasonForReferral = "Reason for referral is required.";
+    }
+    if (
+      String(pendingReferralDraft?.formData?.chiefComplaint || "").trim() &&
+      !String(referralForm.chiefComplaint || "").trim()
+    ) {
+      errors.chiefComplaint = "Chief complaint is required for this referral.";
+    }
+    if (
+      String(pendingReferralDraft?.formData?.diagnosis || "").trim() &&
+      !String(referralForm.initialDiagnosis || "").trim()
+    ) {
+      errors.initialDiagnosis = "Initial diagnosis is required for this referral.";
     }
     return errors;
+  }
+
+  function setReferralErrorsAndFocus(errors) {
+    const nextErrors = Object.fromEntries(
+      Object.entries(errors).filter(([, value]) => Boolean(value)),
+    );
+    setReferralValidationErrors(nextErrors);
+
+    const firstField = Object.keys(nextErrors)[0];
+    if (!firstField) return false;
+
+    window.requestAnimationFrame(() => {
+      const selector = `[name="${firstField}"], [data-field="${firstField}"]`;
+      const element = document.querySelector(selector);
+      element?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (typeof element?.focus === "function") {
+        element.focus({ preventScroll: true });
+      }
+    });
+
+    return true;
+  }
+
+  function handleReferralFormChange(field, value) {
+    setReferralValidationErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+    setReferralForm((prev) => ({ ...prev, [field]: value }));
   }
 
   useEffect(() => {
@@ -1208,40 +1265,38 @@ export default function AddHealthRecord() {
     }));
   }
 
-  function handleVaccineEntryChange(index, field, value) {
-    clearValidationError(`vaccineEntries.${index}.${field}`);
+  function handleVaccineRowChange(vaccineName, field, value) {
     clearValidationError("vaccineEntries");
-    if (field === "nextScheduleDate" && value) {
-      clearValidationError("followUpDate");
-      setFollowUpStatus("Follow-up Required");
-      setFollowUpDate(value);
-    }
-    setImmunizationData((prev) => {
-      const entries = getVaccineEntries(prev).map((entry, entryIndex) =>
-        entryIndex === index ? { ...entry, [field]: value } : entry,
-      );
-      return {
-        ...prev,
-        vaccineEntries: entries,
-        vaccinesGiven: entries,
-      };
-    });
-  }
 
-  function handleVaccineToggle(vaccineName, checked) {
-    clearValidationError("vaccineEntries");
     setImmunizationData((prev) => {
       const existingEntries = getVaccineEntries(prev);
-      const entries = checked
-        ? [
-            ...existingEntries,
-            {
-              ...EMPTY_VACCINE_ENTRY,
-              vaccineName,
-              dateGiven: dateOfVisit,
-            },
-          ]
-        : existingEntries.filter((entry) => entry.vaccineName !== vaccineName);
+      const existingEntry = existingEntries.find(
+        (entry) => entry.vaccineName === vaccineName,
+      );
+      const nextEntry = {
+        ...EMPTY_VACCINE_ENTRY,
+        ...(existingEntry || {}),
+        vaccineName,
+        [field]: value,
+      };
+      const rowHasAnyValue = [
+        nextEntry.dateGiven,
+        nextEntry.weight,
+        nextEntry.height,
+        nextEntry.temperature,
+      ].some((item) => String(item || "").trim());
+      const entries = existingEntry
+        ? existingEntries
+            .map((entry) =>
+              entry.vaccineName === vaccineName ? nextEntry : entry,
+            )
+            .filter((entry) =>
+              entry.vaccineName === vaccineName ? rowHasAnyValue : true,
+            )
+        : rowHasAnyValue
+          ? [...existingEntries, nextEntry]
+          : existingEntries;
+
       return {
         ...prev,
         vaccineEntries: entries,
@@ -1398,6 +1453,9 @@ export default function AddHealthRecord() {
     event.preventDefault();
     closeDateTimePopovers();
 
+    const isReferralContinuation =
+      needsReferral && userRole === "bhc" && !isFollowUp && !isEditingRecord;
+
     if (isOrphanFollowUpRequest) {
       setNoticeModal({
         title: "Original Record Required",
@@ -1426,7 +1484,7 @@ export default function AddHealthRecord() {
       setValidationErrorsAndFocus({
         selectedPatientId: isFollowUp
           ? "Patient is still loading. Try again."
-          : "Select a patient first.",
+          : "Please select a patient first.",
       });
       return;
     }
@@ -1447,10 +1505,7 @@ export default function AddHealthRecord() {
       return;
     }
 
-    const clientErrors = {
-      ...getClinicalValidationErrors(),
-      ...(usesCareDecisionStep ? getCareDecisionValidationErrors() : {}),
-    };
+    const clientErrors = getClinicalValidationErrors();
 
     if (setValidationErrorsAndFocus(clientErrors)) return;
 
@@ -1493,14 +1548,15 @@ export default function AddHealthRecord() {
       return;
     }
 
-    const preparedVaccineEntries = immunizationVaccineEntries.map((entry) => ({
-      ...entry,
-      vaccineName:
-        entry.vaccineName === "Other"
-          ? entry.customVaccineName || entry.vaccineName
-          : entry.vaccineName,
-      dateGiven: entry.dateGiven || dateOfVisit,
-    }));
+    const preparedVaccineEntries = immunizationVaccineEntries
+      .filter((entry) => String(entry.dateGiven || "").trim())
+      .map((entry) => ({
+        vaccineName: entry.vaccineName,
+        dateGiven: entry.dateGiven,
+        weight: entry.weight || "",
+        height: entry.height || "",
+        temperature: entry.temperature || "",
+      }));
     const preparedImmunizationData = {
       ...immunizationData,
       patientAgeYears: immunizationPatientInfo.age,
@@ -1510,22 +1566,11 @@ export default function AddHealthRecord() {
     };
 
     if (!isFollowUp && effectiveHealthRecordType === "Immunization") {
-      const missingRequiredVaccineDetails = preparedVaccineEntries.some(
-        (entry) =>
-          !String(entry.vaccineName || "").trim() ||
-          !String(entry.dose || "").trim() ||
-          !String(entry.dateGiven || "").trim(),
-      );
-
-      if (preparedVaccineEntries.length === 0) {
+      if (preparedVaccineEntries.length === 0 && !consultationNotes.trim()) {
         setValidationErrorsAndFocus({
-          vaccineEntries: "Select at least one vaccine.",
+          vaccineEntries:
+            "Select at least one vaccine or enter remarks if no vaccine was given.",
         });
-        return;
-      }
-
-      if (missingRequiredVaccineDetails) {
-        setValidationErrorsAndFocus(getClinicalValidationErrors());
         return;
       }
     }
@@ -1533,33 +1578,15 @@ export default function AddHealthRecord() {
     const immunizationNextScheduleDate =
       preparedVaccineEntries.find((entry) => entry.nextScheduleDate)
         ?.nextScheduleDate || "";
-    const effectiveFollowUpDate =
-      showFollowUpMonitoringFields && !followUpDate && immunizationNextScheduleDate
-        ? immunizationNextScheduleDate
-        : followUpDate;
+    const effectiveFollowUpDate = followUpDate || immunizationNextScheduleDate || "";
 
     if (
       !isFollowUp &&
       effectiveHealthRecordType === "Immunization" &&
-      showFollowUpMonitoringFields &&
       !followUpDate &&
       immunizationNextScheduleDate
     ) {
       setFollowUpDate(immunizationNextScheduleDate);
-    }
-
-    if (
-      !isFollowUp &&
-      effectiveHealthRecordType === "Immunization" &&
-      showFollowUpMonitoringFields &&
-      !followUpDate &&
-      !immunizationNextScheduleDate
-    ) {
-      setValidationErrorsAndFocus({
-        followUpDate:
-          "Enter a follow-up date or next schedule date for Follow-up Required status.",
-      });
-      return;
     }
 
     const finalChiefComplaint =
@@ -1625,10 +1652,12 @@ export default function AddHealthRecord() {
       advice_given: familyPlanningData.adviceGiven || "",
     };
 
-    const finalNeedsReferral =
-      usesCareDecisionStep &&
-      normalizedPatientStatus !== "Completed" &&
-      Boolean(needsReferral);
+    const finalPatientStatus = isFollowUp
+      ? normalizePatientStatus(followUpStatus)
+      : effectiveFollowUpDate
+        ? "Follow-up Required"
+        : "Completed";
+    const finalNeedsReferral = !isFollowUp && Boolean(needsReferral);
 
     const formData = {
       patientId: selectedPatientId,
@@ -1658,11 +1687,11 @@ export default function AddHealthRecord() {
       medication,
       attendingStaff,
       consultationNotes,
-      followUpStatus: normalizePatientStatus(followUpStatus),
-      followUpDate: showFollowUpMonitoringFields ? effectiveFollowUpDate : "",
+      followUpStatus: finalPatientStatus,
+      followUpDate: effectiveFollowUpDate,
       monitoringNotes,
       patientCondition:
-        isFollowUp || showFollowUpMonitoringFields ? patientCondition : "",
+        isFollowUp || effectiveFollowUpDate ? patientCondition : "",
       needsReferral: finalNeedsReferral,
       needs_referral: finalNeedsReferral,
       referralReason: "",
@@ -1689,6 +1718,52 @@ export default function AddHealthRecord() {
       createdByRole: userRole,
       linkedTrackingId: isFollowUp ? followUpRecord?.linkedTrackingId || "" : "",
     };
+
+    if (isReferralContinuation) {
+      setPendingReferralDraft({
+        formData,
+        savedHealthRecordId: "",
+        savedRecord: null,
+      });
+      setReferralForm((prev) => ({
+        ...prev,
+        receivingFacility:
+          prev.receivingFacility || getReceivingFacilityName(currentUser),
+        urgencyLevel: prev.urgencyLevel || "Non-urgent",
+        dateOfReferral: prev.dateOfReferral || dateOfVisit || toDateInputValue(),
+        timeOfReferral: prev.timeOfReferral || timeOfVisit || toTimeInputValue(),
+        referringHci:
+          prev.referringHci || getReferringFacilityName(currentUser),
+        philHealthNumber:
+          prev.philHealthNumber || getPatientPhilHealthNumber(selectedPatient),
+        referringPractitioner:
+          prev.referringPractitioner || attendingStaff || currentUserName,
+        patientName: prev.patientName || getPatientName(selectedPatient),
+        birthDate: prev.birthDate || getPatientBirthDate(selectedPatient),
+        address: prev.address || getPatientAddress(selectedPatient),
+        ageSexCivilStatus:
+          prev.ageSexCivilStatus ||
+          getPatientAgeSexCivilStatus(selectedPatient),
+        philHealthCategory:
+          prev.philHealthCategory || getPatientPhilHealthCategory(selectedPatient),
+        chiefComplaint: prev.chiefComplaint || finalChiefComplaint,
+        initialDiagnosis: prev.initialDiagnosis || diagnosis,
+        initialActionsTaken: prev.initialActionsTaken || medication,
+        reasonForReferral:
+          prev.reasonForReferral ||
+          diagnosis ||
+          finalChiefComplaint ||
+          "RHU referral requested",
+        clinicalSummary:
+          prev.clinicalSummary ||
+          [summaryOfPresentIllness, consultationNotes].filter(Boolean).join("\n\n"),
+      }));
+      setReferralDetailsStep(true);
+      window.requestAnimationFrame(() =>
+        window.scrollTo({ top: 0, behavior: "smooth" }),
+      );
+      return;
+    }
 
     setSaving(true);
 
@@ -1740,42 +1815,202 @@ export default function AddHealthRecord() {
     }
   }
 
-  const canCreateReferralAfterSave =
-    saveSuccess?.recordId &&
-    userRole === "bhc" &&
-    !saveSuccess.isEditingRecord &&
-    saveSuccess.needsReferral === true;
+  async function handleSubmitReferralDetails(event) {
+    event.preventDefault();
+    closeDateTimePopovers();
+
+    const referralErrors = getReferralValidationErrors();
+    if (setReferralErrorsAndFocus(referralErrors)) return;
+
+    if (!pendingReferralDraft?.formData) {
+      setReferralDetailsStep(false);
+      setNoticeModal({
+        title: "Health Record Draft Missing",
+        message:
+          "The health record draft is no longer available. Please review the health record form again.",
+      });
+      return;
+    }
+
+    setSaving(true);
+    let savedRecordId =
+      pendingReferralDraft.savedHealthRecordId ||
+      pendingReferralDraft.savedRecord?.id ||
+      pendingReferralDraft.savedRecord?._id ||
+      "";
+    let savedRecord = pendingReferralDraft.savedRecord || null;
+
+    try {
+      if (!savedRecordId) {
+        const result = await saveHealthRecord(pendingReferralDraft.formData);
+        savedRecord = result.savedRecord;
+        savedRecordId =
+          result.savedId ||
+          savedRecord?.id ||
+          savedRecord?._id ||
+          savedRecord?.data?.id ||
+          savedRecord?.data?._id ||
+          "";
+
+        setPendingReferralDraft((prev) => ({
+          ...(prev || {}),
+          savedHealthRecordId: savedRecordId,
+          savedRecord,
+        }));
+      }
+
+      if (!savedRecordId) {
+        throw new Error("Saved health record ID was not returned.");
+      }
+
+      const referralUrgency =
+        referralForm.urgencyLevel === "Urgent" ? "Urgent" : "Normal";
+      const preferredDoctorNote = String(
+        referralForm.preferredDoctor || "",
+      ).trim();
+      const referralRemarks = [
+        referralForm.clinicalSummary,
+        preferredDoctorNote
+          ? `Preferred Doctor: ${preferredDoctorNote}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
+      const referral = await createReferral({
+        patientId: selectedPatientId,
+        patientName: getPatientName(selectedPatient),
+        healthRecordId: savedRecordId,
+        recordId: savedRecordId,
+        barangayHealthCenterId: currentUser?.barangayHealthCenterId || "",
+        ruralHealthUnitId: currentUser?.ruralHealthUnitId || "",
+        receivingFacility:
+          referralForm.receivingFacility || getReceivingFacilityName(currentUser),
+        referralCategory: pendingReferralDraft.formData.category,
+        category: pendingReferralDraft.formData.category,
+        urgencyLevel: referralUrgency,
+        priority: referralUrgency,
+        reasonForReferral: referralForm.reasonForReferral,
+        chiefComplaint:
+          referralForm.chiefComplaint || pendingReferralDraft.formData.chiefComplaint,
+        diagnosis:
+          referralForm.initialDiagnosis || pendingReferralDraft.formData.diagnosis,
+        initialDiagnosis:
+          referralForm.initialDiagnosis || pendingReferralDraft.formData.diagnosis,
+        initialActionsTaken:
+          referralForm.initialActionsTaken ||
+          pendingReferralDraft.formData.medication,
+        referringPractitioner:
+          referralForm.referringPractitioner ||
+          pendingReferralDraft.formData.attendingStaff,
+        referralDate: referralForm.dateOfReferral,
+        referralTime: referralForm.timeOfReferral,
+        referringHci: referralForm.referringHci,
+        philHealthNumber:
+          referralForm.philHealthNumber ||
+          getPatientPhilHealthNumber(selectedPatient),
+        philHealthCategory:
+          referralForm.philHealthCategory ||
+          getPatientPhilHealthCategory(selectedPatient),
+        birthDate: getPatientBirthDate(selectedPatient),
+        patientAddress: getPatientAddress(selectedPatient),
+        ageSex: getPatientAgeSexCivilStatus(selectedPatient),
+        preferredRhuDoctorName: preferredDoctorNote,
+        preferredDoctor: preferredDoctorNote,
+        summaryOfPresentIllness: referralForm.clinicalSummary,
+        remarks: referralRemarks || null,
+      });
+
+      if (referral?.trackingId) {
+        try {
+          await healthRecordService.updateHealthRecordById(
+            savedRecordId,
+            {
+              linkedTrackingId: referral.trackingId,
+              referralTrackingId: referral.trackingId,
+            },
+            "bhc",
+          );
+        } catch (linkError) {
+          console.warn("Referral submitted, but record link update failed:", linkError);
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: queryKeys.referrals("bhc") });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.incomingReferrals("rhu"),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecords(userRole),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.followUpTasks("bhc"),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboardSummary(userRole),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboardSummary("rhu"),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecordDetails(userRole, savedRecordId),
+      });
+
+      setReferralDetailsStep(false);
+      setPendingReferralDraft(null);
+      setCareDecisionStep(false);
+      setSaveSuccess({
+        recordId: savedRecordId,
+        patientId: selectedPatientId,
+        status: normalizePatientStatus(
+          savedRecord?.followUpStatus ||
+            savedRecord?.status ||
+            pendingReferralDraft.formData.followUpStatus,
+        ),
+        needsReferral: true,
+        referralSubmitted: true,
+        referralTrackingId: referral?.trackingId || "",
+        isFollowUp,
+        isEditingRecord,
+      });
+    } catch (error) {
+      console.error("Failed to submit health record referral:", error);
+      setNoticeModal({
+        title: savedRecordId ? "Referral Submission Failed" : "Save Failed",
+        message: savedRecordId
+          ? "The health record was saved, but the referral could not be submitted. Please try again."
+          : "Unable to save the health record before submitting the referral. Please review the form and try again.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const isPrimaryActionLoading = saving;
   const primaryActionLabel = saving
     ? "Saving..."
     : isFollowUp
       ? "Save Follow-up Visit"
-      : usesCareDecisionStep
-        ? "Proceed to Next Step"
-        : "Save Health Record";
-  const pageStepLabel = usesCareDecisionStep
-    ? careDecisionStep
-      ? "Step 3 of 3"
-      : setupComplete
-        ? "Step 2 of 3"
-        : "Step 1 of 3"
-    : null;
+      : needsReferral && userRole === "bhc" && !isEditingRecord
+        ? "Continue to Referral Details"
+      : "Save Health Record";
+  const pageStepLabel = null;
   const pageTitle = isFollowUp
     ? "Follow-up Health Record"
     : isEditingRecord
       ? "Edit Health Record"
-      : careDecisionStep && usesCareDecisionStep
-        ? "Review & Care Decision"
-        : "Add Health Record";
+      : referralDetailsStep
+        ? "Referral Details"
+      : "Add Health Record";
   const pageSubtitle = isFollowUp
     ? "Record what happened during the patient's scheduled return visit."
     : isEditingRecord
       ? "Correct or update details in this existing health record."
-      : careDecisionStep && usesCareDecisionStep
-        ? "Review the visit summary and choose what should happen after this record is saved."
-        : setupComplete
+      : referralDetailsStep
+        ? "Complete the referral details before submitting this health record and referral."
+      : setupComplete
           ? "Complete the clinical details for this visit."
-          : "Search patient and choose the record classification before recording a visit.";
+          : "Search patient and choose the record type before recording a visit.";
   const monitoringNotesLabel =
     normalizedPatientStatus === "Completed"
       ? "Outcome Notes"
@@ -1791,12 +2026,17 @@ export default function AddHealthRecord() {
 
   function handleStepBack() {
     closeDateTimePopovers();
+    if (referralDetailsStep) {
+      setReferralDetailsStep(false);
+      return;
+    }
+
     if (careDecisionStep && usesCareDecisionStep) {
       setCareDecisionStep(false);
       return;
     }
 
-    if (setupComplete && usesCareDecisionStep) {
+    if (setupComplete && !isFollowUp && !isEditingRecord) {
       setSetupComplete(false);
       setCareDecisionStep(false);
       setDropdownOpen(false);
@@ -1872,7 +2112,15 @@ export default function AddHealthRecord() {
         />
       ) : (
       <>
-      {careDecisionStep && usesCareDecisionStep ? (
+      {referralDetailsStep ? (
+      <ReferralDetailsStep
+        form={referralForm}
+        errors={referralValidationErrors}
+        saving={saving}
+        onChange={handleReferralFormChange}
+        onSubmit={handleSubmitReferralDetails}
+      />
+      ) : careDecisionStep && usesCareDecisionStep ? (
         <CareDecisionStep
           patientName={getPatientName(selectedPatient)}
           patientMeta={getPatientDisplay(selectedPatient).age}
@@ -1895,13 +2143,11 @@ export default function AddHealthRecord() {
         />
       ) : (
       <form
-        onSubmit={usesCareDecisionStep ? handleProceedToCareDecision : handleSave}
+        onSubmit={handleSave}
         noValidate
         className="relative ml-0 mr-auto w-full max-w-7xl"
       >
         <div className="space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
-        {Object.keys(validationErrors).length > 0 && <ValidationAlert />}
-
         {isFollowUp && (
           <FollowUpContextCard
             patientName={followUpPatientName}
@@ -1943,7 +2189,10 @@ export default function AddHealthRecord() {
             />
             <FieldInput
               label="Name of Practitioner"
+              required
+              name="attendingStaff"
               value={attendingStaff}
+              error={validationErrors.attendingStaff}
               readOnly
             />
           </div>
@@ -2104,28 +2353,19 @@ export default function AddHealthRecord() {
 
         {!isFollowUp && !patientGateLocked && isImmunization && (
           <FormSection
-            title="EPI Vaccines Given"
-            subtitle="Select the EPI vaccines given during this visit."
+            title="Vaccines Given This Visit"
+            subtitle="Record vaccine date and optional measurements using the BHC immunization form layout."
             icon={<Syringe size={14} />}
             delay={2}
           >
-
-          <ImmunizationVisitFields
-            ageInfo={immunizationPatientInfo}
-            entries={immunizationVaccineEntries}
-            dateOfVisit={dateOfVisit}
-            temperature={temp}
-            weight={weight}
-            height={height}
-            breastfeedingMonitoring={immunizationData.breastfeedingMonitoring}
-            consultationNotes={consultationNotes}
-            errors={validationErrors}
-            onTemperatureChange={setTemp}
-            onWeightChange={setWeight}
-            onHeightChange={setHeight}
+            <ImmunizationVisitFields
+              ageInfo={immunizationPatientInfo}
+              entries={immunizationVaccineEntries}
+              breastfeedingMonitoring={immunizationData.breastfeedingMonitoring}
+              consultationNotes={consultationNotes}
+              errors={validationErrors}
               onBreastfeedingChange={handleBreastfeedingChange}
-              onEntryChange={handleVaccineEntryChange}
-              onToggleVaccine={handleVaccineToggle}
+              onVaccineRowChange={handleVaccineRowChange}
               onNotesChange={setConsultationNotes}
             />
           </FormSection>
@@ -2133,56 +2373,28 @@ export default function AddHealthRecord() {
 
         {!isFollowUp && !patientGateLocked && !usesCareDecisionStep && isImmunization && (
           <FormSection
-            title="Patient Monitoring"
-            subtitle="Set the immunization visit outcome and follow-up schedule if another dose is needed."
+            title="Follow-up & Referral"
+            subtitle="Schedule a return visit if needed and indicate if RHU referral is required."
             icon={<HeartPulse size={14} />}
             delay={3}
           >
-            <div
-              className={`grid gap-4 ${
-                showFollowUpMonitoringFields ? "lg:grid-cols-3" : "lg:grid-cols-2"
-              }`}
-            >
-              <FieldSelect
-                label="Patient Status"
-                value={followUpStatus}
-                onChange={(event) => handlePatientStatusChange(event.target.value)}
-              >
-                <option>Routine Monitoring</option>
-                <option>Follow-up Required</option>
-                <option>Completed</option>
-              </FieldSelect>
-              {showFollowUpMonitoringFields && (
-                <FieldInput
-                  label="Follow-up Date"
-                  type="date"
-                  value={followUpDate}
-                  onChange={(event) => setFollowUpDate(event.target.value)}
-                />
-              )}
-              {showFollowUpMonitoringFields && (
-                <FieldSelect
-                  label="Current Condition"
-                  value={patientCondition}
-                  onChange={(event) => setPatientCondition(event.target.value)}
-                  required
-                >
-                  <option value="">Select condition</option>
-                  <option>Improving</option>
-                  <option>Stable</option>
-                  <option>No Improvement Observed</option>
-                  <option>Needs Further Review</option>
-                  <option>Recovered</option>
-                </FieldSelect>
-              )}
-            </div>
-            <div className="mt-4">
-              <FieldTextarea
-                label={monitoringNotesLabel}
-                value={monitoringNotes}
-                onChange={(event) => setMonitoringNotes(event.target.value)}
-                placeholder={monitoringNotesPlaceholder}
-                rows={3}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <FieldInput
+                label="Next Follow-up Date"
+                type="date"
+                value={followUpDate}
+                name="followUpDate"
+                error={validationErrors.followUpDate}
+                onChange={(event) => {
+                  clearValidationError("followUpDate");
+                  setFollowUpDate(event.target.value);
+                }}
+              />
+              <YesNoRadioGroup
+                label="Needs RHU Referral?"
+                name="needsReferral"
+                value={needsReferral ? "Yes" : "No"}
+                onChange={(value) => setNeedsReferral(value === "Yes")}
               />
             </div>
           </FormSection>
@@ -2487,11 +2699,9 @@ export default function AddHealthRecord() {
                   setChiefComplaint(event.target.value);
                 }}
               />
-              <FieldInput
-                label="Initial Diagnosis"
-                value={diagnosis}
-                onChange={(event) => setDiagnosis(event.target.value)}
-              />
+
+
+
             </div>
             <div className="mt-4">
               <FieldTextarea
@@ -2576,63 +2786,29 @@ export default function AddHealthRecord() {
 
             {!usesCareDecisionStep && (
             <FormSection
-        title="Patient Monitoring"
-        subtitle="Track patient progress and follow-up schedules."
+        title="Follow-up & Referral"
+        subtitle="Schedule a return visit if needed and indicate if RHU referral is required."
         icon={<HeartPulse size={14} />}
         delay={5}
       >
           <LockedFormContent locked={patientGateLocked}>
-          <div
-            className={`grid gap-4 ${
-              showFollowUpMonitoringFields ? "lg:grid-cols-3" : "lg:grid-cols-2"
-            }`}
-          >
-          <FieldSelect
-              label="Patient Status"
-              value={followUpStatus}
-              onChange={(event) => handlePatientStatusChange(event.target.value)}
-            >
-              <option>Routine Monitoring</option>
-              <option>Follow-up Required</option>
-              <option>Completed</option>
-            </FieldSelect>
-            {showFollowUpMonitoringFields && (
-              <FieldInput
-                label="Follow-up Date"
-                type="date"
-                value={followUpDate}
-                name="followUpDate"
-                error={validationErrors.followUpDate}
-                onChange={(event) => {
-                  clearValidationError("followUpDate");
-                  setFollowUpDate(event.target.value);
-                }}
-                required
-              />
-            )}
-            {showFollowUpMonitoringFields && (
-              <FieldSelect
-                label="Current Condition"
-                value={patientCondition}
-                onChange={(event) => setPatientCondition(event.target.value)}
-                required
-              >
-                <option value="">Select condition</option>
-                <option>Improving</option>
-                <option>Stable</option>
-                <option>No Improvement Observed</option>
-                <option>Needs Further Review</option>
-                <option>Recovered</option>
-              </FieldSelect>
-            )}
-          </div>
-          <div className="mt-4">
-            <FieldTextarea
-              label={monitoringNotesLabel}
-              value={monitoringNotes}
-              onChange={(event) => setMonitoringNotes(event.target.value)}
-              placeholder={monitoringNotesPlaceholder}
-              rows={3}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <FieldInput
+              label="Next Follow-up Date"
+              type="date"
+              value={followUpDate}
+              name="followUpDate"
+              error={validationErrors.followUpDate}
+              onChange={(event) => {
+                clearValidationError("followUpDate");
+                setFollowUpDate(event.target.value);
+              }}
+            />
+            <YesNoRadioGroup
+              label="Needs RHU Referral?"
+              name="needsReferral"
+              value={needsReferral ? "Yes" : "No"}
+              onChange={(value) => setNeedsReferral(value === "Yes")}
             />
           </div>
           </LockedFormContent>
@@ -2656,7 +2832,8 @@ export default function AddHealthRecord() {
             </button>
           )}
           <button
-            type="submit"
+            type="button"
+            onClick={handleSave}
             disabled={isPrimaryActionLoading}
             className="group flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
           >
@@ -2682,54 +2859,42 @@ export default function AddHealthRecord() {
         title={
           saveSuccess?.isFollowUp
             ? "Follow-up Visit Saved"
+            : saveSuccess?.referralSubmitted
+              ? "Health Record and Referral Submitted"
             : "Health Record Saved Successfully"
         }
         description={
           saveSuccess?.isFollowUp
             ? "The follow-up visit has been saved and linked to the original health record."
-            : saveSuccess?.needsReferral
-              ? "Health record saved successfully. This record is marked for RHU referral."
+            : saveSuccess?.referralSubmitted
+              ? "The health record was saved and the referral was linked for RHU review."
               : "Health record saved successfully."
         }
         onClose={() => navigate(healthRecordsPath)}
-        actions={
-          canCreateReferralAfterSave
-            ? [
-                {
-                  label: "Create Referral",
-                  variant: "primary",
-                  onClick: () =>
-                    navigate(
-                      `/bhc/referrals/create?recordId=${saveSuccess.recordId}&patientId=${saveSuccess.patientId}`,
-                    ),
-                },
-                {
-                  label: "View Health Record",
-                  onClick: () =>
-                    navigate(
-                      saveSuccess?.recordId
-                        ? `${healthRecordsPath}/${saveSuccess.recordId}`
-                        : healthRecordsPath,
-                    ),
-                },
-              ]
-            : [
-                {
-                  label: "View Health Record",
-                  variant: "primary",
-                  onClick: () =>
-                    navigate(
-                      saveSuccess?.recordId
-                        ? `${healthRecordsPath}/${saveSuccess.recordId}`
-                        : healthRecordsPath,
-                    ),
-                },
-                {
-                  label: "Back to Health Records",
-                  onClick: () => navigate(healthRecordsPath),
-                },
-              ]
-        }
+        actions={[
+          {
+            label: "View Health Record",
+            variant: "primary",
+            onClick: () =>
+              navigate(
+                saveSuccess?.recordId
+                  ? `${healthRecordsPath}/${saveSuccess.recordId}`
+                  : healthRecordsPath,
+              ),
+          },
+          {
+            label: "Add Another Record",
+            onClick: () => {
+              setSaveSuccess(null);
+              setReferralDetailsStep(false);
+              setPendingReferralDraft(null);
+              setReferralValidationErrors({});
+              setSetupComplete(false);
+              setHealthRecordType("");
+              setSelectedPatientId("");
+            },
+          },
+        ]}
       />
 
       {noticeModal && (
@@ -2786,10 +2951,6 @@ function HealthRecordSetupStep({
       style={stagger(1)}
     >
       <div className=" p-1 ">
-        {(errors.selectedPatientId || errors.healthRecordType) && (
-          <ValidationAlert />
-        )}
-
         <div
           className={`relative z-30 rounded-xl ${
             errors.selectedPatientId
@@ -3004,7 +3165,6 @@ function CareDecisionStep({
       style={stagger(2)}
     >
       <div className="rounded-2xl border border-[#E8ECF0] bg-white p-5 shadow-sm sm:p-6">
-        {(errors.followUpStatus || errors.followUpDate) && <ValidationAlert />}
         <div className="rounded-xl border border-[#F1F5F9] bg-[#FAFBFC] px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
             Patient Summary
@@ -3024,7 +3184,7 @@ function CareDecisionStep({
             tabIndex={errors.followUpStatus ? -1 : undefined}
           >
             <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
-              Patient Status
+              Follow-up Plan
             </p>
             <div className="grid gap-3 md:grid-cols-3">
               {statusOptions.map((option) => {
@@ -3132,6 +3292,200 @@ function SummaryItem({ label, value }) {
         {formatDisplayValue(value, "Not recorded")}
       </p>
     </div>
+  );
+}
+
+function ReferralFormGroup({ title, description, children }) {
+  return (
+    <section>
+      <div className="mb-4">
+        <h3 className="text-sm font-bold text-[#1F2937]">{title}</h3>
+        {description && (
+          <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
+            {description}
+          </p>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ReferralDetailsStep({
+  form,
+  errors = {},
+  saving,
+  onChange,
+  onSubmit,
+}) {
+
+  return (
+    <form
+      onSubmit={onSubmit}
+      noValidate
+      className="relative ml-0 mr-auto w-full max-w-7xl"
+    >
+      <div className="space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
+            <Stethoscope size={17} />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-[#1A1A1A]">
+              Referral Details
+            </h2>
+            <p className="mt-0.5 text-sm leading-relaxed text-[#6B7280]">
+              Complete the referral form before submitting this health record
+              and referral.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-7">
+          <ReferralFormGroup
+            title="Referral Information"
+            description="Referral timestamp and referring BHC details."
+          >
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <DatePickerField
+                label="Date of Referral"
+                required
+                name="dateOfReferral"
+                value={form.dateOfReferral}
+                error={errors.dateOfReferral}
+                onChange={(value) => onChange("dateOfReferral", value)}
+              />
+              <TimePickerField
+                label="Time of Referral"
+                required
+                name="timeOfReferral"
+                value={form.timeOfReferral}
+                error={errors.timeOfReferral}
+                onChange={(value) => onChange("timeOfReferral", value)}
+              />
+              <FieldInput
+                label="Name of Referring HCI"
+                required
+                name="referringHci"
+                value={form.referringHci}
+                error={errors.referringHci}
+                onChange={(event) => onChange("referringHci", event.target.value)}
+                placeholder="Barangay Health Center"
+                wrapperClassName="xl:col-span-2"
+              />
+              <FieldSelect
+                label="Urgency"
+                name="urgencyLevel"
+                value={form.urgencyLevel}
+                onChange={(event) => onChange("urgencyLevel", event.target.value)}
+              >
+                <option>Non-urgent</option>
+                <option>Urgent</option>
+              </FieldSelect>
+              <FieldInput
+                label="Preferred Doctor"
+                name="preferredDoctor"
+                value={form.preferredDoctor}
+                onChange={(event) =>
+                  onChange("preferredDoctor", event.target.value)
+                }
+                placeholder="Select or enter preferred doctor"
+              />
+              <FieldInput
+                label="Name and Signature of Referring Practitioner"
+                required
+                name="referringPractitioner"
+                value={form.referringPractitioner}
+                error={errors.referringPractitioner}
+                onChange={(event) =>
+                  onChange("referringPractitioner", event.target.value)
+                }
+                placeholder="Referring practitioner"
+                wrapperClassName="xl:col-span-2"
+              />
+            </div>
+          </ReferralFormGroup>
+
+          <ReferralFormGroup
+            title="Clinical Referral Details"
+            description="Clinical information to send to RHU for review."
+          >
+            <div className="space-y-4">
+              <FieldInput
+                label="Chief Complaint"
+                name="chiefComplaint"
+                value={form.chiefComplaint}
+                error={errors.chiefComplaint}
+                onChange={(event) =>
+                  onChange("chiefComplaint", event.target.value)
+                }
+                placeholder="Chief complaint"
+              />
+
+              <FieldTextarea
+                label="Summary of Present Illness and Physical Examination"
+                name="clinicalSummary"
+                value={form.clinicalSummary}
+                onChange={(event) =>
+                  onChange("clinicalSummary", event.target.value)
+                }
+                placeholder="Summarize relevant symptoms, findings, physical examination notes, or observations..."
+                rows={5}
+              />
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <FieldTextarea
+                  label="Initial Diagnosis"
+                  name="initialDiagnosis"
+                  value={form.initialDiagnosis}
+                  error={errors.initialDiagnosis}
+                  onChange={(event) =>
+                    onChange("initialDiagnosis", event.target.value)
+                  }
+                  placeholder="Initial diagnosis"
+                  rows={3}
+                />
+
+                <FieldTextarea
+                  label="Initial Actions Taken"
+                  name="initialActionsTaken"
+                  value={form.initialActionsTaken}
+                  onChange={(event) =>
+                    onChange("initialActionsTaken", event.target.value)
+                  }
+                  placeholder="Treatment, medication, advice, or action taken before referral"
+                  rows={3}
+                />
+              </div>
+
+              <FieldTextarea
+                label="Reason for Referral"
+                required
+                name="reasonForReferral"
+                value={form.reasonForReferral}
+                error={errors.reasonForReferral}
+                onChange={(event) =>
+                  onChange("reasonForReferral", event.target.value)
+                }
+                placeholder="State the reason or concern requiring RHU review..."
+                rows={3}
+              />
+            </div>
+          </ReferralFormGroup>
+        </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-3 pt-1">
+      <button
+        type="submit"
+        disabled={saving}
+        className="group flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
+      >
+        {saving ? <ButtonSpinner /> : <Save size={15} />}
+        {saving ? "Submitting..." : "Save Health Record & Submit Referral"}
+      </button>
+    </div>
+      </div>
+    </form>
   );
 }
 
@@ -3346,7 +3700,7 @@ function PatientSearchDropdown({
                     type="button"
                     onMouseEnter={() => onHighlight(index)}
                     onClick={() => onSelect(patient.id)}
-                    className={`flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors duration-100 ${
+                    className={`flex w-full items-center gap-2.5 px-3.5 py-3 text-left transition-colors duration-100 ${
                       isHighlighted
                         ? "bg-[#FEF2F2]"
                         : isSelected
@@ -3354,16 +3708,6 @@ function PatientSearchDropdown({
                           : "hover:bg-[#FAFBFC]"
                     }`}
                   >
-                    <div
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold ${
-                        isSelected
-                          ? "bg-[#B91C1C] text-white"
-                          : "bg-[#F3F4F6] text-[#6B7280]"
-                      }`}
-                    >
-                      {getPatientInitial(patient)}
-                    </div>
-
                     <div className="min-w-0 flex-1">
                       <div className="flex min-w-0 items-center gap-2">
                         <p
@@ -3726,23 +4070,17 @@ function MaternalClassificationWarning() {
 function ImmunizationVisitFields({
   ageInfo,
   entries,
-  dateOfVisit,
-  temperature,
-  weight,
-  height,
   breastfeedingMonitoring = {},
   consultationNotes,
   errors = {},
-  onTemperatureChange,
-  onWeightChange,
-  onHeightChange,
   onBreastfeedingChange,
-  onEntryChange,
-  onToggleVaccine,
+  onVaccineRowChange,
   onNotesChange,
 }) {
   const showAgeWarning = ageInfo.mode === "unknown";
-  const selectedVaccines = new Set(entries.map((entry) => entry.vaccineName));
+  const entriesByName = new Map(
+    entries.map((entry) => [entry.vaccineName, entry]),
+  );
 
   return (
     <div className="space-y-5">
@@ -3766,184 +4104,81 @@ function ImmunizationVisitFields({
             {errors.vaccineEntries}
           </p>
         )}
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {CHILD_VACCINE_OPTIONS.map((vaccineName) => {
-            const checked = selectedVaccines.has(vaccineName);
-            return (
-              <button
-                key={vaccineName}
-                type="button"
-                onClick={() => onToggleVaccine(vaccineName, !checked)}
-                aria-pressed={checked}
-                className={`flex min-h-[46px] items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition ${
-                  checked
-                    ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#991B1B] ring-1 ring-[#B91C1C]/10"
-                    : "border-[#E8ECF0] bg-white text-[#475569] hover:border-[#FECACA] hover:bg-red-50/30"
-                }`}
-              >
-                <span
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
-                    checked ? "bg-[#B91C1C] text-white" : "bg-[#F1F5F9] text-transparent"
-                  }`}
-                >
-                  <Check size={12} strokeWidth={3} />
-                </span>
-                <span>{vaccineName}</span>
-              </button>
-            );
-          })}
-        </div>
+        <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
+          <div className="hidden grid-cols-[minmax(170px,1.35fr)_minmax(130px,1fr)_minmax(92px,0.72fr)_minmax(92px,0.72fr)_minmax(92px,0.72fr)] border-b border-[#E8ECF0] bg-[#F8FAFC] text-[10px] font-bold uppercase tracking-widest text-[#94A3B8] md:grid">
+            <div className="px-3 py-2.5">Vaccine</div>
+            <div className="px-3 py-2.5">Date</div>
+            <div className="px-3 py-2.5">Weight</div>
+            <div className="px-3 py-2.5">Height</div>
+            <div className="px-3 py-2.5">Temp</div>
+          </div>
 
-        {entries.length === 0 && (
-          <p className="mt-4 rounded-xl border border-dashed border-[#E5E7EB] bg-white px-4 py-3 text-xs text-[#64748B]">
-            Select at least one vaccine given during this visit.
-          </p>
-        )}
-        {entries.some((entry) => entry.__legacyDetailsVisible === "showLegacyDetails") && (
-          <div className="mt-4 space-y-3">
-            {entries.map((entry, index) => (
-              <div
-                key={entry.vaccineName || `vaccine-entry-${index}`}
-                className="rounded-xl border border-[#E8ECF0] bg-white p-4"
-              >
-                <p className="mb-3 text-xs font-bold text-[#1F2937]">
-                  {entry.vaccineName}
-                </p>
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {entry.vaccineName === "Other" && (
-                    <FieldInput
-                      label="Specify Vaccine"
-                      required
-                      name={`vaccineEntries.${index}.customVaccineName`}
-                      error={
-                        errors[`vaccineEntries.${index}.customVaccineName`]
-                      }
-                      value={entry.customVaccineName || ""}
-                      onChange={(event) =>
-                        onEntryChange(index, "customVaccineName", event.target.value)
-                      }
-                      placeholder="Enter vaccine name"
-                    />
-                  )}
-                  <FieldInput
-                    label="Dose"
-                    required
-                    name={`vaccineEntries.${index}.dose`}
-                    error={errors[`vaccineEntries.${index}.dose`]}
-                    value={entry.dose}
-                    onChange={(event) =>
-                      onEntryChange(index, "dose", event.target.value)
-                    }
-                    placeholder="e.g. 1st dose, 2nd dose, booster"
-                  />
-                  <FieldInput
-                    label="Date Given"
+          <div className="divide-y divide-[#EEF2F6]">
+            {CHILD_VACCINE_OPTIONS.map((vaccineName) => {
+              const entry = entriesByName.get(vaccineName) || {};
+
+              return (
+                <div
+                  key={vaccineName}
+                  className="grid gap-3 px-3 py-3 md:grid-cols-[minmax(170px,1.35fr)_minmax(130px,1fr)_minmax(92px,0.72fr)_minmax(92px,0.72fr)_minmax(92px,0.72fr)] md:items-center md:gap-0"
+                >
+                  <div>
+                    <p className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#94A3B8] md:hidden">
+                      Vaccine
+                    </p>
+                    <p className="text-sm font-bold text-[#1F2937]">
+                      {vaccineName}
+                    </p>
+                  </div>
+                  <EpiTableInput
+                    label="Date"
                     type="date"
-                    required
-                    name={`vaccineEntries.${index}.dateGiven`}
-                    error={errors[`vaccineEntries.${index}.dateGiven`]}
-                    value={entry.dateGiven || dateOfVisit}
-                    onChange={(event) =>
-                      onEntryChange(index, "dateGiven", event.target.value)
+                    value={entry.dateGiven || ""}
+                    onChange={(value) =>
+                      onVaccineRowChange(vaccineName, "dateGiven", value)
                     }
                   />
-                  <FieldInput
+                  <EpiTableInput
                     label="Weight"
                     type="number"
                     step="0.01"
                     value={entry.weight || ""}
-                    onChange={(event) =>
-                      onEntryChange(index, "weight", event.target.value)
-                    }
                     placeholder="kg"
+                    onChange={(value) =>
+                      onVaccineRowChange(vaccineName, "weight", value)
+                    }
                   />
-                  <FieldInput
+                  <EpiTableInput
                     label="Height"
                     type="number"
                     step="0.01"
                     value={entry.height || ""}
-                    onChange={(event) =>
-                      onEntryChange(index, "height", event.target.value)
-                    }
                     placeholder="cm"
+                    onChange={(value) =>
+                      onVaccineRowChange(vaccineName, "height", value)
+                    }
                   />
-                  <FieldInput
-                    label="Temperature"
+                  <EpiTableInput
+                    label="Temp"
                     type="number"
                     step="0.1"
                     value={entry.temperature || ""}
-                    onChange={(event) =>
-                      onEntryChange(index, "temperature", event.target.value)
+                    placeholder="C"
+                    onChange={(value) =>
+                      onVaccineRowChange(vaccineName, "temperature", value)
                     }
-                    placeholder="°C"
-                  />
-                  <FieldInput
-                    label="Next Schedule Date"
-                    type="date"
-                    value={entry.nextScheduleDate}
-                    onChange={(event) =>
-                      onEntryChange(index, "nextScheduleDate", event.target.value)
-                    }
-                  />
-                  <FieldInput
-                    label="Remarks"
-                    value={entry.remarks}
-                    onChange={(event) =>
-                      onEntryChange(index, "remarks", event.target.value)
-                    }
-                    placeholder="Optional remarks"
                   />
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-        )}
-        {entries.map((entry, index) =>
-          entry.vaccineName === "Other" ? (
-            <div key="other-vaccine-name" className="mt-4 max-w-md">
-              <FieldInput
-                label="Other Vaccine Name"
-                required
-                name={`vaccineEntries.${index}.customVaccineName`}
-                error={errors[`vaccineEntries.${index}.customVaccineName`]}
-                value={entry.customVaccineName || ""}
-                onChange={(event) =>
-                  onEntryChange(index, "customVaccineName", event.target.value)
-                }
-                placeholder="Enter vaccine name"
-              />
-            </div>
-          ) : null,
-        )}
-      </ClinicalFieldGroup>
-
-      <ClinicalFieldGroup title="Basic Monitoring">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <FieldInput
-            label="Weight"
-            type="number"
-            step="0.01"
-            value={weight}
-            onChange={(event) => onWeightChange(event.target.value)}
-            placeholder="kg"
-          />
-          <FieldInput
-            label="Height"
-            type="number"
-            step="0.01"
-            value={height}
-            onChange={(event) => onHeightChange(event.target.value)}
-            placeholder="cm"
-          />
-          <FieldInput
-            label="Temperature"
-            type="number"
-            step="0.1"
-            value={temperature}
-            onChange={(event) => onTemperatureChange(event.target.value)}
-            placeholder="C"
-          />
         </div>
+
+        <p className="mt-3 text-xs leading-relaxed text-[#64748B]">
+          Fill the Date column for each vaccine actually given. Weight, height,
+          and temperature are optional per vaccine row. If no vaccine was given,
+          write the reason in Remarks.
+        </p>
       </ClinicalFieldGroup>
 
       <ClinicalFieldGroup title="Exclusive Breastfeeding Monitoring">
@@ -3983,7 +4218,7 @@ function ImmunizationVisitFields({
       </ClinicalFieldGroup>
 
       <FieldTextarea
-        label="Clinical Notes / Remarks"
+        label="Remarks"
         value={consultationNotes}
         onChange={(event) => onNotesChange(event.target.value)}
         placeholder="Write immunization notes, guardian remarks, or post-vaccination observations..."
@@ -3992,24 +4227,46 @@ function ImmunizationVisitFields({
     </div>
   );
 }
-function ValidationAlert() {
+
+function EpiTableInput({
+  label,
+  value,
+  onChange,
+  type = "text",
+  step,
+  placeholder,
+}) {
   return (
-    <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 px-3.5 py-3 text-[#B91C1C]">
-      <AlertCircle size={15} className="mt-0.5 shrink-0" />
-      <p className="text-xs font-medium">
-        Please complete the highlighted required fields.
-      </p>
-    </div>
+    <label className="block min-w-0">
+      <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#94A3B8] md:hidden">
+        {label}
+      </span>
+      <input
+        type={type}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-2.5 text-sm text-[#1F2937] outline-none transition placeholder:text-[#CBD5E1] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 md:rounded-none md:border-0 md:bg-transparent md:px-3 md:focus:bg-white md:focus:ring-0"
+      />
+    </label>
   );
 }
 
-function FieldInput({ label, required, error, className = "", ...props }) {
+function FieldInput({
+  label,
+  required,
+  error,
+  className = "",
+  wrapperClassName = "",
+  ...props
+}) {
   const inputClass = error
     ? "border-[#B91C1C] bg-white ring-2 ring-[#B91C1C]/10"
     : "border-[#E5E7EB] bg-white focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10";
 
   return (
-    <div>
+    <div className={wrapperClassName}>
       <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
@@ -4025,13 +4282,21 @@ function FieldInput({ label, required, error, className = "", ...props }) {
   );
 }
 
-function FieldSelect({ label, required, error, children, className = "", ...props }) {
+function FieldSelect({
+  label,
+  required,
+  error,
+  children,
+  className = "",
+  wrapperClassName = "",
+  ...props
+}) {
   const selectClass = error
     ? "border-[#B91C1C] bg-white ring-2 ring-[#B91C1C]/10"
     : "border-[#E5E7EB] bg-white focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10";
 
   return (
-    <div>
+    <div className={wrapperClassName}>
       <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
@@ -4049,13 +4314,21 @@ function FieldSelect({ label, required, error, children, className = "", ...prop
   );
 }
 
-function FieldTextarea({ label, required, error, rows = 3, className = "", ...props }) {
+function FieldTextarea({
+  label,
+  required,
+  error,
+  rows = 3,
+  className = "",
+  wrapperClassName = "",
+  ...props
+}) {
   const textareaClass = error
     ? "border-[#B91C1C] bg-white ring-2 ring-[#B91C1C]/10"
     : "border-[#E5E7EB] bg-white focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10";
 
   return (
-    <div>
+    <div className={wrapperClassName}>
       <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
@@ -4153,6 +4426,87 @@ function getPatientName(patient = {}) {
   return formatPatientName(patient, "Unnamed Patient");
 }
 
+function getReferringFacilityName(user = {}) {
+  return formatFacilityName(
+    user.barangayHealthCenter ||
+      user.barangay_health_center ||
+      user.assignedBarangayHealthCenter ||
+      user.facility ||
+      user.facilityName ||
+      user.facility_name,
+    "Barangay Health Center",
+  );
+}
+
+function getReceivingFacilityName(user = {}) {
+  return formatFacilityName(
+    user.ruralHealthUnit ||
+      user.rural_health_unit ||
+      user.assignedRuralHealthUnit ||
+      user.receivingFacility,
+    "",
+  );
+}
+
+function getPatientBirthDate(patient = {}) {
+  return (
+    patient.birthdate ||
+    patient.birthDate ||
+    patient.dateOfBirth ||
+    patient.date_of_birth ||
+    patient.dob ||
+    ""
+  );
+}
+
+function getPatientAddress(patient = {}) {
+  return formatDisplayValue(
+    patient.address ||
+      patient.streetAddress ||
+      patient.street_address ||
+      [
+        patient.purokArea || patient.purok_area,
+        patient.barangay || patient.patientBarangay,
+        patient.municipality,
+      ]
+        .filter(Boolean)
+        .join(", "),
+    "",
+  );
+}
+
+function getPatientPhilHealthNumber(patient = {}) {
+  return formatDisplayValue(
+    patient.philHealthNumber ||
+      patient.philhealthNumber ||
+      patient.philhealth_number,
+    "",
+  );
+}
+
+function getPatientPhilHealthCategory(patient = {}) {
+  return formatDisplayValue(
+    patient.philHealthCategory ||
+      patient.philhealthCategory ||
+      patient.philhealth_category ||
+      patient.philHealthStatus ||
+      patient.philhealthStatus ||
+      patient.philhealth_status,
+    "",
+  );
+}
+
+function getPatientAgeSexCivilStatus(patient = {}) {
+  const display = getPatientDisplay(patient);
+  const age = display.age;
+  const civilStatus = formatDisplayValue(
+    patient.civilStatus || patient.civil_status,
+    "",
+  );
+
+  return [age, civilStatus].filter(Boolean).join(" / ");
+}
+
 function getPatientDisplay(patient = {}) {
   const name = getPatientName(patient);
   const age = formatDisplayValue(
@@ -4209,9 +4563,6 @@ function getPatientSearchText(patient = {}) {
     .toLowerCase();
 }
 
-function getPatientInitial(patient = {}) {
-  return getPatientName(patient).charAt(0).toUpperCase() || "P";
-}
 
 function getPatientSexText(patient = {}) {
   return String(

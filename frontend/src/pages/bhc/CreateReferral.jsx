@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useEffect } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -25,6 +25,7 @@ import {
   getReferralsByPatient,
 } from "../../services/referrals";
 import {
+  createHealthRecord,
   getHealthRecords,
   updateHealthRecordById,
 } from "../../services/healthRecordService";
@@ -63,9 +64,17 @@ const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 
 export default function CreateReferral() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const targetRecordId = searchParams.get("recordId");
+  const draftReferralContext = location.state?.healthRecordDraft || null;
+  const draftRecordData = draftReferralContext?.formData || null;
+  const draftPatientId =
+    draftRecordData?.patientId ||
+    draftReferralContext?.patientId ||
+    searchParams.get("patientId") ||
+    "";
   const currentUser = getCurrentUser();
   const draftScope = useMemo(
     () => ({
@@ -160,6 +169,21 @@ export default function CreateReferral() {
   }, []);
 
   useEffect(() => {
+    if (draftRecordData) {
+      setRecord({
+        ...draftRecordData,
+        id: "",
+        _id: "",
+        isDraft: true,
+      });
+
+      const draftPatient =
+        draftReferralContext?.patient ||
+        patients.find((p) => String(p.id) === String(draftPatientId));
+      if (draftPatient) setPatient(draftPatient);
+      return;
+    }
+
     if (!targetRecordId) return;
 
     const foundRecord = healthRecords.find(
@@ -172,7 +196,14 @@ export default function CreateReferral() {
       const foundPatient = patients.find((p) => p.id === foundRecord.patientId);
       if (foundPatient) setPatient(foundPatient);
     }
-  }, [targetRecordId, patients, healthRecords]);
+  }, [
+    draftPatientId,
+    draftRecordData,
+    draftReferralContext?.patient,
+    targetRecordId,
+    patients,
+    healthRecords,
+  ]);
 
   useEffect(() => {
     if (!patient) return;
@@ -195,7 +226,7 @@ export default function CreateReferral() {
     }));
   }, [patient]);
 
-  const recordIdDisplay = record?.id || record?._id || targetRecordId;
+  const recordIdDisplay = record?.id || record?._id || targetRecordId || "Draft";
 
   const referralClassification =
     record?.category ||
@@ -297,6 +328,8 @@ export default function CreateReferral() {
 
   async function findExistingReferralForRecord() {
     const sourceRecordId = record?.id || record?._id || targetRecordId;
+    if (!sourceRecordId) return null;
+
     return (
       (await getReferralByHealthRecordId(sourceRecordId)) ||
       (!record?.isFollowUp && record?.linkedTrackingId
@@ -355,6 +388,7 @@ export default function CreateReferral() {
 
     setSubmitting(true);
     let referralPayload = null;
+    let savedDraftRecord = null;
 
     try {
     const existingReferral = await findExistingReferralForRecord();
@@ -362,6 +396,25 @@ export default function CreateReferral() {
       setShowConfirmModal(false);
       navigate(`/bhc/referrals/${existingReferral.trackingId}`);
       return;
+    }
+
+    const shouldCreateDraftRecord = draftRecordData && !(record?.id || record?._id);
+    const sourceRecord =
+      shouldCreateDraftRecord
+        ? await createHealthRecord(
+            {
+              ...draftRecordData,
+              needsReferral: true,
+              needs_referral: true,
+            },
+            "bhc",
+          )
+        : record;
+    if (shouldCreateDraftRecord) savedDraftRecord = sourceRecord;
+    const sourceRecordId = sourceRecord?.id || sourceRecord?._id || "";
+
+    if (draftRecordData && sourceRecordId) {
+      setRecord(sourceRecord);
     }
 
     const availabilitySnapshot = createDoctorAvailabilitySnapshot(
@@ -372,7 +425,7 @@ export default function CreateReferral() {
     referralPayload = {
       clientSubmissionId,
       patientId: patient?.id,
-      patientName: patient?.name,
+      patientName: patient?.name || draftRecordData?.patientName,
       ageSex:
         patient?.ageSex || `${patient?.age || ""} / ${patient?.sex || ""}`,
       dateOfReferral: form.dateOfReferral,
@@ -432,27 +485,30 @@ export default function CreateReferral() {
       patientPhilHealthNumber: form.philHealthNumber.trim(),
       patientPhilHealthCategory: form.philHealthCategory,
 
-      healthRecordId: record?.id || record?._id,
-      recordId: record?.id || record?._id,
+      healthRecordId: sourceRecordId,
+      recordId: sourceRecordId,
 
       // RHU IncomingReferrals uses `chiefComplaint || concern`.
-      chiefComplaint: record?.chiefComplaint,
-      concern: record?.chiefComplaint,
+      chiefComplaint: sourceRecord?.chiefComplaint,
+      concern: sourceRecord?.chiefComplaint,
 
-      diagnosis: record?.diagnosis || record?.assessment,
+      diagnosis: sourceRecord?.diagnosis || sourceRecord?.assessment,
       reasonForReferral: form.reasonForReferral,
-      summaryOfPresentIllness: record?.summaryOfPresentIllness,
-      initialActionsTaken: record?.actiontaken || record?.medication,
-      attendingStaff: record?.attendingStaff,
+      summaryOfPresentIllness: sourceRecord?.summaryOfPresentIllness,
+      initialActionsTaken:
+        sourceRecord?.actiontaken ||
+        sourceRecord?.actionTaken ||
+        sourceRecord?.medication,
+      attendingStaff: sourceRecord?.attendingStaff,
       practitioner: referringPractitioner,
       suggestedSpecialization,
     };
 
     const referral = await createReferral(referralPayload);
 
-    if (record?.id || record?._id) {
+    if (sourceRecordId) {
       await updateHealthRecordById(
-        record.id || record._id,
+        sourceRecordId,
         {
           linkedTrackingId: referral.trackingId,
           referralTrackingId: referral.trackingId,
@@ -468,7 +524,12 @@ export default function CreateReferral() {
         const draft = await saveReferralDraft({
           ...draftScope,
           patientId: patient?.id,
-          healthRecordId: record?.id || record?._id || targetRecordId,
+          healthRecordId:
+            savedDraftRecord?.id ||
+            savedDraftRecord?._id ||
+            record?.id ||
+            record?._id ||
+            targetRecordId,
           payload: referralPayload,
           errorMessage:
             "Internet connection lost before this referral reached the backend.",
@@ -485,7 +546,11 @@ export default function CreateReferral() {
       }
 
       console.error("Failed to submit referral:", error);
-      setSubmissionErrorNotice("Referral failed. Try again.");
+      setSubmissionErrorNotice(
+        savedDraftRecord
+          ? "The health record was saved, but referral submission failed. Please try submitting the referral again."
+          : "Referral failed. Try again.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -601,6 +666,12 @@ export default function CreateReferral() {
     queryClient.invalidateQueries({
       queryKey: queryKeys.dashboardSummary("rhu"),
     });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.healthRecords("bhc"),
+    });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.followUpTasks("bhc"),
+    });
     if (patient?.id) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.patientDetails("bhc", patient.id),
@@ -610,9 +681,6 @@ export default function CreateReferral() {
     if (sourceRecordId) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.healthRecordDetails("bhc", sourceRecordId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.healthRecords("bhc"),
       });
     }
   }
@@ -668,7 +736,21 @@ export default function CreateReferral() {
   }
 
   /* ─── Error: No Context ─── */
-  if (!targetRecordId || !record) {
+  if (draftRecordData && !record) {
+    return (
+      <DashboardLayout role="bhc" title="Submit Referral">
+        <SoftLoadingArea
+          isLoading
+          message="Preparing referral draft..."
+          minHeight="min-h-[520px]"
+        >
+          <div className="min-h-[520px] rounded-2xl border border-[#E8ECF0] bg-white shadow-sm" />
+        </SoftLoadingArea>
+      </DashboardLayout>
+    );
+  }
+
+  if ((!targetRecordId && !draftRecordData) || !record) {
     return (
       <DashboardLayout role="bhc" title="Submit Referral">
         <style>{keyframes}</style>
@@ -725,11 +807,14 @@ export default function CreateReferral() {
               </svg>
             </div>
             <h1 className="text-xl font-bold text-slate-800">
-              Referral sent.
+              {draftRecordData
+                ? "Health record and referral submitted successfully."
+                : "Referral sent."}
             </h1>
             <p className="mt-2 text-sm text-slate-500 max-w-md mx-auto">
-              The consultation has been securely transmitted to the receiving
-              facility for review and scheduling.
+              {draftRecordData
+                ? "The health record was saved and the referral was linked for RHU review."
+                : "The consultation has been securely transmitted to the receiving facility for review and scheduling."}
             </p>
           </div>
 
@@ -1055,7 +1140,11 @@ export default function CreateReferral() {
                 className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {submitting ? <ButtonSpinner /> : <Send size={14} />}
-                {submitting ? "Submitting..." : "Submit Referral"}
+                {submitting
+                  ? "Submitting..."
+                  : draftRecordData
+                    ? "Save Health Record & Submit Referral"
+                    : "Submit Referral"}
               </button>
             </div>
           </div>
@@ -1333,6 +1422,14 @@ export default function CreateReferral() {
           </div>
         )}
 
+        {draftRecordData && (
+          <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <span className="font-bold">Unsaved health record draft.</span>{" "}
+            This referral will save the health record first, then submit and
+            link the referral.
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
           <div className="space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
           {/* ═══════════════════════════════════
@@ -1575,7 +1672,9 @@ export default function CreateReferral() {
                 )}
                 {checkingSubmission || submitting
                   ? "Submitting..."
-                  : "Submit Referral Slip"}
+                  : draftRecordData
+                    ? "Save Health Record & Submit Referral"
+                    : "Submit Referral Slip"}
               </button>
             </div>
           </div>

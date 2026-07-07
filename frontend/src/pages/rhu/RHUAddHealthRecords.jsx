@@ -843,7 +843,7 @@ export default function AddHealthRecord() {
   const showFollowUpMonitoringFields =
     normalizePatientStatus(followUpStatus) === "Follow-up Required";
   const normalizedPatientStatus = normalizePatientStatus(followUpStatus);
-  const usesCareDecisionStep = !isFollowUp && !isEditingRecord;
+  const usesCareDecisionStep = false;
   const monitoringNotesLabel =
     normalizedPatientStatus === "Completed"
       ? "Outcome Notes"
@@ -936,7 +936,7 @@ export default function AddHealthRecord() {
   }, [isMaternal]);
 
   useEffect(() => {
-    if (!showFollowUpMonitoringFields) {
+    if (isFollowUp && !showFollowUpMonitoringFields) {
       setFollowUpDate("");
       if (!isFollowUp) setPatientCondition("");
     }
@@ -1070,15 +1070,6 @@ export default function AddHealthRecord() {
     }
   }
 
-  function handleProceedToCareDecision(event) {
-    event.preventDefault();
-    closeDateTimePopovers();
-    const clinicalErrors = getClinicalValidationErrors();
-    if (setValidationErrorsAndFocus(clinicalErrors)) return;
-
-    setCareDecisionStep(true);
-  }
-
   function clearValidationError(field) {
     setValidationErrors((prev) => {
       if (!prev[field]) return prev;
@@ -1114,6 +1105,9 @@ export default function AddHealthRecord() {
 
     if (!dateOfVisit) errors.dateOfVisit = "Date of visit is required.";
     if (!timeOfVisit) errors.timeOfVisit = "Time of visit is required.";
+    if (!String(attendingStaff || "").trim()) {
+      errors.attendingStaff = "Name of practitioner is required.";
+    }
 
     if (isFollowUp) {
       if (!summaryOfPresentIllness.trim()) {
@@ -1128,8 +1122,9 @@ export default function AddHealthRecord() {
         dateGiven: entry.dateGiven || dateOfVisit,
       }));
 
-      if (preparedEntries.length === 0) {
-        errors.vaccineEntries = "Select at least one vaccine.";
+      if (preparedEntries.length === 0 && !consultationNotes.trim()) {
+        errors.vaccineEntries =
+          "Select at least one vaccine or enter remarks if no vaccine was given.";
       }
 
       preparedEntries.forEach((entry, index) => {
@@ -1163,17 +1158,6 @@ export default function AddHealthRecord() {
         "Summary of present illness is required.";
     }
 
-    return errors;
-  }
-
-  function getCareDecisionValidationErrors() {
-    const errors = {};
-    if (!normalizePatientStatus(followUpStatus)) {
-      errors.followUpStatus = "Select the patient status.";
-    }
-    if (showFollowUpMonitoringFields && !followUpDate) {
-      errors.followUpDate = "Follow-up date is required.";
-    }
     return errors;
   }
 
@@ -1230,10 +1214,7 @@ export default function AddHealthRecord() {
       return;
     }
 
-    const clientErrors = {
-      ...getClinicalValidationErrors(),
-      ...(usesCareDecisionStep ? getCareDecisionValidationErrors() : {}),
-    };
+    const clientErrors = getClinicalValidationErrors();
 
     if (setValidationErrorsAndFocus(clientErrors)) return;
 
@@ -1298,9 +1279,10 @@ export default function AddHealthRecord() {
         (entry) => !String(entry.vaccineName || "").trim(),
       );
 
-      if (preparedVaccineEntries.length === 0) {
+      if (preparedVaccineEntries.length === 0 && !consultationNotes.trim()) {
         setValidationErrorsAndFocus({
-          vaccineEntries: "Select at least one vaccine.",
+          vaccineEntries:
+            "Select at least one vaccine or enter remarks if no vaccine was given.",
         });
         return;
       }
@@ -1314,33 +1296,15 @@ export default function AddHealthRecord() {
     const immunizationNextScheduleDate =
       preparedVaccineEntries.find((entry) => entry.nextScheduleDate)
         ?.nextScheduleDate || "";
-    const effectiveFollowUpDate =
-      showFollowUpMonitoringFields && !followUpDate && immunizationNextScheduleDate
-        ? immunizationNextScheduleDate
-        : followUpDate;
+    const effectiveFollowUpDate = followUpDate || immunizationNextScheduleDate || "";
 
     if (
       !isFollowUp &&
       effectiveHealthRecordType === "Immunization" &&
-      showFollowUpMonitoringFields &&
       !followUpDate &&
       immunizationNextScheduleDate
     ) {
       setFollowUpDate(immunizationNextScheduleDate);
-    }
-
-    if (
-      !isFollowUp &&
-      effectiveHealthRecordType === "Immunization" &&
-      showFollowUpMonitoringFields &&
-      !followUpDate &&
-      !immunizationNextScheduleDate
-    ) {
-      setValidationErrorsAndFocus({
-        followUpDate:
-          "Enter a follow-up date or next schedule date for Follow-up Required status.",
-      });
-      return;
     }
 
     const finalChiefComplaint =
@@ -1363,11 +1327,12 @@ export default function AddHealthRecord() {
     const vitalSigns = `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | Pulse: ${
       pulse || "N/A"
     } bpm | Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
-    const finalPatientStatus = normalizePatientStatus(followUpStatus);
-    const finalNeedsReferral =
-      usesCareDecisionStep &&
-      finalPatientStatus !== "Completed" &&
-      Boolean(needsReferral);
+    const finalPatientStatus = isFollowUp
+      ? normalizePatientStatus(followUpStatus)
+      : effectiveFollowUpDate
+        ? "Follow-up Required"
+        : "Completed";
+    const finalNeedsReferral = !isFollowUp && Boolean(needsReferral);
 
     const recordMaternalData = {
       ...maternalData,
@@ -1436,12 +1401,12 @@ export default function AddHealthRecord() {
         attendingStaff,
         consultationNotes,
       followUpStatus: finalPatientStatus,
-      followUpDate: showFollowUpMonitoringFields ? effectiveFollowUpDate : "",
+      followUpDate: effectiveFollowUpDate,
         needsReferral: finalNeedsReferral,
         needs_referral: finalNeedsReferral,
         monitoringNotes,
         patientCondition:
-          isFollowUp || showFollowUpMonitoringFields ? patientCondition : "",
+          isFollowUp || effectiveFollowUpDate ? patientCondition : "",
         maternalData: recordMaternalData,
         lmp: recordMaternalData.lmp || null,
         pmp: recordMaternalData.pmp || null,
@@ -1543,25 +1508,15 @@ export default function AddHealthRecord() {
     ? "Follow-up Health Record"
     : isEditingRecord
       ? "Edit Health Record"
-      : careDecisionStep && usesCareDecisionStep
-        ? "Review & Care Decision"
-        : "Add Health Record";
-  const pageStepLabel = usesCareDecisionStep
-    ? careDecisionStep
-      ? "Step 3 of 3"
-      : setupComplete
-        ? "Step 2 of 3"
-        : "Step 1 of 3"
-    : null;
+      : "Add Health Record";
+  const pageStepLabel = null;
   const pageSubtitle = isFollowUp
     ? "Record what happened during the patient's scheduled return visit."
     : isEditingRecord
       ? "Correct or update details in this existing RHU health record."
-      : careDecisionStep && usesCareDecisionStep
-        ? "Review the visit summary and choose what should happen after this record is saved."
-        : setupComplete
+      : setupComplete
           ? "Complete the clinical details for this visit."
-          : "Search patient and choose the record classification before recording a visit.";
+          : "Search patient and choose the record type before recording a visit.";
 
   function handleStepBack() {
     closeDateTimePopovers();
@@ -1570,7 +1525,7 @@ export default function AddHealthRecord() {
       return;
     }
 
-    if (setupComplete && usesCareDecisionStep) {
+    if (setupComplete && !isFollowUp && !isEditingRecord) {
       setSetupComplete(false);
       setCareDecisionStep(false);
       setDropdownOpen(false);
@@ -1670,13 +1625,11 @@ export default function AddHealthRecord() {
         />
       ) : (
       <form
-        onSubmit={usesCareDecisionStep ? handleProceedToCareDecision : handleSave}
+        onSubmit={handleSave}
         noValidate
         className="relative ml-0 mr-auto w-full max-w-6xl"
       >
         <div className="space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
-        {Object.keys(validationErrors).length > 0 && <ValidationAlert />}
-
         {isFollowUp && (
           <FollowUpContextCard
             patientName={followUpPatientName}
@@ -1718,7 +1671,10 @@ export default function AddHealthRecord() {
             />
             <FieldInput
               label="Name of Practitioner"
+              required
+              name="attendingStaff"
               value={attendingStaff}
+              error={validationErrors.attendingStaff}
               readOnly
             />
           </div>
@@ -1907,56 +1863,28 @@ export default function AddHealthRecord() {
 
         {!isFollowUp && !patientGateLocked && !usesCareDecisionStep && isImmunization && (
           <FormSection
-            title="Patient Monitoring"
-            subtitle="Set the immunization visit outcome and follow-up schedule if another dose is needed."
+            title="Follow-up & Referral"
+            subtitle="Schedule a return visit if needed and indicate if referral is required."
             icon={<HeartPulse size={14} />}
             delay={3}
           >
-            <div
-              className={`grid gap-4 ${
-                showFollowUpMonitoringFields ? "lg:grid-cols-3" : "lg:grid-cols-2"
-              }`}
-            >
-              <FieldSelect
-                label="Patient Status"
-                value={followUpStatus}
-                onChange={(event) => handlePatientStatusChange(event.target.value)}
-              >
-                <option>Routine Monitoring</option>
-                <option>Follow-up Required</option>
-                <option>Completed</option>
-              </FieldSelect>
-              {showFollowUpMonitoringFields && (
-                <FieldInput
-                  label="Follow-up Date"
-                  type="date"
-                  value={followUpDate}
-                  onChange={(event) => setFollowUpDate(event.target.value)}
-                />
-              )}
-              {showFollowUpMonitoringFields && (
-                <FieldSelect
-                  label="Current Condition"
-                  value={patientCondition}
-                  onChange={(event) => setPatientCondition(event.target.value)}
-                  required
-                >
-                  <option value="">Select condition</option>
-                  <option>Improving</option>
-                  <option>Stable</option>
-                  <option>No Improvement Observed</option>
-                  <option>Needs Further Review</option>
-                  <option>Recovered</option>
-                </FieldSelect>
-              )}
-            </div>
-            <div className="mt-4">
-              <FieldTextarea
-                label={monitoringNotesLabel}
-                value={monitoringNotes}
-                onChange={(event) => setMonitoringNotes(event.target.value)}
-                placeholder={monitoringNotesPlaceholder}
-                rows={3}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <FieldInput
+                label="Next Follow-up Date"
+                type="date"
+                value={followUpDate}
+                name="followUpDate"
+                error={validationErrors.followUpDate}
+                onChange={(event) => {
+                  clearValidationError("followUpDate");
+                  setFollowUpDate(event.target.value);
+                }}
+              />
+              <YesNoRadioGroup
+                label="Needs Referral?"
+                name="needsReferral"
+                value={needsReferral ? "Yes" : "No"}
+                onChange={(value) => setNeedsReferral(value === "Yes")}
               />
             </div>
           </FormSection>
@@ -2341,65 +2269,29 @@ export default function AddHealthRecord() {
 
             {!usesCareDecisionStep && (
             <FormSection
-              title="Patient Monitoring"
-              subtitle="Track patient progress and follow-up schedules."
+              title="Follow-up & Referral"
+              subtitle="Schedule a return visit if needed and indicate if referral is required."
               icon={<HeartPulse size={14} />}
               delay={5}
             >
           <LockedFormContent locked={patientGateLocked}>
-          <div
-            className={`grid gap-4 ${
-              showFollowUpMonitoringFields ? "lg:grid-cols-3" : "lg:grid-cols-2"
-            }`}
-          >
-            <FieldSelect
-              label="Patient Status"
-              value={followUpStatus}
-              onChange={(event) =>
-                handlePatientStatusChange(event.target.value)
-              }
-            >
-              <option>Routine Monitoring</option>
-              <option>Follow-up Required</option>
-              <option>Completed</option>
-            </FieldSelect>
-            {showFollowUpMonitoringFields && (
-              <FieldInput
-                label="Follow-up Date"
-                type="date"
-                value={followUpDate}
-                name="followUpDate"
-                error={validationErrors.followUpDate}
-                onChange={(event) => {
-                  clearValidationError("followUpDate");
-                  setFollowUpDate(event.target.value);
-                }}
-                required
-              />
-            )}
-            {showFollowUpMonitoringFields && (
-              <FieldSelect
-                label="Current Condition"
-                value={patientCondition}
-                onChange={(event) => setPatientCondition(event.target.value)}
-                required
-              >
-                <option value="">Select condition</option>
-                <option>Improving</option>
-                <option>Stable</option>
-                <option>No Improvement Observed</option>
-                <option>Needs Further Review</option>
-                <option>Recovered</option>
-              </FieldSelect>
-            )}
-          </div>
-          <div className="mt-4">
-            <FieldTextarea
-              label={monitoringNotesLabel}
-              value={monitoringNotes}
-              onChange={(event) => setMonitoringNotes(event.target.value)}
-              placeholder={monitoringNotesPlaceholder}
-              rows={3}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <FieldInput
+              label="Next Follow-up Date"
+              type="date"
+              value={followUpDate}
+              name="followUpDate"
+              error={validationErrors.followUpDate}
+              onChange={(event) => {
+                clearValidationError("followUpDate");
+                setFollowUpDate(event.target.value);
+              }}
+            />
+            <YesNoRadioGroup
+              label="Needs Referral?"
+              name="needsReferral"
+              value={needsReferral ? "Yes" : "No"}
+              onChange={(value) => setNeedsReferral(value === "Yes")}
             />
           </div>
           </LockedFormContent>
@@ -2438,9 +2330,7 @@ export default function AddHealthRecord() {
               ? "Saving..."
               : isFollowUp
                 ? "Save Follow-up Visit"
-                : usesCareDecisionStep
-                  ? "Proceed to Care Decision"
-                  : "Save Health Record"}
+                : "Save Health Record"}
           </button>
         </div>
         </div>
@@ -2533,10 +2423,6 @@ function HealthRecordSetupStep({
       style={stagger(1)}
     >
       <div className="rounded-2xl border border-[#E8ECF0] bg-white p-5 shadow-sm sm:p-6">
-        {(errors.selectedPatientId || errors.healthRecordType) && (
-          <ValidationAlert />
-        )}
-
         <div
           className={`relative z-30 rounded-xl border p-4 ${
             errors.selectedPatientId
@@ -2749,7 +2635,6 @@ function CareDecisionStep({
       style={stagger(2)}
     >
       <div className="rounded-2xl border border-[#E8ECF0] bg-white p-5 shadow-sm sm:p-6">
-        {(errors.followUpStatus || errors.followUpDate) && <ValidationAlert />}
         <div className="rounded-xl border border-[#F1F5F9] bg-[#FAFBFC] px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
             Patient Summary
@@ -2769,7 +2654,7 @@ function CareDecisionStep({
             tabIndex={errors.followUpStatus ? -1 : undefined}
           >
             <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
-              Patient Status
+              Follow-up Plan
             </p>
             <div className="grid gap-3 md:grid-cols-3">
               {statusOptions.map((option) => {
@@ -3008,7 +2893,7 @@ function PatientSearchDropdown({
                     type="button"
                     onMouseEnter={() => onHighlight(index)}
                     onClick={() => onSelect(patient.id)}
-                    className={`flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors duration-100 ${
+                    className={`flex w-full items-center gap-2.5 px-3.5 py-3 text-left transition-colors duration-100 ${
                       isHighlighted
                         ? "bg-[#B91C1C]/[0.06]"
                         : isSelected
@@ -3016,16 +2901,6 @@ function PatientSearchDropdown({
                           : "hover:bg-[#FAFBFC]"
                     }`}
                   >
-                    <div
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold ${
-                        isSelected
-                          ? "bg-[#B91C1C] text-white"
-                          : "bg-[#F3F4F6] text-[#6B7280]"
-                      }`}
-                    >
-                      {getPatientInitial(patient)}
-                    </div>
-
                     <div className="min-w-0 flex-1">
                       <div className="flex min-w-0 items-center gap-2">
                         <p
@@ -3373,7 +3248,8 @@ function ImmunizationVisitFields({
 
         {entries.length === 0 && (
           <p className="mt-4 rounded-xl border border-dashed border-[#E5E7EB] bg-white px-4 py-3 text-xs text-[#64748B]">
-            Select at least one vaccine given during this visit.
+            Select at least one vaccine given during this visit, or enter
+            remarks below if no vaccine was given.
           </p>
         )}
         {entries.map((entry, index) =>
@@ -3569,17 +3445,6 @@ function ImmunizationVisitFields({
     </div>
   );
 }
-function ValidationAlert() {
-  return (
-    <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 px-3.5 py-3 text-[#B91C1C]">
-      <AlertCircle size={15} className="mt-0.5 shrink-0" />
-      <p className="text-xs font-medium">
-        Please complete the highlighted required fields.
-      </p>
-    </div>
-  );
-}
-
 function FieldInput({ label, required, error, className = "", ...props }) {
   const inputClass = error
     ? "border-[#B91C1C] bg-white ring-2 ring-[#B91C1C]/10"
@@ -3786,9 +3651,6 @@ function getPatientSearchText(patient = {}) {
     .toLowerCase();
 }
 
-function getPatientInitial(patient = {}) {
-  return getPatientName(patient).charAt(0).toUpperCase() || "P";
-}
 
 function getPatientSexText(patient = {}) {
   return String(

@@ -4,7 +4,6 @@ import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   Eye,
-  FilePlus2,
   FileText,
   MoreHorizontal,
   Pencil,
@@ -17,7 +16,6 @@ import {
   ListToolbar,
   ModuleTableCard,
   SoftLoadingArea,
-  StatusBadge,
   TablePagination,
 } from "../../components/common";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
@@ -26,7 +24,6 @@ import {
   formatDate,
   formatPatientName,
   formatUserName,
-  normalizeHealthRecordStatus,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 
@@ -34,7 +31,6 @@ const PER_PAGE = 8;
 
 const DEFAULT_FILTERS = {
   search: "",
-  status: "",
   classification: "",
   date: "",
 };
@@ -59,12 +55,6 @@ function normalizeVisitType(record = {}) {
   }
 
   return "initial_consultation";
-}
-
-function formatVisitType(record = {}) {
-  return normalizeVisitType(record) === "follow_up_visit"
-    ? "Follow-up Visit"
-    : "Initial Consultation";
 }
 
 export default function RHUHealthRecords() {
@@ -118,10 +108,13 @@ export default function RHUHealthRecords() {
               record.diagnosis,
             "General Consultation",
           ),
-          status: normalizeHealthRecordStatus(
-            record.followUpStatus || record.status || record.recordStatus,
-          ),
-          followUp: record.followUpDate || "No Follow-up",
+          followUp:
+            record.followUpDate ||
+            record.follow_up_date ||
+            record.monitoringData?.followUpDate ||
+            record.monitoring_data?.followUpDate ||
+            record.monitoring_data?.follow_up_date ||
+            "",
 	          date:
 	            record.dateOfVisit ||
 	            record.date_of_visit ||
@@ -185,7 +178,6 @@ export default function RHUHealthRecords() {
       record.patientName,
       record.classification,
       record.concern,
-      record.status,
       record.provider,
       record.date,
     ]
@@ -195,7 +187,6 @@ export default function RHUHealthRecords() {
 
     const matchesSearch =
       !searchLower || matchesPatientName || searchText.includes(searchLower);
-    const matchesStatus = !filters.status || record.status === filters.status;
     const matchesClassification =
       !filters.classification ||
       record.classification === filters.classification;
@@ -203,13 +194,12 @@ export default function RHUHealthRecords() {
       !filters.date || normalizeDate(record.date) === filters.date;
 
     return (
-      matchesSearch && matchesStatus && matchesClassification && matchesDate
+      matchesSearch && matchesClassification && matchesDate
     );
   });
 
   const activeFilters = [
     filters.date && { key: "date", label: filters.date },
-    filters.status && { key: "status", label: filters.status },
     filters.classification && {
       key: "classification",
       label: filters.classification,
@@ -226,18 +216,6 @@ export default function RHUHealthRecords() {
       label: "Date of Visit",
       value: filters.date,
       type: "date",
-    },
-    {
-      key: "status",
-      label: "Status",
-      value: filters.status,
-      type: "pills",
-      options: [
-        { value: "", label: "All Status" },
-        { value: "Routine Monitoring", label: "Routine Monitoring" },
-        { value: "Follow-up Required", label: "Follow-up Required" },
-        { value: "Completed", label: "Completed" },
-      ],
     },
     {
       key: "classification",
@@ -342,7 +320,7 @@ function RHUHealthRecordsTable({
     <ModuleTableCard
       title="Recent Health Records"
       subtitle="Patient visits, monitoring, consultations, and referral follow-ups."
-      minWidth="min-w-[980px]"
+      minWidth="min-w-[940px]"
       refreshing={refreshing}
       footer={
         <TablePagination
@@ -354,13 +332,11 @@ function RHUHealthRecordsTable({
     >
           <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
             <tr>
-              <th className="whitespace-nowrap px-4 py-3">Record ID</th>
+              <th className="whitespace-nowrap px-4 py-3">Date</th>
               <th className="whitespace-nowrap px-4 py-3">Patient</th>
-              <th className="whitespace-nowrap px-4 py-3">Visit Type</th>
-              <th className="whitespace-nowrap px-4 py-3">Classification</th>
-              <th className="whitespace-nowrap px-4 py-3">Date of Visit</th>
+              <th className="whitespace-nowrap px-4 py-3">Record Type</th>
               <th className="whitespace-nowrap px-4 py-3">Provider</th>
-              <th className="whitespace-nowrap px-4 py-3">Status</th>
+              <th className="whitespace-nowrap px-4 py-3">Next Follow-up</th>
               <th className="whitespace-nowrap px-4 py-3 text-right">
                 Actions
               </th>
@@ -370,7 +346,7 @@ function RHUHealthRecordsTable({
           <tbody className="divide-y divide-[#F3F4F6]">
             {paginatedRecords.length === 0 ? (
               <DataTableEmptyState
-                colSpan={8}
+                colSpan={6}
                 icon={<FileText size={20} className="text-[#94A3B8]" />}
                 title="No Matching Records"
                 description="Try adjusting your search or filter criteria."
@@ -382,9 +358,14 @@ function RHUHealthRecordsTable({
                 className="transition-colors hover:bg-[#F9FAFB]"
               >
                 <td className="whitespace-nowrap px-4 py-3">
-                  <span className="font-mono text-[11px] font-semibold text-[#B91C1C]">
-                    {record.trackingId || record.id}
-                  </span>
+                  <div>
+                    <p className="text-[13px] font-semibold text-[#475569]">
+                      {formatDate(record.date, "Not recorded")}
+                    </p>
+                    <p className="mt-0.5 font-mono text-[10px] font-semibold text-[#B91C1C]">
+                      #{record.trackingId || record.id}
+                    </p>
+                  </div>
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3 font-medium text-[#1F2937]">
@@ -398,26 +379,18 @@ function RHUHealthRecordsTable({
 
                 <td className="whitespace-nowrap px-4 py-3">
                   <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
-                    {formatVisitType(record)}
-                  </span>
-                </td>
-
-                <td className="whitespace-nowrap px-4 py-3">
-                  <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
                     {record.classification}
                   </span>
-                </td>
-
-                <td className="whitespace-nowrap px-4 py-3 text-[#6B7280]">
-	                  {formatDate(record.date, "Not recorded")}
                 </td>
 
                 <td className="max-w-[190px] truncate px-4 py-3 text-[#6B7280]">
                   {record.provider || "RHU Staff"}
                 </td>
 
-                <td className="whitespace-nowrap px-4 py-3">
-                  <StatusBadge status={record.status} />
+                <td className="whitespace-nowrap px-4 py-3 text-[#64748B]">
+                  {record.followUp
+                    ? `Next: ${formatDate(record.followUp, record.followUp)}`
+                    : "—"}
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3 text-right">
@@ -442,8 +415,6 @@ function ActionMenu({ record, open, onToggle, onClose }) {
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const btnRef = useRef(null);
   const menuRef = useRef(null);
-  const canShowFollowUpAction =
-    normalizeHealthRecordStatus(record.status) === "Follow-up Required";
 
   function updatePosition() {
     if (!btnRef.current) return;
@@ -542,16 +513,6 @@ function ActionMenu({ record, open, onToggle, onClose }) {
                 Edit Record
               </Link>
 
-              {canShowFollowUpAction && (
-                <Link
-                  to={`/rhu/health-records/add?recordId=${record.id}&mode=follow-up`}
-                  onClick={onClose}
-                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-[#4B5563] transition-colors hover:bg-[#F9FAFB] hover:text-[#111827]"
-                >
-                  <FilePlus2 size={14} className="text-[#9CA3AF]" />
-                  Record Follow-up Visit
-                </Link>
-              )}
             </div>
           </div>,
           document.body,

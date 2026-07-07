@@ -2,7 +2,6 @@ import { Eye, FileText } from "lucide-react";
 import { Link } from "react-router";
 
 import SectionCard from "../../common/cards/SectionCard";
-import StatusBadge from "../../common/badges/StatusBadge";
 import {
   formatDisplayValue,
   formatPatientName,
@@ -25,9 +24,8 @@ export default function RecentHealthRecordsTable({ records, delay = 0 }) {
           <thead>
             <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
               <th className="px-4 py-3">Patient</th>
-              <th className="px-4 py-3">Visit Type</th>
+              <th className="px-4 py-3">Record Type</th>
               <th className="px-4 py-3">Chief Complaint</th>
-              <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Date</th>
               <th className="px-4 py-3 text-right">Action</th>
             </tr>
@@ -65,10 +63,6 @@ export default function RecentHealthRecordsTable({ records, delay = 0 }) {
 
                 <td className="px-4 py-3.5 text-[13px] text-[#6B7280]">
                   {concern}
-                </td>
-
-                <td className="whitespace-nowrap px-4 py-3.5">
-                  <StatusBadge status={record.status} />
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#9CA3AF]">
