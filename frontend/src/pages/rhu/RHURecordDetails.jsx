@@ -8,6 +8,7 @@ import {
   FilePlus2,
   HeartPulse,
   Pencil,
+  Syringe,
   X,
 } from "lucide-react";
 
@@ -202,12 +203,29 @@ export default function RHURecordDetails() {
   const shouldShowMonitoringFollowUp = status !== "Completed" && hasFollowUpData;
   const patientId = patient?.id || record.patientId;
   const patientName = getPatientName(patient) || getRecordPatientName(record);
-  const canRecordFollowUpVisit = isFollowUpEligibleStatus(status);
+  const canRecordFollowUpVisit =
+    Boolean(followUpDateValue) &&
+    getRecordVisitTypeValue(record) !== "follow_up_visit";
   const showPatientProfileSidebar = false;
-  const visitTypeLabel = getRecordVisitTypeLabel(record);
-  const recordClassification = getRecordClassification(record, patient);
+  const isImmunizationRecord = isImmunizationClassification(record, patient);
+  const rawRecordClassification = getRecordClassification(record, patient);
+  const recordClassification = isImmunizationRecord
+    ? "Child Health / EPI"
+    : rawRecordClassification;
+  const recordTypeLabel = isImmunizationRecord
+    ? "Immunization"
+    : rawRecordClassification;
+  const epiVaccineEntries = getEpiVaccineEntries(record);
+  const epiBreastfeedingMonitoring = getEpiBreastfeedingMonitoring(record);
   const displayDate = getRecordDate(record);
   const displayTime = getRecordTime(record);
+  const pageTitle = isImmunizationRecord
+    ? "Child Health / EPI Visit"
+    : getRecordConcern(record, "Medical Consultation");
+  const needsRhuReferral =
+    record.needs_referral === true ||
+    record.needsReferral === true ||
+    record.needsReferral === "yes";
   const medicalNotesValue =
     status === "Completed"
       ? getCompletedRecordMedicalNotes(record, monitoringNotesValue, "")
@@ -257,9 +275,8 @@ export default function RHURecordDetails() {
           <div>
             <div className="flex flex-wrap items-center gap-2.5">
               <h1 className="text-xl font-bold text-[#0F172A]">
-                {getRecordConcern(record, "Medical Consultation")}
+                {pageTitle}
               </h1>
-              <HealthRecordStatusBadge status={status} />
               {hasLinkedReferral && <ReferredChip />}
             </div>
 
@@ -267,25 +284,6 @@ export default function RHURecordDetails() {
               <span className="font-mono text-[11px] font-semibold text-slate-600">
                 {getRecordId(record)}
               </span>
-              <span className="text-slate-300">/</span>
-              <span>
-                {displayDate}
-                {displayTime ? ` at ${displayTime}` : ""}
-              </span>
-              {patientId && (
-                <>
-                  <span className="text-slate-300">/</span>
-                  <span>
-                    Patient:{" "}
-                    <Link
-                      to={`/rhu/patients/${patientId}`}
-                      className="font-semibold text-[#B91C1C] hover:text-[#7F1D1D] hover:underline"
-                    >
-                      {patientName}
-                    </Link>
-                  </span>
-                </>
-              )}
             </div>
           </div>
 
@@ -351,8 +349,10 @@ export default function RHURecordDetails() {
         </div>
         <div className="mt-5">
           <VisitInfoStrip
-            visitTypeLabel={visitTypeLabel}
+            patientName={patientName}
+            patientId={patientId}
             classification={recordClassification}
+            recordType={recordTypeLabel}
             displayDate={displayDate}
             displayTime={displayTime}
             practitioner={getRecordPractitioner(record, "RHU Staff")}
@@ -364,11 +364,26 @@ export default function RHURecordDetails() {
         className={
           isEditing
             ? "space-y-6"
-            : "grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"
+            : isImmunizationRecord
+              ? "space-y-5"
+              : "grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"
         }
       >
         <div>
-          <SideCard title="Clinical Record" icon={<HeartPulse size={14} />}>
+          <SideCard
+            title={
+              isImmunizationRecord && !isEditing
+                ? "Child Health / EPI Record"
+                : "Clinical Record"
+            }
+            icon={
+              isImmunizationRecord && !isEditing ? (
+                <Syringe size={14} />
+              ) : (
+                <HeartPulse size={14} />
+              )
+            }
+          >
             {isEditing ? (
               <div className="space-y-1">
                 <SectionDivider label="Clinical Assessment" />
@@ -398,23 +413,6 @@ export default function RHURecordDetails() {
                       onChange={handleChange}
                       required
                     />
-                  </FieldWithError>
-                  <FieldWithError error={formErrors.followUpStatus}>
-                    <FormSelect
-                      label="Status"
-                      name="followUpStatus"
-                      value={form.followUpStatus || ""}
-                      onChange={handleChange}
-                      required
-                    >
-                      <option value="Routine Monitoring">
-                        Routine Monitoring
-                      </option>
-                      <option value="Follow-up Required">
-                        Follow-up Required
-                      </option>
-                      <option value="Completed">Completed</option>
-                    </FormSelect>
                   </FieldWithError>
                   <FieldWithError error={formErrors.attendingStaff}>
                     <FormInput
@@ -493,6 +491,15 @@ export default function RHURecordDetails() {
                   />
                 </div>
               </div>
+            ) : isImmunizationRecord ? (
+              <EpiRecordDetails
+                record={record}
+                vaccineEntries={epiVaccineEntries}
+                breastfeedingMonitoring={epiBreastfeedingMonitoring}
+                followUpDate={followUpDateValue}
+                needsReferral={needsRhuReferral}
+                linkedReferralTarget={linkedReferralTarget}
+              />
             ) : (
               <div className="divide-y divide-slate-100">
                 <DetailSection title="Clinical Assessment">
@@ -605,7 +612,7 @@ export default function RHURecordDetails() {
           </SideCard>
         </div>
 
-        {!isEditing && (
+        {!isEditing && !isImmunizationRecord && (
           <aside className="space-y-3">
             <QuickSummaryCard
               vitalItems={getVitalSignItems(record)}
@@ -682,7 +689,6 @@ function validateInlineForm(form = {}) {
   const requiredFields = [
     ["category", "Classification is required."],
     ["diagnosis", "Initial Diagnosis is required."],
-    ["followUpStatus", "Status is required."],
     ["attendingStaff", "Name of Practitioner is required."],
     ["chiefComplaint", "Chief Complaint is required."],
   ];
@@ -752,30 +758,6 @@ function normalizeHealthRecordStatus(status) {
   return "Routine Monitoring";
 }
 
-function isFollowUpEligibleStatus(status) {
-  return normalizeHealthRecordStatus(status) === "Follow-up Required";
-}
-
-function HealthRecordStatusBadge({ status }) {
-  const normalizedStatus = normalizeHealthRecordStatus(status);
-  const styles = {
-    "Routine Monitoring": "border-blue-200 bg-blue-50 text-blue-800",
-    "Follow-up Required": "border-amber-200 bg-amber-50 text-amber-800",
-    Completed: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-        styles[normalizedStatus] ||
-        "border-slate-200 bg-slate-50 text-slate-700"
-      }`}
-    >
-      {normalizedStatus}
-    </span>
-  );
-}
-
 function ReferredChip() {
   return (
     <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
@@ -811,17 +793,19 @@ function DetailSection({ title, children }) {
 }
 
 function VisitInfoStrip({
-  visitTypeLabel,
+  patientName,
   classification,
+  recordType,
   displayDate,
   displayTime,
   practitioner,
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <MetadataItem label="Visit Type" value={visitTypeLabel} />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <MetadataItem label="Patient Full Name" value={patientName} />
         <MetadataItem label="Classification" value={classification} />
+        <MetadataItem label="Record Type" value={recordType || classification} />
         <MetadataItem label="Date of Visit" value={displayDate} />
         <MetadataItem
           label="Time of Visit"
@@ -929,6 +913,143 @@ function VitalSignsGrid({ items, compact = false }) {
           </p>
         </div>
       ))}
+    </div>
+  );
+}
+
+function EpiRecordDetails({
+  record,
+  vaccineEntries = [],
+  breastfeedingMonitoring = {},
+  followUpDate,
+  needsReferral,
+  linkedReferralTarget,
+}) {
+  const remarks = getEpiRemarks(record);
+  const visitMonitoringItems = getVisitLevelMonitoringItems(record);
+  const confirmedMonths = getConfirmedBreastfeedingMonths(breastfeedingMonitoring);
+
+  return (
+    <div className="divide-y divide-slate-100">
+      <DetailSection title="Vaccines Given This Visit">
+        {vaccineEntries.length > 0 ? (
+          <EpiVaccinesTable entries={vaccineEntries} record={record} />
+        ) : (
+          <div className="space-y-3">
+            <SectionEmptyState text="No vaccine recorded for this visit." />
+            {remarks && <NarrativeBox label="Remarks" value={remarks} />}
+          </div>
+        )}
+      </DetailSection>
+
+      <DetailSection title="Visit-Level Monitoring">
+        <VitalSignsGrid items={visitMonitoringItems} />
+      </DetailSection>
+
+      <DetailSection title="Exclusive Breastfeeding Monitoring">
+        {confirmedMonths.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {confirmedMonths.map((month) => (
+              <span
+                key={month}
+                className="rounded-full border border-red-100 bg-red-50 px-3 py-1 text-xs font-semibold text-[#B91C1C]"
+              >
+                {month}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <SectionEmptyState text="No breastfeeding monitoring recorded." />
+        )}
+      </DetailSection>
+
+      <DetailSection title="Remarks">
+        {remarks ? (
+          <NarrativeBox label="Remarks" value={remarks} />
+        ) : (
+          <SectionEmptyState text="No remarks recorded." />
+        )}
+      </DetailSection>
+
+      <DetailSection title="Follow-up & Referral">
+        <div className="grid gap-4 md:grid-cols-3">
+          <PatientDetailItem
+            label="Follow-up Date"
+            value={formatLongDate(followUpDate, "No follow-up date recorded.")}
+          />
+          <PatientDetailItem
+            label="Needs RHU Referral"
+            value={needsReferral ? "Yes" : "No"}
+          />
+          <PatientDetailItem
+            label="Referral Tracking ID"
+            value={linkedReferralTarget || "No referral linked to this record."}
+          />
+        </div>
+      </DetailSection>
+    </div>
+  );
+}
+
+function EpiVaccinesTable({ entries, record }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="hidden grid-cols-[minmax(180px,1.4fr)_minmax(130px,1fr)_minmax(90px,0.75fr)_minmax(90px,0.75fr)_minmax(110px,0.85fr)] border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-widest text-slate-400 md:grid">
+        <div className="px-3 py-2.5">Vaccine</div>
+        <div className="px-3 py-2.5">Date Given</div>
+        <div className="px-3 py-2.5">Weight</div>
+        <div className="px-3 py-2.5">Height</div>
+        <div className="px-3 py-2.5">Temperature</div>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {entries.map((entry, index) => (
+          <div
+            key={`${entry.vaccineName || "vaccine"}-${entry.dateGiven || index}`}
+            className="grid gap-3 px-3 py-3 md:grid-cols-[minmax(180px,1.4fr)_minmax(130px,1fr)_minmax(90px,0.75fr)_minmax(90px,0.75fr)_minmax(110px,0.85fr)] md:items-center md:gap-0"
+          >
+            <EpiTableCell label="Vaccine" strong value={entry.vaccineName} />
+            <EpiTableCell
+              label="Date Given"
+              value={formatLongDate(
+                entry.dateGiven || getRecordDateRaw(record),
+                "Not recorded",
+              )}
+            />
+            <EpiTableCell
+              label="Weight"
+              value={formatMeasurement(entry.weight || record.weight, "kg")}
+            />
+            <EpiTableCell
+              label="Height"
+              value={formatMeasurement(entry.height || record.height, "cm")}
+            />
+            <EpiTableCell
+              label="Temperature"
+              value={formatMeasurement(
+                entry.temperature || record.temperature || record.temp,
+                "°C",
+              )}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EpiTableCell({ label, value, strong = false }) {
+  return (
+    <div className="min-w-0 md:px-3">
+      <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 md:hidden">
+        {label}
+      </p>
+      <p
+        className={`truncate text-sm ${
+          strong ? "font-bold text-[#0F172A]" : "font-semibold text-slate-600"
+        }`}
+      >
+        {formatDisplayValue(value, "Not recorded")}
+      </p>
     </div>
   );
 }
@@ -1043,6 +1164,130 @@ function getRecordClassification(record, patient) {
   );
 }
 
+function isImmunizationClassification(record = {}, patient = {}) {
+  return [
+    record.classification,
+    record.category,
+    record.recordType,
+    record.record_type,
+    record.healthRecordType,
+    record.health_record_type,
+    record.patientClassification,
+    patient?.category,
+    patient?.patientClassification,
+  ].some((value) => {
+    const normalized = String(value || "").toLowerCase();
+    return (
+      normalized === "immunization" ||
+      normalized.includes("epi") ||
+      normalized.includes("child health") ||
+      normalized.includes("vaccination") ||
+      normalized.includes("vaccine")
+    );
+  });
+}
+
+function getImmunizationData(record = {}) {
+  return record.immunizationData || record.immunization_data || {};
+}
+
+function getEpiVaccineEntries(record = {}) {
+  const data = getImmunizationData(record);
+  const entries = Array.isArray(data.vaccineEntries)
+    ? data.vaccineEntries
+    : Array.isArray(data.vaccinesGiven)
+      ? data.vaccinesGiven
+      : Array.isArray(record.vaccineEntries)
+        ? record.vaccineEntries
+        : Array.isArray(record.vaccinesGiven)
+          ? record.vaccinesGiven
+          : [];
+
+  return entries
+    .filter((entry) => entry && typeof entry === "object")
+    .filter((entry) => String(entry.vaccineName || entry.vaccine_name || "").trim())
+    .map((entry) => ({
+      vaccineName: entry.vaccineName || entry.vaccine_name || "Vaccine",
+      dateGiven: entry.dateGiven || entry.date_given || entry.date || "",
+      weight: entry.weight || "",
+      height: entry.height || "",
+      temperature: entry.temperature || entry.temp || "",
+    }));
+}
+
+function getEpiBreastfeedingMonitoring(record = {}) {
+  const data = getImmunizationData(record);
+  return (
+    data.breastfeedingMonitoring ||
+    data.breastfeeding_monitoring ||
+    record.breastfeedingMonitoring ||
+    record.breastfeeding_monitoring ||
+    {}
+  );
+}
+
+function getConfirmedBreastfeedingMonths(data = {}) {
+  const months = [
+    ["month1", "1 Month"],
+    ["month2", "2 Months"],
+    ["month3", "3 Months"],
+    ["month4", "4 Months"],
+    ["month5", "5 Months"],
+    ["month6", "6 Months"],
+  ];
+
+  return months
+    .filter(([key]) => data[key] === true || data[key] === "yes")
+    .map(([, label]) => label);
+}
+
+function getEpiRemarks(record = {}) {
+  const data = getImmunizationData(record);
+  return getRecordValue(
+    {
+      ...data,
+      ...record,
+    },
+    [
+      "consultationNotes",
+      "consultation_notes",
+      "notes",
+      "remarks",
+      "medicalNotes",
+      "medical_notes",
+    ],
+    "",
+  );
+}
+
+function getVisitLevelMonitoringItems(record = {}) {
+  return [
+    {
+      label: "Weight",
+      value: formatMeasurement(getRecordValue(record, ["weight"], ""), "kg"),
+    },
+    {
+      label: "Height",
+      value: formatMeasurement(getRecordValue(record, ["height"], ""), "cm"),
+    },
+    {
+      label: "Temperature",
+      value: formatMeasurement(
+        getRecordValue(record, ["temperature", "temp"], ""),
+        "°C",
+      ),
+    },
+  ];
+}
+
+function formatMeasurement(value, unit) {
+  const clean = String(value || "").trim();
+  if (!clean) return "";
+  return clean.toLowerCase().includes(String(unit).toLowerCase())
+    ? clean
+    : `${clean} ${unit}`;
+}
+
 function getFamilyPlanningDetails(record = {}) {
   const data = record.familyPlanningData || record.family_planning_data || {};
 
@@ -1056,7 +1301,7 @@ function getFamilyPlanningDetails(record = {}) {
       value: getRecordValue(data, ["methodUsed", "method_used"], ""),
     },
     {
-      label: "Visit Type",
+      label: "FP Visit Category",
       value: getRecordValue(
         data,
         ["fpVisitType", "fp_visit_type", "visitType", "visit_type"],
@@ -1133,12 +1378,6 @@ function getParentHealthRecordId(record = {}) {
       record.previousRecordId,
     "",
   );
-}
-
-function getRecordVisitTypeLabel(record = {}) {
-  return getRecordVisitTypeValue(record) === "follow_up_visit"
-    ? "Follow-up Visit"
-    : "Initial Consultation";
 }
 
 function getRecordVisitTypeValue(record = {}) {
@@ -1330,34 +1569,60 @@ function getRecordConcern(record, fallback = "Not recorded") {
   );
 }
 
-function getRecordDate(record) {
-  return formatLongDate(
-    getRecordValue(
-      record,
-      [
-        "dateOfVisit",
-        "date_of_visit",
-        "dateRecorded",
-        "date_recorded",
-        "visitDate",
-        "date",
-        "dateCreated",
-        "createdAt",
-        "created_at",
-      ],
-      "",
-    ),
-    "Not recorded",
+function getRecordDateRaw(record) {
+  return getRecordValue(
+    record,
+    [
+      "dateOfVisit",
+      "date_of_visit",
+      "dateRecorded",
+      "date_recorded",
+      "visitDate",
+      "date",
+      "dateCreated",
+      "createdAt",
+      "created_at",
+    ],
+    "",
   );
+}
+
+function getRecordDate(record) {
+  return formatLongDate(getRecordDateRaw(record), "Not recorded");
 }
 
 function getRecordTime(record) {
   const direct = record?.timeOfVisit || record?.time_of_visit || record?.time;
-  if (direct) return direct;
+  if (direct) return formatDisplayTime(direct, "");
 
   const recorded = record?.dateRecorded || record?.date_recorded;
   const match = String(recorded || "").match(/\d{2}:\d{2}/);
-  return match ? match[0] : "";
+  return match ? formatDisplayTime(match[0], "") : "";
+}
+
+function formatDisplayTime(value, fallback = "Not recorded") {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+
+  const dateValue = new Date(raw);
+  if (!Number.isNaN(dateValue.getTime()) && raw.includes("T")) {
+    return dateValue.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }
+
+  const match = raw.match(/(\d{1,2}):(\d{2})/);
+  if (!match) return raw;
+
+  const hours = Number(match[1]);
+  const minutes = match[2];
+  if (Number.isNaN(hours) || hours > 23) return raw;
+
+  const period = hours >= 12 ? "PM" : "AM";
+  const displayHour = hours % 12 || 12;
+  return `${displayHour}:${minutes} ${period}`;
 }
 
 function getVitalSigns(record) {

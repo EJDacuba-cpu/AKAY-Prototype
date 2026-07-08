@@ -1,69 +1,85 @@
-import { Link, useParams, useNavigate } from "react-router";
 import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  CalendarDays,
-  ClipboardList,
-  MapPin,
-  Pencil,
-  Phone,
-  User,
-  X,
+  CalendarClock,
   Check,
+  ClipboardList,
   Eye,
   FileText,
+  Pencil,
   Plus,
+  X,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-
+import {
+  ConfirmationModal,
+  SoftLoadingArea,
+  SoftLoadingOverlay,
+  StatusBadge,
+  SuccessModal,
+} from "../../components/common";
+import SpecializedRecordsTab from "../../components/features/records/SpecializedRecordsTab";
+import { getFollowUpTasks } from "../../services/followUpTaskService";
 import {
   getPatientById,
   getPatientHealthRecords,
   getPatientReferrals,
   updatePatient,
 } from "../../services/patientService";
-
-import {
-  ConfirmationModal,
-  SideCard,
-  SoftLoadingArea,
-  SoftLoadingOverlay,
-  StatusBadge,
-  SuccessModal
-} from "../../components/common";
-import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
-
 import {
   formatDate,
   formatDisplayValue,
-  formatPatientName,
   formatLongDate,
-  normalizeHealthRecordStatus,
+  formatPatientName,
 } from "../../utils/formatters";
-
+import {
+  getRecordIdLabel,
+  getServiceTypeLabel,
+  hasSpecializedRecords,
+} from "../../utils/healthRecordPrograms";
 import { queryKeys } from "../../utils/queryKeys";
+
+const BULAKAN_BARANGAYS = [
+  "Bagumbayan",
+  "Balubad",
+  "Bambang",
+  "Matungao",
+  "Maysantol",
+  "Perez",
+  "Pitpitan",
+  "San Francisco",
+  "San Jose",
+  "San Nicolas",
+  "Santa Ana",
+  "Santa Ines",
+  "Taliptip",
+  "Tibig",
+];
+
+const TAB_LABELS = {
+  general: "General",
+  records: "Health Records",
+  specialized: "Specialized Records",
+  followups: "Follow-ups",
+  referrals: "Referral History",
+};
 
 export default function PatientDetails() {
   const { patientId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-
-  const [patientOverride, setPatient] = useState(null);
-
-  /* Inline Editing States */
+  const [patientOverride, setPatientOverride] = useState(null);
+  const [activeTab, setActiveTab] = useState("general");
   const [isEditing, setIsEditing] = useState(false);
   const [openConfirm, setOpenConfirm] = useState(false);
   const [openSuccess, setOpenSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  const [form, setForm] = useState({});
-
-  /* Tab Navigation State */
-  const [activeTab, setActiveTab] = useState("patient");
   const [showAllRecords, setShowAllRecords] = useState(false);
   const [showAllReferrals, setShowAllReferrals] = useState(false);
+  const [form, setForm] = useState({});
 
   const {
     data: patientData,
@@ -97,109 +113,82 @@ export default function PatientDetails() {
     enabled: Boolean(patientId),
   });
 
-  const overrideMatchesCurrentPatient =
+  const {
+    data: followUpTasksData = [],
+    isLoading: followUpsLoading,
+    isFetching: followUpsFetching,
+    isError: followUpsError,
+  } = useQuery({
+    queryKey: queryKeys.followUpTasks("bhc"),
+    queryFn: () => getFollowUpTasks(),
+    enabled: Boolean(patientId),
+    staleTime: 30_000,
+  });
+
+  const overrideMatchesPatient =
     patientOverride &&
     String(patientOverride.id || patientOverride.patientId || "") ===
       String(patientId);
-  const patient = overrideMatchesCurrentPatient ? patientOverride : patientData || null;
+  const patient = overrideMatchesPatient
+    ? patientOverride
+    : patientData || null;
 
   useEffect(() => {
-    if (patientData) {
-      setPatient(patientData);
-      initializeForm(patientData);
-    }
+    if (!patientData) return;
+    setPatientOverride(patientData);
+    setForm(createPatientForm(patientData));
   }, [patientData]);
 
   useEffect(() => {
+    setActiveTab("general");
     setShowAllRecords(false);
     setShowAllReferrals(false);
+    setIsEditing(false);
   }, [patientId]);
-
-  const records = Array.isArray(recordsData) ? recordsData : [];
-  const referrals = Array.isArray(referralsData) ? referralsData : [];
-  const loading = patientLoading && !patient;
-
-  const initializeForm = (data) => {
-    setForm({
-      firstName: data.firstName || "",
-      middleName: data.middleName || "",
-      lastName: data.lastName || "",
-      birthDate: data.birthDate || "",
-      age: data.age || "",
-      sex: data.sex || "",
-      contactNumber: data.contact || data.contactNumber || "",
-      streetAddress: data.address || data.streetAddress || "",
-      barangay: data.barangay || "",
-      municipality: data.municipality || "Bulakan",
-    });
-  };
 
   function handleTabChange(tab) {
     if (isEditing) {
-      initializeForm(patient);
+      setForm(createPatientForm(patient));
       setIsEditing(false);
     }
     setActiveTab(tab);
   }
 
-  function handleChange(e) {
-    const { name, value } = e.target;
-
-    setForm((prev) => {
-      if (name === "birthDate") {
-        const today = new Date();
-        const dob = new Date(value);
-        let calculatedAge = today.getFullYear() - dob.getFullYear();
-        if (
-          today.getMonth() < dob.getMonth() ||
-          (today.getMonth() === dob.getMonth() &&
-            today.getDate() < dob.getDate())
-        ) {
-          calculatedAge--;
-        }
-        return { ...prev, birthDate: value, age: calculatedAge };
+  function handleChange(event) {
+    const { name, value } = event.target;
+    setForm((current) => {
+      const next = { ...current, [name]: value };
+      if (name === "birthDate") next.age = calculateAge(value);
+      if (name === "philHealthStatus" && value !== "With PhilHealth") {
+        next.philHealthNumber = "";
       }
-
-      return { ...prev, [name]: value };
+      return next;
     });
   }
 
   async function handleInlineSubmit() {
     try {
       setSaving(true);
-      await updatePatient(patientId, form);
-
-      setPatient((prev) => ({
-        ...prev,
-        firstName: form.firstName,
-        middleName: form.middleName,
-        lastName: form.lastName,
-        name: `${form.firstName} ${form.middleName ? form.middleName + " " : ""}${form.lastName}`,
-        birthDate: form.birthDate,
-        age: form.age,
-        sex: form.sex,
-        contact: form.contactNumber,
-        address: form.streetAddress,
-        barangay: form.barangay,
-        municipality: form.municipality,
-        ageSex: `${form.age} years old / ${form.sex}`,
-      }));
-
+      const savedPatient = await updatePatient(patientId, form);
+      setPatientOverride(savedPatient || { ...patient, ...form });
+      setForm(createPatientForm(savedPatient || { ...patient, ...form }));
       setOpenConfirm(false);
       setOpenSuccess(true);
       setIsEditing(false);
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.patientDetails("bhc", patientId),
-      });
-      queryClient.invalidateQueries({ queryKey: queryKeys.patients("bhc") });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.patientDetails("bhc", patientId),
+        }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.patients("bhc") }),
+      ]);
     } catch (error) {
-      console.error("Failed to update profile info:", error);
+      console.error("Failed to update patient profile:", error);
     } finally {
       setSaving(false);
     }
   }
 
-  if (loading) {
+  if (patientLoading && !patient) {
     return (
       <DashboardLayout role="bhc" title="Patient Details">
         <SoftLoadingArea
@@ -207,7 +196,7 @@ export default function PatientDetails() {
           message="Loading details..."
           minHeight="min-h-[520px]"
         >
-          <div className="min-h-[520px] rounded-3xl border border-slate-100 bg-white shadow-sm" />
+          <div className="min-h-[520px] rounded-2xl border border-slate-100 bg-white shadow-sm" />
         </SoftLoadingArea>
       </DashboardLayout>
     );
@@ -216,13 +205,13 @@ export default function PatientDetails() {
   if (!patient) {
     return (
       <DashboardLayout role="bhc" title="Patient Details">
-        <div className="mx-auto max-w-md rounded-3xl border border-slate-100 bg-white p-10 text-center shadow-sm">
+        <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
           <h1 className="text-xl font-bold text-[#0F172A]">
             Patient not found
           </h1>
           <Link
             to="/bhc/patients"
-            className="mt-4 inline-block rounded-xl bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#7F1D1D]"
+            className="mt-4 inline-flex rounded-xl bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#991B1B]"
           >
             Back to Patients
           </Link>
@@ -231,138 +220,82 @@ export default function PatientDetails() {
     );
   }
 
-  const recordList = Array.isArray(records) ? records : [];
-  const safeRecords = [...recordList]
-    .sort(sortByDateDesc)
-    .map((record) => ({
-      ...record,
-      timeOfVisit: getHealthRecordTime(record),
-    }));
-  const safeReferrals = [...(referrals || [])].sort(sortByDateDesc);
-  const visibleRecords = showAllRecords ? safeRecords : safeRecords.slice(0, 5);
+  const records = (Array.isArray(recordsData) ? recordsData : []).sort(
+    sortByDateDesc,
+  );
+  const referrals = (Array.isArray(referralsData) ? referralsData : []).sort(
+    sortByDateDesc,
+  );
+  const patientFollowUps = (
+    Array.isArray(followUpTasksData) ? followUpTasksData : []
+  )
+    .filter(
+      (task) =>
+        String(task.patientId || task.patient?.id || "") === String(patientId),
+    )
+    .map((task) => ({
+      ...task,
+      effectiveState: getEffectiveFollowUpState(task),
+    }))
+    .sort((a, b) => getDateTimeValue(b) - getDateTimeValue(a));
+  const hasSpecialized = hasSpecializedRecords(records);
+  const visibleRecords = showAllRecords ? records : records.slice(0, 5);
   const visibleReferrals = showAllReferrals
-    ? safeReferrals
-    : safeReferrals.slice(0, 5);
-  const latestRecord = safeRecords[0] || null;
-  const maternalSupplementHistory = getMaternalSupplementHistory(safeRecords);
-  const hasMaternalRecords = safeRecords.some(isMaternalHealthRecord);
-
-  const isUnderMonitoring = safeRecords.some(
-    (r) =>
-      r.status === "Follow-up After 2 Days" || r.status === "Under Observation",
-  );
-  const patientName = formatPatientName(patient, "Unnamed Patient");
-  const patientAgeSex = formatDisplayValue(
-    patient.ageSex ||
-      `${formatDisplayValue(patient.age, "Not recorded")} yrs old / ${formatDisplayValue(
-        patient.sex,
-        "Not recorded",
-      )}`,
-    "Not recorded",
-  );
-  const patientContact = formatDisplayValue(
-    patient.contact || patient.contactNumber,
-    "Not recorded",
-  );
+    ? referrals
+    : referrals.slice(0, 5);
   return (
     <>
       <DashboardLayout role="bhc" title="Patient Details">
         <SoftLoadingArea
-          isLoading={patientFetching && !loading}
+          isLoading={patientFetching}
           message="Refreshing details..."
           minHeight="min-h-[520px]"
         >
-        <div className="mb-6">
-          <Link
-            to="/bhc/patients"
-            className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#0F172A]"
-          >
-            <ArrowLeft size={16} />
-            Back to Patients
-          </Link>
-
-          <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-start">
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-3xl font-bold tracking-tight text-[#0F172A]">
-                  {patientName}
-                </h1>
-                {isUnderMonitoring && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#B45309]">
-                    <CalendarDays size={12} />
-                    Under Monitoring
-                  </span>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">
-                  ID:{" "}
-                  <span className="font-mono font-semibold">{patientId}</span>
-                </span>
-                <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">
-                  <User size={12} className="text-slate-400" />
-                  {patientAgeSex}
-                  {/*
-                  {patient.ageSex ||
-                    `${patient.age || "—"} yrs old / ${patient.sex || "—"}`}
-                  */}
-                </span>
-                <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">
-                  <Phone size={12} className="text-slate-400" />
-                  {patientContact}
-                  {/*
-                  {patient.contact || "—"}
-                  */}
-                </span>
-              </div>
-
-              <LatestConsultationSummary
-                record={latestRecord}
-                basePath="/bhc"
-              />
-            </div>
-
-            <div className="flex shrink-0 gap-3">
-              {activeTab === "patient" && (
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Link
+              to="/bhc/patients"
+              className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#0F172A]"
+            >
+              <ArrowLeft size={16} />
+              Back to Patients
+            </Link>
+            <div className="flex flex-wrap gap-2">
+              {isEditing ? (
                 <>
-                  {isEditing ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          initializeForm(patient);
-                          setIsEditing(false);
-                        }}
-                        className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-semibold text-slate-500 shadow-sm transition hover:bg-slate-50"
-                      >
-                        <X size={14} /> Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setOpenConfirm(true)}
-                        className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
-                      >
-                        <Check size={14} /> Save Changes
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setIsEditing(true)}
-                      className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
-                    >
-                      <Pencil size={14} /> Edit Profile
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm(createPatientForm(patient));
+                      setIsEditing(false);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
+                  >
+                    <X size={14} /> Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOpenConfirm(true)}
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
+                  >
+                    <Check size={14} /> Save Changes
+                  </button>
                 </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("general");
+                    setIsEditing(true);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
+                >
+                  <Pencil size={14} /> Edit Profile
+                </button>
               )}
-
-              {/* NEW - CORRECT PATH */}
-              {activeTab === "records" && (
+              {activeTab === "records" && !isEditing && (
                 <Link
                   to={`/bhc/health-records/add?patientId=${patient.id || patientId}`}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
                 >
                   <Plus size={14} />
                   Add Health Record
@@ -370,430 +303,106 @@ export default function PatientDetails() {
               )}
             </div>
           </div>
-        </div>
 
-        <div className="mb-6 flex border-b border-slate-200">
-          <button
-            type="button"
-            onClick={() => handleTabChange("patient")}
-            className={`border-b-2 px-5 py-3 text-sm font-semibold transition-all duration-150 ${activeTab === "patient" ? "border-b-2 border-[#B91C1C] text-[#B91C1C]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
-          >
-            Patient Information
-          </button>
-          <button
-            type="button"
-            onClick={() => handleTabChange("records")}
-            className={`border-b-2 px-5 py-3 text-sm font-semibold transition-all duration-150 ${activeTab === "records" ? "border-b-2 border-[#B91C1C] text-[#B91C1C]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
-          >
-            Health Records ({safeRecords.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => handleTabChange("referrals")}
-            className={`border-b-2 px-5 py-3 text-sm font-semibold transition-all duration-150 ${activeTab === "referrals" ? "border-b-2 border-[#B91C1C] text-[#B91C1C]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
-          >
-            Referral History ({safeReferrals.length})
-          </button>
-        </div>
+          <div className="grid min-w-0 gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
+            <QuickPatientProfile patient={patient} patientId={patientId} />
 
-        <div>
-          {activeTab === "patient" && (
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-              <div className="space-y-6">
-                <SideCard
-                  title="Personal Information"
-                  subtitle="Basic details from the patient registry."
-                  icon={<User size={14} />}
-                >
-                  {isEditing ? (
-                    <div className="space-y-8 mt-6">
-                      <div>
-                        <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0F172A]">
-                          General Information
-                        </h3>
-                        <div className="grid gap-x-8 gap-y-1 md:grid-cols-2">
-                          <InlineDetailInput
-                            label="First Name"
-                            name="firstName"
-                            value={form.firstName}
-                            onChange={handleChange}
-                            required
-                          />
-                          <InlineDetailInput
-                            label="Middle Name"
-                            name="middleName"
-                            value={form.middleName}
-                            onChange={handleChange}
-                          />
-                          <InlineDetailInput
-                            label="Last Name"
-                            name="lastName"
-                            value={form.lastName}
-                            onChange={handleChange}
-                            required
-                          />
-                          <InlineDetailInput
-                            label="Date of Birth"
-                            name="birthDate"
-                            type="date"
-                            value={form.birthDate}
-                            onChange={handleChange}
-                            required
-                          />
-                          <InlineDetailInput
-                            label="Age"
-                            name="age"
-                            type="text"
-                            value={form.age ? `${form.age} years old` : ""}
-                            readOnly
-                          />
-                          <InlineDetailSelect
-                            label="Sex"
-                            name="sex"
-                            value={form.sex}
-                            onChange={handleChange}
-                            required
-                          >
-                            <option value="">Select sex</option>
-                            <option>Male</option>
-                            <option>Female</option>
-                          </InlineDetailSelect>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-8 mt-6">
-                      <div>
-                        <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0F172A]">
-                          General Information
-                        </h3>
-                        <div className="grid gap-x-8 gap-y-1 md:grid-cols-2">
-                          <PatientDetailItem
-                            label="First Name"
-                            value={patient.firstName || "—"}
-                          />
-                          <PatientDetailItem
-                            label="Middle Name"
-                            value={patient.middleName || "—"}
-                          />
-                          <PatientDetailItem
-                            label="Last Name"
-                            value={patient.lastName || "—"}
-                          />
-                          <PatientDetailItem
-                            label="Date of Birth"
-                            value={formatLongDate(patient.birthDate || patient.birthdate || patient.dateOfBirth)}
-                          />
-                          <PatientDetailItem
-                            label="Age"
-                            value={
-                              patient.age ? `${patient.age} years old` : "—"
-                            }
-                          />
-                          <PatientDetailItem
-                            label="Sex"
-                            value={patient.sex || "—"}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </SideCard>
-                {(hasMaternalRecords ||
-                  maternalSupplementHistory.length > 0) && (
-                  <SideCard
-                    title="Vitamins / Supplements History"
-                    subtitle="Maternal supplement distribution recorded during visits."
-                    icon={<CalendarDays size={14} />}
-                  >
-                    <div className="mt-5">
-                      <MaternalSupplementHistory
-                        supplements={maternalSupplementHistory}
-                      />
-                    </div>
-                  </SideCard>
-                )}
-              </div>
-              <aside className="space-y-6">
-                <SideCard title="Address & Contact" icon={<MapPin size={14} />}>
-                  {isEditing ? (
-                    <div className="mt-6 space-y-1">
-                      <InlineDetailInput
-                        label="Street Address"
-                        name="streetAddress"
-                        value={form.streetAddress}
-                        onChange={handleChange}
-                        required
-                      />
-                      <InlineDetailSelect
-                        label="Barangay"
-                        name="barangay"
-                        value={form.barangay}
-                        onChange={handleChange}
-                        required
-                      >
-                        <option value="">Select barangay</option>
-                        <option>Bagumbayan</option>
-                        <option>Balubad</option>
-                        <option>Bambang</option>
-                        <option>Matungao</option>
-                        <option>Maysantol</option>
-                        <option>Perez</option>
-                        <option>Pitpitan</option>
-                        <option>San Francisco</option>
-                        <option>San Jose</option>
-                        <option>San Nicolas</option>
-                        <option>Santa Ana</option>
-                        <option>Santa Ines</option>
-                        <option>Taliptip</option>
-                        <option>Tibig</option>
-                      </InlineDetailSelect>
-                      <InlineDetailInput
-                        label="Municipality"
-                        name="municipality"
-                        value={form.municipality}
-                        readOnly
-                      />
-                      <InlineDetailInput
-                        label="Contact Number"
-                        name="contactNumber"
-                        value={form.contactNumber}
-                        onChange={handleChange}
-                      />
-                    </div>
-                  ) : (
-                    <div className="mt-6 space-y-1">
-                      <PatientDetailItem
-                        label="Street Address"
-                        value={patient.address || "—"}
-                      />
-                      <PatientDetailItem
-                        label="Barangay"
-                        value={patient.barangay || "—"}
-                      />
-                      <PatientDetailItem
-                        label="Municipality"
-                        value={patient.municipality || "Bulakan"}
-                      />
-                      <PatientDetailItem
-                        label="Contact Number"
-                        value={patient.contact || "—"}
-                      />
-                    </div>
-                  )}
-                </SideCard>
-              </aside>
-            </div>
-          )}
+<section className="min-w-0">
+  <nav
+    className="flex overflow-x-auto"
+    aria-label="Patient chart sections"
+  >
+    {Object.entries(TAB_LABELS).map(([key, label]) => {
+      if (key === "specialized" && !hasSpecialized) return null;
 
-          {activeTab === "records" && (
-            <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
-                <h2 className="text-sm font-bold text-[#0F172A]">
-                  Health Record History
-                </h2>
-                <p className="text-xs text-slate-400">
-                  Chronological health records linked to this patient.
-                </p>
-              </div>
-              {recordsLoading && safeRecords.length === 0 ? (
-                <div className="min-h-[240px]" />
-              ) : recordsError && safeRecords.length === 0 ? (
-                <TabErrorState message="Unable to load health records right now." />
-              ) : safeRecords.length === 0 ? (
-                <div className="p-12 text-center text-sm text-slate-400">
-                  <FileText className="mx-auto mb-3 text-slate-300" size={32} />
-                  No health records found for this patient.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[1080px] text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                        <th className="px-6 py-3">Date of Visit</th>
-                        <th className="px-6 py-3">Visit Type</th>
-                        <th className="px-6 py-3">Classification</th>
-                        <th className="px-6 py-3">Chief Complaint</th>
-                        <th className="px-6 py-3">Status</th>
-                        <th className="px-6 py-3 text-right">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-sm">
-                      {visibleRecords.map((record) => {
-                        const currentId = getHealthRecordId(record);
-                        return (
-                          <tr
-                            key={currentId}
-                            className="hover:bg-slate-50/80 transition-colors"
-                          >
-                            <td className="whitespace-nowrap px-6 py-4 font-medium text-slate-700">
-                              {getHealthRecordDate(record)}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-xs font-semibold text-slate-600">
-                              {getHealthRecordVisitType(record)}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4">
-                              <span className="text-xs font-semibold text-[#0F172A]">
-                                {getHealthRecordType(record)}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-[#0F172A] font-semibold">
-                              {getHealthRecordComplaint(record)}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4">
-                              <StatusBadge status={getHealthRecordStatus(record)} />
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-right">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  navigate(`/bhc/health-records/${currentId}`)
-                                }
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-[#0F172A] shadow-sm transition hover:bg-slate-50 hover:text-[#991B1B]"
-                              >
-                                <Eye size={12} /> View Full Record
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  {safeRecords.length > 5 && (
-                    <div className="border-t border-slate-100 px-6 py-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => setShowAllRecords((value) => !value)}
-                        className="text-xs font-semibold text-[#B91C1C] transition hover:text-[#7F1D1D]"
-                      >
-                        {showAllRecords
-                          ? "Show less"
-                          : `Show all ${safeRecords.length} records`}
-                      </button>
-                    </div>
-                  )}
-                </div>
+      const count =
+        key === "records"
+          ? records.length
+          : key === "followups"
+            ? patientFollowUps.length
+            : key === "referrals"
+              ? referrals.length
+              : null;
+
+      return (
+        <button
+          key={key}
+          type="button"
+          onClick={() => handleTabChange(key)}
+          className={`shrink-0 rounded-t-xl border border-b-0 px-5 py-3 text-xs font-semibold transition ${
+            activeTab === key
+              ? "border-slate-200 bg-white text-[#B91C1C]"
+              : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-white hover:text-slate-800"
+          }`}
+        >
+          {label}
+          {count !== null && ` (${count})`}
+        </button>
+      );
+    })}
+  </nav>
+
+  <div className="rounded-b-2xl rounded-tr-2xl border border-slate-200 bg-white p-5 shadow-sm">
+
+              {activeTab === "general" && (
+                <GeneralPatientTab
+                  patient={patient}
+                  form={form}
+                  isEditing={isEditing}
+                  onChange={handleChange}
+                />
               )}
-              <SoftLoadingOverlay
-                isVisible={
-                  (recordsLoading && safeRecords.length === 0) ||
-                  (recordsFetching && !recordsLoading && safeRecords.length > 0)
-                }
-                message={
-                  recordsLoading
-                    ? "Loading records..."
-                    : "Refreshing records..."
-                }
-              />
-            </div>
-          )}
 
-          {activeTab === "referrals" && (
-            <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
-                <h2 className="text-sm font-bold text-[#0F172A]">
-                  Referral Tracking Logs
-                </h2>
-                <p className="text-xs text-slate-400">
-                  BHC-RHU referral tracking logs linked to this patient.
-                </p>
-              </div>
-              {referralsLoading && safeReferrals.length === 0 ? (
-                <div className="min-h-[240px]" />
-              ) : referralsError && safeReferrals.length === 0 ? (
-                <TabErrorState message="Unable to load referral history right now." />
-              ) : safeReferrals.length === 0 ? (
-                <div className="p-12 text-center text-sm text-slate-400">
-                  <ClipboardList
-                    className="mx-auto mb-3 text-slate-300"
-                    size={32}
-                  />
-                  No referral history found for this patient.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[900px] text-left">
-                    <thead>
-                      <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                        <th className="px-6 py-3">Tracking ID</th>
-                        <th className="px-4 py-3">Date of Referral</th>
-                        <th className="px-4 py-3">Destination Facility</th>
-                        <th className="px-4 py-3">Status</th>
-                        <th className="px-4 py-3">RHU Return Slip</th>
-                        <th className="px-4 py-3 text-right">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-sm">
-                      {visibleReferrals.map((ref) => (
-                        <tr
-                          key={ref.trackingId || ref.id}
-                          className="transition-colors hover:bg-slate-50/80"
-                        >
-                          <td className="whitespace-nowrap px-6 py-4">
-                            <span className="font-mono text-xs font-bold text-[#0F172A]">
-                              {ref.trackingId || ref.id}
-                            </span>
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-4 text-slate-600">
-                            {getReferralDate(ref)}
-                          </td>
-                          <td className="px-4 py-4 text-slate-600">
-                            {getReferralDestination(ref)}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-4">
-                            <StatusBadge status={ref.status} />
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-4">
-                            <ReturnSlipIndicator referral={ref} />
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-4 text-right">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                navigate(
-                                  `/bhc/referrals/${ref.trackingId || ref.id}`,
-                                )
-                              }
-                              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
-                            >
-                              <Eye size={12} /> View Details
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {safeReferrals.length > 5 && (
-                    <div className="border-t border-slate-100 px-6 py-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => setShowAllReferrals((value) => !value)}
-                        className="text-xs font-semibold text-[#B91C1C] transition hover:text-[#7F1D1D]"
-                      >
-                        {showAllReferrals
-                          ? "Show less"
-                          : `Show all ${safeReferrals.length} referrals`}
-                      </button>
-                    </div>
-                  )}
-                </div>
+              {activeTab === "records" && (
+                <HealthRecordsTab
+                  records={records}
+                  visibleRecords={visibleRecords}
+                  isLoading={recordsLoading}
+                  isFetching={recordsFetching}
+                  isError={recordsError}
+                  showAll={showAllRecords}
+                  onToggleShowAll={() => setShowAllRecords((value) => !value)}
+                  onView={(recordId) =>
+                    navigate(`/bhc/health-records/${recordId}`)
+                  }
+                />
               )}
-              <SoftLoadingOverlay
-                isVisible={
-                  (referralsLoading && safeReferrals.length === 0) ||
-                  (referralsFetching &&
-                    !referralsLoading &&
-                    safeReferrals.length > 0)
-                }
-                message={
-                  referralsLoading
-                    ? "Loading referrals..."
-                    : "Refreshing referrals..."
-                }
-              />
-            </div>
-          )}
-        </div>
+
+              {activeTab === "specialized" && hasSpecialized && (
+                <SpecializedRecordsTab records={records} basePath="/bhc" />
+              )}
+
+              {activeTab === "followups" && (
+                <PatientFollowUpsTab
+                  tasks={patientFollowUps}
+                  isLoading={followUpsLoading}
+                  isFetching={followUpsFetching}
+                  isError={followUpsError}
+                  onViewRecord={(recordId) =>
+                    navigate(`/bhc/health-records/${recordId}`)
+                  }
+                />
+              )}
+
+              {activeTab === "referrals" && (
+                <ReferralHistoryTab
+                  referrals={referrals}
+                  visibleReferrals={visibleReferrals}
+                  isLoading={referralsLoading}
+                  isFetching={referralsFetching}
+                  isError={referralsError}
+                  showAll={showAllReferrals}
+                  onToggleShowAll={() =>
+                    setShowAllReferrals((value) => !value)
+                  }
+                  onView={(trackingId) =>
+                    navigate(`/bhc/referrals/${trackingId}`)
+                  }
+                />
+              )}
+          </div>
+        </section>
+          </div>
         </SoftLoadingArea>
       </DashboardLayout>
 
@@ -817,6 +426,634 @@ export default function PatientDetails() {
   );
 }
 
+function QuickPatientProfile({ patient, patientId }) {
+  const patientName = formatPatientName(patient, "Unnamed Patient");
+  const ageSex = [
+    getPatientValue(patient, ["age"], ""),
+    getPatientValue(patient, ["sex"], ""),
+  ]
+    .filter(hasDisplayValue)
+    .map((value, index) => (index === 0 ? `${value} yrs` : value))
+    .join(" / ");
+
+  return (
+    <aside className="min-w-0 self-start rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="text-center">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+          Patient Profile
+        </p>
+        <h1 className="mt-3 break-words text-lg font-bold text-[#0F172A]">
+          {patientName}
+        </h1>
+        <span className="mt-2 inline-flex rounded-md border border-red-100 bg-red-50 px-2 py-1 font-mono text-[10px] font-bold text-[#B91C1C]">
+          ID #{patient.patientId || patientId}
+        </span>
+      </div>
+      <dl className="mt-5 divide-y divide-slate-100 border-t border-slate-100 pt-3">
+        <QuickDetail label="Age / Sex" value={ageSex} />
+        <QuickDetail
+          label="Date of Birth"
+          value={formatLongDate(
+            getPatientValue(patient, [
+              "birthDate",
+              "birthdate",
+              "dateOfBirth",
+              "date_of_birth",
+            ]),
+            "Not recorded",
+          )}
+        />
+        <QuickDetail
+          label="Contact Number"
+          value={getPatientValue(patient, [
+            "contact",
+            "contactNumber",
+            "contact_number",
+          ])}
+        />
+        <QuickDetail label="Barangay" value={patient.barangay} />
+        <QuickDetail
+          label="Municipality"
+          value={getPatientValue(patient, ["municipality", "city"])}
+        />
+      </dl>
+    </aside>
+  );
+}
+
+function QuickDetail({ label, value }) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-2">
+      <dt className="shrink-0 text-xs font-medium text-slate-500">
+        {label}
+      </dt>
+
+      <dd className="max-w-[58%] break-words text-right text-xs font-semibold text-[#0F172A]">
+        {formatDisplayValue(value, "Not recorded")}
+      </dd>
+    </div>
+  );
+}
+
+function GeneralPatientTab({ patient, form, isEditing, onChange }) {
+  const parentFields = [
+    ["Parent / Guardian Name", ["parentName", "parent_name"]],
+    ["Mother Name", ["motherName", "mother_name"]],
+    ["Mother Date of Birth", ["motherBirthDate", "mother_birth_date"]],
+    ["Father Name", ["fatherName", "father_name"]],
+    ["Guardian Name", ["guardianName", "guardian_name"]],
+    ["Guardian Relationship", ["guardianRelationship", "guardian_relationship"]],
+    ["Guardian Contact Number", ["guardianContactNumber", "guardian_contact_number"]],
+    ["Household Head", ["householdHead", "household_head"]],
+    [
+      "Relationship to Household Head",
+      ["relationshipToHouseholdHead", "relationship_to_household_head"],
+    ],
+  ];
+  const hasParentData = parentFields.some(([, keys]) =>
+    hasDisplayValue(getPatientValue(patient, keys, "")),
+  );
+  const birthFields = [
+    ["Birth Place", ["birthPlace", "birth_place"]],
+    ["Time of Birth", ["birthTime", "birth_time"]],
+    ["Birth Weight", ["birthWeight", "birth_weight"]],
+    ["Birth Height", ["birthHeight", "birth_height"]],
+  ];
+  const hasBirthData = birthFields.some(([, keys]) =>
+    hasDisplayValue(getPatientValue(patient, keys, "")),
+  );
+  const showChildSections =
+    hasParentData ||
+    hasBirthData ||
+    Number(getPatientValue(patient, ["age"], 99)) < 18;
+
+  if (isEditing) {
+    return (
+      <div className="space-y-7">
+        <RegistrationSection
+          title="Basic Information"
+          description="Identity and demographic information from registration."
+        >
+          <EditField label="First Name" name="firstName" value={form.firstName} onChange={onChange} required />
+          <EditField label="Middle Name" name="middleName" value={form.middleName} onChange={onChange} />
+          <EditField label="Last Name" name="lastName" value={form.lastName} onChange={onChange} required />
+          <EditField label="Date of Birth" name="birthDate" type="date" value={form.birthDate} onChange={onChange} required />
+          <EditField label="Age" name="age" value={form.age} readOnly />
+          <EditSelect label="Sex" name="sex" value={form.sex} onChange={onChange} required>
+            <option value="">Select sex</option>
+            <option>Male</option>
+            <option>Female</option>
+          </EditSelect>
+        </RegistrationSection>
+
+        <RegistrationSection
+          title="Socio-Demographic Information"
+          description="Household and social profile information."
+        >
+          <EditSelect label="Civil Status" name="civilStatus" value={form.civilStatus} onChange={onChange}>
+            <option value="">Select civil status</option>
+            <option>Single</option>
+            <option>Married</option>
+            <option>Widowed</option>
+            <option>Separated</option>
+          </EditSelect>
+          <EditField label="Occupation" name="occupation" value={form.occupation} onChange={onChange} />
+          <EditField label="NHTS Status" name="nhtsStatus" value={form.nhtsStatus} onChange={onChange} />
+          <EditField label="Family Serial Number" name="familySerialNumber" value={form.familySerialNumber} onChange={onChange} />
+          {form.civilStatus === "Married" && (
+            <>
+              <EditField label="Spouse Name" name="spouseName" value={form.spouseName} onChange={onChange} />
+              <EditField label="Spouse Occupation" name="spouseOccupation" value={form.spouseOccupation} onChange={onChange} />
+            </>
+          )}
+        </RegistrationSection>
+
+        <RegistrationSection
+          title="Contact & Identification"
+          description="Contact and health insurance information."
+        >
+          <EditField label="Contact Number" name="contactNumber" value={form.contactNumber} onChange={onChange} />
+          <EditSelect label="PhilHealth Membership" name="philHealthStatus" value={form.philHealthStatus} onChange={onChange}>
+            <option value="">Select membership</option>
+            <option>With PhilHealth</option>
+            <option>No PhilHealth</option>
+          </EditSelect>
+          {form.philHealthStatus === "With PhilHealth" && (
+            <EditField label="PhilHealth Number" name="philHealthNumber" value={form.philHealthNumber} onChange={onChange} />
+          )}
+        </RegistrationSection>
+
+        <RegistrationSection
+          title="Address Information"
+          description="Registered residential address."
+        >
+          <EditField label="Street Address" name="streetAddress" value={form.streetAddress} onChange={onChange} />
+          <EditField label="Purok / Area" name="purokArea" value={form.purokArea} onChange={onChange} />
+          <EditSelect label="Barangay" name="barangay" value={form.barangay} onChange={onChange}>
+            <option value="">Select barangay</option>
+            {BULAKAN_BARANGAYS.map((barangay) => (
+              <option key={barangay}>{barangay}</option>
+            ))}
+          </EditSelect>
+          <EditField label="Municipality / City" name="municipality" value={form.municipality} onChange={onChange} />
+        </RegistrationSection>
+
+        {showChildSections && (
+          <RegistrationSection
+            title="Parent / Household Information"
+            description="Parent and guardian details saved for this patient."
+          >
+            <EditField label="Mother Name" name="motherName" value={form.motherName} onChange={onChange} />
+            <EditField label="Father Name" name="fatherName" value={form.fatherName} onChange={onChange} />
+            <EditField label="Guardian Name" name="guardianName" value={form.guardianName} onChange={onChange} />
+            <EditField label="Guardian Relationship" name="guardianRelationship" value={form.guardianRelationship} onChange={onChange} />
+            <EditField label="Guardian Contact Number" name="guardianContactNumber" value={form.guardianContactNumber} onChange={onChange} />
+          </RegistrationSection>
+        )}
+
+        {(showChildSections || hasBirthData) && (
+          <RegistrationSection
+            title="Birth / EPI Registration Details"
+            description="Birth information captured during child registration."
+          >
+            <EditField label="Birth Place" name="birthPlace" value={form.birthPlace} onChange={onChange} />
+            <EditField label="Time of Birth" name="birthTime" type="time" value={form.birthTime} onChange={onChange} />
+            <EditField label="Birth Weight" name="birthWeight" value={form.birthWeight} onChange={onChange} />
+            <EditField label="Birth Height" name="birthHeight" value={form.birthHeight} onChange={onChange} />
+          </RegistrationSection>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-7">
+      <RegistrationSection
+        title="Basic Information"
+        description="Identity and demographic information from registration."
+      >
+        <DetailItem label="First Name" value={getPatientValue(patient, ["firstName", "first_name"])} />
+        <DetailItem label="Middle Name" value={getPatientValue(patient, ["middleName", "middle_name"])} />
+        <DetailItem label="Last Name" value={getPatientValue(patient, ["lastName", "last_name"])} />
+        <DetailItem
+          label="Date of Birth"
+          value={formatLongDate(
+            getPatientValue(patient, ["birthDate", "birthdate", "dateOfBirth", "date_of_birth"]),
+            "Not recorded",
+          )}
+        />
+        <DetailItem label="Age" value={getPatientValue(patient, ["age"]) ? `${getPatientValue(patient, ["age"])} years old` : ""} />
+        <DetailItem label="Sex" value={getPatientValue(patient, ["sex"])} />
+      </RegistrationSection>
+
+      <RegistrationSection
+        title="Socio-Demographic Information"
+        description="Household and social profile information."
+      >
+        <DetailItem label="Civil Status" value={getPatientValue(patient, ["civilStatus", "civil_status"])} />
+        <DetailItem label="Occupation" value={getPatientValue(patient, ["occupation"])} />
+        <DetailItem label="NHTS Status" value={getPatientValue(patient, ["nhtsStatus", "nhts_status"])} />
+        <DetailItem label="Family Serial Number" value={getPatientValue(patient, ["familySerialNumber", "family_serial_number"])} />
+        {hasDisplayValue(getPatientValue(patient, ["spouseName", "spouse_name"], "")) && (
+          <DetailItem label="Spouse Name" value={getPatientValue(patient, ["spouseName", "spouse_name"])} />
+        )}
+        {hasDisplayValue(getPatientValue(patient, ["spouseOccupation", "spouse_occupation"], "")) && (
+          <DetailItem label="Spouse Occupation" value={getPatientValue(patient, ["spouseOccupation", "spouse_occupation"])} />
+        )}
+      </RegistrationSection>
+
+      <RegistrationSection
+        title="Contact & Identification"
+        description="Contact and health insurance information."
+      >
+        <DetailItem label="Contact Number" value={getPatientValue(patient, ["contact", "contactNumber", "contact_number"])} />
+        <DetailItem
+          label="PhilHealth Membership"
+          value={getPatientValue(patient, ["philHealthStatus", "philhealth_status", "philHealthMembership", "philhealth_membership"])}
+        />
+        {hasDisplayValue(getPatientValue(patient, ["philHealthNumber", "philhealthNumber", "philhealth_number"], "")) && (
+          <DetailItem label="PhilHealth Number" value={getPatientValue(patient, ["philHealthNumber", "philhealthNumber", "philhealth_number"])} />
+        )}
+      </RegistrationSection>
+
+      <RegistrationSection
+        title="Address Information"
+        description="Registered residential address."
+      >
+        <DetailItem label="Street Address" value={getPatientValue(patient, ["address", "streetAddress", "street_address"])} />
+        <DetailItem label="Purok / Area" value={getPatientValue(patient, ["purok", "purokArea", "purok_area"])} />
+        <DetailItem label="Barangay" value={getPatientValue(patient, ["barangay"])} />
+        <DetailItem label="Municipality / City" value={getPatientValue(patient, ["municipality", "city"])} />
+      </RegistrationSection>
+
+      {hasParentData && (
+        <RegistrationSection
+          title="Parent / Household Information"
+          description="Parent and guardian details saved for this patient."
+        >
+          {parentFields.map(([label, keys]) => {
+            const value = getPatientValue(patient, keys, "");
+            return hasDisplayValue(value) ? (
+              <DetailItem
+                key={label}
+                label={label}
+                value={
+                  label.includes("Date of Birth")
+                    ? formatLongDate(value, "Not recorded")
+                    : value
+                }
+              />
+            ) : null;
+          })}
+        </RegistrationSection>
+      )}
+
+      {hasBirthData && (
+        <RegistrationSection
+          title="Birth / EPI Registration Details"
+          description="Birth information captured during child registration."
+        >
+          {birthFields.map(([label, keys]) => {
+            const value = getPatientValue(patient, keys, "");
+            return hasDisplayValue(value) ? (
+              <DetailItem key={label} label={label} value={value} />
+            ) : null;
+          })}
+        </RegistrationSection>
+      )}
+    </div>
+  );
+}
+
+function RegistrationSection({ title, description, children }) {
+  return (
+    <section>
+      <div>
+        <h2 className="text-sm font-bold text-[#0F172A]">{title}</h2>
+        <p className="mt-0.5 text-xs text-slate-400">{description}</p>
+      </div>
+      <div className="mt-4 grid min-w-0 gap-x-10 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function DetailItem({ label, value }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-semibold text-slate-400">
+        {label}
+      </p>
+      <p className="mt-1 break-words text-sm font-semibold text-[#0F172A]">
+        {formatDisplayValue(value, "Not recorded")}
+      </p>
+    </div>
+  );
+}
+
+function EditField({ label, required, readOnly, ...props }) {
+  return (
+    <label className="min-w-0">
+      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+        {label}
+        {required && <span className="text-[#B91C1C]"> *</span>}
+      </span>
+      <input
+        {...props}
+        required={required}
+        readOnly={readOnly}
+        className={`mt-1.5 h-10 w-full min-w-0 rounded-xl border px-3 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
+          readOnly
+            ? "cursor-not-allowed border-slate-100 bg-slate-100 text-slate-500"
+            : "border-slate-200 bg-white"
+        }`}
+      />
+    </label>
+  );
+}
+
+function EditSelect({ label, required, children, ...props }) {
+  return (
+    <label className="min-w-0">
+      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+        {label}
+        {required && <span className="text-[#B91C1C]"> *</span>}
+      </span>
+      <select
+        {...props}
+        required={required}
+        className="mt-1.5 h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+      >
+        {children}
+      </select>
+    </label>
+  );
+}
+
+function HealthRecordsTab({
+  records,
+  visibleRecords,
+  isLoading,
+  isFetching,
+  isError,
+  showAll,
+  onToggleShowAll,
+  onView,
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-slate-200">
+      <TabHeader
+        title="Health Record History"
+        subtitle="Complete chronological visit history for this patient."
+      />
+      {isError && records.length === 0 ? (
+        <TabErrorState message="Unable to load health records right now." />
+      ) : records.length === 0 && !isLoading ? (
+        <TabEmptyState
+          icon={<FileText size={32} />}
+          message="No health records found for this patient."
+        />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[620px] text-left">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <th className="px-5 py-3">Record ID</th>
+                <th className="px-4 py-3">Date of Visit</th>
+                <th className="px-4 py-3">Service Type</th>
+                <th className="px-4 py-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-sm">
+              {visibleRecords.map((record) => {
+                const recordId = getHealthRecordId(record);
+                return (
+                  <tr key={recordId} className="transition hover:bg-slate-50/80">
+                    <td className="whitespace-nowrap px-5 py-4 font-mono text-xs font-bold text-[#B91C1C]">
+                      {getRecordIdLabel(record)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4 font-medium text-slate-700">
+                      {getHealthRecordDate(record)}
+                    </td>
+                    <td className="px-4 py-4 text-xs font-semibold text-[#0F172A]">
+                      {getServiceTypeLabel(record)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() => onView(recordId)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
+                      >
+                        <Eye size={12} /> View Record
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {records.length > 5 && (
+            <ShowAllButton
+              showAll={showAll}
+              count={records.length}
+              noun="records"
+              onClick={onToggleShowAll}
+            />
+          )}
+        </div>
+      )}
+      <SoftLoadingOverlay
+        isVisible={isLoading || (isFetching && records.length > 0)}
+        message={isLoading ? "Loading records..." : "Refreshing records..."}
+      />
+    </div>
+  );
+}
+
+function PatientFollowUpsTab({
+  tasks,
+  isLoading,
+  isFetching,
+  isError,
+  onViewRecord,
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-slate-200">
+      <TabHeader
+        title="Follow-up Monitoring"
+        subtitle="Scheduled return visits and their monitoring status."
+      />
+      {isError && tasks.length === 0 ? (
+        <TabErrorState message="Unable to load follow-up tasks right now." />
+      ) : tasks.length === 0 && !isLoading ? (
+        <TabEmptyState
+          icon={<CalendarClock size={32} />}
+          message="No follow-up tasks found for this patient."
+        />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[680px] text-left">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <th className="px-5 py-3">Record Type</th>
+                <th className="px-4 py-3">Next Follow-up Date</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-sm">
+              {tasks.map((task) => (
+                <tr key={task.id} className="transition hover:bg-slate-50/80">
+                  <td className="px-5 py-4 font-semibold text-[#0F172A]">
+                    {getHealthRecordType(task.healthRecord)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-4 text-slate-600">
+                    {formatDate(task.dueDate, "Not recorded")}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-4">
+                    <FollowUpStateBadge state={task.effectiveState} />
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-4 text-right">
+                    <button
+                      type="button"
+                      onClick={() => onViewRecord(task.healthRecordId)}
+                      disabled={!task.healthRecordId}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Eye size={12} /> View Record
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <SoftLoadingOverlay
+        isVisible={isLoading || (isFetching && tasks.length > 0)}
+        message={isLoading ? "Loading follow-ups..." : "Refreshing follow-ups..."}
+      />
+    </div>
+  );
+}
+
+function ReferralHistoryTab({
+  referrals,
+  visibleReferrals,
+  isLoading,
+  isFetching,
+  isError,
+  showAll,
+  onToggleShowAll,
+  onView,
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-slate-200">
+      <TabHeader
+        title="Referral Tracking Logs"
+        subtitle="BHC-RHU referrals linked to this patient."
+      />
+      {isError && referrals.length === 0 ? (
+        <TabErrorState message="Unable to load referral history right now." />
+      ) : referrals.length === 0 && !isLoading ? (
+        <TabEmptyState
+          icon={<ClipboardList size={32} />}
+          message="No referral history found for this patient."
+        />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[850px] text-left">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <th className="px-5 py-3">Tracking ID</th>
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Destination</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">RHU Return Slip</th>
+                <th className="px-4 py-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-sm">
+              {visibleReferrals.map((referral) => {
+                const trackingId = referral.trackingId || referral.id;
+                return (
+                  <tr
+                    key={trackingId}
+                    className="transition hover:bg-slate-50/80"
+                  >
+                    <td className="whitespace-nowrap px-5 py-4 font-mono text-xs font-bold text-[#0F172A]">
+                      {trackingId}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4 text-slate-600">
+                      {getReferralDate(referral)}
+                    </td>
+                    <td className="px-4 py-4 text-slate-600">
+                      {formatDisplayValue(
+                        getReferralDestination(referral),
+                        "Not recorded",
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4">
+                      <StatusBadge status={referral.status} />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4">
+                      <ReturnSlipIndicator referral={referral} />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() => onView(trackingId)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
+                      >
+                        <Eye size={12} /> View Details
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {referrals.length > 5 && (
+            <ShowAllButton
+              showAll={showAll}
+              count={referrals.length}
+              noun="referrals"
+              onClick={onToggleShowAll}
+            />
+          )}
+        </div>
+      )}
+      <SoftLoadingOverlay
+        isVisible={isLoading || (isFetching && referrals.length > 0)}
+        message={
+          isLoading ? "Loading referrals..." : "Refreshing referrals..."
+        }
+      />
+    </div>
+  );
+}
+
+function TabHeader({ title, subtitle }) {
+  return (
+    <div className="border-b border-slate-100 bg-slate-50/50 px-5 py-4">
+      <h2 className="text-sm font-bold text-[#0F172A]">{title}</h2>
+      <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>
+    </div>
+  );
+}
+
+function TabEmptyState({ icon, message }) {
+  return (
+    <div className="p-12 text-center text-sm text-slate-400">
+      <span className="mx-auto mb-3 flex justify-center text-slate-300">
+        {icon}
+      </span>
+      {message}
+    </div>
+  );
+}
+
 function TabErrorState({ message }) {
   return (
     <div className="p-12 text-center text-sm text-slate-400">
@@ -826,200 +1063,190 @@ function TabErrorState({ message }) {
   );
 }
 
-function MaternalSupplementHistory({ supplements }) {
-  if (!supplements.length) {
-    return (
-      <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/30 px-4 py-6 text-center">
-        <p className="text-xs text-slate-400">
-          No vitamins or supplements were recorded for this patient.
-        </p>
-      </div>
-    );
-  }
-
+function ShowAllButton({ showAll, count, noun, onClick }) {
   return (
-    <div className="space-y-3">
-      {supplements.map((item, index) => (
-        <div
-          key={`${item.recordId || "record"}-${item.supplement_type}-${index}`}
-          className="rounded-xl border border-pink-100 bg-pink-50/30 p-4"
-        >
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-sm font-bold text-[#0F172A]">
-                {item.supplement_name || "Supplement"}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                {formatDisplayValue(item.quantity, "Not recorded")}{" "}
-                {formatDisplayValue(item.unit, "")}
-              </p>
-            </div>
-            <span className="w-fit rounded-lg border border-pink-100 bg-white px-2.5 py-1 text-[11px] font-semibold text-pink-700">
-              {formatDate(item.date_given, "Date not recorded")}
-            </span>
-          </div>
-          <div className="mt-3 grid gap-3 text-xs md:grid-cols-2">
-            <PatientDetailItem
-              label="Visit Date"
-              value={item.visitDate || "Not recorded"}
-            />
-            <PatientDetailItem
-              label="Weeks AOG"
-              value={item.aog || "Not recorded"}
-            />
-            <PatientDetailItem
-              label="Given By"
-              value={item.given_by_name || "Not recorded"}
-            />
-            <PatientDetailItem
-              label="Remarks"
-              value={item.remarks || "Not recorded"}
-            />
-          </div>
-          {item.recordId && (
-            <Link
-              to={`/bhc/health-records/${item.recordId}`}
-              className="mt-3 inline-flex text-xs font-semibold text-[#B91C1C] transition hover:text-[#7F1D1D] hover:underline"
-            >
-              View health record
-            </Link>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function LatestConsultationSummary({ record, basePath }) {
-  if (!record) {
-    return (
-      <div className="border-l-2 border-[#B91C1C]/20 pl-3">
-        <p className="text-sm text-slate-500">
-          <span className="font-semibold text-[#0F172A]">
-            Latest Consultation:
-          </span>{" "}
-          No consultations recorded yet.
-        </p>
-      </div>
-    );
-  }
-
-  const recordId = getHealthRecordId(record);
-  const status = getHealthRecordStatus(record);
-  const title = getHealthRecordComplaint(record);
-  const titleContent = recordId ? (
-    <Link
-      to={`${basePath}/health-records/${recordId}`}
-      className="font-bold text-[#0F172A] underline-offset-2 transition hover:text-[#B91C1C] hover:underline"
-    >
-      {title}
-    </Link>
-  ) : (
-    <span className="font-bold text-[#0F172A]">{title}</span>
-  );
-
-  return (
-    <div className="max-w-3xl border-l-2 border-[#B91C1C]/20 pl-3">
-      <div className="min-w-0">
-        <p className="truncate text-sm text-slate-500">
-          <span className="font-semibold text-[#0F172A]">
-            Latest Consultation:
-          </span>{" "}
-          {titleContent}
-        </p>
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-          <span>{getHealthRecordDate(record)}</span>
-          <span className="text-slate-300">/</span>
-          <span>{getHealthRecordVisitType(record)}</span>
-          <span className="text-slate-300">/</span>
-          <span>{getHealthRecordType(record)}</span>
-          <StatusBadge status={status} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function InlineDetailInput({ label, required, readOnly, ...props }) {
-  return (
-    <div>
-      <label className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
-        {label}
-        {required && <span className="text-[#B91C1C]"> *</span>}
-      </label>
-      <input
-        {...props}
-        readOnly={readOnly}
-        required={required}
-        className={`mt-1 h-7 w-full rounded-md border px-2 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#FCA5A5] focus:ring-2 focus:ring-[#B91C1C]/10 ${
-          readOnly
-            ? "cursor-not-allowed border-slate-100 bg-slate-50 text-slate-500"
-            : "border-slate-200 bg-white"
-        }`}
-      />
-    </div>
-  );
-}
-
-function InlineDetailSelect({ label, required, children, ...props }) {
-  return (
-    <div>
-      <label className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
-        {label}
-        {required && <span className="text-[#B91C1C]"> *</span>}
-      </label>
-      <select
-        {...props}
-        required={required}
-        className="mt-1 h-7 w-full rounded-md border border-slate-200 bg-white px-2 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#FCA5A5] focus:ring-2 focus:ring-[#B91C1C]/10"
+    <div className="border-t border-slate-100 px-5 py-3 text-center">
+      <button
+        type="button"
+        onClick={onClick}
+        className="text-xs font-semibold text-[#B91C1C] transition hover:text-[#7F1D1D]"
       >
-        {children}
-      </select>
+        {showAll ? "Show less" : `Show all ${count} ${noun}`}
+      </button>
     </div>
   );
 }
 
-function isMaternalHealthRecord(record = {}) {
+function FollowUpStateBadge({ state }) {
+  const styles = {
+    upcoming: "border-slate-200 bg-slate-50 text-slate-600",
+    rescheduled: "border-slate-200 bg-slate-50 text-slate-600",
+    due_today: "border-amber-200 bg-amber-50 text-amber-700",
+    no_show: "border-red-200 bg-red-50 text-red-700",
+    fulfilled: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    cancelled: "border-slate-200 bg-slate-100 text-slate-500",
+  };
+  const labels = {
+    upcoming: "Pending",
+    rescheduled: "Pending",
+    due_today: "Due Today",
+    no_show: "No Show",
+    fulfilled: "Completed",
+    cancelled: "Cancelled",
+  };
+
   return (
-    String(
-      record.category ||
-        record.classification ||
-        record.recordType ||
-        record.record_type ||
-        record.patientClassification ||
-        "",
-    ).toLowerCase() === "maternal"
+    <span
+      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-semibold ${
+        styles[state] || styles.upcoming
+      }`}
+    >
+      {labels[state] || "Pending"}
+    </span>
   );
 }
 
-function getMaternalSupplementHistory(records = []) {
-  return records.flatMap((record) => {
-    if (!isMaternalHealthRecord(record)) return [];
+function ReturnSlipIndicator({ referral }) {
+  const hasReturnSlip = Boolean(referral.feedback || referral.returnSlip);
+  return (
+    <span
+      className={`inline-flex rounded-md border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+        hasReturnSlip
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : "border-amber-200 bg-amber-50 text-amber-700"
+      }`}
+    >
+      {hasReturnSlip ? "Available" : "Awaiting Feedback"}
+    </span>
+  );
+}
 
-    const maternalData = record.maternalData || record.maternal_data || {};
-    const supplements =
-      record.supplementsGiven ||
-      record.supplements_given ||
-      maternalData.supplementsGiven ||
-      maternalData.supplements_given ||
-      [];
+function createPatientForm(patient = {}) {
+  return {
+    firstName: getPatientValue(patient, ["firstName", "first_name"], ""),
+    middleName: getPatientValue(patient, ["middleName", "middle_name"], ""),
+    lastName: getPatientValue(patient, ["lastName", "last_name"], ""),
+    birthDate: getPatientValue(
+      patient,
+      ["birthDate", "birthdate", "dateOfBirth", "date_of_birth"],
+      "",
+    ),
+    age: getPatientValue(patient, ["age"], ""),
+    sex: getPatientValue(patient, ["sex"], ""),
+    civilStatus: getPatientValue(patient, ["civilStatus", "civil_status"], ""),
+    occupation: getPatientValue(patient, ["occupation"], ""),
+    nhtsStatus: getPatientValue(patient, ["nhtsStatus", "nhts_status"], ""),
+    familySerialNumber: getPatientValue(
+      patient,
+      ["familySerialNumber", "family_serial_number"],
+      "",
+    ),
+    spouseName: getPatientValue(patient, ["spouseName", "spouse_name"], ""),
+    spouseOccupation: getPatientValue(
+      patient,
+      ["spouseOccupation", "spouse_occupation"],
+      "",
+    ),
+    contactNumber: getPatientValue(
+      patient,
+      ["contact", "contactNumber", "contact_number"],
+      "",
+    ),
+    philHealthStatus: getPatientValue(
+      patient,
+      ["philHealthStatus", "philhealth_status", "philHealthMembership"],
+      "",
+    ),
+    philHealthNumber: getPatientValue(
+      patient,
+      ["philHealthNumber", "philhealthNumber", "philhealth_number"],
+      "",
+    ),
+    streetAddress: getPatientValue(
+      patient,
+      ["address", "streetAddress", "street_address"],
+      "",
+    ),
+    purokArea: getPatientValue(
+      patient,
+      ["purok", "purokArea", "purok_area"],
+      "",
+    ),
+    barangay: getPatientValue(patient, ["barangay"], ""),
+    municipality: getPatientValue(
+      patient,
+      ["municipality", "city"],
+      "Bulakan",
+    ),
+    motherName: getPatientValue(patient, ["motherName", "mother_name"], ""),
+    fatherName: getPatientValue(patient, ["fatherName", "father_name"], ""),
+    guardianName: getPatientValue(
+      patient,
+      ["guardianName", "guardian_name"],
+      "",
+    ),
+    guardianRelationship: getPatientValue(
+      patient,
+      ["guardianRelationship", "guardian_relationship"],
+      "",
+    ),
+    guardianContactNumber: getPatientValue(
+      patient,
+      ["guardianContactNumber", "guardian_contact_number"],
+      "",
+    ),
+    birthPlace: getPatientValue(patient, ["birthPlace", "birth_place"], ""),
+    birthTime: getPatientValue(patient, ["birthTime", "birth_time"], ""),
+    birthWeight: getPatientValue(patient, ["birthWeight", "birth_weight"], ""),
+    birthHeight: getPatientValue(patient, ["birthHeight", "birth_height"], ""),
+    registrationType: getPatientValue(
+      patient,
+      ["registrationType", "registration_type", "patientType"],
+      "",
+    ),
+    patientClassification: getPatientValue(
+      patient,
+      ["patientClassification", "patientCategory", "category"],
+      "",
+    ),
+  };
+}
 
-    if (!Array.isArray(supplements)) return [];
+function getPatientValue(patient = {}, keys = [], fallback = "Not recorded") {
+  for (const key of keys) {
+    const value = patient?.[key];
+    if (hasDisplayValue(value)) return value;
+  }
+  return fallback;
+}
 
-    const recordId = getHealthRecordId(record);
-    return supplements.filter(Boolean).map((item = {}) => ({
-      supplement_type: item.supplement_type || item.supplementType || "",
-      supplement_name: item.supplement_name || item.supplementName || "",
-      quantity: item.quantity || "",
-      unit: item.unit || "",
-      date_given: item.date_given || item.dateGiven || "",
-      remarks: item.remarks || item.notes || "",
-      given_by_name: item.given_by_name || item.givenByName || "",
-      aog: maternalData.aog || record.aog || "",
-      visitDate: getHealthRecordDate(record),
-      recordId,
-    }));
-  });
+function hasDisplayValue(value) {
+  return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
+function calculateAge(value) {
+  if (!value) return "";
+  const birthDate = new Date(value);
+  if (Number.isNaN(birthDate.getTime())) return "";
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const birthdayHasNotOccurred =
+    today.getMonth() < birthDate.getMonth() ||
+    (today.getMonth() === birthDate.getMonth() &&
+      today.getDate() < birthDate.getDate());
+  if (birthdayHasNotOccurred) age -= 1;
+  return Math.max(age, 0);
+}
+
+function getHealthRecordId(record = {}) {
+  const id =
+    record.id ||
+    record.health_record_id ||
+    record.healthRecordId ||
+    record.record_id ||
+    record.recordId ||
+    record._id;
+  return id ? String(id) : "";
 }
 
 function getHealthRecordDate(record = {}) {
@@ -1036,103 +1263,20 @@ function getHealthRecordDate(record = {}) {
   );
 }
 
-function getHealthRecordTime(record = {}) {
-  const source = record || {};
-  return formatDisplayValue(
-    source.timeOfVisit ||
-      source.time_of_visit ||
-      source.time ||
-      source.visitTime,
-    "-",
-  );
-}
-
-function getHealthRecordId(record) {
-  if (!record) return null;
-
-  const id =
-    record.id ||
-    record.health_record_id ||
-    record.healthRecordId ||
-    record.record_id ||
-    record.recordId ||
-    record._id;
-
-  return id ? String(id) : null;
-}
-
-function getHealthRecordVisitType(record = {}) {
-  const source = record || {};
-  const value = String(source.visitType || source.visit_type || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, " ");
-
-  if (
-    value === "follow up visit" ||
-    value === "follow up" ||
-    source.isFollowUp ||
-    source.is_follow_up ||
-    source.parentHealthRecordId ||
-    source.parent_health_record_id ||
-    source.previousRecordId
-  ) {
-    return "Follow-up Visit";
-  }
-
-  if (
-    value === "initial consultation" ||
-    value === "initial consult" ||
-    value === "consultation" ||
-    value === "general consultation"
-  ) {
-    return "Initial Consultation";
-  }
-
-  if (value) return formatDisplayValue(source.visitType || source.visit_type);
-
-  return "Initial Consultation";
-}
-
 function getHealthRecordType(record = {}) {
-  const source = record || {};
   return formatDisplayValue(
-    source.category ||
-      source.classification ||
-      source.recordType ||
-      source.record_type ||
-      source.healthRecordType ||
-      source.health_record_type ||
-      source.patientClassification,
+    record.category ||
+      record.classification ||
+      record.recordType ||
+      record.record_type ||
+      record.healthRecordType ||
+      record.patientClassification,
     "Not recorded",
   );
-}
-
-function getHealthRecordComplaint(record = {}) {
-  const source = record || {};
-  return formatDisplayValue(
-    source.chiefComplaint ||
-      source.chief_complaint ||
-      source.concern ||
-      source.reasonForVisit ||
-      source.diagnosis,
-    "Not recorded",
-  );
-}
-
-function getHealthRecordStatus(record = {}) {
-  const source = record || {};
-  return normalizeHealthRecordStatus(formatDisplayValue(
-    source.followUpStatus ||
-      source.follow_up_status ||
-      source.status ||
-      source.recordStatus,
-    "Not recorded",
-  ), "Not recorded");
 }
 
 function getReferralDate(referral = {}) {
-  return formatReferralDate(
+  return formatDate(
     referral.dateOfReferral ||
       referral.date_of_referral ||
       referral.referralDate ||
@@ -1141,46 +1285,7 @@ function getReferralDate(referral = {}) {
       referral.createdAt ||
       referral.created_at ||
       referral.date,
-  );
-}
-
-function sortByDateDesc(a, b) {
-  return getDateTimeValue(b) - getDateTimeValue(a);
-}
-
-function getDateTimeValue(item = {}) {
-  const raw =
-    item.dateOfVisit ||
-    item.date_of_visit ||
-    item.dateRecorded ||
-    item.date_recorded ||
-    item.visitDate ||
-    item.dateOfReferral ||
-    item.date_of_referral ||
-    item.referralDate ||
-    item.referral_datetime ||
-    item.dateSubmitted ||
-    item.createdAt ||
-    item.created_at ||
-    item.date;
-
-  const date = new Date(raw);
-  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
-}
-
-function ReturnSlipIndicator({ referral }) {
-  const hasReturnSlip = !!(referral.feedback || referral.returnSlip);
-
-  return (
-    <span
-      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-        hasReturnSlip
-          ? "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"
-          : "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]"
-      }`}
-    >
-      {hasReturnSlip ? "Return Slip Available" : "Awaiting RHU Feedback"}
-    </span>
+    "Not recorded",
   );
 }
 
@@ -1195,14 +1300,41 @@ function getReferralDestination(referral = {}) {
   );
 }
 
-function formatReferralDate(value) {
-  if (!value) return "Not recorded";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
+function getEffectiveFollowUpState(task = {}) {
+  if (task.state === "fulfilled") return "fulfilled";
+  if (task.state === "no_show") return "no_show";
+  if (["cancelled", "canceled"].includes(task.state)) return "cancelled";
 
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  const dueDate = String(task.dueDate || "").slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  if (!dueDate) return "upcoming";
+  if (dueDate === today) return "due_today";
+  if (dueDate < today) return "no_show";
+  if (task.state === "rescheduled") return "rescheduled";
+  return "upcoming";
+}
+
+function sortByDateDesc(a, b) {
+  return getDateTimeValue(b) - getDateTimeValue(a);
+}
+
+function getDateTimeValue(item = {}) {
+  const raw =
+    item.dueDate ||
+    item.due_date ||
+    item.dateOfVisit ||
+    item.date_of_visit ||
+    item.dateRecorded ||
+    item.date_recorded ||
+    item.visitDate ||
+    item.dateOfReferral ||
+    item.date_of_referral ||
+    item.referralDate ||
+    item.referral_datetime ||
+    item.dateSubmitted ||
+    item.createdAt ||
+    item.created_at ||
+    item.date;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 }

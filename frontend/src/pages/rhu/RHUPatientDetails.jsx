@@ -17,9 +17,9 @@ import {
   SideCard,
   SoftLoadingArea,
   SoftLoadingOverlay,
-  StatusBadge,
 } from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
+import SpecializedRecordsTab from "../../components/features/records/SpecializedRecordsTab";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
   getPatientByIdForRole,
@@ -31,8 +31,14 @@ import {
   formatDate,
   formatDisplayValue,
   formatFacilityName,
-  normalizeHealthRecordStatus,
 } from "../../utils/formatters";
+import {
+  formatDisplayTime,
+  getRecordIdLabel,
+  getRecordTimeValue,
+  getServiceTypeLabel,
+  hasSpecializedRecords,
+} from "../../utils/healthRecordPrograms";
 import { queryKeys } from "../../utils/queryKeys";
 
 const keyframes = `
@@ -42,12 +48,6 @@ const keyframes = `
   }
   .anim-fade-up { animation: fadeUp 0.55s cubic-bezier(0.22,1,0.36,1) both; }
 `;
-
-const TABS = [
-  { key: "patient", label: "Patient Information" },
-  { key: "records", label: "RHU Records" },
-  { key: "referrals", label: "Referral History" },
-];
 
 export default function RHUPatientDetails() {
   const { patientId } = useParams();
@@ -153,6 +153,15 @@ export default function RHUPatientDetails() {
     () => (Array.isArray(records) ? records[0] ?? null : null),
     [records],
   );
+  const hasSpecialized = hasSpecializedRecords(records);
+  const tabs = [
+    { key: "patient", label: "Patient Information" },
+    { key: "records", label: "Health Records" },
+    ...(hasSpecialized
+      ? [{ key: "specialized", label: "Specialized Records" }]
+      : []),
+    { key: "referrals", label: "Referral History" },
+  ];
 
   if (loading) {
     return (
@@ -240,10 +249,12 @@ export default function RHUPatientDetails() {
       </div>
 
       <div className="mb-6 flex overflow-x-auto border-b border-slate-200">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const count =
             tab.key === "records"
               ? ` (${records.length})`
+              : tab.key === "specialized"
+                ? ""
               : tab.key === "referrals"
                 ? ` (${referrals.length})`
                 : "";
@@ -279,6 +290,10 @@ export default function RHUPatientDetails() {
           showAll={showAllRecords}
           onToggleShowAll={() => setShowAllRecords((value) => !value)}
         />
+      )}
+
+      {activeTab === "specialized" && hasSpecialized && (
+        <SpecializedRecordsTab records={records} basePath="/rhu" />
       )}
 
       {activeTab === "referrals" && (
@@ -381,7 +396,6 @@ function LatestConsultationSummary({ record, basePath }) {
   }
 
   const recordId = getActionableRecordId(record);
-  const status = getRecordStatus(record);
   const title = getRecordConcern(record);
   const titleContent = recordId ? (
     <Link
@@ -406,10 +420,9 @@ function LatestConsultationSummary({ record, basePath }) {
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
           <span>{getRecordDate(record)}</span>
           <span className="text-slate-300">/</span>
-          <span>{getRecordVisitType(record)}</span>
+          <span>{getRecordTime(record)}</span>
           <span className="text-slate-300">/</span>
           <span>{getRecordType(record)}</span>
-          <StatusBadge status={status} />
         </div>
       </div>
     </div>
@@ -429,9 +442,9 @@ function RhuRecordsTab({
   return (
     <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
-        <h2 className="text-sm font-bold text-[#0F172A]">RHU Record History</h2>
+        <h2 className="text-sm font-bold text-[#0F172A]">Health Record History</h2>
         <p className="text-xs text-slate-400">
-          RHU health records linked to this patient.
+          Chronological health records linked to this patient.
         </p>
       </div>
 
@@ -446,14 +459,12 @@ function RhuRecordsTab({
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] border-collapse text-left">
+          <table className="w-full min-w-[620px] border-collapse text-left">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <th className="px-6 py-3">Record ID</th>
                 <th className="px-6 py-3">Date of Visit</th>
-                <th className="px-6 py-3">Visit Type</th>
-                <th className="px-6 py-3">Classification</th>
-                <th className="px-6 py-3">Chief Complaint</th>
-                <th className="px-6 py-3">Status</th>
+                <th className="px-6 py-3">Service Type</th>
                 <th className="px-6 py-3 text-right">Action</th>
               </tr>
             </thead>
@@ -465,24 +476,16 @@ function RhuRecordsTab({
                     key={recordId}
                     className="transition-colors hover:bg-slate-50/80"
                   >
+                    <td className="whitespace-nowrap px-6 py-4 font-mono text-xs font-bold text-[#B91C1C]">
+                      {getRecordIdLabel(record)}
+                    </td>
                     <td className="whitespace-nowrap px-6 py-4 font-medium text-slate-700">
                       {getRecordDate(record)}
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-xs font-semibold text-slate-600">
-                      {getRecordVisitType(record)}
-                    </td>
                     <td className="px-6 py-4 font-semibold text-[#0F172A]">
                       <span className="text-xs font-semibold text-[#0F172A]">
-                        {getRecordType(record)}
+                        {getServiceTypeLabel(record)}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 font-semibold text-[#0F172A]">
-                      {getRecordConcern(record)}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <StatusBadge
-                        status={getRecordStatus(record)}
-                      />
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-right">
                       <Link
@@ -848,47 +851,8 @@ function getRecordType(record) {
   );
 }
 
-function getRecordVisitType(record) {
-  const value = String(record?.visitType || record?.visit_type || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, " ");
-
-  if (
-    value === "follow up visit" ||
-    value === "follow up" ||
-    record?.isFollowUp ||
-    record?.is_follow_up ||
-    record?.parentHealthRecordId ||
-    record?.parent_health_record_id ||
-    record?.previousRecordId
-  ) {
-    return "Follow-up Visit";
-  }
-
-  if (
-    value === "initial consultation" ||
-    value === "initial consult" ||
-    value === "consultation" ||
-    value === "general consultation"
-  ) {
-    return "Initial Consultation";
-  }
-
-  if (value) return formatDisplayValue(record?.visitType || record?.visit_type);
-
-  return "Initial Consultation";
-}
-
-function getRecordStatus(record) {
-  return normalizeHealthRecordStatus(formatDisplayValue(
-    record?.followUpStatus ||
-      record?.follow_up_status ||
-      record?.status ||
-      record?.recordStatus ||
-      record?.type,
-    "Not recorded",
-  ), "Not recorded");
+function getRecordTime(record) {
+  return formatDisplayTime(getRecordTimeValue(record), "Not recorded");
 }
 
 function getRecordDate(record) {

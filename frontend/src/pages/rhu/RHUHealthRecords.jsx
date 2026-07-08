@@ -23,8 +23,13 @@ import {
   formatDisplayValue,
   formatDate,
   formatPatientName,
-  formatUserName,
 } from "../../utils/formatters";
+import {
+  getRecordDateValue,
+  getRecordId,
+  getRecordIdLabel,
+  getServiceTypeLabel,
+} from "../../utils/healthRecordPrograms";
 import { queryKeys } from "../../utils/queryKeys";
 
 const PER_PAGE = 8;
@@ -75,12 +80,7 @@ export default function RHUHealthRecords() {
 
       return rawData
         .map((record) => {
-        const recordId =
-          record.id ||
-          record.recordId ||
-          record._id ||
-          record.trackingId ||
-          `RHU-HR-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const recordId = getRecordId(record);
 
         return {
           ...record,
@@ -108,13 +108,6 @@ export default function RHUHealthRecords() {
               record.diagnosis,
             "General Consultation",
           ),
-          followUp:
-            record.followUpDate ||
-            record.follow_up_date ||
-            record.monitoringData?.followUpDate ||
-            record.monitoring_data?.followUpDate ||
-            record.monitoring_data?.follow_up_date ||
-            "",
 	          date:
 	            record.dateOfVisit ||
 	            record.date_of_visit ||
@@ -125,15 +118,6 @@ export default function RHUHealthRecords() {
 	            record.createdAt ||
 	            record.created_at ||
 	            "",
-          provider: formatUserName(
-            record.attendingStaff ||
-              record.recordedBy ||
-              record.createdBy ||
-              record.created_by ||
-              record.provider ||
-              record.practitioner,
-            "RHU Staff",
-          ),
         };
       })
         .reverse();
@@ -178,7 +162,6 @@ export default function RHUHealthRecords() {
       record.patientName,
       record.classification,
       record.concern,
-      record.provider,
       record.date,
     ]
       .filter(Boolean)
@@ -219,11 +202,11 @@ export default function RHUHealthRecords() {
     },
     {
       key: "classification",
-      label: "Classification",
+      label: "Service Type",
       value: filters.classification,
       type: "select",
       options: [
-        { value: "", label: "All Classifications" },
+        { value: "", label: "All Service Types" },
         { value: "General Consultation", label: "General Consultation" },
         { value: "Maternal", label: "Maternal" },
         { value: "Immunization", label: "Immunization" },
@@ -264,7 +247,7 @@ export default function RHUHealthRecords() {
           <ListToolbar
             searchValue={filters.search}
             onSearchChange={(value) => updateFilter("search", value)}
-            searchPlaceholder="Search by patient name or classification..."
+            searchPlaceholder="Search by patient name or service type..."
             filters={dropdownFilters}
             activeFilterCount={activeFilterCount}
             activeFilters={activeFilters}
@@ -319,8 +302,8 @@ function RHUHealthRecordsTable({
   return (
     <ModuleTableCard
       title="Recent Health Records"
-      subtitle="Patient visits, monitoring, consultations, and referral follow-ups."
-      minWidth="min-w-[940px]"
+      subtitle="Saved patient visits grouped by health service."
+      minWidth="min-w-[760px]"
       refreshing={refreshing}
       footer={
         <TablePagination
@@ -332,11 +315,10 @@ function RHUHealthRecordsTable({
     >
           <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
             <tr>
-              <th className="whitespace-nowrap px-4 py-3">Date</th>
+              <th className="whitespace-nowrap px-4 py-3">Record ID</th>
+              <th className="whitespace-nowrap px-4 py-3">Date of Visit</th>
               <th className="whitespace-nowrap px-4 py-3">Patient</th>
-              <th className="whitespace-nowrap px-4 py-3">Record Type</th>
-              <th className="whitespace-nowrap px-4 py-3">Provider</th>
-              <th className="whitespace-nowrap px-4 py-3">Next Follow-up</th>
+              <th className="whitespace-nowrap px-4 py-3">Service Type</th>
               <th className="whitespace-nowrap px-4 py-3 text-right">
                 Actions
               </th>
@@ -346,7 +328,7 @@ function RHUHealthRecordsTable({
           <tbody className="divide-y divide-[#F3F4F6]">
             {paginatedRecords.length === 0 ? (
               <DataTableEmptyState
-                colSpan={6}
+                colSpan={5}
                 icon={<FileText size={20} className="text-[#94A3B8]" />}
                 title="No Matching Records"
                 description="Try adjusting your search or filter criteria."
@@ -357,40 +339,32 @@ function RHUHealthRecordsTable({
                 key={record.id}
                 className="transition-colors hover:bg-[#F9FAFB]"
               >
-                <td className="whitespace-nowrap px-4 py-3">
-                  <div>
-                    <p className="text-[13px] font-semibold text-[#475569]">
-                      {formatDate(record.date, "Not recorded")}
-                    </p>
-                    <p className="mt-0.5 font-mono text-[10px] font-semibold text-[#B91C1C]">
-                      #{record.trackingId || record.id}
-                    </p>
-                  </div>
+                <td className="whitespace-nowrap px-4 py-3 font-mono text-xs font-bold text-[#B91C1C]">
+                  {getRecordIdLabel(record)}
                 </td>
 
-                <td className="whitespace-nowrap px-4 py-3 font-medium text-[#1F2937]">
-                  <Link
-                    to={`/rhu/health-records/${record.id}`}
-                    className="transition-colors hover:text-[#B91C1C]"
-                  >
+                <td className="whitespace-nowrap px-4 py-3 text-[13px] font-semibold text-[#475569]">
+                  {formatDate(getRecordDateValue(record), "Not recorded")}
+                </td>
+
+                <td className="whitespace-nowrap px-4 py-3">
+                  <p className="font-medium text-[#1F2937]">
                     {formatPatientName(record.patientName, "Unnamed Patient")}
-                  </Link>
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-[#9CA3AF]">
+                    Patient ID #
+                    {record.patientId ||
+                      record.patient_id ||
+                      record.patient?.patientId ||
+                      record.patient?.id ||
+                      "Not linked"}
+                  </p>
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3">
                   <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
-                    {record.classification}
+                    {getServiceTypeLabel(record)}
                   </span>
-                </td>
-
-                <td className="max-w-[190px] truncate px-4 py-3 text-[#6B7280]">
-                  {record.provider || "RHU Staff"}
-                </td>
-
-                <td className="whitespace-nowrap px-4 py-3 text-[#64748B]">
-                  {record.followUp
-                    ? `Next: ${formatDate(record.followUp, record.followUp)}`
-                    : "—"}
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3 text-right">

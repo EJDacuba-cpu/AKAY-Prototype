@@ -7,7 +7,8 @@ import { ModuleToolbar, SoftLoadingArea } from "../../components/common";
 import HealthRecordsTable from "../../components/features/records/HealthRecordsTable";
 import { getHealthRecords } from "../../services/healthRecordService";
 import { getReferrals } from "../../services/referrals";
-import { formatPatientName, formatUserName } from "../../utils/formatters";
+import { formatPatientName } from "../../utils/formatters";
+import { getRecordId } from "../../utils/healthRecordPrograms";
 import { queryKeys } from "../../utils/queryKeys";
 
 const DEFAULT_FILTERS = {
@@ -134,10 +135,7 @@ export default function HealthRecords() {
 
       return rawData
         .map((record) => {
-        const recordId =
-          record.id ||
-          record.trackingId ||
-          Math.random().toString(36).substr(2, 9);
+        const recordId = getRecordId(record);
         const linkedReferral = getLinkedReferral(record, recordId, referrals);
         const visitType = normalizeVisitType(record);
         const fallbackReferralTrackingId =
@@ -177,23 +175,6 @@ export default function HealthRecords() {
             (record.vaccineType
               ? `${record.vaccineType} - ${record.doseNumber || ""}`
               : "General Consultation"),
-          nextFollowUpDate:
-            record.followUpDate ||
-            record.follow_up_date ||
-            record.monitoringData?.followUpDate ||
-            record.monitoring_data?.followUpDate ||
-            record.monitoring_data?.follow_up_date ||
-            "",
-          practitioner: formatUserName(
-            record.attendingStaff ||
-              record.attending_staff ||
-              record.recordedBy ||
-              record.recorded_by ||
-              record.createdBy ||
-              record.created_by ||
-              record.practitioner,
-            "Not recorded",
-          ),
 	          date:
 	            record.dateOfVisit ||
 	            record.date_of_visit ||
@@ -300,11 +281,11 @@ export default function HealthRecords() {
     },
     {
       key: "classification",
-      label: "Classification",
+      label: "Service Type",
       value: filters.classification,
       type: "select",
       options: [
-        { value: "", label: "All Classifications" },
+        { value: "", label: "All Service Types" },
         { value: "General Consultation", label: "General Consultation" },
         { value: "Maternal", label: "Maternal" },
         { value: "Immunization", label: "Immunization" },
@@ -351,7 +332,7 @@ export default function HealthRecords() {
           <ModuleToolbar
             searchValue={filters.search}
             onSearchChange={(value) => updateFilter("search", value)}
-            searchPlaceholder="Search by patient or classification..."
+            searchPlaceholder="Search by patient or service type..."
             filters={dropdownFilters}
             activeFilterCount={activeFilterCount}
             activeFilters={activeFilters}

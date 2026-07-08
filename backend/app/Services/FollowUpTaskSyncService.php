@@ -10,6 +10,11 @@ class FollowUpTaskSyncService
 {
     public function syncRecord(HealthRecord $record, ?User $user = null): void
     {
+        if ($record->visit_type === 'follow_up_visit' && $record->parent_health_record_id) {
+            $this->syncFollowUpVisit($record, $user);
+            return;
+        }
+
         $status = $this->healthRecordStatus($record);
         $dueDate = $this->followUpDate($record);
 
@@ -54,7 +59,11 @@ class FollowUpTaskSyncService
 
     public function fulfillParentTask(HealthRecord $record, ?User $user = null): void
     {
-        if ($record->visit_type !== 'follow_up_visit' || ! $record->parent_health_record_id) {
+        if (
+            $record->visit_type !== 'follow_up_visit'
+            || ! $record->parent_health_record_id
+            || $this->followUpDate($record)
+        ) {
             return;
         }
 
@@ -66,6 +75,53 @@ class FollowUpTaskSyncService
                 'fulfilled_by_health_record_id' => $record->id,
                 'updated_by' => $user?->id,
             ]);
+    }
+
+    private function syncFollowUpVisit(HealthRecord $record, ?User $user = null): void
+    {
+        FollowUpTask::where('health_record_id', $record->id)->delete();
+
+        $task = FollowUpTask::where('health_record_id', $record->parent_health_record_id)
+            ->where('patient_id', $record->patient_id)
+            ->first();
+        $dueDate = $this->followUpDate($record);
+
+        if (! $task && ! $dueDate) {
+            return;
+        }
+
+        if (! $task) {
+            $parentRecord = HealthRecord::find($record->parent_health_record_id);
+            $task = FollowUpTask::create([
+                'health_record_id' => $record->parent_health_record_id,
+                'patient_id' => $record->patient_id,
+                'barangay_health_center_id' => $parentRecord?->barangay_health_center_id ?? $record->barangay_health_center_id,
+                'due_date' => $dueDate,
+                'state' => FollowUpTask::STATE_PENDING,
+                'created_by' => $parentRecord?->created_by ?? $record->created_by,
+                'updated_by' => $user?->id,
+            ]);
+        }
+
+        if ($dueDate) {
+            $task->update([
+                'due_date' => $dueDate,
+                'state' => FollowUpTask::STATE_PENDING,
+                'fulfilled_at' => null,
+                'fulfilled_by_health_record_id' => $record->id,
+                'no_show_at' => null,
+                'rescheduled_at' => null,
+                'updated_by' => $user?->id,
+            ]);
+            return;
+        }
+
+        $task->update([
+            'state' => FollowUpTask::STATE_FULFILLED,
+            'fulfilled_at' => now(),
+            'fulfilled_by_health_record_id' => $record->id,
+            'updated_by' => $user?->id,
+        ]);
     }
 
     private function deleteUnfulfilledTask(HealthRecord $record): void

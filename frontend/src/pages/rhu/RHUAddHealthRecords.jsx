@@ -828,6 +828,8 @@ export default function AddHealthRecord() {
   const isImmunization = recordTypeKey === "immunization";
   const isMaternal = recordTypeKey === "maternal";
   const isFamilyPlanning = recordTypeKey === "family planning";
+  const isGeneralConsultationFollowUp =
+    isFollowUp && !isImmunization && !isMaternal && !isFamilyPlanning;
   const patientGateLocked = !isFollowUp && !selectedPatientId;
   const selectedPatientIsMale = !isFollowUp && isPatientMale(selectedPatient);
   const selectedPatientSexMissing =
@@ -908,7 +910,7 @@ export default function AddHealthRecord() {
         healthRecordType: "Please choose a record type before proceeding.",
       });
       setNoticeModal({
-        title: "Record Type Required",
+        title: "Service Type Required",
         message: "Please choose a record type before proceeding.",
       });
       return;
@@ -1109,7 +1111,7 @@ export default function AddHealthRecord() {
       errors.attendingStaff = "Name of practitioner is required.";
     }
 
-    if (isFollowUp) {
+    if (isGeneralConsultationFollowUp) {
       if (!summaryOfPresentIllness.trim()) {
         errors.summaryOfPresentIllness = "Follow-up findings are required.";
       }
@@ -1150,6 +1152,10 @@ export default function AddHealthRecord() {
       return errors;
     }
 
+    if (isFollowUp && isMaternal) {
+      return errors;
+    }
+
     if (!chiefComplaint.trim()) {
       errors.chiefComplaint = "Chief complaint is required.";
     }
@@ -1179,12 +1185,19 @@ export default function AddHealthRecord() {
       followUpRecord &&
       normalizePatientStatus(
         followUpRecord.followUpStatus || followUpRecord.status,
-      ) !== "Follow-up Required"
+      ) !== "Follow-up Required" &&
+      !(
+        followUpRecord.followUpDate ||
+        followUpRecord.follow_up_date ||
+        followUpRecord.monitoringData?.followUpDate ||
+        followUpRecord.monitoring_data?.followUpDate ||
+        followUpRecord.monitoring_data?.follow_up_date
+      )
     ) {
       setNoticeModal({
         title: "Follow-up Not Available",
         message:
-          "Record Follow-up Visit is only available for records marked Follow-up Required.",
+          "Record Follow-up Visit is only available for records with a scheduled follow-up date.",
       });
       return;
     }
@@ -1274,7 +1287,7 @@ export default function AddHealthRecord() {
       vaccinesGiven: preparedVaccineEntries,
     };
 
-    if (!isFollowUp && effectiveHealthRecordType === "Immunization") {
+    if (effectiveHealthRecordType === "Immunization") {
       const missingRequiredVaccineDetails = preparedVaccineEntries.some(
         (entry) => !String(entry.vaccineName || "").trim(),
       );
@@ -1299,7 +1312,6 @@ export default function AddHealthRecord() {
     const effectiveFollowUpDate = followUpDate || immunizationNextScheduleDate || "";
 
     if (
-      !isFollowUp &&
       effectiveHealthRecordType === "Immunization" &&
       !followUpDate &&
       immunizationNextScheduleDate
@@ -1682,7 +1694,7 @@ export default function AddHealthRecord() {
           </LockedFormContent>
         </FormSection>
 
-        {isFollowUp && (
+        {isGeneralConsultationFollowUp && (
           <>
             <FormSection
               title="Follow-up Assessment"
@@ -1833,7 +1845,7 @@ export default function AddHealthRecord() {
           </>
         )}
 
-        {!isFollowUp && !patientGateLocked && isImmunization && (
+        {!patientGateLocked && isImmunization && (
           <FormSection
             title="Child Immunization Details"
             subtitle="Select the vaccines given during this visit."
@@ -1861,7 +1873,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !patientGateLocked && !usesCareDecisionStep && isImmunization && (
+        {!patientGateLocked && !usesCareDecisionStep && isImmunization && (
           <FormSection
             title="Follow-up & Referral"
             subtitle="Schedule a return visit if needed and indicate if referral is required."
@@ -1890,7 +1902,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !patientGateLocked && isMaternal && !selectedPatientIsMale && (
+        {!patientGateLocked && isMaternal && !selectedPatientIsMale && (
           <FormSection
             title="Classification-Specific Assessment"
             subtitle="Monitor pregnancy progression and maternal clinical vitals."
@@ -1999,7 +2011,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !patientGateLocked && isFamilyPlanning && (
+        {!patientGateLocked && isFamilyPlanning && (
           <FormSection
             title="Family Planning Details"
             subtitle="Record the family planning service type, method, source, schedule, and action taken."
@@ -2450,10 +2462,10 @@ function HealthRecordSetupStep({
           tabIndex={errors.healthRecordType ? -1 : undefined}
         >
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
-            Select Record Type
+            Select Service Type
           </p>
           <p className="mt-0.5 text-xs text-[#64748B]">
-            Choose the health service record to encode for this patient.
+            Choose the health service to record for this patient.
           </p>
 
           <div className="mt-3">

@@ -10,14 +10,12 @@ export default function ActionMenu({
 
   viewLink,
   editLink,
-  followUpLink,
   referralLink,
   /* 1. BAGONG PROPS PARA SA EDIT PATIENT */
   editPatientLink,
 
   viewLabel = "View Details",
   editLabel = "Edit",
-  followUpLabel = "Record Follow-up Visit",
   referralLabel = "Submit Referral",
   /* 2. BAGONG DEFAULT LABEL */
   editPatientLabel = "Edit Patient",
@@ -167,16 +165,6 @@ export default function ActionMenu({
             className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-semibold text-[#334155] transition-all duration-150 hover:bg-[#FEF2F2] hover:text-[#B91C1C] active:scale-[0.98]"
           >
             {editLabel}
-          </Link>
-        )}
-
-        {followUpLink && (
-          <Link
-            to={followUpLink}
-            onClick={closeMenu}
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-semibold text-[#334155] transition-all duration-150 hover:bg-[#FEF2F2] hover:text-[#B91C1C] active:scale-[0.98]"
-          >
-            {followUpLabel}
           </Link>
         )}
 

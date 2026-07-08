@@ -61,6 +61,13 @@ export function normalizeFollowUpTask(task = {}) {
       task.fulfilledByHealthRecordId ||
       fulfilledByHealthRecord.id ||
       "",
+    latestHealthRecordId:
+      task.latest_health_record_id ||
+      task.latestHealthRecordId ||
+      task.fulfilled_by_health_record_id ||
+      task.fulfilledByHealthRecordId ||
+      fulfilledByHealthRecord.id ||
+      "",
     patient,
     healthRecord,
     fulfilledByHealthRecord,

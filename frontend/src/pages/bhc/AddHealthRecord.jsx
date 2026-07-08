@@ -271,13 +271,13 @@ const ADULT_IMMUNIZATION_MIN_AGE_YEARS = 18;
 const CHILD_VACCINE_OPTIONS = [
   "Newborn Screening",
   "BCG",
-  "HEPA B",
+  "Hepatitis B",
   "OPV 1",
   "OPV 2",
   "OPV 3",
-  "PENTA 1",
-  "PENTA 2",
-  "PENTA 3",
+  "Pentavalent 1",
+  "Pentavalent 2",
+  "Pentavalent 3",
   "PCV 1",
   "PCV 2",
   "PCV 3",
@@ -285,6 +285,9 @@ const CHILD_VACCINE_OPTIONS = [
   "IPV 2",
   "MCV 1",
   "MCV 2",
+  "MMR",
+  "Vitamin A",
+  "Other",
 ];
 const BREASTFEEDING_MONTHS = [
   { key: "month1", label: "1 Month" },
@@ -919,6 +922,8 @@ export default function AddHealthRecord() {
   const isImmunization = recordTypeKey === "immunization";
   const isMaternal = recordTypeKey === "maternal";
   const isFamilyPlanning = recordTypeKey === "family planning";
+  const isGeneralConsultationFollowUp =
+    isFollowUp && !isImmunization && !isMaternal && !isFamilyPlanning;
   const patientGateLocked = !isFollowUp && !selectedPatientId;
   const selectedPatientIsMale = !isFollowUp && isPatientMale(selectedPatient);
   const selectedPatientSexMissing =
@@ -1007,7 +1012,7 @@ export default function AddHealthRecord() {
         healthRecordType: "Please choose a record type before proceeding.",
       });
       setNoticeModal({
-        title: "Record Type Required",
+        title: "Service Type Required",
         message: "Please choose a record type before proceeding.",
       });
       return;
@@ -1083,7 +1088,7 @@ export default function AddHealthRecord() {
       errors.attendingStaff = "Name of practitioner is required.";
     }
 
-    if (isFollowUp) {
+    if (isGeneralConsultationFollowUp) {
       if (!summaryOfPresentIllness.trim()) {
         errors.summaryOfPresentIllness = "Follow-up findings are required.";
       }
@@ -1091,9 +1096,10 @@ export default function AddHealthRecord() {
     }
 
     if (isImmunization) {
-      const preparedEntries = immunizationVaccineEntries.filter((entry) =>
-        String(entry.dateGiven || "").trim(),
-      );
+      const preparedEntries = immunizationVaccineEntries.map((entry) => ({
+        ...entry,
+        dateGiven: entry.dateGiven || dateOfVisit,
+      }));
 
       if (preparedEntries.length === 0 && !consultationNotes.trim()) {
         errors.vaccineEntries =
@@ -1113,6 +1119,29 @@ export default function AddHealthRecord() {
           "Concern or side-effect notes are required when clinical concern is marked Yes.";
       }
 
+      return errors;
+    }
+
+    if (isFollowUp && isMaternal) {
+      supplementsGiven.forEach((entry) => {
+        const prefix = `supplements.${entry.supplement_type}`;
+        if (
+          entry.supplement_type === "other" &&
+          !String(entry.supplement_name || "").trim()
+        ) {
+          errors[`${prefix}.supplement_name`] =
+            "Supplement name is required.";
+        }
+        if (!String(entry.quantity || "").trim()) {
+          errors[`${prefix}.quantity`] = "Quantity is required.";
+        }
+        if (!String(entry.unit || "").trim()) {
+          errors[`${prefix}.unit`] = "Unit is required.";
+        }
+        if (!String(entry.date_given || dateOfVisit || "").trim()) {
+          errors[`${prefix}.date_given`] = "Date given is required.";
+        }
+      });
       return errors;
     }
 
@@ -1265,38 +1294,40 @@ export default function AddHealthRecord() {
     }));
   }
 
-  function handleVaccineRowChange(vaccineName, field, value) {
+  function handleVaccineEntryChange(index, field, value) {
+    clearValidationError(`vaccineEntries.${index}.${field}`);
     clearValidationError("vaccineEntries");
+    if (field === "nextScheduleDate" && value) {
+      clearValidationError("followUpDate");
+      setFollowUpStatus("Follow-up Required");
+      setFollowUpDate(value);
+    }
+    setImmunizationData((prev) => {
+      const entries = getVaccineEntries(prev).map((entry, entryIndex) =>
+        entryIndex === index ? { ...entry, [field]: value } : entry,
+      );
+      return {
+        ...prev,
+        vaccineEntries: entries,
+        vaccinesGiven: entries,
+      };
+    });
+  }
 
+  function handleVaccineToggle(vaccineName, checked) {
+    clearValidationError("vaccineEntries");
     setImmunizationData((prev) => {
       const existingEntries = getVaccineEntries(prev);
-      const existingEntry = existingEntries.find(
-        (entry) => entry.vaccineName === vaccineName,
-      );
-      const nextEntry = {
-        ...EMPTY_VACCINE_ENTRY,
-        ...(existingEntry || {}),
-        vaccineName,
-        [field]: value,
-      };
-      const rowHasAnyValue = [
-        nextEntry.dateGiven,
-        nextEntry.weight,
-        nextEntry.height,
-        nextEntry.temperature,
-      ].some((item) => String(item || "").trim());
-      const entries = existingEntry
-        ? existingEntries
-            .map((entry) =>
-              entry.vaccineName === vaccineName ? nextEntry : entry,
-            )
-            .filter((entry) =>
-              entry.vaccineName === vaccineName ? rowHasAnyValue : true,
-            )
-        : rowHasAnyValue
-          ? [...existingEntries, nextEntry]
-          : existingEntries;
-
+      const entries = checked
+        ? [
+            ...existingEntries,
+            {
+              ...EMPTY_VACCINE_ENTRY,
+              vaccineName,
+              dateGiven: dateOfVisit,
+            },
+          ]
+        : existingEntries.filter((entry) => entry.vaccineName !== vaccineName);
       return {
         ...prev,
         vaccineEntries: entries,
@@ -1470,12 +1501,19 @@ export default function AddHealthRecord() {
       followUpRecord &&
       normalizePatientStatus(
         followUpRecord.followUpStatus || followUpRecord.status,
-      ) !== "Follow-up Required"
+      ) !== "Follow-up Required" &&
+      !(
+        followUpRecord.followUpDate ||
+        followUpRecord.follow_up_date ||
+        followUpRecord.monitoringData?.followUpDate ||
+        followUpRecord.monitoring_data?.followUpDate ||
+        followUpRecord.monitoring_data?.follow_up_date
+      )
     ) {
       setNoticeModal({
         title: "Follow-up Not Available",
         message:
-          "Record Follow-up Visit is only available for records marked Follow-up Required.",
+          "Record Follow-up Visit is only available for records with a scheduled follow-up date.",
       });
       return;
     }
@@ -1548,15 +1586,14 @@ export default function AddHealthRecord() {
       return;
     }
 
-    const preparedVaccineEntries = immunizationVaccineEntries
-      .filter((entry) => String(entry.dateGiven || "").trim())
-      .map((entry) => ({
-        vaccineName: entry.vaccineName,
-        dateGiven: entry.dateGiven,
-        weight: entry.weight || "",
-        height: entry.height || "",
-        temperature: entry.temperature || "",
-      }));
+    const preparedVaccineEntries = immunizationVaccineEntries.map((entry) => ({
+      ...entry,
+      vaccineName:
+        entry.vaccineName === "Other"
+          ? entry.customVaccineName || entry.vaccineName
+          : entry.vaccineName,
+      dateGiven: entry.dateGiven || dateOfVisit,
+    }));
     const preparedImmunizationData = {
       ...immunizationData,
       patientAgeYears: immunizationPatientInfo.age,
@@ -1565,7 +1602,7 @@ export default function AddHealthRecord() {
       vaccinesGiven: preparedVaccineEntries,
     };
 
-    if (!isFollowUp && effectiveHealthRecordType === "Immunization") {
+    if (effectiveHealthRecordType === "Immunization") {
       if (preparedVaccineEntries.length === 0 && !consultationNotes.trim()) {
         setValidationErrorsAndFocus({
           vaccineEntries:
@@ -1581,7 +1618,6 @@ export default function AddHealthRecord() {
     const effectiveFollowUpDate = followUpDate || immunizationNextScheduleDate || "";
 
     if (
-      !isFollowUp &&
       effectiveHealthRecordType === "Immunization" &&
       !followUpDate &&
       immunizationNextScheduleDate
@@ -1603,7 +1639,7 @@ export default function AddHealthRecord() {
           : chiefComplaint;
 
     const preparedSupplements =
-      !isFollowUp && effectiveHealthRecordType === "Maternal"
+      effectiveHealthRecordType === "Maternal"
         ? getPreparedSupplements()
         : [];
     const supplementValidationMessage =
@@ -2200,7 +2236,7 @@ export default function AddHealthRecord() {
           </LockedFormContent>
         </FormSection>
 
-        {isFollowUp && (
+        {isGeneralConsultationFollowUp && (
           <>
             <FormSection
               title="Follow-up Assessment"
@@ -2351,27 +2387,36 @@ export default function AddHealthRecord() {
           </>
         )}
 
-        {!isFollowUp && !patientGateLocked && isImmunization && (
+        {!patientGateLocked && isImmunization && (
           <FormSection
-            title="Vaccines Given This Visit"
-            subtitle="Record vaccine date and optional measurements using the BHC immunization form layout."
+            title="EPI Vaccines Given"
+            subtitle="Select the EPI vaccines given during this visit."
             icon={<Syringe size={14} />}
             delay={2}
           >
-            <ImmunizationVisitFields
-              ageInfo={immunizationPatientInfo}
-              entries={immunizationVaccineEntries}
-              breastfeedingMonitoring={immunizationData.breastfeedingMonitoring}
-              consultationNotes={consultationNotes}
-              errors={validationErrors}
+
+          <ImmunizationVisitFields
+            ageInfo={immunizationPatientInfo}
+            entries={immunizationVaccineEntries}
+            dateOfVisit={dateOfVisit}
+            temperature={temp}
+            weight={weight}
+            height={height}
+            breastfeedingMonitoring={immunizationData.breastfeedingMonitoring}
+            consultationNotes={consultationNotes}
+            errors={validationErrors}
+            onTemperatureChange={setTemp}
+            onWeightChange={setWeight}
+            onHeightChange={setHeight}
               onBreastfeedingChange={handleBreastfeedingChange}
-              onVaccineRowChange={handleVaccineRowChange}
+              onEntryChange={handleVaccineEntryChange}
+              onToggleVaccine={handleVaccineToggle}
               onNotesChange={setConsultationNotes}
             />
           </FormSection>
         )}
 
-        {!isFollowUp && !patientGateLocked && !usesCareDecisionStep && isImmunization && (
+        {!patientGateLocked && !usesCareDecisionStep && isImmunization && (
           <FormSection
             title="Follow-up & Referral"
             subtitle="Schedule a return visit if needed and indicate if RHU referral is required."
@@ -2400,7 +2445,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !patientGateLocked && isMaternal && !selectedPatientIsMale && (
+        {!patientGateLocked && isMaternal && !selectedPatientIsMale && (
           <FormSection
             title="Classification-Specific Assessment"
             subtitle="Monitor pregnancy progression and maternal clinical vitals."
@@ -2518,7 +2563,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !patientGateLocked && isFamilyPlanning && (
+        {!patientGateLocked && isFamilyPlanning && (
           <FormSection
             title="Family Planning Details"
             subtitle="Record the family planning service type, method, source, schedule, and action taken."
@@ -2978,10 +3023,10 @@ function HealthRecordSetupStep({
           tabIndex={errors.healthRecordType ? -1 : undefined}
         >
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
-            Select Record Type
+            Select Service Type
           </p>
           <p className="mt-0.5 text-xs text-[#64748B]">
-            Choose the health service record to encode for this patient.
+            Choose the health service to record for this patient.
           </p>
 
           <div className="mt-3">
@@ -4070,17 +4115,23 @@ function MaternalClassificationWarning() {
 function ImmunizationVisitFields({
   ageInfo,
   entries,
+  dateOfVisit,
+  temperature,
+  weight,
+  height,
   breastfeedingMonitoring = {},
   consultationNotes,
   errors = {},
+  onTemperatureChange,
+  onWeightChange,
+  onHeightChange,
   onBreastfeedingChange,
-  onVaccineRowChange,
+  onEntryChange,
+  onToggleVaccine,
   onNotesChange,
 }) {
   const showAgeWarning = ageInfo.mode === "unknown";
-  const entriesByName = new Map(
-    entries.map((entry) => [entry.vaccineName, entry]),
-  );
+  const selectedVaccines = new Set(entries.map((entry) => entry.vaccineName));
 
   return (
     <div className="space-y-5">
@@ -4104,81 +4155,159 @@ function ImmunizationVisitFields({
             {errors.vaccineEntries}
           </p>
         )}
-        <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
-          <div className="hidden grid-cols-[minmax(170px,1.35fr)_minmax(130px,1fr)_minmax(92px,0.72fr)_minmax(92px,0.72fr)_minmax(92px,0.72fr)] border-b border-[#E8ECF0] bg-[#F8FAFC] text-[10px] font-bold uppercase tracking-widest text-[#94A3B8] md:grid">
-            <div className="px-3 py-2.5">Vaccine</div>
-            <div className="px-3 py-2.5">Date</div>
-            <div className="px-3 py-2.5">Weight</div>
-            <div className="px-3 py-2.5">Height</div>
-            <div className="px-3 py-2.5">Temp</div>
-          </div>
-
-          <div className="divide-y divide-[#EEF2F6]">
-            {CHILD_VACCINE_OPTIONS.map((vaccineName) => {
-              const entry = entriesByName.get(vaccineName) || {};
-
-              return (
-                <div
-                  key={vaccineName}
-                  className="grid gap-3 px-3 py-3 md:grid-cols-[minmax(170px,1.35fr)_minmax(130px,1fr)_minmax(92px,0.72fr)_minmax(92px,0.72fr)_minmax(92px,0.72fr)] md:items-center md:gap-0"
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {CHILD_VACCINE_OPTIONS.map((vaccineName) => {
+            const checked = selectedVaccines.has(vaccineName);
+            return (
+              <button
+                key={vaccineName}
+                type="button"
+                onClick={() => onToggleVaccine(vaccineName, !checked)}
+                aria-pressed={checked}
+                className={`flex min-h-[46px] items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition ${
+                  checked
+                    ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#991B1B] ring-1 ring-[#B91C1C]/10"
+                    : "border-[#E8ECF0] bg-white text-[#475569] hover:border-[#FECACA] hover:bg-red-50/30"
+                }`}
+              >
+                <span
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                    checked ? "bg-[#B91C1C] text-white" : "bg-[#F1F5F9] text-transparent"
+                  }`}
                 >
-                  <div>
-                    <p className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#94A3B8] md:hidden">
-                      Vaccine
-                    </p>
-                    <p className="text-sm font-bold text-[#1F2937]">
-                      {vaccineName}
-                    </p>
-                  </div>
-                  <EpiTableInput
-                    label="Date"
+                  <Check size={12} strokeWidth={3} />
+                </span>
+                <span>{vaccineName}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {entries.some((entry) => entry.__legacyDetailsVisible === "showLegacyDetails") && (
+          <div className="mt-4 space-y-3">
+            {entries.map((entry, index) => (
+              <div
+                key={entry.vaccineName || `vaccine-entry-${index}`}
+                className="rounded-xl border border-[#E8ECF0] bg-white p-4"
+              >
+                <p className="mb-3 text-xs font-bold text-[#1F2937]">
+                  {entry.vaccineName}
+                </p>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {entry.vaccineName === "Other" && (
+                    <FieldInput
+                      label="Specify Vaccine"
+                      name={`vaccineEntries.${index}.customVaccineName`}
+                      data-field={`vaccineEntries.${index}.customVaccineName`}
+                      value={entry.customVaccineName || ""}
+                      onChange={(event) =>
+                        onEntryChange(index, "customVaccineName", event.target.value)
+                      }
+                      placeholder="Enter vaccine name"
+                    />
+                  )}
+                  <FieldInput
+                    label="Dose"
+                    required
+                    name={`vaccineEntries.${index}.dose`}
+                    error={errors[`vaccineEntries.${index}.dose`]}
+                    value={entry.dose}
+                    onChange={(event) =>
+                      onEntryChange(index, "dose", event.target.value)
+                    }
+                    placeholder="e.g. 1st dose, 2nd dose, booster"
+                  />
+                  <FieldInput
+                    label="Date Given"
                     type="date"
-                    value={entry.dateGiven || ""}
-                    onChange={(value) =>
-                      onVaccineRowChange(vaccineName, "dateGiven", value)
+                    required
+                    name={`vaccineEntries.${index}.dateGiven`}
+                    error={errors[`vaccineEntries.${index}.dateGiven`]}
+                    value={entry.dateGiven || dateOfVisit}
+                    onChange={(event) =>
+                      onEntryChange(index, "dateGiven", event.target.value)
                     }
                   />
-                  <EpiTableInput
+                  <FieldInput
                     label="Weight"
                     type="number"
                     step="0.01"
                     value={entry.weight || ""}
-                    placeholder="kg"
-                    onChange={(value) =>
-                      onVaccineRowChange(vaccineName, "weight", value)
+                    onChange={(event) =>
+                      onEntryChange(index, "weight", event.target.value)
                     }
+                    placeholder="kg"
                   />
-                  <EpiTableInput
+                  <FieldInput
                     label="Height"
                     type="number"
                     step="0.01"
                     value={entry.height || ""}
-                    placeholder="cm"
-                    onChange={(value) =>
-                      onVaccineRowChange(vaccineName, "height", value)
+                    onChange={(event) =>
+                      onEntryChange(index, "height", event.target.value)
                     }
+                    placeholder="cm"
                   />
-                  <EpiTableInput
-                    label="Temp"
+                  <FieldInput
+                    label="Temperature"
                     type="number"
                     step="0.1"
                     value={entry.temperature || ""}
-                    placeholder="C"
-                    onChange={(value) =>
-                      onVaccineRowChange(vaccineName, "temperature", value)
+                    onChange={(event) =>
+                      onEntryChange(index, "temperature", event.target.value)
+                    }
+                    placeholder="°C"
+                  />
+                  <FieldInput
+                    label="Next Schedule Date"
+                    type="date"
+                    value={entry.nextScheduleDate}
+                    onChange={(event) =>
+                      onEntryChange(index, "nextScheduleDate", event.target.value)
                     }
                   />
+                  <FieldInput
+                    label="Remarks"
+                    value={entry.remarks}
+                    onChange={(event) =>
+                      onEntryChange(index, "remarks", event.target.value)
+                    }
+                    placeholder="Optional remarks"
+                  />
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
-        </div>
+        )}
+      </ClinicalFieldGroup>
 
-        <p className="mt-3 text-xs leading-relaxed text-[#64748B]">
-          Fill the Date column for each vaccine actually given. Weight, height,
-          and temperature are optional per vaccine row. If no vaccine was given,
-          write the reason in Remarks.
-        </p>
+      <ClinicalFieldGroup title="Basic Monitoring">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <FieldInput
+            label="Weight"
+            type="number"
+            step="0.01"
+            value={weight}
+            onChange={(event) => onWeightChange(event.target.value)}
+            placeholder="kg"
+          />
+          <FieldInput
+            label="Height"
+            type="number"
+            step="0.01"
+            value={height}
+            onChange={(event) => onHeightChange(event.target.value)}
+            placeholder="cm"
+          />
+          <FieldInput
+            label="Temperature"
+            type="number"
+            step="0.1"
+            value={temperature}
+            onChange={(event) => onTemperatureChange(event.target.value)}
+            placeholder="C"
+          />
+        </div>
       </ClinicalFieldGroup>
 
       <ClinicalFieldGroup title="Exclusive Breastfeeding Monitoring">
@@ -4227,32 +4356,6 @@ function ImmunizationVisitFields({
     </div>
   );
 }
-
-function EpiTableInput({
-  label,
-  value,
-  onChange,
-  type = "text",
-  step,
-  placeholder,
-}) {
-  return (
-    <label className="block min-w-0">
-      <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-[#94A3B8] md:hidden">
-        {label}
-      </span>
-      <input
-        type={type}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-2.5 text-sm text-[#1F2937] outline-none transition placeholder:text-[#CBD5E1] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 md:rounded-none md:border-0 md:bg-transparent md:px-3 md:focus:bg-white md:focus:ring-0"
-      />
-    </label>
-  );
-}
-
 function FieldInput({
   label,
   required,

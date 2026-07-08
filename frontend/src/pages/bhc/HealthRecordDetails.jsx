@@ -42,56 +42,6 @@ import {
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 
-const VACCINE_TIMELINE = [
-  {
-    id: "birth",
-    label: "At Birth",
-    vaccines: [
-      { field: "bcg_vaccine", label: "BCG Vaccine" },
-      { field: "hepb_birth", label: "Hep B Birth Dose" },
-    ],
-  },
-  {
-    id: "week6",
-    label: "6 Weeks",
-    vaccines: [
-      { field: "pentavalent_dose1", label: "Pentavalent Dose 1" },
-      { field: "opv_dose1", label: "OPV Dose 1" },
-      { field: "pcv_dose1", label: "PCV Dose 1" },
-      { field: "ipv_dose1", label: "IPV Dose 1" },
-    ],
-  },
-  {
-    id: "week10",
-    label: "10 Weeks",
-    vaccines: [
-      { field: "pentavalent_dose2", label: "Pentavalent Dose 2" },
-      { field: "opv_dose2", label: "OPV Dose 2" },
-      { field: "pcv_dose2", label: "PCV Dose 2" },
-    ],
-  },
-  {
-    id: "week14",
-    label: "14 Weeks",
-    vaccines: [
-      { field: "pentavalent_dose3", label: "Pentavalent Dose 3" },
-      { field: "opv_dose3", label: "OPV Dose 3" },
-      { field: "pcv_dose3", label: "PCV Dose 3" },
-      { field: "ipv_dose2", label: "IPV Dose 2" },
-    ],
-  },
-  {
-    id: "month9",
-    label: "9 Months",
-    vaccines: [{ field: "mmr_dose1", label: "MMR Dose 1" }],
-  },
-  {
-    id: "month12",
-    label: "12-15 Months",
-    vaccines: [{ field: "mmr_dose2", label: "MMR Dose 2" }],
-  },
-];
-
 export default function HealthRecordDetails() {
   const { recordId } = useParams();
   const navigate = useNavigate();
@@ -291,8 +241,10 @@ export default function HealthRecordDetails() {
   const status = normalizeHealthRecordStatus(
     record.followUpStatus || record.status || "Consultation",
   );
-  const canRecordFollowUpVisit = isFollowUpEligibleStatus(status);
   const followUpDateValue = getRecordValue(record, ["followUpDate", "follow_up_date"], "");
+  const canRecordFollowUpVisit =
+    Boolean(followUpDateValue) &&
+    getRecordVisitTypeValue(record) !== "follow_up_visit";
   const patientConditionValue = getRecordValue(record, [
     "patientCondition",
     "patient_condition",
@@ -321,7 +273,8 @@ export default function HealthRecordDetails() {
     record.needsReferral === true ||
     record.needsReferral === "yes";
   const isImmunizationRecord = isImmunizationClassification(record, patient);
-  const immunizationGroups = getImmunizationGroups(record);
+  const epiVaccineEntries = getEpiVaccineEntries(record);
+  const epiBreastfeedingMonitoring = getEpiBreastfeedingMonitoring(record);
   const patientId =
     patient?.id ||
     patient?._id ||
@@ -333,7 +286,7 @@ export default function HealthRecordDetails() {
     patient || record.patient,
     record.patientName || record.patient_name || "Unnamed Patient",
   );
-  const recordCategory = formatDisplayValue(
+  const rawRecordCategory = formatDisplayValue(
     record.category ||
       record.classification ||
       record.recordType ||
@@ -345,10 +298,16 @@ export default function HealthRecordDetails() {
       patient?.patientClassification,
     "General Consultation",
   );
+  const recordCategory = isImmunizationRecord
+    ? "Child Health / EPI"
+    : rawRecordCategory;
+  const recordTypeLabel = isImmunizationRecord ? "Immunization" : rawRecordCategory;
   const patientClassification = recordCategory;
-  const visitTypeLabel = getRecordVisitTypeLabel(record);
   const displayDate = formatLongDate(getRecordDateValue(record), "Not recorded");
   const displayTime = getRecordTime(record);
+  const pageTitle = isImmunizationRecord
+    ? "Child Health / EPI Visit"
+    : getRecordChiefComplaint(record, "Medical Consultation");
   const medicalNotesValue =
     status === "Completed"
       ? getCompletedRecordMedicalNotes(record, monitoringNotesValue, "")
@@ -395,9 +354,8 @@ export default function HealthRecordDetails() {
             <div>
               <div className="flex flex-wrap items-center gap-2.5">
                 <h1 className="text-xl font-bold text-[#0F172A]">
-                  {getRecordChiefComplaint(record, "Medical Consultation")}
+                  {pageTitle}
                 </h1>
-                <HealthRecordStatusBadge status={status} />
                 {hasLinkedReferral && <ReferredChip />}
               </div>
 
@@ -405,22 +363,6 @@ export default function HealthRecordDetails() {
                 <span className="font-mono text-[11px] font-semibold text-slate-600">
                   {recordId}
                 </span>
-                <span className="text-slate-300">•</span>
-                <span>{displayDate}{displayTime ? ` at ${displayTime}` : ""}</span>
-                {patientId && (
-                  <>
-                    <span className="text-slate-300">•</span>
-                    <span>
-                      Patient:{" "}
-                      <Link
-                        to={`/bhc/patients/${patientId}`}
-                        className="font-semibold text-[#B91C1C] hover:text-[#7F1D1D] hover:underline"
-                      >
-                        {patientName}
-                      </Link>
-                    </span>
-                  </>
-                )}
               </div>
             </div>
 
@@ -495,8 +437,10 @@ export default function HealthRecordDetails() {
           </div>
           <div className="mt-5">
             <VisitInfoStrip
-              visitTypeLabel={visitTypeLabel}
+              patientName={patientName}
+              patientId={patientId}
               classification={recordCategory}
+              recordType={recordTypeLabel}
               displayDate={displayDate}
               displayTime={displayTime}
               practitioner={getRecordPractitioner(record)}
@@ -509,12 +453,27 @@ export default function HealthRecordDetails() {
           className={
             isEditing
               ? "space-y-6"
-              : "grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"
+              : isImmunizationRecord
+                ? "space-y-5"
+                : "grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"
           }
         >
           {/* ═══ Clinical Record — Single Card ═══ */}
           <div className="space-y-6">
-            <SideCard title="Clinical Record" icon={<HeartPulse size={14} />}>
+            <SideCard
+              title={
+                isImmunizationRecord && !isEditing
+                  ? "Child Health / EPI Record"
+                  : "Clinical Record"
+              }
+              icon={
+                isImmunizationRecord && !isEditing ? (
+                  <Syringe size={14} />
+                ) : (
+                  <HeartPulse size={14} />
+                )
+              }
+            >
               {isEditing ? (
                 /* ── Edit Mode ── */
                 <div className="space-y-1">
@@ -546,23 +505,6 @@ export default function HealthRecordDetails() {
                           onChange={handleChange}
                           required
                         />
-                      </FieldWithError>
-                      <FieldWithError error={formErrors.followUpStatus}>
-                        <FormSelect
-                          label="Follow-up Status"
-                          name="followUpStatus"
-                          value={form.followUpStatus || ""}
-                          onChange={handleChange}
-                          required
-                        >
-                          <option value="Routine Monitoring">
-                            Routine Monitoring
-                          </option>
-                          <option value="Follow-up Required">
-                            Follow-up Required
-                          </option>
-                          <option value="Completed">Completed</option>
-                        </FormSelect>
                       </FieldWithError>
                       <FieldWithError error={formErrors.attendingStaff}>
                         <FormInput
@@ -663,6 +605,15 @@ export default function HealthRecordDetails() {
                     />
                   </div>
                 </div>
+              ) : isImmunizationRecord ? (
+                <EpiRecordDetails
+                  record={record}
+                  vaccineEntries={epiVaccineEntries}
+                  breastfeedingMonitoring={epiBreastfeedingMonitoring}
+                  followUpDate={followUpDateValue}
+                  needsReferral={needsRhuReferral}
+                  linkedReferralTarget={linkedReferralTarget}
+                />
               ) : (
                 /* ── View Mode ── */
                 <div className="divide-y divide-slate-100">
@@ -795,78 +746,10 @@ export default function HealthRecordDetails() {
 	              )}
             </SideCard>
 
-            {isImmunizationRecord && (
-              <SideCard
-                title="Immunization Details"
-                icon={<Syringe size={14} />}
-              >
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm font-semibold text-[#0F172A]">
-                      Vaccine Schedule
-                    </p>
-                    <p className="mt-1 text-xs text-slate-400">
-                      Vaccines recorded during this visit.
-                    </p>
-                  </div>
-
-                  {immunizationGroups.length > 0 ? (
-                    <div className="space-y-3">
-                      {immunizationGroups.map((group) => (
-                        <div
-                          key={group.id}
-                          className="rounded-xl border border-slate-100 bg-slate-50/40 p-4"
-                        >
-                          <div className="mb-3 flex items-center justify-between gap-3">
-                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                              {group.label}
-                            </h3>
-                            <span className="text-[11px] font-medium text-slate-400">
-                              {group.administeredCount}/{group.vaccines.length}{" "}
-                              administered
-                            </span>
-                          </div>
-
-                          <div className="divide-y divide-slate-100">
-                            {group.vaccines.map((vaccine) => (
-                              <div
-                                key={vaccine.field}
-                                className="flex flex-col gap-2 py-2 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
-                              >
-                                <div>
-                                  <p className="text-sm font-medium text-slate-700">
-                                    {vaccine.label}
-                                  </p>
-                                  {vaccine.dateAdministered && (
-                                    <p className="mt-0.5 text-[11px] text-slate-400">
-                                      Date administered:{" "}
-                                      {vaccine.dateAdministered}
-                                    </p>
-                                  )}
-                                </div>
-                                <VaccineStatusBadge
-                                  administered={vaccine.administered}
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/30 px-4 py-5 text-center">
-                      <p className="text-xs text-slate-400">
-                        No immunization details recorded for this visit.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </SideCard>
-            )}
           </div>
 
           {/* ═══ Sidebar ═══ */}
-          {!isEditing && (
+          {!isEditing && !isImmunizationRecord && (
             <aside className="space-y-3">
               <QuickSummaryCard
                 vitalItems={getVitalSignItems(record)}
@@ -936,7 +819,6 @@ function validateInlineForm(form = {}) {
   const requiredFields = [
     ["category", "Classification is required."],
     ["diagnosis", "Initial Diagnosis is required."],
-    ["followUpStatus", "Follow-up Status is required."],
     ["attendingStaff", "Name of Practitioner is required."],
     ["chiefComplaint", "Chief Complaint is required."],
   ];
@@ -989,17 +871,19 @@ function DetailSection({ title, children }) {
 }
 
 function VisitInfoStrip({
-  visitTypeLabel,
+  patientName,
   classification,
+  recordType,
   displayDate,
   displayTime,
   practitioner,
 }) {
   return (
     <div className="  px-3 py-2 ">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <MetadataItem label="Visit Type" value={visitTypeLabel} />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <MetadataItem label="Patient Full Name" value={patientName} />
         <MetadataItem label="Classification" value={classification} />
+        <MetadataItem label="Record Type" value={recordType || classification} />
         <MetadataItem label="Date of Visit" value={displayDate} />
         <MetadataItem
           label="Time of Visit"
@@ -1116,10 +1000,123 @@ function isImmunizationClassification(record = {}, patient = {}) {
     record.classification,
     record.category,
     record.recordType,
+    record.record_type,
+    record.healthRecordType,
+    record.health_record_type,
     record.patientClassification,
     patient?.category,
     patient?.patientClassification,
-  ].some((value) => String(value || "").toLowerCase() === "immunization");
+  ].some((value) => {
+    const normalized = String(value || "").toLowerCase();
+    return (
+      normalized === "immunization" ||
+      normalized.includes("epi") ||
+      normalized.includes("child health") ||
+      normalized.includes("vaccination") ||
+      normalized.includes("vaccine")
+    );
+  });
+}
+
+function getImmunizationData(record = {}) {
+  return record.immunizationData || record.immunization_data || {};
+}
+
+function getEpiVaccineEntries(record = {}) {
+  const data = getImmunizationData(record);
+  const entries = Array.isArray(data.vaccineEntries)
+    ? data.vaccineEntries
+    : Array.isArray(data.vaccinesGiven)
+      ? data.vaccinesGiven
+      : Array.isArray(record.vaccineEntries)
+        ? record.vaccineEntries
+        : Array.isArray(record.vaccinesGiven)
+          ? record.vaccinesGiven
+          : [];
+
+  return entries
+    .filter((entry) => entry && typeof entry === "object")
+    .filter((entry) => String(entry.vaccineName || entry.vaccine_name || "").trim())
+    .map((entry) => ({
+      vaccineName: entry.vaccineName || entry.vaccine_name || "Vaccine",
+      dateGiven: entry.dateGiven || entry.date_given || entry.date || "",
+      weight: entry.weight || "",
+      height: entry.height || "",
+      temperature: entry.temperature || entry.temp || "",
+    }));
+}
+
+function getEpiBreastfeedingMonitoring(record = {}) {
+  const data = getImmunizationData(record);
+  return (
+    data.breastfeedingMonitoring ||
+    data.breastfeeding_monitoring ||
+    record.breastfeedingMonitoring ||
+    record.breastfeeding_monitoring ||
+    {}
+  );
+}
+
+function getConfirmedBreastfeedingMonths(data = {}) {
+  const months = [
+    ["month1", "1 Month"],
+    ["month2", "2 Months"],
+    ["month3", "3 Months"],
+    ["month4", "4 Months"],
+    ["month5", "5 Months"],
+    ["month6", "6 Months"],
+  ];
+
+  return months
+    .filter(([key]) => data[key] === true || data[key] === "yes")
+    .map(([, label]) => label);
+}
+
+function getEpiRemarks(record = {}) {
+  const data = getImmunizationData(record);
+  return getRecordValue(
+    {
+      ...data,
+      ...record,
+    },
+    [
+      "consultationNotes",
+      "consultation_notes",
+      "notes",
+      "remarks",
+      "medicalNotes",
+      "medical_notes",
+    ],
+    "",
+  );
+}
+
+function getVisitLevelMonitoringItems(record = {}) {
+  return [
+    {
+      label: "Weight",
+      value: formatMeasurement(getRecordValue(record, ["weight"], ""), "kg"),
+    },
+    {
+      label: "Height",
+      value: formatMeasurement(getRecordValue(record, ["height"], ""), "cm"),
+    },
+    {
+      label: "Temperature",
+      value: formatMeasurement(
+        getRecordValue(record, ["temperature", "temp"], ""),
+        "°C",
+      ),
+    },
+  ];
+}
+
+function formatMeasurement(value, unit) {
+  const clean = String(value || "").trim();
+  if (!clean) return "";
+  return clean.toLowerCase().includes(String(unit).toLowerCase())
+    ? clean
+    : `${clean} ${unit}`;
 }
 
 function getFamilyPlanningDetails(record = {}) {
@@ -1135,7 +1132,7 @@ function getFamilyPlanningDetails(record = {}) {
       value: getRecordValue(data, ["methodUsed", "method_used"], ""),
     },
     {
-      label: "Visit Type",
+      label: "FP Visit Category",
       value: getRecordValue(
         data,
         ["fpVisitType", "fp_visit_type", "visitType", "visit_type"],
@@ -1198,34 +1195,6 @@ function getFamilyPlanningDetails(record = {}) {
   ];
 }
 
-function getImmunizationGroups(record = {}) {
-  const data = record.immunizationData;
-  if (!data || typeof data !== "object") return [];
-
-  return VACCINE_TIMELINE.map((group) => {
-    const vaccines = group.vaccines.map((vaccine) => {
-      const dateAdministered =
-        data[`${vaccine.field}_date`] ||
-        data[`${vaccine.field}Date`] ||
-        data[`${vaccine.field}_date_administered`] ||
-        "";
-
-      return {
-        ...vaccine,
-        administered: Boolean(data[vaccine.field]),
-        dateAdministered,
-      };
-    });
-
-    return {
-      ...group,
-      vaccines,
-      administeredCount: vaccines.filter((vaccine) => vaccine.administered)
-        .length,
-    };
-  });
-}
-
 function normalizeHealthRecordStatus(status) {
   const value = String(status || "").trim();
   const compact = value.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
@@ -1239,30 +1208,6 @@ function normalizeHealthRecordStatus(status) {
   }
 
   return "Routine Monitoring";
-}
-
-function isFollowUpEligibleStatus(status) {
-  return normalizeHealthRecordStatus(status) === "Follow-up Required";
-}
-
-function HealthRecordStatusBadge({ status }) {
-  const normalizedStatus = normalizeHealthRecordStatus(status);
-  const styles = {
-    "Follow-up Required": "border-amber-200 bg-amber-50 text-amber-800",
-    "Routine Monitoring": "border-blue-200 bg-blue-50 text-blue-800",
-    Completed: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-        styles[normalizedStatus] ||
-        "border-slate-200 bg-slate-50 text-slate-700"
-      }`}
-    >
-      {normalizedStatus}
-    </span>
-  );
 }
 
 function ReferredChip() {
@@ -1287,12 +1232,6 @@ function getParentHealthRecordId(record = {}) {
       record.previousRecordId,
     "",
   );
-}
-
-function getRecordVisitTypeLabel(record = {}) {
-  return getRecordVisitTypeValue(record) === "follow_up_visit"
-    ? "Follow-up Visit"
-    : "Initial Consultation";
 }
 
 function getRecordVisitTypeValue(record = {}) {
@@ -1386,11 +1325,36 @@ function getRecordDateValue(record = {}) {
 
 function getRecordTime(record = {}) {
   const direct = getRecordValue(record, ["timeOfVisit", "time_of_visit", "time"], "");
-  if (direct) return direct;
+  if (direct) return formatDisplayTime(direct, "");
 
   const recorded = getRecordValue(record, ["dateRecorded", "date_recorded"], "");
   const match = String(recorded).match(/\d{2}:\d{2}/);
-  return match ? match[0] : "";
+  return match ? formatDisplayTime(match[0], "") : "";
+}
+
+function formatDisplayTime(value, fallback = "Not recorded") {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+
+  const dateValue = new Date(raw);
+  if (!Number.isNaN(dateValue.getTime()) && raw.includes("T")) {
+    return dateValue.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }
+
+  const match = raw.match(/(\d{1,2}):(\d{2})/);
+  if (!match) return raw;
+
+  const hours = Number(match[1]);
+  const minutes = match[2];
+  if (Number.isNaN(hours) || hours > 23) return raw;
+
+  const period = hours >= 12 ? "PM" : "AM";
+  const displayHour = hours % 12 || 12;
+  return `${displayHour}:${minutes} ${period}`;
 }
 
 function getRecordDiagnosis(record = {}, fallback = "Not recorded") {
@@ -1658,17 +1622,143 @@ function cleanVitalSignValue(value) {
   return text;
 }
 
-function VaccineStatusBadge({ administered }) {
+function EpiRecordDetails({
+  record,
+  vaccineEntries = [],
+  breastfeedingMonitoring = {},
+  followUpDate,
+  needsReferral,
+  linkedReferralTarget,
+}) {
+  const remarks = getEpiRemarks(record);
+  const visitMonitoringItems = getVisitLevelMonitoringItems(record);
+  const confirmedMonths = getConfirmedBreastfeedingMonths(breastfeedingMonitoring);
+
   return (
-    <span
-      className={`inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-        administered
-          ? "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"
-          : "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
-      }`}
-    >
-      {administered ? "Administered" : "Not Administered"}
-    </span>
+    <div className="divide-y divide-slate-100">
+      <DetailSection title="Vaccines Given This Visit">
+        {vaccineEntries.length > 0 ? (
+          <EpiVaccinesTable
+            entries={vaccineEntries}
+            record={record}
+          />
+        ) : (
+          <div className="space-y-3">
+            <SectionEmptyState text="No vaccine recorded for this visit." />
+            {remarks && <NarrativeBox label="Remarks" value={remarks} />}
+          </div>
+        )}
+      </DetailSection>
+
+      <DetailSection title="Visit-Level Monitoring">
+        <VitalSignsGrid items={visitMonitoringItems} />
+      </DetailSection>
+
+      <DetailSection title="Exclusive Breastfeeding Monitoring">
+        {confirmedMonths.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {confirmedMonths.map((month) => (
+              <span
+                key={month}
+                className="rounded-full border border-red-100 bg-red-50 px-3 py-1 text-xs font-semibold text-[#B91C1C]"
+              >
+                {month}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <SectionEmptyState text="No breastfeeding monitoring recorded." />
+        )}
+      </DetailSection>
+
+      <DetailSection title="Remarks">
+        {remarks ? (
+          <NarrativeBox label="Remarks" value={remarks} />
+        ) : (
+          <SectionEmptyState text="No remarks recorded." />
+        )}
+      </DetailSection>
+
+      <DetailSection title="Follow-up & Referral">
+        <div className="grid gap-4 md:grid-cols-3">
+          <PatientDetailItem
+            label="Follow-up Date"
+            value={formatLongDate(followUpDate, "No follow-up date recorded.")}
+          />
+          <PatientDetailItem
+            label="Needs RHU Referral"
+            value={needsReferral ? "Yes" : "No"}
+          />
+          <PatientDetailItem
+            label="Referral Tracking ID"
+            value={linkedReferralTarget || "No referral linked to this record."}
+          />
+        </div>
+      </DetailSection>
+    </div>
+  );
+}
+
+function EpiVaccinesTable({ entries, record }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="hidden grid-cols-[minmax(180px,1.4fr)_minmax(130px,1fr)_minmax(90px,0.75fr)_minmax(90px,0.75fr)_minmax(110px,0.85fr)] border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-widest text-slate-400 md:grid">
+        <div className="px-3 py-2.5">Vaccine</div>
+        <div className="px-3 py-2.5">Date Given</div>
+        <div className="px-3 py-2.5">Weight</div>
+        <div className="px-3 py-2.5">Height</div>
+        <div className="px-3 py-2.5">Temperature</div>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {entries.map((entry, index) => (
+          <div
+            key={`${entry.vaccineName || "vaccine"}-${entry.dateGiven || index}`}
+            className="grid gap-3 px-3 py-3 md:grid-cols-[minmax(180px,1.4fr)_minmax(130px,1fr)_minmax(90px,0.75fr)_minmax(90px,0.75fr)_minmax(110px,0.85fr)] md:items-center md:gap-0"
+          >
+            <EpiTableCell label="Vaccine" strong value={entry.vaccineName} />
+            <EpiTableCell
+              label="Date Given"
+              value={formatLongDate(
+                entry.dateGiven || getRecordDateValue(record),
+                "Not recorded",
+              )}
+            />
+            <EpiTableCell
+              label="Weight"
+              value={formatMeasurement(entry.weight || record.weight, "kg")}
+            />
+            <EpiTableCell
+              label="Height"
+              value={formatMeasurement(entry.height || record.height, "cm")}
+            />
+            <EpiTableCell
+              label="Temperature"
+              value={formatMeasurement(
+                entry.temperature || record.temperature || record.temp,
+                "°C",
+              )}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EpiTableCell({ label, value, strong = false }) {
+  return (
+    <div className="min-w-0 md:px-3">
+      <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 md:hidden">
+        {label}
+      </p>
+      <p
+        className={`truncate text-sm ${
+          strong ? "font-bold text-[#0F172A]" : "font-semibold text-slate-600"
+        }`}
+      >
+        {formatDisplayValue(value, "Not recorded")}
+      </p>
+    </div>
   );
 }
 

@@ -170,9 +170,10 @@ class HealthRecordController extends Controller
             $parentRecord = HealthRecord::findOrFail($data['parent_health_record_id']);
             $this->authorizeRecord($request, $parentRecord);
             abort_unless(
-                $this->healthRecordStatus($parentRecord) === 'follow up required',
+                $this->healthRecordStatus($parentRecord) === 'follow up required'
+                    || $this->hasFollowUpDate($parentRecord),
                 422,
-                'Follow-up visits can only be linked to records marked Follow-up Required.'
+                'Follow-up visits can only be linked to records with a scheduled follow-up date.'
             );
         }
 
@@ -270,6 +271,16 @@ class HealthRecordController extends Controller
             ?? 'Routine Monitoring';
 
         return str_replace(['_', '-'], ' ', strtolower(trim($status)));
+    }
+
+    private function hasFollowUpDate(HealthRecord $record): bool
+    {
+        $monitoringData = $record->monitoring_data ?? [];
+        $date = $monitoringData['followUpDate']
+            ?? $monitoringData['follow_up_date']
+            ?? null;
+
+        return filled($date);
     }
 
 }

@@ -209,9 +209,14 @@ export default function FollowUps() {
   }
 
   function recordFollowUpVisit(task) {
-    navigate(
-      `/bhc/health-records/add?recordId=${task.healthRecordId}&mode=follow-up`,
-    );
+    const params = new URLSearchParams({
+      recordId: task.healthRecordId,
+      mode: "follow-up",
+      patientId: task.patientId,
+      classification: getTaskClassification(task),
+    });
+
+    navigate(`/bhc/health-records/add?${params.toString()}`);
   }
 
   function openRescheduleModal(task) {
@@ -367,36 +372,32 @@ function FollowUpRow({ task, onRecordVisit, onReschedule }) {
 
 function buildTaskActions(task, handlers) {
   const originalRecordLink = `/bhc/health-records/${task.healthRecordId}`;
+  const latestRecordId =
+    task.latestHealthRecordId || task.fulfilledByHealthRecordId || "";
   const actions = [];
 
-  if (task.effectiveState === "fulfilled") {
-    if (task.fulfilledByHealthRecordId) {
-      actions.push({
-        label: "View Health Record",
-        to: `/bhc/health-records/${task.fulfilledByHealthRecordId}`,
-      });
-    }
-    actions.push({ label: "View Health Record", to: originalRecordLink });
+  if (["fulfilled", "cancelled"].includes(task.effectiveState)) {
+    actions.push({
+      label: "View Records",
+      to: latestRecordId
+        ? `/bhc/health-records/${latestRecordId}`
+        : originalRecordLink,
+    });
     return actions;
   }
 
-  if (["due_today", "no_show"].includes(task.effectiveState)) {
+  if (["due_today", "no_show", "upcoming", "rescheduled"].includes(task.effectiveState)) {
     actions.push({
-      label: "Create Health Record",
+      label: "Record Visit",
       onClick: handlers.onRecordVisit,
     });
     actions.push({
       label: "Reschedule",
       onClick: handlers.onReschedule,
     });
-  } else if (["upcoming", "rescheduled"].includes(task.effectiveState)) {
-    actions.push({
-      label: "Reschedule",
-      onClick: handlers.onReschedule,
-    });
   }
 
-  actions.push({ label: "View Health Record", to: originalRecordLink });
+  actions.push({ label: "View Original Record", to: originalRecordLink });
   return actions;
 }
 
@@ -619,13 +620,13 @@ function FollowUpDetailsModal({
                 <RefreshCcw size={14} />
                 Reschedule
               </button>
-              {["due_today", "no_show"].includes(task.effectiveState) && (
+              {["due_today", "no_show", "upcoming", "rescheduled"].includes(task.effectiveState) && (
                 <button
                   type="button"
                   onClick={() => onRecordVisit(task)}
                   className="rounded-xl bg-[#B91C1C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#991B1B]"
                 >
-                  Create Health Record
+                  Record Visit
                 </button>
               )}
             </>
