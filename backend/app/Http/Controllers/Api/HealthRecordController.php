@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\HealthRecordRequest;
 use App\Models\HealthRecord;
+use App\Models\Medicine;
 use App\Models\Patient;
 use App\Services\AuditLogger;
 use App\Services\FollowUpTaskSyncService;
 use App\Support\StoredFunction;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class HealthRecordController extends Controller
 {
@@ -59,18 +61,25 @@ class HealthRecordController extends Controller
         $this->normalizeVisitTypeData($request, $data, true);
         $this->normalizeMaternalSupplements($request, $data);
         $this->normalizeFamilyPlanningData($data);
+        $dispensedMedicines = $data['dispensed_medicines'] ?? [];
+        unset($data['dispensed_medicines']);
 
         $data['created_by'] = $request->user()->id;
         $data['barangay_health_center_id'] = $patient->barangay_health_center_id;
         $data['rural_health_unit_id'] = $patient->rural_health_unit_id;
         $data['date_recorded'] ??= now();
 
-        $record = HealthRecord::create($data);
-        $followUpTasks->syncRecord($record, $request->user());
-        $followUpTasks->fulfillParentTask($record, $request->user());
-        $auditLogger->log($request, 'created', 'health_records', "Created health record {$record->id}.");
+        $record = DB::transaction(function () use ($data, $dispensedMedicines, $request, $followUpTasks, $auditLogger) {
+            $record = HealthRecord::create($data);
+            $this->recordDispensedMedicines($request, $record, $dispensedMedicines);
+            $followUpTasks->syncRecord($record, $request->user());
+            $followUpTasks->fulfillParentTask($record, $request->user());
+            $auditLogger->log($request, 'created', 'health_records', "Created health record {$record->id}.");
 
-        return response()->json(['data' => $record->load('patient')], 201);
+            return $record;
+        });
+
+        return response()->json(['data' => $record->load(['patient', 'dispensedMedicines'])], 201);
     }
 
     public function show(Request $request, HealthRecord $healthRecord)
@@ -90,10 +99,11 @@ class HealthRecordController extends Controller
 
             abort_unless($data, 404);
 
+            $data['dispensed_medicines'] = $healthRecord->dispensedMedicines()->latest()->get();
             return response()->json(['data' => $data]);
         }
 
-        return response()->json(['data' => $healthRecord->load('patient')]);
+        return response()->json(['data' => $healthRecord->load(['patient', 'dispensedMedicines'])]);
     }
 
     public function update(
@@ -108,11 +118,49 @@ class HealthRecordController extends Controller
         $this->normalizeVisitTypeData($request, $data);
         $this->normalizeMaternalSupplements($request, $data);
         $this->normalizeFamilyPlanningData($data, $healthRecord);
+        unset($data['dispensed_medicines']);
         $healthRecord->update($data);
         $followUpTasks->syncRecord($healthRecord->fresh(), $request->user());
         $auditLogger->log($request, 'updated', 'health_records', "Updated health record {$healthRecord->id}.");
 
-        return response()->json(['data' => $healthRecord->fresh()->load('patient')]);
+        return response()->json(['data' => $healthRecord->fresh()->load(['patient', 'dispensedMedicines'])]);
+    }
+
+    public function dispenseMedicines(Request $request, HealthRecord $healthRecord)
+    {
+        $this->authorizeRecord($request, $healthRecord);
+        $data = $request->validate(
+            [
+                'dispensed_medicines' => ['nullable', 'array'],
+                'dispensed_medicines.*.medicine_id' => ['required', 'integer', 'exists:medicines,id'],
+                'dispensed_medicines.*.quantity' => ['required', 'integer', 'min:1'],
+                'dispensed_medicines.*.unit' => ['nullable', 'string', 'max:50'],
+                'dispensed_medicines.*.remarks' => ['nullable', 'string'],
+            ],
+            [
+                'dispensed_medicines.*.medicine_id.required' => 'Please select a medicine.',
+                'dispensed_medicines.*.medicine_id.exists' => 'Medicine stock changed. Please refresh and try again.',
+                'dispensed_medicines.*.quantity.required' => 'Quantity must be greater than 0.',
+                'dispensed_medicines.*.quantity.integer' => 'Quantity must be a whole number.',
+                'dispensed_medicines.*.quantity.min' => 'Quantity must be greater than 0.',
+            ]
+        );
+
+        abort_if(
+            $healthRecord->dispensedMedicines()->exists(),
+            422,
+            'Medicines have already been dispensed for this health record.'
+        );
+
+        DB::transaction(function () use ($request, $healthRecord, $data) {
+            $this->recordDispensedMedicines(
+                $request,
+                $healthRecord,
+                $data['dispensed_medicines'] ?? []
+            );
+        });
+
+        return response()->json(['data' => $healthRecord->fresh()->load(['patient', 'dispensedMedicines'])]);
     }
 
     public function destroy(Request $request, HealthRecord $healthRecord)
@@ -260,6 +308,84 @@ class HealthRecordController extends Controller
             'adviceGiven' => $familyPlanning['adviceGiven'] ?? $familyPlanning['advice_given'] ?? null,
             'advice_given' => $familyPlanning['advice_given'] ?? $familyPlanning['adviceGiven'] ?? null,
         ];
+    }
+
+    private function recordDispensedMedicines(Request $request, HealthRecord $record, array $dispensedMedicines): void
+    {
+        if (empty($dispensedMedicines)) {
+            return;
+        }
+
+        abort_unless($request->user()->isBhw(), 422, 'Medicine dispensing is only available for BHC visits.');
+
+        $merged = [];
+        foreach ($dispensedMedicines as $item) {
+            $medicineId = (int) ($item['medicine_id'] ?? 0);
+            $quantity = (int) ($item['quantity'] ?? 0);
+
+            abort_if($medicineId <= 0, 422, 'Please select a medicine.');
+            abort_if($quantity <= 0, 422, 'Quantity must be greater than 0.');
+
+            if (! isset($merged[$medicineId])) {
+                $merged[$medicineId] = [
+                    'medicine_id' => $medicineId,
+                    'quantity' => 0,
+                    'unit' => $item['unit'] ?? null,
+                    'remarks' => $item['remarks'] ?? null,
+                ];
+            }
+
+            $merged[$medicineId]['quantity'] += $quantity;
+            if (! empty($item['remarks'])) {
+                $merged[$medicineId]['remarks'] = trim(implode(' ', array_filter([
+                    $merged[$medicineId]['remarks'],
+                    $item['remarks'],
+                ])));
+            }
+        }
+
+        foreach (array_values($merged) as $item) {
+            $medicine = Medicine::query()
+                ->whereKey($item['medicine_id'])
+                ->whereNull('rural_health_unit_id')
+                ->where('barangay_health_center_id', $record->barangay_health_center_id)
+                ->lockForUpdate()
+                ->first();
+
+            abort_unless($medicine, 422, 'Please select a medicine from BHC inventory.');
+            abort_if((int) $medicine->quantity <= 0, 422, 'This medicine is out of stock.');
+            abort_if((int) $item['quantity'] > (int) $medicine->quantity, 422, 'Quantity cannot exceed available stock.');
+
+            $newQuantity = (int) $medicine->quantity - (int) $item['quantity'];
+            $medicine->update([
+                'quantity' => $newQuantity,
+                'availability_status' => $this->medicineStatus(
+                    $newQuantity,
+                    (int) ($medicine->low_stock_threshold ?? 10)
+                ),
+                'updated_by' => $request->user()->id,
+            ]);
+
+            $record->dispensedMedicines()->create([
+                'medicine_id' => $medicine->id,
+                'medicine_name_snapshot' => $medicine->name,
+                'category_snapshot' => $medicine->category,
+                'quantity' => $item['quantity'],
+                'unit' => $item['unit'] ?: $medicine->unit,
+                'remarks' => $item['remarks'] ?? null,
+                'dispensed_by' => $request->user()->id,
+                'barangay_health_center_id' => $record->barangay_health_center_id,
+            ]);
+        }
+    }
+
+    private function medicineStatus(int $quantity, int $lowStockThreshold = 10): string
+    {
+        if ($quantity <= 0) {
+            return 'Unavailable';
+        }
+
+        return $quantity <= $lowStockThreshold ? 'Low Stock' : 'Available';
     }
 
     private function healthRecordStatus(HealthRecord $record): string

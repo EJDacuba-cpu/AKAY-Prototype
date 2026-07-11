@@ -145,7 +145,6 @@ export default function HealthRecordDetails() {
         "",
       ),
       maternalData: getMaternalData(data),
-      supplementsGiven: getMaternalSupplements(data),
     });
   }
 
@@ -325,7 +324,7 @@ export default function HealthRecordDetails() {
   );
   const isMaternalRecord =
     form.category === "Maternal" || patientClassification === "Maternal";
-  const maternalSupplements = getMaternalSupplements(record);
+  const dispensedMedicines = getDispensedMedicines(record);
   const isFamilyPlanningRecord = patientClassification === "Family Planning";
   const familyPlanningDetails = getFamilyPlanningDetails(record);
   const hasFamilyPlanningDetails = familyPlanningDetails.some(
@@ -642,7 +641,7 @@ export default function HealthRecordDetails() {
                     )}
                   </DetailSection>
 
-                  <DetailSection title="Treatment & Actions">
+                  <DetailSection title="Treatment / Advice Given">
                     {hasTreatmentDetails ? (
                       <>
                         <PatientDetailItem
@@ -670,8 +669,12 @@ export default function HealthRecordDetails() {
                         )}
                       </>
                     ) : (
-                      <SectionEmptyState text="No treatment or action details recorded." />
+                      <SectionEmptyState text="No treatment or advice details recorded." />
                     )}
+                  </DetailSection>
+
+                  <DetailSection title="Medicines / Supplies Dispensed">
+                    <DispensedMedicinesList medicines={dispensedMedicines} />
                   </DetailSection>
 
                   {isFamilyPlanningRecord && (
@@ -706,13 +709,6 @@ export default function HealthRecordDetails() {
 	                      </div>
 	                    </DetailSection>
 	                  )}
-                    {isMaternalRecord && (
-                      <DetailSection title="Vitamins / Supplements Given">
-                        <MaternalSupplementsList
-                          supplements={maternalSupplements}
-                        />
-                      </DetailSection>
-                    )}
                     {shouldShowMonitoringFollowUp && (
                       <DetailSection title="Monitoring & Follow-up">
                         <div className="grid gap-4 md:grid-cols-2">
@@ -1291,28 +1287,9 @@ function getMaternalData(record = {}) {
   return record.maternalData || record.maternal_data || {};
 }
 
-function getMaternalSupplements(record = {}) {
-  const maternalData = getMaternalData(record);
-  const supplements =
-    record.supplementsGiven ||
-    record.supplements_given ||
-    maternalData.supplementsGiven ||
-    maternalData.supplements_given ||
-    [];
-
-  if (!Array.isArray(supplements)) return [];
-
-  return supplements
-    .filter(Boolean)
-    .map((item = {}) => ({
-      supplement_type: item.supplement_type || item.supplementType || "",
-      supplement_name: item.supplement_name || item.supplementName || "",
-      quantity: item.quantity || "",
-      unit: item.unit || "",
-      date_given: item.date_given || item.dateGiven || "",
-      remarks: item.remarks || item.notes || "",
-      given_by_name: item.given_by_name || item.givenByName || "",
-    }));
+function getDispensedMedicines(record = {}) {
+  const medicines = record.dispensedMedicines || record.dispensed_medicines || [];
+  return Array.isArray(medicines) ? medicines.filter(Boolean) : [];
 }
 
 function getRecordDateValue(record = {}) {
@@ -1570,46 +1547,51 @@ function getVitalSignItems(record = {}) {
   ];
 }
 
-function MaternalSupplementsList({ supplements }) {
-  if (!supplements.length) {
+function DispensedMedicinesList({ medicines }) {
+  if (!medicines.length) {
     return (
-      <SectionEmptyState text="No vitamins or supplements were recorded for this visit." />
+      <SectionEmptyState text="No medicines or supplies were dispensed during this visit." />
     );
   }
 
   return (
-    <div className="space-y-3">
-      {supplements.map((supplement, index) => (
-        <div
-          key={`${supplement.supplement_type || "supplement"}-${index}`}
-          className="rounded-xl border border-pink-100 bg-pink-50/30 p-4"
-        >
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="hidden grid-cols-[minmax(180px,1.5fr)_120px_minmax(160px,1fr)_140px] border-b border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 md:grid">
+        <span>Medicine / Supply Name</span>
+        <span>Quantity</span>
+        <span>Remarks</span>
+        <span>Date Dispensed</span>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {medicines.map((medicine, index) => (
+          <div
+            key={medicine.id || `${medicine.medicineId || "medicine"}-${index}`}
+            className="grid gap-2 px-3 py-3 text-sm md:grid-cols-[minmax(180px,1.5fr)_120px_minmax(160px,1fr)_140px] md:items-center"
+          >
             <div>
-              <p className="text-sm font-bold text-[#0F172A]">
-                {supplement.supplement_name || "Supplement"}
+              <p className="font-semibold text-[#0F172A]">
+                {medicine.medicineName || medicine.medicine_name_snapshot || "Medicine"}
               </p>
-              <p className="mt-1 text-xs text-slate-500">
-                {formatDisplayValue(supplement.quantity, "Not recorded")}{" "}
-                {formatDisplayValue(supplement.unit, "")}
+              <p className="text-[11px] text-slate-400">
+                {medicine.category || medicine.category_snapshot || ""}
               </p>
             </div>
-            <span className="w-fit rounded-lg border border-pink-100 bg-white px-2.5 py-1 text-[11px] font-semibold text-pink-700">
-              {formatLongDate(supplement.date_given, "Date not recorded")}
-            </span>
+            <p className="text-slate-600">
+              {formatDisplayValue(medicine.quantity, "0")}{" "}
+              {formatDisplayValue(medicine.unit, "")}
+            </p>
+            <p className="text-slate-600">
+              {formatDisplayValue(medicine.remarks, "No remarks")}
+            </p>
+            <p className="text-slate-500">
+              {formatLongDate(
+                medicine.dateDispensed || medicine.created_at || medicine.createdAt,
+                "Not recorded",
+              )}
+            </p>
           </div>
-          <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
-            <PatientDetailItem
-              label="Given By"
-              value={supplement.given_by_name || "Not recorded"}
-            />
-            <PatientDetailItem
-              label="Remarks"
-              value={supplement.remarks || "Not recorded"}
-            />
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }

@@ -147,13 +147,13 @@ export default function MedicineAvailability() {
     setSelectedItem(null);
   }
 
-  function handleSubmit(payload) {
+  async function handleSubmit(payload) {
     const nextItems =
       modalMode === "edit" && selectedItem
-        ? updateBhcMedicine(selectedItem.id, payload)
-        : addBhcMedicine(payload);
+        ? await updateBhcMedicine(selectedItem.id, payload)
+        : await addBhcMedicine(payload);
 
-    setBhcItems(nextItems);
+    setBhcItems(nextItems.filter((item) => !item.ruralHealthUnitId));
     closeModal();
   }
 
@@ -161,7 +161,9 @@ export default function MedicineAvailability() {
     setOpenMenuId("");
     const confirmed = window.confirm(`Delete ${item.name} from BHC inventory?`);
     if (!confirmed) return;
-    setBhcItems(deleteBhcMedicine(item.id));
+    deleteBhcMedicine(item.id).then((nextItems) =>
+      setBhcItems(nextItems.filter((nextItem) => !nextItem.ruralHealthUnitId)),
+    );
   }
 
   return (

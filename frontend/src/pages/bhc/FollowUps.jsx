@@ -17,10 +17,18 @@ import {
   rescheduleFollowUp,
 } from "../../services/followUpTaskService";
 import { formatDisplayValue } from "../../utils/formatters";
+import {
+  createActiveFilterChips,
+  isDateInPreset,
+} from "../../utils/filterUtils";
 import { queryKeys } from "../../utils/queryKeys";
 
 const DEFAULT_FILTERS = {
   search: "",
+  dateRange: "all",
+  dateFrom: "",
+  dateTo: "",
+  serviceType: "",
   state: "All Active",
 };
 
@@ -85,6 +93,13 @@ export default function FollowUps() {
               task.effectiveState,
             )
           : task.effectiveState === normalizeFilterState(filters.state);
+      const matchesDate = isDateInPreset(task.dueDate, filters.dateRange, {
+        from: filters.dateFrom,
+        to: filters.dateTo,
+      });
+      const matchesServiceType =
+        !filters.serviceType ||
+        getTaskClassification(task) === filters.serviceType;
 
       const haystack = [
         task.patientName,
@@ -98,7 +113,12 @@ export default function FollowUps() {
         .join(" ")
         .toLowerCase();
 
-      return matchesFilter && (!searchValue || haystack.includes(searchValue));
+      return (
+        matchesFilter &&
+        matchesDate &&
+        matchesServiceType &&
+        (!searchValue || haystack.includes(searchValue))
+      );
     });
   }, [tasks, filters]);
 
@@ -145,19 +165,44 @@ export default function FollowUps() {
     });
   }, [isLoading, requestedOpen, requestedTaskId, tasks]);
 
-  const activeFilters = [
-    filters.state !== "All Active" && { key: "state", label: filters.state },
-  ].filter(Boolean);
-
-  const activeFilterCount = activeFilters.filter(
-    (filter) => filter.key !== "search",
-  ).length;
-
   const dropdownFilters = [
     {
+      key: "dateRange",
+      label: "Follow-up Date",
+      value: filters.dateRange,
+      dateFromValue: filters.dateFrom,
+      dateToValue: filters.dateTo,
+      resetValue: "all",
+      type: "datePresets",
+      presets: [
+        { value: "all", label: "All dates" },
+        { value: "today", label: "Today" },
+        { value: "this_week", label: "This week" },
+        { value: "this_month", label: "This month" },
+        { value: "custom", label: "Custom date" },
+      ],
+    },
+    {
+      key: "serviceType",
+      label: "Service Type",
+      value: filters.serviceType,
+      resetValue: "",
+      type: "select",
+      placeholder: "All Service Types",
+      options: [
+        "General Consultation",
+        "Maternal",
+        "Immunization",
+        "Senior Citizen",
+        "Family Planning",
+      ],
+    },
+    {
       key: "state",
-      label: "Follow-up State",
+      label: "Status",
       value: filters.state,
+      resetValue: "All Active",
+      type: "select",
       options: [
         "All Active",
         "Due Today",
@@ -168,6 +213,8 @@ export default function FollowUps() {
       ],
     },
   ];
+  const activeFilters = createActiveFilterChips(filters, dropdownFilters);
+  const activeFilterCount = activeFilters.length;
 
   function updateFilter(key, value) {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -180,8 +227,22 @@ export default function FollowUps() {
   function removeFilter(key) {
     const resetValues = {
       search: "",
+      dateRange: "all",
+      dateFrom: "",
+      dateTo: "",
+      serviceType: "",
       state: "All Active",
     };
+    if (key === "dateRange") {
+      setFilters((prev) => ({
+        ...prev,
+        dateRange: "all",
+        dateFrom: "",
+        dateTo: "",
+      }));
+      return;
+    }
+
     setFilters((prev) => ({ ...prev, [key]: resetValues[key] }));
   }
 

@@ -38,10 +38,13 @@ export function computeMedicineStatus(quantity, lowStockThreshold = 10) {
 
 function normalizeMedicine(item = {}) {
   const quantity = parseQuantity(item.quantity);
+  const lowStockThreshold = parseQuantity(
+    item.low_stock_threshold ?? item.lowStockThreshold ?? 10,
+  );
   const status =
     item.availability_status ||
     item.status ||
-    computeMedicineStatus(quantity, item.lowStockThreshold);
+    computeMedicineStatus(quantity, lowStockThreshold);
 
   return {
     ...item,
@@ -50,10 +53,14 @@ function normalizeMedicine(item = {}) {
     category: item.category || "",
     description: item.description || item.notes || "",
     quantity,
+    lowStockThreshold,
     unit: item.unit || "pcs",
     status,
     availabilityStatus: status,
     expiryDate: item.expiration_date || item.expiryDate || "",
+    ruralHealthUnitId: item.rural_health_unit_id || item.ruralHealthUnitId || "",
+    barangayHealthCenterId:
+      item.barangay_health_center_id || item.barangayHealthCenterId || "",
     lastUpdated: item.updated_at || item.lastUpdated || "",
     updatedBy: item.updatedBy || "RHU Staff",
     notes: item.description || item.notes || "",
@@ -66,11 +73,13 @@ function toPayload(item = {}) {
     category: item.category || null,
     description: item.description || item.notes || null,
     quantity: parseQuantity(item.quantity),
+    low_stock_threshold: parseQuantity(item.lowStockThreshold ?? item.low_stock_threshold ?? 10),
     unit: item.unit || "pcs",
     availability_status:
       item.availabilityStatus || item.status || computeMedicineStatus(item.quantity, item.lowStockThreshold),
     expiration_date: item.expiryDate || item.expirationDate || item.expiration_date || null,
     rural_health_unit_id: item.ruralHealthUnitId || item.rhuId || null,
+    barangay_health_center_id: item.barangayHealthCenterId || item.bhcId || null,
   };
 }
 
@@ -97,7 +106,7 @@ export async function refreshRhuMedicines() {
 
 export function getRhuMedicines() {
   if (!loadingPromise) refreshRhuMedicines();
-  return medicineCache;
+  return medicineCache.filter((item) => item.ruralHealthUnitId);
 }
 
 export async function saveRhuMedicines() {
@@ -134,7 +143,8 @@ export async function deleteRhuMedicine(id) {
 }
 
 export function getBhcMedicines() {
-  return getRhuMedicines();
+  if (!loadingPromise) refreshRhuMedicines();
+  return medicineCache.filter((item) => !item.ruralHealthUnitId);
 }
 
 export async function saveBhcMedicines() {
@@ -142,11 +152,19 @@ export async function saveBhcMedicines() {
 }
 
 export async function addBhcMedicine(data) {
-  return addRhuMedicine(data);
+  return addRhuMedicine({
+    ...data,
+    ruralHealthUnitId: "",
+    rhuId: "",
+  });
 }
 
 export async function updateBhcMedicine(id, data) {
-  return updateRhuMedicine(id, data);
+  return updateRhuMedicine(id, {
+    ...data,
+    ruralHealthUnitId: "",
+    rhuId: "",
+  });
 }
 
 export async function deleteBhcMedicine(id) {

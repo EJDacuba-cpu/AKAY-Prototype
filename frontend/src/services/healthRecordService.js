@@ -36,11 +36,43 @@ function normalizeSupplementsGiven(record = {}, maternalData = {}) {
   }));
 }
 
+function normalizeDispensedMedicines(record = {}) {
+  const medicines =
+    record.dispensedMedicines ||
+    record.dispensed_medicines ||
+    record.healthRecordMedicines ||
+    record.health_record_medicines ||
+    [];
+
+  if (!Array.isArray(medicines)) return [];
+
+  return medicines.map((item = {}) => ({
+    id: item.id ? String(item.id) : "",
+    medicineId: item.medicine_id ? String(item.medicine_id) : item.medicineId || "",
+    medicineName:
+      item.medicine_name_snapshot ||
+      item.medicineNameSnapshot ||
+      item.medicineName ||
+      item.name ||
+      "",
+    category:
+      item.category_snapshot ||
+      item.categorySnapshot ||
+      item.category ||
+      "",
+    quantity: item.quantity || "",
+    unit: item.unit || "",
+    remarks: item.remarks || "",
+    dateDispensed: item.created_at || item.createdAt || "",
+  }));
+}
+
 function normalizeRecord(record = {}) {
   const vitalSigns = record.vital_signs || record.vitalSigns || {};
   const patient = record.patient ? normalizePatient(record.patient) : null;
   const maternalData = record.maternal_data || record.maternalData || {};
   const supplementsGiven = normalizeSupplementsGiven(record, maternalData);
+  const dispensedMedicines = normalizeDispensedMedicines(record);
   const normalizedMaternalData = {
     ...maternalData,
     supplements_given: supplementsGiven,
@@ -157,6 +189,8 @@ function normalizeRecord(record = {}) {
     maternal_data: normalizedMaternalData,
     supplementsGiven,
     supplements_given: supplementsGiven,
+    dispensedMedicines,
+    dispensed_medicines: dispensedMedicines,
     lmp: normalizedMaternalData.lmp || record.lmp || "",
     pmp: normalizedMaternalData.pmp || record.pmp || "",
     cycleDuration: normalizedMaternalData.cycleDuration || record.cycleDuration || "",
@@ -523,6 +557,14 @@ function toPayload(record = {}, { partial = false } = {}) {
       record.summaryOfPresentIllness ||
       record.monitoringNotes ||
       null,
+    dispensed_medicines: Array.isArray(record.dispensedMedicines)
+      ? record.dispensedMedicines.map((item) => ({
+          medicine_id: item.medicineId || item.medicine_id,
+          quantity: item.quantity,
+          unit: item.unit || null,
+          remarks: item.remarks || null,
+        }))
+      : [],
   };
 
   if (!partial) return payload;
@@ -613,6 +655,9 @@ function toPayload(record = {}, { partial = false } = {}) {
   }
   if (!hasAny(record, ["needsReferral", "needs_referral"])) {
     delete payload.needs_referral;
+  }
+  if (!hasAny(record, ["dispensedMedicines", "dispensed_medicines"])) {
+    delete payload.dispensed_medicines;
   }
   if (!hasAny(record, ["chiefComplaint"])) delete payload.chief_complaint;
   if (!hasAny(record, ["diagnosis"])) delete payload.diagnosis;
@@ -732,6 +777,26 @@ export async function updateHealthRecord(recordId, recordData, role = "bhc") {
   return updateHealthRecordById(recordId, recordData);
 }
 
+export async function dispenseHealthRecordMedicines(recordId, dispensedMedicines = []) {
+  if (!recordId || !Array.isArray(dispensedMedicines) || dispensedMedicines.length === 0) {
+    return null;
+  }
+
+  const response = await apiRequest(`/health-records/${recordId}/dispensed-medicines`, {
+    method: "POST",
+    body: {
+      dispensed_medicines: dispensedMedicines.map((item) => ({
+        medicine_id: item.medicineId || item.medicine_id,
+        quantity: item.quantity,
+        unit: item.unit || null,
+        remarks: item.remarks || null,
+      })),
+    },
+  });
+
+  return normalizeRecord(unwrapData(response));
+}
+
 export async function deleteHealthRecord(recordId) {
   await apiRequest(`/health-records/${recordId}`, { method: "DELETE" });
   return true;
@@ -752,5 +817,6 @@ export default {
   createFollowUpHealthRecord,
   updateHealthRecordById,
   updateHealthRecord,
+  dispenseHealthRecordMedicines,
   deleteHealthRecord,
 };

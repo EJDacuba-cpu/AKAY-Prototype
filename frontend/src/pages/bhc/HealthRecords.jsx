@@ -8,52 +8,20 @@ import HealthRecordsTable from "../../components/features/records/HealthRecordsT
 import { getHealthRecords } from "../../services/healthRecordService";
 import { getReferrals } from "../../services/referrals";
 import { formatPatientName } from "../../utils/formatters";
+import {
+  createActiveFilterChips,
+  isDateInPreset,
+} from "../../utils/filterUtils";
 import { getRecordId } from "../../utils/healthRecordPrograms";
 import { queryKeys } from "../../utils/queryKeys";
 
 const DEFAULT_FILTERS = {
   search: "",
   classification: "",
-  dateRange: "",
-  date: "",
+  dateRange: "all",
+  dateFrom: "",
+  dateTo: "",
 };
-
-function getDateValue(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
-  return date.toISOString().slice(0, 10);
-}
-
-function getTodayValue() {
-  const date = new Date();
-  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-  return date.toISOString().slice(0, 10);
-}
-
-function isThisWeek(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return false;
-
-  const today = new Date(getTodayValue());
-  const firstDay = new Date(today);
-  firstDay.setDate(today.getDate() - today.getDay());
-  const lastDay = new Date(firstDay);
-  lastDay.setDate(firstDay.getDate() + 6);
-
-  return date >= firstDay && date <= lastDay;
-}
-
-function isThisMonth(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return false;
-  const today = new Date(getTodayValue());
-
-  return (
-    date.getFullYear() === today.getFullYear() &&
-    date.getMonth() === today.getMonth()
-  );
-}
 
 function sameId(a, b) {
   return String(a || "") === String(b || "");
@@ -79,17 +47,6 @@ function normalizeVisitType(record = {}) {
   }
 
   return "initial_consultation";
-}
-
-function formatVisitDateFilterLabel(value, customDate) {
-  const labels = {
-    today: "Visit Date: Today",
-    this_week: "Visit Date: This Week",
-    this_month: "Visit Date: This Month",
-    custom_visit_date: customDate ? `Visit Date: ${customDate}` : "Custom Visit Date",
-  };
-
-  return labels[value] || value;
 }
 
 function getLinkedReferral(record, recordId, referrals) {
@@ -226,19 +183,13 @@ export default function HealthRecords() {
       record.trackingId?.toLowerCase().includes(searchLower) ||
       record.classification?.toLowerCase().includes(searchLower) ||
       record.concern?.toLowerCase().includes(searchLower);
-    const visitDate = getDateValue(record.date);
-    const today = getTodayValue();
     const matchesClassification =
       !filters.classification ||
       record.classification === filters.classification;
-    const matchesVisitDate =
-      !filters.dateRange ||
-      (filters.dateRange === "today" && visitDate === today) ||
-      (filters.dateRange === "this_week" && isThisWeek(visitDate)) ||
-      (filters.dateRange === "this_month" && isThisMonth(visitDate)) ||
-      (filters.dateRange === "custom_visit_date" &&
-        Boolean(filters.date) &&
-        visitDate === filters.date);
+    const matchesVisitDate = isDateInPreset(record.date, filters.dateRange, {
+      from: filters.dateFrom,
+      to: filters.dateTo,
+    });
 
     return (
       matchesSearch &&
@@ -247,45 +198,31 @@ export default function HealthRecords() {
     );
   });
 
-  const activeFilters = [
-    filters.dateRange && {
-      key: "dateRange",
-      label: formatVisitDateFilterLabel(filters.dateRange, filters.date),
-    },
-    filters.classification && {
-      key: "classification",
-      label: filters.classification,
-    },
-  ].filter(Boolean);
-
-  const activeFilterCount = activeFilters.filter(
-    (filter) => filter.key !== "search",
-  ).length;
-
   const dropdownFilters = [
     {
       key: "dateRange",
       label: "Date of Visit",
       value: filters.dateRange,
-      type: "datePreset",
-      customDateKey: "date",
-      customDateValue: "custom_visit_date",
-      customDateCurrentValue: filters.date,
-      options: [
-        { value: "", label: "All dates" },
+      dateFromValue: filters.dateFrom,
+      dateToValue: filters.dateTo,
+      resetValue: "all",
+      type: "datePresets",
+      presets: [
+        { value: "all", label: "All dates" },
         { value: "today", label: "Today" },
         { value: "this_week", label: "This week" },
         { value: "this_month", label: "This month" },
-        { value: "custom_visit_date", label: "Custom date" },
+        { value: "custom", label: "Custom date" },
       ],
     },
     {
       key: "classification",
       label: "Service Type",
       value: filters.classification,
+      resetValue: "",
       type: "select",
+      placeholder: "All Service Types",
       options: [
-        { value: "", label: "All Service Types" },
         { value: "General Consultation", label: "General Consultation" },
         { value: "Maternal", label: "Maternal" },
         { value: "Immunization", label: "Immunization" },
@@ -294,6 +231,8 @@ export default function HealthRecords() {
       ],
     },
   ];
+  const activeFilters = createActiveFilterChips(filters, dropdownFilters);
+  const activeFilterCount = activeFilters.length;
 
   function updateFilter(key, value) {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -312,7 +251,12 @@ export default function HealthRecords() {
 
   function removeFilter(key) {
     if (key === "dateRange") {
-      setFilters((prev) => ({ ...prev, dateRange: "", date: "" }));
+      setFilters((prev) => ({
+        ...prev,
+        dateRange: "all",
+        dateFrom: "",
+        dateTo: "",
+      }));
       setCurrentPage(1);
       return;
     }

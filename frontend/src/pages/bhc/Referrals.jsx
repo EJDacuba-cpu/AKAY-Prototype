@@ -17,14 +17,20 @@ import {
   formatPatientName,
   formatReferralStatus,
 } from "../../utils/formatters";
+import {
+  createActiveFilterChips,
+  isDateInPreset,
+} from "../../utils/filterUtils";
 import { queryKeys } from "../../utils/queryKeys";
 
 const DEFAULT_FILTERS = {
   search: "",
+  dateRange: "all",
+  dateFrom: "",
+  dateTo: "",
   status: "All",
-  classification: "All",
   urgency: "All Urgency",
-  dateSubmitted: "",
+  receivingFacility: "",
 };
 
 const ITEMS_PER_PAGE = 5;
@@ -129,11 +135,11 @@ export default function Referrals() {
   );
   const loading = isLoading && referrals.length === 0;
 
-  const classificationOptions = useMemo(
-    () => [
-      "All",
-      ...new Set(referrals.map(getReferralClassification).filter(Boolean)),
-    ],
+  const receivingFacilityOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(referrals.map(getReferralDestination).filter(Boolean)),
+      ).sort(),
     [referrals],
   );
 
@@ -152,21 +158,26 @@ export default function Referrals() {
         referral.status,
         filters.status,
       );
-      const matchesClass =
-        filters.classification === "All" ||
-        getReferralClassification(referral) === filters.classification;
       const matchesUrgency =
         filters.urgency === "All Urgency" ||
         getReferralUrgency(referral) === filters.urgency;
-      const matchesDate =
-        !filters.dateSubmitted ||
-        getSubmittedDate(referral) === filters.dateSubmitted;
+      const matchesFacility =
+        !filters.receivingFacility ||
+        getReferralDestination(referral) === filters.receivingFacility;
+      const matchesDate = isDateInPreset(
+        getSubmittedDate(referral),
+        filters.dateRange,
+        {
+          from: filters.dateFrom,
+          to: filters.dateTo,
+        },
+      );
 
       return (
         matchesSearch &&
         matchesStatus &&
-        matchesClass &&
         matchesUrgency &&
+        matchesFacility &&
         matchesDate
       );
     });
@@ -188,31 +199,29 @@ export default function Referrals() {
     }
   }, [currentPage, totalPages]);
 
-  const activeFilters = [
-    filters.status !== "All" && { key: "status", label: filters.status },
-    filters.classification !== "All" && {
-      key: "classification",
-      label: filters.classification,
-    },
-    filters.urgency !== "All Urgency" && {
-      key: "urgency",
-      label: filters.urgency,
-    },
-    filters.dateSubmitted && {
-      key: "dateSubmitted",
-      label: filters.dateSubmitted,
-    },
-  ].filter(Boolean);
-
-  const activeFilterCount = activeFilters.filter(
-    (filter) => filter.key !== "search",
-  ).length;
-
   const dropdownFilters = [
+    {
+      key: "dateRange",
+      label: "Referral Date",
+      value: filters.dateRange,
+      dateFromValue: filters.dateFrom,
+      dateToValue: filters.dateTo,
+      resetValue: "all",
+      type: "datePresets",
+      presets: [
+        { value: "all", label: "All dates" },
+        { value: "today", label: "Today" },
+        { value: "this_week", label: "This week" },
+        { value: "this_month", label: "This month" },
+        { value: "custom", label: "Custom date" },
+      ],
+    },
     {
       key: "status",
       label: "Status",
       value: filters.status,
+      resetValue: "All",
+      type: "select",
       options: [
         "All",
         "Pending",
@@ -223,24 +232,25 @@ export default function Referrals() {
       ],
     },
     {
-      key: "classification",
-      label: "Classification",
-      value: filters.classification,
-      options: classificationOptions,
-    },
-    {
       key: "urgency",
       label: "Urgency",
       value: filters.urgency,
+      resetValue: "All Urgency",
+      type: "select",
       options: ["All Urgency", "Non-Urgent", "Urgent", "Emergency"],
     },
     {
-      key: "dateSubmitted",
-      label: "Date",
-      value: filters.dateSubmitted,
-      type: "date",
+      key: "receivingFacility",
+      label: "Receiving Facility",
+      value: filters.receivingFacility,
+      resetValue: "",
+      type: "select",
+      placeholder: "All Facilities",
+      options: receivingFacilityOptions,
     },
   ];
+  const activeFilters = createActiveFilterChips(filters, dropdownFilters);
+  const activeFilterCount = activeFilters.length;
 
   function updateFilter(key, value) {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -253,11 +263,23 @@ export default function Referrals() {
   function removeFilter(key) {
     const resetValues = {
       search: "",
+      dateRange: "all",
+      dateFrom: "",
+      dateTo: "",
       status: "All",
-      classification: "All",
       urgency: "All Urgency",
-      dateSubmitted: "",
+      receivingFacility: "",
     };
+    if (key === "dateRange") {
+      setFilters((prev) => ({
+        ...prev,
+        dateRange: "all",
+        dateFrom: "",
+        dateTo: "",
+      }));
+      return;
+    }
+
     setFilters((prev) => ({ ...prev, [key]: resetValues[key] }));
   }
 

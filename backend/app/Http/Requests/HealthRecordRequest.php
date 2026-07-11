@@ -65,6 +65,22 @@ class HealthRecordRequest extends FormRequest
             'treatment_notes' => ['nullable', 'string'],
             'medical_history' => ['nullable', 'string'],
             'notes' => ['nullable', 'string'],
+            'dispensed_medicines' => ['nullable', 'array'],
+            'dispensed_medicines.*.medicine_id' => ['required', 'integer', 'exists:medicines,id'],
+            'dispensed_medicines.*.quantity' => ['required', 'integer', 'min:1'],
+            'dispensed_medicines.*.unit' => ['nullable', 'string', 'max:50'],
+            'dispensed_medicines.*.remarks' => ['nullable', 'string'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'dispensed_medicines.*.medicine_id.required' => 'Please select a medicine.',
+            'dispensed_medicines.*.medicine_id.exists' => 'Medicine stock changed. Please refresh and try again.',
+            'dispensed_medicines.*.quantity.required' => 'Quantity must be greater than 0.',
+            'dispensed_medicines.*.quantity.integer' => 'Quantity must be a whole number.',
+            'dispensed_medicines.*.quantity.min' => 'Quantity must be greater than 0.',
         ];
     }
 

@@ -1,811 +1,1140 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Navigate, useParams } from "react-router";
 import {
-  BarChart3,
+  Baby,
   ClipboardList,
+  FileHeart,
   FileText,
+  HeartPulse,
   Printer,
-  SearchCheck,
+  SlidersHorizontal,
+  Stethoscope,
   UsersRound,
 } from "lucide-react";
-import {
-  ArcElement,
-  BarElement,
-  CategoryScale,
-  Chart as ChartJS,
-  Filler,
-  Legend,
-  LinearScale,
-  LineElement,
-  PointElement,
-  RadialLinearScale,
-  Tooltip,
-} from "chart.js";
-import { Chart, PolarArea } from "react-chartjs-2";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar } from "../../components/common";
-import { FamilyPlanningReportSection } from "../shared/FamilyPlanningList";
+import {
+  ActiveFilterChips,
+  CommonFilterPopover,
+  SoftLoadingArea,
+} from "../../components/common";
+import { getFollowUpTasks } from "../../services/followUpTaskService";
+import { getHealthRecords } from "../../services/healthRecordService";
+import { getPatientDetailsListByRole } from "../../services/patientService";
+import { getReferrals } from "../../services/referrals";
+import {
+  formatDate,
+  formatDisplayValue,
+  formatPatientName,
+} from "../../utils/formatters";
+import {
+  createActiveFilterChips,
+  isDateInPreset,
+} from "../../utils/filterUtils";
+import {
+  EPI_VACCINE_ROWS,
+  getEpiVaccineEntries,
+  getRecordDateValue,
+  getRecordId,
+  getServiceTypeLabel,
+  isEpiRecord,
+  isFamilyPlanningRecord,
+  isMaternalRecord,
+  isNcdRecord,
+  normalizeVaccineName,
+} from "../../utils/healthRecordPrograms";
+import { queryKeys } from "../../utils/queryKeys";
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  RadialLinearScale,
-  BarElement,
-  LineElement,
-  PointElement,
-  ArcElement,
-  Filler,
-  Tooltip,
-  Legend,
-);
+const REPORT_TYPES = [
+  { key: "referrals", slug: "referrals", label: "Referral Reports" },
+  { key: "family_planning", slug: "family-planning", label: "Family Planning" },
+  { key: "epi", slug: "epi-target-client-list", label: "EPI Target Client List" },
+  { key: "morbidity", slug: "morbidity", label: "Morbidity / Notifiable Diseases" },
+  { key: "followups", slug: "follow-ups", label: "Follow-ups / Monitoring" },
+  { key: "ncd", slug: "ncd", label: "NCD Monitoring" },
+  { key: "maternal", slug: "maternal", label: "Maternal / Prenatal" },
+];
 
-const DEFAULT_FILTERS = {
-  search: "",
-  reportPeriod: "Weekly",
-  classification: "All Classifications",
-  referralStatus: "All Referral Status",
-  dateReferred: "",
-};
-
-const chartPalette = {
-  red: "#B91C1C",
-  redDark: "#7F1D1D",
-  redSoft: "#FEE2E2",
-  redMid: "#DC2626",
-  slate: "#64748B",
-  slateLight: "#CBD5E1",
-  amber: "#F59E0B",
-  emerald: "#10B981",
-  blue: "#3B82F6",
-  text: "#334155",
-  muted: "#94A3B8",
-  grid: "#E2E8F0",
-};
-
-const smoothAnimation = {
-  duration: 850,
-  easing: "easeOutQuart",
-};
-
-const REPORT_DATA = {
-  weekly: {
-    label: "Weekly Referrals",
-    shortLabel: "Weekly",
-    description:
-      "Weekly summary of referrals, case records, referral status, and RHU feedback.",
-    logbook: [],
-  },
-  monthly: {
-    label: "Monthly Referrals",
-    shortLabel: "Monthly",
-    description:
-      "Monthly summary of referrals, case records, completed cases, no-show cases, and RHU feedback.",
-    logbook: [],
-  },
+const EMPTY_FILTERS = {
+  dateRange: "all",
+  dateFrom: "",
+  dateTo: "",
+  barangay: "",
+  serviceType: "",
+  status: "",
+  ageRange: "",
+  sex: "",
+  urgency: "",
+  receivingFacility: "",
+  clientType: "",
+  methodUsed: "",
+  ageMonths: "",
+  vaccineStatus: "",
+  conditionType: "",
+  aogRange: "",
+  disease: "",
+  notifiableStatus: "",
 };
 
 export default function BHCReports() {
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const { reportSlug = "referrals" } = useParams();
+  const currentReport = REPORT_TYPES.find((report) => report.slug === reportSlug);
+  const selectedReport = currentReport?.key || "referrals";
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [draftFilters, setDraftFilters] = useState(EMPTY_FILTERS);
+  const [filterOpen, setFilterOpen] = useState(false);
 
-  const currentReportKey = getReportModeKey(filters.reportPeriod);
-  const currentReport = REPORT_DATA[currentReportKey] || REPORT_DATA.weekly;
+  const { data: patients = [], isLoading: patientsLoading } = useQuery({
+    queryKey: queryKeys.patients("bhc"),
+    queryFn: () => getPatientDetailsListByRole("bhc"),
+  });
+  const { data: records = [], isLoading: recordsLoading } = useQuery({
+    queryKey: queryKeys.healthRecords("bhc"),
+    queryFn: () => getHealthRecords("bhc"),
+  });
+  const { data: referrals = [], isLoading: referralsLoading } = useQuery({
+    queryKey: queryKeys.referrals("bhc"),
+    queryFn: () => getReferrals(),
+  });
+  const { data: followUps = [], isLoading: followUpsLoading } = useQuery({
+    queryKey: queryKeys.followUpTasks("bhc"),
+    queryFn: () => getFollowUpTasks(),
+    staleTime: 30_000,
+  });
 
-  const filteredReferralLogbook = useMemo(() => {
-    return currentReport.logbook.filter((log) => {
-      const query = filters.search.trim().toLowerCase();
-      const searchText = [
-        log.trackingId,
-        log.name,
-        log.classification,
-        log.chiefComplaint,
-        log.status,
-        log.feedback,
-        log.date,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      const matchesSearch = !query || searchText.includes(query);
-
-      const matchesClassification =
-        filters.classification === "All Classifications" ||
-        log.classification === filters.classification;
-
-      const matchesStatus =
-        filters.referralStatus === "All Referral Status" ||
-        log.status === filters.referralStatus ||
-        (filters.referralStatus === "Done" && normalizeStatus(log.status) === "Completed");
-
-      const matchesDate =
-        !filters.dateReferred ||
-        normalizeDate(log.date) === filters.dateReferred;
-
-      return (
-        matchesSearch && matchesClassification && matchesStatus && matchesDate
-      );
-    });
-  }, [currentReport.logbook, filters]);
-
-  const casesSummary = useMemo(
-    () => buildChiefComplaintSummary(filteredReferralLogbook),
-    [filteredReferralLogbook],
+  const safePatients = useMemo(
+    () => (Array.isArray(patients) ? patients : []),
+    [patients],
+  );
+  const safeRecords = useMemo(
+    () => (Array.isArray(records) ? records : []),
+    [records],
+  );
+  const safeReferrals = useMemo(
+    () => (Array.isArray(referrals) ? referrals : []),
+    [referrals],
+  );
+  const safeFollowUps = useMemo(
+    () => (Array.isArray(followUps) ? followUps : []),
+    [followUps],
+  );
+  const patientMap = useMemo(
+    () =>
+      new Map(
+        safePatients.map((patient) => [
+          String(patient.id || patient.patientId || ""),
+          patient,
+        ]),
+      ),
+    [safePatients],
+  );
+  const barangayOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [
+            ...safePatients.map((patient) => patient.barangay),
+            ...safeReferrals.map((referral) => referral.barangay),
+          ].filter(Boolean),
+        ),
+      ).sort(),
+    [safePatients, safeReferrals],
+  );
+  const receivingFacilities = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          safeReferrals
+            .map(
+              (referral) =>
+                referral.receivingFacility ||
+                referral.destinationFacility ||
+                referral.ruralHealthUnit?.name,
+            )
+            .filter(Boolean),
+        ),
+      ).sort(),
+    [safeReferrals],
   );
 
-  const classificationSummary = useMemo(
-    () => buildClassificationSummary(filteredReferralLogbook),
-    [filteredReferralLogbook],
+  const reportFields = getReportFilterFields(
+    selectedReport,
+    barangayOptions,
+    receivingFacilities,
   );
+  const activeFilters = createActiveFilterChips(filters, reportFields);
+  const loading =
+    patientsLoading || recordsLoading || referralsLoading || followUpsLoading;
+  const reportLabel = currentReport?.label || "Reports";
 
-  const reportSummary = useMemo(() => {
-    const completed = filteredReferralLogbook.filter(
-      (log) => normalizeStatus(log.status) === "Completed",
-    ).length;
+  useEffect(() => {
+    setFilters(EMPTY_FILTERS);
+    setDraftFilters(EMPTY_FILTERS);
+    setFilterOpen(false);
+  }, [selectedReport]);
 
-    const totalRegisteredPatients = new Set(
-      filteredReferralLogbook
-        .map((log) =>
-          String(log.name || "")
-            .trim()
-            .toLowerCase(),
-        )
-        .filter(Boolean),
-    ).size;
-
-    return {
-      totalRegisteredPatients,
-      totalReferrals: filteredReferralLogbook.length,
-      referralsByCases: casesSummary.length,
-      completedCases: completed,
-      topCase: casesSummary[0]?.label || "No data",
-    };
-  }, [casesSummary, filteredReferralLogbook]);
-
-  const casesChartData = useMemo(
-    () => buildChiefComplaintComboData(casesSummary.slice(0, 8)),
-    [casesSummary],
-  );
-
-  const classificationChartData = useMemo(
-    () => buildClassificationPolarData(classificationSummary),
-    [classificationSummary],
-  );
-
-  const dropdownFilters = [
-    {
-      key: "reportPeriod",
-      label: "Reporting Period",
-      value: filters.reportPeriod,
-      options: ["Weekly", "Monthly"],
-    },
-    {
-      key: "classification",
-      label: "Classification",
-      value: filters.classification,
-      options: [
-        "All Classifications",
-        "General Consultation",
-        "Maternal",
-        "Immunization",
-        "Senior Citizen",
-        "Family Planning",
-      ],
-    },
-    {
-      key: "referralStatus",
-      label: "Referral Status",
-      value: filters.referralStatus,
-      options: [
-        "All Referral Status",
-        "Pending",
-        "Received",
-        "For Monitoring",
-        "Done",
-        "No-Show",
-      ],
-    },
-    {
-      key: "dateReferred",
-      label: "Date Referred",
-      value: filters.dateReferred,
-      type: "date",
-    },
-  ];
-
-  const activeFilters = [
-    filters.reportPeriod !== DEFAULT_FILTERS.reportPeriod && {
-      key: "reportPeriod",
-      label: `Period: ${filters.reportPeriod}`,
-    },
-    filters.classification !== "All Classifications" && {
-      key: "classification",
-      label: filters.classification,
-    },
-    filters.referralStatus !== "All Referral Status" && {
-      key: "referralStatus",
-      label: filters.referralStatus,
-    },
-    filters.dateReferred && {
-      key: "dateReferred",
-      label: filters.dateReferred,
-    },
-  ].filter(Boolean);
-
-  const activeFilterCount = activeFilters.filter(
-    (filter) => filter.key !== "search",
-  ).length;
-
-  function applyDropdownFilters(nextFilters) {
-    setFilters((prev) => ({ ...prev, ...nextFilters }));
+  function openFilters() {
+    setDraftFilters(filters);
+    setFilterOpen(true);
   }
 
-  function clearFilters() {
-    setFilters(DEFAULT_FILTERS);
+  function applyFilters() {
+    setFilters(draftFilters);
+    setFilterOpen(false);
+  }
+
+  function resetFilters() {
+    setDraftFilters(EMPTY_FILTERS);
+    setFilters(EMPTY_FILTERS);
   }
 
   function removeFilter(key) {
-    const resetValues = {
-      search: "",
-      reportPeriod: DEFAULT_FILTERS.reportPeriod,
-      classification: "All Classifications",
-      referralStatus: "All Referral Status",
-      dateReferred: "",
-    };
+    if (key === "dateRange") {
+      setFilters((current) => ({
+        ...current,
+        dateRange: "all",
+        dateFrom: "",
+        dateTo: "",
+      }));
+      return;
+    }
 
-    setFilters((prev) => ({ ...prev, [key]: resetValues[key] }));
+    setFilters((current) => ({ ...current, [key]: "" }));
   }
 
-  function printAsPdf() {
+  function printSelectedReport() {
     window.print();
   }
 
+  if (!currentReport) return <Navigate to="/bhc/reports/referrals" replace />;
+
   return (
     <DashboardLayout role="bhc" title="Reports">
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          #selected-report, #selected-report * { visibility: visible !important; }
+          #selected-report { position: absolute; inset: 0; width: 100%; }
+          .no-print { display: none !important; }
+        }
+      `}</style>
+
       <div className="space-y-4">
-        <ListToolbar
-          searchValue={filters.search}
-          onSearchChange={(value) =>
-            setFilters((prev) => ({ ...prev, search: value }))
-          }
-          searchPlaceholder="Search patient, tracking ID, chief complaint, or status..."
-          filters={dropdownFilters}
-          activeFilterCount={activeFilterCount}
-          activeFilters={activeFilters}
-          onApplyFilters={applyDropdownFilters}
-          onClearFilters={clearFilters}
-          onRemoveFilter={removeFilter}
-          actions={
-            <ReportActionButtons onPdf={printAsPdf} onPrint={printAsPdf} />
-          }
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-[#0F172A]">{reportLabel}</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Generate and review this AKAY report from current records.
+            </p>
+          </div>
+          <div className="no-print relative flex flex-wrap gap-2">
+            <HeaderAction
+              icon={<SlidersHorizontal size={14} />}
+              label="Filters"
+              count={activeFilters.length}
+              onClick={openFilters}
+            />
+            <HeaderAction
+              icon={<FileText size={14} />}
+              label="Export PDF"
+              onClick={printSelectedReport}
+            />
+            <HeaderAction
+              icon={<Printer size={14} />}
+              label="Print"
+              onClick={printSelectedReport}
+            />
+            <CommonFilterPopover
+              open={filterOpen}
+              title="Filters"
+              subtitle={`Narrow the ${reportLabel.toLowerCase()} report.`}
+              filters={draftFilters}
+              config={reportFields}
+              onChange={setDraftFilters}
+              onApply={applyFilters}
+              onReset={resetFilters}
+              onClose={() => setFilterOpen(false)}
+            />
+          </div>
+        </header>
+
+        <ActiveFilterChips
+          filters={activeFilters}
+          onRemove={removeFilter}
+          onClearAll={resetFilters}
         />
 
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard
-            title="Total Registered Patients"
-            value={reportSummary.totalRegisteredPatients}
-            icon={<UsersRound size={16} />}
-            tone="slate"
-          />
-
-          <StatCard
-            title="Total Referrals"
-            value={reportSummary.totalReferrals}
-            icon={<ClipboardList size={16} />}
-            tone="red"
-          />
-
-          <StatCard
-            title="Referrals by Cases"
-            value={reportSummary.referralsByCases}
-            icon={<BarChart3 size={16} />}
-            tone="amber"
-          />
-
-          <StatCard
-            title="Done"
-            value={reportSummary.completedCases}
-            icon={<SearchCheck size={16} />}
-            tone="emerald"
-          />
-        </div>
-
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-          <main className="min-w-0 space-y-4">
-            <ReportChartCard
-              title="Referrals by Cases"
-              description={`${currentReport.shortLabel} referral count grouped by chief complaint or case.`}
-              icon={<BarChart3 size={15} />}
-              rightLabel="Case count"
-            >
-              <FixedChartBox height="h-[340px]">
-                {casesSummary.length === 0 ? (
-                  <EmptyChartState
-                    icon={<BarChart3 size={24} />}
-                    title="No case records"
-                    message="No chief complaint records match the current filters."
-                  />
-                ) : (
-                  <Chart
-                    type="bar"
-                    data={casesChartData}
-                    options={getChiefComplaintComboOptions()}
-                  />
-                )}
-              </FixedChartBox>
-            </ReportChartCard>
+        <SoftLoadingArea
+          isLoading={loading}
+          message={`Loading ${reportLabel.toLowerCase()}...`}
+          scope="area"
+          minHeight="min-h-[460px]"
+        >
+          <main id="selected-report" className="space-y-4">
+            <ReportTitle title={reportLabel} />
+            <SelectedReport
+              type={selectedReport}
+              filters={filters}
+              patients={safePatients}
+              records={safeRecords}
+              referrals={safeReferrals}
+              followUps={safeFollowUps}
+              patientMap={patientMap}
+            />
           </main>
-
-          <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
-            <ReportChartCard
-              title="Referrals by Patient Classification"
-              description="Referral count by patient classification."
-              icon={<UsersRound size={15} />}
-              rightLabel="Classification"
-            >
-              <FixedChartBox height="h-[280px]">
-                {classificationSummary.length === 0 ? (
-                  <EmptyChartState
-                    icon={<UsersRound size={24} />}
-                    title="No classification data"
-                    message="Filtered records will show classification counts here."
-                  />
-                ) : (
-                  <PolarArea
-                    data={classificationChartData}
-                    options={classificationPolarOptions}
-                  />
-                )}
-              </FixedChartBox>
-            </ReportChartCard>
-          </aside>
-        </div>
-
-        <FamilyPlanningReportSection
-          role="bhc"
-          basePath="/bhc"
-          reportFilters={filters}
-        />
+        </SoftLoadingArea>
       </div>
+
     </DashboardLayout>
   );
 }
 
-function ReportActionButtons({ onPdf, onPrint }) {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <button
-        type="button"
-        onClick={onPdf}
-        className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-3 text-[11px] font-semibold text-[#374151] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-      >
-        <FileText size={12} className="text-red-600" />
-        PDF
-      </button>
+function SelectedReport(props) {
+  switch (props.type) {
+    case "family_planning":
+      return <FamilyPlanningReportView {...props} />;
+    case "epi":
+      return <EpiTargetClientListReportView {...props} />;
+    case "morbidity":
+      return <MorbidityReportView {...props} />;
+    case "followups":
+      return <FollowUpReportView {...props} />;
+    case "ncd":
+      return <NcdReportView {...props} />;
+    case "maternal":
+      return <MaternalReportView {...props} />;
+    default:
+      return <ReferralReportView {...props} />;
+  }
+}
 
-      <button
-        type="button"
-        onClick={onPrint}
-        className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-3 text-[11px] font-semibold text-[#374151] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-      >
-        <Printer size={12} />
-        Print
-      </button>
-    </div>
+function ReferralReportView({ referrals, filters }) {
+  const rows = referrals.filter((referral) => {
+    const date = getReferralDate(referral);
+    const facility =
+      referral.receivingFacility ||
+      referral.destinationFacility ||
+      referral.ruralHealthUnit?.name ||
+      "";
+    return (
+      matchesDateRange(date, filters) &&
+      matchesValue(referral.barangay, filters.barangay) &&
+      matchesValue(referral.status, filters.status) &&
+      matchesValue(
+        referral.urgencyLevel || referral.priority,
+        filters.urgency,
+      ) &&
+      matchesValue(facility, filters.receivingFacility)
+    );
+  });
+  const completed = rows.filter((row) =>
+    ["completed", "done"].includes(normalizeText(row.status)),
+  ).length;
+  const noShow = rows.filter((row) =>
+    normalizeText(row.status).includes("no show"),
+  ).length;
+
+  return (
+    <>
+      <SummaryGrid>
+        <SummaryCard label="Total Referrals" value={rows.length} icon={<ClipboardList size={16} />} />
+        <SummaryCard label="Completed" value={completed} tone="emerald" icon={<FileHeart size={16} />} />
+        <SummaryCard label="No Show" value={noShow} tone="amber" icon={<UsersRound size={16} />} />
+        <SummaryCard label="Active" value={Math.max(rows.length - completed - noShow, 0)} icon={<HeartPulse size={16} />} />
+      </SummaryGrid>
+      <ReportTable
+        columns={["Tracking ID", "Date", "Patient", "Barangay", "Status", "Urgency", "Receiving Facility"]}
+        rows={rows.map((referral) => [
+          referral.trackingId || referral.id,
+          formatDate(getReferralDate(referral), "Not recorded"),
+          referral.patientName || formatPatientName(referral.patient, "Unnamed Patient"),
+          referral.barangay || "Not recorded",
+          referral.status || "Pending",
+          referral.urgencyLevel || referral.priority || "Normal",
+          referral.receivingFacility ||
+            referral.destinationFacility ||
+            referral.ruralHealthUnit?.name ||
+            "Not recorded",
+        ])}
+        emptyTitle="No referral records"
+        emptyMessage="No referrals match the selected filters."
+      />
+    </>
   );
 }
 
-function StatCard({ title, value, icon, tone = "red" }) {
-  const map = {
-    red: "border-t-[#B91C1C] bg-[#FEF2F2] text-[#B91C1C]",
-    slate: "border-t-slate-300 bg-slate-50 text-slate-700",
-    amber: "border-t-amber-400 bg-amber-50 text-amber-700",
-    emerald: "border-t-emerald-400 bg-emerald-50 text-emerald-700",
-  };
-
-  const selected = map[tone] || map.red;
-  const [borderClass, bgClass, textClass] = selected.split(" ");
+function FamilyPlanningReportView({ records, filters, patientMap }) {
+  const rows = records
+    .filter(isFamilyPlanningRecord)
+    .map((record) => normalizeProgramRecord(record, patientMap))
+    .filter((record) => {
+      const data = record.familyPlanningData;
+      return (
+        matchesDateRange(record.date, filters) &&
+        matchesValue(record.barangay, filters.barangay) &&
+        matchesValue(data.clientType || data.client_type, filters.clientType) &&
+        matchesValue(data.methodUsed || data.method_used, filters.methodUsed) &&
+        matchesAgeRange(record.age, filters.ageRange)
+      );
+    });
+  const methods = new Set(
+    rows
+      .map(
+        (row) =>
+          row.familyPlanningData.methodUsed ||
+          row.familyPlanningData.method_used,
+      )
+      .filter(Boolean),
+  ).size;
+  const newClients = rows.filter((row) =>
+    normalizeText(
+      row.familyPlanningData.clientType ||
+        row.familyPlanningData.client_type,
+    ).includes("new"),
+  ).length;
 
   return (
-    <div
-      className={`rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-5 shadow-sm ${borderClass}`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
-          {title}
-        </p>
-
-        <div
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${bgClass} ${textClass}`}
-        >
-          {icon}
-        </div>
-      </div>
-
-      <p className="mt-4 text-2xl font-bold tracking-tight text-[#0F172A]">
-        {formatNumber(value)}
-      </p>
-    </div>
+    <>
+      <SummaryGrid>
+        <SummaryCard label="FP Visits" value={rows.length} icon={<UsersRound size={16} />} />
+        <SummaryCard label="Methods Used" value={methods} icon={<ClipboardList size={16} />} />
+        <SummaryCard label="New Clients" value={newClients} tone="emerald" icon={<FileHeart size={16} />} />
+      </SummaryGrid>
+      <ReportTable
+        columns={["Date", "Patient", "Barangay", "Client Type", "Method Used", "Age", "Next Appointment"]}
+        rows={rows.map((row) => {
+          const data = row.familyPlanningData;
+          return [
+            formatDate(row.date, "Not recorded"),
+            row.patientName,
+            row.barangay || "Not recorded",
+            data.clientType || data.client_type || "Not recorded",
+            data.methodUsed || data.method_used || "Not recorded",
+            row.age || "Not recorded",
+            formatDate(
+              data.nextAppointmentDate || data.next_appointment_date,
+              "Not recorded",
+            ),
+          ];
+        })}
+        emptyTitle="No Family Planning records"
+        emptyMessage="No Family Planning records match the selected filters."
+      />
+    </>
   );
 }
 
-function ReportChartCard({ title, description, icon, rightLabel, children }) {
+function EpiTargetClientListReportView({
+  patients,
+  records,
+  filters,
+}) {
+  const epiByPatient = useMemo(() => {
+    const map = new Map();
+    records.filter(isEpiRecord).forEach((record) => {
+      const patientId = String(
+        record.patientId || record.patient_id || record.patient?.id || "",
+      );
+      if (!map.has(patientId)) map.set(patientId, []);
+      map.get(patientId).push(record);
+    });
+    return map;
+  }, [records]);
+
+  const rows = patients
+    .map((patient) => buildEpiTargetRow(patient, epiByPatient))
+    .filter((row) => row.ageMonths >= 0 && row.ageMonths <= 12)
+    .filter(
+      (row) =>
+        matchesDateRange(row.registrationDate, filters) &&
+        matchesValue(row.barangay, filters.barangay) &&
+        (!filters.ageMonths ||
+          row.ageMonths === Number(filters.ageMonths)) &&
+        matchesValue(row.sex, filters.sex) &&
+        matchesValue(row.status, filters.vaccineStatus),
+    );
+  const completed = rows.filter((row) => row.status === "Completed").length;
+  const due = rows.filter((row) => row.status === "Due").length;
+  const missed = rows.filter((row) => row.status === "Missed").length;
+
   return (
-    <section className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-red-100 hover:shadow-md">
-      <div className="flex items-start justify-between gap-3 border-b border-[#E8ECF0] bg-white px-5 py-4">
-        <div className="flex min-w-0 items-start gap-2">
-          {icon && (
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-50 text-[#B91C1C]">
-              {icon}
-            </span>
-          )}
+    <>
+      <SummaryGrid>
+        <SummaryCard label="Target Clients" value={rows.length} icon={<Baby size={16} />} />
+        <SummaryCard label="Completed" value={completed} tone="emerald" icon={<FileHeart size={16} />} />
+        <SummaryCard label="Due" value={due} icon={<ClipboardList size={16} />} />
+        <SummaryCard label="Missed" value={missed} tone="amber" icon={<UsersRound size={16} />} />
+      </SummaryGrid>
+      <ReportTable
+        minWidth="min-w-[1700px]"
+        columns={[
+          "No.",
+          "Date of Registration",
+          "Family Serial Number",
+          "Name of Child",
+          "Date of Birth",
+          "Age in Months",
+          "Sex",
+          "Name of Mother",
+          "Complete Address",
+          "BCG",
+          "HEPA B",
+          "OPV",
+          "PENTA",
+          "PCV",
+          "IPV",
+          "MCV",
+          "Status",
+        ]}
+        rows={rows.map((row, index) => [
+          index + 1,
+          formatDate(row.registrationDate, "Not recorded"),
+          row.familySerialNumber || "Not recorded",
+          row.name,
+          formatDate(row.birthDate, "Not recorded"),
+          row.ageMonths,
+          row.sex || "Not recorded",
+          row.motherName || "Not recorded",
+          row.address || "Not recorded",
+          row.vaccines.BCG,
+          row.vaccines["HEPA B"],
+          row.vaccines.OPV,
+          row.vaccines.PENTA,
+          row.vaccines.PCV,
+          row.vaccines.IPV,
+          row.vaccines.MCV,
+          row.status,
+        ])}
+        emptyTitle="No EPI target clients"
+        emptyMessage="Registered children up to 12 months old will appear here."
+      />
+    </>
+  );
+}
 
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-black text-[#0F172A]">
-              {title}
-            </h2>
-            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[#64748B]">
-              {description}
-            </p>
-          </div>
-        </div>
+function MorbidityReportView({ records, filters, patientMap }) {
+  const rows = records
+    .map((record) => normalizeProgramRecord(record, patientMap))
+    .filter(
+      (record) =>
+        matchesDateRange(record.date, filters) &&
+        matchesValue(record.barangay, filters.barangay) &&
+        matchesDisease(record.raw, filters.disease) &&
+        matchesNotifiableStatus(record.raw, filters.notifiableStatus),
+    );
+  const conditions = new Set(
+    rows
+      .map((row) => row.raw.diagnosis || row.raw.chiefComplaint)
+      .filter(Boolean),
+  ).size;
 
-        {rightLabel && (
-          <span className="shrink-0 rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
-            {rightLabel}
-          </span>
-        )}
+  return (
+    <>
+      <SummaryGrid>
+        <SummaryCard label="Recorded Visits" value={rows.length} icon={<Stethoscope size={16} />} />
+        <SummaryCard label="Conditions" value={conditions} icon={<ClipboardList size={16} />} />
+      </SummaryGrid>
+      <ReportTable
+        columns={["Record ID", "Date", "Patient", "Barangay", "Service Type", "Diagnosis / Condition"]}
+        rows={rows.map((row) => [
+          `#${getRecordId(row.raw)}`,
+          formatDate(row.date, "Not recorded"),
+          row.patientName,
+          row.barangay || "Not recorded",
+          getServiceTypeLabel(row.raw),
+          row.raw.diagnosis ||
+            row.raw.chiefComplaint ||
+            row.raw.chief_complaint ||
+            "Not recorded",
+        ])}
+        emptyTitle="No morbidity records"
+        emptyMessage="No health records match the selected filters."
+      />
+    </>
+  );
+}
+
+function matchesDisease(record, disease) {
+  if (!disease) return true;
+  return recordContains(record, disease);
+}
+
+function matchesNotifiableStatus(record, status) {
+  if (!status) return true;
+  const normalizedStatus = normalizeText(record.notifiableStatus);
+  const notifiable =
+    record.notifiable ||
+    record.isNotifiable ||
+    record.is_notifiable ||
+    (normalizedStatus.includes("notifiable") &&
+      !normalizedStatus.includes("non notifiable"));
+
+  return status === "Notifiable" ? notifiable : !notifiable;
+}
+
+function FollowUpReportView({ followUps, filters }) {
+  const rows = followUps
+    .map((task) => ({
+      ...task,
+      effectiveState: getEffectiveFollowUpState(task),
+    }))
+    .filter(
+      (task) =>
+        matchesDateRange(task.dueDate, filters) &&
+        matchesValue(task.patient?.barangay, filters.barangay) &&
+        matchesValue(getServiceTypeLabel(task.healthRecord), filters.serviceType) &&
+        matchesValue(
+          formatFollowUpState(task.effectiveState),
+          filters.status,
+        ),
+    );
+
+  return (
+    <>
+      <SummaryGrid>
+        <SummaryCard label="Total Tasks" value={rows.length} icon={<ClipboardList size={16} />} />
+        <SummaryCard label="Pending" value={rows.filter((row) => ["upcoming", "rescheduled"].includes(row.effectiveState)).length} icon={<HeartPulse size={16} />} />
+        <SummaryCard label="Due Today" value={rows.filter((row) => row.effectiveState === "due_today").length} tone="amber" icon={<UsersRound size={16} />} />
+        <SummaryCard label="Completed" value={rows.filter((row) => row.effectiveState === "fulfilled").length} tone="emerald" icon={<FileHeart size={16} />} />
+      </SummaryGrid>
+      <ReportTable
+        columns={["Patient", "Barangay", "Service Type", "Next Follow-up Date", "Status"]}
+        rows={rows.map((task) => [
+          task.patientName || formatPatientName(task.patient, "Unnamed Patient"),
+          task.patient?.barangay || "Not recorded",
+          getServiceTypeLabel(task.healthRecord),
+          formatDate(task.dueDate, "Not recorded"),
+          formatFollowUpState(task.effectiveState),
+        ])}
+        emptyTitle="No follow-up tasks"
+        emptyMessage="No follow-up tasks match the selected filters."
+      />
+    </>
+  );
+}
+
+function NcdReportView({ records, filters, patientMap }) {
+  const rows = records
+    .filter(isNcdRecord)
+    .map((record) => normalizeProgramRecord(record, patientMap))
+    .filter(
+      (record) =>
+        matchesDateRange(record.date, filters) &&
+        matchesValue(record.barangay, filters.barangay) &&
+        matchesCondition(record.raw, filters.conditionType) &&
+        matchesValue(record.raw.status, filters.status),
+    );
+
+  return (
+    <>
+      <SummaryGrid>
+        <SummaryCard label="NCD Visits" value={rows.length} icon={<HeartPulse size={16} />} />
+        <SummaryCard label="Hypertension" value={rows.filter((row) => recordContains(row.raw, "hypertension")).length} icon={<FileHeart size={16} />} />
+        <SummaryCard label="Diabetes" value={rows.filter((row) => recordContains(row.raw, "diabetes")).length} tone="amber" icon={<ClipboardList size={16} />} />
+      </SummaryGrid>
+      <ReportTable
+        columns={["Record ID", "Date", "Patient", "Barangay", "Condition", "BP", "Status"]}
+        rows={rows.map((row) => [
+          `#${getRecordId(row.raw)}`,
+          formatDate(row.date, "Not recorded"),
+          row.patientName,
+          row.barangay || "Not recorded",
+          inferCondition(row.raw),
+          formatBloodPressure(row.raw),
+          row.raw.status || "Not recorded",
+        ])}
+        emptyTitle="No NCD monitoring records"
+        emptyMessage="No NCD records match the selected filters."
+      />
+    </>
+  );
+}
+
+function MaternalReportView({ records, filters, patientMap }) {
+  const rows = records
+    .filter(isMaternalRecord)
+    .map((record) => normalizeProgramRecord(record, patientMap))
+    .filter((record) => {
+      const maternal = record.raw.maternalData || record.raw.maternal_data || {};
+      return (
+        matchesDateRange(record.date, filters) &&
+        matchesValue(record.barangay, filters.barangay) &&
+        matchesAog(maternal.aog || record.raw.aog, filters.aogRange) &&
+        matchesValue(record.raw.status, filters.status)
+      );
+    });
+
+  return (
+    <>
+      <SummaryGrid>
+        <SummaryCard label="Prenatal Visits" value={rows.length} icon={<FileHeart size={16} />} />
+        <SummaryCard label="Patients" value={new Set(rows.map((row) => row.patientId)).size} icon={<UsersRound size={16} />} />
+      </SummaryGrid>
+      <ReportTable
+        columns={["Record ID", "Visit Date", "Patient", "Barangay", "AOG", "BP", "Weight", "Next Visit"]}
+        rows={rows.map((row) => {
+          const maternal = row.raw.maternalData || row.raw.maternal_data || {};
+          return [
+            `#${getRecordId(row.raw)}`,
+            formatDate(row.date, "Not recorded"),
+            row.patientName,
+            row.barangay || "Not recorded",
+            maternal.aog || row.raw.aog || "Not recorded",
+            formatBloodPressure(row.raw),
+            row.raw.weight || "Not recorded",
+            formatDate(
+              row.raw.followUpDate || row.raw.follow_up_date,
+              "Not recorded",
+            ),
+          ];
+        })}
+        emptyTitle="No maternal records"
+        emptyMessage="No maternal or prenatal records match the selected filters."
+      />
+    </>
+  );
+}
+
+function ReportTable({
+  columns,
+  rows,
+  emptyTitle,
+  emptyMessage,
+  minWidth = "min-w-[900px]",
+}) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto">
+        <table className={`w-full text-left ${minWidth}`}>
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              {columns.map((column) => (
+                <th key={column} className="whitespace-nowrap px-4 py-3">
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 text-sm">
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length} className="px-6 py-16 text-center">
+                  <FileText className="mx-auto text-slate-300" size={28} />
+                  <p className="mt-3 font-semibold text-slate-600">
+                    {emptyTitle}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">{emptyMessage}</p>
+                </td>
+              </tr>
+            ) : (
+              rows.map((row, rowIndex) => (
+                <tr key={`${row[0]}-${rowIndex}`} className="hover:bg-slate-50/70">
+                  {row.map((value, columnIndex) => (
+                    <td
+                      key={`${rowIndex}-${columnIndex}`}
+                      className={`px-4 py-3.5 ${
+                        columnIndex === 0
+                          ? "font-semibold text-[#0F172A]"
+                          : "text-slate-600"
+                      }`}
+                    >
+                      {formatDisplayValue(value, "Not recorded")}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
-
-      <div className="p-5">{children}</div>
     </section>
   );
 }
 
-function FixedChartBox({ height = "h-[300px]", children }) {
+function SummaryGrid({ children }) {
+  return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{children}</div>;
+}
+
+function SummaryCard({ label, value, icon, tone = "red" }) {
+  const tones = {
+    red: "bg-red-50 text-[#B91C1C]",
+    amber: "bg-amber-50 text-amber-700",
+    emerald: "bg-emerald-50 text-emerald-700",
+  };
   return (
-    <div
-      className={`relative ${height} w-full overflow-hidden rounded-xl border border-[#F1F5F9] bg-white p-3`}
-    >
-      {children}
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            {label}
+          </p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-[#0F172A]">
+            {value}
+          </p>
+        </div>
+        <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${tones[tone] || tones.red}`}>
+          {icon}
+        </span>
+      </div>
     </div>
   );
 }
 
-function EmptyChartState({ icon, title, message }) {
+function ReportTitle({ title }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center px-4 text-center">
-      <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[#F1F5F9] text-[#94A3B8]">
-        {icon}
-      </div>
-
-      <p className="text-sm font-bold text-[#334155]">{title}</p>
-
-      <p className="mt-1 max-w-xs text-xs leading-relaxed text-[#94A3B8]">
-        {message}
+    <div>
+      <h2 className="text-base font-bold text-[#0F172A]">{title}</h2>
+      <p className="mt-0.5 text-xs text-slate-500">
+        Generated from current AKAY patient and health service records.
       </p>
     </div>
   );
 }
 
+function HeaderAction({ icon, label, count, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
+    >
+      {icon}
+      {label}
+      {count > 0 && (
+        <span className="rounded-full bg-[#B91C1C] px-1.5 py-0.5 text-[9px] text-white">
+          {count}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function getReportFilterFields(type, barangays, facilities) {
+  const dateField = {
+    key: "dateRange",
+    label: type === "epi" ? "Registration Date Range" : "Date Range",
+    type: "datePresets",
+    resetValue: "all",
+    presets: [
+      { value: "all", label: "All dates" },
+      { value: "today", label: "Today" },
+      { value: "this_week", label: "This week" },
+      { value: "this_month", label: "This month" },
+      { value: "custom", label: "Custom date" },
+    ],
+  };
+  const barangay = {
+    key: "barangay",
+    label: "Barangay",
+    type: "select",
+    resetValue: "",
+    placeholder: "All Barangays",
+    options: barangays,
+  };
+  const serviceType = {
+    key: "serviceType",
+    label: "Service Type",
+    type: "select",
+    resetValue: "",
+    placeholder: "All Service Types",
+    options: [
+      "General Consultation",
+      "Child Health / EPI",
+      "Maternal / Prenatal",
+      "Family Planning",
+      "NCD Monitoring",
+      "TB DOTS / TB Monitoring",
+    ],
+  };
+  const status = (options) => ({
+    key: "status",
+    label: "Status",
+    type: "select",
+    resetValue: "",
+    placeholder: "All Statuses",
+    options,
+  });
+
+  switch (type) {
+    case "referrals":
+      return [
+        dateField,
+        barangay,
+        status(["Pending", "Received", "Completed", "No Show", "Cancelled"]),
+        { key: "urgency", label: "Urgency", type: "select", resetValue: "", placeholder: "All Urgency", options: ["Non-Urgent", "Normal", "Urgent", "Emergency"] },
+        { key: "receivingFacility", label: "Receiving Facility", type: "select", resetValue: "", placeholder: "All Facilities", options: facilities },
+      ];
+    case "family_planning":
+      return [
+        dateField,
+        barangay,
+        { key: "clientType", label: "Client Type", type: "text", placeholder: "e.g. New Acceptor" },
+        { key: "methodUsed", label: "Method Used", type: "text", placeholder: "e.g. Pills" },
+        { key: "ageRange", label: "Age Range", type: "select", resetValue: "", placeholder: "All Ages", options: ["15-19", "20-49", "50+"] },
+      ];
+    case "epi":
+      return [
+        dateField,
+        barangay,
+        { key: "ageMonths", label: "Age in Months", type: "number", min: 0, max: 12 },
+        { key: "sex", label: "Sex", type: "select", resetValue: "", placeholder: "All Sexes", options: ["Male", "Female"] },
+        { key: "vaccineStatus", label: "Vaccine Status", type: "select", resetValue: "", placeholder: "All Statuses", options: ["Due", "Completed", "Missed"] },
+      ];
+    case "morbidity":
+      return [
+        dateField,
+        barangay,
+        { key: "disease", label: "Disease / Diagnosis", type: "text", placeholder: "Search diagnosis" },
+        { key: "notifiableStatus", label: "Notifiable Status", type: "select", resetValue: "", placeholder: "All Records", options: ["Notifiable", "Non-notifiable"] },
+      ];
+    case "followups":
+      return [
+        dateField,
+        barangay,
+        serviceType,
+        status(["Pending", "Due Today", "No Show", "Completed", "Cancelled"]),
+      ];
+    case "ncd":
+      return [
+        dateField,
+        barangay,
+        { key: "conditionType", label: "Condition Type", type: "select", resetValue: "", placeholder: "All Conditions", options: ["Hypertension", "Diabetes", "Other"] },
+        status(["Pending", "Active", "Completed"]),
+      ];
+    case "maternal":
+      return [
+        dateField,
+        barangay,
+        { key: "aogRange", label: "AOG Range", type: "select", resetValue: "", placeholder: "All AOG Ranges", options: ["0-13", "14-27", "28-42"] },
+        status(["Active", "Completed"]),
+      ];
+    default:
+      return [dateField, barangay, serviceType, status(["Active", "Completed"])];
+  }
+}
+
+function normalizeProgramRecord(record, patientMap) {
+  const patientId = String(
+    record.patientId || record.patient_id || record.patient?.id || "",
+  );
+  const patient =
+    record.patient && typeof record.patient === "object"
+      ? record.patient
+      : patientMap.get(patientId) || {};
+  return {
+    raw: record,
+    patientId,
+    patientName: formatPatientName(
+      record.patientName || patient,
+      "Unnamed Patient",
+    ),
+    age: Number(patient.age || record.age || 0) || "",
+    barangay: patient.barangay || record.barangay || "",
+    date: getRecordDateValue(record),
+    familyPlanningData:
+      record.familyPlanningData || record.family_planning_data || {},
+  };
+}
+
+function buildEpiTargetRow(patient, epiByPatient) {
+  const patientId = String(patient.id || patient.patientId || "");
+  const records = epiByPatient.get(patientId) || [];
+  const entries = records.flatMap(getEpiVaccineEntries);
+  const vaccines = {
+    BCG: getVaccineGroupValue(entries, ["BCG"]),
+    "HEPA B": getVaccineGroupValue(entries, ["HEPA B"]),
+    OPV: getVaccineGroupValue(entries, ["OPV 1", "OPV 2", "OPV 3"]),
+    PENTA: getVaccineGroupValue(entries, ["PENTA 1", "PENTA 2", "PENTA 3"]),
+    PCV: getVaccineGroupValue(entries, ["PCV 1", "PCV 2", "PCV 3"]),
+    IPV: getVaccineGroupValue(entries, ["IPV 1", "IPV 2"]),
+    MCV: getVaccineGroupValue(entries, ["MCV 1", "MCV 2"]),
+  };
+  const recordedNames = new Set(
+    entries.map((entry) => normalizeVaccineName(entry.vaccineName)),
+  );
+  const completed = EPI_VACCINE_ROWS.every((name) => recordedNames.has(name));
+  const birthDate =
+    patient.birthDate ||
+    patient.birthdate ||
+    patient.dateOfBirth ||
+    patient.date_of_birth ||
+    "";
+  const ageMonths = calculateAgeInMonths(birthDate);
+  const status = completed
+    ? "Completed"
+    : entries.length === 0 && ageMonths > 2
+      ? "Missed"
+      : "Due";
+
+  return {
+    registrationDate:
+      patient.dateRegistered ||
+      patient.date_registered ||
+      patient.createdAt ||
+      patient.created_at ||
+      "",
+    familySerialNumber:
+      patient.familySerialNumber || patient.family_serial_number || "",
+    name: formatPatientName(patient, "Unnamed Child"),
+    birthDate,
+    ageMonths,
+    sex: patient.sex || "",
+    motherName: patient.motherName || patient.mother_name || "",
+    address: [
+      patient.streetAddress || patient.street_address || patient.address,
+      patient.purokArea || patient.purok_area,
+      patient.barangay,
+      patient.municipality,
+    ]
+      .filter(Boolean)
+      .join(", "),
+    barangay: patient.barangay || "",
+    vaccines,
+    status,
+  };
+}
+
+function getVaccineGroupValue(entries, names) {
+  const matching = entries.filter((entry) =>
+    names.includes(normalizeVaccineName(entry.vaccineName)),
+  );
+  if (!matching.length) return "Not recorded";
+  return matching
+    .map((entry) => formatDate(entry.dateGiven, "Given"))
+    .join(", ");
+}
+
+function calculateAgeInMonths(value) {
+  if (!value) return -1;
+  const birth = new Date(value);
+  if (Number.isNaN(birth.getTime())) return -1;
+  const today = new Date();
+  let months =
+    (today.getFullYear() - birth.getFullYear()) * 12 +
+    today.getMonth() -
+    birth.getMonth();
+  if (today.getDate() < birth.getDate()) months -= 1;
+  return Math.max(months, 0);
+}
+
+function matchesDateRange(value, filters) {
+  return isDateInPreset(value, filters.dateRange, {
+    from: filters.dateFrom,
+    to: filters.dateTo,
+  });
+}
+
+function matchesValue(value, filter) {
+  if (!filter) return true;
+  return normalizeText(value) === normalizeText(filter);
+}
+
+function matchesAgeRange(age, range) {
+  if (!range) return true;
+  const value = Number(age);
+  if (range === "15-19") return value >= 15 && value <= 19;
+  if (range === "20-49") return value >= 20 && value <= 49;
+  return value >= 50;
+}
+
+function matchesCondition(record, condition) {
+  if (!condition) return true;
+  if (condition === "Other") {
+    return !recordContains(record, "hypertension") && !recordContains(record, "diabetes");
+  }
+  return recordContains(record, condition);
+}
+
+function matchesAog(value, range) {
+  if (!range) return true;
+  const weeks = Number(String(value || "").match(/\d+/)?.[0]);
+  if (Number.isNaN(weeks)) return false;
+  const [from, to] = range.split("-").map(Number);
+  return weeks >= from && weeks <= to;
+}
+
+function recordContains(record, term) {
+  return normalizeText(
+    [
+      record.category,
+      record.recordType,
+      record.diagnosis,
+      record.chiefComplaint,
+      record.consultationNotes,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  ).includes(normalizeText(term));
+}
+
+function inferCondition(record) {
+  if (recordContains(record, "hypertension")) return "Hypertension";
+  if (recordContains(record, "diabetes")) return "Diabetes";
+  return record.diagnosis || "Other";
+}
+
+function formatBloodPressure(record) {
+  const systolic = record.systolicBp || record.systolic_bp;
+  const diastolic = record.diastolicBp || record.diastolic_bp;
+  return systolic || diastolic
+    ? `${systolic || "N/A"}/${diastolic || "N/A"}`
+    : "Not recorded";
+}
+
+function getReferralDate(referral) {
+  return (
+    referral.dateOfReferral ||
+    referral.date_of_referral ||
+    referral.referralDate ||
+    referral.createdAt ||
+    referral.created_at ||
+    ""
+  );
+}
+
+function getEffectiveFollowUpState(task) {
+  if (task.state === "fulfilled") return "fulfilled";
+  if (task.state === "no_show") return "no_show";
+  if (["cancelled", "canceled"].includes(task.state)) return "cancelled";
+  const dueDate = normalizeDate(task.dueDate);
+  const today = normalizeDate(new Date());
+  if (!dueDate) return "upcoming";
+  if (dueDate === today) return "due_today";
+  if (dueDate < today) return "no_show";
+  if (task.state === "rescheduled") return "rescheduled";
+  return "upcoming";
+}
+
+function formatFollowUpState(state) {
+  const labels = {
+    upcoming: "Pending",
+    rescheduled: "Pending",
+    due_today: "Due Today",
+    no_show: "No Show",
+    fulfilled: "Completed",
+    cancelled: "Cancelled",
+  };
+  return labels[state] || "Pending";
+}
+
 function normalizeDate(value) {
   if (!value) return "";
-
+  if (value instanceof Date) {
+    const copy = new Date(value);
+    copy.setMinutes(copy.getMinutes() - copy.getTimezoneOffset());
+    return copy.toISOString().slice(0, 10);
+  }
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return "";
-
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
   return date.toISOString().slice(0, 10);
 }
 
-function normalizeStatus(status) {
-  const value = String(status || "").trim();
-  const normalized = value.toLowerCase();
-
-  if (normalized.includes("complete")) return "Completed";
-  if (normalized.includes("monitor")) return "For Monitoring";
-  if (normalized.includes("receive")) return "Received";
-  if (normalized.includes("no-show")) return "No-Show";
-  if (normalized.includes("pending")) return "Pending";
-
-  return value || "Pending";
-}
-
-function normalizeComplaintLabel(value) {
-  const label = value?.trim() || "Not specified";
-  const lowerLabel = label.toLowerCase();
-
-  if (lowerLabel.includes("fever") || lowerLabel.includes("cough")) {
-    return "Fever / Cough";
-  }
-
-  if (lowerLabel.includes("hypertension")) {
-    return "Hypertension Check";
-  }
-
-  if (lowerLabel.includes("pregnancy") || lowerLabel.includes("maternal")) {
-    return "Maternal Concern";
-  }
-
-  if (lowerLabel.includes("vaccine") || lowerLabel.includes("vaccination")) {
-    return "Vaccination Visit";
-  }
-
-  if (lowerLabel.includes("diabetes")) {
-    return "Diabetes Monitoring";
-  }
-
-  return label;
-}
-
-function buildChiefComplaintSummary(records) {
-  if (!records.length) return [];
-
-  const counts = records.reduce((acc, record) => {
-    const key = normalizeComplaintLabel(record.chiefComplaint);
-    acc[key] = (acc[key] || 0) + 1;
-    return acc;
-  }, {});
-
-  return Object.entries(counts)
-    .map(([label, value]) => ({
-      label,
-      value,
-    }))
-    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
-}
-
-function buildClassificationSummary(records) {
-  const counts = records.reduce((acc, record) => {
-    const key = record.classification || "Unclassified";
-    acc[key] = (acc[key] || 0) + 1;
-    return acc;
-  }, {});
-
-  return Object.entries(counts)
-    .map(([label, value]) => ({
-      label,
-      value,
-    }))
-    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
-}
-
-function buildChiefComplaintComboData(cases) {
-  return {
-    labels: cases.map((item) => item.label),
-    datasets: [
-      {
-        type: "bar",
-        label: "Cases",
-        data: cases.map((item) => item.value),
-        yAxisID: "y",
-        backgroundColor: (context) =>
-          getChartGradient(
-            context,
-            ["rgba(254, 226, 226, 0.96)", chartPalette.red],
-            "vertical",
-          ),
-        borderColor: "rgba(185, 28, 28, 0.22)",
-        borderWidth: 1,
-        borderRadius: 10,
-        borderSkipped: false,
-        maxBarThickness: 42,
-      },
-    ],
-  };
-}
-
-function getChiefComplaintComboOptions() {
-  return {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: { mode: "index", intersect: false },
-    animation: smoothAnimation,
-    plugins: {
-      legend: {
-        position: "bottom",
-        labels: {
-          usePointStyle: true,
-          boxWidth: 8,
-          color: chartPalette.slate,
-          font: { size: 11, weight: "700" },
-        },
-      },
-      tooltip: {
-        ...buildTooltipOptions(),
-        callbacks: {
-          label: (context) => {
-            const value = context.parsed?.y ?? 0;
-            return `Cases: ${formatNumber(value)} record(s)`;
-          },
-        },
-      },
-    },
-    scales: {
-      x: {
-        grid: { display: false },
-        ticks: {
-          color: chartPalette.slate,
-          font: { size: 11, weight: "700" },
-          maxRotation: 0,
-          minRotation: 0,
-          callback: function (value) {
-            const label = this.getLabelForValue(value);
-            return label.length > 14 ? `${label.slice(0, 13)}…` : label;
-          },
-        },
-      },
-      y: {
-        type: "linear",
-        position: "left",
-        beginAtZero: true,
-        ticks: {
-          precision: 0,
-          color: chartPalette.slate,
-          font: { size: 11, weight: "700" },
-        },
-        grid: { color: chartPalette.grid, drawBorder: false },
-        title: {
-          display: true,
-          text: "Case count",
-          color: chartPalette.muted,
-          font: { size: 10, weight: "700" },
-        },
-      },
-    },
-  };
-}
-
-function buildClassificationPolarData(items) {
-  return {
-    labels: items.map((item) => item.label),
-    datasets: [
-      {
-        label: "Cases",
-        data: items.map((item) => item.value),
-        backgroundColor: (context) => getPolarGradient(context),
-        borderColor: "#FFFFFF",
-        borderWidth: 3,
-        hoverBorderWidth: 4,
-      },
-    ],
-  };
-}
-
-const classificationPolarOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  animation: {
-    animateRotate: true,
-    animateScale: true,
-    duration: 850,
-    easing: "easeOutQuart",
-  },
-  scales: {
-    r: {
-      beginAtZero: true,
-      ticks: {
-        display: false,
-        precision: 0,
-      },
-      grid: {
-        color: "rgba(226, 232, 240, 0.8)",
-      },
-      angleLines: {
-        color: "rgba(226, 232, 240, 0.75)",
-      },
-      pointLabels: {
-        color: chartPalette.slate,
-        font: { size: 10, weight: "700" },
-      },
-    },
-  },
-  plugins: {
-    legend: {
-      position: "bottom",
-      labels: {
-        usePointStyle: true,
-        boxWidth: 8,
-        color: chartPalette.slate,
-        font: { size: 11, weight: "700" },
-      },
-    },
-    tooltip: buildTooltipOptions("case(s)"),
-  },
-};
-
-function getChartGradient(context, colors, direction = "vertical") {
-  const { chart } = context;
-  const { ctx, chartArea } = chart;
-
-  if (!chartArea) return colors[colors.length - 1];
-
-  const gradient =
-    direction === "horizontal"
-      ? ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0)
-      : ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
-
-  colors.forEach((color, index) => {
-    gradient.addColorStop(index / Math.max(colors.length - 1, 1), color);
-  });
-
-  return gradient;
-}
-
-function getPolarGradient(context) {
-  const { chart, dataIndex } = context;
-  const { ctx, chartArea } = chart;
-
-  const fallbackColors = [
-    chartPalette.red,
-    chartPalette.amber,
-    chartPalette.emerald,
-    chartPalette.slate,
-    chartPalette.blue,
-    chartPalette.redMid,
-  ];
-
-  if (!chartArea) return fallbackColors[dataIndex % fallbackColors.length];
-
-  const gradientSets = [
-    ["#FEE2E2", chartPalette.red],
-    ["#FFEDD5", chartPalette.amber],
-    ["#D1FAE5", chartPalette.emerald],
-    ["#E2E8F0", chartPalette.slate],
-    ["#DBEAFE", chartPalette.blue],
-    ["#FECACA", chartPalette.redMid],
-  ];
-
-  const [startColor, endColor] = gradientSets[dataIndex % gradientSets.length];
-
-  const gradient = ctx.createLinearGradient(
-    chartArea.left,
-    chartArea.top,
-    chartArea.right,
-    chartArea.bottom,
-  );
-
-  gradient.addColorStop(0, startColor);
-  gradient.addColorStop(1, endColor);
-
-  return gradient;
-}
-
-function buildTooltipOptions(suffix = "record(s)") {
-  return {
-    backgroundColor: "#0F172A",
-    titleColor: "#FFFFFF",
-    bodyColor: "#E2E8F0",
-    padding: 12,
-    cornerRadius: 8,
-    displayColors: false,
-    callbacks: {
-      label: (context) => {
-        const value =
-          context.parsed?.y ??
-          context.parsed?.x ??
-          context.parsed?.r ??
-          context.parsed ??
-          context.raw ??
-          0;
-
-        return `${context.dataset?.label || "Total"}: ${formatNumber(
-          value,
-        )} ${suffix}`;
-      },
-    },
-  };
-}
-
-function getReportModeKey(value) {
-  const normalized = String(value || "").toLowerCase();
-
-  if (normalized.includes("month")) return "monthly";
-
-  return "weekly";
-}
-
-function formatNumber(value) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return "0";
-  return parsed.toLocaleString();
+function normalizeText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
 }

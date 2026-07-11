@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\BarangayHealthCenter;
 use App\Models\HealthRecord;
+use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\Referral;
 use App\Models\RuralHealthUnit;
@@ -84,6 +85,118 @@ class AkayApiTest extends TestCase
 
         $this->actingAs($bhw, 'sanctum')
             ->getJson("/api/patients/{$patient->id}")
+            ->assertForbidden();
+    }
+
+    public function test_bhw_can_manage_assigned_bhc_medicine_inventory(): void
+    {
+        $bhc = BarangayHealthCenter::create(['name' => 'Medicine BHC']);
+        $bhw = User::create([
+            'name' => 'BHW',
+            'email' => 'medicine-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHW,
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+
+        $response = $this->actingAs($bhw, 'sanctum')
+            ->postJson('/api/medicines', [
+                'name' => 'Iron-Folic Acid Tablet',
+                'category' => 'Basic Medicines',
+                'quantity' => 100,
+                'unit' => 'tablets',
+                'low_stock_threshold' => 20,
+                'expiration_date' => '2026-12-31',
+                'description' => 'Prenatal supplement for pregnant patients',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.name', 'Iron-Folic Acid Tablet')
+            ->assertJsonPath('data.rural_health_unit_id', null)
+            ->assertJsonPath('data.barangay_health_center_id', $bhc->id)
+            ->assertJsonPath('data.availability_status', 'Available');
+
+        $medicineId = $response->json('data.id');
+
+        $this->actingAs($bhw, 'sanctum')
+            ->patchJson("/api/medicines/{$medicineId}", [
+                'quantity' => 15,
+                'low_stock_threshold' => 20,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.availability_status', 'Low Stock');
+
+        $this->assertDatabaseHas('medicines', [
+            'id' => $medicineId,
+            'barangay_health_center_id' => $bhc->id,
+            'rural_health_unit_id' => null,
+            'quantity' => 15,
+            'low_stock_threshold' => 20,
+        ]);
+    }
+
+    public function test_medicine_inventory_is_scoped_by_facility_role(): void
+    {
+        $ownBhc = BarangayHealthCenter::create(['name' => 'Own Medicine BHC']);
+        $otherBhc = BarangayHealthCenter::create(['name' => 'Other Medicine BHC']);
+        $rhu = RuralHealthUnit::create(['name' => 'Medicine RHU']);
+
+        $bhw = User::create([
+            'name' => 'BHW',
+            'email' => 'medicine-scope-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHW,
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $ownBhc->id,
+        ]);
+        $rhuStaff = User::create([
+            'name' => 'RHU Staff',
+            'email' => 'medicine-scope-rhu@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_RHU_STAFF,
+            'status' => User::STATUS_ACTIVE,
+            'rural_health_unit_id' => $rhu->id,
+        ]);
+
+        $ownMedicine = Medicine::create([
+            'name' => 'Own BHC Medicine',
+            'category' => 'Basic Medicines',
+            'quantity' => 10,
+            'unit' => 'pcs',
+            'barangay_health_center_id' => $ownBhc->id,
+        ]);
+        $otherMedicine = Medicine::create([
+            'name' => 'Other BHC Medicine',
+            'category' => 'Basic Medicines',
+            'quantity' => 10,
+            'unit' => 'pcs',
+            'barangay_health_center_id' => $otherBhc->id,
+        ]);
+        $rhuMedicine = Medicine::create([
+            'name' => 'RHU Medicine',
+            'category' => 'Basic Medicines',
+            'quantity' => 10,
+            'unit' => 'pcs',
+            'rural_health_unit_id' => $rhu->id,
+        ]);
+
+        $this->actingAs($bhw, 'sanctum')
+            ->getJson('/api/medicines')
+            ->assertOk()
+            ->assertJsonFragment(['name' => 'Own BHC Medicine'])
+            ->assertJsonFragment(['name' => 'RHU Medicine'])
+            ->assertJsonMissing(['name' => 'Other BHC Medicine']);
+
+        $this->actingAs($bhw, 'sanctum')
+            ->patchJson("/api/medicines/{$rhuMedicine->id}", ['quantity' => 5])
+            ->assertForbidden();
+
+        $this->actingAs($rhuStaff, 'sanctum')
+            ->patchJson("/api/medicines/{$ownMedicine->id}", ['quantity' => 5])
+            ->assertForbidden();
+
+        $this->actingAs($bhw, 'sanctum')
+            ->deleteJson("/api/medicines/{$otherMedicine->id}")
             ->assertForbidden();
     }
 

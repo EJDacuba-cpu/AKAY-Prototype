@@ -12,10 +12,12 @@ class Medicine extends Model
         'category',
         'description',
         'quantity',
+        'low_stock_threshold',
         'unit',
         'availability_status',
         'expiration_date',
         'rural_health_unit_id',
+        'barangay_health_center_id',
         'created_by',
         'updated_by',
     ];
@@ -27,5 +29,10 @@ class Medicine extends Model
     public function ruralHealthUnit(): BelongsTo
     {
         return $this->belongsTo(RuralHealthUnit::class);
+    }
+
+    public function barangayHealthCenter(): BelongsTo
+    {
+        return $this->belongsTo(BarangayHealthCenter::class);
     }
 }

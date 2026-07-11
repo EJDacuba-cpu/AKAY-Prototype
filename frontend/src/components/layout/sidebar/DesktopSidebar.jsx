@@ -1,6 +1,6 @@
-import { LogOut } from "lucide-react";
+import { ChevronDown, ChevronRight, LogOut } from "lucide-react";
 import { Link } from "react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import LogoMark from "./LogoMark";
 
 export default function DesktopSidebar({
@@ -12,6 +12,23 @@ export default function DesktopSidebar({
   onLogout,
 }) {
   const [hoverLabel, setHoverLabel] = useState(null);
+  const [expandedGroups, setExpandedGroups] = useState({});
+
+  useEffect(() => {
+    setExpandedGroups((current) => {
+      const next = { ...current };
+      let changed = false;
+      menuSections.forEach((section) => {
+        section.items.forEach((item) => {
+          if (item.children?.length && isMenuActive(item.path) && !next[item.path]) {
+            next[item.path] = true;
+            changed = true;
+          }
+        });
+      });
+      return changed ? next : current;
+    });
+  }, [isMenuActive, menuSections]);
 
   function showCollapsedLabel(event, label) {
     if (expanded) return;
@@ -75,6 +92,94 @@ export default function DesktopSidebar({
               {section.items.map((item) => {
                 const Icon = item.icon;
                 const active = isMenuActive(item.path);
+                const hasChildren = item.children?.length > 0;
+                const groupExpanded = active || expandedGroups[item.path];
+
+                if (hasChildren) {
+                  return (
+                    <div key={`${section.section}-${item.label}`} className="space-y-1">
+                      <button
+                        type="button"
+                        aria-label={item.label}
+                        aria-expanded={groupExpanded}
+                        onClick={() =>
+                          setExpandedGroups((current) => ({
+                            ...current,
+                            [item.path]: !groupExpanded,
+                          }))
+                        }
+                        onMouseEnter={(event) =>
+                          showCollapsedLabel(event, item.label)
+                        }
+                        onMouseLeave={hideCollapsedLabel}
+                        onFocus={(event) => showCollapsedLabel(event, item.label)}
+                        onBlur={hideCollapsedLabel}
+                        className={`group relative flex h-10 w-full items-center rounded-xl transition-all duration-200 ${
+                          expanded ? "px-3" : "justify-center px-0"
+                        } ${
+                          active
+                            ? "text-[#B91C1C]"
+                            : `text-[#64748B] hover:text-[#B91C1C] ${
+                                expanded ? "hover:bg-[#F8FAFC]" : ""
+                              }`
+                        }`}
+                      >
+                        {active && (
+                          <span className="absolute left-0 top-2.5 h-5 w-0.5 rounded-r-full bg-[#B91C1C]" />
+                        )}
+
+                        <Icon
+                          size={18}
+                          strokeWidth={active ? 2.25 : 1.9}
+                          className="shrink-0 transition-colors duration-200"
+                        />
+
+                        <span
+                          className={`ml-3 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-left text-[13px] font-semibold transition-all duration-300 ease-in-out ${
+                            expanded
+                              ? "max-w-[126px] opacity-100 delay-75"
+                              : "max-w-0 opacity-0"
+                          }`}
+                        >
+                          {item.label}
+                        </span>
+
+                        <span
+                          className={`shrink-0 transition-all duration-300 ${
+                            expanded ? "opacity-100 delay-75" : "w-0 opacity-0"
+                          }`}
+                        >
+                          {groupExpanded ? (
+                            <ChevronDown size={14} />
+                          ) : (
+                            <ChevronRight size={14} />
+                          )}
+                        </span>
+                      </button>
+
+                      {expanded && groupExpanded && (
+                        <div className="space-y-1 pl-7">
+                          {item.children.map((child) => {
+                            const childActive = isMenuActive(child.path);
+                            return (
+                              <Link
+                                key={child.path}
+                                to={child.path}
+                                className={`block rounded-lg px-3 py-2 text-[11px] font-semibold transition ${
+                                  childActive
+                                    ? "bg-red-50 text-[#B91C1C]"
+                                    : "text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
+                                }`}
+                              >
+                                {child.label}
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
 
                 return (
                   <Link

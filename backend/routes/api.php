@@ -38,6 +38,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
     Route::apiResource('patients', PatientController::class);
     Route::apiResource('health-records', HealthRecordController::class);
+    Route::post('health-records/{healthRecord}/dispensed-medicines', [HealthRecordController::class, 'dispenseMedicines']);
     Route::apiResource('referrals', ReferralController::class)->except(['update']);
     Route::patch('/referrals/{referral}/status', [ReferralController::class, 'updateStatus']);
     Route::get('/tracking/{value}', [TrackingController::class, 'show']);

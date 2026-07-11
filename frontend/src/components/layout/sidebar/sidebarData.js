@@ -12,6 +12,23 @@ import {
 
 export const LOGO_SRC = "/akay-logo-only.svg";
 
+export const reportNavItems = [
+  { label: "Referral Reports", slug: "referrals" },
+  { label: "Family Planning", slug: "family-planning" },
+  { label: "EPI Target Client List", slug: "epi-target-client-list" },
+  { label: "Morbidity / Notifiable Diseases", slug: "morbidity" },
+  { label: "Follow-ups / Monitoring", slug: "follow-ups" },
+  { label: "NCD Monitoring", slug: "ncd" },
+  { label: "Maternal / Prenatal", slug: "maternal" },
+];
+
+export function createReportChildren(basePath) {
+  return reportNavItems.map((item) => ({
+    ...item,
+    path: `${basePath}/${item.slug}`,
+  }));
+}
+
 export const menuByRole = {
   admin: [
     {
@@ -67,7 +84,12 @@ export const menuByRole = {
           path: "/bhc/medicine-availability",
           icon: Boxes,
         },
-        { label: "Reports", path: "/bhc/reports", icon: FileText },
+        {
+          label: "Reports",
+          path: "/bhc/reports",
+          icon: FileText,
+          children: createReportChildren("/bhc/reports"),
+        },
       ],
     },
   ],

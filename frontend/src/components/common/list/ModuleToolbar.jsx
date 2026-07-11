@@ -1,12 +1,17 @@
 import { Link } from "react-router";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import FilterPopover from "./FilterPopover";
+import ActiveFilterChips from "../filters/ActiveFilterChips";
+import FilterPopover from "../filters/FilterPopover";
 import { formatDisplayValue } from "../../../utils/formatters";
 
 function getInitialValues(fields) {
   return fields.reduce((acc, field) => {
     acc[field.key] = field.value ?? "";
+    if (field.type === "datePresets" || field.type === "datePreset") {
+      acc[field.dateFromKey || "dateFrom"] = field.dateFromValue ?? "";
+      acc[field.dateToKey || "dateTo"] = field.dateToValue ?? "";
+    }
     if (field.customDateKey) {
       acc[field.customDateKey] = field.customDateCurrentValue ?? "";
     }
@@ -30,6 +35,10 @@ function getResetValue(field) {
 function getResetValues(fields) {
   return fields.reduce((acc, field) => {
     acc[field.key] = getResetValue(field);
+    if (field.type === "datePresets" || field.type === "datePreset") {
+      acc[field.dateFromKey || "dateFrom"] = "";
+      acc[field.dateToKey || "dateTo"] = "";
+    }
     if (field.customDateKey) acc[field.customDateKey] = "";
     return acc;
   }, {});
@@ -43,10 +52,12 @@ export default function ModuleToolbar({
   filtersLabel = "Filters",
   filters = [],
   activeFilterCount = 0,
+  activeFilters = [],
   filtersOpen: controlledFiltersOpen,
   onFilterClick,
   onApplyFilters,
   onClearFilters,
+  onRemoveFilter,
   filterDescription = "Narrow the list.",
   primaryActionLabel,
   primaryActionTo,
@@ -126,10 +137,6 @@ export default function ModuleToolbar({
 
   function closeFilters() {
     setInternalFiltersOpen(false);
-  }
-
-  function updateDraft(key, value) {
-    setDraft((prev) => ({ ...prev, [key]: value }));
   }
 
   function resetDraft() {
@@ -264,17 +271,26 @@ export default function ModuleToolbar({
 
       {filtersOpen && filters.length > 0 && !onFilterClick && !disabled && (
         <FilterPopover
-          filters={filters}
-          draft={draft}
-          onUpdateDraft={updateDraft}
+          title="Filters"
+          subtitle={filterDescription}
+          filters={draft}
+          config={filters}
+          onChange={setDraft}
           onReset={resetDraft}
-          onClear={clearFilters}
           onApply={applyFilters}
           onClose={closeFilters}
-          description={filterDescription}
         />
       )}
 
+      {activeFilters.length > 0 && (
+        <div className="mt-3">
+          <ActiveFilterChips
+            filters={activeFilters}
+            onRemove={onRemoveFilter}
+            onClearAll={clearFilters}
+          />
+        </div>
+      )}
     </div>
   );
 }

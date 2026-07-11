@@ -65,4 +65,9 @@ class HealthRecord extends Model
     {
         return $this->hasMany(self::class, 'parent_health_record_id');
     }
+
+    public function dispensedMedicines(): HasMany
+    {
+        return $this->hasMany(HealthRecordMedicine::class);
+    }
 }

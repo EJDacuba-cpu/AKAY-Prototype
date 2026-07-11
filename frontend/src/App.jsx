@@ -246,6 +246,10 @@ export default function App() {
       />
       <Route
         path="/bhc/reports"
+        element={<Navigate to="/bhc/reports/referrals" replace />}
+      />
+      <Route
+        path="/bhc/reports/:reportSlug"
         element={
           <ProtectedPage allowedRole="bhc">
             <BHCReports />

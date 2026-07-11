@@ -5,7 +5,6 @@ import {
   AlertCircle,
   ArrowLeft,
   Check,
-  Clock,
   HeartPulse,
   Lock,
   Save,
@@ -23,9 +22,15 @@ import {
 } from "../../components/common/forms/DatePickerField";
 import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
 import InlineSpinner from "../../components/common/loading/InlineSpinner";
+import DispensedMedicinesSection from "../../components/features/medicine/DispensedMedicinesSection";
 import healthRecordService, {
   getHealthRecordById,
 } from "../../services/healthRecordService";
+import {
+  BHC_MEDICINES_UPDATED_EVENT,
+  getBhcMedicines,
+  refreshRhuMedicines,
+} from "../../services/medicineService";
 import { getPatientDetailsListByRole } from "../../services/patientService";
 import { createReferral } from "../../services/referrals";
 import { getCurrentUser } from "../../utils/auth";
@@ -177,7 +182,104 @@ const EMPTY_MATERNAL_DATA = {
   preterm: "",
   abortion: "",
   living: "",
+  bmi: "",
+  treatment: "",
+  previousFpMethodUsed: "",
+  previousFpMethodOther: "",
+  previousPregnancyHistory: [],
+  riskAssessment: {
+    ageRisk: false,
+    heightRisk: false,
+    grandMultipara: false,
+    previousCs: false,
+    recurrentMiscarriageOrStillbirth: false,
+    postpartumHemorrhage: false,
+    tuberculosis: false,
+    heartDisease: false,
+    diabetes: false,
+    bronchialAsthma: false,
+    goiter: false,
+    hypertensive: false,
+    alcoholUser: false,
+    smoker: false,
+  },
+  laboratoryResults: {
+    hemoglobin: "",
+    cbc: "",
+    hbsag: "",
+    bloodType: "",
+    hiv: "",
+    syphilis: "",
+    urinalysis: "",
+  },
+  tetanusToxoidStatus: {
+    tt1: "",
+    tt2: "",
+    tt3: "",
+    tt4: "",
+    tt5: "",
+  },
+  ultrasound: {
+    result: "",
+    dateDone: "",
+  },
 };
+
+const PREGNANCY_RISK_OPTIONS = [
+  {
+    key: "ageRisk",
+    label: "Age less than 18 or greater than 35",
+  },
+  {
+    key: "heightRisk",
+    label: "Height less than 145 cm",
+  },
+  {
+    key: "grandMultipara",
+    label: "Grand multipara / fourth baby or more",
+  },
+  {
+    key: "previousCs",
+    label: "Previous C/S",
+  },
+  {
+    key: "recurrentMiscarriageOrStillbirth",
+    label: "3 consecutive miscarriage or stillbirth",
+  },
+  {
+    key: "postpartumHemorrhage",
+    label: "Post-partum hemorrhage",
+  },
+];
+
+const MEDICAL_HISTORY_OPTIONS = [
+  { key: "tuberculosis", label: "Tuberculosis" },
+  { key: "heartDisease", label: "Heart Disease" },
+  { key: "diabetes", label: "Diabetes" },
+  { key: "bronchialAsthma", label: "Bronchial Asthma" },
+  { key: "goiter", label: "Goiter" },
+  { key: "hypertensive", label: "Hypertensive" },
+  { key: "alcoholUser", label: "Alcohol user" },
+  { key: "smoker", label: "Smoker" },
+];
+
+const LABORATORY_RESULT_FIELDS = [
+  { key: "hemoglobin", label: "Hemoglobin" },
+  { key: "cbc", label: "CBC" },
+  { key: "hbsag", label: "HBsAg" },
+  { key: "bloodType", label: "Blood Type" },
+  { key: "hiv", label: "HIV" },
+  { key: "syphilis", label: "Syphilis" },
+  { key: "urinalysis", label: "Urinalysis" },
+];
+
+const TETANUS_TOXOID_FIELDS = [
+  { key: "tt1", label: "TT1 Date" },
+  { key: "tt2", label: "TT2 Date" },
+  { key: "tt3", label: "TT3 Date" },
+  { key: "tt4", label: "TT4 Date" },
+  { key: "tt5", label: "TT5 Date" },
+];
 
 function toDateInputValue(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
@@ -192,51 +294,59 @@ function toTimeInputValue(date = new Date()) {
   ).padStart(2, "0")}`;
 }
 
-const MATERNAL_SUPPLEMENT_OPTIONS = [
-  {
-    type: "iron_folic_acid",
-    name: "Iron-Folic Acid",
-    note: "Record IFA actually given during this visit.",
-  },
-  {
-    type: "calcium_carbonate",
-    name: "Calcium Carbonate",
-    note: "Record if calcium was provided.",
-  },
-  {
-    type: "iodine_supplement",
-    name: "Iodine Supplement",
-    note: "Record if applicable for this patient.",
-  },
-  {
-    type: "vitamin_a",
-    name: "Vitamin A",
-    note: "Record postpartum vitamin A if given.",
-  },
-  {
-    type: "other",
-    name: "Other",
-    note: "Use for any other supplement provided.",
-  },
-];
-
-const MATERNAL_SUPPLEMENT_UNITS = [
-  "tablets",
-  "capsules",
-  "dose",
-  "bottle",
-  "sachet",
-  "other",
-];
-
-const EMPTY_SUPPLEMENT_ENTRY = {
-  supplement_type: "",
-  supplement_name: "",
-  quantity: "",
-  unit: "",
-  date_given: "",
-  remarks: "",
-};
+function mergeMaternalData(data = {}, fallback = {}) {
+  const source = data || {};
+  const legacyRiskAssessment = source.riskAssessment || source.medicalHistory || {};
+  const previousPregnancyHistory = Array.isArray(
+    source.previousPregnancyHistory,
+  )
+    ? source.previousPregnancyHistory
+    : Array.isArray(source.previous_pregnancy_history)
+      ? source.previous_pregnancy_history
+      : [];
+  return {
+    ...EMPTY_MATERNAL_DATA,
+    ...source,
+    lmp: source.lmp || fallback.lmp || "",
+    pmp: source.pmp || fallback.pmp || "",
+    cycleDuration: source.cycleDuration || fallback.cycleDuration || "",
+    gravida: source.gravida || fallback.gravida || "",
+    para: source.para || fallback.para || "",
+    term: source.term || fallback.term || "",
+    preterm: source.preterm || fallback.preterm || "",
+    abortion: source.abortion || fallback.abortion || "",
+    living: source.living || fallback.living || "",
+    bmi: source.bmi || fallback.bmi || "",
+    treatment: source.treatment || fallback.treatment || "",
+    previousFpMethodUsed:
+      source.previousFpMethodUsed ||
+      source.previous_fp_method_used ||
+      fallback.previousFpMethodUsed ||
+      "",
+    previousFpMethodOther:
+      source.previousFpMethodOther ||
+      source.previous_fp_method_other ||
+      fallback.previousFpMethodOther ||
+      "",
+    previousPregnancyHistory,
+    riskAssessment: {
+      ...EMPTY_MATERNAL_DATA.riskAssessment,
+      ...legacyRiskAssessment,
+    },
+    laboratoryResults: {
+      ...EMPTY_MATERNAL_DATA.laboratoryResults,
+      ...(source.laboratoryResults || {}),
+    },
+    tetanusToxoidStatus: {
+      ...EMPTY_MATERNAL_DATA.tetanusToxoidStatus,
+      ...(source.tetanusToxoidStatus || {}),
+    },
+    ultrasound: {
+      ...EMPTY_MATERNAL_DATA.ultrasound,
+      ...(source.ultrasound || {}),
+    },
+  };
+}
 
 const EMPTY_IMMUNIZATION_DATA = {
   bcg_vaccine: false,
@@ -271,13 +381,13 @@ const ADULT_IMMUNIZATION_MIN_AGE_YEARS = 18;
 const CHILD_VACCINE_OPTIONS = [
   "Newborn Screening",
   "BCG",
-  "Hepatitis B",
+  "HEPA B",
   "OPV 1",
   "OPV 2",
   "OPV 3",
-  "Pentavalent 1",
-  "Pentavalent 2",
-  "Pentavalent 3",
+  "PENTA 1",
+  "PENTA 2",
+  "PENTA 3",
   "PCV 1",
   "PCV 2",
   "PCV 3",
@@ -285,9 +395,6 @@ const CHILD_VACCINE_OPTIONS = [
   "IPV 2",
   "MCV 1",
   "MCV 2",
-  "MMR",
-  "Vitamin A",
-  "Other",
 ];
 const BREASTFEEDING_MONTHS = [
   { key: "month1", label: "1 Month" },
@@ -437,32 +544,6 @@ function getVaccineEntries(data) {
   return entries.filter((entry) => String(entry?.vaccineName || "").trim());
 }
 
-function normalizeSupplementEntries(data = {}) {
-  const supplements = Array.isArray(data?.supplements_given)
-    ? data.supplements_given
-    : Array.isArray(data?.supplementsGiven)
-      ? data.supplementsGiven
-      : [];
-
-  return supplements
-    .filter(Boolean)
-    .map((entry) => ({
-      ...EMPTY_SUPPLEMENT_ENTRY,
-      supplement_type: entry.supplement_type || entry.supplementType || "",
-      supplement_name: entry.supplement_name || entry.supplementName || "",
-      quantity: entry.quantity || "",
-      unit: entry.unit || "",
-      date_given: entry.date_given || entry.dateGiven || "",
-      remarks: entry.remarks || entry.notes || "",
-      given_by_id: entry.given_by_id || entry.givenById || "",
-      given_by_name: entry.given_by_name || entry.givenByName || "",
-    }));
-}
-
-function getSupplementOption(type) {
-  return MATERNAL_SUPPLEMENT_OPTIONS.find((option) => option.type === type);
-}
-
 /* ═══════════════════════════════════════════════════════════════
    IMMUNIZATION — CONSTANTS & HELPERS
    ═══════════════════════════════════════════════════════════════ */
@@ -569,7 +650,8 @@ export default function AddHealthRecord() {
   });
 
   const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
-  const [supplementsGiven, setSupplementsGiven] = useState([]);
+  const [bhcMedicineInventory, setBhcMedicineInventory] = useState([]);
+  const [dispensedMedicines, setDispensedMedicines] = useState([]);
   const [familyPlanningData, setFamilyPlanningData] = useState(
     EMPTY_FAMILY_PLANNING_DATA,
   );
@@ -617,6 +699,30 @@ export default function AddHealthRecord() {
   }, [preselectedPatientId]);
 
   useEffect(() => {
+    let active = true;
+
+    async function loadMedicines() {
+      const medicines = await refreshRhuMedicines();
+      if (active) {
+        setBhcMedicineInventory(medicines.filter((item) => !item.ruralHealthUnitId));
+      }
+    }
+
+    function syncFromCache() {
+      setBhcMedicineInventory(getBhcMedicines());
+    }
+
+    syncFromCache();
+    loadMedicines();
+    window.addEventListener(BHC_MEDICINES_UPDATED_EVENT, syncFromCache);
+
+    return () => {
+      active = false;
+      window.removeEventListener(BHC_MEDICINES_UPDATED_EVENT, syncFromCache);
+    };
+  }, []);
+
+  useEffect(() => {
     if (currentUserName && !attendingStaff) {
       setAttendingStaff(currentUserName);
     }
@@ -655,19 +761,13 @@ export default function AddHealthRecord() {
       setMonitoringNotes(found.monitoringNotes || "");
       setPatientCondition(found.patientCondition || "Improving");
       const existingMaternalData = found.maternalData || found.maternal_data || {};
-      setMaternalData({
-        lmp: existingMaternalData.lmp || found.lmp || "",
-        pmp: existingMaternalData.pmp || found.pmp || "",
-        cycleDuration:
-          existingMaternalData.cycleDuration || found.cycleDuration || "",
-        gravida: existingMaternalData.gravida || found.gravida || "",
-        para: existingMaternalData.para || found.para || "",
-        term: existingMaternalData.term || found.term || "",
-        preterm: existingMaternalData.preterm || found.preterm || "",
-        abortion: existingMaternalData.abortion || found.abortion || "",
-        living: existingMaternalData.living || found.living || "",
-      });
-      setSupplementsGiven(normalizeSupplementEntries(existingMaternalData));
+      setMaternalData(
+        mergeMaternalData(existingMaternalData, {
+          ...found,
+          treatment: found.medication || found.initialActionsTaken || "",
+          notes: found.consultationNotes || "",
+        }),
+      );
       setExpectedDeliveryDate(
         existingMaternalData.expectedDeliveryDate ||
           found.expectedDeliveryDate ||
@@ -873,7 +973,7 @@ export default function AddHealthRecord() {
   function resetClassificationSpecificState() {
     setHealthRecordType("");
     setMaternalData(EMPTY_MATERNAL_DATA);
-    setSupplementsGiven([]);
+    setDispensedMedicines([]);
     setExpectedDeliveryDate("");
     setAog("");
     setImmunizationData(EMPTY_IMMUNIZATION_DATA);
@@ -959,6 +1059,12 @@ export default function AddHealthRecord() {
   const concatenatedVitalSigns = `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | Pulse: ${
     pulse || "N/A"
   } bpm | Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
+  const maternalTpalScore = [
+    maternalData.term || 0,
+    maternalData.preterm || 0,
+    maternalData.abortion || 0,
+    maternalData.living || 0,
+  ].join("-");
 
   function handleClassificationSelect(nextType) {
     clearValidationError("healthRecordType");
@@ -983,7 +1089,7 @@ export default function AddHealthRecord() {
 
     if (normalizedNextType !== normalizedHealthRecordType) {
       setMaternalData(EMPTY_MATERNAL_DATA);
-      setSupplementsGiven([]);
+      setDispensedMedicines([]);
       setExpectedDeliveryDate("");
       setAog("");
       setImmunizationData(EMPTY_IMMUNIZATION_DATA);
@@ -1122,28 +1228,7 @@ export default function AddHealthRecord() {
       return errors;
     }
 
-    if (isFollowUp && isMaternal) {
-      supplementsGiven.forEach((entry) => {
-        const prefix = `supplements.${entry.supplement_type}`;
-        if (
-          entry.supplement_type === "other" &&
-          !String(entry.supplement_name || "").trim()
-        ) {
-          errors[`${prefix}.supplement_name`] =
-            "Supplement name is required.";
-        }
-        if (!String(entry.quantity || "").trim()) {
-          errors[`${prefix}.quantity`] = "Quantity is required.";
-        }
-        if (!String(entry.unit || "").trim()) {
-          errors[`${prefix}.unit`] = "Unit is required.";
-        }
-        if (!String(entry.date_given || dateOfVisit || "").trim()) {
-          errors[`${prefix}.date_given`] = "Date given is required.";
-        }
-      });
-      return errors;
-    }
+    if (isMaternal) return errors;
 
     if (!chiefComplaint.trim()) {
       errors.chiefComplaint = "Chief complaint is required.";
@@ -1151,28 +1236,6 @@ export default function AddHealthRecord() {
     if (!summaryOfPresentIllness.trim()) {
       errors.summaryOfPresentIllness =
         "Summary of present illness is required.";
-    }
-
-    if (isMaternal) {
-      supplementsGiven.forEach((entry) => {
-        const prefix = `supplements.${entry.supplement_type}`;
-        if (
-          entry.supplement_type === "other" &&
-          !String(entry.supplement_name || "").trim()
-        ) {
-          errors[`${prefix}.supplement_name`] =
-            "Supplement name is required.";
-        }
-        if (!String(entry.quantity || "").trim()) {
-          errors[`${prefix}.quantity`] = "Quantity is required.";
-        }
-        if (!String(entry.unit || "").trim()) {
-          errors[`${prefix}.unit`] = "Unit is required.";
-        }
-        if (!String(entry.date_given || dateOfVisit || "").trim()) {
-          errors[`${prefix}.date_given`] = "Date given is required.";
-        }
-      });
     }
 
     return errors;
@@ -1284,6 +1347,21 @@ export default function AddHealthRecord() {
     setAog(`${weekStr}${dayStr}`);
   }, [maternalData.lmp, dateOfVisit]);
 
+  useEffect(() => {
+    if (!isMaternal || !weight || !height) return;
+
+    const parsedWeight = Number(weight);
+    const parsedHeight = Number(height);
+    if (!Number.isFinite(parsedWeight) || !Number.isFinite(parsedHeight)) return;
+    if (parsedWeight <= 0 || parsedHeight <= 0) return;
+
+    const heightInMeters = parsedHeight / 100;
+    const nextBmi = (parsedWeight / (heightInMeters * heightInMeters)).toFixed(1);
+    setMaternalData((prev) =>
+      prev.bmi === nextBmi ? prev : { ...prev, bmi: nextBmi },
+    );
+  }, [height, isMaternal, weight]);
+
   function handleBreastfeedingChange(monthKey, value) {
     setImmunizationData((prev) => ({
       ...prev,
@@ -1341,6 +1419,51 @@ export default function AddHealthRecord() {
     setMaternalData((prev) => ({ ...prev, [field]: value }));
   }
 
+  function handleNestedMaternalChange(group, field, value) {
+    clearValidationError(`${group}.${field}`);
+    setMaternalData((prev) => ({
+      ...prev,
+      [group]: {
+        ...(prev[group] || EMPTY_MATERNAL_DATA[group] || {}),
+        [field]: value,
+      },
+    }));
+  }
+
+  function addPregnancyHistoryRow() {
+    setMaternalData((prev) => ({
+      ...prev,
+      previousPregnancyHistory: [
+        ...(prev.previousPregnancyHistory || []),
+        {
+          pregnancyNo: `G${(prev.previousPregnancyHistory || []).length + 1}`,
+          placeOfDelivery: "",
+          year: "",
+          notes: "",
+        },
+      ],
+    }));
+  }
+
+  function updatePregnancyHistoryRow(index, field, value) {
+    setMaternalData((prev) => ({
+      ...prev,
+      previousPregnancyHistory: (prev.previousPregnancyHistory || []).map(
+        (entry, entryIndex) =>
+          entryIndex === index ? { ...entry, [field]: value } : entry,
+      ),
+    }));
+  }
+
+  function removePregnancyHistoryRow(index) {
+    setMaternalData((prev) => ({
+      ...prev,
+      previousPregnancyHistory: (prev.previousPregnancyHistory || []).filter(
+        (_, entryIndex) => entryIndex !== index,
+      ),
+    }));
+  }
+
   function handleFamilyPlanningChange(field, value) {
     setFamilyPlanningData((prev) => ({
       ...prev,
@@ -1352,76 +1475,6 @@ export default function AddHealthRecord() {
         ? { concern: "", findings: "", adviceGiven: "" }
         : {}),
     }));
-  }
-
-  function handleSupplementToggle(type, checked) {
-    clearValidationError("supplementsGiven");
-    const option = getSupplementOption(type);
-    setSupplementsGiven((prev) => {
-      if (!checked) {
-        return prev.filter((entry) => entry.supplement_type !== type);
-      }
-
-      if (prev.some((entry) => entry.supplement_type === type)) return prev;
-
-      return [
-        ...prev,
-        {
-          ...EMPTY_SUPPLEMENT_ENTRY,
-          supplement_type: type,
-          supplement_name: type === "other" ? "" : option?.name || "",
-          date_given: dateOfVisit,
-        },
-      ];
-    });
-  }
-
-  function handleSupplementChange(type, field, value) {
-    clearValidationError(`supplements.${type}.${field}`);
-    clearValidationError("supplementsGiven");
-    setSupplementsGiven((prev) =>
-      prev.map((entry) =>
-        entry.supplement_type === type ? { ...entry, [field]: value } : entry,
-      ),
-    );
-  }
-
-  function getPreparedSupplements() {
-    return supplementsGiven.map((entry) => {
-      const option = getSupplementOption(entry.supplement_type);
-      return {
-        supplement_type: entry.supplement_type,
-        supplement_name:
-          entry.supplement_type === "other"
-            ? String(entry.supplement_name || "").trim()
-            : option?.name || entry.supplement_name,
-        quantity: entry.quantity,
-        unit: entry.unit,
-        date_given: entry.date_given || dateOfVisit,
-        remarks: entry.remarks || "",
-      };
-    });
-  }
-
-  function validatePreparedSupplements(entries) {
-    const invalidEntry = entries.find((entry) => {
-      const quantity = Number(entry.quantity);
-      return (
-        !entry.supplement_type ||
-        !Number.isFinite(quantity) ||
-        quantity <= 0 ||
-        !entry.unit ||
-        !entry.date_given ||
-        (entry.supplement_type === "other" && !entry.supplement_name)
-      );
-    });
-
-    if (!invalidEntry) return null;
-
-    return invalidEntry.supplement_type === "other" &&
-      !invalidEntry.supplement_name
-      ? "Enter the supplement name for Other."
-      : "Complete quantity, unit, and date given for each selected supplement.";
   }
 
   async function saveHealthRecord(formData) {
@@ -1476,6 +1529,7 @@ export default function AddHealthRecord() {
         queryKey: queryKeys.healthRecordDetails(userRole, savedId),
       });
     }
+    await refreshRhuMedicines();
 
     return { savedRecord, savedId };
   }
@@ -1636,27 +1690,46 @@ export default function AddHealthRecord() {
             ? familyPlanningData.fpVisitType === "Side-effect Concern"
               ? familyPlanningData.concern || "Family Planning Concern"
               : "Family Planning Visit"
+          : effectiveHealthRecordType === "Maternal" && !chiefComplaint
+            ? "Prenatal Visit"
           : chiefComplaint;
-
-    const preparedSupplements =
-      effectiveHealthRecordType === "Maternal"
-        ? getPreparedSupplements()
-        : [];
-    const supplementValidationMessage =
-      validatePreparedSupplements(preparedSupplements);
-
-    if (supplementValidationMessage) {
-      setValidationErrorsAndFocus({
-        supplementsGiven: supplementValidationMessage,
-      });
-      return;
-    }
 
     const recordMaternalData = {
       ...maternalData,
       expectedDeliveryDate,
       aog,
-      supplements_given: preparedSupplements,
+      bmi: maternalData.bmi || "",
+      treatment: maternalData.treatment || medication || "",
+      previousFpMethodUsed: maternalData.previousFpMethodUsed || "",
+      previous_fp_method_used: maternalData.previousFpMethodUsed || "",
+      previousFpMethodOther: maternalData.previousFpMethodOther || "",
+      previous_fp_method_other: maternalData.previousFpMethodOther || "",
+      previousPregnancyHistory: Array.isArray(
+        maternalData.previousPregnancyHistory,
+      )
+        ? maternalData.previousPregnancyHistory
+        : [],
+      previous_pregnancy_history: Array.isArray(
+        maternalData.previousPregnancyHistory,
+      )
+        ? maternalData.previousPregnancyHistory
+        : [],
+      riskAssessment: {
+        ...EMPTY_MATERNAL_DATA.riskAssessment,
+        ...(maternalData.riskAssessment || {}),
+      },
+      laboratoryResults: {
+        ...EMPTY_MATERNAL_DATA.laboratoryResults,
+        ...(maternalData.laboratoryResults || {}),
+      },
+      tetanusToxoidStatus: {
+        ...EMPTY_MATERNAL_DATA.tetanusToxoidStatus,
+        ...(maternalData.tetanusToxoidStatus || {}),
+      },
+      ultrasound: {
+        ...EMPTY_MATERNAL_DATA.ultrasound,
+        ...(maternalData.ultrasound || {}),
+      },
       tpal: [
         maternalData.term || 0,
         maternalData.preterm || 0,
@@ -1720,7 +1793,10 @@ export default function AddHealthRecord() {
       pulseRate: pulse || null,
       weight: weight || null,
       height: height || null,
-      medication,
+      medication:
+        effectiveHealthRecordType === "Maternal"
+          ? recordMaternalData.treatment || medication
+          : medication,
       attendingStaff,
       consultationNotes,
       followUpStatus: finalPatientStatus,
@@ -1753,6 +1829,7 @@ export default function AddHealthRecord() {
           : null,
       createdByRole: userRole,
       linkedTrackingId: isFollowUp ? followUpRecord?.linkedTrackingId || "" : "",
+      dispensedMedicines: isEditingRecord ? [] : dispensedMedicines,
     };
 
     if (isReferralContinuation) {
@@ -1844,6 +1921,7 @@ export default function AddHealthRecord() {
       setNoticeModal({
         title: "Save Failed",
         message:
+          error?.message ||
           "Unable to save the health record. Please review the form and try again.",
       });
     } finally {
@@ -1875,10 +1953,14 @@ export default function AddHealthRecord() {
       pendingReferralDraft.savedRecord?._id ||
       "";
     let savedRecord = pendingReferralDraft.savedRecord || null;
+    const referralDraftMedicines = pendingReferralDraft.formData.dispensedMedicines || [];
 
     try {
       if (!savedRecordId) {
-        const result = await saveHealthRecord(pendingReferralDraft.formData);
+        const result = await saveHealthRecord({
+          ...pendingReferralDraft.formData,
+          dispensedMedicines: [],
+        });
         savedRecord = result.savedRecord;
         savedRecordId =
           result.savedId ||
@@ -1972,6 +2054,14 @@ export default function AddHealthRecord() {
         }
       }
 
+      if (referralDraftMedicines.length > 0) {
+        savedRecord = await healthRecordService.dispenseHealthRecordMedicines(
+          savedRecordId,
+          referralDraftMedicines,
+        );
+        await refreshRhuMedicines();
+      }
+
       queryClient.invalidateQueries({ queryKey: queryKeys.referrals("bhc") });
       queryClient.invalidateQueries({
         queryKey: queryKeys.incomingReferrals("rhu"),
@@ -2013,9 +2103,11 @@ export default function AddHealthRecord() {
       console.error("Failed to submit health record referral:", error);
       setNoticeModal({
         title: savedRecordId ? "Referral Submission Failed" : "Save Failed",
-        message: savedRecordId
-          ? "The health record was saved, but the referral could not be submitted. Please try again."
-          : "Unable to save the health record before submitting the referral. Please review the form and try again.",
+        message:
+          error?.message ||
+          (savedRecordId
+            ? "The health record was saved, but the referral could not be submitted. Please try again."
+            : "Unable to save the health record before submitting the referral. Please review the form and try again."),
       });
     } finally {
       setSaving(false);
@@ -2196,7 +2288,6 @@ export default function AddHealthRecord() {
         <FormSection
           title="Visit Overview"
           subtitle="Confirm the visit schedule and attending practitioner."
-          icon={<Clock size={14} />}
           delay={2}
         >
           <LockedFormContent locked={patientGateLocked}>
@@ -2241,7 +2332,6 @@ export default function AddHealthRecord() {
             <FormSection
               title="Follow-up Assessment"
               subtitle="Record the patient's condition and findings during this return visit."
-              icon={<Stethoscope size={14} />}
               delay={3}
             >
               <div className="grid gap-4 lg:grid-cols-2">
@@ -2285,7 +2375,6 @@ export default function AddHealthRecord() {
             <FormSection
               title="Vital Signs"
               subtitle="Record updated physiological measurements for this follow-up visit."
-              icon={<HeartPulse size={14} />}
               delay={4}
             >
               <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(4,minmax(0,1fr))]">
@@ -2327,7 +2416,6 @@ export default function AddHealthRecord() {
             <FormSection
               title="Treatment & Actions"
               subtitle="Document what was done during the follow-up visit."
-              icon={<Stethoscope size={14} />}
               delay={5}
             >
               <div className="grid gap-4 lg:grid-cols-2">
@@ -2349,7 +2437,6 @@ export default function AddHealthRecord() {
             <FormSection
               title="Outcome"
               subtitle="Set the new record status after this follow-up visit."
-              icon={<HeartPulse size={14} />}
               delay={6}
             >
               <div className="grid gap-4 lg:grid-cols-2">
@@ -2391,7 +2478,6 @@ export default function AddHealthRecord() {
           <FormSection
             title="EPI Vaccines Given"
             subtitle="Select the EPI vaccines given during this visit."
-            icon={<Syringe size={14} />}
             delay={2}
           >
 
@@ -2418,10 +2504,24 @@ export default function AddHealthRecord() {
 
         {!patientGateLocked && !usesCareDecisionStep && isImmunization && (
           <FormSection
+            title="Medicines / Supplies Dispensed"
+            subtitle="Optional medicines or supplies given from BHC inventory."
+            delay={3}
+          >
+            <DispensedMedicinesSection
+              inventory={bhcMedicineInventory}
+              value={dispensedMedicines}
+              onChange={setDispensedMedicines}
+              disabled={isEditingRecord}
+            />
+          </FormSection>
+        )}
+
+        {!patientGateLocked && !usesCareDecisionStep && isImmunization && (
+          <FormSection
             title="Follow-up & Referral"
             subtitle="Schedule a return visit if needed and indicate if RHU referral is required."
-            icon={<HeartPulse size={14} />}
-            delay={3}
+            delay={4}
           >
             <div className="grid gap-4 lg:grid-cols-2">
               <FieldInput
@@ -2446,128 +2546,395 @@ export default function AddHealthRecord() {
         )}
 
         {!patientGateLocked && isMaternal && !selectedPatientIsMale && (
-          <FormSection
-            title="Classification-Specific Assessment"
-            subtitle="Monitor pregnancy progression and maternal clinical vitals."
-            icon={<HeartPulse size={14} />}
-            delay={2}
-            accent="pink"
-          >
-            <ClassificationSectionIntro
-              title="Maternal & Prenatal Assessment"
-              description="Pregnancy dating and obstetric profile are shown only for maternal records."
-              accent="pink"
-            />
+          <>
             {showMaternalPatientWarning && <MaternalClassificationWarning />}
-            <div className="grid gap-5 lg:grid-cols-2">
-              <ClinicalFieldGroup title="Pregnancy Dating" accent="pink">
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                <FieldInput
-                  label="LMP"
-                  type="date"
-                  value={maternalData.lmp}
-                  onChange={(event) =>
-                    handleMaternalChange("lmp", event.target.value)
-                  }
-                />
-                <FieldInput
-                  label="PMP"
-                  type="date"
-                  value={maternalData.pmp}
-                  onChange={(event) =>
-                    handleMaternalChange("pmp", event.target.value)
-                  }
-                />
-                <FieldInput
-                  label="Cycle Duration"
-                  type="number"
-                  value={maternalData.cycleDuration}
-                  onChange={(event) =>
-                    handleMaternalChange("cycleDuration", event.target.value)
-                  }
-                />
-                <FieldInput
-                  label="Calculated AOG"
-                  value={aog || "Calculating..."}
-                  readOnly
-                />
-                <FieldInput
-                  label="Expected Delivery Date"
-                  value={expectedDeliveryDate || "Calculating..."}
-                  readOnly
-                />
-                </div>
-              </ClinicalFieldGroup>
-              <ClinicalFieldGroup title="Obstetric History" accent="pink">
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                <FieldInput
-                  label="Gravida"
-                  type="number"
-                  value={maternalData.gravida}
-                  onChange={(event) =>
-                    handleMaternalChange("gravida", event.target.value)
-                  }
-                />
-                <FieldInput
-                  label="Para"
-                  type="number"
-                  value={maternalData.para}
-                  onChange={(event) =>
-                    handleMaternalChange("para", event.target.value)
-                  }
-                />
-                <FieldInput
-                  label="Term"
-                  type="number"
-                  value={maternalData.term}
-                  onChange={(event) =>
-                    handleMaternalChange("term", event.target.value)
-                  }
-                />
-                <FieldInput
-                  label="Preterm"
-                  type="number"
-                  value={maternalData.preterm}
-                  onChange={(event) =>
-                    handleMaternalChange("preterm", event.target.value)
-                  }
-                />
-                <FieldInput
-                  label="Abortion"
-                  type="number"
-                  value={maternalData.abortion}
-                  onChange={(event) =>
-                    handleMaternalChange("abortion", event.target.value)
-                  }
-                />
-                <FieldInput
-                  label="Living"
-                  type="number"
-                  value={maternalData.living}
-                  onChange={(event) =>
-                    handleMaternalChange("living", event.target.value)
-                  }
-                />
-                </div>
-              </ClinicalFieldGroup>
+
+            <FormSection
+              title="Pregnancy Details"
+              subtitle="Record pregnancy dating, OB score, and key measurements from the prenatal record."
+              delay={3}
+              accent="pink"
+            >
+              <div className="space-y-5">
+                <ClinicalFieldGroup title="Pregnancy Dating" accent="pink">
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                    <FieldInput
+                      label="LMP"
+                      type="date"
+                      value={maternalData.lmp}
+                      onChange={(event) =>
+                        handleMaternalChange("lmp", event.target.value)
+                      }
+                    />
+                    <FieldInput
+                      label="PMP"
+                      type="date"
+                      value={maternalData.pmp}
+                      onChange={(event) =>
+                        handleMaternalChange("pmp", event.target.value)
+                      }
+                    />
+                    <FieldInput
+                      label="Cycle Duration"
+                      type="number"
+                      placeholder="e.g. 28"
+                      value={maternalData.cycleDuration}
+                      onChange={(event) =>
+                        handleMaternalChange("cycleDuration", event.target.value)
+                      }
+                    />
+                    <FieldInput
+                      label="EDC / Expected Delivery Date"
+                      value={expectedDeliveryDate || "Calculating..."}
+                      readOnly
+                    />
+                    <FieldInput
+                      label="AOG"
+                      value={aog || "Calculating..."}
+                      readOnly
+                    />
+                  </div>
+                </ClinicalFieldGroup>
+
+                <ClinicalFieldGroup title="OB Score / TPAL" accent="pink">
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-7">
+                    <FieldInput
+                      label="Gravida"
+                      type="number"
+                      value={maternalData.gravida}
+                      onChange={(event) =>
+                        handleMaternalChange("gravida", event.target.value)
+                      }
+                    />
+                    <FieldInput
+                      label="Para"
+                      type="number"
+                      value={maternalData.para}
+                      onChange={(event) =>
+                        handleMaternalChange("para", event.target.value)
+                      }
+                    />
+                    <FieldInput
+                      label="Term"
+                      type="number"
+                      value={maternalData.term}
+                      onChange={(event) =>
+                        handleMaternalChange("term", event.target.value)
+                      }
+                    />
+                    <FieldInput
+                      label="Preterm"
+                      type="number"
+                      value={maternalData.preterm}
+                      onChange={(event) =>
+                        handleMaternalChange("preterm", event.target.value)
+                      }
+                    />
+                    <FieldInput
+                      label="Abortion"
+                      type="number"
+                      value={maternalData.abortion}
+                      onChange={(event) =>
+                        handleMaternalChange("abortion", event.target.value)
+                      }
+                    />
+                    <FieldInput
+                      label="Living"
+                      type="number"
+                      value={maternalData.living}
+                      onChange={(event) =>
+                        handleMaternalChange("living", event.target.value)
+                      }
+                    />
+                    <FieldInput
+                      label="TPAL Score"
+                      value={maternalTpalScore}
+                      readOnly
+                    />
+                  </div>
+                </ClinicalFieldGroup>
+
+                <ClinicalFieldGroup title="Measurements" accent="pink">
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <BpInputGroup
+                      systolic={systolicBp}
+                      diastolic={diastolicBp}
+                      onSystolicChange={setSystolicBp}
+                      onDiastolicChange={setDiastolicBp}
+                    />
+                    <FieldInput
+                      label="Weight"
+                      type="number"
+                      placeholder="e.g. 60"
+                      value={weight}
+                      onChange={(event) => setWeight(event.target.value)}
+                    />
+                    <FieldInput
+                      label="Height / HGT"
+                      type="number"
+                      placeholder="e.g. 158 cm"
+                      value={height}
+                      onChange={(event) => setHeight(event.target.value)}
+                    />
+                    <FieldInput
+                      label="BMI"
+                      value={maternalData.bmi}
+                      onChange={(event) =>
+                        handleMaternalChange("bmi", event.target.value)
+                      }
+                      readOnly={Boolean(weight && height)}
+                    />
+                  </div>
+                </ClinicalFieldGroup>
               </div>
-            <div className="mt-5">
-              <MaternalSupplementsGivenFields
-                entries={supplementsGiven}
-                dateOfVisit={dateOfVisit}
-                errors={validationErrors}
-                onToggle={handleSupplementToggle}
-                onChange={handleSupplementChange}
+            </FormSection>
+
+            <FormSection
+              title="Previous Pregnancy / Delivery History"
+              subtitle="Record previous pregnancy and delivery history from the prenatal record."
+              delay={4}
+              accent="pink"
+            >
+              <PregnancyHistoryTable
+                entries={maternalData.previousPregnancyHistory || []}
+                onAdd={addPregnancyHistoryRow}
+                onChange={updatePregnancyHistoryRow}
+                onRemove={removePregnancyHistoryRow}
               />
-            </div>
-          </FormSection>
+            </FormSection>
+
+<FormSection
+  title="Chief Complaint & Treatment"
+  subtitle="Record the current complaint, treatment, and any medicine or supply actually given."
+  delay={5}
+  accent="pink"
+>
+  <div className="grid gap-4 lg:grid-cols-3">
+    <FieldInput
+      label="Chief Complaint"
+      placeholder="e.g. Routine prenatal check-up"
+      name="chiefComplaint"
+      error={validationErrors.chiefComplaint}
+      value={chiefComplaint}
+      onChange={(event) => {
+        clearValidationError("chiefComplaint");
+        setChiefComplaint(event.target.value);
+      }}
+      wrapperClassName="lg:col-span-3"
+    />
+
+    <FieldTextarea
+      label="Treatment / Advice Given"
+      value={maternalData.treatment}
+      onChange={(event) => {
+        handleMaternalChange("treatment", event.target.value);
+        setMedication(event.target.value);
+      }}
+      rows={3}
+      wrapperClassName="lg:col-span-3"
+    />
+  </div>
+
+  <div className="mt-6 border-t border-[#E8ECF0] pt-5">
+    <h3 className="text-sm font-bold text-pink-800">
+      Medicines / Supplies Dispensed
+    </h3>
+    <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
+      Optional: record medicines or supplies actually released from BHC inventory during this visit.
+    </p>
+
+    <div className="mt-4">
+      <DispensedMedicinesSection
+        inventory={bhcMedicineInventory}
+        value={dispensedMedicines}
+        onChange={setDispensedMedicines}
+        disabled={isEditingRecord}
+      />
+    </div>
+  </div>
+</FormSection>
+
+            <FormSection
+              title="Medical History / Risk Codes"
+              subtitle="Mark pregnancy risk codes and medical conditions from the prenatal record."
+              delay={6}
+              accent="pink"
+            >
+              <div className="grid gap-5 lg:grid-cols-2">
+                <CheckboxGroup
+                  title="Pregnancy Risk Codes"
+                  options={PREGNANCY_RISK_OPTIONS}
+                  values={maternalData.riskAssessment}
+                  onChange={(key, value) =>
+                    handleNestedMaternalChange("riskAssessment", key, value)
+                  }
+                />
+                <CheckboxGroup
+                  title="Medical Conditions"
+                  options={MEDICAL_HISTORY_OPTIONS}
+                  values={maternalData.riskAssessment}
+                  onChange={(key, value) =>
+                    handleNestedMaternalChange("riskAssessment", key, value)
+                  }
+                />
+              </div>
+            </FormSection>
+
+            <FormSection
+              title="Previous FP Method Used"
+              subtitle="Record the patient's previous family planning method, if any."
+              delay={7}
+              accent="pink"
+            >
+              <div className="grid gap-4 lg:grid-cols-2">
+                <FieldSelect
+                  label="Previous FP Method Used"
+                  value={maternalData.previousFpMethodUsed}
+                  onChange={(event) =>
+                    handleMaternalChange(
+                      "previousFpMethodUsed",
+                      event.target.value,
+                    )
+                  }
+                >
+                  <option value="">Select method</option>
+                  {FAMILY_PLANNING_PREVIOUS_METHODS.map((method) => (
+                    <option key={method} value={method}>
+                      {method}
+                    </option>
+                  ))}
+                </FieldSelect>
+                {maternalData.previousFpMethodUsed === "Other" && (
+                  <FieldInput
+                    label="Specify FP Method"
+                    value={maternalData.previousFpMethodOther}
+                    onChange={(event) =>
+                      handleMaternalChange(
+                        "previousFpMethodOther",
+                        event.target.value,
+                      )
+                    }
+                  />
+                )}
+              </div>
+            </FormSection>
+
+            <FormSection
+              title="Laboratory Results"
+              subtitle="Optional laboratory results recorded for this prenatal visit."
+              delay={8}
+              accent="pink"
+            >
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {LABORATORY_RESULT_FIELDS.map((field) => (
+                  <FieldInput
+                    key={field.key}
+                    label={field.label}
+                    value={maternalData.laboratoryResults?.[field.key] || ""}
+                    onChange={(event) =>
+                      handleNestedMaternalChange(
+                        "laboratoryResults",
+                        field.key,
+                        event.target.value,
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            </FormSection>
+
+            <FormSection
+              title="Tetanus Toxoid Status"
+              subtitle="Record tetanus toxoid dates if available."
+              delay={9}
+              accent="pink"
+            >
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                {TETANUS_TOXOID_FIELDS.map((field) => (
+                  <FieldInput
+                    key={field.key}
+                    label={field.label}
+                    type="date"
+                    value={maternalData.tetanusToxoidStatus?.[field.key] || ""}
+                    onChange={(event) =>
+                      handleNestedMaternalChange(
+                        "tetanusToxoidStatus",
+                        field.key,
+                        event.target.value,
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            </FormSection>
+
+            <FormSection
+              title="Ultrasound Result"
+              subtitle="Optional ultrasound result for this prenatal visit."
+              delay={10}
+              accent="pink"
+            >
+              <div className="grid gap-4 lg:grid-cols-[1.5fr_0.75fr]">
+                <FieldTextarea
+                  label="Ultrasound Result"
+                  value={maternalData.ultrasound?.result || ""}
+                  onChange={(event) =>
+                    handleNestedMaternalChange(
+                      "ultrasound",
+                      "result",
+                      event.target.value,
+                    )
+                  }
+                  rows={3}
+                />
+                <FieldInput
+                  label="Date Done"
+                  type="date"
+                  value={maternalData.ultrasound?.dateDone || ""}
+                  onChange={(event) =>
+                    handleNestedMaternalChange(
+                      "ultrasound",
+                      "dateDone",
+                      event.target.value,
+                    )
+                  }
+                />
+              </div>
+            </FormSection>
+
+            <FormSection
+              title="Follow-up & Referral"
+              subtitle="Schedule a return visit if needed and indicate if RHU referral is required."
+              delay={12}
+              accent="pink"
+            >
+              <div className="grid gap-4 lg:grid-cols-2">
+                <FieldInput
+                  label="Next Follow-up Date"
+                  type="date"
+                  value={followUpDate}
+                  name="followUpDate"
+                  error={validationErrors.followUpDate}
+                  onChange={(event) => {
+                    clearValidationError("followUpDate");
+                    setFollowUpDate(event.target.value);
+                  }}
+                />
+                <YesNoRadioGroup
+                  label="Needs RHU Referral?"
+                  name="needsReferral"
+                  value={needsReferral ? "Yes" : "No"}
+                  onChange={(value) => setNeedsReferral(value === "Yes")}
+                />
+              </div>
+            </FormSection>
+          </>
         )}
 
         {!patientGateLocked && isFamilyPlanning && (
           <FormSection
             title="Family Planning Details"
             subtitle="Record the family planning service type, method, source, schedule, and action taken."
-            icon={<Stethoscope size={14} />}
             delay={3}
           >
             <LockedFormContent locked={patientGateLocked}>
@@ -2723,11 +3090,25 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && (
+        {!patientGateLocked && isFamilyPlanning && (
+          <FormSection
+            title="Medicines / Supplies Dispensed"
+            subtitle="Optional medicines, supplies, or FP commodities given from BHC inventory."
+            delay={4}
+          >
+            <DispensedMedicinesSection
+              inventory={bhcMedicineInventory}
+              value={dispensedMedicines}
+              onChange={setDispensedMedicines}
+              disabled={isEditingRecord}
+            />
+          </FormSection>
+        )}
+
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && (
           <FormSection
             title="Consultation Information"
             subtitle="Record consultation findings and observations."
-            icon={<Stethoscope size={14} />}
             delay={3}
           >
             <LockedFormContent locked={patientGateLocked}>
@@ -2783,13 +3164,29 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && (
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && (
+          <FormSection
+            title="Medicines / Supplies Dispensed"
+            subtitle="Optional medicines or supplies given from BHC inventory."
+            delay={4}
+          >
+            <LockedFormContent locked={patientGateLocked}>
+              <DispensedMedicinesSection
+                inventory={bhcMedicineInventory}
+                value={dispensedMedicines}
+                onChange={setDispensedMedicines}
+                disabled={isEditingRecord}
+              />
+            </LockedFormContent>
+          </FormSection>
+        )}
+
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && (
           <>
             <FormSection
               title="Vital Signs"
               subtitle="Record the patient's physiological measurements."
-              icon={<HeartPulse size={14} />}
-              delay={4}
+              delay={5}
             >
               <LockedFormContent locked={patientGateLocked}>
           <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(4,minmax(0,1fr))]">
@@ -2833,7 +3230,6 @@ export default function AddHealthRecord() {
             <FormSection
         title="Follow-up & Referral"
         subtitle="Schedule a return visit if needed and indicate if RHU referral is required."
-        icon={<HeartPulse size={14} />}
         delay={5}
       >
           <LockedFormContent locked={patientGateLocked}>
@@ -3895,29 +4291,28 @@ function ContextItem({ label, value, strong = false }) {
 /* ═══════════════════════════════════════════════════════════════
    FORM SUB-COMPONENTS
    ═══════════════════════════════════════════════════════════════ */
-function FormSection({ title, subtitle, icon, children, delay = 0, accent }) {
-  const accentClass = accent === "pink" ? "text-pink-700 bg-pink-50" : "text-[#B91C1C] bg-red-50";
-
+function FormSection({ title, subtitle, children, delay = 0, accent }) {
   return (
     <div
       className="anim-fade-up space-y-4 pb-6"
       style={stagger(delay)}
     >
-      <div className="flex items-center gap-2.5">
-        <div
-          className={`flex h-6 w-6 items-center justify-center rounded-md ${accentClass}`}
+      <div>
+        <h2
+          className={`text-sm font-bold ${
+            accent === "pink" ? "text-pink-800" : "text-[#1A1A1A]"
+          }`}
         >
-          {icon}
-        </div>
-        <div>
-          <h2
-            className={`text-sm font-bold ${accent === "pink" ? "text-pink-800" : "text-[#1A1A1A]"}`}
-          >
-            {title}
-          </h2>
-          {subtitle && <p className="text-xs text-[#6B7280]">{subtitle}</p>}
-        </div>
+          {title}
+        </h2>
+
+        {subtitle && (
+          <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
+            {subtitle}
+          </p>
+        )}
       </div>
+
       <div>{children}</div>
     </div>
   );
@@ -3936,26 +4331,11 @@ function LockedFormContent({ locked, children }) {
   );
 }
 
-function ClassificationSectionIntro({ title, description, accent }) {
-  const titleClass = accent === "pink" ? "text-pink-800" : "text-[#1F2937]";
-
-  return (
-    <div className="mb-5">
-      <p className={`text-sm font-bold ${titleClass}`}>{title}</p>
-      {description && (
-        <p className="mt-1 text-xs leading-relaxed text-[#6B7280]">
-          {description}
-        </p>
-      )}
-    </div>
-  );
-}
-
 function ClinicalFieldGroup({ title, children, accent }) {
   const titleClass = accent === "pink" ? "text-pink-700" : "text-[#B91C1C]";
 
   return (
-    <div className="rounded-xl border border-[#EEF2F6] bg-[#FCFCFD] p-4">
+    <div className="border-t border-[#E8ECF0] pt-4">
       <p className={`mb-3 text-[10px] font-bold uppercase tracking-widest ${titleClass}`}>
         {title}
       </p>
@@ -3964,140 +4344,106 @@ function ClinicalFieldGroup({ title, children, accent }) {
   );
 }
 
-function MaternalSupplementsGivenFields({
-  entries,
-  dateOfVisit,
-  errors = {},
-  onToggle,
-  onChange,
-}) {
-  const selectedEntries = new Map(
-    entries.map((entry) => [entry.supplement_type, entry]),
-  );
-
+function CheckboxGroup({ title, options, values = {}, onChange }) {
   return (
-    <ClinicalFieldGroup title="Vitamins / Supplements Given" accent="pink">
-      {errors.supplementsGiven && (
-        <p
-          className="mb-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-[#B91C1C]"
-          data-field="supplementsGiven"
-          tabIndex={-1}
-        >
-          {errors.supplementsGiven}
-        </p>
-      )}
-      <div className="space-y-3">
-        {MATERNAL_SUPPLEMENT_OPTIONS.map((option) => {
-          const entry = selectedEntries.get(option.type);
-          const checked = Boolean(entry);
-
-          return (
-            <div
-              key={option.type}
-              className={`rounded-xl border p-3 transition ${
-                checked
-                  ? "border-pink-200 bg-pink-50/50"
-                  : "border-[#E8ECF0] bg-white"
-              }`}
-            >
-              <label className="flex cursor-pointer items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={(event) =>
-                    onToggle(option.type, event.target.checked)
-                  }
-                  className="mt-0.5 h-4 w-4 rounded border-[#D1D5DB] text-[#B91C1C] focus:ring-[#B91C1C]"
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-bold text-[#1F2937]">
-                    {option.name}
-                  </span>
-                  <span className="mt-0.5 block text-xs leading-relaxed text-[#6B7280]">
-                    {option.note}
-                  </span>
-                </span>
-              </label>
-
-              {checked && (
-                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  {option.type === "other" && (
-                    <div className="md:col-span-2 xl:col-span-4">
-                      <FieldInput
-                        label="Supplement Name"
-                        name={`supplements.${option.type}.supplement_name`}
-                        error={
-                          errors[`supplements.${option.type}.supplement_name`]
-                        }
-                        value={entry.supplement_name}
-                        onChange={(event) =>
-                          onChange(
-                            option.type,
-                            "supplement_name",
-                            event.target.value,
-                          )
-                        }
-                        required
-                      />
-                    </div>
-                  )}
-                  <FieldInput
-                    label="Quantity Given"
-                    type="number"
-                    min="1"
-                    name={`supplements.${option.type}.quantity`}
-                    error={errors[`supplements.${option.type}.quantity`]}
-                    value={entry.quantity}
-                    onChange={(event) =>
-                      onChange(option.type, "quantity", event.target.value)
-                    }
-                    required
-                  />
-                  <FieldSelect
-                    label="Unit"
-                    name={`supplements.${option.type}.unit`}
-                    error={errors[`supplements.${option.type}.unit`]}
-                    value={entry.unit}
-                    onChange={(event) =>
-                      onChange(option.type, "unit", event.target.value)
-                    }
-                    required
-                  >
-                    <option value="">Select unit</option>
-                    {MATERNAL_SUPPLEMENT_UNITS.map((unit) => (
-                      <option key={unit} value={unit}>
-                        {unit}
-                      </option>
-                    ))}
-                  </FieldSelect>
-                  <FieldInput
-                    label="Date Given"
-                    type="date"
-                    name={`supplements.${option.type}.date_given`}
-                    error={errors[`supplements.${option.type}.date_given`]}
-                    value={entry.date_given || dateOfVisit}
-                    onChange={(event) =>
-                      onChange(option.type, "date_given", event.target.value)
-                    }
-                    required
-                  />
-                  <div className="md:col-span-2 xl:col-span-1">
-                    <FieldTextarea
-                      label="Remarks / Notes"
-                      value={entry.remarks}
-                      onChange={(event) =>
-                        onChange(option.type, "remarks", event.target.value)
-                      }
-                      rows={2}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
+    <div className="border-t border-[#E8ECF0] pt-4">
+      <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-pink-700">
+        {title}
+      </p>
+      <div className="grid gap-2">
+        {options.map((option) => (
+          <label
+            key={option.key}
+            className="flex cursor-pointer items-start gap-2.5 py-1 text-sm font-medium text-[#475569]"
+          >
+            <input
+              type="checkbox"
+              checked={Boolean(values?.[option.key])}
+              onChange={(event) => onChange(option.key, event.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-[#D1D5DB] accent-[#B91C1C]"
+            />
+            <span>{option.label}</span>
+          </label>
+        ))}
       </div>
-    </ClinicalFieldGroup>
+    </div>
+  );
+}
+
+function PregnancyHistoryTable({ entries, onAdd, onChange, onRemove }) {
+  return (
+    <div className="space-y-3">
+      <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
+        <div className="hidden grid-cols-[0.75fr_1.5fr_0.75fr_1.5fr_44px] gap-3 border-b border-[#EEF2F6] bg-[#F8FAFC] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#64748B] md:grid">
+          <span>Pregnancy No.</span>
+          <span>Place of Delivery</span>
+          <span>Year</span>
+          <span>Notes</span>
+          <span />
+        </div>
+
+        {entries.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-[#64748B]">
+            No previous pregnancy history added.
+          </div>
+        ) : (
+          <div className="divide-y divide-[#EEF2F6]">
+            {entries.map((entry, index) => (
+              <div
+                key={`${entry.pregnancyNo || "pregnancy"}-${index}`}
+                className="grid gap-3 px-3 py-3 md:grid-cols-[0.75fr_1.5fr_0.75fr_1.5fr_44px] md:items-start"
+              >
+                <FieldInput
+                  label="Pregnancy No."
+                  value={entry.pregnancyNo || ""}
+                  onChange={(event) =>
+                    onChange(index, "pregnancyNo", event.target.value)
+                  }
+                />
+                <FieldInput
+                  label="Place of Delivery"
+                  value={entry.placeOfDelivery || ""}
+                  onChange={(event) =>
+                    onChange(index, "placeOfDelivery", event.target.value)
+                  }
+                />
+                <FieldInput
+                  label="Year"
+                  inputMode="numeric"
+                  value={entry.year || ""}
+                  onChange={(event) =>
+                    onChange(index, "year", event.target.value)
+                  }
+                />
+                <FieldInput
+                  label="Notes"
+                  value={entry.notes || ""}
+                  onChange={(event) =>
+                    onChange(index, "notes", event.target.value)
+                  }
+                />
+                <button
+                  type="button"
+                  onClick={() => onRemove(index)}
+                  className="mt-5 flex h-10 w-10 items-center justify-center rounded-lg border border-[#E8ECF0] text-[#94A3B8] transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C] md:mt-[22px]"
+                  aria-label="Remove pregnancy history row"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={onAdd}
+        className="inline-flex h-9 items-center justify-center rounded-lg border border-red-100 bg-red-50 px-3 text-xs font-semibold text-[#B91C1C] transition hover:bg-red-100"
+      >
+        + Add Pregnancy History
+      </button>
+    </div>
   );
 }
 
@@ -4156,31 +4502,27 @@ function ImmunizationVisitFields({
           </p>
         )}
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {CHILD_VACCINE_OPTIONS.map((vaccineName) => {
-            const checked = selectedVaccines.has(vaccineName);
-            return (
-              <button
-                key={vaccineName}
-                type="button"
-                onClick={() => onToggleVaccine(vaccineName, !checked)}
-                aria-pressed={checked}
-                className={`flex min-h-[46px] items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition ${
-                  checked
-                    ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#991B1B] ring-1 ring-[#B91C1C]/10"
-                    : "border-[#E8ECF0] bg-white text-[#475569] hover:border-[#FECACA] hover:bg-red-50/30"
-                }`}
-              >
-                <span
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
-                    checked ? "bg-[#B91C1C] text-white" : "bg-[#F1F5F9] text-transparent"
-                  }`}
-                >
-                  <Check size={12} strokeWidth={3} />
-                </span>
-                <span>{vaccineName}</span>
-              </button>
-            );
-          })}
+      {CHILD_VACCINE_OPTIONS.map((vaccineName) => {
+        const checked = selectedVaccines.has(vaccineName);
+
+        return (
+            <label
+              key={vaccineName}
+              className="flex cursor-pointer items-center gap-2 py-1 text-sm font-medium text-[#475569]"
+            >
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(event) =>
+                onToggleVaccine(vaccineName, event.target.checked)
+              }
+              className="h-4 w-4 rounded border-[#D1D5DB] accent-[#B91C1C]"
+            />
+
+            <span>{vaccineName}</span>
+          </label>
+        );
+      })}
         </div>
 
         {entries.some((entry) => entry.__legacyDetailsVisible === "showLegacyDetails") && (
@@ -4194,18 +4536,6 @@ function ImmunizationVisitFields({
                   {entry.vaccineName}
                 </p>
                 <div className="grid gap-4 lg:grid-cols-2">
-                  {entry.vaccineName === "Other" && (
-                    <FieldInput
-                      label="Specify Vaccine"
-                      name={`vaccineEntries.${index}.customVaccineName`}
-                      data-field={`vaccineEntries.${index}.customVaccineName`}
-                      value={entry.customVaccineName || ""}
-                      onChange={(event) =>
-                        onEntryChange(index, "customVaccineName", event.target.value)
-                      }
-                      placeholder="Enter vaccine name"
-                    />
-                  )}
                   <FieldInput
                     label="Dose"
                     required
@@ -4315,34 +4645,29 @@ function ImmunizationVisitFields({
           Select the months where exclusive breastfeeding was confirmed.
         </p>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {BREASTFEEDING_MONTHS.map((month) => {
-            const checked =
-              breastfeedingMonitoring?.[month.key] === true ||
-              breastfeedingMonitoring?.[month.key] === "yes";
+        {BREASTFEEDING_MONTHS.map((month) => {
+          const checked =
+            breastfeedingMonitoring?.[month.key] === true ||
+            breastfeedingMonitoring?.[month.key] === "yes";
 
-            return (
-              <button
+          return (
+              <label
                 key={month.key}
-                type="button"
-                onClick={() => onBreastfeedingChange(month.key, !checked)}
-                aria-pressed={checked}
-                className={`flex min-h-[42px] items-center gap-2.5 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition ${
-                  checked
-                    ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#991B1B] ring-1 ring-[#B91C1C]/10"
-                    : "border-[#E8ECF0] bg-white text-[#475569] hover:border-[#FECACA] hover:bg-red-50/30"
-                }`}
+                className="flex cursor-pointer items-center gap-2 py-1 text-sm font-medium text-[#475569]"
               >
-                <span
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
-                    checked ? "bg-[#B91C1C] text-white" : "bg-[#F1F5F9] text-transparent"
-                  }`}
-                >
-                  <Check size={12} strokeWidth={3} />
-                </span>
-                <span>{month.label}</span>
-              </button>
-            );
-          })}
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(event) =>
+                  onBreastfeedingChange(month.key, event.target.checked)
+                }
+                className="h-4 w-4 rounded border-[#D1D5DB] accent-[#B91C1C]"
+              />
+
+              <span>{month.label}</span>
+            </label>
+          );
+        })}
         </div>
       </ClinicalFieldGroup>
 
