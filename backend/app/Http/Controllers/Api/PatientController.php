@@ -35,7 +35,7 @@ class PatientController extends Controller
             return response()->json(['data' => StoredFunction::paginatedResponse($rows, $request)]);
         }
 
-        $query = $this->scope(Patient::query(), $request)->with(['barangayHealthCenter', 'ruralHealthUnit']);
+        $query = $this->scope(Patient::query(), $request)->with(['barangayHealthCenter', 'ruralHealthUnit', 'mother']);
 
         if ($search = $request->query('search')) {
             $query->where(fn ($q) => $q
@@ -57,6 +57,7 @@ class PatientController extends Controller
     public function store(PatientRequest $request, AuditLogger $auditLogger)
     {
         $data = $this->normalizeProfileFields($request->validated());
+        $this->authorizeMotherLink($request, $data['mother_patient_id'] ?? null);
         $user = $request->user();
         $data['created_by'] = $user->id;
 
@@ -71,7 +72,7 @@ class PatientController extends Controller
         $patient = Patient::create($data);
         $auditLogger->log($request, 'created', 'patients', "Created patient {$patient->full_name}.");
 
-        return response()->json(['data' => $patient->load(['barangayHealthCenter', 'ruralHealthUnit'])], 201);
+        return response()->json(['data' => $patient->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother'])], 201);
     }
 
     public function show(Request $request, Patient $patient)
@@ -94,16 +95,18 @@ class PatientController extends Controller
             return response()->json(['data' => $data]);
         }
 
-        return response()->json(['data' => $patient->load(['healthRecords', 'referrals.feedback'])]);
+        return response()->json(['data' => $patient->load(['healthRecords', 'referrals.feedback', 'mother'])]);
     }
 
     public function update(PatientRequest $request, Patient $patient, AuditLogger $auditLogger)
     {
         $this->authorizePatient($request, $patient);
-        $patient->update($this->normalizeProfileFields($request->validated(), $patient));
+        $data = $this->normalizeProfileFields($request->validated(), $patient);
+        $this->authorizeMotherLink($request, $data['mother_patient_id'] ?? null);
+        $patient->update($data);
         $auditLogger->log($request, 'updated', 'patients', "Updated patient {$patient->full_name}.");
 
-        return response()->json(['data' => $patient->fresh()]);
+        return response()->json(['data' => $patient->fresh()->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother'])]);
     }
 
     public function destroy(Request $request, Patient $patient, AuditLogger $auditLogger)
@@ -137,6 +140,25 @@ class PatientController extends Controller
         abort_unless($allowed, 403, 'Patient is outside your assigned facility.');
     }
 
+    private function authorizeMotherLink(Request $request, mixed $motherPatientId): void
+    {
+        if (! $motherPatientId) {
+            return;
+        }
+
+        $currentPatient = $request->route('patient');
+        abort_if(
+            $currentPatient instanceof Patient
+                && (string) $currentPatient->id === (string) $motherPatientId,
+            422,
+            'A patient cannot be linked as their own mother.'
+        );
+
+        $mother = Patient::find($motherPatientId);
+        abort_unless($mother, 422, 'Selected mother patient was not found.');
+        $this->authorizePatient($request, $mother);
+    }
+
     private function normalizeProfileFields(array $data, ?Patient $patient = null): array
     {
         foreach ([
@@ -148,6 +170,7 @@ class PatientController extends Controller
             'purok_area',
             'nhts_status',
             'family_serial_number',
+            'mother_patient_id',
         ] as $field) {
             if (array_key_exists($field, $data) && $data[$field] === '') {
                 $data[$field] = null;
@@ -182,7 +205,6 @@ class PatientController extends Controller
             $data['civil_status'] = 'Single';
             $data['occupation'] = null;
             $data['nhts_status'] = null;
-            $data['family_serial_number'] = null;
             $data['spouse_name'] = null;
             $data['spouse_occupation'] = null;
 

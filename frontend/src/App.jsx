@@ -78,6 +78,11 @@ function LegacyRHURecordRedirect() {
   return <Navigate to={`/rhu/health-records/${recordId}`} replace />;
 }
 
+function LegacyBHCReportRedirect() {
+  const { reportSlug } = useParams();
+  return <Navigate to={`/bhc/reports?type=${reportSlug || "epi-target-client-list"}`} replace />;
+}
+
 function NotificationRouteWrapper() {
   const user = getCurrentUser();
   if (!user) return <Navigate to="/login" replace />;
@@ -246,15 +251,15 @@ export default function App() {
       />
       <Route
         path="/bhc/reports"
-        element={<Navigate to="/bhc/reports/referrals" replace />}
-      />
-      <Route
-        path="/bhc/reports/:reportSlug"
         element={
           <ProtectedPage allowedRole="bhc">
             <BHCReports />
           </ProtectedPage>
         }
+      />
+      <Route
+        path="/bhc/reports/:reportSlug"
+        element={<LegacyBHCReportRedirect />}
       />
       <Route
         path="/bhc/patients/:patientId"

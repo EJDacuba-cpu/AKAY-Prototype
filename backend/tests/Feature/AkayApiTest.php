@@ -339,7 +339,7 @@ class AkayApiTest extends TestCase
         ]);
     }
 
-    public function test_epi_infant_patient_creation_clears_adult_profile_fields(): void
+    public function test_epi_infant_patient_creation_preserves_household_fields_and_clears_adult_profile_fields(): void
     {
         $bhc = BarangayHealthCenter::create(['name' => 'Infant Profile BHC']);
         $bhw = User::create([
@@ -348,6 +348,13 @@ class AkayApiTest extends TestCase
             'password' => Hash::make('password123'),
             'role' => User::ROLE_BHW,
             'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+        $mother = Patient::create([
+            'first_name' => 'Infant',
+            'last_name' => 'Mother',
+            'sex' => 'Female',
+            'birthdate' => now()->subYears(25)->toDateString(),
             'barangay_health_center_id' => $bhc->id,
         ]);
 
@@ -362,6 +369,8 @@ class AkayApiTest extends TestCase
                 'occupation' => 'Should Clear',
                 'nhts_status' => 'NHTS',
                 'purok_area' => 'Purok 1',
+                'mother_patient_id' => $mother->id,
+                'mother_name' => 'Infant Mother',
                 'family_serial_number' => 'FSN-INFANT',
                 'spouse_name' => 'Should Clear',
                 'spouse_occupation' => 'Should Clear',
@@ -371,7 +380,9 @@ class AkayApiTest extends TestCase
             ->assertJsonPath('data.occupation', null)
             ->assertJsonPath('data.nhts_status', null)
             ->assertJsonPath('data.purok_area', 'Purok 1')
-            ->assertJsonPath('data.family_serial_number', null)
+            ->assertJsonPath('data.mother_patient_id', $mother->id)
+            ->assertJsonPath('data.mother_name', 'Infant Mother')
+            ->assertJsonPath('data.family_serial_number', 'FSN-INFANT')
             ->assertJsonPath('data.spouse_name', null)
             ->assertJsonPath('data.spouse_occupation', null);
 
@@ -381,7 +392,9 @@ class AkayApiTest extends TestCase
             'occupation' => null,
             'nhts_status' => null,
             'purok_area' => 'Purok 1',
-            'family_serial_number' => null,
+            'mother_patient_id' => $mother->id,
+            'mother_name' => 'Infant Mother',
+            'family_serial_number' => 'FSN-INFANT',
             'spouse_name' => null,
             'spouse_occupation' => null,
         ]);

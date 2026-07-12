@@ -134,6 +134,65 @@ export function getRecordClassificationText(record = {}) {
   );
 }
 
+export function normalizeServiceType(value = "") {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+
+  if (!normalized) return "";
+
+  if (
+    ["immunization", "epi", "child health", "vaccination", "vaccine"].some(
+      (term) => normalized.includes(term),
+    )
+  ) {
+    return "Child Health / EPI";
+  }
+  if (
+    ["maternal", "prenatal", "pregnancy", "antenatal"].some((term) =>
+      normalized.includes(term),
+    )
+  ) {
+    return "Maternal / Prenatal";
+  }
+  if (
+    normalized.includes("family planning") ||
+    /(^|\s)fp(\s|$)/.test(normalized)
+  ) {
+    return "Family Planning";
+  }
+  if (
+    normalized === "ncd" ||
+    normalized.includes("ncd monitoring") ||
+    normalized.includes("hypertension") ||
+    normalized.includes("diabetes") ||
+    normalized.includes("non communicable") ||
+    normalized.includes("senior citizen")
+  ) {
+    return "NCD Monitoring";
+  }
+  if (
+    normalized === "tb" ||
+    normalized.includes("tuberculosis") ||
+    normalized.includes("tb dots") ||
+    normalized.includes("tb monitoring") ||
+    normalized === "dots"
+  ) {
+    return "TB DOTS / TB Monitoring";
+  }
+  if (normalized.includes("general") || normalized.includes("consultation")) {
+    return "General Consultation";
+  }
+
+  return String(value || "").trim();
+}
+
+export function formatServiceType(value = "", fallback = "Not recorded") {
+  return normalizeServiceType(value) || fallback;
+}
+
 export function getServiceTypeLabel(record = {}, fallback = "Not recorded") {
   const raw = String(getRecordClassificationText(record) || "").trim();
   if (!raw) return fallback;
@@ -153,47 +212,8 @@ export function getServiceTypeLabel(record = {}, fallback = "Not recorded") {
     .replace(/[_-]+/g, " ")
     .replace(/\s+/g, " ");
 
-  if (
-    ["immunization", "epi", "child health", "vaccination", "vaccine"].some(
-      (term) => value.includes(term),
-    )
-  ) {
-    return "Child Health / EPI";
-  }
-  if (
-    ["maternal", "prenatal", "pregnancy", "antenatal"].some((term) =>
-      value.includes(term),
-    )
-  ) {
-    return "Maternal / Prenatal";
-  }
-  if (value.includes("family planning") || /(^|\s)fp(\s|$)/.test(value)) {
-    return "Family Planning";
-  }
-  if (
-    value === "ncd" ||
-    value.includes("ncd monitoring") ||
-    value.includes("hypertension") ||
-    value.includes("diabetes") ||
-    value.includes("non communicable") ||
-    value.includes("senior citizen")
-  ) {
-    return "NCD Monitoring";
-  }
-  if (
-    value === "tb" ||
-    value.includes("tuberculosis") ||
-    value.includes("tb dots") ||
-    value.includes("tb monitoring") ||
-    value === "dots"
-  ) {
-    return "TB DOTS / TB Monitoring";
-  }
-  if (value.includes("general") || value.includes("consultation")) {
-    return "General Consultation";
-  }
-
-  return raw;
+  const formatted = normalizeServiceType(value);
+  return formatted && formatted !== value ? formatted : formatServiceType(raw, fallback);
 }
 
 export function getRecordSearchText(record = {}) {

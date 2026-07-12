@@ -12,7 +12,7 @@ import {
   createActiveFilterChips,
   isDateInPreset,
 } from "../../utils/filterUtils";
-import { getRecordId } from "../../utils/healthRecordPrograms";
+import { formatServiceType, getRecordId } from "../../utils/healthRecordPrograms";
 import { queryKeys } from "../../utils/queryKeys";
 
 const DEFAULT_FILTERS = {
@@ -182,10 +182,11 @@ export default function HealthRecords() {
       matchesPatientName ||
       record.trackingId?.toLowerCase().includes(searchLower) ||
       record.classification?.toLowerCase().includes(searchLower) ||
+      formatServiceType(record.classification, "").toLowerCase().includes(searchLower) ||
       record.concern?.toLowerCase().includes(searchLower);
     const matchesClassification =
       !filters.classification ||
-      record.classification === filters.classification;
+      formatServiceType(record.classification, "") === filters.classification;
     const matchesVisitDate = isDateInPreset(record.date, filters.dateRange, {
       from: filters.dateFrom,
       to: filters.dateTo,
@@ -224,10 +225,11 @@ export default function HealthRecords() {
       placeholder: "All Service Types",
       options: [
         { value: "General Consultation", label: "General Consultation" },
-        { value: "Maternal", label: "Maternal" },
-        { value: "Immunization", label: "Immunization" },
-        { value: "Senior Citizen", label: "Senior Citizen" },
+        { value: "Maternal / Prenatal", label: "Maternal / Prenatal" },
+        { value: "Child Health / EPI", label: "Child Health / EPI" },
+        { value: "NCD Monitoring", label: "NCD Monitoring" },
         { value: "Family Planning", label: "Family Planning" },
+        { value: "TB DOTS / TB Monitoring", label: "TB DOTS / TB Monitoring" },
       ],
     },
   ];

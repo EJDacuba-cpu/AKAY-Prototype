@@ -85,6 +85,11 @@ export function normalizePatient(patient = {}) {
       patient.registration_type || patient.registrationType || patient.patientType || "",
     patientType:
       patient.registration_type || patient.registrationType || patient.patientType || "",
+    motherPatientId:
+      patient.mother_patient_id || patient.motherPatientId || patient.mother?.id || "",
+    mother_patient_id:
+      patient.mother_patient_id || patient.motherPatientId || patient.mother?.id || "",
+    motherPatient: patient.mother_patient || patient.motherPatient || patient.mother || null,
     motherName: patient.mother_name || patient.motherName || "",
     fatherName: patient.father_name || patient.fatherName || "",
     guardianName: patient.guardian_name || patient.guardianName || "",
@@ -154,6 +159,8 @@ function toPayload(patient = {}) {
       patient.spouseOccupation || patient.spouse_occupation || null,
     registration_type:
       patient.registrationType || patient.patientType || patient.patient_type || "general",
+    mother_patient_id:
+      patient.motherPatientId || patient.mother_patient_id || null,
     mother_name: patient.motherName || patient.mother_name || null,
     father_name: patient.fatherName || patient.father_name || null,
     guardian_name: patient.guardianName || patient.guardian_name || null,

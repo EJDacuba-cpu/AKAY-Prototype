@@ -27,6 +27,7 @@ import {
   getPatientById,
   getPatientHealthRecords,
   getPatientReferrals,
+  getPatientDetailsListByRole,
   updatePatient,
 } from "../../services/patientService";
 import {
@@ -80,6 +81,7 @@ export default function PatientDetails() {
   const [showAllRecords, setShowAllRecords] = useState(false);
   const [showAllReferrals, setShowAllReferrals] = useState(false);
   const [form, setForm] = useState({});
+  const [motherSearch, setMotherSearch] = useState("");
 
   const {
     data: patientData,
@@ -125,6 +127,12 @@ export default function PatientDetails() {
     staleTime: 30_000,
   });
 
+  const { data: registeredPatients = [] } = useQuery({
+    queryKey: queryKeys.patients("bhc"),
+    queryFn: () => getPatientDetailsListByRole("bhc"),
+    staleTime: 30_000,
+  });
+
   const overrideMatchesPatient =
     patientOverride &&
     String(patientOverride.id || patientOverride.patientId || "") ===
@@ -164,6 +172,20 @@ export default function PatientDetails() {
       }
       return next;
     });
+  }
+
+  function handleMotherPatientChange(value) {
+    const selectedMother = registeredPatients.find(
+      (item) => String(item.id) === String(value),
+    );
+
+    setForm((current) => ({
+      ...current,
+      motherPatientId: value,
+      motherName: selectedMother
+        ? selectedMother.fullName || selectedMother.name || current.motherName
+        : current.motherName,
+    }));
   }
 
   async function handleInlineSubmit() {
@@ -243,6 +265,16 @@ export default function PatientDetails() {
   const visibleReferrals = showAllReferrals
     ? referrals
     : referrals.slice(0, 5);
+  const motherPatientOptions = registeredPatients
+    .filter((item) => String(item.id) !== String(patientId))
+    .filter((item) => {
+      const age = calculateAge(item.birthDate || item.birthdate);
+      return item.sex === "Female" && (age === "" || Number(age) >= 12);
+    })
+    .filter((item) => {
+      const search = motherSearch.trim().toLowerCase();
+      return !search || getMotherPatientLabel(item).toLowerCase().includes(search);
+    });
   return (
     <>
       <DashboardLayout role="bhc" title="Patient Details">
@@ -350,6 +382,10 @@ export default function PatientDetails() {
                   form={form}
                   isEditing={isEditing}
                   onChange={handleChange}
+                  motherSearch={motherSearch}
+                  motherPatientOptions={motherPatientOptions}
+                  onMotherSearchChange={setMotherSearch}
+                  onMotherPatientChange={handleMotherPatientChange}
                 />
               )}
 
@@ -495,7 +531,16 @@ function QuickDetail({ label, value }) {
   );
 }
 
-function GeneralPatientTab({ patient, form, isEditing, onChange }) {
+function GeneralPatientTab({
+  patient,
+  form,
+  isEditing,
+  onChange,
+  motherSearch,
+  motherPatientOptions,
+  onMotherSearchChange,
+  onMotherPatientChange,
+}) {
   const parentFields = [
     ["Parent / Guardian Name", ["parentName", "parent_name"]],
     ["Mother Name", ["motherName", "mother_name"]],
@@ -513,6 +558,11 @@ function GeneralPatientTab({ patient, form, isEditing, onChange }) {
   const hasParentData = parentFields.some(([, keys]) =>
     hasDisplayValue(getPatientValue(patient, keys, "")),
   );
+  const linkedMother =
+    patient.motherPatient || patient.mother_patient || patient.mother || null;
+  const linkedMotherName = linkedMother
+    ? formatPatientName(linkedMother, "")
+    : "";
   const birthFields = [
     ["Birth Place", ["birthPlace", "birth_place"]],
     ["Time of Birth", ["birthTime", "birth_time"]],
@@ -524,6 +574,7 @@ function GeneralPatientTab({ patient, form, isEditing, onChange }) {
   );
   const showChildSections =
     hasParentData ||
+    hasDisplayValue(linkedMotherName) ||
     hasBirthData ||
     Number(getPatientValue(patient, ["age"], 99)) < 18;
 
@@ -559,7 +610,9 @@ function GeneralPatientTab({ patient, form, isEditing, onChange }) {
           </EditSelect>
           <EditField label="Occupation" name="occupation" value={form.occupation} onChange={onChange} />
           <EditField label="NHTS Status" name="nhtsStatus" value={form.nhtsStatus} onChange={onChange} />
-          <EditField label="Family Serial Number" name="familySerialNumber" value={form.familySerialNumber} onChange={onChange} />
+          {!showChildSections && (
+            <EditField label="Family Serial Number" name="familySerialNumber" value={form.familySerialNumber} onChange={onChange} />
+          )}
           {form.civilStatus === "Married" && (
             <>
               <EditField label="Spouse Name" name="spouseName" value={form.spouseName} onChange={onChange} />
@@ -604,6 +657,14 @@ function GeneralPatientTab({ patient, form, isEditing, onChange }) {
             description="Parent and guardian details saved for this patient."
           >
             <EditField label="Mother Name" name="motherName" value={form.motherName} onChange={onChange} />
+            <EditLinkedMotherSelect
+              value={form.motherPatientId}
+              search={motherSearch}
+              options={motherPatientOptions}
+              onSearchChange={onMotherSearchChange}
+              onChange={onMotherPatientChange}
+            />
+            <EditField label="Family Serial Number" name="familySerialNumber" value={form.familySerialNumber} onChange={onChange} />
             <EditField label="Father Name" name="fatherName" value={form.fatherName} onChange={onChange} />
             <EditField label="Guardian Name" name="guardianName" value={form.guardianName} onChange={onChange} />
             <EditField label="Guardian Relationship" name="guardianRelationship" value={form.guardianRelationship} onChange={onChange} />
@@ -686,11 +747,14 @@ function GeneralPatientTab({ patient, form, isEditing, onChange }) {
         <DetailItem label="Municipality / City" value={getPatientValue(patient, ["municipality", "city"])} />
       </RegistrationSection>
 
-      {hasParentData && (
+      {(hasParentData || hasDisplayValue(linkedMotherName)) && (
         <RegistrationSection
           title="Parent / Household Information"
           description="Parent and guardian details saved for this patient."
         >
+          {hasDisplayValue(linkedMotherName) && (
+            <DetailItem label="Linked Mother Patient" value={linkedMotherName} />
+          )}
           {parentFields.map(([label, keys]) => {
             const value = getPatientValue(patient, keys, "");
             return hasDisplayValue(value) ? (
@@ -786,6 +850,41 @@ function EditSelect({ label, required, children, ...props }) {
         className="mt-1.5 h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
       >
         {children}
+      </select>
+    </label>
+  );
+}
+
+function EditLinkedMotherSelect({
+  value,
+  search,
+  options,
+  onSearchChange,
+  onChange,
+}) {
+  return (
+    <label className="min-w-0">
+      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+        Linked Mother Patient
+      </span>
+      <input
+        type="search"
+        value={search}
+        onChange={(event) => onSearchChange(event.target.value)}
+        placeholder="Search registered mother"
+        className="mt-1.5 h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+      />
+      <select
+        value={value || ""}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+      >
+        <option value="">No linked mother selected</option>
+        {options.map((patient) => (
+          <option key={patient.id} value={patient.id}>
+            {getMotherPatientLabel(patient)}
+          </option>
+        ))}
       </select>
     </label>
   );
@@ -896,7 +995,7 @@ function PatientFollowUpsTab({
           <table className="w-full min-w-[680px] text-left">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                <th className="px-5 py-3">Record Type</th>
+                <th className="px-5 py-3">Service Type</th>
                 <th className="px-4 py-3">Next Follow-up Date</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Action</th>
@@ -1179,6 +1278,11 @@ function createPatientForm(patient = {}) {
       "Bulakan",
     ),
     motherName: getPatientValue(patient, ["motherName", "mother_name"], ""),
+    motherPatientId: getPatientValue(
+      patient,
+      ["motherPatientId", "mother_patient_id"],
+      "",
+    ),
     fatherName: getPatientValue(patient, ["fatherName", "father_name"], ""),
     guardianName: getPatientValue(
       patient,
@@ -1210,6 +1314,16 @@ function createPatientForm(patient = {}) {
       "",
     ),
   };
+}
+
+function getMotherPatientLabel(patient = {}) {
+  return [
+    patient.fullName || patient.name || "Unnamed patient",
+    patient.patientId || patient.id ? `Patient ID: ${patient.patientId || patient.id}` : "",
+    patient.barangay || "",
+  ]
+    .filter(Boolean)
+    .join(" - ");
 }
 
 function getPatientValue(patient = {}, keys = [], fallback = "Not recorded") {
@@ -1264,15 +1378,7 @@ function getHealthRecordDate(record = {}) {
 }
 
 function getHealthRecordType(record = {}) {
-  return formatDisplayValue(
-    record.category ||
-      record.classification ||
-      record.recordType ||
-      record.record_type ||
-      record.healthRecordType ||
-      record.patientClassification,
-    "Not recorded",
-  );
+  return getServiceTypeLabel(record, "Not recorded");
 }
 
 function getReferralDate(referral = {}) {

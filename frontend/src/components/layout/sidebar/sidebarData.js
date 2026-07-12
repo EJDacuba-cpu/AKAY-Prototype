@@ -88,7 +88,6 @@ export const menuByRole = {
           label: "Reports",
           path: "/bhc/reports",
           icon: FileText,
-          children: createReportChildren("/bhc/reports"),
         },
       ],
     },

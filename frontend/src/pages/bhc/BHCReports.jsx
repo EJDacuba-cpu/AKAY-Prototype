@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Navigate, useParams } from "react-router";
+import { useSearchParams } from "react-router";
 import {
   Baby,
   ClipboardList,
@@ -33,11 +33,11 @@ import {
   isDateInPreset,
 } from "../../utils/filterUtils";
 import {
-  EPI_VACCINE_ROWS,
   getEpiVaccineEntries,
   getRecordDateValue,
   getRecordId,
   getServiceTypeLabel,
+  formatServiceType,
   isEpiRecord,
   isFamilyPlanningRecord,
   isMaternalRecord,
@@ -47,13 +47,73 @@ import {
 import { queryKeys } from "../../utils/queryKeys";
 
 const REPORT_TYPES = [
-  { key: "referrals", slug: "referrals", label: "Referral Reports" },
-  { key: "family_planning", slug: "family-planning", label: "Family Planning" },
-  { key: "epi", slug: "epi-target-client-list", label: "EPI Target Client List" },
-  { key: "morbidity", slug: "morbidity", label: "Morbidity / Notifiable Diseases" },
-  { key: "followups", slug: "follow-ups", label: "Follow-ups / Monitoring" },
-  { key: "ncd", slug: "ncd", label: "NCD Monitoring" },
-  { key: "maternal", slug: "maternal", label: "Maternal / Prenatal" },
+  {
+    key: "referrals",
+    slug: "referrals",
+    label: "Referral Reports",
+    description: "Referral activity, status, and receiving facility tracking.",
+  },
+  {
+    key: "followups",
+    slug: "follow-ups",
+    label: "Follow-ups / Monitoring",
+    description: "Scheduled return visits and monitoring outcomes.",
+  },
+  {
+    key: "epi",
+    slug: "epi-target-client-list",
+    label: "EPI Target Client List",
+    description:
+      "Generated from registered child patients, Child Health / EPI records, and follow-up schedules.",
+  },
+  {
+    key: "morbidity",
+    slug: "morbidity",
+    label: "Morbidity / Notifiable Diseases",
+    description: "Diagnosis and notifiable condition reporting from health records.",
+  },
+  {
+    key: "family_planning",
+    slug: "family-planning",
+    label: "Family Planning",
+    description: "Family planning visits, methods, and client classifications.",
+  },
+  {
+    key: "ncd",
+    slug: "ncd",
+    label: "NCD Monitoring",
+    description: "Non-communicable disease monitoring and follow-up reporting.",
+  },
+  {
+    key: "maternal",
+    slug: "maternal",
+    label: "Maternal / Prenatal",
+    description: "Prenatal visits, pregnancy details, and maternal follow-ups.",
+  },
+];
+
+const DEFAULT_REPORT_SLUG = "epi-target-client-list";
+const EMPTY_MARK = "\u2014";
+const CHECK_MARK = "\u2713";
+const EPI_FLAT_VACCINE_COLUMNS = [
+  "OPV 1",
+  "OPV 2",
+  "OPV 3",
+  "PENTA 1",
+  "PENTA 2",
+  "PENTA 3",
+  "PCV 1",
+  "PCV 2",
+  "PCV 3",
+  "IPV 1",
+  "IPV 2",
+  "MCV 1",
+  "MCV 2",
+];
+const EPI_CHILD_VACCINE_COLUMNS = [
+  "BCG",
+  "HEPA B",
+  ...EPI_FLAT_VACCINE_COLUMNS,
 ];
 
 const EMPTY_FILTERS = {
@@ -70,6 +130,7 @@ const EMPTY_FILTERS = {
   clientType: "",
   methodUsed: "",
   ageMonths: "",
+  vaccine: "",
   vaccineStatus: "",
   conditionType: "",
   aogRange: "",
@@ -78,9 +139,12 @@ const EMPTY_FILTERS = {
 };
 
 export default function BHCReports() {
-  const { reportSlug = "referrals" } = useParams();
-  const currentReport = REPORT_TYPES.find((report) => report.slug === reportSlug);
-  const selectedReport = currentReport?.key || "referrals";
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedSlug = normalizeReportSlug(searchParams.get("type"));
+  const currentReport =
+    REPORT_TYPES.find((report) => report.slug === selectedSlug) ||
+    REPORT_TYPES.find((report) => report.slug === DEFAULT_REPORT_SLUG);
+  const selectedReport = currentReport?.key || "epi";
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [draftFilters, setDraftFilters] = useState(EMPTY_FILTERS);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -207,28 +271,53 @@ export default function BHCReports() {
     window.print();
   }
 
-  if (!currentReport) return <Navigate to="/bhc/reports/referrals" replace />;
+  function selectReport(slug) {
+    setSearchParams({ type: slug });
+  }
 
   return (
     <DashboardLayout role="bhc" title="Reports">
       <style>{`
+        @page { size: landscape; margin: 10mm; }
         @media print {
           body * { visibility: hidden !important; }
           #selected-report, #selected-report * { visibility: visible !important; }
-          #selected-report { position: absolute; inset: 0; width: 100%; }
+          #selected-report { position: absolute; inset: 0; width: 100%; padding: 0 !important; box-shadow: none !important; border: 0 !important; }
+          #selected-report table { font-size: 9px; }
+          #selected-report th, #selected-report td { padding: 5px 6px !important; }
           .no-print { display: none !important; }
         }
       `}</style>
 
-      <div className="space-y-4">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="space-y-5">
+        <header>
           <div>
-            <h1 className="text-xl font-bold text-[#0F172A]">{reportLabel}</h1>
+            <h1 className="text-xl font-bold text-[#0F172A]">Reports</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Generate and review this AKAY report from current records.
+              Reports Center for BHC records, monitoring, and official printable lists.
             </p>
           </div>
-          <div className="no-print relative flex flex-wrap gap-2">
+        </header>
+
+        <div className="no-print flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <label className="w-full max-w-sm">
+            <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
+              Report Type
+            </span>
+            <select
+              value={currentReport.slug}
+              onChange={(event) => selectReport(event.target.value)}
+              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-[#0F172A] shadow-sm outline-none transition focus:border-[#FCA5A5] focus:ring-2 focus:ring-[#B91C1C]/10"
+            >
+              {REPORT_TYPES.map((report) => (
+                <option key={report.slug} value={report.slug}>
+                  {report.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="relative flex flex-wrap gap-2">
             <HeaderAction
               icon={<SlidersHorizontal size={14} />}
               label="Filters"
@@ -257,7 +346,7 @@ export default function BHCReports() {
               onClose={() => setFilterOpen(false)}
             />
           </div>
-        </header>
+        </div>
 
         <ActiveFilterChips
           filters={activeFilters}
@@ -271,8 +360,8 @@ export default function BHCReports() {
           scope="area"
           minHeight="min-h-[460px]"
         >
-          <main id="selected-report" className="space-y-4">
-            <ReportTitle title={reportLabel} />
+          <main id="selected-report" className="space-y-4 rounded-xl bg-white">
+            <PrintReportHeader title={reportLabel} filters={activeFilters} />
             <SelectedReport
               type={selectedReport}
               filters={filters}
@@ -307,6 +396,28 @@ function SelectedReport(props) {
     default:
       return <ReferralReportView {...props} />;
   }
+}
+
+function normalizeReportSlug(value) {
+  const raw = String(value || DEFAULT_REPORT_SLUG)
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, "-");
+  const aliases = {
+    epi: "epi-target-client-list",
+    immunization: "epi-target-client-list",
+    "child-health": "epi-target-client-list",
+    "family-planning": "family-planning",
+    family_planning: "family-planning",
+    followups: "follow-ups",
+    "follow-up": "follow-ups",
+    "follow-up-monitoring": "follow-ups",
+    "morbidity-notifiable": "morbidity",
+    "ncd-monitoring": "ncd",
+    "maternal-prenatal": "maternal",
+  };
+
+  return aliases[raw] || raw || DEFAULT_REPORT_SLUG;
 }
 
 function ReferralReportView({ referrals, filters }) {
@@ -429,6 +540,7 @@ function EpiTargetClientListReportView({
   patients,
   records,
   filters,
+  followUps,
 }) {
   const epiByPatient = useMemo(() => {
     const map = new Map();
@@ -441,76 +553,66 @@ function EpiTargetClientListReportView({
     });
     return map;
   }, [records]);
+  const followUpsByPatient = useMemo(() => {
+    const map = new Map();
+    followUps
+      .filter(isEpiFollowUpTask)
+      .forEach((task) => {
+        const patientId = String(task.patientId || task.patient?.id || "");
+        if (!patientId) return;
+        if (!map.has(patientId)) map.set(patientId, []);
+        map.get(patientId).push({
+          ...task,
+          effectiveState: getEffectiveFollowUpState(task),
+        });
+      });
+    return map;
+  }, [followUps]);
+  const maternalByPatient = useMemo(() => {
+    const map = new Map();
+    records.filter(isMaternalRecord).forEach((record) => {
+      const patientId = String(
+        record.patientId || record.patient_id || record.patient?.id || "",
+      );
+      if (!patientId) return;
+      if (!map.has(patientId)) map.set(patientId, []);
+      map.get(patientId).push(record);
+    });
+    return map;
+  }, [records]);
 
   const rows = patients
-    .map((patient) => buildEpiTargetRow(patient, epiByPatient))
-    .filter((row) => row.ageMonths >= 0 && row.ageMonths <= 12)
+    .map((patient) =>
+      buildEpiTargetRow(patient, epiByPatient, followUpsByPatient, maternalByPatient),
+    )
+    .filter(isEpiTargetClient)
     .filter(
       (row) =>
         matchesDateRange(row.registrationDate, filters) &&
         matchesValue(row.barangay, filters.barangay) &&
-        (!filters.ageMonths ||
-          row.ageMonths === Number(filters.ageMonths)) &&
-        matchesValue(row.sex, filters.sex) &&
-        matchesValue(row.status, filters.vaccineStatus),
+        matchesStatusFilter(row.status, filters.status) &&
+        matchesAgeMonthsRange(row.ageMonths, filters.ageMonths) &&
+        matchesVaccineFilter(row, filters.vaccine),
     );
   const completed = rows.filter((row) => row.status === "Completed").length;
-  const due = rows.filter((row) => row.status === "Due").length;
-  const missed = rows.filter((row) => row.status === "Missed").length;
+  const due = rows.filter((row) =>
+    ["Due Today", "Pending"].includes(row.status),
+  ).length;
+  const noShow = rows.filter((row) => row.status === "No Show").length;
 
-  return (
-    <>
+return (
+  <>
+    <div className="no-print">
       <SummaryGrid>
         <SummaryCard label="Target Clients" value={rows.length} icon={<Baby size={16} />} />
         <SummaryCard label="Completed" value={completed} tone="emerald" icon={<FileHeart size={16} />} />
         <SummaryCard label="Due" value={due} icon={<ClipboardList size={16} />} />
-        <SummaryCard label="Missed" value={missed} tone="amber" icon={<UsersRound size={16} />} />
+        <SummaryCard label="No Show" value={noShow} tone="amber" icon={<UsersRound size={16} />} />
       </SummaryGrid>
-      <ReportTable
-        minWidth="min-w-[1700px]"
-        columns={[
-          "No.",
-          "Date of Registration",
-          "Family Serial Number",
-          "Name of Child",
-          "Date of Birth",
-          "Age in Months",
-          "Sex",
-          "Name of Mother",
-          "Complete Address",
-          "BCG",
-          "HEPA B",
-          "OPV",
-          "PENTA",
-          "PCV",
-          "IPV",
-          "MCV",
-          "Status",
-        ]}
-        rows={rows.map((row, index) => [
-          index + 1,
-          formatDate(row.registrationDate, "Not recorded"),
-          row.familySerialNumber || "Not recorded",
-          row.name,
-          formatDate(row.birthDate, "Not recorded"),
-          row.ageMonths,
-          row.sex || "Not recorded",
-          row.motherName || "Not recorded",
-          row.address || "Not recorded",
-          row.vaccines.BCG,
-          row.vaccines["HEPA B"],
-          row.vaccines.OPV,
-          row.vaccines.PENTA,
-          row.vaccines.PCV,
-          row.vaccines.IPV,
-          row.vaccines.MCV,
-          row.status,
-        ])}
-        emptyTitle="No EPI target clients"
-        emptyMessage="Registered children up to 12 months old will appear here."
-      />
-    </>
-  );
+    </div>
+    <EpiTargetClientTable rows={rows} />
+  </>
+);
 }
 
 function MorbidityReportView({ records, filters, patientMap }) {
@@ -781,12 +883,134 @@ function SummaryCard({ label, value, icon, tone = "red" }) {
   );
 }
 
-function ReportTitle({ title }) {
+
+
+function EpiTargetClientTable({ rows }) {
+  const baseHeaders = [
+    "No.",
+    "Date of Registration",
+    "Family Serial Number",
+    "Name of Child",
+    "Date of Birth",
+    "Age in Months",
+    "Sex",
+    "Name of Mother",
+    "Complete Address",
+  ];
+  const totalColumns = baseHeaders.length + 6;
+
   return (
-    <div>
-      <h2 className="text-base font-bold text-[#0F172A]">{title}</h2>
-      <p className="mt-0.5 text-xs text-slate-500">
-        Generated from current AKAY patient and health service records.
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1900px] text-left">
+          <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            <tr className="border-b border-slate-200">
+              {baseHeaders.map((header) => (
+                <th key={header} rowSpan={2} className="whitespace-nowrap border-r border-slate-200 px-3 py-3 align-middle">
+                  {header}
+                </th>
+              ))}
+              <th colSpan={2} className="border-r border-slate-200 px-3 py-3 text-center">
+                Children Protected at Birth (CPAB)
+              </th>
+              <th colSpan={2} className="border-r border-slate-200 px-3 py-3 text-center">
+                BCG Immunization
+              </th>
+              <th colSpan={2} className="border-r border-slate-200 px-3 py-3 text-center">
+                Hepa B Immunization
+              </th>
+            </tr>
+            <tr className="border-b border-slate-200">
+              <th className="w-44 border-r border-slate-200 px-3 py-2 align-top">
+                Td2 given to mother a month prior to delivery
+              </th>
+              <th className="w-48 border-r border-slate-200 px-3 py-2 align-top">
+                Td3 to Td5 / Td1 to Td5 given to mother anytime prior to delivery
+              </th>
+              <th className="w-36 border-r border-slate-200 px-3 py-2 align-top">
+                Within 24 hours
+              </th>
+              <th className="w-48 border-r border-slate-200 px-3 py-2 align-top">
+                24 hours to 11 months and 29 days
+              </th>
+              <th className="w-40 border-r border-slate-200 px-3 py-2 align-top">
+                Within 24 hours after birth
+              </th>
+              <th className="w-40 border-r border-slate-200 px-3 py-2 align-top">
+                More than 24 hours up to 14 days
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 text-sm">
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={totalColumns} className="px-6 py-16 text-center">
+                  <FileText className="mx-auto text-slate-300" size={28} />
+                  <p className="mt-3 font-semibold text-slate-600">
+                    No records found for this report.
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Try adjusting filters or adding related health records.
+                  </p>
+                </td>
+              </tr>
+            ) : (
+              rows.map((row, index) => (
+                <tr key={`${row.patientId}-${index}`} className="hover:bg-slate-50/70">
+                  {[
+                    index + 1,
+                    formatDate(row.registrationDate, "Not recorded"),
+                    row.familySerialNumber || "Not recorded",
+                    row.name,
+                    formatDate(row.birthDate, "Not recorded"),
+                    row.ageMonths,
+                    row.sex || "Not recorded",
+                    row.motherName || "Not recorded",
+                    row.address || "Not recorded",
+                    row.cpab.td2,
+                    row.cpab.td3ToTd5,
+                    row.groupedVaccines.bcgWithin24,
+                    row.groupedVaccines.bcgAfter24Hours,
+                    row.groupedVaccines.hepaBWithin24,
+                    row.groupedVaccines.hepaBAfter24Hours,
+                  ].map((value, columnIndex) => (
+                    <td
+                      key={`${row.patientId}-${columnIndex}`}
+                      className={`border-r border-slate-100 px-3 py-3 align-top ${
+                        columnIndex === 0
+                          ? "font-semibold text-[#0F172A]"
+                          : "text-slate-600"
+                      }`}
+                    >
+                      {formatDisplayValue(value, EMPTY_MARK)}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function PrintReportHeader({ title, filters }) {
+  return (
+    <div className="hidden print:block">
+      <h1 className="text-base font-bold text-[#0F172A]">{title}</h1>
+      <p className="mt-1 text-[11px] text-slate-600">
+        Generated {new Date().toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        })}
+      </p>
+      <p className="mt-1 text-[11px] text-slate-500">
+        Filters:{" "}
+        {filters.length
+          ? filters.map((filter) => filter.label).join("; ")
+          : "All records"}
       </p>
     </div>
   );
@@ -877,9 +1101,9 @@ function getReportFilterFields(type, barangays, facilities) {
       return [
         dateField,
         barangay,
-        { key: "ageMonths", label: "Age in Months", type: "number", min: 0, max: 12 },
-        { key: "sex", label: "Sex", type: "select", resetValue: "", placeholder: "All Sexes", options: ["Male", "Female"] },
-        { key: "vaccineStatus", label: "Vaccine Status", type: "select", resetValue: "", placeholder: "All Statuses", options: ["Due", "Completed", "Missed"] },
+        { key: "status", label: "Status", type: "select", resetValue: "", placeholder: "All Statuses", options: ["Completed", "Due", "No Show", "Pending"] },
+        { key: "ageMonths", label: "Age Range in Months", type: "text", placeholder: "e.g. 0-12" },
+        { key: "vaccine", label: "Vaccine", type: "select", resetValue: "", placeholder: "All vaccines", options: EPI_CHILD_VACCINE_COLUMNS },
       ];
     case "morbidity":
       return [
@@ -937,37 +1161,54 @@ function normalizeProgramRecord(record, patientMap) {
   };
 }
 
-function buildEpiTargetRow(patient, epiByPatient) {
+function buildEpiTargetRow(patient, epiByPatient, followUpsByPatient, maternalByPatient) {
   const patientId = String(patient.id || patient.patientId || "");
   const records = epiByPatient.get(patientId) || [];
   const entries = records.flatMap(getEpiVaccineEntries);
-  const vaccines = {
-    BCG: getVaccineGroupValue(entries, ["BCG"]),
-    "HEPA B": getVaccineGroupValue(entries, ["HEPA B"]),
-    OPV: getVaccineGroupValue(entries, ["OPV 1", "OPV 2", "OPV 3"]),
-    PENTA: getVaccineGroupValue(entries, ["PENTA 1", "PENTA 2", "PENTA 3"]),
-    PCV: getVaccineGroupValue(entries, ["PCV 1", "PCV 2", "PCV 3"]),
-    IPV: getVaccineGroupValue(entries, ["IPV 1", "IPV 2"]),
-    MCV: getVaccineGroupValue(entries, ["MCV 1", "MCV 2"]),
-  };
+  const vaccines = Object.fromEntries(
+    EPI_CHILD_VACCINE_COLUMNS.map((vaccineName) => [
+      vaccineName,
+      getVaccineValue(entries, vaccineName),
+    ]),
+  );
   const recordedNames = new Set(
     entries.map((entry) => normalizeVaccineName(entry.vaccineName)),
   );
-  const completed = EPI_VACCINE_ROWS.every((name) => recordedNames.has(name));
+  const completed = EPI_CHILD_VACCINE_COLUMNS.every((name) =>
+    recordedNames.has(name),
+  );
   const birthDate =
     patient.birthDate ||
     patient.birthdate ||
     patient.dateOfBirth ||
     patient.date_of_birth ||
     "";
+  const motherPatientId = String(
+    patient.motherPatientId || patient.mother_patient_id || patient.mother?.id || "",
+  );
+  const cpab = buildCpabValues(maternalByPatient.get(motherPatientId) || [], birthDate);
+  const groupedVaccines = buildGroupedBirthDoseValues(entries, birthDate);
   const ageMonths = calculateAgeInMonths(birthDate);
+  const followUpTasks = (followUpsByPatient.get(patientId) || []).sort(
+    (a, b) => String(a.dueDate || "").localeCompare(String(b.dueDate || "")),
+  );
+  const activeFollowUp =
+    followUpTasks.find((task) =>
+      ["due_today", "no_show", "upcoming", "rescheduled"].includes(task.effectiveState),
+    ) ||
+    followUpTasks.at(-1) ||
+    null;
   const status = completed
     ? "Completed"
-    : entries.length === 0 && ageMonths > 2
-      ? "Missed"
-      : "Due";
+    : activeFollowUp
+      ? formatFollowUpState(activeFollowUp.effectiveState, true)
+      : entries.length > 0
+        ? "Pending"
+        : "Pending";
+  const remarks = buildEpiRemarks(records, activeFollowUp, groupedVaccines.remarks);
 
   return {
+    patientId,
     registrationDate:
       patient.dateRegistered ||
       patient.date_registered ||
@@ -980,7 +1221,10 @@ function buildEpiTargetRow(patient, epiByPatient) {
     birthDate,
     ageMonths,
     sex: patient.sex || "",
-    motherName: patient.motherName || patient.mother_name || "",
+    motherName:
+      patient.motherName ||
+      patient.mother_name ||
+      formatPatientName(patient.motherPatient || patient.mother_patient || patient.mother, ""),
     address: [
       patient.streetAddress || patient.street_address || patient.address,
       patient.purokArea || patient.purok_area,
@@ -991,18 +1235,204 @@ function buildEpiTargetRow(patient, epiByPatient) {
       .join(", "),
     barangay: patient.barangay || "",
     vaccines,
+    cpab,
+    groupedVaccines,
+    nextScheduleDate: activeFollowUp?.dueDate || "",
     status,
+    remarks,
+    hasEpiRecord: records.length > 0,
+    registrationType: patient.registrationType || patient.registration_type || "",
   };
 }
 
-function getVaccineGroupValue(entries, names) {
-  const matching = entries.filter((entry) =>
-    names.includes(normalizeVaccineName(entry.vaccineName)),
+function getVaccineValue(entries, vaccineName) {
+  const matching = entries.filter(
+    (entry) => normalizeVaccineName(entry.vaccineName) === vaccineName,
   );
-  if (!matching.length) return "Not recorded";
+  if (!matching.length) return EMPTY_MARK;
+
   return matching
-    .map((entry) => formatDate(entry.dateGiven, "Given"))
+    .map((entry) => {
+      const status = normalizeText(entry.status || entry.result || entry.remarks);
+      if (status.includes("defer")) return "Deferred";
+      if (status.includes("no show")) return "No Show";
+      return formatDate(entry.dateGiven, "Given");
+    })
     .join(", ");
+}
+
+function buildGroupedBirthDoseValues(entries, birthDate) {
+  const grouped = {
+    bcgWithin24: EMPTY_MARK,
+    bcgAfter24Hours: EMPTY_MARK,
+    hepaBWithin24: EMPTY_MARK,
+    hepaBAfter24Hours: EMPTY_MARK,
+    remarks: [],
+  };
+
+  splitBirthDoseEntries(entries, "BCG", birthDate, 365).forEach((result) => {
+    if (result.bucket === "within24") grouped.bcgWithin24 = result.value;
+    if (result.bucket === "after24") grouped.bcgAfter24Hours = result.value;
+    if (result.bucket === "outside") grouped.remarks.push(`BCG: ${result.value}`);
+  });
+
+  splitBirthDoseEntries(entries, "HEPA B", birthDate, 14).forEach((result) => {
+    if (result.bucket === "within24") grouped.hepaBWithin24 = result.value;
+    if (result.bucket === "after24") grouped.hepaBAfter24Hours = result.value;
+    if (result.bucket === "outside") grouped.remarks.push(`Hepa B: ${result.value}`);
+  });
+
+  return grouped;
+}
+
+function splitBirthDoseEntries(entries, vaccineName, birthDate, maxDaysAfterBirth) {
+  return entries
+    .filter((entry) => normalizeVaccineName(entry.vaccineName) === vaccineName)
+    .map((entry) => {
+      const value = formatVaccineEntryValue(entry);
+      const birth = parseDateOnly(birthDate);
+      const given = parseDateOnly(entry.dateGiven);
+      if (!birth || !given) return { bucket: "outside", value };
+
+      const days = daysBetween(birth, given);
+      if (days < 0) return { bucket: "outside", value };
+      if (days === 0) return { bucket: "within24", value };
+      if (days <= maxDaysAfterBirth) return { bucket: "after24", value };
+      return { bucket: "outside", value };
+    });
+}
+
+function formatVaccineEntryValue(entry) {
+  const status = normalizeText(entry.status || entry.result || entry.remarks);
+  if (status.includes("defer")) return "Deferred";
+  if (status.includes("no show")) return "No Show";
+  return formatDate(entry.dateGiven, "Given");
+}
+
+function buildCpabValues(maternalRecords, childBirthDate) {
+  const birth = parseDateOnly(childBirthDate);
+  if (!birth || !maternalRecords.length) {
+    return { td2: EMPTY_MARK, td3ToTd5: EMPTY_MARK };
+  }
+
+  const doses = collectMaternalTdDoses(maternalRecords)
+    .filter((dose) => dose.date && dose.date <= birth)
+    .sort((a, b) => a.dose - b.dose || b.date - a.date);
+  const td2 = doses.find(
+    (dose) => dose.dose === 2 && daysBetween(dose.date, birth) >= 28,
+  );
+  const higherDose = doses
+    .filter((dose) => dose.dose >= 3 && dose.dose <= 5)
+    .sort((a, b) => b.dose - a.dose || b.date - a.date)[0];
+
+  return {
+    td2: td2 ? `${CHECK_MARK} TD2` : EMPTY_MARK,
+    td3ToTd5: higherDose ? `${CHECK_MARK} TD${higherDose.dose}` : EMPTY_MARK,
+  };
+}
+
+function collectMaternalTdDoses(records) {
+  return records.flatMap((record) => {
+    const maternal = record.maternalData || record.maternal_data || {};
+    const status =
+      maternal.tetanusToxoidStatus ||
+      maternal.tetanus_toxoid_status ||
+      record.tetanusToxoidStatus ||
+      record.tetanus_toxoid_status ||
+      {};
+
+    return [1, 2, 3, 4, 5]
+      .flatMap((dose) => [
+        [dose, status[`td${dose}`] || maternal[`td${dose}`] || record[`td${dose}`]],
+        [dose, status[`tt${dose}`] || maternal[`tt${dose}`] || record[`tt${dose}`]],
+      ])
+      .map(([dose, value]) => ({ dose, date: parseDateOnly(value) }))
+      .filter((dose) => dose.date);
+  });
+}
+
+function parseDateOnly(value) {
+  if (!value) return null;
+  const raw = String(value).slice(0, 10);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+    ? new Date(`${raw}T00:00:00`)
+    : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function daysBetween(start, end) {
+  const dayMs = 24 * 60 * 60 * 1000;
+  return Math.floor((end.getTime() - start.getTime()) / dayMs);
+}
+
+function isEpiTargetClient(row) {
+  if (row.hasEpiRecord) return true;
+  if (row.ageMonths < 0) return false;
+  const type = normalizeText(row.registrationType);
+  return type.includes("child") || type.includes("epi") || row.ageMonths <= 59;
+}
+
+function isEpiFollowUpTask(task = {}) {
+  const serviceType = formatServiceType(
+    task.healthRecord?.category ||
+      task.healthRecord?.patientClassification ||
+      task.healthRecord?.recordType ||
+      task.category ||
+      "",
+    "",
+  );
+  return serviceType === "Child Health / EPI";
+}
+
+function matchesStatusFilter(status, filter) {
+  if (!filter) return true;
+  if (filter === "Due") return ["Due Today", "Pending"].includes(status);
+  return status === filter;
+}
+
+function matchesAgeMonthsRange(ageMonths, filter) {
+  if (!filter) return true;
+  const value = Number(ageMonths);
+  if (Number.isNaN(value)) return false;
+  const [fromRaw, toRaw] = String(filter).split("-").map((part) => part.trim());
+  const from = Number(fromRaw);
+  const to = Number(toRaw ?? fromRaw);
+  if (Number.isNaN(from)) return true;
+  if (Number.isNaN(to)) return value === from;
+  return value >= from && value <= to;
+}
+
+function matchesVaccineFilter(row, vaccine) {
+  if (!vaccine) return true;
+  return row.vaccines?.[vaccine] && row.vaccines[vaccine] !== EMPTY_MARK;
+}
+
+function buildEpiRemarks(records, followUpTask, groupedRemarks = []) {
+  const recordRemarks = records
+    .flatMap((record) => [
+      record.remarks,
+      record.notes,
+      record.consultationNotes,
+      record.consultation_notes,
+    ])
+    .filter(Boolean);
+  const followUpRemarks = followUpTask?.notes ? [followUpTask.notes] : [];
+  const state = followUpTask?.effectiveState;
+  const stateRemark =
+    state === "no_show"
+      ? "No Show"
+      : state === "rescheduled"
+        ? "Rescheduled"
+        : "";
+
+  return [
+    ...new Set([
+      stateRemark,
+      ...groupedRemarks,
+      ...followUpRemarks,
+      ...recordRemarks,
+    ].filter(Boolean)),
+  ].join("; ");
 }
 
 function calculateAgeInMonths(value) {
@@ -1106,7 +1536,7 @@ function getEffectiveFollowUpState(task) {
   return "upcoming";
 }
 
-function formatFollowUpState(state) {
+function formatFollowUpState(state, epiLabel = false) {
   const labels = {
     upcoming: "Pending",
     rescheduled: "Pending",
@@ -1115,7 +1545,10 @@ function formatFollowUpState(state) {
     fulfilled: "Completed",
     cancelled: "Cancelled",
   };
-  return labels[state] || "Pending";
+  const value = labels[state] || "Pending";
+  if (!epiLabel) return value;
+  if (value === "Pending") return "Pending";
+  return value;
 }
 
 function normalizeDate(value) {

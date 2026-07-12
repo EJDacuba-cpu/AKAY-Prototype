@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   
@@ -35,7 +35,10 @@ import {
   PhilippineContactInput,
 } from "../../components/features/patients/PatientFormComponents";
 
-import { createBhcPatient } from "../../services/patientService";
+import {
+  createBhcPatient,
+  getPatientDetailsListByRole,
+} from "../../services/patientService";
 import { queryKeys } from "../../utils/queryKeys";
 
 // Animation Utility
@@ -103,6 +106,7 @@ const INITIAL_FORM_STATE = {
   municipality: "Bulakan",
 
   motherName: "",
+  motherPatientId: "",
   motherBirthDate: "",
   fatherName: "",
   fatherBirthDate: "",
@@ -133,6 +137,11 @@ export function PatientRegistrationPage({
   const [createdPatientId, setCreatedPatientId] = useState("");
   const [form, setForm] = useState(INITIAL_FORM_STATE);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [motherSearch, setMotherSearch] = useState("");
+  const { data: registeredPatients = [] } = useQuery({
+    queryKey: queryKeys.patients(queryRole),
+    queryFn: () => getPatientDetailsListByRole(queryRole),
+  });
 
   const ageDisplay = formatAgeDisplay(form.birthDate);
   const ageYears = calculateAge(form.birthDate);
@@ -149,7 +158,16 @@ export function PatientRegistrationPage({
     String(currentDate.getMonth() + 1).padStart(2, "0"),
     String(currentDate.getDate()).padStart(2, "0"),
   ].join("-");
-
+  const motherPatientOptions = registeredPatients
+    .filter((patient) => {
+      const age = calculateAge(patient.birthDate || patient.birthdate);
+      return patient.sex === "Female" && (age === "" || Number(age) >= 12);
+    })
+    .filter((patient) => {
+      const search = motherSearch.trim().toLowerCase();
+      if (!search) return true;
+      return getMotherPatientLabel(patient).toLowerCase().includes(search);
+    });
 
   // --- HANDLERS ---
 
@@ -220,7 +238,7 @@ function handleBirthDateChange(valueOrEvent) {
     civilStatus: nextIsEpiTarget ? "Single" : prev.civilStatus,
     occupation: nextIsEpiTarget ? "" : prev.occupation,
     nhtsStatus: nextIsEpiTarget ? "" : prev.nhtsStatus,
-    familySerialNumber: nextIsEpiTarget ? "" : prev.familySerialNumber,
+    familySerialNumber: nextIsChild ? prev.familySerialNumber : "",
     spouseName:
       !nextIsEpiTarget && prev.civilStatus === "Married"
         ? prev.spouseName
@@ -232,6 +250,7 @@ function handleBirthDateChange(valueOrEvent) {
 
     // clear child-only fields kapag adult na yung bagong DOB
     motherName: nextIsChild ? prev.motherName : "",
+    motherPatientId: nextIsChild ? prev.motherPatientId : "",
     motherBirthDate: nextIsChild ? prev.motherBirthDate : "",
     fatherName: nextIsChild ? prev.fatherName : "",
     fatherBirthDate: nextIsChild ? prev.fatherBirthDate : "",
@@ -246,6 +265,20 @@ function handleBirthDateChange(valueOrEvent) {
     setForm((prev) => ({
       ...prev,
       [name]: value,
+    }));
+  }
+  function handleMotherPatientSelect(value) {
+    const selectedMother = registeredPatients.find(
+      (patient) => String(patient.id) === String(value),
+    );
+
+    setFieldErrors((prev) => ({ ...prev, motherPatientId: "" }));
+    setForm((prev) => ({
+      ...prev,
+      motherPatientId: value,
+      motherName: selectedMother
+        ? selectedMother.fullName || selectedMother.name || prev.motherName
+        : prev.motherName,
     }));
   }
     function validateForm() {
@@ -312,6 +345,7 @@ function handleBirthDateChange(valueOrEvent) {
             patientClassification: "Child Patient",
 
             motherName: form.motherName || null,
+            motherPatientId: form.motherPatientId || null,
             motherBirthDate: form.motherBirthDate || null,
             fatherName: form.fatherName || null,
             fatherBirthDate: form.fatherBirthDate || null,
@@ -324,6 +358,7 @@ function handleBirthDateChange(valueOrEvent) {
             patientClassification: form.patientClassification || "",
 
             motherName: null,
+            motherPatientId: null,
             motherBirthDate: null,
             fatherName: null,
             fatherBirthDate: null,
@@ -343,9 +378,7 @@ function handleBirthDateChange(valueOrEvent) {
           occupation: isEpiTargetAge ? null : form.occupation || null,
           nhtsStatus: isEpiTargetAge ? null : form.nhtsStatus || null,
           purokArea: form.purokArea || null,
-          familySerialNumber: isEpiTargetAge
-            ? null
-            : form.familySerialNumber || null,
+          familySerialNumber: form.familySerialNumber || null,
           spouseName:
             showGeneralProfileFields && form.civilStatus === "Married"
               ? form.spouseName || null
@@ -526,13 +559,15 @@ function handleBirthDateChange(valueOrEvent) {
                   error={fieldErrors.nhtsStatus}
                 />
 
-                <FormInput
-                  label="Family Serial Number"
-                  name="familySerialNumber"
-                  value={form.familySerialNumber}
-                  onChange={handleChange}
-                  placeholder="Optional household serial"
-                />
+                {!isChildRegistration && (
+                  <FormInput
+                    label="Family Serial Number"
+                    name="familySerialNumber"
+                    value={form.familySerialNumber}
+                    onChange={handleChange}
+                    placeholder="Optional household serial"
+                  />
+                )}
               </div>
             </section>
           )}
@@ -680,12 +715,28 @@ function handleBirthDateChange(valueOrEvent) {
 
               <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <FormInput
-                  label="Name of Mother"
+                  label="Mother Name"
                   name="motherName"
                   value={form.motherName}
                   onChange={handleChange}
                   error={fieldErrors.motherName}
                   required
+                />
+
+                <LinkedMotherSelect
+                  value={form.motherPatientId}
+                  search={motherSearch}
+                  options={motherPatientOptions}
+                  onSearchChange={setMotherSearch}
+                  onChange={handleMotherPatientSelect}
+                />
+
+                <FormInput
+                  label="Family Serial Number"
+                  name="familySerialNumber"
+                  value={form.familySerialNumber}
+                  onChange={handleChange}
+                  placeholder="Optional household serial"
                 />
 
                 <FormInput
@@ -812,6 +863,53 @@ function handleBirthDateChange(valueOrEvent) {
 
 export default function AddPatient() {
   return <PatientRegistrationPage />;
+}
+
+function LinkedMotherSelect({
+  value,
+  search,
+  options,
+  onSearchChange,
+  onChange,
+}) {
+  return (
+    <div className="min-w-0">
+      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+        Linked Mother Patient
+      </label>
+      <div className="space-y-2">
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Search registered mother"
+          className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm text-[#111827] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+        />
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm text-[#111827] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+        >
+          <option value="">No linked mother selected</option>
+          {options.map((patient) => (
+            <option key={patient.id} value={patient.id}>
+              {getMotherPatientLabel(patient)}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+function getMotherPatientLabel(patient = {}) {
+  return [
+    patient.fullName || patient.name || "Unnamed patient",
+    patient.patientId || patient.id ? `Patient ID: ${patient.patientId || patient.id}` : "",
+    patient.barangay || "",
+  ]
+    .filter(Boolean)
+    .join(" - ");
 }
 
 function SexRadioGroup({

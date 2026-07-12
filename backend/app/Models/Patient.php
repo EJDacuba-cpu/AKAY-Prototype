@@ -26,6 +26,7 @@ class Patient extends Model
         'spouse_name',
         'spouse_occupation',
         'registration_type',
+        'mother_patient_id',
         'mother_name',
         'father_name',
         'guardian_name',
@@ -82,6 +83,16 @@ class Patient extends Model
     public function ruralHealthUnit(): BelongsTo
     {
         return $this->belongsTo(RuralHealthUnit::class);
+    }
+
+    public function mother(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'mother_patient_id');
+    }
+
+    public function children(): HasMany
+    {
+        return $this->hasMany(self::class, 'mother_patient_id');
     }
 
     public function healthRecords(): HasMany

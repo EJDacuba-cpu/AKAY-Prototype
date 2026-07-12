@@ -21,6 +21,7 @@ import {
   createActiveFilterChips,
   isDateInPreset,
 } from "../../utils/filterUtils";
+import { formatServiceType } from "../../utils/healthRecordPrograms";
 import { queryKeys } from "../../utils/queryKeys";
 
 const DEFAULT_FILTERS = {
@@ -35,12 +36,22 @@ const DEFAULT_FILTERS = {
 const ITEMS_PER_PAGE = 5;
 
 function getTaskClassification(task) {
-  return formatDisplayValue(
+  return (
     task.healthRecord?.category ||
       task.healthRecord?.patientClassification ||
-      task.healthRecord?.recordType,
-    "Unclassified",
+      task.healthRecord?.recordType ||
+      task.healthRecord?.record_type ||
+      task.healthRecord?.healthRecordType ||
+      task.healthRecord?.health_record_type ||
+      task.category ||
+      task.patientClassification ||
+      task.recordType ||
+      ""
   );
+}
+
+function getTaskServiceTypeLabel(task) {
+  return formatServiceType(getTaskClassification(task), "Unclassified");
 }
 
 function getPatientSubtext(task) {
@@ -99,7 +110,7 @@ export default function FollowUps() {
       });
       const matchesServiceType =
         !filters.serviceType ||
-        getTaskClassification(task) === filters.serviceType;
+        getTaskServiceTypeLabel(task) === filters.serviceType;
 
       const haystack = [
         task.patientName,
@@ -107,6 +118,7 @@ export default function FollowUps() {
         task.healthRecordId,
         task.healthRecord?.chiefComplaint,
         getTaskClassification(task),
+        getTaskServiceTypeLabel(task),
         task.contact,
       ]
         .filter(Boolean)
@@ -191,10 +203,11 @@ export default function FollowUps() {
       placeholder: "All Service Types",
       options: [
         "General Consultation",
-        "Maternal",
-        "Immunization",
-        "Senior Citizen",
+        "Maternal / Prenatal",
+        "Child Health / EPI",
+        "NCD Monitoring",
         "Family Planning",
+        "TB DOTS / TB Monitoring",
       ],
     },
     {
@@ -274,7 +287,7 @@ export default function FollowUps() {
       recordId: task.healthRecordId,
       mode: "follow-up",
       patientId: task.patientId,
-      classification: getTaskClassification(task),
+      classification: getTaskClassification(task) || getTaskServiceTypeLabel(task),
     });
 
     navigate(`/bhc/health-records/add?${params.toString()}`);
@@ -357,7 +370,7 @@ export default function FollowUps() {
           <thead>
             <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
               <th className="whitespace-nowrap px-4 py-3">Patient</th>
-              <th className="whitespace-nowrap px-4 py-3">Record Type</th>
+              <th className="whitespace-nowrap px-4 py-3">Service Type</th>
               <th className="whitespace-nowrap px-4 py-3">Next Follow-up Date</th>
               <th className="whitespace-nowrap px-4 py-3">Status</th>
               <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
@@ -409,7 +422,7 @@ function FollowUpRow({ task, onRecordVisit, onReschedule }) {
       </td>
 
       <td className="px-4 py-3.5">
-        <ClassificationBadge classification={getTaskClassification(task)} />
+        <ClassificationBadge classification={getTaskServiceTypeLabel(task)} />
       </td>
 
       <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#64748B]">
@@ -484,10 +497,11 @@ function StateBadge({ state }) {
 function ClassificationBadge({ classification }) {
   const map = {
     "General Consultation": "bg-slate-100 text-slate-700",
-    "Maternal Care": "bg-pink-50 text-pink-700",
-    Maternal: "bg-pink-50 text-pink-700",
-    Immunization: "bg-emerald-50 text-emerald-700",
-    "Senior Citizen": "bg-blue-50 text-blue-700",
+    "Maternal / Prenatal": "bg-pink-50 text-pink-700",
+    "Child Health / EPI": "bg-emerald-50 text-emerald-700",
+    "NCD Monitoring": "bg-blue-50 text-blue-700",
+    "Family Planning": "bg-purple-50 text-purple-700",
+    "TB DOTS / TB Monitoring": "bg-amber-50 text-amber-700",
   };
 
   return (
@@ -649,8 +663,8 @@ function FollowUpDetailsModal({
         <div className="grid gap-3 px-5 py-5 sm:grid-cols-2">
           <DetailItem label="Patient" value={task.patientName} strong />
           <DetailItem
-            label="Classification"
-            value={getTaskClassification(task)}
+            label="Service Type"
+            value={getTaskServiceTypeLabel(task)}
           />
           <DetailItem
             label="Next Follow-up Date"
