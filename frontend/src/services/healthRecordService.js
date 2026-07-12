@@ -272,9 +272,20 @@ function hasAny(record = {}, keys = []) {
   return keys.some((key) => Object.prototype.hasOwnProperty.call(record, key));
 }
 
+function isMaternalCategory(value = "") {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
+  return ["maternal", "prenatal", "pregnancy", "antenatal"].some((term) =>
+    normalized.includes(term),
+  );
+}
+
 function toPayload(record = {}, { partial = false } = {}) {
   const category = record.category || record.recordType || record.patientClassification || null;
   const recordTypeKey = String(category || "").toLowerCase();
+  const isMaternalRecord = isMaternalCategory(recordTypeKey);
   const parentHealthRecordId =
     record.parentHealthRecordId ||
     record.parent_health_record_id ||
@@ -301,6 +312,12 @@ function toPayload(record = {}, { partial = false } = {}) {
     expectedDeliveryDate: record.expectedDeliveryDate || null,
     aog: record.aog || null,
   };
+  const tetanusToxoidStatus = {
+    ...(maternalData.tetanus_toxoid_status || {}),
+    ...(maternalData.tetanusToxoidStatus || {}),
+  };
+  maternalData.tetanusToxoidStatus = tetanusToxoidStatus;
+  maternalData.tetanus_toxoid_status = tetanusToxoidStatus;
   maternalData.supplements_given = normalizeSupplementsGiven(
     record,
     maternalData,
@@ -530,7 +547,7 @@ function toPayload(record = {}, { partial = false } = {}) {
     visit_type: visitType,
     parent_health_record_id: parentHealthRecordId,
     category,
-    maternal_data: recordTypeKey === "maternal" ? maternalData : null,
+    maternal_data: isMaternalRecord ? maternalData : null,
     immunization_data:
       recordTypeKey === "immunization"
         ? record.immunizationData || record.immunization_data || {}
@@ -723,9 +740,9 @@ export async function saveRhuHealthRecords(records) {
   return getRhuHealthRecords();
 }
 
-export async function getHealthRecords(role = "bhc") {
+export async function getHealthRecords(role = "bhc", params = {}) {
   void role;
-  return listRecords();
+  return listRecords(params);
 }
 
 export async function getFamilyPlanningHealthRecords(role = "bhc") {

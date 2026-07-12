@@ -41,6 +41,11 @@ import {
   formatUserName,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
+import {
+  formatServiceType,
+  getServiceTypeLabel,
+  isMaternalRecord as isMaternalProgramRecord,
+} from "../../utils/healthRecordPrograms";
 
 export default function HealthRecordDetails() {
   const { recordId } = useParams();
@@ -285,23 +290,19 @@ export default function HealthRecordDetails() {
     patient || record.patient,
     record.patientName || record.patient_name || "Unnamed Patient",
   );
-  const rawRecordCategory = formatDisplayValue(
-    record.category ||
-      record.classification ||
-      record.recordType ||
-      record.record_type ||
-      record.healthRecordType ||
-      record.health_record_type ||
-      record.patientClassification ||
-      patient?.category ||
-      patient?.patientClassification,
-    "General Consultation",
-  );
-  const recordCategory = isImmunizationRecord
+  const serviceType = isImmunizationRecord
     ? "Child Health / EPI"
-    : rawRecordCategory;
-  const recordTypeLabel = isImmunizationRecord ? "Immunization" : rawRecordCategory;
-  const patientClassification = recordCategory;
+    : getServiceTypeLabel(
+        {
+          ...record,
+          patientClassification:
+            record.patientClassification ||
+            patient?.category ||
+            patient?.patientClassification,
+        },
+        "General Consultation",
+      );
+  const patientClassification = serviceType;
   const displayDate = formatLongDate(getRecordDateValue(record), "Not recorded");
   const displayTime = getRecordTime(record);
   const pageTitle = isImmunizationRecord
@@ -323,7 +324,9 @@ export default function HealthRecordDetails() {
     initialActionsValue || treatmentNotesValue || medicalNotesValue,
   );
   const isMaternalRecord =
-    form.category === "Maternal" || patientClassification === "Maternal";
+    isMaternalProgramRecord(record) ||
+    formatServiceType(form.category, "") === "Maternal / Prenatal" ||
+    patientClassification === "Maternal / Prenatal";
   const dispensedMedicines = getDispensedMedicines(record);
   const isFamilyPlanningRecord = patientClassification === "Family Planning";
   const familyPlanningDetails = getFamilyPlanningDetails(record);
@@ -438,8 +441,7 @@ export default function HealthRecordDetails() {
             <VisitInfoStrip
               patientName={patientName}
               patientId={patientId}
-              classification={recordCategory}
-              recordType={recordTypeLabel}
+              serviceType={serviceType}
               displayDate={displayDate}
               displayTime={displayTime}
               practitioner={getRecordPractitioner(record)}
@@ -452,7 +454,7 @@ export default function HealthRecordDetails() {
           className={
             isEditing
               ? "space-y-6"
-              : isImmunizationRecord
+              : isImmunizationRecord || isMaternalRecord
                 ? "space-y-5"
                 : "grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"
           }
@@ -463,6 +465,8 @@ export default function HealthRecordDetails() {
               title={
                 isImmunizationRecord && !isEditing
                   ? "Child Health / EPI Record"
+                  : isMaternalRecord && !isEditing
+                    ? "Maternal / Prenatal Record"
                   : "Clinical Record"
               }
               icon={
@@ -613,6 +617,16 @@ export default function HealthRecordDetails() {
                   needsReferral={needsRhuReferral}
                   linkedReferralTarget={linkedReferralTarget}
                 />
+              ) : isMaternalRecord ? (
+                <MaternalPrenatalRecordDetails
+                  record={record}
+                  displayDate={displayDate}
+                  displayTime={displayTime}
+                  practitioner={getRecordPractitioner(record)}
+                  dispensedMedicines={dispensedMedicines}
+                  followUpDate={followUpDateValue}
+                  needsReferral={needsRhuReferral}
+                />
               ) : (
                 /* ── View Mode ── */
                 <div className="divide-y divide-slate-100">
@@ -695,20 +709,6 @@ export default function HealthRecordDetails() {
                     </DetailSection>
                   )}
 
-                  {isMaternalRecord && (
-                    <DetailSection title="Maternal Parameters">
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <PatientDetailItem
-                          label="Age of Gestation (AOG)"
-                          value={getRecordValue(record, ["aog", "ageOfGestation", "age_of_gestation"])}
-                        />
-                        <PatientDetailItem
-                          label="Expected Delivery Date (EDD)"
-                          value={formatLongDate(getRecordValue(record, ["expectedDeliveryDate", "expected_delivery_date", "edd"], ""), "Not recorded")}
-                        />
-	                      </div>
-	                    </DetailSection>
-	                  )}
                     {shouldShowMonitoringFollowUp && (
                       <DetailSection title="Monitoring & Follow-up">
                         <div className="grid gap-4 md:grid-cols-2">
@@ -745,7 +745,7 @@ export default function HealthRecordDetails() {
           </div>
 
           {/* ═══ Sidebar ═══ */}
-          {!isEditing && !isImmunizationRecord && (
+          {!isEditing && !isImmunizationRecord && !isMaternalRecord && (
             <aside className="space-y-3">
               <QuickSummaryCard
                 vitalItems={getVitalSignItems(record)}
@@ -868,18 +868,16 @@ function DetailSection({ title, children }) {
 
 function VisitInfoStrip({
   patientName,
-  classification,
-  recordType,
+  serviceType,
   displayDate,
   displayTime,
   practitioner,
 }) {
   return (
     <div className="  px-3 py-2 ">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <MetadataItem label="Patient Full Name" value={patientName} />
-        <MetadataItem label="Classification" value={classification} />
-        <MetadataItem label="Record Type" value={recordType || classification} />
+        <MetadataItem label="Service Type" value={serviceType} />
         <MetadataItem label="Date of Visit" value={displayDate} />
         <MetadataItem
           label="Time of Visit"
@@ -1039,6 +1037,7 @@ function getEpiVaccineEntries(record = {}) {
       weight: entry.weight || "",
       height: entry.height || "",
       temperature: entry.temperature || entry.temp || "",
+      remarks: entry.remarks || entry.notes || "",
     }));
 }
 
@@ -1602,6 +1601,415 @@ function cleanVitalSignValue(value) {
     return "";
   }
   return text;
+}
+
+const MATERNAL_RISK_LABELS = {
+  ageRisk: "Age less than 18 or greater than 35",
+  heightRisk: "Height less than 145 cm",
+  grandMultipara: "Grand multipara / fourth baby or more",
+  previousCs: "Previous C/S",
+  recurrentMiscarriageOrStillbirth: "3 consecutive miscarriage or stillbirth",
+  postpartumHemorrhage: "Post-partum hemorrhage",
+  tuberculosis: "Tuberculosis",
+  heartDisease: "Heart Disease",
+  diabetes: "Diabetes",
+  bronchialAsthma: "Bronchial Asthma",
+  goiter: "Goiter",
+  hypertensive: "Hypertensive",
+  alcoholUser: "Alcohol user",
+  smoker: "Smoker",
+};
+
+function getMaternalValue(maternal = {}, record = {}, keys = [], fallback = "Not recorded") {
+  for (const key of keys) {
+    const value = maternal?.[key] ?? record?.[key];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+
+  return fallback;
+}
+
+function getPreviousPregnancyHistory(maternal = {}) {
+  const rows =
+    maternal.previousPregnancyHistory ||
+    maternal.previous_pregnancy_history ||
+    [];
+  return Array.isArray(rows) ? rows.filter(Boolean) : [];
+}
+
+function PreviousPregnancyHistoryTable({ rows = [] }) {
+  if (!rows.length) {
+    return (
+      <SectionEmptyState text="No previous pregnancy history recorded." />
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="hidden grid-cols-[120px_minmax(180px,1fr)_110px_minmax(180px,1fr)] border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-widest text-slate-400 md:grid">
+        <div className="px-3 py-2.5">Pregnancy No.</div>
+        <div className="px-3 py-2.5">Place of Delivery</div>
+        <div className="px-3 py-2.5">Year</div>
+        <div className="px-3 py-2.5">Notes</div>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {rows.map((row, index) => (
+          <div
+            key={`${row.pregnancyNo || row.pregnancy_no || "pregnancy"}-${index}`}
+            className="grid gap-3 px-3 py-3 text-sm md:grid-cols-[120px_minmax(180px,1fr)_110px_minmax(180px,1fr)] md:items-center md:gap-0"
+          >
+            <EpiTableCell
+              label="Pregnancy No."
+              value={row.pregnancyNo || row.pregnancy_no}
+            />
+            <EpiTableCell
+              label="Place of Delivery"
+              value={row.placeOfDelivery || row.place_of_delivery}
+            />
+            <EpiTableCell label="Year" value={row.year} />
+            <EpiTableCell label="Notes" value={row.notes} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function getSelectedMaternalRiskLabels(maternal = {}) {
+  const riskAssessment =
+    maternal.riskAssessment ||
+    maternal.risk_assessment ||
+    maternal.medicalHistory ||
+    maternal.medical_history ||
+    {};
+
+  return Object.entries(MATERNAL_RISK_LABELS)
+    .filter(([key]) => riskAssessment?.[key] === true || riskAssessment?.[key] === "true")
+    .map(([, label]) => label);
+}
+
+function getPreviousFpMethodValue(maternal = {}) {
+  const method =
+    maternal.previousFpMethodUsed ||
+    maternal.previous_fp_method_used ||
+    "";
+  const other =
+    maternal.previousFpMethodOther ||
+    maternal.previous_fp_method_other ||
+    "";
+
+  if (String(method).toLowerCase() === "other" && other) return other;
+  return method || "Not recorded";
+}
+
+function getLaboratoryResultItems(maternal = {}) {
+  const labs = maternal.laboratoryResults || maternal.laboratory_results || {};
+  return [
+    ["Hemoglobin", ["hemoglobin"]],
+    ["CBC", ["cbc"]],
+    ["Blood Type", ["bloodType", "blood_type"]],
+    ["HBsAg", ["hbsag", "HBsAg", "hbsAg"]],
+    ["HIV", ["hiv"]],
+    ["Syphilis", ["syphilis"]],
+    ["Urinalysis", ["urinalysis"]],
+  ].map(([label, keys]) => ({
+    label,
+    value: getRecordValue(labs, keys, ""),
+  }));
+}
+
+function getTetanusToxoidDate(maternal = {}, record = {}, dose) {
+  const sourceObjects = [
+    maternal.tetanusToxoidStatus,
+    maternal.tetanus_toxoid_status,
+    record.tetanusToxoidStatus,
+    record.tetanus_toxoid_status,
+    maternal,
+    record,
+  ].filter((source) => source && typeof source === "object");
+  const keys = [
+    `tt${dose}`,
+    `td${dose}`,
+    `tt${dose}Date`,
+    `tt${dose}_date`,
+    `td${dose}Date`,
+    `td${dose}_date`,
+    `TT${dose}Date`,
+    `TD${dose}Date`,
+  ];
+  const normalizedKeys = new Set(keys.map(normalizeRecordKey));
+
+  for (const source of sourceObjects) {
+    for (const key of keys) {
+      const value = source?.[key];
+      if (value) return value;
+    }
+
+    for (const [key, value] of Object.entries(source)) {
+      if (value && normalizedKeys.has(normalizeRecordKey(key))) {
+        return value;
+      }
+    }
+  }
+
+  return "";
+}
+
+function normalizeRecordKey(key) {
+  return String(key || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function getUltrasoundValue(maternal = {}, keys = []) {
+  const ultrasound = maternal.ultrasound || {};
+  return getRecordValue(ultrasound, keys, "") || getRecordValue(maternal, keys, "");
+}
+
+function getVitalField(record = {}, field) {
+  const vitalSigns = record.vitalSigns || record.vital_signs || {};
+  const vitalObject =
+    vitalSigns && typeof vitalSigns === "object" ? vitalSigns : {};
+
+  if (record?.[field]) return record[field];
+  if (vitalObject?.[field]) return vitalObject[field];
+
+  const vitalText =
+    typeof vitalSigns === "string" ? vitalSigns : getVitalSigns(record, "");
+  const patternMap = {
+    weight: [/Weight:\s*([^|,]+)/i, /WT:\s*([^|,]+)/i],
+    height: [/Height:\s*([^|,]+)/i, /HGT:\s*([^|,]+)/i],
+  };
+
+  for (const pattern of patternMap[field] || []) {
+    const match = String(vitalText || "").match(pattern);
+    if (match?.[1]) return match[1].trim();
+  }
+
+  return "";
+}
+
+function getBloodPressureValue(record = {}) {
+  const vitalSigns = record.vitalSigns || record.vital_signs || {};
+  const vitalObject =
+    vitalSigns && typeof vitalSigns === "object" ? vitalSigns : {};
+  const systolic =
+    record.systolicBp ||
+    record.systolic_bp ||
+    vitalObject.systolicBp ||
+    vitalObject.systolic_bp;
+  const diastolic =
+    record.diastolicBp ||
+    record.diastolic_bp ||
+    vitalObject.diastolicBp ||
+    vitalObject.diastolic_bp;
+
+  if (systolic && diastolic) return `${systolic}/${diastolic} mmHg`;
+
+  const vitalText =
+    typeof vitalSigns === "string" ? vitalSigns : getVitalSigns(record, "");
+  const match = String(vitalText || "").match(/(?:BP|Blood Pressure):\s*([^|,]+)/i);
+  return match?.[1]?.trim() || "Not recorded";
+}
+
+function MaternalPrenatalRecordDetails({
+  record,
+  displayDate,
+  displayTime,
+  practitioner,
+  dispensedMedicines,
+  followUpDate,
+  needsReferral,
+}) {
+  const maternal = getMaternalData(record);
+  const term = getMaternalValue(maternal, record, ["term"]);
+  const preterm = getMaternalValue(maternal, record, ["preterm"]);
+  const abortion = getMaternalValue(maternal, record, ["abortion"]);
+  const living = getMaternalValue(maternal, record, ["living"]);
+  const tpal =
+    getMaternalValue(maternal, record, ["tpal", "obScore", "ob_score"], "") ||
+    ([term, preterm, abortion, living].some((value) => value !== "")
+      ? [term || 0, preterm || 0, abortion || 0, living || 0].join("-")
+      : "");
+  const previousPregnancyHistory = getPreviousPregnancyHistory(maternal);
+  const selectedRiskLabels = getSelectedMaternalRiskLabels(maternal);
+
+  return (
+    <div className="divide-y divide-slate-100">
+      <DetailSection title="Visit Overview">
+        <div className="grid gap-4 md:grid-cols-3">
+          <PatientDetailItem label="Date of Visit" value={displayDate} />
+          <PatientDetailItem
+            label="Time of Visit"
+            value={displayTime || "Not recorded"}
+          />
+          <PatientDetailItem
+            label="Name of Practitioner"
+            value={practitioner || "Not recorded"}
+          />
+        </div>
+      </DetailSection>
+
+      <DetailSection title="Pregnancy Details">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <PatientDetailItem
+            label="LMP"
+            value={formatLongDate(getMaternalValue(maternal, record, ["lmp"]), "Not recorded")}
+          />
+          <PatientDetailItem
+            label="PMP"
+            value={formatLongDate(getMaternalValue(maternal, record, ["pmp"]), "Not recorded")}
+          />
+          <PatientDetailItem
+            label="Expected Delivery Date / EDC"
+            value={formatLongDate(
+              getMaternalValue(maternal, record, [
+                "expectedDeliveryDate",
+                "expected_delivery_date",
+                "edc",
+                "edd",
+              ]),
+              "Not recorded",
+            )}
+          />
+          <PatientDetailItem
+            label="AOG"
+            value={getMaternalValue(maternal, record, ["aog", "ageOfGestation", "age_of_gestation"])}
+          />
+          <PatientDetailItem
+            label="Gravida"
+            value={getMaternalValue(maternal, record, ["gravida"])}
+          />
+          <PatientDetailItem
+            label="Para"
+            value={getMaternalValue(maternal, record, ["para"])}
+          />
+          <PatientDetailItem label="Term" value={term} />
+          <PatientDetailItem label="Preterm" value={preterm} />
+          <PatientDetailItem label="Abortion" value={abortion} />
+          <PatientDetailItem label="Living" value={living} />
+          <PatientDetailItem label="OB Score / TPAL" value={tpal} />
+          <PatientDetailItem label="Blood Pressure" value={getBloodPressureValue(record)} />
+          <PatientDetailItem
+            label="Weight"
+            value={formatMeasurement(getVitalField(record, "weight"), "kg")}
+          />
+          <PatientDetailItem
+            label="Height / HGT"
+            value={formatMeasurement(getVitalField(record, "height"), "cm")}
+          />
+          <PatientDetailItem
+            label="BMI"
+            value={getMaternalValue(maternal, record, ["bmi"])}
+          />
+        </div>
+      </DetailSection>
+
+      <DetailSection title="Previous Pregnancy / Delivery History">
+        <PreviousPregnancyHistoryTable rows={previousPregnancyHistory} />
+      </DetailSection>
+
+      <DetailSection title="Chief Complaint & Treatment">
+        <div className="grid gap-4 md:grid-cols-2">
+          <PatientDetailItem
+            label="Chief Complaint"
+            value={getRecordChiefComplaint(record, "Not recorded")}
+          />
+          <PatientDetailItem
+            label="Treatment / Advice Given"
+            value={
+              getMaternalValue(maternal, record, ["treatment"], "") ||
+              getRecordInitialActions(record, "Not recorded")
+            }
+          />
+        </div>
+      </DetailSection>
+
+      <DetailSection title="Medicines / Supplies Dispensed">
+        <DispensedMedicinesList medicines={dispensedMedicines} />
+      </DetailSection>
+
+      <DetailSection title="Medical History / Risk Codes">
+        {selectedRiskLabels.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {selectedRiskLabels.map((label) => (
+              <span
+                key={label}
+                className="rounded-full border border-red-100 bg-red-50 px-3 py-1 text-xs font-semibold text-[#B91C1C]"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <SectionEmptyState text="No risk codes recorded." />
+        )}
+      </DetailSection>
+
+      <DetailSection title="Previous FP Method Used">
+        <PatientDetailItem
+          label="Previous FP Method Used"
+          value={getPreviousFpMethodValue(maternal)}
+        />
+      </DetailSection>
+
+      <DetailSection title="Laboratory Results">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {getLaboratoryResultItems(maternal).map((item) => (
+            <PatientDetailItem
+              key={item.label}
+              label={item.label}
+              value={item.value || "Not recorded"}
+            />
+          ))}
+        </div>
+      </DetailSection>
+
+      <DetailSection title="Tetanus Toxoid Status">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          {[1, 2, 3, 4, 5].map((dose) => (
+            <PatientDetailItem
+              key={dose}
+              label={`TT${dose} Date`}
+              value={formatLongDate(
+                getTetanusToxoidDate(maternal, record, dose),
+                "Not recorded",
+              )}
+            />
+          ))}
+        </div>
+      </DetailSection>
+
+      <DetailSection title="Ultrasound Result">
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+          <PatientDetailItem
+            label="Ultrasound Result"
+            value={getUltrasoundValue(maternal, ["result", "ultrasoundResult", "ultrasound_result"])}
+          />
+          <PatientDetailItem
+            label="Date Done"
+            value={formatLongDate(
+              getUltrasoundValue(maternal, ["dateDone", "date_done", "date"]),
+              "Not recorded",
+            )}
+          />
+        </div>
+      </DetailSection>
+
+      <DetailSection title="Follow-up & Referral">
+        <div className="grid gap-4 md:grid-cols-2">
+          <PatientDetailItem
+            label="Follow-up Date"
+            value={formatLongDate(followUpDate, "No follow-up date recorded.")}
+          />
+          <PatientDetailItem
+            label="Needs RHU Referral"
+            value={needsReferral ? "Yes" : "No"}
+          />
+        </div>
+      </DetailSection>
+    </div>
+  );
 }
 
 function EpiRecordDetails({

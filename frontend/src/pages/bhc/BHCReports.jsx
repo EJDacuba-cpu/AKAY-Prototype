@@ -151,11 +151,11 @@ export default function BHCReports() {
 
   const { data: patients = [], isLoading: patientsLoading } = useQuery({
     queryKey: queryKeys.patients("bhc"),
-    queryFn: () => getPatientDetailsListByRole("bhc"),
+    queryFn: () => getPatientDetailsListByRole("bhc", { per_page: 500 }),
   });
   const { data: records = [], isLoading: recordsLoading } = useQuery({
     queryKey: queryKeys.healthRecords("bhc"),
-    queryFn: () => getHealthRecords("bhc"),
+    queryFn: () => getHealthRecords("bhc", { per_page: 500 }),
   });
   const { data: referrals = [], isLoading: referralsLoading } = useQuery({
     queryKey: queryKeys.referrals("bhc"),
@@ -1185,7 +1185,12 @@ function buildEpiTargetRow(patient, epiByPatient, followUpsByPatient, maternalBy
     "";
   const birthTime = patient.birthTime || patient.birth_time || "";
   const motherPatientId = String(
-    patient.motherPatientId || patient.mother_patient_id || patient.mother?.id || "",
+    patient.motherPatientId ||
+      patient.mother_patient_id ||
+      patient.motherPatient?.id ||
+      patient.mother_patient?.id ||
+      patient.mother?.id ||
+      "",
   );
   const cpab = motherPatientId
     ? buildCpabValues(maternalByPatient.get(motherPatientId) || [], birthDate)
@@ -1326,16 +1331,14 @@ function buildCpabValues(maternalRecords, childBirthDate) {
   const doses = collectMaternalTdDoses(maternalRecords)
     .filter((dose) => dose.date && dose.date <= birth)
     .sort((a, b) => a.dose - b.dose || b.date - a.date);
-  const td2 = doses.find(
-    (dose) => dose.dose === 2 && daysBetween(dose.date, birth) >= 28,
-  );
+  const dose2 = doses.find((dose) => dose.dose === 2);
   const higherDose = doses
     .filter((dose) => dose.dose >= 3 && dose.dose <= 5)
     .sort((a, b) => b.dose - a.dose || b.date - a.date)[0];
 
   return {
-    td2: td2 ? `${CHECK_MARK} TD2` : EMPTY_MARK,
-    td3ToTd5: higherDose ? `${CHECK_MARK} TD${higherDose.dose}` : EMPTY_MARK,
+    td2: dose2 ? `${CHECK_MARK} ${dose2.label}` : EMPTY_MARK,
+    td3ToTd5: higherDose ? `${CHECK_MARK} ${higherDose.label}` : EMPTY_MARK,
   };
 }
 
@@ -1362,44 +1365,94 @@ function collectMaternalTdDoses(records) {
     ];
 
     return [1, 2, 3, 4, 5]
-      .map((dose) => ({
-        dose,
-        date: parseDateOnly(getTdDoseValue(sourceObjects, dose)),
-      }))
+      .map((dose) => {
+        const match = getTdDoseMatch(sourceObjects, dose);
+        return {
+          dose,
+          date: parseDateOnly(match?.value),
+          label: `${match?.prefix || "TT"}${dose}`,
+        };
+      })
       .filter((dose) => dose.date);
   });
 }
 
-function getTdDoseValue(sourceObjects, dose) {
-  const compactKeys = [
-    `td${dose}`,
+function getTdDoseMatch(sourceObjects, dose) {
+  const keys = buildTdDoseKeys(dose);
+  const normalizedKeys = new Map(
+    keys.map((item) => [normalizeTdDoseKey(item.key), item.prefix]),
+  );
+
+  for (const source of sourceObjects) {
+    for (const { key, prefix } of keys) {
+      const value = source?.[key];
+      if (value) return { value, prefix };
+    }
+
+    for (const [key, value] of Object.entries(source || {})) {
+      const prefix = normalizedKeys.get(normalizeTdDoseKey(key));
+      if (value && prefix) {
+        return { value, prefix };
+      }
+    }
+  }
+
+  return null;
+}
+
+function buildTdDoseKeys(dose) {
+  const ttKeys = [
     `tt${dose}`,
-    `TD${dose}`,
     `TT${dose}`,
-  ];
-  const dateKeys = [
-    `td${dose}Date`,
-    `td${dose}_date`,
     `tt${dose}Date`,
     `tt${dose}_date`,
-    `TD${dose}Date`,
     `TT${dose}Date`,
+    `tt${dose}DateDone`,
+    `tt${dose}_date_done`,
+    `tt${dose}DateGiven`,
+    `tt${dose}_date_given`,
+    `tetanusToxoid${dose}`,
+    `tetanus_toxoid_${dose}`,
+    `tetanusToxoidStatus${dose}`,
+    `tetanus_toxoid_status_${dose}`,
+  ];
+  const tdKeys = [
+    `td${dose}`,
+    `TD${dose}`,
+    `td${dose}Date`,
+    `td${dose}_date`,
+    `TD${dose}Date`,
+    `td${dose}DateDone`,
+    `td${dose}_date_done`,
+    `td${dose}DateGiven`,
+    `td${dose}_date_given`,
+  ];
+  const sharedKeys = [
+    `TDTT${dose}`,
+    `tdtt${dose}`,
+    `tdtt${dose}Date`,
+    `tdtt${dose}_date`,
+    `tdtt${dose}DateDone`,
+    `tdtt${dose}_date_done`,
+    `tdtt${dose}DateGiven`,
+    `tdtt${dose}_date_given`,
     `tetanus${dose}`,
     `tetanus_${dose}`,
     `tetanusDose${dose}`,
     `tetanus_dose_${dose}`,
-    `tetanusToxoid${dose}`,
-    `tetanus_toxoid_${dose}`,
   ];
 
-  for (const source of sourceObjects) {
-    for (const key of [...compactKeys, ...dateKeys]) {
-      const value = source?.[key];
-      if (value) return value;
-    }
-  }
+  return [
+    ...ttKeys.map((key) => ({ key, prefix: "TT" })),
+    ...tdKeys.map((key) => ({ key, prefix: "TD" })),
+    ...sharedKeys.map((key) => ({ key, prefix: "TT" })),
+  ];
+}
 
-  return "";
+function normalizeTdDoseKey(key) {
+  return String(key || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 }
 
 function normalizeObject(value) {

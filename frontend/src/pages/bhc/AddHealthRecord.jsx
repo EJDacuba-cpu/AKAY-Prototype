@@ -339,6 +339,7 @@ function mergeMaternalData(data = {}, fallback = {}) {
     },
     tetanusToxoidStatus: {
       ...EMPTY_MATERNAL_DATA.tetanusToxoidStatus,
+      ...(source.tetanus_toxoid_status || {}),
       ...(source.tetanusToxoidStatus || {}),
     },
     ultrasound: {
@@ -1724,6 +1725,7 @@ export default function AddHealthRecord() {
       },
       tetanusToxoidStatus: {
         ...EMPTY_MATERNAL_DATA.tetanusToxoidStatus,
+        ...(maternalData.tetanus_toxoid_status || {}),
         ...(maternalData.tetanusToxoidStatus || {}),
       },
       ultrasound: {

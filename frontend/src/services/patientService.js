@@ -45,6 +45,10 @@ export function normalizePatient(patient = {}) {
     patient.createdAt ||
     patient.registeredAt ||
     "";
+  const linkedMother =
+    patient.mother_patient || patient.motherPatient || patient.mother || null;
+  const linkedMotherId =
+    patient.mother_patient_id || patient.motherPatientId || linkedMother?.id || "";
 
   return {
     ...patient,
@@ -85,11 +89,9 @@ export function normalizePatient(patient = {}) {
       patient.registration_type || patient.registrationType || patient.patientType || "",
     patientType:
       patient.registration_type || patient.registrationType || patient.patientType || "",
-    motherPatientId:
-      patient.mother_patient_id || patient.motherPatientId || patient.mother?.id || "",
-    mother_patient_id:
-      patient.mother_patient_id || patient.motherPatientId || patient.mother?.id || "",
-    motherPatient: patient.mother_patient || patient.motherPatient || patient.mother || null,
+    motherPatientId: linkedMotherId ? String(linkedMotherId) : "",
+    mother_patient_id: linkedMotherId ? String(linkedMotherId) : "",
+    motherPatient: linkedMother,
     motherName: patient.mother_name || patient.motherName || "",
     fatherName: patient.father_name || patient.fatherName || "",
     guardianName: patient.guardian_name || patient.guardianName || "",
@@ -257,9 +259,9 @@ export async function getPatientsByRole() {
   return listPatients();
 }
 
-export async function getPatientDetailsListByRole(role) {
+export async function getPatientDetailsListByRole(role, params = {}) {
   void role;
-  return listPatients();
+  return listPatients(params);
 }
 
 export async function getPatientByIdForRole(id) {
