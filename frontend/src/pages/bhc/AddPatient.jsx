@@ -137,7 +137,6 @@ export function PatientRegistrationPage({
   const [createdPatientId, setCreatedPatientId] = useState("");
   const [form, setForm] = useState(INITIAL_FORM_STATE);
   const [fieldErrors, setFieldErrors] = useState({});
-  const [motherSearch, setMotherSearch] = useState("");
   const { data: registeredPatients = [] } = useQuery({
     queryKey: queryKeys.patients(queryRole),
     queryFn: () => getPatientDetailsListByRole(queryRole),
@@ -164,10 +163,29 @@ export function PatientRegistrationPage({
       return patient.sex === "Female" && (age === "" || Number(age) >= 12);
     })
     .filter((patient) => {
-      const search = motherSearch.trim().toLowerCase();
+      const search = form.motherName.trim().toLowerCase();
       if (!search) return true;
       return getMotherPatientLabel(patient).toLowerCase().includes(search);
     });
+  const linkedMother = form.motherPatientId
+    ? registeredPatients.find(
+        (patient) => String(patient.id) === String(form.motherPatientId),
+      )
+    : null;
+  const linkedMotherBirthDate =
+    linkedMother?.birthDate || linkedMother?.birthdate || "";
+  const fatherAgeDisplay = formatAgeDisplay(form.fatherBirthDate);
+  const motherAgeDisplay = formatAgeDisplay(form.motherBirthDate);
+  const linkedMotherHelper = linkedMother
+    ? [
+        "Linked registered mother",
+        linkedMotherBirthDate ? `DOB ${formatDisplayDate(linkedMotherBirthDate)}` : "",
+        linkedMother.barangay || "",
+      ]
+        .filter(Boolean)
+        .join(" - ")
+    : "";
+
 
   // --- HANDLERS ---
 
@@ -267,18 +285,69 @@ function handleBirthDateChange(valueOrEvent) {
       [name]: value,
     }));
   }
+  function handleMotherNameChange(value) {
+    setFieldErrors((prev) => ({
+      ...prev,
+      motherName: "",
+      motherPatientId: "",
+    }));
+
+    setForm((prev) => ({
+      ...prev,
+      motherName: value,
+      motherPatientId: "",
+      motherBirthDate: "",
+      fatherName: "",
+      fatherBirthDate: "",
+      familySerialNumber: "",
+    }));
+  }
   function handleMotherPatientSelect(value) {
     const selectedMother = registeredPatients.find(
       (patient) => String(patient.id) === String(value),
     );
 
-    setFieldErrors((prev) => ({ ...prev, motherPatientId: "" }));
+    setFieldErrors((prev) => ({ ...prev, motherName: "", motherPatientId: "" }));
     setForm((prev) => ({
       ...prev,
       motherPatientId: value,
       motherName: selectedMother
         ? selectedMother.fullName || selectedMother.name || prev.motherName
         : prev.motherName,
+      motherBirthDate: selectedMother
+        ? selectedMother.birthDate || selectedMother.birthdate || prev.motherBirthDate
+        : prev.motherBirthDate,
+      familySerialNumber: selectedMother
+        ? selectedMother.familySerialNumber ||
+          selectedMother.family_serial_number ||
+          prev.familySerialNumber
+        : prev.familySerialNumber,
+      fatherName: selectedMother
+        ? selectedMother.spouseName ||
+          selectedMother.spouse_name ||
+          prev.fatherName
+        : prev.fatherName,
+    }));
+  }
+  function clearMotherLink() {
+    setFieldErrors((prev) => ({
+      ...prev,
+      motherName: "",
+      motherPatientId: "",
+      motherBirthDate: "",
+      fatherName: "",
+      fatherBirthDate: "",
+      familySerialNumber: "",
+    }));
+
+    setForm((prev) => ({
+      ...prev,
+      motherName: "",
+      motherPatientId: "",
+      motherBirthDate: "",
+      fatherName: "",
+      fatherBirthDate: "",
+      familySerialNumber: "",
     }));
   }
     function validateForm() {
@@ -713,65 +782,88 @@ function handleBirthDateChange(valueOrEvent) {
                 description="Additional parent and household details for child patients."
               />
 
-              <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                <FormInput
-                  label="Mother Name"
-                  name="motherName"
-                  value={form.motherName}
-                  onChange={handleChange}
-                  error={fieldErrors.motherName}
-                  required
-                />
+            <div className="space-y-6">
+              {/* Mother Information */}
+              <div className="space-y-3">
 
-                <LinkedMotherSelect
-                  value={form.motherPatientId}
-                  search={motherSearch}
-                  options={motherPatientOptions}
-                  onSearchChange={setMotherSearch}
-                  onChange={handleMotherPatientSelect}
-                />
+                <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  <MotherCombobox
+                    value={form.motherPatientId}
+                    inputValue={form.motherName}
+                    options={motherPatientOptions}
+                    helperText={linkedMotherHelper}
+                    error={fieldErrors.motherName}
+                    onInputChange={handleMotherNameChange}
+                    onChange={handleMotherPatientSelect}
+                    onClear={clearMotherLink}
+                    required
+                  />
 
-                <FormInput
-                  label="Family Serial Number"
-                  name="familySerialNumber"
-                  value={form.familySerialNumber}
-                  onChange={handleChange}
-                  placeholder="Optional household serial"
-                />
+                  <DatePickerField
+                    label="Mother Date of Birth"
+                    name="motherBirthDate"
+                    value={form.motherBirthDate}
+                    mode="birthdate"
+                    maxDate={todayIso}
+                    disableFuture
+                    onChange={(value) =>
+                      handleParentBirthDateChange("motherBirthDate", value)
+                    }
+                    error={fieldErrors.motherBirthDate}
+                  />
 
-                <FormInput
-                  label="Name of Father"
-                  name="fatherName"
-                  value={form.fatherName}
-                  onChange={handleChange}
-                />
-
-                <DatePickerField
-                  label="Mother Date of Birth"
-                  name="motherBirthDate"
-                  value={form.motherBirthDate}
-                  mode="birthdate"
-                  maxDate={todayIso}
-                  disableFuture
-                  onChange={(value) =>
-                    handleParentBirthDateChange("motherBirthDate", value)
-                  }
-                  error={fieldErrors.motherBirthDate}
-                />
-
-                <DatePickerField
-                  label="Father Date of Birth"
-                  name="fatherBirthDate"
-                  value={form.fatherBirthDate}
-                  mode="birthdate"
-                  maxDate={todayIso}
-                  disableFuture
-                  onChange={(value) =>
-                    handleParentBirthDateChange("fatherBirthDate", value)
-                  }
-                  error={fieldErrors.fatherBirthDate}
-                />
+                  <FormInput
+                    label="Mother Age"
+                    name="motherAge"
+                    value={motherAgeDisplay}
+                    readOnly
+                    className="bg-gray-50"
+                  />
+                </div>
               </div>
+
+              {/* Father and Household Information */}
+              <div className="space-y-3 border-t border-[#EEF2F6] pt-5">
+
+                <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <FormInput
+                    label="Name of Father"
+                    name="fatherName"
+                    value={form.fatherName}
+                    onChange={handleChange}
+                  />
+
+                  <DatePickerField
+                    label="Father Date of Birth"
+                    name="fatherBirthDate"
+                    value={form.fatherBirthDate}
+                    mode="birthdate"
+                    maxDate={todayIso}
+                    disableFuture
+                    onChange={(value) =>
+                      handleParentBirthDateChange("fatherBirthDate", value)
+                    }
+                    error={fieldErrors.fatherBirthDate}
+                  />
+
+                  <FormInput
+                    label="Father Age"
+                    name="fatherAge"
+                    value={fatherAgeDisplay}
+                    readOnly
+                    className="bg-gray-50"
+                  />
+
+                  <FormInput
+                    label="Family Serial Number"
+                    name="familySerialNumber"
+                    value={form.familySerialNumber}
+                    onChange={handleChange}
+                    placeholder="Optional household serial"
+                  />
+                </div>
+              </div>
+            </div>
             </section>
 
             {isEpiTargetAge && (
@@ -865,39 +957,96 @@ export default function AddPatient() {
   return <PatientRegistrationPage />;
 }
 
-function LinkedMotherSelect({
+function MotherCombobox({
   value,
-  search,
+  inputValue,
   options,
-  onSearchChange,
+  helperText,
+  error,
+  required,
+  onInputChange,
   onChange,
+  onClear,
 }) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef(null);
+  const selected = Boolean(value);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (!wrapperRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function selectMother(patient) {
+    onChange(patient.id);
+    setOpen(false);
+  }
+
   return (
-    <div className="min-w-0">
+    <div ref={wrapperRef} className="relative min-w-0 sm:col-span-2 xl:col-span-1">
       <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-        Linked Mother Patient
+        Mother
+        {required && <span className="text-red-400"> *</span>}
       </label>
-      <div className="space-y-2">
+      <div className="relative">
         <input
-          type="search"
-          value={search}
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Search registered mother"
-          className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm text-[#111827] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+          type="text"
+          value={inputValue}
+          onChange={(event) => {
+            onInputChange(event.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder="Search registered mother or type name"
+          className={`h-10 w-full rounded-xl border bg-white px-3 pr-16 text-sm text-[#111827] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
+            error ? "border-[#B91C1C]" : "border-[#E5E7EB]"
+          }`}
         />
-        <select
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className="h-10 w-full rounded-xl border border-[#E5E7EB] bg-white px-3 text-sm text-[#111827] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+        <button
+          type="button"
+          onClick={() => (selected ? onClear() : setOpen((current) => !current))}
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-[11px] font-semibold text-[#B91C1C] hover:bg-red-50"
         >
-          <option value="">No linked mother selected</option>
-          {options.map((patient) => (
-            <option key={patient.id} value={patient.id}>
-              {getMotherPatientLabel(patient)}
-            </option>
-          ))}
-        </select>
+          {selected ? "Clear" : "Search"}
+        </button>
       </div>
+
+      {helperText && (
+        <p className="mt-1 text-[11px] font-medium text-emerald-700">
+          {helperText}
+        </p>
+      )}
+      {error && (
+        <p className="mt-1 text-[11px] font-medium leading-relaxed text-[#B91C1C]">
+          {error}
+        </p>
+      )}
+
+      {open && options.length > 0 && (
+        <div className="absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-[#E5E7EB] bg-white py-1 shadow-lg shadow-slate-900/[0.08]">
+          {options.slice(0, 8).map((patient) => (
+            <button
+              key={patient.id}
+              type="button"
+              onClick={() => selectMother(patient)}
+              className="block w-full px-3 py-2 text-left text-sm hover:bg-[#F8FAFC]"
+            >
+              <span className="block truncate font-semibold text-[#0F172A]">
+                {patient.fullName || patient.name || "Unnamed patient"}
+              </span>
+              <span className="block truncate text-[11px] text-[#64748B]">
+                {getMotherPatientMeta(patient)}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -910,6 +1059,29 @@ function getMotherPatientLabel(patient = {}) {
   ]
     .filter(Boolean)
     .join(" - ");
+}
+
+function getMotherPatientMeta(patient = {}) {
+  return [
+    patient.patientId || patient.id ? `Patient ID: ${patient.patientId || patient.id}` : "",
+    patient.birthDate || patient.birthdate
+      ? `DOB ${formatDisplayDate(patient.birthDate || patient.birthdate)}`
+      : "",
+    patient.barangay || "",
+  ]
+    .filter(Boolean)
+    .join(" - ");
+}
+
+function formatDisplayDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  });
 }
 
 function SexRadioGroup({

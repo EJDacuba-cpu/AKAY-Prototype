@@ -1183,11 +1183,14 @@ function buildEpiTargetRow(patient, epiByPatient, followUpsByPatient, maternalBy
     patient.dateOfBirth ||
     patient.date_of_birth ||
     "";
+  const birthTime = patient.birthTime || patient.birth_time || "";
   const motherPatientId = String(
     patient.motherPatientId || patient.mother_patient_id || patient.mother?.id || "",
   );
-  const cpab = buildCpabValues(maternalByPatient.get(motherPatientId) || [], birthDate);
-  const groupedVaccines = buildGroupedBirthDoseValues(entries, birthDate);
+  const cpab = motherPatientId
+    ? buildCpabValues(maternalByPatient.get(motherPatientId) || [], birthDate)
+    : emptyCpabValues();
+  const groupedVaccines = buildGroupedBirthDoseValues(entries, birthDate, birthTime);
   const ageMonths = calculateAgeInMonths(birthDate);
   const followUpTasks = (followUpsByPatient.get(patientId) || []).sort(
     (a, b) => String(a.dueDate || "").localeCompare(String(b.dueDate || "")),
@@ -1261,7 +1264,7 @@ function getVaccineValue(entries, vaccineName) {
     .join(", ");
 }
 
-function buildGroupedBirthDoseValues(entries, birthDate) {
+function buildGroupedBirthDoseValues(entries, birthDate, birthTime = "") {
   const grouped = {
     bcgWithin24: EMPTY_MARK,
     bcgAfter24Hours: EMPTY_MARK,
@@ -1270,13 +1273,13 @@ function buildGroupedBirthDoseValues(entries, birthDate) {
     remarks: [],
   };
 
-  splitBirthDoseEntries(entries, "BCG", birthDate, 365).forEach((result) => {
+  splitBirthDoseEntries(entries, "BCG", birthDate, birthTime, "bcg").forEach((result) => {
     if (result.bucket === "within24") grouped.bcgWithin24 = result.value;
     if (result.bucket === "after24") grouped.bcgAfter24Hours = result.value;
     if (result.bucket === "outside") grouped.remarks.push(`BCG: ${result.value}`);
   });
 
-  splitBirthDoseEntries(entries, "HEPA B", birthDate, 14).forEach((result) => {
+  splitBirthDoseEntries(entries, "HEPA B", birthDate, birthTime, "hepaB").forEach((result) => {
     if (result.bucket === "within24") grouped.hepaBWithin24 = result.value;
     if (result.bucket === "after24") grouped.hepaBAfter24Hours = result.value;
     if (result.bucket === "outside") grouped.remarks.push(`Hepa B: ${result.value}`);
@@ -1285,7 +1288,7 @@ function buildGroupedBirthDoseValues(entries, birthDate) {
   return grouped;
 }
 
-function splitBirthDoseEntries(entries, vaccineName, birthDate, maxDaysAfterBirth) {
+function splitBirthDoseEntries(entries, vaccineName, birthDate, birthTime, vaccineType) {
   return entries
     .filter((entry) => normalizeVaccineName(entry.vaccineName) === vaccineName)
     .map((entry) => {
@@ -1296,8 +1299,13 @@ function splitBirthDoseEntries(entries, vaccineName, birthDate, maxDaysAfterBirt
 
       const days = daysBetween(birth, given);
       if (days < 0) return { bucket: "outside", value };
-      if (days === 0) return { bucket: "within24", value };
-      if (days <= maxDaysAfterBirth) return { bucket: "after24", value };
+      if (isWithin24HoursOfBirth(birthDate, birthTime, entry.dateGiven)) {
+        return { bucket: "within24", value };
+      }
+      if (vaccineType === "hepaB" && days <= 14) return { bucket: "after24", value };
+      if (vaccineType === "bcg" && isWithinMonthsAndDays(birth, given, 11, 29)) {
+        return { bucket: "after24", value };
+      }
       return { bucket: "outside", value };
     });
 }
@@ -1312,7 +1320,7 @@ function formatVaccineEntryValue(entry) {
 function buildCpabValues(maternalRecords, childBirthDate) {
   const birth = parseDateOnly(childBirthDate);
   if (!birth || !maternalRecords.length) {
-    return { td2: EMPTY_MARK, td3ToTd5: EMPTY_MARK };
+    return emptyCpabValues();
   }
 
   const doses = collectMaternalTdDoses(maternalRecords)
@@ -1331,24 +1339,116 @@ function buildCpabValues(maternalRecords, childBirthDate) {
   };
 }
 
+function emptyCpabValues() {
+  return { td2: EMPTY_MARK, td3ToTd5: EMPTY_MARK };
+}
+
 function collectMaternalTdDoses(records) {
   return records.flatMap((record) => {
-    const maternal = record.maternalData || record.maternal_data || {};
-    const status =
-      maternal.tetanusToxoidStatus ||
-      maternal.tetanus_toxoid_status ||
-      record.tetanusToxoidStatus ||
-      record.tetanus_toxoid_status ||
-      {};
+    const maternal = normalizeObject(record.maternalData || record.maternal_data);
+    const sourceObjects = [
+      normalizeObject(maternal.tetanusToxoidStatus),
+      normalizeObject(maternal.tetanus_toxoid_status),
+      normalizeObject(maternal.tetanusToxoid),
+      normalizeObject(maternal.tetanus_toxoid),
+      normalizeObject(maternal.ttStatus),
+      normalizeObject(maternal.tt_status),
+      normalizeObject(maternal.tdStatus),
+      normalizeObject(maternal.td_status),
+      normalizeObject(record.tetanusToxoidStatus),
+      normalizeObject(record.tetanus_toxoid_status),
+      maternal,
+      normalizeObject(record),
+    ];
 
     return [1, 2, 3, 4, 5]
-      .flatMap((dose) => [
-        [dose, status[`td${dose}`] || maternal[`td${dose}`] || record[`td${dose}`]],
-        [dose, status[`tt${dose}`] || maternal[`tt${dose}`] || record[`tt${dose}`]],
-      ])
-      .map(([dose, value]) => ({ dose, date: parseDateOnly(value) }))
+      .map((dose) => ({
+        dose,
+        date: parseDateOnly(getTdDoseValue(sourceObjects, dose)),
+      }))
       .filter((dose) => dose.date);
   });
+}
+
+function getTdDoseValue(sourceObjects, dose) {
+  const compactKeys = [
+    `td${dose}`,
+    `tt${dose}`,
+    `TD${dose}`,
+    `TT${dose}`,
+  ];
+  const dateKeys = [
+    `td${dose}Date`,
+    `td${dose}_date`,
+    `tt${dose}Date`,
+    `tt${dose}_date`,
+    `TD${dose}Date`,
+    `TT${dose}Date`,
+    `tetanus${dose}`,
+    `tetanus_${dose}`,
+    `tetanusDose${dose}`,
+    `tetanus_dose_${dose}`,
+    `tetanusToxoid${dose}`,
+    `tetanus_toxoid_${dose}`,
+  ];
+
+  for (const source of sourceObjects) {
+    for (const key of [...compactKeys, ...dateKeys]) {
+      const value = source?.[key];
+      if (value) return value;
+    }
+  }
+
+  return "";
+}
+
+function normalizeObject(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function isWithin24HoursOfBirth(birthDate, birthTime, givenDate) {
+  const birth = parseDateTime(birthDate, birthTime);
+  const given = parseDateTime(givenDate, "");
+  const birthDay = parseDateOnly(birthDate);
+  const givenDay = parseDateOnly(givenDate);
+
+  if (!birthDay || !givenDay) return false;
+  if (!hasTimeValue(givenDate) && daysBetween(birthDay, givenDay) === 0) {
+    return true;
+  }
+  if (!birth || !given) return daysBetween(birthDay, givenDay) === 0;
+
+  const hours = (given.getTime() - birth.getTime()) / (60 * 60 * 1000);
+  return hours >= 0 && hours <= 24;
+}
+
+function parseDateTime(dateValue, timeValue = "") {
+  if (!dateValue) return null;
+  const datePart = String(dateValue).slice(0, 10);
+  const timeMatch =
+    String(dateValue).match(/T(\d{2}:\d{2})/) ||
+    String(timeValue).match(/(\d{1,2}:\d{2})/);
+  const timePart = timeMatch?.[1] || "00:00";
+  const date = new Date(`${datePart}T${timePart}`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function hasTimeValue(value) {
+  return /T\d{2}:\d{2}|\b\d{1,2}:\d{2}\b/.test(String(value || ""));
+}
+
+function isWithinMonthsAndDays(start, end, months, days) {
+  const limit = new Date(start);
+  limit.setMonth(limit.getMonth() + months);
+  limit.setDate(limit.getDate() + days);
+  return end <= limit;
 }
 
 function parseDateOnly(value) {
