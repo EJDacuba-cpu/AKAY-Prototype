@@ -4,6 +4,7 @@ const API_BASE_URL =
 
 const TOKEN_KEY = "akay_auth_token";
 const USER_KEY = "akay_auth_user";
+const REQUEST_TIMEOUT_MS = 15000;
 
 function readJson(key, fallback = null) {
   try {
@@ -101,13 +102,34 @@ export async function apiRequest(endpoint, options = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, {
+  const controller = new AbortController();
+  let timeoutId;
+  const timeoutError = new Error(
+    "Request timed out. Please check the API connection and try again.",
+  );
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      controller.abort();
+      reject(timeoutError);
+    }, REQUEST_TIMEOUT_MS);
+  });
+  const requestPromise = fetch(url, {
     ...options,
     headers,
+    signal: options.signal || controller.signal,
     body:
       options.body && !(options.body instanceof FormData)
         ? JSON.stringify(options.body)
         : options.body,
+  }).catch((error) => {
+    if (error.name === "AbortError") {
+      throw timeoutError;
+    }
+
+    throw error;
+  });
+  const response = await Promise.race([requestPromise, timeoutPromise]).finally(() => {
+    window.clearTimeout(timeoutId);
   });
 
   if (response.status === 204) return null;
@@ -115,9 +137,24 @@ export async function apiRequest(endpoint, options = {}) {
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const error = new Error(payload.message || "API request failed.");
+    const firstValidationError = payload.errors
+      ? Object.values(payload.errors).flat()[0]
+      : null;
+    const errorMessage =
+      payload.message || firstValidationError || "API request failed.";
+
+    if (import.meta.env.DEV) {
+      console.debug("API request failed", {
+        status: response.status,
+        endpoint,
+        payload,
+      });
+    }
+
+    const error = new Error(errorMessage);
     error.status = response.status;
     error.errors = payload.errors || {};
+    error.payload = payload;
     throw error;
   }
 
