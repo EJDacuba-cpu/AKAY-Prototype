@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Boxes,
   Edit3,
@@ -10,20 +11,22 @@ import {
   Trash2,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar, TablePagination } from "../../components/common";
+import {
+  ListToolbar,
+  PageStateWrapper,
+  TablePagination,
+} from "../../components/common";
 import MedicineFormModal from "../../components/features/medicine/MedicineFormModal";
 import {
   addBhcMedicine,
-  BHC_MEDICINES_UPDATED_EVENT,
   deleteBhcMedicine,
   formatMedicineQuantity,
-  getBhcMedicines,
   getMedicineExpiryStatus,
-  getRhuMedicines,
+  loadMedicineAvailability,
   MEDICINE_CATEGORIES,
-  RHU_MEDICINES_UPDATED_EVENT,
   updateBhcMedicine,
 } from "../../services/medicineService";
+import { queryKeys } from "../../utils/queryKeys";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -33,39 +36,37 @@ const DEFAULT_FILTERS = {
 };
 
 export default function MedicineAvailability() {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("bhc");
-  const [bhcItems, setBhcItems] = useState([]);
-  const [rhuItems, setRhuItems] = useState([]);
   const [bhcFilters, setBhcFilters] = useState(DEFAULT_FILTERS);
   const [rhuFilters, setRhuFilters] = useState(DEFAULT_FILTERS);
   const [modalMode, setModalMode] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [openMenuId, setOpenMenuId] = useState("");
+  const {
+    data: medicineItems = [],
+    isLoading,
+    isFetching,
+    error: loadError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.medicineAvailability("bhc"),
+    queryFn: loadMedicineAvailability,
+    retry: false,
+  });
 
-  useEffect(() => {
-    function loadBhcItems() {
-      setBhcItems(getBhcMedicines());
-    }
-
-    function loadRhuItems() {
-      setRhuItems(getRhuMedicines());
-    }
-
-    function loadAllItems() {
-      loadBhcItems();
-      loadRhuItems();
-    }
-
-    loadAllItems();
-
-    window.addEventListener(BHC_MEDICINES_UPDATED_EVENT, loadBhcItems);
-    window.addEventListener(RHU_MEDICINES_UPDATED_EVENT, loadRhuItems);
-
-    return () => {
-      window.removeEventListener(BHC_MEDICINES_UPDATED_EVENT, loadBhcItems);
-      window.removeEventListener(RHU_MEDICINES_UPDATED_EVENT, loadRhuItems);
-    };
-  }, []);
+  const safeMedicineItems = useMemo(
+    () => (Array.isArray(medicineItems) ? medicineItems : []),
+    [medicineItems],
+  );
+  const bhcItems = useMemo(
+    () => safeMedicineItems.filter((item) => !item.ruralHealthUnitId),
+    [safeMedicineItems],
+  );
+  const rhuItems = useMemo(
+    () => safeMedicineItems.filter((item) => item.ruralHealthUnitId),
+    [safeMedicineItems],
+  );
 
   const activeItems = activeTab === "bhc" ? bhcItems : rhuItems;
   const filters = activeTab === "bhc" ? bhcFilters : rhuFilters;
@@ -153,7 +154,10 @@ export default function MedicineAvailability() {
         ? await updateBhcMedicine(selectedItem.id, payload)
         : await addBhcMedicine(payload);
 
-    setBhcItems(nextItems.filter((item) => !item.ruralHealthUnitId));
+    queryClient.setQueryData(
+      queryKeys.medicineAvailability("bhc"),
+      Array.isArray(nextItems) ? nextItems : [],
+    );
     closeModal();
   }
 
@@ -161,40 +165,58 @@ export default function MedicineAvailability() {
     setOpenMenuId("");
     const confirmed = window.confirm(`Delete ${item.name} from BHC inventory?`);
     if (!confirmed) return;
-    deleteBhcMedicine(item.id).then((nextItems) =>
-      setBhcItems(nextItems.filter((nextItem) => !nextItem.ruralHealthUnitId)),
-    );
+    deleteBhcMedicine(item.id).then((nextItems) => {
+      queryClient.setQueryData(
+        queryKeys.medicineAvailability("bhc"),
+        Array.isArray(nextItems) ? nextItems : [],
+      );
+    });
   }
 
   return (
     <DashboardLayout role="bhc" title="Medicine Availability">
-      <ListToolbar
-        searchValue={filters.search}
-        onSearchChange={(value) => updateFilter("search", value)}
-        searchPlaceholder="Search by medicine name, category, item ID, or notes..."
-        filters={toolbarFilters}
-        activeFilterCount={
-          activeFilters.filter((filter) => filter.key !== "search").length
-        }
-        activeFilters={activeFilters}
-        onApplyFilters={(nextFilters) =>
-          setFilters((prev) => ({ ...prev, ...nextFilters }))
-        }
-        onClearFilters={clearFilters}
-        onRemoveFilter={removeFilter}
-        actions={
-          activeTab === "bhc" ? (
-            <button
-              type="button"
-              onClick={openAddModal}
-              className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
-            >
-              <Plus size={15} />
-              Add Medicine
-            </button>
-          ) : null
-        }
-      />
+      <PageStateWrapper
+        isLoading={isLoading}
+        isError={Boolean(loadError)}
+        isFetching={isFetching}
+        hasData={safeMedicineItems.length > 0}
+        error={loadError}
+        onRetry={() => refetch()}
+        loadingMessage="Loading medicine availability..."
+      >
+      <div className="space-y-4">
+        {isFetching && (
+          <div className="rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 text-[11px] font-semibold text-[#B91C1C]">
+            Refreshing records...
+          </div>
+        )}
+        <ListToolbar
+          searchValue={filters.search}
+          onSearchChange={(value) => updateFilter("search", value)}
+          searchPlaceholder="Search by medicine name, category, item ID, or notes..."
+          filters={toolbarFilters}
+          activeFilterCount={
+            activeFilters.filter((filter) => filter.key !== "search").length
+          }
+          activeFilters={activeFilters}
+          onApplyFilters={(nextFilters) =>
+            setFilters((prev) => ({ ...prev, ...nextFilters }))
+          }
+          onClearFilters={clearFilters}
+          onRemoveFilter={removeFilter}
+          actions={
+            activeTab === "bhc" ? (
+              <button
+                type="button"
+                onClick={openAddModal}
+                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
+              >
+                <Plus size={15} />
+                Add Medicine
+              </button>
+            ) : null
+          }
+        />
 
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex w-fit items-center gap-1.5 rounded-lg bg-[#F1F5F9] p-1">
@@ -281,6 +303,8 @@ export default function MedicineAvailability() {
         onClose={closeModal}
         onSubmit={handleSubmit}
       />
+      </div>
+      </PageStateWrapper>
     </DashboardLayout>
   );
 }

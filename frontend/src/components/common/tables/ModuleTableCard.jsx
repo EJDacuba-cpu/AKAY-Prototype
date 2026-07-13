@@ -14,7 +14,6 @@ export default function ModuleTableCard({
   showCount = false,
   actions = null,
 }) {
-  void refreshing;
   const shouldShowCount = showCount && count !== undefined && count !== null;
 
   return (
@@ -40,6 +39,12 @@ export default function ModuleTableCard({
       <div className="border-b border-[#F8FAFC] bg-[#FCFCFD] px-3.5 py-2 text-[10px] font-medium text-[#94A3B8] sm:hidden">
         Swipe sideways to view all columns.
       </div>
+
+      {refreshing && (
+        <div className="border-b border-red-50 bg-red-50/60 px-3.5 py-2 text-[11px] font-semibold text-[#B91C1C]">
+          Refreshing records...
+        </div>
+      )}
 
       <div
         className={`w-full min-w-0 flex-1 overflow-x-auto overflow-y-visible overscroll-x-contain scroll-smooth px-1 pb-2 transition-all duration-300 [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border [&::-webkit-scrollbar-thumb]:border-[#F8FAFC] [&::-webkit-scrollbar-thumb]:bg-[#D6DEE8] hover:[&::-webkit-scrollbar-thumb]:bg-[#B8C4D3] [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-[#F8FAFC] ${bodyMinHeight}`}

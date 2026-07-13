@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRight,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import { PageStateWrapper } from "../../components/common";
 import PatientVolumeCard from "../../components/features/volume/PatientVolumeCard";
 import { getRhuVolumeSnapshot } from "../../services/volumeService";
 import { getCurrentUser } from "../../utils/auth";
@@ -23,12 +25,13 @@ import {
 } from "../../services/doctorAvailability";
 import { getReferrals } from "../../services/referrals";
 import { getHealthRecords } from "../../services/healthRecordService";
-import { refreshRhuMedicines } from "../../services/medicineService";
+import { loadMedicineAvailability } from "../../services/medicineService";
 import {
   formatDisplayValue,
   formatFacilityName,
   formatPatientName,
 } from "../../utils/formatters";
+import { queryKeys } from "../../utils/queryKeys";
 
 const keyframes = `
   @keyframes fadeUp {
@@ -64,38 +67,27 @@ const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 
 export default function RHUDashboard() {
   const [now, setNow] = useState(() => new Date());
-  const [incomingReferrals, setIncomingReferrals] = useState([]);
-  const [monitoringPatients, setMonitoringPatients] = useState([]);
-  const [medicineAlerts, setMedicineAlerts] = useState([]);
-  const volumeSnapshot = getRhuVolumeSnapshot();
-  const workloadCounts = volumeSnapshot.counts || {};
-  const pendingReferrals = incomingReferrals.filter(
-    (referral) => referral.status === "Pending",
-  ).length;
-  const forFeedback = incomingReferrals.filter((referral) =>
-    ["Received", "For Monitoring"].includes(referral.status),
-  ).length;
-  const noShowCases = incomingReferrals.filter(
-    (referral) => referral.status === "No-Show",
-  ).length;
-  const userName = getDashboardFirstName("RHU Staff");
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 30_000);
-
-    return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    async function loadDashboardData() {
+  const {
+    data: dashboardData = {
+      incomingReferrals: [],
+      monitoringPatients: [],
+      medicineAlerts: [],
+    },
+    isLoading,
+    isFetching,
+    error: loadError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.dashboardSummary("rhu"),
+    queryFn: async () => {
       const [referrals, records, medicines] = await Promise.all([
         getReferrals(),
         getHealthRecords("rhu"),
-        refreshRhuMedicines(),
+        loadMedicineAvailability(),
       ]);
 
-      setIncomingReferrals(
-        referrals.map((referral) => ({
+      return {
+        incomingReferrals: referrals.map((referral) => ({
           ...referral,
           patient: formatPatientName(
             referral.patientName || referral.patient || referral,
@@ -117,9 +109,7 @@ export default function RHUDashboard() {
             "Normal",
           ),
         })),
-      );
-      setMonitoringPatients(
-        records
+        monitoringPatients: records
           .filter((record) =>
             ["For Monitoring", "Follow-up Required", "Under Observation"].includes(
               record.status,
@@ -137,30 +127,62 @@ export default function RHUDashboard() {
             ),
             status: formatDisplayValue(record.status, "For Monitoring"),
           })),
-      );
-      setMedicineAlerts(
-        medicines
+        medicineAlerts: medicines
           .filter((item) =>
             ["Low Stock", "Unavailable", "Expired"].includes(
               item.availabilityStatus || item.status,
             ),
           )
           .slice(0, 3),
-      );
-    }
+      };
+    },
+    retry: false,
+  });
+  const incomingReferrals = dashboardData.incomingReferrals;
+  const monitoringPatients = dashboardData.monitoringPatients;
+  const medicineAlerts = dashboardData.medicineAlerts;
+  const hasDashboardData =
+    incomingReferrals.length > 0 ||
+    monitoringPatients.length > 0 ||
+    medicineAlerts.length > 0;
+  const volumeSnapshot = getRhuVolumeSnapshot();
+  const workloadCounts = volumeSnapshot.counts || {};
+  const pendingReferrals = incomingReferrals.filter(
+    (referral) => referral.status === "Pending",
+  ).length;
+  const forFeedback = incomingReferrals.filter((referral) =>
+    ["Received", "For Monitoring"].includes(referral.status),
+  ).length;
+  const noShowCases = incomingReferrals.filter(
+    (referral) => referral.status === "No-Show",
+  ).length;
+  const userName = getDashboardFirstName("RHU Staff");
 
-    loadDashboardData().catch(() => {
-      setIncomingReferrals([]);
-      setMonitoringPatients([]);
-      setMedicineAlerts([]);
-    });
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+
+    return () => window.clearInterval(timer);
   }, []);
 
   return (
     <DashboardLayout role="rhu" title="Dashboard">
       <style>{keyframes}</style>
 
+      <PageStateWrapper
+        isLoading={isLoading}
+        isError={Boolean(loadError)}
+        isFetching={isFetching}
+        hasData={hasDashboardData}
+        error={loadError}
+        onRetry={() => refetch()}
+        loadingMessage="Loading dashboard..."
+      >
       <div className="mx-auto w-full max-w-[1500px] space-y-4">
+        {isFetching && hasDashboardData && (
+          <div className="rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 text-[11px] font-semibold text-[#B91C1C]">
+            Refreshing records...
+          </div>
+        )}
         <section className="anim-fade-up" style={stagger(0)}>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
@@ -381,6 +403,7 @@ export default function RHUDashboard() {
           </aside>
         </div>
       </div>
+      </PageStateWrapper>
     </DashboardLayout>
   );
 }

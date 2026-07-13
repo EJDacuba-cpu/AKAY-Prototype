@@ -16,12 +16,14 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConfirmationModal,
+  ConnectionErrorState,
   SoftLoadingArea,
   SoftLoadingOverlay,
   StatusBadge,
   SuccessModal,
 } from "../../components/common";
 import SpecializedRecordsTab from "../../components/features/records/SpecializedRecordsTab";
+import { isConnectionError } from "../../services/apiClient";
 import { getFollowUpTasks } from "../../services/followUpTaskService";
 import {
   getPatientById,
@@ -87,50 +89,66 @@ export default function PatientDetails() {
     data: patientData,
     isLoading: patientLoading,
     isFetching: patientFetching,
+    error: patientError,
+    refetch: refetchPatient,
   } = useQuery({
     queryKey: queryKeys.patientDetails("bhc", patientId),
     queryFn: () => getPatientById(patientId),
     enabled: Boolean(patientId),
+    retry: false,
   });
 
   const {
     data: recordsData = [],
     isLoading: recordsLoading,
     isFetching: recordsFetching,
-    isError: recordsError,
+    error: recordsError,
+    refetch: refetchRecords,
   } = useQuery({
     queryKey: [...queryKeys.healthRecords("bhc"), "patient", patientId],
     queryFn: () => getPatientHealthRecords(patientId),
     enabled: Boolean(patientId),
+    retry: false,
   });
 
   const {
     data: referralsData = [],
     isLoading: referralsLoading,
     isFetching: referralsFetching,
-    isError: referralsError,
+    error: referralsError,
+    refetch: refetchReferrals,
   } = useQuery({
     queryKey: [...queryKeys.referrals("bhc"), "patient", patientId],
     queryFn: () => getPatientReferrals(patientId),
     enabled: Boolean(patientId),
+    retry: false,
   });
 
   const {
     data: followUpTasksData = [],
     isLoading: followUpsLoading,
     isFetching: followUpsFetching,
-    isError: followUpsError,
+    error: followUpsError,
+    refetch: refetchFollowUps,
   } = useQuery({
     queryKey: queryKeys.followUpTasks("bhc"),
     queryFn: () => getFollowUpTasks(),
     enabled: Boolean(patientId),
     staleTime: 30_000,
+    retry: false,
   });
 
-  const { data: registeredPatients = [] } = useQuery({
+  const {
+    data: registeredPatients = [],
+    isFetching: registeredPatientsFetching,
+    error: registeredPatientsError,
+    refetch: refetchRegisteredPatients,
+  } = useQuery({
     queryKey: queryKeys.patients("bhc"),
     queryFn: () => getPatientDetailsListByRole("bhc"),
     staleTime: 30_000,
+    enabled: Boolean(patientId),
+    retry: false,
   });
 
   const overrideMatchesPatient =
@@ -140,6 +158,27 @@ export default function PatientDetails() {
   const patient = overrideMatchesPatient
     ? patientOverride
     : patientData || null;
+  const loadError =
+    patientError ||
+    recordsError ||
+    referralsError ||
+    followUpsError ||
+    registeredPatientsError ||
+    null;
+  const retrying =
+    patientFetching ||
+    recordsFetching ||
+    referralsFetching ||
+    followUpsFetching ||
+    registeredPatientsFetching;
+
+  function retryPatientDetails() {
+    refetchPatient();
+    refetchRecords();
+    refetchReferrals();
+    refetchFollowUps();
+    refetchRegisteredPatients();
+  }
 
   useEffect(() => {
     if (!patientData) return;
@@ -220,6 +259,20 @@ export default function PatientDetails() {
         >
           <div className="min-h-[520px] rounded-2xl border border-slate-100 bg-white shadow-sm" />
         </SoftLoadingArea>
+      </DashboardLayout>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <DashboardLayout role="bhc" title="Patient Details">
+        <ConnectionErrorState
+          fullPage
+          title={isConnectionError(loadError) ? "Connection Lost" : "Unable to Load Data"}
+          onRetry={retryPatientDetails}
+          retrying={retrying}
+          variant={loadError?.isTimeout ? "timeout" : isConnectionError(loadError) ? "offline" : "error"}
+        />
       </DashboardLayout>
     );
   }
@@ -395,7 +448,7 @@ export default function PatientDetails() {
                   visibleRecords={visibleRecords}
                   isLoading={recordsLoading}
                   isFetching={recordsFetching}
-                  isError={recordsError}
+                  isError={Boolean(recordsError)}
                   showAll={showAllRecords}
                   onToggleShowAll={() => setShowAllRecords((value) => !value)}
                   onView={(recordId) =>
@@ -413,7 +466,7 @@ export default function PatientDetails() {
                   tasks={patientFollowUps}
                   isLoading={followUpsLoading}
                   isFetching={followUpsFetching}
-                  isError={followUpsError}
+                  isError={Boolean(followUpsError)}
                   onViewRecord={(recordId) =>
                     navigate(`/bhc/health-records/${recordId}`)
                   }
@@ -426,7 +479,7 @@ export default function PatientDetails() {
                   visibleReferrals={visibleReferrals}
                   isLoading={referralsLoading}
                   isFetching={referralsFetching}
-                  isError={referralsError}
+                  isError={Boolean(referralsError)}
                   showAll={showAllReferrals}
                   onToggleShowAll={() =>
                     setShowAllReferrals((value) => !value)

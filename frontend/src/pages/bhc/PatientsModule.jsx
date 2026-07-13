@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import { AlertCircle, Plus, Users } from "lucide-react";
+import { Plus, Users } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import { ConnectionErrorState } from "../../components/common";
 import ModuleToolbar from "../../components/common/list/ModuleToolbar";
 import {
   DottedSpinner,
@@ -10,6 +11,7 @@ import {
 } from "../../components/common/loading/SoftLoadingOverlay";
 import PatientDirectoryCard from "../../components/features/patients/PatientDirectoryCard";
 import usePatients from "../../hooks/usePatients";
+import { isConnectionError } from "../../services/apiClient";
 import { formatDisplayValue } from "../../utils/formatters";
 
 const DEFAULT_FILTERS = {
@@ -39,6 +41,7 @@ export default function PatientsModule() {
     filters,
     setFilters,
     error,
+    queryError,
     refetchPatients,
     isRefreshing,
   } = usePatients();
@@ -175,6 +178,30 @@ export default function PatientsModule() {
     setFilters((prev) => ({ ...prev, [key]: resetValues[key] }));
   }
 
+  if (error) {
+    return (
+      <DashboardLayout role="bhc" title="Patients">
+        <ConnectionErrorState
+          fullPage
+          title={
+            isConnectionError(queryError)
+              ? "Connection Lost"
+              : "Unable to Load Data"
+          }
+          onRetry={() => refetchPatients()}
+          retrying={isRefreshing}
+          variant={
+            queryError?.isTimeout
+              ? "timeout"
+              : isConnectionError(queryError)
+                ? "offline"
+                : "error"
+          }
+        />
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout role="bhc" title="Patients">
       <SoftLoadingArea
@@ -206,14 +233,12 @@ export default function PatientsModule() {
         <div className="relative min-w-0">
           {showRefreshOverlay && (
             <div className="pointer-events-none absolute right-0 top-0 z-10 rounded-full border border-red-100 bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#B91C1C] shadow-sm">
-              Refreshing
+              Refreshing records...
             </div>
           )}
           {!showInitialLoading && (
             <PatientDirectory
             patients={visiblePatients}
-            error={error}
-            onRetry={refetchPatients}
             hasAnyFilter={hasAnyFilter}
             hasMorePatients={hasMorePatients}
             loadingMore={loadingMore}
@@ -228,8 +253,6 @@ export default function PatientsModule() {
 
 function PatientDirectory({
   patients,
-  error,
-  onRetry,
   hasAnyFilter,
   hasMorePatients,
   loadingMore,
@@ -238,22 +261,7 @@ function PatientDirectory({
   return (
     <section className="anim-fade-up">
       <div>
-        {error ? (
-          <PatientDirectoryState
-            icon={<AlertCircle size={22} className="text-[#B91C1C]" />}
-            title="Unable to load patients"
-            description="Please check your connection and try again."
-            action={
-              <button
-                type="button"
-                onClick={onRetry}
-                className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white px-4 py-2 text-xs font-semibold text-[#475569] shadow-sm transition hover:border-[#B91C1C]/30 hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
-              >
-                Retry
-              </button>
-            }
-          />
-        ) : patients.length === 0 ? (
+        {patients.length === 0 ? (
           <PatientDirectoryState
             icon={<Users size={22} className="text-[#94A3B8]" />}
             title={hasAnyFilter ? "No patients found." : "No patients yet."}

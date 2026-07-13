@@ -16,6 +16,8 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConfirmationModal,
+  ButtonSpinner,
+  ConnectionIssueModal,
   DatePickerField,
   FormInput,
   SuccessModal,
@@ -39,6 +41,8 @@ import {
   createBhcPatient,
   getPatientDetailsListByRole,
 } from "../../services/patientService";
+import { isConnectionError } from "../../services/apiClient";
+import { saveOfflineDraft } from "../../services/offlineDraftService";
 import { queryKeys } from "../../utils/queryKeys";
 
 // Animation Utility
@@ -132,7 +136,9 @@ export function PatientRegistrationPage({
   const [modals, setModals] = useState({
     confirm: false,
     success: false,
+    draftSaved: false,
   });
+  const [connectionIssue, setConnectionIssue] = useState(null);
   const [saving, setSaving] = useState(false);
   const [createdPatientId, setCreatedPatientId] = useState("");
   const [form, setForm] = useState(INITIAL_FORM_STATE);
@@ -405,62 +411,72 @@ function handleBirthDateChange(valueOrEvent) {
     setModals({ ...modals, confirm: true });
   }
 
-  const handleSubmit = async () => {
-    try {
-      setSaving(true);
-      const childPatientData = isChildRegistration
-        ? {
-            registrationType: "child",
-            patientClassification: "Child Patient",
-
-            motherName: form.motherName || null,
-            motherPatientId: form.motherPatientId || null,
-            motherBirthDate: form.motherBirthDate || null,
-            fatherName: form.fatherName || null,
-            fatherBirthDate: form.fatherBirthDate || null,
-
-            birthPlace: isEpiTargetAge ? form.birthPlace || null : null,
-            birthTime: isEpiTargetAge ? form.birthTime || null : null,
-          }
-        : {
-            registrationType: "general",
-            patientClassification: form.patientClassification || "",
-
-            motherName: null,
-            motherPatientId: null,
-            motherBirthDate: null,
-            fatherName: null,
-            fatherBirthDate: null,
-
-            birthPlace: null,
-            birthTime: null,
-          };
-          
-        const patientData = {
-          ...form,
-          ...childPatientData,
-          philHealthNumber:
-            form.philHealthStatus === "With PhilHealth"
-              ? form.philHealthNumber || null
-              : null,
-          civilStatus: isEpiTargetAge ? "Single" : form.civilStatus,
-          occupation: isEpiTargetAge ? null : form.occupation || null,
-          nhtsStatus: isEpiTargetAge ? null : form.nhtsStatus || null,
-          purokArea: form.purokArea || null,
-          familySerialNumber: form.familySerialNumber || null,
-          spouseName:
-            showGeneralProfileFields && form.civilStatus === "Married"
-              ? form.spouseName || null
-              : null,
-          spouseOccupation:
-            showGeneralProfileFields && form.civilStatus === "Married"
-              ? form.spouseOccupation || null
-              : null,
-          id: Date.now().toString(),
-          name: formatFullName(form.firstName, form.middleName, form.lastName),
-          ageSex: `${form.age || calculateAge(form.birthDate)} / ${form.sex}`,
+  function buildPatientPayload() {
+    const childPatientData = isChildRegistration
+      ? {
+          registrationType: "child",
+          patientClassification: "Child Patient",
+          motherName: form.motherName || null,
+          motherPatientId: form.motherPatientId || null,
+          motherBirthDate: form.motherBirthDate || null,
+          fatherName: form.fatherName || null,
+          fatherBirthDate: form.fatherBirthDate || null,
+          birthPlace: isEpiTargetAge ? form.birthPlace || null : null,
+          birthTime: isEpiTargetAge ? form.birthTime || null : null,
+        }
+      : {
+          registrationType: "general",
+          patientClassification: form.patientClassification || "",
+          motherName: null,
+          motherPatientId: null,
+          motherBirthDate: null,
+          fatherName: null,
+          fatherBirthDate: null,
+          birthPlace: null,
+          birthTime: null,
         };
 
+    return {
+      ...form,
+      ...childPatientData,
+      philHealthNumber:
+        form.philHealthStatus === "With PhilHealth"
+          ? form.philHealthNumber || null
+          : null,
+      civilStatus: isEpiTargetAge ? "Single" : form.civilStatus,
+      occupation: isEpiTargetAge ? null : form.occupation || null,
+      nhtsStatus: isEpiTargetAge ? null : form.nhtsStatus || null,
+      purokArea: form.purokArea || null,
+      familySerialNumber: form.familySerialNumber || null,
+      spouseName:
+        showGeneralProfileFields && form.civilStatus === "Married"
+          ? form.spouseName || null
+          : null,
+      spouseOccupation:
+        showGeneralProfileFields && form.civilStatus === "Married"
+          ? form.spouseOccupation || null
+          : null,
+      id: Date.now().toString(),
+      name: formatFullName(form.firstName, form.middleName, form.lastName),
+      ageSex: `${form.age || calculateAge(form.birthDate)} / ${form.sex}`,
+    };
+  }
+
+  function handleSavePatientDraft() {
+    saveOfflineDraft({
+      moduleType: "patient",
+      formData: buildPatientPayload(),
+    });
+    setConnectionIssue(null);
+    setModals((prev) => ({ ...prev, confirm: false, draftSaved: true }));
+  }
+
+  const handleSubmit = async () => {
+    if (saving) return;
+
+    try {
+      setSaving(true);
+      const patientData = buildPatientPayload();
       const created = await createPatient(patientData);
       const nextId =
         created?.id || created?.details?.id || created?.patient?.id || patientData.id;
@@ -473,6 +489,14 @@ function handleBirthDateChange(valueOrEvent) {
       setModals({ ...modals, confirm: false, success: true });
     } catch (error) {
       console.error("Submission failed:", error);
+      if (isConnectionError(error)) {
+        setConnectionIssue({
+          title: error.isTimeout ? "Request Timed Out" : "Connection Lost",
+          message:
+            error?.message ||
+            "Your internet connection was interrupted. Your current form data can be saved as a local draft and submitted once your connection is restored.",
+        });
+      }
     } finally {
       setSaving(false);
     }
@@ -914,13 +938,18 @@ function handleBirthDateChange(valueOrEvent) {
             </button>
             <button
               type="submit"
+              disabled={saving}
               className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98] sm:w-auto"
             >
-              <UserPlus
-                size={15}
-                className="transition-transform duration-300 group-hover:scale-110"
-              />
-              Register Patient
+              {saving ? (
+                <ButtonSpinner />
+              ) : (
+                <UserPlus
+                  size={15}
+                  className="transition-transform duration-300 group-hover:scale-110"
+                />
+              )}
+              {saving ? "Registering patient..." : "Register Patient"}
             </button>
           </div>
           </div>
@@ -931,13 +960,20 @@ function handleBirthDateChange(valueOrEvent) {
       <SuccessModal
         open={modals.success}
         title="Patient added."
-        description="You can add the first health record or return to Patients."
+        description="The patient was submitted successfully. Refreshing patient list data now."
         buttonText="Back to Patient List"
         onClose={() => navigate(patientsPath)}
         secondaryButtonText="Add Health Record"
         onSecondaryAction={() =>
           navigate(`${addHealthRecordPath}?patientId=${createdPatientId}`)
         }
+      />
+      <SuccessModal
+        open={modals.draftSaved}
+        title="Draft saved locally."
+        description="This patient registration was saved only on this device. Submit it manually once the connection is stable."
+        buttonText="Continue Editing"
+        onClose={() => setModals((prev) => ({ ...prev, draftSaved: false }))}
       />
       <ConfirmationModal
         open={modals.confirm}
@@ -948,6 +984,18 @@ function handleBirthDateChange(valueOrEvent) {
         onConfirm={handleSubmit}
         onCancel={() => setModals({ ...modals, confirm: false })}
         loading={saving}
+        loadingText="Registering patient..."
+      />
+      <ConnectionIssueModal
+        open={Boolean(connectionIssue)}
+        title={connectionIssue?.title}
+        message={connectionIssue?.message}
+        retryDisabled={
+          saving || (typeof navigator !== "undefined" && navigator.onLine === false)
+        }
+        onContinue={() => setConnectionIssue(null)}
+        onSaveDraft={handleSavePatientDraft}
+        onRetry={handleSubmit}
       />
     </>
   );

@@ -2,6 +2,7 @@ import {
   useEffect,
   useState,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   AlertTriangle,
@@ -19,27 +20,53 @@ import {
 
 import { Link } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import { PageStateWrapper } from "../../components/common";
 import {
   getDoctorAvailability,
   listenDoctorAvailabilityUpdates,
 } from "../../services/doctorAvailability";
 import {
-  getAdminAccounts,
-  refreshAdminAccounts,
+  loadAdminAccounts,
 } from "../../services/adminAccountsService";
 import { apiRequest, unwrapList } from "../../services/apiClient";
-import { refreshRhuMedicines } from "../../services/medicineService";
+import { loadMedicineAvailability } from "../../services/medicineService";
 import { getCurrentUser } from "../../utils/auth";
 import { formatDisplayValue, formatUserName } from "../../utils/formatters";
+import { queryKeys } from "../../utils/queryKeys";
 
 export default function AdminDashboard() {
   const [now, setNow] = useState(() => new Date());
   const [doctorAvailability, setDoctorAvailability] = useState(() =>
     getDoctorAvailability(),
   );
-  const [accounts, setAccounts] = useState(() => getAdminAccounts());
-  const [auditLogs, setAuditLogs] = useState([]);
-  const [medicineItems, setMedicineItems] = useState([]);
+  const {
+    data: dashboardData = { accounts: [], auditLogs: [], medicineItems: [] },
+    isLoading,
+    isFetching,
+    error: loadError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.dashboardSummary("admin"),
+    queryFn: async () => {
+      const [accounts, logsResponse, medicineItems] = await Promise.all([
+        loadAdminAccounts(),
+        apiRequest("/audit-logs"),
+        loadMedicineAvailability(),
+      ]);
+
+      return {
+        accounts,
+        auditLogs: unwrapList(logsResponse),
+        medicineItems,
+      };
+    },
+    retry: false,
+  });
+  const accounts = dashboardData.accounts;
+  const auditLogs = dashboardData.auditLogs;
+  const medicineItems = dashboardData.medicineItems;
+  const hasDashboardData =
+    accounts.length > 0 || auditLogs.length > 0 || medicineItems.length > 0;
 
   useEffect(() => {
     return listenDoctorAvailabilityUpdates(setDoctorAvailability);
@@ -49,40 +76,6 @@ export default function AdminDashboard() {
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
 
     return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadDashboardData() {
-      const [usersResponse, logsResponse, medicines] = await Promise.allSettled([
-        refreshAdminAccounts(),
-        apiRequest("/audit-logs"),
-        refreshRhuMedicines(),
-      ]);
-
-      if (!active) return;
-
-      setAccounts(
-        usersResponse.status === "fulfilled" && Array.isArray(usersResponse.value)
-          ? usersResponse.value
-          : [],
-      );
-      setAuditLogs(
-        logsResponse.status === "fulfilled" ? unwrapList(logsResponse.value) : [],
-      );
-      setMedicineItems(
-        medicines.status === "fulfilled" && Array.isArray(medicines.value)
-          ? medicines.value
-          : [],
-      );
-    }
-
-    loadDashboardData();
-
-    return () => {
-      active = false;
-    };
   }, []);
 
   const activeAccounts = accounts.filter(
@@ -124,7 +117,21 @@ const recentActivities = auditLogs.slice(0, 4).map((log, index) => ({
 
   return (
     <DashboardLayout role="admin" title="Dashboard">
+      <PageStateWrapper
+        isLoading={isLoading}
+        isError={Boolean(loadError)}
+        isFetching={isFetching}
+        hasData={hasDashboardData}
+        error={loadError}
+        onRetry={() => refetch()}
+        loadingMessage="Loading dashboard..."
+      >
       <div className="mx-auto w-full max-w-[1500px] space-y-4">
+        {isFetching && hasDashboardData && (
+          <div className="rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 text-[11px] font-semibold text-[#B91C1C]">
+            Refreshing records...
+          </div>
+        )}
 <section className="anim-fade-up  p-5 ">
   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
     <div className="min-w-0">
@@ -443,6 +450,7 @@ const recentActivities = auditLogs.slice(0, 4).map((log, index) => ({
         </aside>
       </div>
       </div>
+      </PageStateWrapper>
     </DashboardLayout>
   );
 }

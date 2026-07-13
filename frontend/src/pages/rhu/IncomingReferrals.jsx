@@ -18,7 +18,7 @@ import {
   DataTableEmptyState,
   ListToolbar,
   ModuleTableCard,
-  SoftLoadingArea,
+  PageStateWrapper,
   TablePagination,
 } from "../../components/common";
 import {
@@ -593,11 +593,14 @@ export default function IncomingReferrals() {
     data: referralsData = [],
     isLoading,
     isFetching,
+    error: loadError,
+    refetch,
   } = useQuery({
     queryKey: queryKeys.incomingReferrals("rhu"),
     queryFn: () => getIncomingReferrals(),
     staleTime: 30_000,
     refetchOnWindowFocus: true,
+    retry: false,
   });
 
   const referrals = useMemo(
@@ -605,7 +608,6 @@ export default function IncomingReferrals() {
     [referralsData],
   );
   const loading = isLoading && referrals.length === 0;
-  const showLoadingOverlay = loading;
   const isBackgroundRefreshing = isFetching && referrals.length > 0;
 
   const handleFilterChange = (key, value) => {
@@ -772,11 +774,16 @@ export default function IncomingReferrals() {
     <DashboardLayout role="rhu" title="Incoming Referrals">
       <style>{keyframes}</style>
 
-      <SoftLoadingArea
-        isLoading={showLoadingOverlay}
-        message="Loading referrals..."
-        scope="area"
+      <PageStateWrapper
+        isLoading={loading}
+        isError={Boolean(loadError)}
+        isFetching={isFetching}
+        hasData={referrals.length > 0}
+        error={loadError}
+        onRetry={() => refetch()}
+        loadingMessage="Loading referrals..."
       >
+        <div className="space-y-4">
         {!loading && (
           <ListToolbar
             searchValue={filters.search}
@@ -928,7 +935,8 @@ export default function IncomingReferrals() {
               </tbody>
         </ModuleTableCard>
         )}
-      </SoftLoadingArea>
+        </div>
+      </PageStateWrapper>
     </DashboardLayout>
   );
 }

@@ -107,6 +107,13 @@ export async function refreshAdminAccounts() {
   return loadingPromise;
 }
 
+export async function loadAdminAccounts() {
+  const response = await apiRequest("/users");
+  accountCache = unwrapList(response).map(normalizeAccount);
+  dispatchUpdate();
+  return accountCache;
+}
+
 export async function saveAdminAccounts() {
   return refreshAdminAccounts();
 }

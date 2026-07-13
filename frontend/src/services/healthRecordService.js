@@ -8,6 +8,49 @@ function firstPresent(values = []) {
   return values.find((value) => value !== undefined && value !== null && value !== "") || "";
 }
 
+function toBoolean(value) {
+  const normalized = String(value || "").toLowerCase();
+  return value === true || normalized === "true" || normalized === "yes";
+}
+
+function normalizeMorbidityReportingStatus(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["not_included", "morbidity", "notifiable"].includes(normalized)
+    ? normalized
+    : "";
+}
+
+function deriveMorbidityReportingStatus(record = {}, monitoringData = {}) {
+  const explicitStatus = normalizeMorbidityReportingStatus(
+    record.morbidityReportingStatus ||
+      record.morbidity_reporting_status ||
+      monitoringData.morbidityReportingStatus ||
+      monitoringData.morbidity_reporting_status,
+  );
+
+  if (explicitStatus) return explicitStatus;
+
+  const included = toBoolean(
+    firstPresent([
+      record.includeInMorbidityReport,
+      record.include_in_morbidity_report,
+      monitoringData.includeInMorbidityReport,
+      monitoringData.include_in_morbidity_report,
+    ]),
+  );
+  const notifiable = toBoolean(
+    firstPresent([
+      record.isNotifiableDisease,
+      record.is_notifiable_disease,
+      monitoringData.isNotifiableDisease,
+      monitoringData.is_notifiable_disease,
+    ]),
+  );
+
+  if (!included) return "not_included";
+  return notifiable ? "notifiable" : "morbidity";
+}
+
 function normalizeSupplementsGiven(record = {}, maternalData = {}) {
   const supplements =
     record.supplementsGiven ||
@@ -80,6 +123,10 @@ function normalizeRecord(record = {}) {
   };
   const immunizationData = record.immunization_data || record.immunizationData || {};
   const monitoringData = record.monitoring_data || record.monitoringData || {};
+  const morbidityReportingStatus = deriveMorbidityReportingStatus(
+    record,
+    monitoringData,
+  );
   const familyPlanningData =
     record.family_planning_data || record.familyPlanningData || {};
   const parentHealthRecordId =
@@ -211,6 +258,12 @@ function normalizeRecord(record = {}) {
     immunization_data: immunizationData,
     monitoringData,
     monitoring_data: monitoringData,
+    morbidityReportingStatus,
+    morbidity_reporting_status: morbidityReportingStatus,
+    includeInMorbidityReport: morbidityReportingStatus !== "not_included",
+    include_in_morbidity_report: morbidityReportingStatus !== "not_included",
+    isNotifiableDisease: morbidityReportingStatus === "notifiable",
+    is_notifiable_disease: morbidityReportingStatus === "notifiable",
     familyPlanningData,
     family_planning_data: familyPlanningData,
     needsReferral,
@@ -297,6 +350,16 @@ function toPayload(record = {}, { partial = false } = {}) {
     record.visitType ||
     record.visit_type ||
     (record.isFollowUp || parentHealthRecordId ? "follow_up_visit" : "initial_consultation");
+  const morbidityReportingStatus =
+    normalizeMorbidityReportingStatus(
+      record.morbidityReportingStatus ||
+        record.morbidity_reporting_status ||
+        record.monitoringData?.morbidityReportingStatus ||
+        record.monitoring_data?.morbidity_reporting_status,
+    ) ||
+    deriveMorbidityReportingStatus(record, {
+      ...(record.monitoringData || record.monitoring_data || {}),
+    });
   const maternalData = {
     ...(record.maternalData || record.maternal_data || {}),
     lmp: record.lmp || record.LMP || null,
@@ -345,6 +408,12 @@ function toPayload(record = {}, { partial = false } = {}) {
     parentHealthRecordId,
     visitType,
     isFollowUp: record.isFollowUp || visitType === "follow_up_visit",
+    morbidityReportingStatus,
+    morbidity_reporting_status: morbidityReportingStatus,
+    includeInMorbidityReport: morbidityReportingStatus !== "not_included",
+    include_in_morbidity_report: morbidityReportingStatus !== "not_included",
+    isNotifiableDisease: morbidityReportingStatus === "notifiable",
+    is_notifiable_disease: morbidityReportingStatus === "notifiable",
   };
   const familyPlanningData = {
     ...(record.familyPlanningData || record.family_planning_data || {}),
@@ -666,6 +735,12 @@ function toPayload(record = {}, { partial = false } = {}) {
       "visitType",
       "visit_type",
       "isFollowUp",
+      "morbidityReportingStatus",
+      "morbidity_reporting_status",
+      "includeInMorbidityReport",
+      "include_in_morbidity_report",
+      "isNotifiableDisease",
+      "is_notifiable_disease",
     ])
   ) {
     delete payload.monitoring_data;

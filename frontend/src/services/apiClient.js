@@ -85,6 +85,13 @@ export function clearAuthSession() {
 }
 
 export async function apiRequest(endpoint, options = {}) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    const error = new Error("You are offline. Please reconnect and try again.");
+    error.code = "OFFLINE";
+    error.isOffline = true;
+    throw error;
+  }
+
   const url = endpoint.startsWith("http")
     ? endpoint
     : `${API_BASE_URL}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
@@ -105,8 +112,10 @@ export async function apiRequest(endpoint, options = {}) {
   const controller = new AbortController();
   let timeoutId;
   const timeoutError = new Error(
-    "Request timed out. Please check the API connection and try again.",
+    "The server took too long to respond. Please check the API connection and try again.",
   );
+  timeoutError.code = "TIMEOUT";
+  timeoutError.isTimeout = true;
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = window.setTimeout(() => {
       controller.abort();
@@ -125,6 +134,16 @@ export async function apiRequest(endpoint, options = {}) {
     if (error.name === "AbortError") {
       throw timeoutError;
     }
+
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      const offlineError = new Error("You are offline. Please reconnect and try again.");
+      offlineError.code = "OFFLINE";
+      offlineError.isOffline = true;
+      throw offlineError;
+    }
+
+    error.code ||= "NETWORK_ERROR";
+    error.isNetworkError = true;
 
     throw error;
   });
@@ -170,4 +189,15 @@ export function unwrapList(payload) {
 
 export function unwrapData(payload) {
   return payload?.data ?? payload;
+}
+
+export function isConnectionError(error = {}) {
+  return Boolean(
+    error.isOffline ||
+      error.isTimeout ||
+      error.isNetworkError ||
+      error.code === "OFFLINE" ||
+      error.code === "TIMEOUT" ||
+      error.code === "NETWORK_ERROR",
+  );
 }

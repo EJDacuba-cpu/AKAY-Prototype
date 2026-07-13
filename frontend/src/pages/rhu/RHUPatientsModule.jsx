@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus, Users } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ModuleToolbar, SoftLoadingArea } from "../../components/common";
+import { ModuleToolbar, PageStateWrapper } from "../../components/common";
 import { DottedSpinner } from "../../components/common/loading/SoftLoadingOverlay";
 import PatientDirectoryCard from "../../components/features/patients/PatientDirectoryCard";
 import { getRhuPatients } from "../../services/patientService";
@@ -101,9 +101,12 @@ export default function Patients() {
     data: patientsData = [],
     isLoading,
     isFetching,
+    error: loadError,
+    refetch,
   } = useQuery({
     queryKey: queryKeys.patients("rhu"),
     queryFn: getRhuPatients,
+    retry: false,
   });
 
   const allPatients = useMemo(
@@ -305,12 +308,16 @@ export default function Patients() {
 
   return (
     <DashboardLayout role="rhu" title="Patients">
-      <SoftLoadingArea
+      <PageStateWrapper
         isLoading={loading}
-        message="Loading patients..."
-        scope="area"
-        className="space-y-4"
+        isError={Boolean(loadError)}
+        isFetching={isFetching}
+        hasData={allPatients.length > 0}
+        error={loadError}
+        onRetry={() => refetch()}
+        loadingMessage="Loading patients..."
       >
+        <div className="space-y-4">
         {!loading && (
           <ModuleToolbar
             searchValue={filters.search}
@@ -343,7 +350,8 @@ export default function Patients() {
             />
           )}
         </div>
-      </SoftLoadingArea>
+        </div>
+      </PageStateWrapper>
     </DashboardLayout>
   );
 }

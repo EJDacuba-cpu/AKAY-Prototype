@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Boxes,
@@ -11,19 +12,22 @@ import {
   XCircle,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar, TablePagination } from "../../components/common";
+import {
+  ListToolbar,
+  PageStateWrapper,
+  TablePagination,
+} from "../../components/common";
 import MedicineFormModal from "../../components/features/medicine/MedicineFormModal";
 import {
   addRhuMedicine,
   deleteRhuMedicine,
   formatMedicineQuantity,
   getMedicineExpiryStatus,
-  getRhuMedicines,
+  loadMedicineAvailability,
   MEDICINE_CATEGORIES,
-  refreshRhuMedicines,
-  RHU_MEDICINES_UPDATED_EVENT,
   updateRhuMedicine,
 } from "../../services/medicineService";
+import { queryKeys } from "../../utils/queryKeys";
 
 const MEDICINE_STATUS_TABS = [
   { key: "All Status", label: "All Items", icon: Boxes },
@@ -40,26 +44,29 @@ const DEFAULT_FILTERS = {
 };
 
 export default function MedicineManagement() {
-  const [items, setItems] = useState([]);
+  const queryClient = useQueryClient();
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [modalMode, setModalMode] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [openMenuId, setOpenMenuId] = useState("");
-
-  useEffect(() => {
-    async function loadItems() {
-      setItems(getRhuMedicines());
-      setItems(await refreshRhuMedicines());
-    }
-
-    loadItems();
-
-    window.addEventListener(RHU_MEDICINES_UPDATED_EVENT, loadItems);
-
-    return () => {
-      window.removeEventListener(RHU_MEDICINES_UPDATED_EVENT, loadItems);
-    };
-  }, []);
+  const {
+    data: medicineItems = [],
+    isLoading,
+    isFetching,
+    error: loadError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.medicineAvailability("rhu"),
+    queryFn: loadMedicineAvailability,
+    retry: false,
+  });
+  const items = useMemo(
+    () =>
+      (Array.isArray(medicineItems) ? medicineItems : []).filter(
+        (item) => item.ruralHealthUnitId,
+      ),
+    [medicineItems],
+  );
 
   const filteredItems = useMemo(
     () => filterMedicineItems(items, filters),
@@ -154,7 +161,10 @@ export default function MedicineManagement() {
         ? await updateRhuMedicine(selectedItem.id, payload)
         : await addRhuMedicine(payload);
 
-    setItems(nextItems);
+    queryClient.setQueryData(
+      queryKeys.medicineAvailability("rhu"),
+      Array.isArray(nextItems) ? nextItems : [],
+    );
     closeModal();
   }
 
@@ -162,11 +172,30 @@ export default function MedicineManagement() {
     setOpenMenuId("");
     const confirmed = window.confirm(`Delete ${item.name} from RHU inventory?`);
     if (!confirmed) return;
-    setItems(await deleteRhuMedicine(item.id));
+    const nextItems = await deleteRhuMedicine(item.id);
+    queryClient.setQueryData(
+      queryKeys.medicineAvailability("rhu"),
+      Array.isArray(nextItems) ? nextItems : [],
+    );
   }
 
   return (
     <DashboardLayout role="rhu" title="Medicine Management">
+      <PageStateWrapper
+        isLoading={isLoading}
+        isError={Boolean(loadError)}
+        isFetching={isFetching}
+        hasData={items.length > 0}
+        error={loadError}
+        onRetry={() => refetch()}
+        loadingMessage="Loading medicine inventory..."
+      >
+      <div className="space-y-4">
+      {isFetching && (
+        <div className="rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 text-[11px] font-semibold text-[#B91C1C]">
+          Refreshing records...
+        </div>
+      )}
       <ListToolbar
         searchValue={filters.search}
         onSearchChange={(value) => updateFilter("search", value)}
@@ -357,6 +386,8 @@ export default function MedicineManagement() {
         onClose={closeModal}
         onSubmit={handleSubmit}
       />
+      </div>
+      </PageStateWrapper>
     </DashboardLayout>
   );
 }

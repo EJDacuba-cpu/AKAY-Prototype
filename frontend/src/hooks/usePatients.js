@@ -66,6 +66,7 @@ export default function usePatients(role = "bhc") {
   } = useQuery({
     queryKey: queryKeys.patients(role),
     queryFn: getPatients,
+    retry: false,
   });
 
   const patients = useMemo(
@@ -181,6 +182,7 @@ export default function usePatients(role = "bhc") {
 
     loading,
     error,
+    queryError,
     refetchPatients: refetch,
     isRefreshing: isFetching && !loading,
 

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import { Link } from "react-router";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import {
   BarElement,
@@ -24,7 +25,11 @@ import { Bar } from "react-chartjs-2";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 
 /* Cards */
-import { MedicineAlert, SideCard } from "../../components/common";
+import {
+  MedicineAlert,
+  PageStateWrapper,
+  SideCard,
+} from "../../components/common";
 
 
 /* Services */
@@ -41,6 +46,7 @@ import {
 } from "../../services/doctorAvailability";
 import { getRhuVolumeSnapshot } from "../../services/volumeService";
 import { getCurrentUser } from "../../utils/auth";
+import { queryKeys } from "../../utils/queryKeys";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
@@ -57,6 +63,8 @@ const EMPTY_STATS = {
   pendingReferrals: 0,
   monitoringPatients: 0,
 };
+const EMPTY_REFERRALS = [];
+const EMPTY_MEDICINE_ALERTS = [];
 
 function getTopChiefComplaints(referrals) {
   if (!Array.isArray(referrals) || referrals.length === 0) return [];
@@ -83,79 +91,43 @@ const stagger = (index) => ({
 });
 
 export default function BHCDashboard() {
-  const [stats, setStats] = useState(EMPTY_STATS);
-  const [referrals, setReferrals] = useState([]);
-  const [medicineAlerts, setMedicineAlerts] = useState([]);
   const [doctorAvailability, setDoctorAvailability] = useState(() =>
     getDoctorAvailability(),
   );
-  const [dashboardLoading, setDashboardLoading] = useState(true);
-  const [medicineLoading, setMedicineLoading] = useState(true);
   const [now, setNow] = useState(() => new Date());
+  const {
+    data,
+    isLoading,
+    isFetching,
+    error: loadError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.dashboardSummary("bhc"),
+    queryFn: async () => {
+      const [dashboardData, medicineData] = await Promise.all([
+        getBhcDashboardData({ force: true, maxAgeMs: 0 }),
+        Promise.resolve(getMedicineAlerts()),
+      ]);
+
+      return {
+        stats: dashboardData?.stats || EMPTY_STATS,
+        referrals: Array.isArray(dashboardData?.referrals)
+          ? dashboardData.referrals
+          : [],
+        medicineAlerts: Array.isArray(medicineData) ? medicineData : [],
+      };
+    },
+    retry: false,
+  });
+  const stats = data?.stats || EMPTY_STATS;
+  const referrals = data?.referrals || EMPTY_REFERRALS;
+  const medicineAlerts = data?.medicineAlerts || EMPTY_MEDICINE_ALERTS;
+  const hasDashboardData = Boolean(data);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
 
     return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-
-    async function fetchDashboardData() {
-      try {
-        setDashboardLoading(true);
-
-        const dashboardData = await getBhcDashboardData();
-        if (!active) return;
-
-        setStats(dashboardData?.stats || EMPTY_STATS);
-        setReferrals(
-          Array.isArray(dashboardData?.referrals)
-            ? dashboardData.referrals
-            : [],
-        );
-      } catch (error) {
-        console.error("Failed to load dashboard:", error);
-        if (active) {
-          setStats(EMPTY_STATS);
-          setReferrals([]);
-        }
-      } finally {
-        if (active) setDashboardLoading(false);
-      }
-    }
-
-    fetchDashboardData();
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-
-    async function fetchMedicineAlerts() {
-      try {
-        setMedicineLoading(true);
-        const medicineData = await getMedicineAlerts();
-        if (active) {
-          setMedicineAlerts(Array.isArray(medicineData) ? medicineData : []);
-        }
-      } catch (error) {
-        console.error("Failed to load medicine alerts:", error);
-        if (active) setMedicineAlerts([]);
-      } finally {
-        if (active) setMedicineLoading(false);
-      }
-    }
-
-    fetchMedicineAlerts();
-
-    return () => {
-      active = false;
-    };
   }, []);
 
   useEffect(() => {
@@ -181,38 +153,50 @@ export default function BHCDashboard() {
 
   return (
     <DashboardLayout role="bhc" title="Dashboard">
-      <div className="mx-auto w-full max-w-[1500px] space-y-4">
-        <BHCWorkboardHeader userName={userName} now={now} />
+      <PageStateWrapper
+        isLoading={isLoading}
+        isError={Boolean(loadError)}
+        isFetching={isFetching}
+        hasData={hasDashboardData}
+        error={loadError}
+        onRetry={() => refetch()}
+        loadingMessage="Loading dashboard..."
+      >
+        <div className="mx-auto w-full max-w-[1500px] space-y-4">
+          {isFetching && hasDashboardData && (
+            <div className="rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 text-[11px] font-semibold text-[#B91C1C]">
+              Refreshing dashboard...
+            </div>
+          )}
 
-        <CareSnapshot
-          stats={stats}
-          rhuVolumeSnapshot={rhuVolumeSnapshot}
-          loading={dashboardLoading}
-        />
+          <BHCWorkboardHeader userName={userName} now={now} />
 
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="min-w-0 space-y-4">
-            <ChiefComplaintSummaryCard
-              activeCount={activeReferrals.length}
-              referrals={activeReferrals}
-              loading={dashboardLoading}
-            />
-          </div>
+          <CareSnapshot
+            stats={stats}
+            rhuVolumeSnapshot={rhuVolumeSnapshot}
+          />
 
-          <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
-            <RHUReadinessCard
-              availability={doctorAvailability}
-              medicineAlerts={medicineAlerts}
-              loading={medicineLoading}
-            />
+          <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="min-w-0 space-y-4">
+              <ChiefComplaintSummaryCard
+                activeCount={activeReferrals.length}
+                referrals={activeReferrals}
+              />
+            </div>
 
-            <MedicineAvailabilityCard
-              medicineAlerts={medicineAlerts}
-              loading={medicineLoading}
-            />
-          </aside>
-        </section>
-      </div>
+            <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+              <RHUReadinessCard
+                availability={doctorAvailability}
+                medicineAlerts={medicineAlerts}
+              />
+
+              <MedicineAvailabilityCard
+                medicineAlerts={medicineAlerts}
+              />
+            </aside>
+          </section>
+        </div>
+      </PageStateWrapper>
     </DashboardLayout>
   );
 }

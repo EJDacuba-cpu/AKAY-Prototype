@@ -17,7 +17,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ActiveFilterChips,
   CommonFilterPopover,
-  SoftLoadingArea,
+  PageStateWrapper,
 } from "../../components/common";
 import { getFollowUpTasks } from "../../services/followUpTaskService";
 import { getHealthRecords } from "../../services/healthRecordService";
@@ -149,22 +149,50 @@ export default function BHCReports() {
   const [draftFilters, setDraftFilters] = useState(EMPTY_FILTERS);
   const [filterOpen, setFilterOpen] = useState(false);
 
-  const { data: patients = [], isLoading: patientsLoading } = useQuery({
+  const {
+    data: patients = [],
+    isLoading: patientsLoading,
+    isFetching: patientsFetching,
+    error: patientsError,
+    refetch: refetchPatients,
+  } = useQuery({
     queryKey: queryKeys.patients("bhc"),
     queryFn: () => getPatientDetailsListByRole("bhc", { per_page: 500 }),
+    retry: false,
   });
-  const { data: records = [], isLoading: recordsLoading } = useQuery({
+  const {
+    data: records = [],
+    isLoading: recordsLoading,
+    isFetching: recordsFetching,
+    error: recordsError,
+    refetch: refetchRecords,
+  } = useQuery({
     queryKey: queryKeys.healthRecords("bhc"),
     queryFn: () => getHealthRecords("bhc", { per_page: 500 }),
+    retry: false,
   });
-  const { data: referrals = [], isLoading: referralsLoading } = useQuery({
+  const {
+    data: referrals = [],
+    isLoading: referralsLoading,
+    isFetching: referralsFetching,
+    error: referralsError,
+    refetch: refetchReferrals,
+  } = useQuery({
     queryKey: queryKeys.referrals("bhc"),
     queryFn: () => getReferrals(),
+    retry: false,
   });
-  const { data: followUps = [], isLoading: followUpsLoading } = useQuery({
+  const {
+    data: followUps = [],
+    isLoading: followUpsLoading,
+    isFetching: followUpsFetching,
+    error: followUpsError,
+    refetch: refetchFollowUps,
+  } = useQuery({
     queryKey: queryKeys.followUpTasks("bhc"),
     queryFn: () => getFollowUpTasks(),
     staleTime: 30_000,
+    retry: false,
   });
 
   const safePatients = useMemo(
@@ -230,6 +258,11 @@ export default function BHCReports() {
   const activeFilters = createActiveFilterChips(filters, reportFields);
   const loading =
     patientsLoading || recordsLoading || referralsLoading || followUpsLoading;
+  const loadError =
+    patientsError || recordsError || referralsError || followUpsError || null;
+  const refreshing =
+    !loading &&
+    (patientsFetching || recordsFetching || referralsFetching || followUpsFetching);
   const reportLabel = currentReport?.label || "Reports";
 
   useEffect(() => {
@@ -275,6 +308,13 @@ export default function BHCReports() {
     setSearchParams({ type: slug });
   }
 
+  function retryReports() {
+    refetchPatients();
+    refetchRecords();
+    refetchReferrals();
+    refetchFollowUps();
+  }
+
   return (
     <DashboardLayout role="bhc" title="Reports">
       <style>{`
@@ -289,77 +329,86 @@ export default function BHCReports() {
         }
       `}</style>
 
-      <div className="space-y-5">
-        <header>
-          <div>
-            <h1 className="text-xl font-bold text-[#0F172A]">Reports</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Reports Center for BHC records, monitoring, and official printable lists.
-            </p>
+      <PageStateWrapper
+        isLoading={loading}
+        isError={Boolean(loadError)}
+        isFetching={refreshing}
+        hasData={false}
+        error={loadError}
+        onRetry={retryReports}
+        loadingMessage={`Loading ${reportLabel.toLowerCase()}...`}
+      >
+        <div className="space-y-5">
+          <header>
+            <div>
+              <h1 className="text-xl font-bold text-[#0F172A]">Reports</h1>
+              <p className="mt-1 text-sm text-slate-500">
+                Reports Center for BHC records, monitoring, and official printable lists.
+              </p>
+            </div>
+          </header>
+
+          <div className="no-print flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <label className="w-full max-w-sm">
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                Report Type
+              </span>
+              <select
+                value={currentReport.slug}
+                onChange={(event) => selectReport(event.target.value)}
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-[#0F172A] shadow-sm outline-none transition focus:border-[#FCA5A5] focus:ring-2 focus:ring-[#B91C1C]/10"
+              >
+                {REPORT_TYPES.map((report) => (
+                  <option key={report.slug} value={report.slug}>
+                    {report.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="relative flex flex-wrap gap-2">
+              <HeaderAction
+                icon={<SlidersHorizontal size={14} />}
+                label="Filters"
+                count={activeFilters.length}
+                onClick={openFilters}
+              />
+              <HeaderAction
+                icon={<FileText size={14} />}
+                label="Export PDF"
+                onClick={printSelectedReport}
+              />
+              <HeaderAction
+                icon={<Printer size={14} />}
+                label="Print"
+                onClick={printSelectedReport}
+              />
+              <CommonFilterPopover
+                open={filterOpen}
+                title="Filters"
+                subtitle={`Narrow the ${reportLabel.toLowerCase()} report.`}
+                filters={draftFilters}
+                config={reportFields}
+                onChange={setDraftFilters}
+                onApply={applyFilters}
+                onReset={resetFilters}
+                onClose={() => setFilterOpen(false)}
+              />
+            </div>
           </div>
-        </header>
 
-        <div className="no-print flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <label className="w-full max-w-sm">
-            <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-              Report Type
-            </span>
-            <select
-              value={currentReport.slug}
-              onChange={(event) => selectReport(event.target.value)}
-              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-[#0F172A] shadow-sm outline-none transition focus:border-[#FCA5A5] focus:ring-2 focus:ring-[#B91C1C]/10"
-            >
-              {REPORT_TYPES.map((report) => (
-                <option key={report.slug} value={report.slug}>
-                  {report.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <ActiveFilterChips
+            filters={activeFilters}
+            onRemove={removeFilter}
+            onClearAll={resetFilters}
+          />
 
-          <div className="relative flex flex-wrap gap-2">
-            <HeaderAction
-              icon={<SlidersHorizontal size={14} />}
-              label="Filters"
-              count={activeFilters.length}
-              onClick={openFilters}
-            />
-            <HeaderAction
-              icon={<FileText size={14} />}
-              label="Export PDF"
-              onClick={printSelectedReport}
-            />
-            <HeaderAction
-              icon={<Printer size={14} />}
-              label="Print"
-              onClick={printSelectedReport}
-            />
-            <CommonFilterPopover
-              open={filterOpen}
-              title="Filters"
-              subtitle={`Narrow the ${reportLabel.toLowerCase()} report.`}
-              filters={draftFilters}
-              config={reportFields}
-              onChange={setDraftFilters}
-              onApply={applyFilters}
-              onReset={resetFilters}
-              onClose={() => setFilterOpen(false)}
-            />
-          </div>
-        </div>
+          {refreshing && (
+            <div className="no-print rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 text-[11px] font-semibold text-[#B91C1C]">
+              Refreshing records...
+            </div>
+          )}
 
-        <ActiveFilterChips
-          filters={activeFilters}
-          onRemove={removeFilter}
-          onClearAll={resetFilters}
-        />
-
-        <SoftLoadingArea
-          isLoading={loading}
-          message={`Loading ${reportLabel.toLowerCase()}...`}
-          scope="area"
-          minHeight="min-h-[460px]"
-        >
           <main id="selected-report" className="space-y-4 rounded-xl bg-white">
             <PrintReportHeader title={reportLabel} filters={activeFilters} />
             <SelectedReport
@@ -372,8 +421,8 @@ export default function BHCReports() {
               patientMap={patientMap}
             />
           </main>
-        </SoftLoadingArea>
-      </div>
+        </div>
+      </PageStateWrapper>
 
     </DashboardLayout>
   );
@@ -617,7 +666,8 @@ return (
 
 function MorbidityReportView({ records, filters, patientMap }) {
   const rows = records
-    .map((record) => normalizeProgramRecord(record, patientMap))
+    .filter(isMorbidityReportRecord)
+    .map((record) => normalizeMorbidityLogRow(record, patientMap))
     .filter(
       (record) =>
         matchesDateRange(record.date, filters) &&
@@ -627,32 +677,21 @@ function MorbidityReportView({ records, filters, patientMap }) {
     );
   const conditions = new Set(
     rows
-      .map((row) => row.raw.diagnosis || row.raw.chiefComplaint)
+      .map((row) => row.diagnosis)
       .filter(Boolean),
   ).size;
+  const notifiable = rows.filter(
+    (row) => row.morbidityReportingStatus === "notifiable",
+  ).length;
 
   return (
     <>
       <SummaryGrid>
         <SummaryCard label="Recorded Visits" value={rows.length} icon={<Stethoscope size={16} />} />
         <SummaryCard label="Conditions" value={conditions} icon={<ClipboardList size={16} />} />
+        <SummaryCard label="Notifiable" value={notifiable} tone="amber" icon={<FileHeart size={16} />} />
       </SummaryGrid>
-      <ReportTable
-        columns={["Record ID", "Date", "Patient", "Barangay", "Service Type", "Diagnosis / Condition"]}
-        rows={rows.map((row) => [
-          `#${getRecordId(row.raw)}`,
-          formatDate(row.date, "Not recorded"),
-          row.patientName,
-          row.barangay || "Not recorded",
-          getServiceTypeLabel(row.raw),
-          row.raw.diagnosis ||
-            row.raw.chiefComplaint ||
-            row.raw.chief_complaint ||
-            "Not recorded",
-        ])}
-        emptyTitle="No morbidity records"
-        emptyMessage="No health records match the selected filters."
-      />
+      <MorbidityDailyLogTable rows={rows} />
     </>
   );
 }
@@ -664,13 +703,7 @@ function matchesDisease(record, disease) {
 
 function matchesNotifiableStatus(record, status) {
   if (!status) return true;
-  const normalizedStatus = normalizeText(record.notifiableStatus);
-  const notifiable =
-    record.notifiable ||
-    record.isNotifiable ||
-    record.is_notifiable ||
-    (normalizedStatus.includes("notifiable") &&
-      !normalizedStatus.includes("non notifiable"));
+  const notifiable = getMorbidityReportingStatus(record) === "notifiable";
 
   return status === "Notifiable" ? notifiable : !notifiable;
 }
@@ -995,6 +1028,88 @@ function EpiTargetClientTable({ rows }) {
   );
 }
 
+function MorbidityDailyLogTable({ rows }) {
+  const columns = [
+    "Date",
+    "Name",
+    "Address / CP#",
+    "Age",
+    "Sex",
+    "Birthday",
+    "Signs & Symptoms",
+    "Diagnosis",
+    "Medication and Treatment",
+  ];
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 px-4 py-3 text-center">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#0F172A]">
+          Daily Log Sheet
+        </p>
+        <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
+          Morbidity-Notifiable Diseases Record
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1500px] text-left">
+          <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            <tr className="border-b border-slate-200">
+              {columns.map((column) => (
+                <th key={column} className="whitespace-nowrap border-r border-slate-200 px-3 py-3 align-top">
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 text-sm">
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length} className="px-6 py-16 text-center">
+                  <FileText className="mx-auto text-slate-300" size={28} />
+                  <p className="mt-3 font-semibold text-slate-600">
+                    No morbidity records
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    No included morbidity or notifiable disease records match the selected filters.
+                  </p>
+                </td>
+              </tr>
+            ) : (
+              rows.map((row, index) => (
+                <tr key={`${row.patientId || row.name}-${row.date}-${index}`} className="hover:bg-slate-50/70">
+                  {[
+                    formatDate(row.date, EMPTY_MARK),
+                    row.name,
+                    row.addressContact,
+                    row.age,
+                    row.sex,
+                    formatDate(row.birthday, EMPTY_MARK),
+                    row.signsSymptoms,
+                    row.diagnosis,
+                    row.medicationTreatment,
+                  ].map((value, columnIndex) => (
+                    <td
+                      key={`${index}-${columnIndex}`}
+                      className={`border-r border-slate-100 px-3 py-3 align-top ${
+                        columnIndex === 1
+                          ? "font-semibold text-[#0F172A]"
+                          : "text-slate-600"
+                      }`}
+                    >
+                      {formatDisplayValue(value, EMPTY_MARK)}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function PrintReportHeader({ title, filters }) {
   return (
     <div className="hidden print:block">
@@ -1159,6 +1274,237 @@ function normalizeProgramRecord(record, patientMap) {
     familyPlanningData:
       record.familyPlanningData || record.family_planning_data || {},
   };
+}
+
+function normalizeMorbidityLogRow(record, patientMap) {
+  const normalized = normalizeProgramRecord(record, patientMap);
+  const patient =
+    record.patient && typeof record.patient === "object"
+      ? record.patient
+      : patientMap.get(normalized.patientId) || {};
+  const birthday = getPatientBirthDate(patient, record);
+
+  return {
+    ...normalized,
+    name: normalized.patientName,
+    addressContact: formatAddressContact(patient, record),
+    age: getPatientAge(patient, record, birthday),
+    sex: getPatientSex(patient, record),
+    birthday,
+    signsSymptoms: getMorbiditySignsSymptoms(record),
+    diagnosis: getMorbidityDiagnosis(record),
+    medicationTreatment: getMorbidityMedicationTreatment(record),
+    morbidityReportingStatus: getMorbidityReportingStatus(record),
+  };
+}
+
+function isMorbidityReportRecord(record = {}) {
+  return ["morbidity", "notifiable"].includes(
+    getMorbidityReportingStatus(record),
+  );
+}
+
+function getMorbidityReportingStatus(record = {}) {
+  const monitoringData = record.monitoringData || record.monitoring_data || {};
+  const explicitStatus = normalizeMorbidityStatus(
+    firstFilledValue(
+      record.morbidityReportingStatus,
+      record.morbidity_reporting_status,
+      monitoringData.morbidityReportingStatus,
+      monitoringData.morbidity_reporting_status,
+    ),
+  );
+
+  if (explicitStatus) return explicitStatus;
+
+  const included = toReportBoolean(
+    firstFilledValue(
+      record.includeInMorbidityReport,
+      record.include_in_morbidity_report,
+      monitoringData.includeInMorbidityReport,
+      monitoringData.include_in_morbidity_report,
+    ),
+  );
+
+  if (!included) return "not_included";
+
+  const notifiable = toReportBoolean(
+    firstFilledValue(
+      record.isNotifiableDisease,
+      record.is_notifiable_disease,
+      record.isNotifiable,
+      record.is_notifiable,
+      record.notifiable,
+      monitoringData.isNotifiableDisease,
+      monitoringData.is_notifiable_disease,
+    ),
+  );
+
+  return notifiable ? "notifiable" : "morbidity";
+}
+
+function normalizeMorbidityStatus(value) {
+  const normalized = normalizeText(value).replace(/\s+/g, "_");
+  return ["not_included", "morbidity", "notifiable"].includes(normalized)
+    ? normalized
+    : "";
+}
+
+function toReportBoolean(value) {
+  const normalized = normalizeText(value);
+  return value === true || ["true", "yes", "1"].includes(normalized);
+}
+
+function getPatientBirthDate(patient = {}, record = {}) {
+  return firstFilledValue(
+    patient.birthDate,
+    patient.birthdate,
+    patient.dateOfBirth,
+    patient.date_of_birth,
+    record.patientBirthDate,
+    record.patient_birth_date,
+    record.birthDate,
+    record.birthdate,
+    record.dateOfBirth,
+    record.date_of_birth,
+  );
+}
+
+function getPatientAge(patient = {}, record = {}, birthday = "") {
+  return (
+    calculateAgeYears(birthday) ||
+    firstFilledValue(
+      patient.age,
+      record.patientAge,
+      record.patient_age,
+      record.age,
+    )
+  );
+}
+
+function getPatientSex(patient = {}, record = {}) {
+  return firstFilledValue(patient.sex, patient.gender, record.sex, record.gender);
+}
+
+function formatAddressContact(patient = {}, record = {}) {
+  const address = firstFilledValue(
+    patient.completeAddress,
+    patient.complete_address,
+    patient.address,
+    record.patientAddress,
+    record.patient_address,
+    record.address,
+    [
+      patient.streetAddress || patient.street_address,
+      patient.purokArea || patient.purok_area,
+      patient.barangay || record.barangay,
+      patient.municipality || patient.city,
+    ]
+      .filter(Boolean)
+      .join(", "),
+  );
+  const contact = firstFilledValue(
+    patient.contactNumber,
+    patient.contact_number,
+    patient.mobileNumber,
+    patient.mobile_number,
+    patient.phone,
+    record.contactNumber,
+    record.contact_number,
+    record.phone,
+  );
+
+  return [address, contact].filter(Boolean).join(" / ");
+}
+
+function getMorbiditySignsSymptoms(record = {}) {
+  return firstFilledValue(
+    record.summaryOfPresentIllness,
+    record.summary_of_present_illness,
+    record.signsSymptoms,
+    record.signs_symptoms,
+    record.assessmentFindings,
+    record.assessment_findings,
+    record.physicalExamination,
+    record.physical_examination,
+    record.chiefComplaint,
+    record.chief_complaint,
+  );
+}
+
+function getMorbidityDiagnosis(record = {}) {
+  return firstFilledValue(
+    record.diagnosis,
+    record.initialDiagnosis,
+    record.initial_diagnosis,
+    record.condition,
+  );
+}
+
+function getMorbidityMedicationTreatment(record = {}) {
+  const treatment = firstFilledValue(
+    record.medication,
+    record.treatment,
+    record.treatmentAdvice,
+    record.treatment_advice,
+    record.initialActionsTaken,
+    record.initial_actions_taken,
+  );
+  const dispensed = formatDispensedMedicinesForReport(record);
+
+  return [treatment, dispensed ? `Medicines: ${dispensed}` : ""]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function formatDispensedMedicinesForReport(record = {}) {
+  const medicines =
+    record.dispensedMedicines ||
+    record.dispensed_medicines ||
+    record.healthRecordMedicines ||
+    record.health_record_medicines ||
+    [];
+
+  if (!Array.isArray(medicines) || medicines.length === 0) return "";
+
+  return medicines
+    .map((item = {}) => {
+      const name = firstFilledValue(
+        item.medicineName,
+        item.medicine_name_snapshot,
+        item.medicineNameSnapshot,
+        item.name,
+      );
+      const quantity = firstFilledValue(item.quantity, item.qty);
+      const unit = firstFilledValue(item.unit, item.unit_snapshot);
+
+      return [name, [quantity, unit].filter(Boolean).join(" ")]
+        .filter(Boolean)
+        .join(" x ");
+    })
+    .filter(Boolean)
+    .join("; ");
+}
+
+function calculateAgeYears(value) {
+  if (!value) return "";
+  const birth = new Date(value);
+  if (Number.isNaN(birth.getTime())) return "";
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const birthdayThisYear = new Date(
+    today.getFullYear(),
+    birth.getMonth(),
+    birth.getDate(),
+  );
+  if (today < birthdayThisYear) age -= 1;
+  return age >= 0 ? age : "";
+}
+
+function firstFilledValue(...values) {
+  return values.find(
+    (value) => value !== undefined && value !== null && String(value).trim() !== "",
+  ) || "";
 }
 
 function buildEpiTargetRow(patient, epiByPatient, followUpsByPatient, maternalByPatient) {
@@ -1643,8 +1989,20 @@ function recordContains(record, term) {
       record.category,
       record.recordType,
       record.diagnosis,
+      record.initialDiagnosis,
+      record.initial_diagnosis,
       record.chiefComplaint,
+      record.chief_complaint,
+      record.summaryOfPresentIllness,
+      record.summary_of_present_illness,
+      record.signsSymptoms,
+      record.signs_symptoms,
+      record.medication,
+      record.treatment,
+      record.initialActionsTaken,
+      record.initial_actions_taken,
       record.consultationNotes,
+      formatDispensedMedicinesForReport(record),
     ]
       .filter(Boolean)
       .join(" "),

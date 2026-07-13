@@ -9,7 +9,8 @@ import {
   formatUserName,
 } from "../../utils/formatters";
 import { useNotifications } from "../../hooks/useNotificationsContext";
-import { ConfirmationModal } from "../common";
+import { ConfirmationModal, ConnectionStatusBanner } from "../common";
+import useConnectionStatus from "../../hooks/useConnectionStatus";
 import NotificationDropdown from "../features/notifications/NotificationDropdown";
 import NotificationModal from "../features/notifications/NotificationModal";
 import {
@@ -46,6 +47,7 @@ export default function DashboardLayout({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
+  const connectionStatus = useConnectionStatus();
 
   const menuSections = menuByRole[role] || [];
   const user = getCurrentUser() || {
@@ -80,6 +82,12 @@ export default function DashboardLayout({
   useEffect(() => {
     sidebarExpandedMemory = sidebarExpanded;
   }, [sidebarExpanded]);
+
+  useEffect(() => {
+    if (!connectionStatus.restoredAt) return;
+
+    queryClient.refetchQueries({ type: "active" });
+  }, [connectionStatus.restoredAt, queryClient]);
 
   useEffect(() => {
     function handleBlockingLoadingStart() {
@@ -267,7 +275,11 @@ export default function DashboardLayout({
               </div>
             </div>
           </div>
-        </header>
+</header>
+        <ConnectionStatusBanner
+          isOnline={connectionStatus.isOnline}
+          restoredAt={connectionStatus.restoredAt}
+        />
 
         <section className="akay-content-scroll min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4 lg:p-5">
           {children}

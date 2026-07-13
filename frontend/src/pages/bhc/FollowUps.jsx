@@ -6,12 +6,14 @@ import { CalendarClock, RefreshCcw, X } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ActionMenu,
+  ConnectionErrorState,
   DataTableEmptyState,
   ModuleToolbar,
   ModuleTableCard,
   SoftLoadingArea,
   TablePagination,
 } from "../../components/common";
+import { isConnectionError } from "../../services/apiClient";
 import {
   getFollowUpTasks,
   rescheduleFollowUp,
@@ -79,10 +81,13 @@ export default function FollowUps() {
     data: tasksData = [],
     isLoading,
     isFetching,
+    error: loadError,
+    refetch,
   } = useQuery({
     queryKey: queryKeys.followUpTasks("bhc"),
     queryFn: () => getFollowUpTasks(),
     staleTime: 30_000,
+    retry: false,
   });
 
   const tasks = useMemo(
@@ -140,6 +145,7 @@ export default function FollowUps() {
     currentPage * ITEMS_PER_PAGE,
   );
   const loading = isLoading && tasks.length === 0;
+  const hasLoadError = Boolean(loadError) && !loading;
   const requestedTaskId = searchParams.get("task") || "";
   const requestedOpen = searchParams.get("open") || "";
 
@@ -312,6 +318,20 @@ export default function FollowUps() {
     }
   }
 
+  if (hasLoadError) {
+    return (
+      <DashboardLayout role="bhc" title="Follow-ups">
+        <ConnectionErrorState
+          fullPage
+          title={isConnectionError(loadError) ? "Connection Lost" : "Unable to Load Data"}
+          onRetry={() => refetch()}
+          retrying={isFetching}
+          variant={loadError?.isTimeout ? "timeout" : isConnectionError(loadError) ? "offline" : "error"}
+        />
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout role="bhc" title="Follow-ups">
       <ActionModal
@@ -335,7 +355,7 @@ export default function FollowUps() {
         message="Loading follow-ups..."
         scope="area"
       >
-        {!loading && (
+        {!loading ? (
           <ModuleToolbar
             searchValue={filters.search}
             onSearchChange={(value) => updateFilter("search", value)}
@@ -350,7 +370,7 @@ export default function FollowUps() {
             onRemoveFilter={removeFilter}
             filterDescription="Narrow the follow-up tracking list."
           />
-        )}
+        ) : null}
 
         {loading ? null : (
         <ModuleTableCard

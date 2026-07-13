@@ -15,7 +15,7 @@ import {
   DataTableEmptyState,
   ListToolbar,
   ModuleTableCard,
-  SoftLoadingArea,
+  PageStateWrapper,
   TablePagination,
 } from "../../components/common";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
@@ -71,6 +71,7 @@ export default function RHUHealthRecords() {
     data: recordsData = [],
     isLoading,
     isFetching,
+    error: loadError,
     refetch,
   } = useQuery({
     queryKey: queryKeys.healthRecords("rhu"),
@@ -122,6 +123,7 @@ export default function RHUHealthRecords() {
       })
         .reverse();
     },
+    retry: false,
   });
 
   const records = Array.isArray(recordsData) ? recordsData : [];
@@ -237,12 +239,16 @@ export default function RHUHealthRecords() {
 
   return (
     <DashboardLayout role="rhu" title="Health Records">
-      <SoftLoadingArea
+      <PageStateWrapper
         isLoading={loading}
-        message="Loading records..."
-        scope="area"
-        className="space-y-4"
+        isError={Boolean(loadError)}
+        isFetching={isFetching}
+        hasData={records.length > 0}
+        error={loadError}
+        onRetry={() => refetch()}
+        loadingMessage="Loading records..."
       >
+        <div className="space-y-4">
         {!loading && (
           <ListToolbar
             searchValue={filters.search}
@@ -276,7 +282,8 @@ export default function RHUHealthRecords() {
             refreshing={refreshing}
           />
         )}
-      </SoftLoadingArea>
+        </div>
+      </PageStateWrapper>
     </DashboardLayout>
   );
 }

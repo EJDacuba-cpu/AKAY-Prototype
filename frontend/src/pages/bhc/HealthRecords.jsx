@@ -3,8 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ModuleToolbar, SoftLoadingArea } from "../../components/common";
+import {
+  ConnectionErrorState,
+  ModuleToolbar,
+  SoftLoadingArea,
+} from "../../components/common";
 import HealthRecordsTable from "../../components/features/records/HealthRecordsTable";
+import { isConnectionError } from "../../services/apiClient";
 import { getHealthRecords } from "../../services/healthRecordService";
 import { getReferrals } from "../../services/referrals";
 import { formatPatientName } from "../../utils/formatters";
@@ -81,6 +86,8 @@ export default function HealthRecords() {
     data: recordsData = [],
     isLoading,
     isFetching,
+    error: loadError,
+    refetch,
   } = useQuery({
     queryKey: queryKeys.healthRecords("bhc"),
     queryFn: async () => {
@@ -162,6 +169,7 @@ export default function HealthRecords() {
       })
         .reverse();
     },
+    retry: false,
   });
 
   const records = useMemo(
@@ -169,6 +177,7 @@ export default function HealthRecords() {
     [recordsData],
   );
   const loading = isLoading && records.length === 0;
+  const hasLoadError = Boolean(loadError) && !loading;
 
   const filteredRecords = records.filter((record) => {
     const searchLower = filters.search.toLowerCase();
@@ -266,6 +275,20 @@ export default function HealthRecords() {
     updateFilter(key, "");
   }
 
+  if (hasLoadError) {
+    return (
+      <DashboardLayout role="bhc" title="Health Records">
+        <ConnectionErrorState
+          fullPage
+          title={isConnectionError(loadError) ? "Connection Lost" : "Unable to Load Data"}
+          onRetry={() => refetch()}
+          retrying={isFetching}
+          variant={loadError?.isTimeout ? "timeout" : isConnectionError(loadError) ? "offline" : "error"}
+        />
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout role="bhc" title="Health Records">
       <SoftLoadingArea
@@ -274,7 +297,7 @@ export default function HealthRecords() {
         scope="area"
         className="space-y-4"
       >
-        {!loading && (
+        {!loading ? (
           <ModuleToolbar
             searchValue={filters.search}
             onSearchChange={(value) => updateFilter("search", value)}
@@ -290,7 +313,7 @@ export default function HealthRecords() {
             primaryActionLabel="Add Health Record"
             primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
           />
-        )}
+        ) : null}
 
         {!loading && (
           <HealthRecordsTable

@@ -21,4 +21,6 @@ export const queryKeys = {
   ],
   incomingReferrals: (role = "rhu") => ["incoming-referrals", role],
   dashboardSummary: (role = "bhc") => ["dashboard-summary", role],
+  medicineAvailability: (role = "bhc") => ["medicine-availability", role],
+  adminAccounts: () => ["admin-accounts"],
 };

@@ -4,12 +4,14 @@ import { ClipboardList } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ActionMenu,
+  ConnectionErrorState,
   DataTableEmptyState,
   ModuleToolbar,
   ModuleTableCard,
   SoftLoadingArea,
   TablePagination,
 } from "../../components/common";
+import { isConnectionError } from "../../services/apiClient";
 import { getReferrals } from "../../services/referrals";
 import {
   formatDisplayValue,
@@ -124,9 +126,12 @@ export default function Referrals() {
     data: referralsData = [],
     isLoading,
     isFetching,
+    error: loadError,
+    refetch,
   } = useQuery({
     queryKey: queryKeys.referrals("bhc"),
     queryFn: getReferrals,
+    retry: false,
   });
 
   const referrals = useMemo(
@@ -134,6 +139,7 @@ export default function Referrals() {
     [referralsData],
   );
   const loading = isLoading && referrals.length === 0;
+  const hasLoadError = Boolean(loadError) && !loading;
 
   const receivingFacilityOptions = useMemo(
     () =>
@@ -283,6 +289,20 @@ export default function Referrals() {
     setFilters((prev) => ({ ...prev, [key]: resetValues[key] }));
   }
 
+  if (hasLoadError) {
+    return (
+      <DashboardLayout role="bhc" title="Referrals">
+        <ConnectionErrorState
+          fullPage
+          title={isConnectionError(loadError) ? "Connection Lost" : "Unable to Load Data"}
+          onRetry={() => refetch()}
+          retrying={isFetching}
+          variant={loadError?.isTimeout ? "timeout" : isConnectionError(loadError) ? "offline" : "error"}
+        />
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout role="bhc" title="Referrals">
       <SoftLoadingArea
@@ -290,7 +310,7 @@ export default function Referrals() {
         message="Loading referrals..."
         scope="area"
       >
-        {!loading && (
+        {!loading ? (
           <ModuleToolbar
             searchValue={filters.search}
             onSearchChange={(value) => updateFilter("search", value)}
@@ -305,7 +325,7 @@ export default function Referrals() {
             onRemoveFilter={removeFilter}
             filterDescription="Narrow the referrals list."
           />
-        )}
+        ) : null}
 
         {loading ? null : (
         <ModuleTableCard

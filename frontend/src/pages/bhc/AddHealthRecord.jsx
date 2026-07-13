@@ -6,7 +6,6 @@ import {
   ArrowLeft,
   Check,
   HeartPulse,
-  Lock,
   Save,
   Search,
   Stethoscope,
@@ -15,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { SuccessModal } from "../../components/common";
+import { ConnectionIssueModal, SuccessModal } from "../../components/common";
 import {
   DatePickerField,
   TimePickerField,
@@ -33,6 +32,8 @@ import {
 } from "../../services/medicineService";
 import { getPatientDetailsListByRole } from "../../services/patientService";
 import { createReferral } from "../../services/referrals";
+import { isConnectionError } from "../../services/apiClient";
+import { saveOfflineDraft } from "../../services/offlineDraftService";
 import { getCurrentUser } from "../../utils/auth";
 import {
   formatDisplayValue,
@@ -107,6 +108,73 @@ const RECORD_TYPE_DETAILS = {
     comingSoon: true,
   },
 };
+
+function getDefaultMorbidityReportingStatus(recordType = "") {
+  return normalizeRecordType(recordType) === "General Consultation"
+    ? "morbidity"
+    : "not_included";
+}
+
+function toBooleanYesNo(value) {
+  const normalized = String(value || "").toLowerCase();
+  return value === true || normalized === "yes" || normalized === "true";
+}
+
+function getHealthRecordPatientId(record = {}) {
+  return String(
+    record.patientId ||
+      record.patient_id ||
+      record.patient?.id ||
+      record.patient?.patientId ||
+      record.patient?.patient_id ||
+      "",
+  );
+}
+
+function normalizeMorbidityReportingStatus(value, fallback = "not_included") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["not_included", "morbidity", "notifiable"].includes(normalized)) {
+    return normalized;
+  }
+  return fallback;
+}
+
+function deriveMorbidityReportingStatus(source = {}, fallback = "not_included") {
+  const monitoringData = source.monitoringData || source.monitoring_data || {};
+  const status = normalizeMorbidityReportingStatus(
+    source.morbidityReportingStatus ||
+      source.morbidity_reporting_status ||
+      monitoringData.morbidityReportingStatus ||
+      monitoringData.morbidity_reporting_status,
+    "",
+  );
+
+  if (status) return status;
+
+  const included = toBooleanYesNo(
+    source.includeInMorbidityReport ??
+      source.include_in_morbidity_report ??
+      monitoringData.includeInMorbidityReport ??
+      monitoringData.include_in_morbidity_report,
+  );
+  const notifiable = toBooleanYesNo(
+    source.isNotifiableDisease ??
+      source.is_notifiable_disease ??
+      monitoringData.isNotifiableDisease ??
+      monitoringData.is_notifiable_disease,
+  );
+
+  if (!included) return fallback;
+  return notifiable ? "notifiable" : "morbidity";
+}
+
+function getMorbidityDecisionFlags(status) {
+  const normalized = normalizeMorbidityReportingStatus(status);
+  return {
+    includeInMorbidityReport: normalized !== "not_included",
+    isNotifiableDisease: normalized === "notifiable",
+  };
+}
 
 const FAMILY_PLANNING_CLIENT_TYPES = [
   "New Acceptor",
@@ -582,6 +650,8 @@ export default function AddHealthRecord() {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(null);
   const [noticeModal, setNoticeModal] = useState(null);
+  const [connectionIssue, setConnectionIssue] = useState(null);
+  const [lastFailedDraft, setLastFailedDraft] = useState(null);
   const [validationErrors, setValidationErrors] = useState({});
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
@@ -608,6 +678,9 @@ export default function AddHealthRecord() {
   const [consultationNotes, setConsultationNotes] = useState("");
   const [healthRecordType, setHealthRecordType] = useState(
     preselectedClassification,
+  );
+  const [morbidityReportingStatus, setMorbidityReportingStatus] = useState(
+    getDefaultMorbidityReportingStatus(preselectedClassification),
   );
 
   const [systolicBp, setSystolicBp] = useState("");
@@ -734,7 +807,8 @@ export default function AddHealthRecord() {
 
     async function loadExistingRecord() {
       const found = await getHealthRecordById(recordId, "bhc");
-      if (found?.patientId) setSelectedPatientId(found.patientId);
+      const foundPatientId = getHealthRecordPatientId(found);
+      if (foundPatientId) setSelectedPatientId(foundPatientId);
 
       if (!found || !isEditingRecord) return;
 
@@ -751,6 +825,18 @@ export default function AddHealthRecord() {
       setMedication(found.medication || found.initialActionsTaken || "");
       setAttendingStaff(found.attendingStaff || found.recordedBy || "");
       setConsultationNotes(found.consultationNotes || "");
+      setMorbidityReportingStatus(
+        deriveMorbidityReportingStatus(
+          found,
+          getDefaultMorbidityReportingStatus(
+            found.category ||
+              found.recordType ||
+              found.patientClassification ||
+              found.patient?.patientClassification ||
+              found.patient?.category,
+          ),
+        ),
+      );
       setSystolicBp(found.systolicBp || "");
       setDiastolicBp(found.diastolicBp || "");
       setTemp(found.temperature || found.temp || "");
@@ -851,6 +937,8 @@ export default function AddHealthRecord() {
 
       const found = (await getHealthRecordById(recordId, "bhc")) || null;
       setFollowUpRecord(found);
+      const foundPatientId = getHealthRecordPatientId(found);
+      if (foundPatientId) setSelectedPatientId(foundPatientId);
       setHealthRecordType(
         normalizeRecordType(
           found?.category ||
@@ -865,9 +953,16 @@ export default function AddHealthRecord() {
     loadFollowUpPreview();
   }, [isFollowUp, recordId]);
 
-  const selectedPatient = patients.find(
-    (patient) => patient.id === selectedPatientId,
+  const selectedPatientFromList = patients.find(
+    (patient) => String(patient.id) === String(selectedPatientId),
   );
+  const selectedPatient =
+    selectedPatientFromList ||
+    (isFollowUp &&
+    followUpRecord?.patient &&
+    getHealthRecordPatientId(followUpRecord) === String(selectedPatientId)
+      ? followUpRecord.patient
+      : null);
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
 
@@ -894,12 +989,6 @@ export default function AddHealthRecord() {
     followUpRecord?.patientName ||
     followUpRecord?.patient?.name ||
     "Selected patient";
-  const followUpPatientId =
-    selectedPatient?.patientId ||
-    selectedPatient?.id ||
-    followUpRecord?.patientId ||
-    followUpRecord?.patient_id ||
-    "Not recorded";
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -973,6 +1062,7 @@ export default function AddHealthRecord() {
 
   function resetClassificationSpecificState() {
     setHealthRecordType("");
+    setMorbidityReportingStatus("not_included");
     setMaternalData(EMPTY_MATERNAL_DATA);
     setDispensedMedicines([]);
     setExpectedDeliveryDate("");
@@ -1137,6 +1227,13 @@ export default function AddHealthRecord() {
   }, [isMaternal]);
 
   useEffect(() => {
+    if (isEditingRecord) return;
+    setMorbidityReportingStatus(
+      getDefaultMorbidityReportingStatus(normalizedHealthRecordType),
+    );
+  }, [isEditingRecord, normalizedHealthRecordType]);
+
+  useEffect(() => {
     if (isFollowUp && !showFollowUpMonitoringFields) {
       setFollowUpDate("");
       if (!isFollowUp) setPatientCondition("");
@@ -1153,6 +1250,15 @@ export default function AddHealthRecord() {
     if (normalizedStatus !== "Follow-up Required") {
       setFollowUpDate("");
       if (!isFollowUp) setPatientCondition("");
+    }
+  }
+
+  function handleNeedsReferralChange(value) {
+    const nextNeedsReferral = value === "Yes" || value === true;
+    setNeedsReferral(nextNeedsReferral);
+    if (nextNeedsReferral) {
+      clearValidationError("followUpDate");
+      setFollowUpDate("");
     }
   }
 
@@ -1535,6 +1641,61 @@ export default function AddHealthRecord() {
     return { savedRecord, savedId };
   }
 
+  function handleSaveHealthRecordDraft() {
+    if (!lastFailedDraft) return;
+
+    saveOfflineDraft({
+      moduleType: "health_record",
+      formData: lastFailedDraft,
+    });
+    setConnectionIssue(null);
+    setNoticeModal({
+      title: "Draft Saved Locally",
+      message:
+        "This health record was saved only on this device. Review and submit it manually once the connection is stable.",
+    });
+  }
+
+  async function handleRetryFailedHealthRecord() {
+    if (!lastFailedDraft || saving) return;
+    setSaving(true);
+    try {
+      const { savedRecord, savedId } = await saveHealthRecord(lastFailedDraft);
+      const savedRecordId =
+        savedId ||
+        savedRecord?.id ||
+        savedRecord?._id ||
+        savedRecord?.data?.id ||
+        savedRecord?.data?._id ||
+        recordId ||
+        "";
+      setConnectionIssue(null);
+      setCareDecisionStep(false);
+      setSaveSuccess({
+        recordId: savedRecordId,
+        patientId: selectedPatientId,
+        status: normalizePatientStatus(
+          savedRecord?.followUpStatus ||
+            savedRecord?.status ||
+            lastFailedDraft.followUpStatus,
+        ),
+        needsReferral: lastFailedDraft.needs_referral === true,
+        isFollowUp,
+        isEditingRecord,
+      });
+    } catch (error) {
+      console.error("Failed to retry health record save:", error);
+      setConnectionIssue({
+        title: error?.isTimeout ? "Request Timed Out" : "Connection Lost",
+        message:
+          error?.message ||
+          "Your internet connection was interrupted. Your current form data can be saved as a local draft and submitted once your connection is restored.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleSave(event) {
     event.preventDefault();
     closeDateTimePopovers();
@@ -1576,7 +1737,7 @@ export default function AddHealthRecord() {
     if (!selectedPatientId) {
       setValidationErrorsAndFocus({
         selectedPatientId: isFollowUp
-          ? "Patient is still loading. Try again."
+          ? "Patient details are still loading. Please try again."
           : "Please select a patient first.",
       });
       return;
@@ -1670,10 +1831,14 @@ export default function AddHealthRecord() {
     const immunizationNextScheduleDate =
       preparedVaccineEntries.find((entry) => entry.nextScheduleDate)
         ?.nextScheduleDate || "";
-    const effectiveFollowUpDate = followUpDate || immunizationNextScheduleDate || "";
+    const finalNeedsReferral = !isFollowUp && Boolean(needsReferral);
+    const effectiveFollowUpDate = finalNeedsReferral
+      ? ""
+      : followUpDate || immunizationNextScheduleDate || "";
 
     if (
       effectiveHealthRecordType === "Immunization" &&
+      !finalNeedsReferral &&
       !followUpDate &&
       immunizationNextScheduleDate
     ) {
@@ -1768,7 +1933,9 @@ export default function AddHealthRecord() {
       : effectiveFollowUpDate
         ? "Follow-up Required"
         : "Completed";
-    const finalNeedsReferral = !isFollowUp && Boolean(needsReferral);
+    const morbidityDecision = getMorbidityDecisionFlags(
+      morbidityReportingStatus,
+    );
 
     const formData = {
       patientId: selectedPatientId,
@@ -1806,6 +1973,9 @@ export default function AddHealthRecord() {
       monitoringNotes,
       patientCondition:
         isFollowUp || effectiveFollowUpDate ? patientCondition : "",
+      morbidityReportingStatus,
+      includeInMorbidityReport: morbidityDecision.includeInMorbidityReport,
+      isNotifiableDisease: morbidityDecision.isNotifiableDisease,
       needsReferral: finalNeedsReferral,
       needs_referral: finalNeedsReferral,
       referralReason: "",
@@ -1919,6 +2089,16 @@ export default function AddHealthRecord() {
           ]),
         );
         if (setValidationErrorsAndFocus(backendErrors)) return;
+      }
+      if (isConnectionError(error)) {
+        setLastFailedDraft(formData);
+        setConnectionIssue({
+          title: error?.isTimeout ? "Request Timed Out" : "Connection Lost",
+          message:
+            error?.message ||
+            "Your internet connection was interrupted. Your current form data can be saved as a local draft and submitted once your connection is restored.",
+        });
+        return;
       }
       setNoticeModal({
         title: "Save Failed",
@@ -2103,6 +2283,16 @@ export default function AddHealthRecord() {
       });
     } catch (error) {
       console.error("Failed to submit health record referral:", error);
+      if (isConnectionError(error)) {
+        setLastFailedDraft(pendingReferralDraft.formData);
+        setConnectionIssue({
+          title: error?.isTimeout ? "Request Timed Out" : "Connection Lost",
+          message:
+            error?.message ||
+            "Your internet connection was interrupted. Your current form data can be saved as a local draft and submitted once your connection is restored.",
+        });
+        return;
+      }
       setNoticeModal({
         title: savedRecordId ? "Referral Submission Failed" : "Save Failed",
         message:
@@ -2118,7 +2308,7 @@ export default function AddHealthRecord() {
 
   const isPrimaryActionLoading = saving;
   const primaryActionLabel = saving
-    ? "Saving..."
+    ? "Saving health record..."
     : isFollowUp
       ? "Save Follow-up Visit"
       : needsReferral && userRole === "bhc" && !isEditingRecord
@@ -2126,14 +2316,14 @@ export default function AddHealthRecord() {
       : "Save Health Record";
   const pageStepLabel = null;
   const pageTitle = isFollowUp
-    ? "Follow-up Health Record"
+    ? "Follow-up Visit"
     : isEditingRecord
       ? "Edit Health Record"
       : referralDetailsStep
         ? "Referral Details"
       : "Add Health Record";
   const pageSubtitle = isFollowUp
-    ? "Record what happened during the patient's scheduled return visit."
+    ? "Record the patient's return visit and update the follow-up schedule if needed."
     : isEditingRecord
       ? "Correct or update details in this existing health record."
       : referralDetailsStep
@@ -2177,7 +2367,7 @@ export default function AddHealthRecord() {
   }
 
   return (
-    <DashboardLayout role={userRole} title="Add Health Record">
+    <DashboardLayout role={userRole} title={isFollowUp ? "Follow-up Visit" : "Add Health Record"}>
       <style>{keyframes}</style>
 
       <div
@@ -2203,6 +2393,19 @@ export default function AddHealthRecord() {
           <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-[#6B7280]">
             {pageSubtitle}
           </p>
+          {isFollowUp && (
+            <p
+              className={`mt-1 text-[11px] font-medium ${
+                selectedPatient
+                  ? "text-[#6B7280]"
+                  : "text-amber-700"
+              }`}
+            >
+              {selectedPatient
+                ? "This visit is linked to the original follow-up schedule."
+                : "Patient details are still loading. Please try again."}
+            </p>
+          )}
         </div>
       </div>
 
@@ -2278,15 +2481,6 @@ export default function AddHealthRecord() {
         className="relative ml-0 mr-auto w-full max-w-7xl"
       >
         <div className="space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
-        {isFollowUp && (
-          <FollowUpContextCard
-            patientName={followUpPatientName}
-            patientId={followUpPatientId}
-            recordId={recordId}
-            record={followUpRecord}
-          />
-        )}
-
         <FormSection
           title="Visit Overview"
           subtitle="Confirm the visit schedule and attending practitioner."
@@ -2526,22 +2720,25 @@ export default function AddHealthRecord() {
             delay={4}
           >
             <div className="grid gap-4 lg:grid-cols-2">
-              <FieldInput
-                label="Next Follow-up Date"
-                type="date"
-                value={followUpDate}
-                name="followUpDate"
-                error={validationErrors.followUpDate}
-                onChange={(event) => {
-                  clearValidationError("followUpDate");
-                  setFollowUpDate(event.target.value);
-                }}
-              />
+              <div>
+                <FieldInput
+                  label="Next Follow-up Date"
+                  type="date"
+                  value={followUpDate}
+                  name="followUpDate"
+                  error={validationErrors.followUpDate}
+                  disabled={needsReferral}
+                  onChange={(event) => {
+                    clearValidationError("followUpDate");
+                    setFollowUpDate(event.target.value);
+                  }}
+                />
+              </div>
               <YesNoRadioGroup
                 label="Needs RHU Referral?"
                 name="needsReferral"
                 value={needsReferral ? "Yes" : "No"}
-                onChange={(value) => setNeedsReferral(value === "Yes")}
+                onChange={handleNeedsReferralChange}
               />
             </div>
           </FormSection>
@@ -2911,22 +3108,25 @@ export default function AddHealthRecord() {
               accent="pink"
             >
               <div className="grid gap-4 lg:grid-cols-2">
-                <FieldInput
-                  label="Next Follow-up Date"
-                  type="date"
-                  value={followUpDate}
-                  name="followUpDate"
-                  error={validationErrors.followUpDate}
-                  onChange={(event) => {
-                    clearValidationError("followUpDate");
-                    setFollowUpDate(event.target.value);
-                  }}
-                />
+                <div>
+                  <FieldInput
+                    label="Next Follow-up Date"
+                    type="date"
+                    value={followUpDate}
+                    name="followUpDate"
+                    error={validationErrors.followUpDate}
+                    disabled={needsReferral}
+                    onChange={(event) => {
+                      clearValidationError("followUpDate");
+                      setFollowUpDate(event.target.value);
+                    }}
+                  />
+                </div>
                 <YesNoRadioGroup
                   label="Needs RHU Referral?"
                   name="needsReferral"
                   value={needsReferral ? "Yes" : "No"}
-                  onChange={(value) => setNeedsReferral(value === "Yes")}
+                  onChange={handleNeedsReferralChange}
                 />
               </div>
             </FormSection>
@@ -3109,59 +3309,98 @@ export default function AddHealthRecord() {
 
         {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && (
           <FormSection
-            title="Consultation Information"
-            subtitle="Record consultation findings and observations."
+            title="Vital Signs"
+            subtitle="Record the patient's physiological measurements."
             delay={3}
           >
             <LockedFormContent locked={patientGateLocked}>
-            <div className="grid gap-4 lg:grid-cols-2">
-              <FieldInput
-                label="Chief Complaint"
-                placeholder="e.g. Fever, vomiting, cough"
-                required
-                name="chiefComplaint"
-                error={validationErrors.chiefComplaint}
-                value={chiefComplaint}
-                onChange={(event) => {
-                  clearValidationError("chiefComplaint");
-                  setChiefComplaint(event.target.value);
-                }}
-              />
+              <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(4,minmax(0,1fr))]">
+                <BpInputGroup
+                  systolic={systolicBp}
+                  diastolic={diastolicBp}
+                  onSystolicChange={setSystolicBp}
+                  onDiastolicChange={setDiastolicBp}
+                />
+                <FieldInput
+                  label="Temperature"
+                  placeholder="e.g. 36.5 C"
+                  value={temp}
+                  onChange={(event) => setTemp(event.target.value)}
+                />
+                <FieldInput
+                  label="Pulse Rate"
+                  placeholder="e.g. 72 bpm"
+                  value={pulse}
+                  onChange={(event) => setPulse(event.target.value)}
+                />
+                <FieldInput
+                  label="Weight"
+                  type="number"
+                  placeholder="e.g. 60"
+                  value={weight}
+                  onChange={(event) => setWeight(event.target.value)}
+                />
+                <FieldInput
+                  label="Height"
+                  type="number"
+                  placeholder="e.g. 165"
+                  value={height}
+                  onChange={(event) => setHeight(event.target.value)}
+                />
+              </div>
+            </LockedFormContent>
+          </FormSection>
+        )}
 
-
-
-            </div>
-            <div className="mt-4">
-              <FieldTextarea
-                label="Summary of Present Illness and Physical Examination"
-                required
-                name="summaryOfPresentIllness"
-                error={validationErrors.summaryOfPresentIllness}
-                value={summaryOfPresentIllness}
-                onChange={(event) =>
-                  {
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && (
+          <FormSection
+            title="Consultation Information"
+            subtitle="Record the complaint, assessment findings, diagnosis, and treatment."
+            delay={4}
+          >
+            <LockedFormContent locked={patientGateLocked}>
+              <div>
+                <FieldInput
+                  label="Chief Complaint"
+                  placeholder="e.g. Fever, vomiting, cough"
+                  required
+                  name="chiefComplaint"
+                  error={validationErrors.chiefComplaint}
+                  value={chiefComplaint}
+                  onChange={(event) => {
+                    clearValidationError("chiefComplaint");
+                    setChiefComplaint(event.target.value);
+                  }}
+                />
+              </div>
+              <div className="mt-4">
+                <FieldTextarea
+                  label="Signs & Symptoms"
+                  required
+                  name="summaryOfPresentIllness"
+                  error={validationErrors.summaryOfPresentIllness}
+                  value={summaryOfPresentIllness}
+                  onChange={(event) => {
                     clearValidationError("summaryOfPresentIllness");
                     setSummaryOfPresentIllness(event.target.value);
-                  }
-                }
-                placeholder="Record the detailed history of the present illness and physical examination findings here..."
-                rows={5}
-              />
-            </div>
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              <FieldInput
-                label="Initial Actions Taken"
-                value={medication}
-                onChange={(event) => setMedication(event.target.value)}
-              />
-              <FieldTextarea
-                label="Other Observations"
-                value={consultationNotes}
-                onChange={(event) => setConsultationNotes(event.target.value)}
-                placeholder="Other observations not covered in the summary..."
-                rows={3}
-              />
-            </div>
+                  }}
+                  placeholder="Record symptoms, assessment findings, history, and physical examination findings here..."
+                  rows={5}
+                />
+              </div>
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <FieldInput
+                  label="Diagnosis"
+                  value={diagnosis}
+                  onChange={(event) => setDiagnosis(event.target.value)}
+                  placeholder="Initial diagnosis"
+                />
+                <FieldInput
+                  label="Treatment / Action Taken"
+                  value={medication}
+                  onChange={(event) => setMedication(event.target.value)}
+                />
+              </div>
             </LockedFormContent>
           </FormSection>
         )}
@@ -3170,7 +3409,7 @@ export default function AddHealthRecord() {
           <FormSection
             title="Medicines / Supplies Dispensed"
             subtitle="Optional medicines or supplies given from BHC inventory."
-            delay={4}
+            delay={5}
           >
             <LockedFormContent locked={patientGateLocked}>
               <DispensedMedicinesSection
@@ -3184,78 +3423,53 @@ export default function AddHealthRecord() {
         )}
 
         {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && (
-          <>
-            <FormSection
-              title="Vital Signs"
-              subtitle="Record the patient's physiological measurements."
-              delay={5}
-            >
-              <LockedFormContent locked={patientGateLocked}>
-          <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(4,minmax(0,1fr))]">
-            <BpInputGroup
-              systolic={systolicBp}
-              diastolic={diastolicBp}
-              onSystolicChange={setSystolicBp}
-              onDiastolicChange={setDiastolicBp}
-            />
-            <FieldInput
-              label="Temperature"
-              placeholder="e.g. 36.5 °C"
-              value={temp}
-              onChange={(event) => setTemp(event.target.value)}
-            />
-            <FieldInput
-              label="Pulse Rate"
-              placeholder="e.g. 72 bpm"
-              value={pulse}
-              onChange={(event) => setPulse(event.target.value)}
-            />
-            <FieldInput
-              label="Weight"
-              type="number"
-              placeholder="e.g. 60"
-              value={weight}
-              onChange={(event) => setWeight(event.target.value)}
-            />
-            <FieldInput
-              label="Height"
-              type="number"
-              placeholder="e.g. 165"
-              value={height}
-              onChange={(event) => setHeight(event.target.value)}
-            />
-          </div>
-              </LockedFormContent>
-            </FormSection>
+          <FormSection
+            title="Morbidity / Notifiable Disease Reporting"
+            subtitle="Decide whether this visit should be included in the official morbidity log generated from health records."
+            delay={6}
+          >
+            <LockedFormContent locked={patientGateLocked}>
+              <MorbidityReportingSection
+                value={morbidityReportingStatus}
+                onChange={setMorbidityReportingStatus}
+              />
+            </LockedFormContent>
+          </FormSection>
+        )}
 
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && (
+          <>
             {!usesCareDecisionStep && (
-            <FormSection
-        title="Follow-up & Referral"
-        subtitle="Schedule a return visit if needed and indicate if RHU referral is required."
-        delay={5}
-      >
-          <LockedFormContent locked={patientGateLocked}>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <FieldInput
-              label="Next Follow-up Date"
-              type="date"
-              value={followUpDate}
-              name="followUpDate"
-              error={validationErrors.followUpDate}
-              onChange={(event) => {
-                clearValidationError("followUpDate");
-                setFollowUpDate(event.target.value);
-              }}
-            />
-            <YesNoRadioGroup
-              label="Needs RHU Referral?"
-              name="needsReferral"
-              value={needsReferral ? "Yes" : "No"}
-              onChange={(value) => setNeedsReferral(value === "Yes")}
-            />
-          </div>
-          </LockedFormContent>
-            </FormSection>
+              <FormSection
+                title="Follow-up & Referral"
+                subtitle="Schedule a return visit if needed and indicate if RHU referral is required."
+                delay={7}
+              >
+                <LockedFormContent locked={patientGateLocked}>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div>
+                      <FieldInput
+                        label="Next Follow-up Date"
+                        type="date"
+                        value={followUpDate}
+                        name="followUpDate"
+                        error={validationErrors.followUpDate}
+                        disabled={needsReferral}
+                        onChange={(event) => {
+                          clearValidationError("followUpDate");
+                          setFollowUpDate(event.target.value);
+                        }}
+                      />
+                    </div>
+                    <YesNoRadioGroup
+                      label="Needs RHU Referral?"
+                      name="needsReferral"
+                      value={needsReferral ? "Yes" : "No"}
+                      onChange={handleNeedsReferralChange}
+                    />
+                  </div>
+                </LockedFormContent>
+              </FormSection>
             )}
 
           </>
@@ -3369,6 +3583,17 @@ export default function AddHealthRecord() {
           </div>
         </div>
       )}
+      <ConnectionIssueModal
+        open={Boolean(connectionIssue)}
+        title={connectionIssue?.title}
+        message={connectionIssue?.message}
+        retryDisabled={
+          saving || (typeof navigator !== "undefined" && navigator.onLine === false)
+        }
+        onContinue={() => setConnectionIssue(null)}
+        onSaveDraft={handleSaveHealthRecordDraft}
+        onRetry={handleRetryFailedHealthRecord}
+      />
     </DashboardLayout>
   );
 }
@@ -3717,7 +3942,7 @@ function CareDecisionStep({
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
           >
             {saving ? <ButtonSpinner /> : <Save size={15} />}
-            {saving ? "Saving..." : "Save Health Record"}
+            {saving ? "Saving health record..." : "Save Health Record"}
           </button>
         </div>
       </div>
@@ -3924,7 +4149,7 @@ function ReferralDetailsStep({
         className="group flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
       >
         {saving ? <ButtonSpinner /> : <Save size={15} />}
-        {saving ? "Submitting..." : "Save Health Record & Submit Referral"}
+        {saving ? "Saving health record..." : "Save Health Record & Submit Referral"}
       </button>
     </div>
       </div>
@@ -4208,88 +4433,6 @@ function PatientSearchDropdown({
 }
 
 
-function FollowUpContextCard({ patientName, patientId, recordId, record }) {
-  return (
-    <div
-      className="anim-fade-up rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-6 shadow-sm"
-      style={stagger(1)}
-    >
-      <div className="flex flex-col gap-4 border-b border-amber-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
-            <Lock size={16} />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-[#1A1A1A]">
-              Follow-up Context
-            </h2>
-            <p className="mt-0.5 text-xs text-[#6B7280]">
-              This follow-up visit is linked to the original health record.
-            </p>
-          </div>
-        </div>
-        <span className="inline-flex w-fit items-center rounded-full border border-amber-200 bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">
-          Locked Patient
-        </span>
-      </div>
-
-      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <ContextItem label="Patient" value={patientName} strong />
-        <ContextItem label="Patient ID" value={patientId} />
-        <ContextItem label="Original Health Record ID" value={recordId} />
-        <ContextItem
-          label="Original Visit Date"
-          value={record?.dateOfVisit || record?.dateRecorded || record?.date || ""}
-        />
-        <ContextItem
-          label="Original Classification"
-          value={normalizeRecordType(
-            record?.category ||
-              record?.recordType ||
-              record?.patientClassification ||
-              record?.classification,
-          )}
-        />
-        <ContextItem
-          label="Original Chief Complaint"
-          value={record?.chiefComplaint}
-          strong
-        />
-        <ContextItem label="Original Diagnosis" value={record?.diagnosis} />
-        <ContextItem
-          label="Original Status"
-          value={record?.followUpStatus || record?.status || "Follow-up Required"}
-        />
-        <ContextItem
-          label="Scheduled Follow-up Date"
-          value={record?.followUpDate}
-        />
-        <ContextItem
-          label="Original Practitioner"
-          value={record?.attendingStaff || record?.recordedBy}
-        />
-      </div>
-    </div>
-  );
-}
-
-function ContextItem({ label, value, strong = false }) {
-  return (
-    <div className="min-w-0 rounded-xl border border-amber-100/80 bg-white/75 px-3.5 py-3">
-      <p className="text-[9px] font-bold uppercase tracking-widest text-[#9CA3AF]">
-        {label}
-      </p>
-      <p
-        className={`mt-1 truncate text-sm ${
-          strong ? "font-bold text-[#1F2937]" : "font-semibold text-[#475569]"
-        }`}
-      >
-        {formatDisplayValue(value, "Not recorded")}
-      </p>
-    </div>
-  );
-}
-
 /* ═══════════════════════════════════════════════════════════════
    FORM SUB-COMPONENTS
    ═══════════════════════════════════════════════════════════════ */
@@ -4456,6 +4599,59 @@ function MaternalClassificationWarning() {
       <p className="text-xs leading-relaxed">
         Please verify the selected patient before creating a maternal record.
       </p>
+    </div>
+  );
+}
+
+const MORBIDITY_REPORTING_OPTIONS = [
+  {
+    value: "not_included",
+    label: "Not included in morbidity report",
+  },
+  {
+    value: "morbidity",
+    label: "Include as morbidity case",
+  },
+  {
+    value: "notifiable",
+    label: "Include as notifiable disease",
+  },
+];
+
+function MorbidityReportingSection({ value, onChange }) {
+  return (
+    <div className="space-y-4">
+      <div data-field="morbidityReportingStatus">
+        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+          Morbidity Reporting Status
+        </p>
+        <div className="grid gap-2">
+          {MORBIDITY_REPORTING_OPTIONS.map((option) => (
+            <label
+              key={option.value}
+              className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#475569]"
+            >
+              <input
+                type="radio"
+                name="morbidityReportingStatus"
+                value={option.value}
+                checked={value === option.value}
+                onChange={() => onChange(option.value)}
+                className="h-4 w-4 accent-[#B91C1C]"
+              />
+              <span
+                className={
+                  value === option.value
+                    ? "font-semibold text-[#B91C1C]"
+                    : "text-[#475569]"
+                }
+              >
+                {option.label}
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -4775,7 +4971,7 @@ function FieldTextarea({
   );
 }
 
-function YesNoRadioGroup({ label, name, value, onChange }) {
+function YesNoRadioGroup({ label, name, value, onChange, disabled = false }) {
   return (
     <div data-field={name}>
       <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
@@ -4785,7 +4981,9 @@ function YesNoRadioGroup({ label, name, value, onChange }) {
         {["No", "Yes"].map((option) => (
           <label
             key={option}
-            className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#475569]"
+            className={`flex items-center gap-2 text-sm font-medium text-[#475569] ${
+              disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+            }`}
           >
             <input
               type="radio"
@@ -4793,6 +4991,7 @@ function YesNoRadioGroup({ label, name, value, onChange }) {
               value={option}
               checked={(value || "No") === option}
               onChange={() => onChange(option)}
+              disabled={disabled}
               className="h-4 w-4 accent-[#B91C1C]"
             />
             <span
@@ -4995,12 +5194,14 @@ function getPatientSearchText(patient = {}) {
 
 
 function getPatientSexText(patient = {}) {
+  const source = patient || {};
+
   return String(
-    patient.sex ||
-      patient.gender ||
-      patient.patientSex ||
-      patient.patientGender ||
-      patient.ageSex ||
+    source.sex ||
+      source.gender ||
+      source.patientSex ||
+      source.patientGender ||
+      source.ageSex ||
       "",
   )
     .trim()
@@ -5008,11 +5209,11 @@ function getPatientSexText(patient = {}) {
 }
 
 function hasPatientSex(patient = {}) {
-  return Boolean(getPatientSexText(patient));
+  return Boolean(getPatientSexText(patient || {}));
 }
 
 function isPatientMale(patient = {}) {
-  const sexText = getPatientSexText(patient);
+  const sexText = getPatientSexText(patient || {});
 
   return sexText === "m" || /\bmale\b/.test(sexText);
 }

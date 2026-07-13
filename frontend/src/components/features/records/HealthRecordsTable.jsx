@@ -29,8 +29,6 @@ export default function HealthRecordsTable({
 }) {
   if (loading) return null;
 
-  void refreshing;
-
   const computedTotalPages =
     totalPages || Math.ceil(records.length / ITEMS_PER_PAGE);
   const currentRecords = records.slice(
@@ -51,6 +49,12 @@ export default function HealthRecordsTable({
           Saved patient visits grouped by health service.
         </p>
       </div>
+
+      {refreshing && (
+        <div className="border-b border-red-50 bg-red-50/60 px-4 py-2 text-[11px] font-semibold text-[#B91C1C]">
+          Refreshing records...
+        </div>
+      )}
 
       <div className="grid gap-3 p-3 md:hidden">
         {currentRecords.length === 0 ? (

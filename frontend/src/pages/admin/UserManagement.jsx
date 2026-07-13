@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, MoreHorizontal, Plus, UserCheck, UserX } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar, TablePagination } from "../../components/common";
+import {
+  ListToolbar,
+  PageStateWrapper,
+  TablePagination,
+} from "../../components/common";
 import {
   ADMIN_ACCOUNTS_UPDATED_EVENT,
-  getAdminAccounts,
-  refreshAdminAccounts,
+  loadAdminAccounts,
   updateAdminAccountStatus,
 } from "../../services/adminAccountsService";
 import {
@@ -16,6 +20,7 @@ import {
   formatFacilityName,
   formatUserName,
 } from "../../utils/formatters";
+import { queryKeys } from "../../utils/queryKeys";
 
 const FILTER_OPTIONS = {
   role: ["All Roles", "Admin", "BHC", "RHU"],
@@ -23,7 +28,7 @@ const FILTER_OPTIONS = {
 };
 
 export default function UserManagement() {
-  const [users, setUsers] = useState(() => getAdminAccounts());
+  const queryClient = useQueryClient();
   const [filters, setFilters] = useState({
     search: "",
     role: "All Roles",
@@ -31,23 +36,37 @@ export default function UserManagement() {
     facility: "All Facilities",
     status: "All Status",
   });
-
-  async function refreshUsers() {
-    setUsers(await refreshAdminAccounts());
-  }
+  const {
+    data: users = [],
+    isLoading,
+    isFetching,
+    error: loadError,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.adminAccounts(),
+    queryFn: loadAdminAccounts,
+    retry: false,
+  });
 
   async function updateStatus(id, newStatus) {
-    await updateAdminAccountStatus(id, newStatus);
-    await refreshUsers();
+    const updated = await updateAdminAccountStatus(id, newStatus);
+    queryClient.setQueryData(queryKeys.adminAccounts(), (current = []) =>
+      Array.isArray(current)
+        ? current.map((user) => (user.id === String(id) ? updated : user))
+        : current,
+    );
   }
 
   useEffect(() => {
-    refreshUsers();
+    function refreshUsers() {
+      refetch();
+    }
+
     window.addEventListener(ADMIN_ACCOUNTS_UPDATED_EVENT, refreshUsers);
 
     return () =>
       window.removeEventListener(ADMIN_ACCOUNTS_UPDATED_EVENT, refreshUsers);
-  }, []);
+  }, [refetch]);
 
   function removeFilter(key) {
     const defaults = {
@@ -185,7 +204,21 @@ export default function UserManagement() {
 
   return (
     <DashboardLayout role="admin" title="Account Directory">
+      <PageStateWrapper
+        isLoading={isLoading}
+        isError={Boolean(loadError)}
+        isFetching={isFetching}
+        hasData={users.length > 0}
+        error={loadError}
+        onRetry={() => refetch()}
+        loadingMessage="Loading accounts..."
+      >
       <div className="space-y-6">
+        {isFetching && users.length > 0 && (
+          <div className="rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 text-[11px] font-semibold text-[#B91C1C]">
+            Refreshing records...
+          </div>
+        )}
         <ListToolbar
           searchValue={filters.search}
           onSearchChange={(value) =>
@@ -214,6 +247,7 @@ export default function UserManagement() {
           onUpdateStatus={updateStatus}
         />
       </div>
+      </PageStateWrapper>
     </DashboardLayout>
   );
 }

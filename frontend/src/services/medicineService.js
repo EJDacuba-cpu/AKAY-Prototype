@@ -104,6 +104,14 @@ export async function refreshRhuMedicines() {
   return loadingPromise;
 }
 
+export async function loadMedicineAvailability() {
+  const response = await apiRequest("/medicines");
+  medicineCache = unwrapList(response).map(normalizeMedicine);
+  emit(RHU_UPDATE_EVENT);
+  emit(BHC_UPDATE_EVENT);
+  return medicineCache;
+}
+
 export function getRhuMedicines() {
   if (!loadingPromise) refreshRhuMedicines();
   return medicineCache.filter((item) => item.ruralHealthUnitId);
