@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { Plus, Users } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ConnectionErrorState } from "../../components/common";
+import { ConnectionErrorState, RefreshingIndicator } from "../../components/common";
 import ModuleToolbar from "../../components/common/list/ModuleToolbar";
 import {
   DottedSpinner,
@@ -232,8 +232,8 @@ export default function PatientsModule() {
 
         <div className="relative min-w-0">
           {showRefreshOverlay && (
-            <div className="pointer-events-none absolute right-0 top-0 z-10 rounded-full border border-red-100 bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#B91C1C] shadow-sm">
-              Refreshing records...
+            <div className="pointer-events-none absolute right-0 top-0 z-10">
+              <RefreshingIndicator label="Updating patients..." />
             </div>
           )}
           {!showInitialLoading && (

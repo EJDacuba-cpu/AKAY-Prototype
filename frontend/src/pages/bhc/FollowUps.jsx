@@ -379,6 +379,7 @@ export default function FollowUps() {
           subtitle="Scheduled patient follow-ups and return visit tracking."
           minWidth="min-w-[900px]"
           refreshing={isFetching && tasks.length > 0}
+          refreshingLabel="Updating follow-ups..."
           footer={
             <TablePagination
               currentPage={currentPage}

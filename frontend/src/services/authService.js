@@ -10,6 +10,18 @@ export function getUser() {
   return getStoredAuthUser();
 }
 
+export async function restoreSession() {
+  const response = await apiRequest("/auth/profile");
+  const user = response?.user || response?.data?.user || response?.data;
+
+  if (!user) {
+    throw new Error("Unable to restore authenticated session.");
+  }
+
+  storeAuthSession({ user });
+  return normalizeUser(user);
+}
+
 export function saveUser(user) {
   const normalized = normalizeUser(user);
   storeAuthSession({ user: normalized });

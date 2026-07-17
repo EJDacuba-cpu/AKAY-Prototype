@@ -634,7 +634,7 @@ export default function CreateReferral() {
       <DashboardLayout role="bhc" title="Submit Referral">
         <SoftLoadingArea
           isLoading
-          message="Loading details..."
+          message="Loading referral details..."
           minHeight="min-h-[520px]"
         >
           <div className="min-h-[520px] rounded-2xl border border-[#E8ECF0] bg-white shadow-sm" />

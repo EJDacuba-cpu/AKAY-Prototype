@@ -1,14 +1,31 @@
-import AkayLogoLoader from "./loading/AkayLogoLoader";
+import { useEffect } from "react";
+import {
+  PageSkeletonLoader,
+} from "./loading/SkeletonLoaders";
+import {
+  dispatchContentLoadingEnd,
+  dispatchContentLoadingStart,
+} from "../../utils/loadingEvents";
 
 export default function PageLoadingFallback({
   message = "Loading...",
   minHeight = "min-h-[calc(100dvh-9rem)]",
+  variant,
 }) {
+  useEffect(() => {
+    dispatchContentLoadingStart();
+    return () => dispatchContentLoadingEnd();
+  }, []);
+
   return (
     <div
-      className={`flex ${minHeight} items-center justify-center rounded-xl bg-white px-4 py-12`}
+      className={`relative ${minHeight} overflow-hidden rounded-xl bg-[#F8FAFC]`}
+      aria-busy="true"
+      aria-live="polite"
     >
-      <AkayLogoLoader label={message} size="lg" variant="fetch" card />
+      <div className="px-1 py-4 sm:px-0">
+        <PageSkeletonLoader message={message} variant={variant} />
+      </div>
     </div>
   );
 }

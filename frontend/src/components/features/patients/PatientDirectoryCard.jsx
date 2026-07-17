@@ -162,8 +162,7 @@ export default function PatientDirectoryCard({ patient, basePath }) {
           <span className="truncate">View Details</span>
         </Link>
         <Link
-          to={`${basePath}/patients/${routePatientId}`}
-          state={{ startInEditMode: true }}
+          to={`${basePath}/patients/edit/${routePatientId}`}
           className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-[#E5E7EB] bg-white px-1.5 text-[10px] font-semibold text-[#475569] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
         >
           <Pencil size={12} />

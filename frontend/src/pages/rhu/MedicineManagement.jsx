@@ -15,6 +15,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ListToolbar,
   PageStateWrapper,
+  RefreshingIndicator,
   TablePagination,
 } from "../../components/common";
 import MedicineFormModal from "../../components/features/medicine/MedicineFormModal";
@@ -191,9 +192,9 @@ export default function MedicineManagement() {
         loadingMessage="Loading medicine inventory..."
       >
       <div className="space-y-4">
-      {isFetching && (
-        <div className="rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 text-[11px] font-semibold text-[#B91C1C]">
-          Refreshing records...
+      {isFetching && items.length > 0 && (
+        <div className="flex justify-end">
+          <RefreshingIndicator label="Updating medicine inventory..." />
         </div>
       )}
       <ListToolbar

@@ -18,6 +18,7 @@ import {
   FormInput,
   FormSelect,
   FormTextarea,
+  RefreshingIndicator,
   SideCard,
   SoftLoadingArea,
   SuccessModal,
@@ -92,6 +93,7 @@ export default function RHURecordDetails() {
   const record = details?.record || null;
   const patient = details?.patient || null;
   const loading = isLoading && !details;
+  const detailsUpdating = isFetching && !loading && Boolean(details);
 
   useEffect(() => {
     if (record) {
@@ -156,7 +158,7 @@ export default function RHURecordDetails() {
         <style>{keyframes}</style>
         <SoftLoadingArea
           isLoading
-          message="Loading details..."
+          message="Loading health record details..."
           minHeight="min-h-[520px]"
         >
           <div className="min-h-[520px] rounded-2xl border border-slate-200 bg-white shadow-sm" />
@@ -257,11 +259,7 @@ export default function RHURecordDetails() {
   return (
     <DashboardLayout role="rhu" title="Health Record Details">
       <style>{keyframes}</style>
-      <SoftLoadingArea
-        isLoading={isFetching && !loading}
-        message="Refreshing details..."
-        minHeight="min-h-[520px]"
-      >
+      <div className="min-h-[520px]">
 
       <div className="mb-6">
         <Link
@@ -278,6 +276,9 @@ export default function RHURecordDetails() {
                 {pageTitle}
               </h1>
               {hasLinkedReferral && <ReferredChip />}
+              {detailsUpdating && (
+                <RefreshingIndicator label="Updating health record details..." />
+              )}
             </div>
 
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
@@ -673,7 +674,7 @@ export default function RHURecordDetails() {
         </aside>
         )}
       </div>
-      </SoftLoadingArea>
+      </div>
       <SuccessModal
         open={openSuccess}
         title="Health Record Updated"

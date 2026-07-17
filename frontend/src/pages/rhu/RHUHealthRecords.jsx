@@ -246,7 +246,7 @@ export default function RHUHealthRecords() {
         hasData={records.length > 0}
         error={loadError}
         onRetry={() => refetch()}
-        loadingMessage="Loading records..."
+        loadingMessage="Loading health records..."
       >
         <div className="space-y-4">
         {!loading && (

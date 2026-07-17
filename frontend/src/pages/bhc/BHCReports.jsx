@@ -18,6 +18,7 @@ import {
   ActiveFilterChips,
   CommonFilterPopover,
   PageStateWrapper,
+  RefreshingIndicator,
 } from "../../components/common";
 import { getFollowUpTasks } from "../../services/followUpTaskService";
 import { getHealthRecords } from "../../services/healthRecordService";
@@ -346,7 +347,7 @@ export default function BHCReports() {
         hasData={false}
         error={loadError}
         onRetry={retryReports}
-        loadingMessage={`Loading ${reportLabel.toLowerCase()}...`}
+        loadingMessage="Loading reports..."
       >
         <div className="space-y-5">
           <header>
@@ -414,8 +415,8 @@ export default function BHCReports() {
           />
 
           {refreshing && (
-            <div className="no-print rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 text-[11px] font-semibold text-[#B91C1C]">
-              Refreshing records...
+            <div className="no-print flex justify-end">
+              <RefreshingIndicator label="Updating reports..." />
             </div>
           )}
 

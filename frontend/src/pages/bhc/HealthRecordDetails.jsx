@@ -30,6 +30,7 @@ import {
   FormInput,
   FormSelect,
   FormTextarea,
+  RefreshingIndicator,
   SideCard,
   SoftLoadingArea,
   SuccessModal
@@ -116,6 +117,7 @@ export default function HealthRecordDetails() {
   }, [details]);
 
   const loading = isLoading && !details;
+  const detailsUpdating = isFetching && !loading && Boolean(details);
 
   function initializeForm(data) {
     setForm({
@@ -221,7 +223,7 @@ export default function HealthRecordDetails() {
       <DashboardLayout role="bhc" title="Health Record Details">
         <SoftLoadingArea
           isLoading
-          message="Loading details..."
+          message="Loading health record details..."
           minHeight="min-h-[520px]"
         >
           <div className="min-h-[520px] rounded-2xl border border-slate-200 bg-white shadow-sm" />
@@ -351,11 +353,7 @@ export default function HealthRecordDetails() {
   return (
     <>
       <DashboardLayout role="bhc" title="Health Record Details">
-        <SoftLoadingArea
-          isLoading={isFetching && !loading}
-          message="Refreshing details..."
-          minHeight="min-h-[520px]"
-        >
+        <div className="min-h-[520px]">
 
         {/* ─── Header ─── */}
         <div className="mb-6">
@@ -373,6 +371,9 @@ export default function HealthRecordDetails() {
                   {pageTitle}
                 </h1>
                 {hasLinkedReferral && <ReferredChip />}
+                {detailsUpdating && (
+                  <RefreshingIndicator label="Updating health record details..." />
+                )}
               </div>
 
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
@@ -922,7 +923,7 @@ export default function HealthRecordDetails() {
           </aside>
           )}
         </div>
-        </SoftLoadingArea>
+        </div>
       </DashboardLayout>
 
       <SuccessModal

@@ -17,8 +17,8 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConfirmationModal,
   ConnectionErrorState,
+  RefreshingIndicator,
   SoftLoadingArea,
-  SoftLoadingOverlay,
   StatusBadge,
   SuccessModal,
 } from "../../components/common";
@@ -42,6 +42,10 @@ import {
   getRecordIdLabel,
   getServiceTypeLabel,
 } from "../../utils/healthRecordPrograms";
+import {
+  calculateAgeInMonths,
+  normalizePhilippineContact,
+} from "../../utils/patientUtils";
 import { queryKeys } from "../../utils/queryKeys";
 
 const BULAKAN_BARANGAYS = [
@@ -81,6 +85,7 @@ export default function PatientDetails() {
   const [showAllRecords, setShowAllRecords] = useState(false);
   const [showAllReferrals, setShowAllReferrals] = useState(false);
   const [form, setForm] = useState({});
+  const [fieldErrors, setFieldErrors] = useState({});
   const [motherSearch, setMotherSearch] = useState("");
 
   const {
@@ -168,6 +173,7 @@ export default function PatientDetails() {
     referralsFetching ||
     followUpsFetching ||
     registeredPatientsFetching;
+  const patientUpdating = patientFetching && !patientLoading && Boolean(patient);
 
   function retryPatientDetails() {
     refetchPatient();
@@ -181,6 +187,7 @@ export default function PatientDetails() {
     if (!patientData) return;
     setPatientOverride(patientData);
     setForm(createPatientForm(patientData));
+    setFieldErrors({});
   }, [patientData]);
 
   useEffect(() => {
@@ -188,11 +195,15 @@ export default function PatientDetails() {
     setShowAllRecords(false);
     setShowAllReferrals(false);
     setIsEditing(false);
+    setFieldErrors({});
+    setOpenConfirm(false);
   }, [patientId]);
 
   function handleTabChange(tab) {
     if (isEditing) {
       setForm(createPatientForm(patient));
+      setFieldErrors({});
+      setOpenConfirm(false);
       setIsEditing(false);
     }
     setActiveTab(tab);
@@ -200,8 +211,17 @@ export default function PatientDetails() {
 
   function handleChange(event) {
     const { name, value } = event.target;
+    setFieldErrors((current) => ({
+      ...current,
+      [name]: "",
+      ...(name === "philHealthStatus" ? { philHealthNumber: "" } : {}),
+    }));
     setForm((current) => {
-      const next = { ...current, [name]: value };
+      const next = {
+        ...current,
+        [name]:
+          name === "contactNumber" ? normalizePhilippineContact(value) : value,
+      };
       if (name === "birthDate") next.age = calculateAge(value);
       if (name === "philHealthStatus" && value !== "With PhilHealth") {
         next.philHealthNumber = "";
@@ -211,6 +231,11 @@ export default function PatientDetails() {
   }
 
   function handleMotherPatientChange(value) {
+    setFieldErrors((current) => ({
+      ...current,
+      motherName: "",
+      motherPatientId: "",
+    }));
     const selectedMother = registeredPatients.find(
       (item) => String(item.id) === String(value),
     );
@@ -224,7 +249,81 @@ export default function PatientDetails() {
     }));
   }
 
+  function handleStartGeneralEdit() {
+    setActiveTab("general");
+    setForm(createPatientForm(patient));
+    setFieldErrors({});
+    setOpenConfirm(false);
+    setIsEditing(true);
+  }
+
+  function handleCancelGeneralEdit() {
+    if (saving) return;
+    setForm(createPatientForm(patient));
+    setFieldErrors({});
+    setOpenConfirm(false);
+    setIsEditing(false);
+  }
+
+  function validateInlineForm() {
+    const nextErrors = {};
+    const todayIso = getTodayIsoDate();
+    const hasBirthDate = Boolean(form.birthDate);
+    const ageYears = calculateAge(form.birthDate);
+    const ageInMonths = calculateAgeInMonths(form.birthDate);
+    const isChildRegistration =
+      hasBirthDate && ageYears !== "" && Number(ageYears) < 18;
+    const isEpiTargetAge =
+      hasBirthDate && ageInMonths !== "" && Number(ageInMonths) <= 12;
+
+    if (!String(form.firstName || "").trim()) {
+      nextErrors.firstName = "First name is required.";
+    }
+    if (!String(form.lastName || "").trim()) {
+      nextErrors.lastName = "Last name is required.";
+    }
+    if (!form.birthDate) {
+      nextErrors.birthDate = "Date of Birth is required.";
+    } else if (form.birthDate > todayIso) {
+      nextErrors.birthDate = "Date of Birth cannot be in the future.";
+    }
+    if (!form.sex) nextErrors.sex = "Sex is required.";
+    if (hasBirthDate && !isEpiTargetAge && !form.civilStatus) {
+      nextErrors.civilStatus = "Civil status is required.";
+    }
+    if (
+      form.philHealthStatus === "With PhilHealth" &&
+      !String(form.philHealthNumber || "").trim()
+    ) {
+      nextErrors.philHealthNumber =
+        "PhilHealth number is required if marked with PhilHealth.";
+    }
+    if (!String(form.streetAddress || "").trim()) {
+      nextErrors.streetAddress = "Street address is required.";
+    }
+    if (!form.barangay) nextErrors.barangay = "Barangay is required.";
+    if (!String(form.municipality || "").trim()) {
+      nextErrors.municipality = "Municipality is required.";
+    }
+    if (isChildRegistration && !String(form.motherName || "").trim()) {
+      nextErrors.motherName = "Mother name is required.";
+    }
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }
+
+  function handleRequestInlineSave() {
+    if (!validateInlineForm()) return;
+    setOpenConfirm(true);
+  }
+
   async function handleInlineSubmit() {
+    if (!validateInlineForm()) {
+      setOpenConfirm(false);
+      return;
+    }
+
     try {
       setSaving(true);
       const savedPatient = await updatePatient(patientId, form);
@@ -251,7 +350,7 @@ export default function PatientDetails() {
       <DashboardLayout role="bhc" title="Patient Details">
         <SoftLoadingArea
           isLoading
-          message="Loading details..."
+          message="Loading patient details..."
           minHeight="min-h-[520px]"
         >
           <div className="min-h-[520px] rounded-2xl border border-slate-100 bg-white shadow-sm" />
@@ -331,11 +430,7 @@ export default function PatientDetails() {
   return (
     <>
       <DashboardLayout role="bhc" title="Patient Details">
-        <SoftLoadingArea
-          isLoading={patientFetching}
-          message="Refreshing details..."
-          minHeight="min-h-[520px]"
-        >
+        <div className="min-h-[520px]">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <Link
               to="/bhc/patients"
@@ -344,49 +439,9 @@ export default function PatientDetails() {
               <ArrowLeft size={16} />
               Back to Patients
             </Link>
-            <div className="flex flex-wrap gap-2">
-              {isEditing ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setForm(createPatientForm(patient));
-                      setIsEditing(false);
-                    }}
-                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
-                  >
-                    <X size={14} /> Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setOpenConfirm(true)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
-                  >
-                    <Check size={14} /> Save Changes
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab("general");
-                    setIsEditing(true);
-                  }}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
-                >
-                  <Pencil size={14} /> Edit Profile
-                </button>
-              )}
-              {activeTab === "records" && !isEditing && (
-                <Link
-                  to={`/bhc/health-records/add?patientId=${patient.id || patientId}`}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
-                >
-                  <Plus size={14} />
-                  Add Health Record
-                </Link>
-              )}
-            </div>
+            {patientUpdating && (
+              <RefreshingIndicator label="Updating patient details..." />
+            )}
           </div>
 
           <div className="grid min-w-0 gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
@@ -435,10 +490,15 @@ export default function PatientDetails() {
                   form={form}
                   isEditing={isEditing}
                   onChange={handleChange}
+                  fieldErrors={fieldErrors}
+                  saving={saving}
                   motherSearch={motherSearch}
                   motherPatientOptions={motherPatientOptions}
                   onMotherSearchChange={setMotherSearch}
                   onMotherPatientChange={handleMotherPatientChange}
+                  onEdit={handleStartGeneralEdit}
+                  onCancel={handleCancelGeneralEdit}
+                  onSave={handleRequestInlineSave}
                 />
               )}
 
@@ -450,7 +510,7 @@ export default function PatientDetails() {
                   isFetching={recordsFetching}
                   isError={Boolean(recordsError)}
                   showAll={showAllRecords}
-                  followUpTasks={patientFollowUps}
+                  addRecordTo={`/bhc/health-records/add?patientId=${patient.id || patientId}`}
                   onToggleShowAll={() => setShowAllRecords((value) => !value)}
                   onView={(recordId) =>
                     navigate(`/bhc/health-records/${recordId}`)
@@ -485,14 +545,14 @@ export default function PatientDetails() {
           </div>
         </section>
           </div>
-        </SoftLoadingArea>
+        </div>
       </DashboardLayout>
 
       <ConfirmationModal
         open={openConfirm}
         title="Update Changes to Profile?"
         description="Please confirm that you want to update the patient information."
-        confirmText="Update Profile"
+        confirmText="Save Changes"
         cancelText="Cancel"
         onConfirm={handleInlineSubmit}
         onCancel={() => setOpenConfirm(false)}
@@ -500,8 +560,8 @@ export default function PatientDetails() {
       />
       <SuccessModal
         open={openSuccess}
-        title="Changes Successfully Saved"
-        description="The patient profile has been successfully updated."
+        title="Patient Profile Updated"
+        description="Patient profile updated successfully."
         onClose={() => setOpenSuccess(false)}
       />
     </>
@@ -591,10 +651,15 @@ function GeneralPatientTab({
   form,
   isEditing,
   onChange,
+  fieldErrors = {},
+  saving = false,
   motherSearch,
   motherPatientOptions,
   onMotherSearchChange,
   onMotherPatientChange,
+  onEdit,
+  onCancel,
+  onSave,
 }) {
   const parentFields = [
     ["Parent / Guardian Name", ["parentName", "parent_name"]],
@@ -631,24 +696,41 @@ function GeneralPatientTab({
   const hasBirthData = birthFields.some(([, keys]) =>
     hasDisplayValue(getPatientValue(patient, keys, "")),
   );
+  const formAgeYears = calculateAge(form.birthDate);
+  const formAgeMonths = calculateAgeInMonths(form.birthDate);
+  const hasBirthDate = Boolean(form.birthDate);
+  const isFormMinor =
+    hasBirthDate && formAgeYears !== "" && Number(formAgeYears) < 18;
+  const isEpiTargetAge =
+    hasBirthDate && formAgeMonths !== "" && Number(formAgeMonths) <= 12;
+  const shouldRequireCivilStatus = hasBirthDate && !isEpiTargetAge;
   const showChildSections =
     hasParentData ||
     hasBirthData ||
-    Number(getPatientValue(patient, ["age"], 99)) < 18;
+    (isEditing
+      ? isFormMinor
+      : Number(getPatientValue(patient, ["age"], 99)) < 18);
 
   if (isEditing) {
     return (
       <div className="space-y-7">
         <RegistrationSection
           title="Basic Information"
-          description="Identity and demographic information from registration."
+          description="Editing patient profile information."
+          action={
+            <InlineEditActions
+              saving={saving}
+              onCancel={onCancel}
+              onSave={onSave}
+            />
+          }
         >
-          <EditField label="First Name" name="firstName" value={form.firstName} onChange={onChange} required />
+          <EditField label="First Name" name="firstName" value={form.firstName} onChange={onChange} error={fieldErrors.firstName} required />
           <EditField label="Middle Name" name="middleName" value={form.middleName} onChange={onChange} />
-          <EditField label="Last Name" name="lastName" value={form.lastName} onChange={onChange} required />
-          <EditField label="Date of Birth" name="birthDate" type="date" value={form.birthDate} onChange={onChange} required />
+          <EditField label="Last Name" name="lastName" value={form.lastName} onChange={onChange} error={fieldErrors.lastName} required />
+          <EditField label="Date of Birth" name="birthDate" type="date" value={form.birthDate} onChange={onChange} error={fieldErrors.birthDate} required />
           <EditField label="Age" name="age" value={form.age} readOnly />
-          <EditSelect label="Sex" name="sex" value={form.sex} onChange={onChange} required>
+          <EditSelect label="Sex" name="sex" value={form.sex} onChange={onChange} error={fieldErrors.sex} required>
             <option value="">Select sex</option>
             <option>Male</option>
             <option>Female</option>
@@ -659,7 +741,7 @@ function GeneralPatientTab({
           title="Socio-Demographic Information"
           description="Household and social profile information."
         >
-          <EditSelect label="Civil Status" name="civilStatus" value={form.civilStatus} onChange={onChange}>
+          <EditSelect label="Civil Status" name="civilStatus" value={form.civilStatus} onChange={onChange} error={fieldErrors.civilStatus} required={shouldRequireCivilStatus}>
             <option value="">Select civil status</option>
             <option>Single</option>
             <option>Married</option>
@@ -690,7 +772,7 @@ function GeneralPatientTab({
             <option>No PhilHealth</option>
           </EditSelect>
           {form.philHealthStatus === "With PhilHealth" && (
-            <EditField label="PhilHealth Number" name="philHealthNumber" value={form.philHealthNumber} onChange={onChange} />
+            <EditField label="PhilHealth Number" name="philHealthNumber" value={form.philHealthNumber} onChange={onChange} error={fieldErrors.philHealthNumber} required />
           )}
         </RegistrationSection>
 
@@ -698,15 +780,15 @@ function GeneralPatientTab({
           title="Address Information"
           description="Registered residential address."
         >
-          <EditField label="Street Address" name="streetAddress" value={form.streetAddress} onChange={onChange} />
+          <EditField label="Street Address" name="streetAddress" value={form.streetAddress} onChange={onChange} error={fieldErrors.streetAddress} required />
           <EditField label="Purok / Area" name="purokArea" value={form.purokArea} onChange={onChange} />
-          <EditSelect label="Barangay" name="barangay" value={form.barangay} onChange={onChange}>
+          <EditSelect label="Barangay" name="barangay" value={form.barangay} onChange={onChange} error={fieldErrors.barangay} required>
             <option value="">Select barangay</option>
             {BULAKAN_BARANGAYS.map((barangay) => (
               <option key={barangay}>{barangay}</option>
             ))}
           </EditSelect>
-          <EditField label="Municipality / City" name="municipality" value={form.municipality} onChange={onChange} />
+          <EditField label="Municipality / City" name="municipality" value={form.municipality} onChange={onChange} error={fieldErrors.municipality} required />
         </RegistrationSection>
 
         {showChildSections && (
@@ -714,7 +796,7 @@ function GeneralPatientTab({
             title="Parent / Household Information"
             description="Parent and guardian details saved for this patient."
           >
-            <EditField label="Mother Name" name="motherName" value={form.motherName} onChange={onChange} />
+            <EditField label="Mother Name" name="motherName" value={form.motherName} onChange={onChange} error={fieldErrors.motherName} required={isFormMinor} />
             <EditLinkedMotherSelect
               value={form.motherPatientId}
               search={motherSearch}
@@ -750,6 +832,17 @@ function GeneralPatientTab({
       <RegistrationSection
         title="Basic Information"
         description="Identity and demographic information from registration."
+        action={
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label="Edit profile"
+            title="Edit profile"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
+          >
+            <Pencil size={14} />
+          </button>
+        }
       >
         <DetailItem label="First Name" value={getPatientValue(patient, ["firstName", "first_name"])} />
         <DetailItem label="Middle Name" value={getPatientValue(patient, ["middleName", "middle_name"])} />
@@ -847,12 +940,15 @@ function GeneralPatientTab({
   );
 }
 
-function RegistrationSection({ title, description, children }) {
+function RegistrationSection({ title, description, action, children }) {
   return (
     <section>
-      <div>
-        <h2 className="text-sm font-bold text-[#0F172A]">{title}</h2>
-        <p className="mt-0.5 text-xs text-slate-400">{description}</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-sm font-bold text-[#0F172A]">{title}</h2>
+          <p className="mt-0.5 text-xs text-slate-400">{description}</p>
+        </div>
+        {action ? <div className="shrink-0">{action}</div> : null}
       </div>
       <div className="mt-4 grid min-w-0 gap-x-10 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
         {children}
@@ -874,7 +970,38 @@ function DetailItem({ label, value }) {
   );
 }
 
-function EditField({ label, required, readOnly, ...props }) {
+function InlineEditActions({ saving, onCancel, onSave }) {
+  return (
+    <div className="flex flex-wrap justify-end gap-2">
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={saving}
+        className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <X size={14} />
+        Cancel
+      </button>
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={saving}
+        className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#B91C1C] px-3.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:bg-red-300"
+      >
+        <Check size={14} />
+        {saving ? "Saving..." : "Save Changes"}
+      </button>
+    </div>
+  );
+}
+
+function EditField({ label, required, readOnly, error, value, ...props }) {
+  const inputStateClass = error
+    ? "border-[#B91C1C] bg-white"
+    : readOnly
+      ? "cursor-not-allowed border-slate-100 bg-slate-100 text-slate-500"
+      : "border-slate-200 bg-white";
+
   return (
     <label className="min-w-0">
       <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
@@ -883,19 +1010,22 @@ function EditField({ label, required, readOnly, ...props }) {
       </span>
       <input
         {...props}
+        value={value ?? ""}
         required={required}
         readOnly={readOnly}
-        className={`mt-1.5 h-10 w-full min-w-0 rounded-xl border px-3 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
-          readOnly
-            ? "cursor-not-allowed border-slate-100 bg-slate-100 text-slate-500"
-            : "border-slate-200 bg-white"
-        }`}
+        aria-invalid={Boolean(error)}
+        className={`mt-1.5 h-10 w-full min-w-0 rounded-xl border px-3 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${inputStateClass}`}
       />
+      {error && (
+        <span className="mt-1 block text-[11px] font-medium text-[#B91C1C]">
+          {error}
+        </span>
+      )}
     </label>
   );
 }
 
-function EditSelect({ label, required, children, ...props }) {
+function EditSelect({ label, required, error, children, value, ...props }) {
   return (
     <label className="min-w-0">
       <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
@@ -904,11 +1034,20 @@ function EditSelect({ label, required, children, ...props }) {
       </span>
       <select
         {...props}
+        value={value ?? ""}
         required={required}
-        className="mt-1.5 h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+        aria-invalid={Boolean(error)}
+        className={`mt-1.5 h-10 w-full min-w-0 rounded-xl border bg-white px-3 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
+          error ? "border-[#B91C1C]" : "border-slate-200"
+        }`}
       >
         {children}
       </select>
+      {error && (
+        <span className="mt-1 block text-[11px] font-medium text-[#B91C1C]">
+          {error}
+        </span>
+      )}
     </label>
   );
 }
@@ -955,7 +1094,7 @@ function HealthRecordsTab({
   isFetching,
   isError,
   showAll,
-  followUpTasks = [],
+  addRecordTo,
   onToggleShowAll,
   onView,
 }) {
@@ -964,66 +1103,73 @@ function HealthRecordsTab({
       <TabHeader
         title="Health Record History"
         subtitle="Complete chronological visit history for this patient."
+        action={
+          isFetching && records.length > 0 ? (
+            <RefreshingIndicator label="Updating health records..." />
+          ) : null
+        }
       />
-      {isError && records.length === 0 ? (
+      {isLoading && records.length === 0 ? (
+        <SoftLoadingArea
+          isLoading
+          message="Loading health records..."
+          minHeight="min-h-[240px]"
+        >
+          <div className="min-h-[240px]" />
+        </SoftLoadingArea>
+      ) : isError && records.length === 0 ? (
         <TabErrorState message="Unable to load health records right now." />
       ) : records.length === 0 && !isLoading ? (
-        <TabEmptyState
-          icon={<FileText size={32} />}
-          message="No health records found for this patient."
-        />
+        <>
+          <TabEmptyState
+            icon={<FileText size={32} />}
+            message="No health records recorded for this patient yet."
+          />
+          <AddHealthRecordAction to={addRecordTo} />
+        </>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                <th className="px-5 py-3">Record ID</th>
-                <th className="px-4 py-3">Date of Visit</th>
-                <th className="px-4 py-3">Service Type</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
-              {visibleRecords.map((record) => {
-                const recordId = getHealthRecordId(record);
-                const followUpState = getRecordFollowUpState(record, followUpTasks);
-                return (
-                  <tr key={recordId} className="transition hover:bg-slate-50/80">
-                    <td className="whitespace-nowrap px-5 py-4 font-mono text-xs font-bold text-[#B91C1C]">
-                      {getRecordIdLabel(record)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-4 font-medium text-slate-700">
-                      {getHealthRecordDate(record)}
-                    </td>
-                    <td className="px-4 py-4 text-xs font-semibold text-[#0F172A]">
-                      {getServiceTypeLabel(record)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-4">
-                      {followUpState ? (
-                        <FollowUpStateBadge state={followUpState} />
-                      ) : (
-                        <span className="text-sm font-semibold text-slate-300">
-                          &mdash;
-                        </span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-4 text-right">
-                      <button
-                        type="button"
-                        onClick={() => onView(recordId)}
-                        aria-label="View health record"
-                        title="View health record"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-[#0F172A] shadow-sm transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-                      >
-                        <ChevronRight size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[620px] text-left">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <th className="px-5 py-3">Record ID</th>
+                  <th className="px-4 py-3">Date of Visit</th>
+                  <th className="px-4 py-3">Service Type</th>
+                  <th className="px-4 py-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-sm">
+                {visibleRecords.map((record) => {
+                  const recordId = getHealthRecordId(record);
+                  return (
+                    <tr key={recordId} className="transition hover:bg-slate-50/80">
+                      <td className="whitespace-nowrap px-5 py-4 font-mono text-xs font-bold text-[#B91C1C]">
+                        {getRecordIdLabel(record)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-4 font-medium text-slate-700">
+                        {getHealthRecordDate(record)}
+                      </td>
+                      <td className="px-4 py-4 text-xs font-semibold text-[#0F172A]">
+                        {getServiceTypeLabel(record)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => onView(recordId)}
+                          aria-label="View health record"
+                          title="View health record"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-[#0F172A] shadow-sm transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
           {records.length > 5 && (
             <ShowAllButton
               showAll={showAll}
@@ -1032,12 +1178,9 @@ function HealthRecordsTab({
               onClick={onToggleShowAll}
             />
           )}
-        </div>
+          <AddHealthRecordAction to={addRecordTo} />
+        </>
       )}
-      <SoftLoadingOverlay
-        isVisible={isLoading || (isFetching && records.length > 0)}
-        message={isLoading ? "Loading records..." : "Refreshing records..."}
-      />
     </div>
   );
 }
@@ -1057,8 +1200,21 @@ function ReferralHistoryTab({
       <TabHeader
         title="Referral Tracking Logs"
         subtitle="BHC-RHU referrals linked to this patient."
+        action={
+          isFetching && referrals.length > 0 ? (
+            <RefreshingIndicator label="Updating referrals..." />
+          ) : null
+        }
       />
-      {isError && referrals.length === 0 ? (
+      {isLoading && referrals.length === 0 ? (
+        <SoftLoadingArea
+          isLoading
+          message="Loading referrals..."
+          minHeight="min-h-[240px]"
+        >
+          <div className="min-h-[240px]" />
+        </SoftLoadingArea>
+      ) : isError && referrals.length === 0 ? (
         <TabErrorState message="Unable to load referral history right now." />
       ) : referrals.length === 0 && !isLoading ? (
         <TabEmptyState
@@ -1128,21 +1284,34 @@ function ReferralHistoryTab({
           )}
         </div>
       )}
-      <SoftLoadingOverlay
-        isVisible={isLoading || (isFetching && referrals.length > 0)}
-        message={
-          isLoading ? "Loading referrals..." : "Refreshing referrals..."
-        }
-      />
     </div>
   );
 }
 
-function TabHeader({ title, subtitle }) {
+function AddHealthRecordAction({ to }) {
+  if (!to) return null;
+
   return (
-    <div className="border-b border-slate-100 bg-slate-50/50 px-5 py-4">
-      <h2 className="text-sm font-bold text-[#0F172A]">{title}</h2>
-      <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>
+    <div className="border-t border-slate-100 bg-white px-4 py-3">
+      <Link
+        to={to}
+        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-red-200 bg-red-50/40 px-4 py-2.5 text-sm font-semibold text-[#B91C1C] transition hover:border-red-200 hover:bg-red-50"
+      >
+        <Plus size={15} />
+        Add new health record for this patient
+      </Link>
+    </div>
+  );
+}
+
+function TabHeader({ title, subtitle, action }) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-slate-50/50 px-5 py-4">
+      <div>
+        <h2 className="text-sm font-bold text-[#0F172A]">{title}</h2>
+        <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>
+      </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
     </div>
   );
 }
@@ -1183,27 +1352,33 @@ function ShowAllButton({ showAll, count, noun, onClick }) {
 
 function FollowUpStateBadge({ state, date, context = "row" }) {
   const styles = {
-    upcoming: "border-slate-200 bg-slate-50 text-slate-600",
-    rescheduled: "border-slate-200 bg-slate-50 text-slate-600",
+    none: "border-slate-200 bg-slate-50 text-slate-500",
+    upcoming: "border-amber-200 bg-amber-50 text-amber-700",
+    rescheduled: "border-orange-200 bg-orange-50 text-orange-700",
     due_today: "border-amber-200 bg-amber-50 text-amber-700",
     no_show: "border-red-200 bg-red-50 text-red-700",
     fulfilled: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    referred: "border-indigo-200 bg-indigo-50 text-indigo-700",
     cancelled: "border-slate-200 bg-slate-100 text-slate-500",
   };
   const labels = {
+    none: "No follow-up",
     upcoming: "Pending",
-    rescheduled: "Pending",
+    rescheduled: "Rescheduled",
     due_today: "Due Today",
     no_show: "No Show",
     fulfilled: "Completed",
+    referred: "Referred",
     cancelled: "Cancelled",
   };
   const profileLabels = {
-    upcoming: "Pending Follow-up",
-    rescheduled: "Pending Follow-up",
+    none: "No follow-up",
+    upcoming: "Pending",
+    rescheduled: "Rescheduled",
     due_today: "Due Today",
     no_show: "No Show",
     fulfilled: "Completed",
+    referred: "Referred",
     cancelled: "Cancelled",
   };
 
@@ -1357,6 +1532,15 @@ function hasDisplayValue(value) {
   return value !== undefined && value !== null && String(value).trim() !== "";
 }
 
+function getTodayIsoDate() {
+  const currentDate = new Date();
+  return [
+    currentDate.getFullYear(),
+    String(currentDate.getMonth() + 1).padStart(2, "0"),
+    String(currentDate.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 function calculateAge(value) {
   if (!value) return "";
   const birthDate = new Date(value);
@@ -1393,33 +1577,6 @@ function getHealthRecordDate(record = {}) {
       record.createdAt ||
       record.created_at,
     "Not recorded",
-  );
-}
-
-function getRecordFollowUpState(record = {}, tasks = []) {
-  const recordId = getHealthRecordId(record);
-  if (!recordId) return "";
-
-  const linkedTasks = tasks
-    .filter((task) => getFollowUpTaskRecordId(task) === recordId)
-    .sort((a, b) => getDateTimeValue(a) - getDateTimeValue(b));
-  const activeTask = linkedTasks.find((task) =>
-    isActiveFollowUpState(task.effectiveState),
-  );
-  if (activeTask) return activeTask.effectiveState;
-
-  const completedTask = linkedTasks.find(
-    (task) => task.effectiveState === "fulfilled",
-  );
-  return completedTask ? "fulfilled" : "";
-}
-
-function getFollowUpTaskRecordId(task = {}) {
-  return String(
-    task.healthRecordId ||
-      task.health_record_id ||
-      getHealthRecordId(task.healthRecord) ||
-      "",
   );
 }
 

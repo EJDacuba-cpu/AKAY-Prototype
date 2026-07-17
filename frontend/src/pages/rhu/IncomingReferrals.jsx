@@ -816,6 +816,7 @@ export default function IncomingReferrals() {
           subtitle="BHC-RHU referral records and tracking status."
           minWidth="min-w-[1360px]"
           refreshing={isBackgroundRefreshing}
+          refreshingLabel="Updating referrals..."
           footer={
             <TablePagination
               currentPage={currentPage}

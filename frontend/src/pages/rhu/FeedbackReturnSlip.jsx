@@ -431,7 +431,7 @@ export default function FeedbackReturnSlip() {
       <DashboardLayout role="rhu" title="Return Slip">
         <SoftLoadingArea
           isLoading
-          message="Loading details..."
+          message="Loading referral feedback..."
           minHeight="min-h-[420px]"
         >
           <div className="min-h-[420px] rounded-2xl border border-slate-200 bg-white shadow-sm" />

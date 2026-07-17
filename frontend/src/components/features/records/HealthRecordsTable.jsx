@@ -3,6 +3,7 @@ import { FileText } from "lucide-react";
 import TablePagination from "../../common/pagination/TablePagination";
 import ActionMenu from "../../common/tables/ActionMenu";
 import DataTableEmptyState from "../../common/tables/DataTableEmptyState";
+import RefreshingIndicator from "../../common/loading/RefreshingIndicator";
 import { stagger } from "../../../utils/animation";
 import {
   formatDate,
@@ -41,20 +42,17 @@ export default function HealthRecordsTable({
       className="anim-fade-up relative z-0 flex min-h-[420px] flex-col overflow-visible rounded-xl border border-[#E5E7EB] bg-white shadow-sm shadow-black/[0.02]"
       style={stagger(delay)}
     >
-      <div className="border-b border-[#F1F5F9] px-4 py-3">
-        <h2 className="text-sm font-semibold text-[#0F172A]">
-          Recent Health Records
-        </h2>
-        <p className="mt-1 text-xs text-[#9CA3AF]">
-          Saved patient visits grouped by health service.
-        </p>
-      </div>
-
-      {refreshing && (
-        <div className="border-b border-red-50 bg-red-50/60 px-4 py-2 text-[11px] font-semibold text-[#B91C1C]">
-          Refreshing records...
+      <div className="flex items-start justify-between gap-3 border-b border-[#F1F5F9] px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold text-[#0F172A]">
+            Recent Health Records
+          </h2>
+          <p className="mt-1 text-xs text-[#9CA3AF]">
+            Saved patient visits grouped by health service.
+          </p>
         </div>
-      )}
+        {refreshing && <RefreshingIndicator label="Updating health records..." />}
+      </div>
 
       <div className="grid gap-3 p-3 md:hidden">
         {currentRecords.length === 0 ? (

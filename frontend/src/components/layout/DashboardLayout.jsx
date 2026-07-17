@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Bell, Menu } from "lucide-react";
 import { useLocation, useNavigate } from "react-router";
@@ -9,8 +9,17 @@ import {
   formatUserName,
 } from "../../utils/formatters";
 import { useNotifications } from "../../hooks/useNotificationsContext";
-import { ConfirmationModal, ConnectionStatusBanner } from "../common";
+import {
+  ConfirmationModal,
+  ConnectionStatusBanner,
+  TopLoadingBar,
+} from "../common";
 import useConnectionStatus from "../../hooks/useConnectionStatus";
+import { useAkayLoadingLifecycle } from "../../hooks/useAkayLoadingLifecycle";
+import {
+  AKAY_CONTENT_LOADING_END,
+  AKAY_CONTENT_LOADING_START,
+} from "../../utils/loadingEvents";
 import NotificationDropdown from "../features/notifications/NotificationDropdown";
 import NotificationModal from "../features/notifications/NotificationModal";
 import {
@@ -21,6 +30,8 @@ import {
 } from "./sidebar";
 
 let sidebarExpandedMemory = false;
+const ROUTE_LOADING_MIN_MS = 520;
+const ROUTE_LOADING_FADE_MS = 360;
 
 export default function DashboardLayout({
   role,
@@ -47,7 +58,15 @@ export default function DashboardLayout({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeLoadingComplete, setRouteLoadingComplete] = useState(false);
+  const [contentLoadingCount, setContentLoadingCount] = useState(0);
+  const routeLoadingStartedAtRef = useRef(0);
+  const routeCompleteTimerRef = useRef(null);
+  const routeFadeTimerRef = useRef(null);
   const connectionStatus = useConnectionStatus();
+  const { shouldShowRouteLoading } = useAkayLoadingLifecycle();
+  const routeKey = location.pathname;
 
   const menuSections = menuByRole[role] || [];
   const user = getCurrentUser() || {
@@ -82,6 +101,77 @@ export default function DashboardLayout({
   useEffect(() => {
     sidebarExpandedMemory = sidebarExpanded;
   }, [sidebarExpanded]);
+
+  useEffect(() => {
+    function clearRouteLoadingTimers() {
+      window.clearTimeout(routeCompleteTimerRef.current);
+      window.clearTimeout(routeFadeTimerRef.current);
+    }
+
+    if (!shouldShowRouteLoading(routeKey)) {
+      clearRouteLoadingTimers();
+      setRouteLoading(false);
+      setRouteLoadingComplete(false);
+      return undefined;
+    }
+
+    clearRouteLoadingTimers();
+    routeLoadingStartedAtRef.current = Date.now();
+    setRouteLoading(true);
+    setRouteLoadingComplete(false);
+
+    return clearRouteLoadingTimers;
+  }, [routeKey, shouldShowRouteLoading]);
+
+  useEffect(() => {
+    function handleContentLoadingStart() {
+      setContentLoadingCount((count) => count + 1);
+    }
+
+    function handleContentLoadingEnd() {
+      setContentLoadingCount((count) => Math.max(0, count - 1));
+    }
+
+    window.addEventListener(
+      AKAY_CONTENT_LOADING_START,
+      handleContentLoadingStart,
+    );
+    window.addEventListener(AKAY_CONTENT_LOADING_END, handleContentLoadingEnd);
+
+    return () => {
+      window.removeEventListener(
+        AKAY_CONTENT_LOADING_START,
+        handleContentLoadingStart,
+      );
+      window.removeEventListener(
+        AKAY_CONTENT_LOADING_END,
+        handleContentLoadingEnd,
+      );
+    };
+  }, []);
+
+  useEffect(() => {
+    window.clearTimeout(routeCompleteTimerRef.current);
+    window.clearTimeout(routeFadeTimerRef.current);
+
+    if (!routeLoading || contentLoadingCount > 0) return undefined;
+
+    const elapsed = Date.now() - routeLoadingStartedAtRef.current;
+    const completionDelay = Math.max(ROUTE_LOADING_MIN_MS - elapsed, 120);
+
+    routeCompleteTimerRef.current = window.setTimeout(() => {
+      setRouteLoadingComplete(true);
+      routeFadeTimerRef.current = window.setTimeout(() => {
+        setRouteLoading(false);
+        setRouteLoadingComplete(false);
+      }, ROUTE_LOADING_FADE_MS);
+    }, completionDelay);
+
+    return () => {
+      window.clearTimeout(routeCompleteTimerRef.current);
+      window.clearTimeout(routeFadeTimerRef.current);
+    };
+  }, [contentLoadingCount, routeLoading, routeKey]);
 
   useEffect(() => {
     if (!connectionStatus.restoredAt) return;
@@ -280,6 +370,7 @@ export default function DashboardLayout({
           isOnline={connectionStatus.isOnline}
           restoredAt={connectionStatus.restoredAt}
         />
+        <TopLoadingBar active={routeLoading} complete={routeLoadingComplete} />
 
         <section className="akay-content-scroll min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4 lg:p-5">
           {children}

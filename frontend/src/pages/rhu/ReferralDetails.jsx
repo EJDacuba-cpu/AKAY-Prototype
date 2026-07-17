@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { SoftLoadingArea } from "../../components/common";
+import { RefreshingIndicator, SoftLoadingArea } from "../../components/common";
 import {
   getReferralByRouteParam,
   updateReferralByTrackingId,
@@ -77,6 +77,7 @@ export default function RHUReferralDetails() {
   const referral = details?.referral || null;
   const patient = details?.patient || null;
   const loading = isLoading && !details;
+  const detailsUpdating = isFetching && !loading && Boolean(referral);
   const unauthorized = error?.status === 403;
   const notFound = error?.status === 404 || (!loading && !error && !referral);
   const loadError = error && !unauthorized && !notFound;
@@ -128,7 +129,7 @@ export default function RHUReferralDetails() {
       <DashboardLayout role="rhu" title="Referral Details">
         <SoftLoadingArea
           isLoading
-          message="Loading details..."
+          message="Loading referral details..."
           minHeight="min-h-[520px]"
         >
           <div className="min-h-[520px] rounded-2xl border border-slate-200 bg-white shadow-sm" />
@@ -161,11 +162,7 @@ export default function RHUReferralDetails() {
   return (
     <DashboardLayout role="rhu" title="Referral Details">
       <style>{keyframes}</style>
-      <SoftLoadingArea
-        isLoading={isFetching && !loading}
-        message="Refreshing details..."
-        minHeight="min-h-[520px]"
-      >
+      <div className="min-h-[520px]">
 
       <div className="anim-fade-up mb-3" style={stagger(0)}>
         <Link
@@ -182,6 +179,7 @@ export default function RHUReferralDetails() {
         patient={patient}
         busy={busy}
         onStatusChange={applyStatus}
+        isUpdating={detailsUpdating}
       />
 
       {message && (
@@ -208,12 +206,18 @@ export default function RHUReferralDetails() {
       <main className="anim-fade-up min-w-0" style={stagger(3)}>
         <ReferralRecord referral={referral} patient={patient} />
       </main>
-      </SoftLoadingArea>
+      </div>
     </DashboardLayout>
   );
 }
 
-function ReferralHeader({ referral, patient, busy, onStatusChange }) {
+function ReferralHeader({
+  referral,
+  patient,
+  busy,
+  onStatusChange,
+  isUpdating = false,
+}) {
   const referralDate = getReferralDate(referral);
 
   return (
@@ -228,6 +232,9 @@ function ReferralHeader({ referral, patient, busy, onStatusChange }) {
               {getPatientName(referral, patient)}
             </h1>
             <StatusBadge status={referral.status} />
+            {isUpdating && (
+              <RefreshingIndicator label="Updating referral details..." />
+            )}
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">

@@ -8,6 +8,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ListToolbar,
   PageStateWrapper,
+  RefreshingIndicator,
   TablePagination,
 } from "../../components/common";
 import {
@@ -215,8 +216,8 @@ export default function UserManagement() {
       >
       <div className="space-y-6">
         {isFetching && users.length > 0 && (
-          <div className="rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 text-[11px] font-semibold text-[#B91C1C]">
-            Refreshing records...
+          <div className="flex justify-end">
+            <RefreshingIndicator label="Updating accounts..." />
           </div>
         )}
         <ListToolbar

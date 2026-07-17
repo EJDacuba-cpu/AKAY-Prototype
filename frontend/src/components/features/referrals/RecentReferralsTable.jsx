@@ -1,7 +1,7 @@
 import ActionMenu from "../../common/tables/ActionMenu";
 import StatusBadge from "../../common/badges/StatusBadge";
 import TablePagination from "../../common/pagination/TablePagination";
-import AkayLogoLoader from "../../common/loading/AkayLogoLoader";
+import { TableSkeleton } from "../../common/loading/SkeletonLoaders";
 
 import { stagger } from "../../../utils/animation";
 import {
@@ -75,11 +75,11 @@ export default function HealthRecordsTable({
 
       {/* Loading State */}
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <AkayLogoLoader
-            label="Loading health records..."
-            variant="fetch"
-            size="md"
+        <div className="px-3 py-4">
+          <TableSkeleton
+            message="Loading health records..."
+            rows={5}
+            columns={8}
           />
         </div>
       ) : (

@@ -1,8 +1,16 @@
-import { Navigate, Route, Routes, useParams } from "react-router";
+import { useEffect, useState } from "react";
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
-import { getCurrentUser } from "./utils/auth";
+import {
+  clearStoredAuthSession,
+  getCurrentUser,
+  getStoredAuthToken,
+  restoreCurrentUserSession,
+} from "./utils/auth";
 import DashboardLayout from "./components/layout/DashboardLayout";
+import { FullScreenAkayLoader } from "./components/common";
+import { AkayLoadingLifecycleProvider } from "./hooks/useAkayLoadingLifecycle";
 import NotificationsPage from "./pages/bhc/NotificationsPage";
 
 // BHC Pages
@@ -42,14 +50,31 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import UserManagement from "./pages/admin/UserManagement";
 import AddUser from "./pages/admin/AddUser";
 
-
 import AdminReports from "./pages/admin/AdminReports";
 import AuditLogs from "./pages/admin/AuditLogs";
 import PasswordResetRequests from "./pages/admin/PasswordResetRequests";
 
+const MIN_BOOT_LOADER_MS = 800;
+const PUBLIC_BOOT_ROUTES = new Set(["/", "/login", "/reset-password", "/unauthorized"]);
+const VALID_APP_ROLES = new Set(["admin", "bhc", "rhu"]);
+
+function isPublicBootRoute(pathname = "") {
+  return PUBLIC_BOOT_ROUTES.has(pathname);
+}
+
+function hasUsableAuthUser(user) {
+  return Boolean(user && VALID_APP_ROLES.has(user.role));
+}
+
+function shouldClearStoredSession(error) {
+  return error?.status === 401 || error?.status === 403;
+}
+
 function ProtectedPage({ allowedRole, children }) {
-  const user = getCurrentUser();
-  if (!user) return <Navigate to="/login" replace />;
+  const token = getStoredAuthToken();
+  const user = token ? getCurrentUser() : null;
+
+  if (!token || !user) return <Navigate to="/login" replace />;
   if (user.role !== allowedRole) return <Navigate to="/unauthorized" replace />;
   return children;
 }
@@ -84,8 +109,10 @@ function LegacyBHCReportRedirect() {
 }
 
 function NotificationRouteWrapper() {
-  const user = getCurrentUser();
-  if (!user) return <Navigate to="/login" replace />;
+  const token = getStoredAuthToken();
+  const user = token ? getCurrentUser() : null;
+
+  if (!token || !user) return <Navigate to="/login" replace />;
   return (
     <DashboardLayout role={user.role} title="Notifications">
       <NotificationsPage />
@@ -93,9 +120,79 @@ function NotificationRouteWrapper() {
   );
 }
 
+function useAuthBootLoaderReady(shouldRestoreStoredSession) {
+  const [isBootCheckDone, setIsBootCheckDone] = useState(
+    () => !shouldRestoreStoredSession,
+  );
+  const [isMinimumDurationDone, setIsMinimumDurationDone] = useState(
+    () => !shouldRestoreStoredSession,
+  );
+
+  useEffect(() => {
+    if (!shouldRestoreStoredSession) {
+      setIsBootCheckDone(true);
+      setIsMinimumDurationDone(true);
+      return undefined;
+    }
+
+    let isMounted = true;
+
+    setIsBootCheckDone(false);
+    setIsMinimumDurationDone(false);
+
+    const minimumTimer = window.setTimeout(() => {
+      if (isMounted) setIsMinimumDurationDone(true);
+    }, MIN_BOOT_LOADER_MS);
+
+    async function restoreStoredSession() {
+      try {
+        const user = await restoreCurrentUserSession();
+
+        if (!hasUsableAuthUser(user)) {
+          clearStoredAuthSession();
+        }
+      } catch (error) {
+        const hasFallbackUser = hasUsableAuthUser(getCurrentUser());
+
+        if (shouldClearStoredSession(error) || !hasFallbackUser) {
+          clearStoredAuthSession();
+        } else {
+          console.warn("Unable to verify stored AKAY session during boot.", error);
+        }
+      } finally {
+        if (isMounted) setIsBootCheckDone(true);
+      }
+    }
+
+    restoreStoredSession();
+
+    return () => {
+      isMounted = false;
+      window.clearTimeout(minimumTimer);
+    };
+  }, [shouldRestoreStoredSession]);
+
+  return isBootCheckDone && isMinimumDurationDone;
+}
+
 export default function App() {
+  const location = useLocation();
+  const [shouldRestoreStoredSession] = useState(
+    () => Boolean(getStoredAuthToken()) && !isPublicBootRoute(location.pathname),
+  );
+  const isBootLoaderReady = useAuthBootLoaderReady(shouldRestoreStoredSession);
+  const hasCompletedInitialBoot =
+    !shouldRestoreStoredSession || isBootLoaderReady;
+
+  if (shouldRestoreStoredSession && !isBootLoaderReady) {
+    return <FullScreenAkayLoader />;
+  }
+
   return (
-    <Routes>
+    <AkayLoadingLifecycleProvider
+      hasCompletedInitialBoot={hasCompletedInitialBoot}
+    >
+      <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/reset-password" element={<ResetPassword />} />
 
@@ -440,6 +537,7 @@ export default function App() {
 
       <Route path="/unauthorized" element={<Unauthorized />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
+      </Routes>
+    </AkayLoadingLifecycleProvider>
   );
 }

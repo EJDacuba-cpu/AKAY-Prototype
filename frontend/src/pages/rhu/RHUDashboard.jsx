@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { PageStateWrapper } from "../../components/common";
+import { PageStateWrapper, RefreshingIndicator } from "../../components/common";
 import PatientVolumeCard from "../../components/features/volume/PatientVolumeCard";
 import { getRhuVolumeSnapshot } from "../../services/volumeService";
 import { getCurrentUser } from "../../utils/auth";
@@ -179,8 +179,8 @@ export default function RHUDashboard() {
       >
       <div className="mx-auto w-full max-w-[1500px] space-y-4">
         {isFetching && hasDashboardData && (
-          <div className="rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 text-[11px] font-semibold text-[#B91C1C]">
-            Refreshing records...
+          <div className="flex justify-end">
+            <RefreshingIndicator label="Updating dashboard..." />
           </div>
         )}
         <section className="anim-fade-up" style={stagger(0)}>

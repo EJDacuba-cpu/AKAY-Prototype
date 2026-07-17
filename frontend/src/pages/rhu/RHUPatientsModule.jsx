@@ -4,7 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus, Users } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ModuleToolbar, PageStateWrapper } from "../../components/common";
+import {
+  ModuleToolbar,
+  PageStateWrapper,
+  RefreshingIndicator,
+} from "../../components/common";
 import { DottedSpinner } from "../../components/common/loading/SoftLoadingOverlay";
 import PatientDirectoryCard from "../../components/features/patients/PatientDirectoryCard";
 import { getRhuPatients } from "../../services/patientService";
@@ -368,8 +372,8 @@ function RHUPatientsDirectory({
     <section className="anim-fade-up">
       <div className="relative min-w-0">
         {refreshing && (
-          <div className="pointer-events-none absolute right-0 top-0 z-10 rounded-full border border-red-100 bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#B91C1C] shadow-sm">
-            Refreshing
+          <div className="pointer-events-none absolute right-0 top-0 z-10">
+            <RefreshingIndicator label="Updating patients..." />
           </div>
         )}
 

@@ -14,9 +14,9 @@ import {
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
+  RefreshingIndicator,
   SideCard,
   SoftLoadingArea,
-  SoftLoadingOverlay,
 } from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 import SpecializedRecordsTab from "../../components/features/records/SpecializedRecordsTab";
@@ -148,6 +148,7 @@ export default function RHUPatientDetails() {
     [rawReferrals, patientId, patientNameForHistory],
   );
   const loading = patientLoading && !patient;
+  const patientUpdating = patientFetching && !patientLoading && Boolean(patient);
 
   const latestRecord = useMemo(
     () => (Array.isArray(records) ? records[0] ?? null : null),
@@ -169,7 +170,7 @@ export default function RHUPatientDetails() {
         <style>{keyframes}</style>
         <SoftLoadingArea
           isLoading
-          message="Loading details..."
+          message="Loading patient details..."
           minHeight="min-h-[520px]"
         >
           <div className="min-h-[520px] rounded-2xl border border-[#E8ECF0] bg-white shadow-sm" />
@@ -201,11 +202,7 @@ export default function RHUPatientDetails() {
   return (
     <DashboardLayout role="rhu" title="Patient Details">
       <style>{keyframes}</style>
-      <SoftLoadingArea
-        isLoading={patientFetching && !loading}
-        message="Refreshing details..."
-        minHeight="min-h-[520px]"
-      >
+      <div className="min-h-[520px]">
 
       <div className="mb-6">
         <Link
@@ -217,7 +214,12 @@ export default function RHUPatientDetails() {
 
         <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <h1 className="text-xl font-bold text-[#0F172A]">{patientName}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-bold text-[#0F172A]">{patientName}</h1>
+              {patientUpdating && (
+                <RefreshingIndicator label="Updating patient details..." />
+              )}
+            </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <InfoChip label={patient.id || patientId} />
@@ -306,7 +308,7 @@ export default function RHUPatientDetails() {
           onToggleShowAll={() => setShowAllReferrals((value) => !value)}
         />
       )}
-      </SoftLoadingArea>
+      </div>
     </DashboardLayout>
   );
 }
@@ -441,15 +443,26 @@ function RhuRecordsTab({
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
-        <h2 className="text-sm font-bold text-[#0F172A]">Health Record History</h2>
-        <p className="text-xs text-slate-400">
-          Chronological health records linked to this patient.
-        </p>
+      <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-slate-50/50 px-6 py-4">
+        <div>
+          <h2 className="text-sm font-bold text-[#0F172A]">Health Record History</h2>
+          <p className="text-xs text-slate-400">
+            Chronological health records linked to this patient.
+          </p>
+        </div>
+        {isFetching && records.length > 0 && (
+          <RefreshingIndicator label="Updating health records..." />
+        )}
       </div>
 
       {isLoading && records.length === 0 ? (
-        <div className="min-h-[240px]" />
+        <SoftLoadingArea
+          isLoading
+          message="Loading health records..."
+          minHeight="min-h-[240px]"
+        >
+          <div className="min-h-[240px]" />
+        </SoftLoadingArea>
       ) : isError && records.length === 0 ? (
         <TabErrorState message="Unable to load health records right now." />
       ) : records.length === 0 ? (
@@ -513,13 +526,6 @@ function RhuRecordsTab({
           )}
         </div>
       )}
-      <SoftLoadingOverlay
-        isVisible={
-          (isLoading && records.length === 0) ||
-          (isFetching && !isLoading && records.length > 0)
-        }
-        message={isLoading ? "Loading records..." : "Refreshing records..."}
-      />
     </div>
   );
 }
@@ -536,15 +542,26 @@ function ReferralHistoryTab({
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
-        <h2 className="text-sm font-bold text-[#0F172A]">Referral History</h2>
-        <p className="text-xs text-slate-400">
-          Referrals from BHC facilities connected to this patient.
-        </p>
+      <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-slate-50/50 px-6 py-4">
+        <div>
+          <h2 className="text-sm font-bold text-[#0F172A]">Referral History</h2>
+          <p className="text-xs text-slate-400">
+            Referrals from BHC facilities connected to this patient.
+          </p>
+        </div>
+        {isFetching && referrals.length > 0 && (
+          <RefreshingIndicator label="Updating referrals..." />
+        )}
       </div>
 
       {isLoading && referrals.length === 0 ? (
-        <div className="min-h-[240px]" />
+        <SoftLoadingArea
+          isLoading
+          message="Loading referrals..."
+          minHeight="min-h-[240px]"
+        >
+          <div className="min-h-[240px]" />
+        </SoftLoadingArea>
       ) : isError && referrals.length === 0 ? (
         <TabErrorState message="Unable to load referral history right now." />
       ) : referrals.length === 0 ? (
@@ -615,13 +632,6 @@ function ReferralHistoryTab({
           )}
         </div>
       )}
-      <SoftLoadingOverlay
-        isVisible={
-          (isLoading && referrals.length === 0) ||
-          (isFetching && !isLoading && referrals.length > 0)
-        }
-        message={isLoading ? "Loading referrals..." : "Refreshing referrals..."}
-      />
     </div>
   );
 }

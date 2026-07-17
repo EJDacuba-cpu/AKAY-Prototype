@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -20,6 +20,7 @@ import {
   ConnectionIssueModal,
   DatePickerField,
   FormInput,
+  PageLoadingFallback,
   SuccessModal,
   TimePickerField,
 } from "../../components/common";
@@ -39,7 +40,9 @@ import {
 
 import {
   createBhcPatient,
+  getPatientById,
   getPatientDetailsListByRole,
+  updatePatient,
 } from "../../services/patientService";
 import { isConnectionError } from "../../services/apiClient";
 import { saveOfflineDraft } from "../../services/offlineDraftService";
@@ -120,17 +123,136 @@ const INITIAL_FORM_STATE = {
   birthTime: "",
   nhtsStatus: "",
 };
+
+function getPatientField(patient = {}, keys = [], fallback = "") {
+  for (const key of keys) {
+    const value = patient?.[key];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+
+  return fallback;
+}
+
+function normalizeDateInput(value) {
+  if (!value) return "";
+  return String(value).split("T")[0];
+}
+
+function normalizeTimeInput(value) {
+  if (!value) return "";
+  const text = String(value).trim();
+  const match = text.match(/(\d{1,2}):(\d{2})/);
+  if (!match) return text;
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
+function normalizePhilHealthStatus(value, number) {
+  const text = String(value || "").trim().toLowerCase();
+  if (text.includes("with") && !text.includes("without")) {
+    return "With PhilHealth";
+  }
+  if (text.includes("without") || text.includes("no phil")) {
+    return "Without PhilHealth";
+  }
+  return number ? "With PhilHealth" : "";
+}
+
+function buildPatientFormState(patient = {}) {
+  const birthDate = normalizeDateInput(
+    getPatientField(patient, [
+      "birthDate",
+      "birthdate",
+      "dateOfBirth",
+      "date_of_birth",
+    ]),
+  );
+  const philHealthNumber = getPatientField(patient, [
+    "philHealthNumber",
+    "philhealthNumber",
+    "philhealth_number",
+  ]);
+
+  return {
+    ...INITIAL_FORM_STATE,
+    firstName: getPatientField(patient, ["firstName", "first_name"]),
+    middleName: getPatientField(patient, ["middleName", "middle_name"]),
+    lastName: getPatientField(patient, ["lastName", "last_name"]),
+    birthDate,
+    age: getPatientField(patient, ["age"], calculateAge(birthDate)),
+    sex: getPatientField(patient, ["sex"]),
+    civilStatus: getPatientField(patient, ["civilStatus", "civil_status"]),
+    occupation: getPatientField(patient, ["occupation"]),
+    spouseName: getPatientField(patient, ["spouseName", "spouse_name"]),
+    spouseOccupation: getPatientField(patient, [
+      "spouseOccupation",
+      "spouse_occupation",
+    ]),
+    contactNumber: normalizePhilippineContact(
+      getPatientField(patient, ["contactNumber", "contact_number", "contact"]),
+    ),
+    philHealthStatus: normalizePhilHealthStatus(
+      getPatientField(patient, [
+        "philHealthStatus",
+        "philhealthStatus",
+        "philhealth_status",
+      ]),
+      philHealthNumber,
+    ),
+    philHealthNumber,
+    purokArea: getPatientField(patient, ["purokArea", "purok_area"]),
+    streetAddress: getPatientField(patient, [
+      "streetAddress",
+      "street_address",
+      "address",
+    ]),
+    barangay: getPatientField(patient, ["barangay"]),
+    municipality: getPatientField(patient, ["municipality", "city"], "Bulakan"),
+    motherName: getPatientField(patient, ["motherName", "mother_name"]),
+    motherPatientId: String(
+      getPatientField(patient, ["motherPatientId", "mother_patient_id"], ""),
+    ),
+    motherBirthDate: normalizeDateInput(
+      getPatientField(patient, ["motherBirthDate", "mother_birth_date"]),
+    ),
+    fatherName: getPatientField(patient, ["fatherName", "father_name"]),
+    fatherBirthDate: normalizeDateInput(
+      getPatientField(patient, ["fatherBirthDate", "father_birth_date"]),
+    ),
+    familySerialNumber: getPatientField(patient, [
+      "familySerialNumber",
+      "family_serial_number",
+    ]),
+    birthPlace: getPatientField(patient, ["birthPlace", "birth_place"]),
+    birthTime: normalizeTimeInput(
+      getPatientField(patient, ["birthTime", "birth_time"]),
+    ),
+    nhtsStatus: getPatientField(patient, ["nhtsStatus", "nhts_status"]),
+  };
+}
+
 export function PatientRegistrationPage({
   role = "bhc",
   basePath = "/bhc",
   createPatient = createBhcPatient,
+  fetchPatient = getPatientById,
+  updatePatientProfile = updatePatient,
   queryRole = "bhc",
   systemDescription = "Register a new patient profile into the Barangay Health Center system.",
 }) {
+  const { patientId: routePatientId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const patientsPath = `${basePath}/patients`;
   const addHealthRecordPath = `${basePath}/health-records/add`;
+  const editPatientId = routePatientId;
+  const isEditMode = Boolean(editPatientId);
+  const pageTitle = isEditMode ? "Edit Patient Profile" : "Add New Patient";
+  const dashboardTitle = isEditMode ? "Edit Patient" : "Add Patient";
+  const pageDescription = isEditMode
+    ? "Update the selected patient profile. Existing values are loaded from the current patient record."
+    : systemDescription;
+  const backPath = isEditMode ? `${patientsPath}/${editPatientId}` : patientsPath;
+  const backLabel = isEditMode ? "Back to Patient Details" : "Back to Patients";
 
   // Unified State Management
   const [modals, setModals] = useState({
@@ -143,10 +265,38 @@ export function PatientRegistrationPage({
   const [createdPatientId, setCreatedPatientId] = useState("");
   const [form, setForm] = useState(INITIAL_FORM_STATE);
   const [fieldErrors, setFieldErrors] = useState({});
+  const hydratedEditPatientRef = useRef("");
   const { data: registeredPatients = [] } = useQuery({
     queryKey: queryKeys.patients(queryRole),
     queryFn: () => getPatientDetailsListByRole(queryRole),
   });
+  const {
+    data: editPatient,
+    isLoading: editPatientLoading,
+    isError: editPatientError,
+    refetch: refetchEditPatient,
+  } = useQuery({
+    queryKey: queryKeys.patientDetails(queryRole, editPatientId),
+    queryFn: () => fetchPatient(editPatientId),
+    enabled: isEditMode,
+  });
+
+  useEffect(() => {
+    if (!isEditMode) {
+      hydratedEditPatientRef.current = "";
+      setForm({ ...INITIAL_FORM_STATE });
+      setFieldErrors({});
+      return;
+    }
+
+    if (!editPatient || hydratedEditPatientRef.current === String(editPatientId)) {
+      return;
+    }
+
+    setForm(buildPatientFormState(editPatient));
+    setFieldErrors({});
+    hydratedEditPatientRef.current = String(editPatientId);
+  }, [editPatient, editPatientId, isEditMode]);
 
   const ageDisplay = formatAgeDisplay(form.birthDate);
   const ageYears = calculateAge(form.birthDate);
@@ -164,6 +314,10 @@ export function PatientRegistrationPage({
     String(currentDate.getDate()).padStart(2, "0"),
   ].join("-");
   const motherPatientOptions = registeredPatients
+    .filter(
+      (patient) =>
+        !isEditMode || String(patient.id) !== String(editPatientId),
+    )
     .filter((patient) => {
       const age = calculateAge(patient.birthDate || patient.birthdate);
       return patient.sex === "Female" && (age === "" || Number(age) >= 12);
@@ -456,7 +610,7 @@ function handleBirthDateChange(valueOrEvent) {
         showGeneralProfileFields && form.civilStatus === "Married"
           ? form.spouseOccupation || null
           : null,
-      id: Date.now().toString(),
+      id: isEditMode ? editPatientId : Date.now().toString(),
       name: formatFullName(form.firstName, form.middleName, form.lastName),
       ageSex: `${form.age || calculateAge(form.birthDate)} / ${form.sex}`,
     };
@@ -477,11 +631,25 @@ function handleBirthDateChange(valueOrEvent) {
     try {
       setSaving(true);
       const patientData = buildPatientPayload();
-      const created = await createPatient(patientData);
+      const saved = isEditMode
+        ? await updatePatientProfile(editPatientId, patientData)
+        : await createPatient(patientData);
       const nextId =
-        created?.id || created?.details?.id || created?.patient?.id || patientData.id;
+        saved?.id ||
+        saved?.details?.id ||
+        saved?.patient?.id ||
+        editPatientId ||
+        patientData.id;
 
       queryClient.invalidateQueries({ queryKey: queryKeys.patients(queryRole) });
+      if (isEditMode) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.patientDetails(queryRole, nextId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.patientDetails(queryRole, editPatientId),
+        });
+      }
       queryClient.invalidateQueries({
         queryKey: queryKeys.dashboardSummary(queryRole),
       });
@@ -494,7 +662,9 @@ function handleBirthDateChange(valueOrEvent) {
           title: error.isTimeout ? "Request Timed Out" : "Connection Lost",
           message:
             error?.message ||
-            "Your internet connection was interrupted. Your current form data can be saved as a local draft and submitted once your connection is restored.",
+            (isEditMode
+              ? "Your internet connection was interrupted. Please retry once the connection is stable."
+              : "Your internet connection was interrupted. Your current form data can be saved as a local draft and submitted once your connection is restored."),
         });
       }
     } finally {
@@ -504,9 +674,51 @@ function handleBirthDateChange(valueOrEvent) {
 
   // --- RENDER ---
 
+  if (isEditMode && editPatientLoading) {
+    return (
+      <DashboardLayout role={role} title={dashboardTitle}>
+        <PageLoadingFallback
+          message="Loading patient profile..."
+          variant="form"
+        />
+      </DashboardLayout>
+    );
+  }
+
+  if (isEditMode && editPatientError) {
+    return (
+      <DashboardLayout role={role} title={dashboardTitle}>
+        <div className="mx-auto max-w-lg rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <h1 className="text-lg font-bold text-[#0F172A]">
+            Unable to load patient profile
+          </h1>
+          <p className="mt-2 text-sm text-slate-500">
+            The selected patient could not be loaded for editing.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => refetchEditPatient()}
+              className="rounded-xl bg-[#B91C1C] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#991B1B]"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(patientsPath)}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              Back to Patients
+            </button>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <>
-      <DashboardLayout role={role} title="Add Patient">
+      <DashboardLayout role={role} title={dashboardTitle}>
         {/* Header */}
         <div
           className="anim-fade-up mb-6 ml-0 mr-auto w-full max-w-7xl min-w-0"
@@ -514,18 +726,18 @@ function handleBirthDateChange(valueOrEvent) {
         >
           <div className="flex flex-col gap-2">
             <Link
-              to={patientsPath}
+              to={backPath}
               className="inline-flex w-fit items-center gap-2 text-[13px] font-semibold text-[#B91C1C] transition-all duration-200 hover:gap-2.5 hover:text-[#991B1B]"
             >
               <ArrowLeft size={16} />
-              Back to Patients
+              {backLabel}
             </Link>
             <div>
               <h1 className="text-lg font-bold tracking-tight text-[#1A1A1A]">
-                Add New Patient
+                {pageTitle}
               </h1>
               <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-[#6B7280]">
-                {systemDescription}
+                {pageDescription}
               </p>
             </div>
           </div>
@@ -931,7 +1143,7 @@ function handleBirthDateChange(valueOrEvent) {
           >
             <button
               type="button"
-              onClick={() => navigate(patientsPath)}
+              onClick={() => navigate(backPath)}
               className="w-full rounded-xl border border-[#E8ECF0] bg-white px-5 py-2.5 text-sm font-semibold text-[#6B7280] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#D1D5DB] hover:shadow-md active:scale-[0.97] sm:w-auto"
             >
               Cancel
@@ -943,13 +1155,24 @@ function handleBirthDateChange(valueOrEvent) {
             >
               {saving ? (
                 <ButtonSpinner />
+              ) : isEditMode ? (
+                <Check
+                  size={15}
+                  className="transition-transform duration-300 group-hover:scale-110"
+                />
               ) : (
                 <UserPlus
                   size={15}
                   className="transition-transform duration-300 group-hover:scale-110"
                 />
               )}
-              {saving ? "Registering patient..." : "Register Patient"}
+              {saving
+                ? isEditMode
+                  ? "Saving changes..."
+                  : "Registering patient..."
+                : isEditMode
+                  ? "Save Changes"
+                  : "Register Patient"}
             </button>
           </div>
           </div>
@@ -959,11 +1182,21 @@ function handleBirthDateChange(valueOrEvent) {
       {/* Modals */}
       <SuccessModal
         open={modals.success}
-        title="Patient added."
-        description="The patient was submitted successfully. Refreshing patient list data now."
-        buttonText="Back to Patient List"
-        onClose={() => navigate(patientsPath)}
-        secondaryButtonText="Add Health Record"
+        title={isEditMode ? "Patient profile updated." : "Patient added."}
+        description={
+          isEditMode
+            ? "Patient profile updated successfully."
+            : "The patient was submitted successfully. The patient list will update automatically."
+        }
+        buttonText={isEditMode ? "Back to Patient Details" : "Back to Patient List"}
+        onClose={() =>
+          navigate(
+            isEditMode
+              ? `${patientsPath}/${createdPatientId || editPatientId}`
+              : patientsPath,
+          )
+        }
+        secondaryButtonText={isEditMode ? undefined : "Add Health Record"}
         onSecondaryAction={() =>
           navigate(`${addHealthRecordPath}?patientId=${createdPatientId}`)
         }
@@ -977,14 +1210,18 @@ function handleBirthDateChange(valueOrEvent) {
       />
       <ConfirmationModal
         open={modals.confirm}
-        title="Confirm Patient Registration?"
-        description="Please review the patient information before registering this profile."
-        confirmText="Register Patient"
+        title={isEditMode ? "Save Patient Profile Changes?" : "Confirm Patient Registration?"}
+        description={
+          isEditMode
+            ? "Please confirm that you want to update this patient profile."
+            : "Please review the patient information before registering this profile."
+        }
+        confirmText={isEditMode ? "Save Changes" : "Register Patient"}
         cancelText="Cancel"
         onConfirm={handleSubmit}
         onCancel={() => setModals({ ...modals, confirm: false })}
         loading={saving}
-        loadingText="Registering patient..."
+        loadingText={isEditMode ? "Saving changes..." : "Registering patient..."}
       />
       <ConnectionIssueModal
         open={Boolean(connectionIssue)}
@@ -994,7 +1231,7 @@ function handleBirthDateChange(valueOrEvent) {
           saving || (typeof navigator !== "undefined" && navigator.onLine === false)
         }
         onContinue={() => setConnectionIssue(null)}
-        onSaveDraft={handleSavePatientDraft}
+        onSaveDraft={isEditMode ? undefined : handleSavePatientDraft}
         onRetry={handleSubmit}
       />
     </>

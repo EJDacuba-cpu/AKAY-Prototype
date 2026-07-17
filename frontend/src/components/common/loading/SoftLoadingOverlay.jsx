@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
-import AkayLogoLoader from "./AkayLogoLoader";
+import {
+  PageSkeletonLoader,
+  inferLoadingSkeletonVariant,
+} from "./SkeletonLoaders";
+import {
+  dispatchContentLoadingEnd,
+  dispatchContentLoadingStart,
+} from "../../../utils/loadingEvents";
 
 const overlayToneClasses = {
-  none: "bg-white/50",
-  sm: "bg-white/55",
-  md: "bg-white/60",
-};
-
-const loaderViewportStyle = {
-  minHeight: "min(560px, calc(100dvh - 11rem))",
+  none: "bg-white/82",
+  sm: "bg-white/88",
+  md: "bg-white/94",
 };
 
 export function DottedSpinner({ label = "Loading", size = "md" }) {
@@ -25,20 +28,6 @@ export function DottedSpinner({ label = "Loading", size = "md" }) {
   );
 }
 
-function inferVariant(message, fallback = "fetch") {
-  const text = String(message || "").toLowerCase();
-  if (text.includes("refresh")) return "refresh";
-  if (
-    text.includes("sav") ||
-    text.includes("submit") ||
-    text.includes("cach")
-  ) {
-    return "save";
-  }
-  if (text.includes("success") || text.includes("complete")) return "success";
-  return fallback;
-}
-
 export default function SoftLoadingOverlay({
   isVisible,
   isLoading,
@@ -48,9 +37,7 @@ export default function SoftLoadingOverlay({
   blur = "sm",
   scope = "area",
   className = "",
-  panelClassName = "",
   variant,
-  size = "lg",
   children,
 }) {
   const shouldShow = isVisible ?? isLoading ?? visible;
@@ -77,6 +64,13 @@ export default function SoftLoadingOverlay({
     return () => window.clearTimeout(timer);
   }, [blocking, isViewportScope, shouldShow]);
 
+  useEffect(() => {
+    if (!shouldShow) return undefined;
+
+    dispatchContentLoadingStart();
+    return () => dispatchContentLoadingEnd();
+  }, [shouldShow]);
+
   if (!isMounted) return null;
 
   return (
@@ -84,31 +78,23 @@ export default function SoftLoadingOverlay({
       className={`${
         isViewportScope
           ? "fixed inset-0 z-[999] min-h-dvh rounded-none"
-          : "absolute inset-0 z-20 min-h-[calc(100dvh-11rem)] rounded-xl"
-      } px-4 transition-opacity duration-200 ease-out ${overlayToneClasses[blur] || overlayToneClasses.sm} ${
+          : "absolute inset-0 z-20 min-h-full rounded-xl"
+      } overflow-hidden transition-opacity duration-200 ease-out ${overlayToneClasses[blur] || overlayToneClasses.sm} ${
         isActive ? "opacity-100" : "opacity-0"
       } ${blocking && isActive ? "pointer-events-auto" : "pointer-events-none"} ${className}`}
       aria-live="polite"
       aria-busy="true"
     >
       <div
-        className={`flex min-w-0 items-center justify-center py-8 ${
-          isViewportScope ? "h-full min-h-dvh" : "sticky top-4"
-        }`}
-        style={isViewportScope ? undefined : loaderViewportStyle}
+        className={`min-w-0 transition-transform duration-200 ease-out ${
+          isViewportScope ? "h-full min-h-dvh p-5" : "sticky top-4 p-4"
+        } ${isActive ? "translate-y-0" : "translate-y-1"}`}
       >
         {children || (
-          <div
-            className={`flex flex-col items-center justify-center rounded-2xl border border-[#E8ECF0]/90 bg-white px-5 py-4 text-center shadow-md shadow-slate-900/[0.06] transition-transform duration-200 ease-out ${
-              isActive ? "translate-y-0 scale-100" : "translate-y-1 scale-[0.98]"
-            } ${panelClassName}`}
-          >
-            <AkayLogoLoader
-              label={message}
-              size={size}
-              variant={variant || inferVariant(message)}
-            />
-          </div>
+          <PageSkeletonLoader
+            message={message}
+            variant={variant || inferLoadingSkeletonVariant(message)}
+          />
         )}
       </div>
     </div>
@@ -135,7 +121,7 @@ export function SoftLoadingArea({
         blocking={blocking}
         blur={blur}
         scope={scope}
-        variant={variant || inferVariant(message)}
+        variant={variant || inferLoadingSkeletonVariant(message)}
       />
     </div>
   );

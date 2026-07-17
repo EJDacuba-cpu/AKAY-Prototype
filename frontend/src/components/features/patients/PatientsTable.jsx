@@ -1,5 +1,5 @@
 import { Phone, Users, Inbox } from "lucide-react";
-import AkayLogoLoader from "../../common/loading/AkayLogoLoader";
+import { TableSkeleton } from "../../common/loading/SkeletonLoaders";
 import ActionMenu from "../../common/tables/ActionMenu";
 import DataTableEmptyState from "../../common/tables/DataTableEmptyState";
 import TablePagination from "../../common/pagination/TablePagination";
@@ -75,14 +75,8 @@ export default function PatientsTable({
 
       {/* Loading */}
       {loading ? (
-        <div
-          className="
-            flex items-center
-            justify-center
-            py-16
-          "
-        >
-          <AkayLogoLoader label="Loading patients..." variant="fetch" size="md" />
+        <div className="px-3 py-4">
+          <TableSkeleton message="Loading patients..." rows={5} columns={5} />
         </div>
       ) : (
         <>
@@ -256,7 +250,7 @@ export default function PatientsTable({
                             subtitle={patientId}
                             viewLink={`/bhc/patients/${patient.id}`}
                             viewLabel="View Details"
-                            editPatientLink={`/bhc/patients/${patient.id}`}
+                            editPatientLink={`/bhc/patients/edit/${patient.id}`}
                             editPatientLabel="Edit Patient"
                             editLink={`/bhc/health-records/add?patientId=${patient.id}`}
                             editLabel="Add Health Record"

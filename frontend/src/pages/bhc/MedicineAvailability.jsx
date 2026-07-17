@@ -14,6 +14,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ListToolbar,
   PageStateWrapper,
+  RefreshingIndicator,
   TablePagination,
 } from "../../components/common";
 import MedicineFormModal from "../../components/features/medicine/MedicineFormModal";
@@ -185,14 +186,9 @@ export default function MedicineAvailability() {
         hasData={safeMedicineItems.length > 0}
         error={loadError}
         onRetry={() => refetch()}
-        loadingMessage="Loading medicine availability..."
+        loadingMessage="Loading medicine inventory..."
       >
       <div className="space-y-4">
-        {isFetching && (
-          <div className="rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 text-[11px] font-semibold text-[#B91C1C]">
-            Refreshing records...
-          </div>
-        )}
         <ListToolbar
           searchValue={filters.search}
           onSearchChange={(value) => updateFilter("search", value)}
@@ -279,9 +275,14 @@ export default function MedicineAvailability() {
             </p>
           </div>
 
-          <span className="rounded-md bg-[#F3F4F6] px-2 py-1 text-[10px] font-semibold text-[#6B7280]">
-            {filteredItems.length} of {activeItems.length} items
-          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            {isFetching && safeMedicineItems.length > 0 && (
+              <RefreshingIndicator label="Updating medicine inventory..." />
+            )}
+            <span className="rounded-md bg-[#F3F4F6] px-2 py-1 text-[10px] font-semibold text-[#6B7280]">
+              {filteredItems.length} of {activeItems.length} items
+            </span>
+          </div>
         </div>
 
         <MedicineTable
