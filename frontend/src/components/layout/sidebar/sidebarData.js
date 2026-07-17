@@ -18,7 +18,7 @@ export const reportNavItems = [
   { label: "EPI Target Client List", slug: "epi-target-client-list" },
   { label: "Morbidity / Notifiable Diseases", slug: "morbidity" },
   { label: "Follow-ups / Monitoring", slug: "follow-ups" },
-  { label: "NCD Monitoring", slug: "ncd" },
+  { label: "Hypertension and Diabetic Club Monitoring Sheet", slug: "ncd" },
   { label: "Maternal / Prenatal", slug: "maternal" },
 ];
 

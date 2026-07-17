@@ -211,7 +211,7 @@ export default function FollowUps() {
         "General Consultation",
         "Maternal / Prenatal",
         "Child Health / EPI",
-        "NCD Monitoring",
+        "Hypertension / Diabetic Monitoring",
         "Family Planning",
         "TB DOTS / TB Monitoring",
       ],
@@ -519,7 +519,7 @@ function ClassificationBadge({ classification }) {
     "General Consultation": "bg-slate-100 text-slate-700",
     "Maternal / Prenatal": "bg-pink-50 text-pink-700",
     "Child Health / EPI": "bg-emerald-50 text-emerald-700",
-    "NCD Monitoring": "bg-blue-50 text-blue-700",
+    "Hypertension / Diabetic Monitoring": "bg-blue-50 text-blue-700",
     "Family Planning": "bg-purple-50 text-purple-700",
     "TB DOTS / TB Monitoring": "bg-amber-50 text-amber-700",
   };

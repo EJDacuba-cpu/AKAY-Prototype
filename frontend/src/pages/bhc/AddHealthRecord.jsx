@@ -70,7 +70,7 @@ const RECORD_TYPE_OPTIONS = [
   "Immunization",
   "Maternal",
   "Family Planning",
-  "Senior Citizen",
+  "Hypertension / Diabetic Monitoring",
   "TB DOTS / TB Monitoring",
 ];
 
@@ -91,9 +91,9 @@ const RECORD_TYPE_DETAILS = {
     description: "For vaccines, child care, EPI entries, and growth monitoring.",
     icon: Syringe,
   },
-  "Senior Citizen": {
-    title: "NCD Monitoring",
-    description: "For hypertension, diabetes, maintenance monitoring, and follow-up.",
+  "Hypertension / Diabetic Monitoring": {
+    title: "Hypertension / Diabetic Monitoring",
+    description: "For HPN, DM, BP/FBS monitoring, medicines, and follow-up.",
     icon: User,
   },
   "Family Planning": {
@@ -168,6 +168,55 @@ function deriveMorbidityReportingStatus(source = {}, fallback = "not_included") 
   return notifiable ? "notifiable" : "morbidity";
 }
 
+function getSurveillanceCategoryValue(source = {}) {
+  const monitoringData = source.monitoringData || source.monitoring_data || {};
+  const value =
+    source.surveillanceCategory ||
+    source.surveillance_category ||
+    source.diseaseSurveillanceCategory ||
+    source.disease_surveillance_category ||
+    source.diseaseCategory ||
+    source.disease_category ||
+    monitoringData.surveillanceCategory ||
+    monitoringData.surveillance_category ||
+    monitoringData.diseaseSurveillanceCategory ||
+    monitoringData.disease_surveillance_category ||
+    monitoringData.diseaseCategory ||
+    monitoringData.disease_category ||
+    "";
+  return normalizeSurveillanceCategoryValue(value);
+}
+
+function getHfmdSurveillanceValue(source = {}) {
+  const monitoringData = source.monitoringData || source.monitoring_data || {};
+  const explicit =
+    source.hfmdSurveillance ??
+    source.hfmd_surveillance ??
+    monitoringData.hfmdSurveillance ??
+    monitoringData.hfmd_surveillance;
+
+  if (explicit !== undefined && explicit !== null && explicit !== "") {
+    return toBooleanYesNo(explicit);
+  }
+
+  return getSurveillanceCategoryValue(source) === "hfmd";
+}
+
+function normalizeSurveillanceCategoryValue(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "";
+  if (
+    normalized === "hfmd" ||
+    normalized.includes("hand, foot") ||
+    normalized.includes("hand foot") ||
+    normalized.includes("mouth disease")
+  ) {
+    return "hfmd";
+  }
+  if (normalized === "other") return "other";
+  return normalized;
+}
+
 function getMorbidityDecisionFlags(status) {
   const normalized = normalizeMorbidityReportingStatus(status);
   return {
@@ -239,6 +288,26 @@ const EMPTY_FAMILY_PLANNING_DATA = {
   findings: "",
   adviceGiven: "",
 };
+
+const EMPTY_HYPERTENSION_DIABETIC_DATA = {
+  bp: "",
+  fbs: "",
+  conditionType: "",
+  clientStatus: "",
+  dateOfLastConsultation: "",
+  treatmentActionTaken: "",
+};
+
+const HYPERTENSION_DIABETIC_CONDITION_OPTIONS = [
+  { value: "hpn", label: "HPN" },
+  { value: "dm", label: "DM" },
+  { value: "both", label: "BOTH" },
+];
+
+const HYPERTENSION_DIABETIC_CLIENT_STATUS_OPTIONS = [
+  { value: "new", label: "New" },
+  { value: "old", label: "Old" },
+];
 
 const EMPTY_MATERNAL_DATA = {
   lmp: "",
@@ -489,18 +558,102 @@ const EMPTY_VACCINE_ENTRY = {
 
 function normalizeRecordType(value) {
   const raw = String(value || "").trim();
-  const lower = raw.toLowerCase();
+  const lower = raw.toLowerCase().replace(/[_-]+/g, " ");
 
   if (!raw) return "";
   if (lower.includes("immun")) return "Immunization";
   if (lower.includes("maternal") || lower.includes("prenatal")) return "Maternal";
   if (lower.includes("family") || lower.includes("planning")) return "Family Planning";
-  if (lower.includes("senior")) return "Senior Citizen";
+  if (
+    lower.includes("senior") ||
+    lower.includes("ncd") ||
+    lower.includes("hypertension") ||
+    lower.includes("diabetic") ||
+    lower.includes("diabetes") ||
+    lower.includes("non communicable")
+  ) {
+    return "Hypertension / Diabetic Monitoring";
+  }
   if (lower.includes("general") || lower.includes("consult")) {
     return "General Consultation";
   }
 
   return raw;
+}
+
+function normalizeHypertensionDiabeticCondition(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "";
+  if (["hpn", "hypertension", "high blood pressure"].includes(normalized)) {
+    return "hpn";
+  }
+  if (["dm", "diabetes", "diabetic", "diabetes mellitus"].includes(normalized)) {
+    return "dm";
+  }
+  if (["both", "hpn/dm", "hpn dm", "hypertension diabetes"].includes(normalized)) {
+    return "both";
+  }
+  return normalized;
+}
+
+function normalizeHypertensionDiabeticClientStatus(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["new", "old"].includes(normalized) ? normalized : normalized;
+}
+
+function mergeHypertensionDiabeticData(data = {}, fallback = {}) {
+  const source = data || {};
+  return {
+    ...EMPTY_HYPERTENSION_DIABETIC_DATA,
+    ...source,
+    bp:
+      source.bp ||
+      source.bloodPressure ||
+      source.blood_pressure ||
+      fallback.bp ||
+      "",
+    fbs:
+      source.fbs ||
+      source.fastingBloodSugar ||
+      source.fasting_blood_sugar ||
+      source.bloodSugar ||
+      source.blood_sugar ||
+      fallback.fbs ||
+      "",
+    conditionType: normalizeHypertensionDiabeticCondition(
+      source.conditionType ||
+        source.condition_type ||
+        fallback.conditionType ||
+        fallback.condition_type ||
+        "",
+    ),
+    clientStatus: normalizeHypertensionDiabeticClientStatus(
+      source.clientStatus ||
+        source.client_status ||
+        fallback.clientStatus ||
+        fallback.client_status ||
+        "",
+    ),
+    dateOfLastConsultation:
+      source.dateOfLastConsultation ||
+      source.date_of_last_consultation ||
+      source.lastConsultationDate ||
+      source.last_consultation_date ||
+      fallback.dateOfLastConsultation ||
+      fallback.date_of_last_consultation ||
+      "",
+    treatmentActionTaken:
+      source.treatmentActionTaken ||
+      source.treatment_action_taken ||
+      source.actionTaken ||
+      source.action_taken ||
+      source.treatment ||
+      source.medication ||
+      fallback.treatmentActionTaken ||
+      fallback.treatment_action_taken ||
+      fallback.medication ||
+      "",
+  };
 }
 
 function closeDateTimePopovers() {
@@ -554,12 +707,7 @@ function calculateAgeInYears(birthdate, referenceDate = new Date()) {
 
 function getPatientAgeInYears(patient, referenceDate) {
   if (!patient) return null;
-  const birthdate =
-    patient.birthdate ||
-    patient.birthDate ||
-    patient.dateOfBirth ||
-    patient.date_of_birth ||
-    patient.dob;
+  const birthdate = getEffectivePatientBirthdate(patient);
   const ageFromBirthdate = calculateAgeInYears(birthdate, referenceDate);
   if (ageFromBirthdate !== null) return ageFromBirthdate;
 
@@ -568,8 +716,39 @@ function getPatientAgeInYears(patient, referenceDate) {
   return ageMatch ? Number(ageMatch[0]) : null;
 }
 
-function getImmunizationPatientMode(patient, referenceDate) {
-  const age = getPatientAgeInYears(patient, referenceDate);
+function getEffectivePatientBirthdate(...sources) {
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+    const direct =
+      source.birthdate ||
+      source.birthDate ||
+      source.dateOfBirth ||
+      source.date_of_birth ||
+      source.birth_date ||
+      source.dob;
+    if (direct) return direct;
+
+    const nested = getEffectivePatientBirthdate(
+      source.patient,
+      source.patientDetails,
+      source.patient_details,
+      source.healthRecord?.patient,
+      source.health_record?.patient,
+      source.originalRecord?.patient,
+      source.original_record?.patient,
+      source.followUpContext?.patient,
+      source.follow_up_context?.patient,
+    );
+    if (nested) return nested;
+  }
+
+  return "";
+}
+
+function getImmunizationPatientMode(patient, referenceDate, ...fallbackSources) {
+  const birthdate = getEffectivePatientBirthdate(patient, ...fallbackSources);
+  const agePatient = birthdate ? { ...(patient || {}), birthdate } : patient;
+  const age = getPatientAgeInYears(agePatient, referenceDate);
   if (age === null) return { age: null, mode: "unknown" };
   return {
     age,
@@ -682,11 +861,13 @@ export default function AddHealthRecord() {
   const [morbidityReportingStatus, setMorbidityReportingStatus] = useState(
     getDefaultMorbidityReportingStatus(preselectedClassification),
   );
+  const [hfmdSurveillance, setHfmdSurveillance] = useState(false);
 
   const [systolicBp, setSystolicBp] = useState("");
   const [diastolicBp, setDiastolicBp] = useState("");
   const [temp, setTemp] = useState("");
   const [pulse, setPulse] = useState("");
+  const [respiratoryRate, setRespiratoryRate] = useState("");
   const [weight, setWeight] = useState("");
   const [height, setHeight] = useState("");
 
@@ -728,6 +909,9 @@ export default function AddHealthRecord() {
   const [dispensedMedicines, setDispensedMedicines] = useState([]);
   const [familyPlanningData, setFamilyPlanningData] = useState(
     EMPTY_FAMILY_PLANNING_DATA,
+  );
+  const [hypertensionDiabeticData, setHypertensionDiabeticData] = useState(
+    EMPTY_HYPERTENSION_DIABETIC_DATA,
   );
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
   const [aog, setAog] = useState("");
@@ -837,10 +1021,20 @@ export default function AddHealthRecord() {
           ),
         ),
       );
+      setHfmdSurveillance(getHfmdSurveillanceValue(found));
       setSystolicBp(found.systolicBp || "");
       setDiastolicBp(found.diastolicBp || "");
       setTemp(found.temperature || found.temp || "");
       setPulse(found.pulseRate || found.pulse || "");
+      setRespiratoryRate(
+        found.respiratoryRate ||
+          found.respiratory_rate ||
+          found.vitalSigns?.respiratoryRate ||
+          found.vitalSigns?.respiratory_rate ||
+          found.vital_signs?.respiratoryRate ||
+          found.vital_signs?.respiratory_rate ||
+          "",
+      );
       setWeight(found.weight || "");
       setHeight(found.height || "");
       setFollowUpStatus(normalizePatientStatus(found.followUpStatus));
@@ -913,6 +1107,20 @@ export default function AddHealthRecord() {
           existingFamilyPlanningData.advice_given ||
           "",
       });
+      const existingMonitoringData = found.monitoringData || found.monitoring_data || {};
+      const existingHypertensionDiabeticData =
+        found.hypertensionDiabeticData ||
+        found.hypertension_diabetic_data ||
+        existingMonitoringData.hypertensionDiabeticData ||
+        existingMonitoringData.hypertension_diabetic_data ||
+        {};
+      setHypertensionDiabeticData(
+        mergeHypertensionDiabeticData(existingHypertensionDiabeticData, {
+          ...existingMonitoringData,
+          ...found,
+          medication: found.medication || found.initialActionsTaken || "",
+        }),
+      );
       setHealthRecordType(
         normalizeRecordType(
           found.category ||
@@ -1063,12 +1271,14 @@ export default function AddHealthRecord() {
   function resetClassificationSpecificState() {
     setHealthRecordType("");
     setMorbidityReportingStatus("not_included");
+    setHfmdSurveillance(false);
     setMaternalData(EMPTY_MATERNAL_DATA);
     setDispensedMedicines([]);
     setExpectedDeliveryDate("");
     setAog("");
     setImmunizationData(EMPTY_IMMUNIZATION_DATA);
     setFamilyPlanningData(EMPTY_FAMILY_PLANNING_DATA);
+    setHypertensionDiabeticData(EMPTY_HYPERTENSION_DIABETIC_DATA);
   }
 
   function selectPatient(id) {
@@ -1113,8 +1323,14 @@ export default function AddHealthRecord() {
   const isImmunization = recordTypeKey === "immunization";
   const isMaternal = recordTypeKey === "maternal";
   const isFamilyPlanning = recordTypeKey === "family planning";
+  const isHypertensionDiabetic =
+    recordTypeKey === "hypertension / diabetic monitoring";
   const isGeneralConsultationFollowUp =
-    isFollowUp && !isImmunization && !isMaternal && !isFamilyPlanning;
+    isFollowUp &&
+    !isImmunization &&
+    !isMaternal &&
+    !isFamilyPlanning &&
+    !isHypertensionDiabetic;
   const patientGateLocked = !isFollowUp && !selectedPatientId;
   const selectedPatientIsMale = !isFollowUp && isPatientMale(selectedPatient);
   const selectedPatientSexMissing =
@@ -1134,6 +1350,8 @@ export default function AddHealthRecord() {
   const immunizationPatientInfo = getImmunizationPatientMode(
     selectedPatient,
     dateOfVisit,
+    followUpRecord,
+    followUpRecord?.patient,
   );
   const familyPlanningEligibility = getFamilyPlanningEligibility(
     selectedPatient,
@@ -1150,6 +1368,10 @@ export default function AddHealthRecord() {
   const concatenatedVitalSigns = `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | Pulse: ${
     pulse || "N/A"
   } bpm | Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
+  const consultationVitalSigns = [
+    concatenatedVitalSigns,
+    `Respiratory Rate: ${respiratoryRate || "N/A"} cpm`,
+  ].join(" | ");
   const maternalTpalScore = [
     maternalData.term || 0,
     maternalData.preterm || 0,
@@ -1185,6 +1407,7 @@ export default function AddHealthRecord() {
       setAog("");
       setImmunizationData(EMPTY_IMMUNIZATION_DATA);
       setFamilyPlanningData(EMPTY_FAMILY_PLANNING_DATA);
+      setHypertensionDiabeticData(EMPTY_HYPERTENSION_DIABETIC_DATA);
     }
 
     setHealthRecordType(nextType);
@@ -1300,7 +1523,6 @@ export default function AddHealthRecord() {
     if (!String(attendingStaff || "").trim()) {
       errors.attendingStaff = "Name of practitioner is required.";
     }
-
     if (isGeneralConsultationFollowUp) {
       if (!summaryOfPresentIllness.trim()) {
         errors.summaryOfPresentIllness = "Follow-up findings are required.";
@@ -1332,6 +1554,21 @@ export default function AddHealthRecord() {
           "Concern or side-effect notes are required when clinical concern is marked Yes.";
       }
 
+      return errors;
+    }
+
+    if (isHypertensionDiabetic) {
+      if (!String(hypertensionDiabeticData.bp || "").trim()) {
+        errors["hypertensionDiabeticData.bp"] = "Blood pressure is required.";
+      }
+      if (!String(hypertensionDiabeticData.conditionType || "").trim()) {
+        errors["hypertensionDiabeticData.conditionType"] =
+          "Condition type is required.";
+      }
+      if (!String(hypertensionDiabeticData.clientStatus || "").trim()) {
+        errors["hypertensionDiabeticData.clientStatus"] =
+          "Client status is required.";
+      }
       return errors;
     }
 
@@ -1582,6 +1819,11 @@ export default function AddHealthRecord() {
         ? { concern: "", findings: "", adviceGiven: "" }
         : {}),
     }));
+  }
+
+  function handleHypertensionDiabeticChange(field, value) {
+    clearValidationError(`hypertensionDiabeticData.${field}`);
+    setHypertensionDiabeticData((prev) => ({ ...prev, [field]: value }));
   }
 
   async function saveHealthRecord(formData) {
@@ -1858,6 +2100,9 @@ export default function AddHealthRecord() {
               : "Family Planning Visit"
           : effectiveHealthRecordType === "Maternal" && !chiefComplaint
             ? "Prenatal Visit"
+          : effectiveHealthRecordType === "Hypertension / Diabetic Monitoring" &&
+              !chiefComplaint
+            ? "Hypertension / Diabetic Monitoring Visit"
           : chiefComplaint;
 
     const recordMaternalData = {
@@ -1928,6 +2173,30 @@ export default function AddHealthRecord() {
       advice_given: familyPlanningData.adviceGiven || "",
     };
 
+    const recordHypertensionDiabeticData = {
+      ...hypertensionDiabeticData,
+      conditionType: normalizeHypertensionDiabeticCondition(
+        hypertensionDiabeticData.conditionType,
+      ),
+      condition_type: normalizeHypertensionDiabeticCondition(
+        hypertensionDiabeticData.conditionType,
+      ),
+      clientStatus: normalizeHypertensionDiabeticClientStatus(
+        hypertensionDiabeticData.clientStatus,
+      ),
+      client_status: normalizeHypertensionDiabeticClientStatus(
+        hypertensionDiabeticData.clientStatus,
+      ),
+      dateOfLastConsultation:
+        hypertensionDiabeticData.dateOfLastConsultation || "",
+      date_of_last_consultation:
+        hypertensionDiabeticData.dateOfLastConsultation || "",
+      treatmentActionTaken:
+        hypertensionDiabeticData.treatmentActionTaken || "",
+      treatment_action_taken:
+        hypertensionDiabeticData.treatmentActionTaken || "",
+    };
+
     const finalPatientStatus = isFollowUp
       ? normalizePatientStatus(followUpStatus)
       : effectiveFollowUpDate
@@ -1936,6 +2205,8 @@ export default function AddHealthRecord() {
     const morbidityDecision = getMorbidityDecisionFlags(
       morbidityReportingStatus,
     );
+    const finalHfmdSurveillance = Boolean(hfmdSurveillance);
+    const finalSurveillanceCategory = finalHfmdSurveillance ? "hfmd" : null;
 
     const formData = {
       patientId: selectedPatientId,
@@ -1955,16 +2226,20 @@ export default function AddHealthRecord() {
       chiefComplaint: finalChiefComplaint,
       summaryOfPresentIllness,
       diagnosis,
-      vitalSigns: concatenatedVitalSigns,
+      vitalSigns: consultationVitalSigns,
       systolicBp: systolicBp || null,
       diastolicBp: diastolicBp || null,
       temperature: temp || null,
       pulseRate: pulse || null,
+      respiratoryRate: respiratoryRate || null,
+      respiratory_rate: respiratoryRate || null,
       weight: weight || null,
       height: height || null,
       medication:
         effectiveHealthRecordType === "Maternal"
           ? recordMaternalData.treatment || medication
+          : effectiveHealthRecordType === "Hypertension / Diabetic Monitoring"
+            ? recordHypertensionDiabeticData.treatmentActionTaken || medication
           : medication,
       attendingStaff,
       consultationNotes,
@@ -1976,6 +2251,12 @@ export default function AddHealthRecord() {
       morbidityReportingStatus,
       includeInMorbidityReport: morbidityDecision.includeInMorbidityReport,
       isNotifiableDisease: morbidityDecision.isNotifiableDisease,
+      surveillanceCategory: finalSurveillanceCategory,
+      surveillance_category: finalSurveillanceCategory,
+      diseaseSurveillanceCategory: finalSurveillanceCategory,
+      disease_surveillance_category: finalSurveillanceCategory,
+      hfmdSurveillance: finalHfmdSurveillance,
+      hfmd_surveillance: finalHfmdSurveillance,
       needsReferral: finalNeedsReferral,
       needs_referral: finalNeedsReferral,
       referralReason: "",
@@ -1999,6 +2280,16 @@ export default function AddHealthRecord() {
         effectiveHealthRecordType === "Family Planning"
           ? recordFamilyPlanningData
           : null,
+      hypertensionDiabeticData:
+        effectiveHealthRecordType === "Hypertension / Diabetic Monitoring"
+          ? recordHypertensionDiabeticData
+          : null,
+      monitoringData: {
+        hypertensionDiabeticData:
+          effectiveHealthRecordType === "Hypertension / Diabetic Monitoring"
+            ? recordHypertensionDiabeticData
+            : null,
+      },
       createdByRole: userRole,
       linkedTrackingId: isFollowUp ? followUpRecord?.linkedTrackingId || "" : "",
       dispensedMedicines: isEditingRecord ? [] : dispensedMedicines,
@@ -2393,17 +2684,9 @@ export default function AddHealthRecord() {
           <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-[#6B7280]">
             {pageSubtitle}
           </p>
-          {isFollowUp && (
-            <p
-              className={`mt-1 text-[11px] font-medium ${
-                selectedPatient
-                  ? "text-[#6B7280]"
-                  : "text-amber-700"
-              }`}
-            >
-              {selectedPatient
-                ? "This visit is linked to the original follow-up schedule."
-                : "Patient details are still loading. Please try again."}
+          {isFollowUp && (selectedPatient || followUpRecord) && (
+            <p className="mt-1 text-[11px] font-medium text-[#6B7280]">
+              This visit is linked to the original follow-up schedule.
             </p>
           )}
         </div>
@@ -2573,7 +2856,7 @@ export default function AddHealthRecord() {
               subtitle="Record updated physiological measurements for this follow-up visit."
               delay={4}
             >
-              <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(4,minmax(0,1fr))]">
+              <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(5,minmax(0,1fr))]">
                 <BpInputGroup
                   systolic={systolicBp}
                   diastolic={diastolicBp}
@@ -2591,6 +2874,12 @@ export default function AddHealthRecord() {
                   placeholder="e.g. 72 bpm"
                   value={pulse}
                   onChange={(event) => setPulse(event.target.value)}
+                />
+                <FieldInput
+                  label="Respiratory Rate"
+                  placeholder="e.g. 18 cpm"
+                  value={respiratoryRate}
+                  onChange={(event) => setRespiratoryRate(event.target.value)}
                 />
                 <FieldInput
                   label="Weight"
@@ -2678,7 +2967,6 @@ export default function AddHealthRecord() {
           >
 
           <ImmunizationVisitFields
-            ageInfo={immunizationPatientInfo}
             entries={immunizationVaccineEntries}
             dateOfVisit={dateOfVisit}
             temperature={temp}
@@ -3307,7 +3595,136 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && (
+        {!patientGateLocked && isHypertensionDiabetic && (
+          <>
+            <FormSection
+              title="Monitoring Details"
+              subtitle="Record the official Hypertension and Diabetic Club monitoring sheet details for this visit."
+              delay={3}
+            >
+              <div className="grid gap-4 lg:grid-cols-2">
+                <FieldInput
+                  label="Blood Pressure (BP)"
+                  required
+                  name="hypertensionDiabeticData.bp"
+                  error={validationErrors["hypertensionDiabeticData.bp"]}
+                  value={hypertensionDiabeticData.bp}
+                  onChange={(event) =>
+                    handleHypertensionDiabeticChange("bp", event.target.value)
+                  }
+                  placeholder="e.g. 120/80 mmHg"
+                />
+                <FieldInput
+                  label="Fasting Blood Sugar (FBS)"
+                  value={hypertensionDiabeticData.fbs}
+                  onChange={(event) =>
+                    handleHypertensionDiabeticChange("fbs", event.target.value)
+                  }
+                  placeholder="e.g. 95 mg/dL"
+                />
+                <RadioChoiceGroup
+                  label="Condition Type"
+                  name="hypertensionDiabeticData.conditionType"
+                  required
+                  value={hypertensionDiabeticData.conditionType}
+                  error={validationErrors["hypertensionDiabeticData.conditionType"]}
+                  helperText="Select HPN for hypertension, DM for diabetes, or BOTH if both conditions apply."
+                  options={HYPERTENSION_DIABETIC_CONDITION_OPTIONS}
+                  onChange={(value) =>
+                    handleHypertensionDiabeticChange("conditionType", value)
+                  }
+                />
+                <RadioChoiceGroup
+                  label="Client Status"
+                  name="hypertensionDiabeticData.clientStatus"
+                  required
+                  value={hypertensionDiabeticData.clientStatus}
+                  error={validationErrors["hypertensionDiabeticData.clientStatus"]}
+                  options={HYPERTENSION_DIABETIC_CLIENT_STATUS_OPTIONS}
+                  onChange={(value) =>
+                    handleHypertensionDiabeticChange("clientStatus", value)
+                  }
+                />
+                <FieldInput
+                  label="Date of Last Consultation"
+                  type="date"
+                  value={hypertensionDiabeticData.dateOfLastConsultation}
+                  onChange={(event) =>
+                    handleHypertensionDiabeticChange(
+                      "dateOfLastConsultation",
+                      event.target.value,
+                    )
+                  }
+                  wrapperClassName="lg:col-span-2"
+                />
+              </div>
+            </FormSection>
+
+            <FormSection
+              title="Treatment / Action Taken"
+              subtitle="Record clinical action, advice, or care plan for this monitoring visit."
+              delay={4}
+            >
+              <FieldTextarea
+                label="Treatment / Action Taken"
+                value={hypertensionDiabeticData.treatmentActionTaken}
+                onChange={(event) => {
+                  handleHypertensionDiabeticChange(
+                    "treatmentActionTaken",
+                    event.target.value,
+                  );
+                  setMedication(event.target.value);
+                }}
+                placeholder="Record advice, treatment, monitoring plan, or care instructions..."
+                rows={4}
+              />
+            </FormSection>
+
+            <FormSection
+              title="Medicines / Supplies Dispensed"
+              subtitle="Optional medicines or supplies given from BHC inventory."
+              delay={5}
+            >
+              <DispensedMedicinesSection
+                inventory={bhcMedicineInventory}
+                value={dispensedMedicines}
+                onChange={setDispensedMedicines}
+                disabled={isEditingRecord}
+              />
+            </FormSection>
+
+            <FormSection
+              title="Follow-up & Referral"
+              subtitle="Schedule a return visit if needed and indicate if RHU referral is required."
+              delay={6}
+            >
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div>
+                  <FieldInput
+                    label="Next Follow-up Date"
+                    type="date"
+                    value={followUpDate}
+                    name="followUpDate"
+                    error={validationErrors.followUpDate}
+                    disabled={needsReferral}
+                    onChange={(event) => {
+                      clearValidationError("followUpDate");
+                      setFollowUpDate(event.target.value);
+                    }}
+                  />
+                </div>
+                <YesNoRadioGroup
+                  label="Needs RHU Referral?"
+                  name="needsReferral"
+                  value={needsReferral ? "Yes" : "No"}
+                  onChange={handleNeedsReferralChange}
+                />
+              </div>
+            </FormSection>
+          </>
+        )}
+
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && (
           <FormSection
             title="Vital Signs"
             subtitle="Record the patient's physiological measurements."
@@ -3352,7 +3769,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && (
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && (
           <FormSection
             title="Consultation Information"
             subtitle="Record the complaint, assessment findings, diagnosis, and treatment."
@@ -3390,7 +3807,7 @@ export default function AddHealthRecord() {
               </div>
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <FieldInput
-                  label="Diagnosis"
+                  label="Diagnosis / Assessment"
                   value={diagnosis}
                   onChange={(event) => setDiagnosis(event.target.value)}
                   placeholder="Initial diagnosis"
@@ -3405,11 +3822,45 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && (
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && (
+          <FormSection
+            title="Morbidity / Notifiable Disease Record"
+            subtitle="Choose whether this visit should appear in the morbidity or notifiable diseases daily log."
+            delay={5}
+          >
+            <LockedFormContent locked={patientGateLocked}>
+              <MorbidityNotifiableReportingSection
+                value={morbidityReportingStatus}
+                onChange={setMorbidityReportingStatus}
+              />
+            </LockedFormContent>
+          </FormSection>
+        )}
+
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && (
+          <FormSection
+            title="Community-Based Surveillance"
+            subtitle="Decide whether this visit should be included in the HFMD surveillance list."
+            delay={6}
+          >
+            <LockedFormContent locked={patientGateLocked}>
+              <YesNoRadioGroup
+                label="Include in HFMD Surveillance List?"
+                name="hfmdSurveillance"
+                value={hfmdSurveillance ? "Yes" : "No"}
+                onChange={(value) =>
+                  setHfmdSurveillance(value === "Yes" || value === true)
+                }
+              />
+            </LockedFormContent>
+          </FormSection>
+        )}
+
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && (
           <FormSection
             title="Medicines / Supplies Dispensed"
             subtitle="Optional medicines or supplies given from BHC inventory."
-            delay={5}
+            delay={7}
           >
             <LockedFormContent locked={patientGateLocked}>
               <DispensedMedicinesSection
@@ -3422,28 +3873,13 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && (
-          <FormSection
-            title="Morbidity / Notifiable Disease Reporting"
-            subtitle="Decide whether this visit should be included in the official morbidity log generated from health records."
-            delay={6}
-          >
-            <LockedFormContent locked={patientGateLocked}>
-              <MorbidityReportingSection
-                value={morbidityReportingStatus}
-                onChange={setMorbidityReportingStatus}
-              />
-            </LockedFormContent>
-          </FormSection>
-        )}
-
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && (
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && (
           <>
             {!usesCareDecisionStep && (
               <FormSection
                 title="Follow-up & Referral"
                 subtitle="Schedule a return visit if needed and indicate if RHU referral is required."
-                delay={7}
+                delay={8}
               >
                 <LockedFormContent locked={patientGateLocked}>
                   <div className="grid gap-4 lg:grid-cols-2">
@@ -3468,6 +3904,13 @@ export default function AddHealthRecord() {
                       onChange={handleNeedsReferralChange}
                     />
                   </div>
+                  {morbidityReportingStatus === "notifiable" && (
+                    <p className="mt-3 text-xs leading-relaxed text-[#64748B]">
+                      Notifiable or surveillance cases may require RHU
+                      coordination and follow-up depending on health center
+                      protocol.
+                    </p>
+                  )}
                 </LockedFormContent>
               </FormSection>
             )}
@@ -4606,24 +5049,24 @@ function MaternalClassificationWarning() {
 const MORBIDITY_REPORTING_OPTIONS = [
   {
     value: "not_included",
-    label: "Not included in morbidity report",
+    label: "Not included",
   },
   {
     value: "morbidity",
-    label: "Include as morbidity case",
+    label: "Include in Morbidity Log",
   },
   {
     value: "notifiable",
-    label: "Include as notifiable disease",
+    label: "Mark as Notifiable Disease",
   },
 ];
 
-function MorbidityReportingSection({ value, onChange }) {
+function MorbidityNotifiableReportingSection({ value, onChange }) {
   return (
     <div className="space-y-4">
       <div data-field="morbidityReportingStatus">
         <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-          Morbidity Reporting Status
+          Reporting Status
         </p>
         <div className="grid gap-2">
           {MORBIDITY_REPORTING_OPTIONS.map((option) => (
@@ -4656,8 +5099,59 @@ function MorbidityReportingSection({ value, onChange }) {
   );
 }
 
+function RadioChoiceGroup({
+  label,
+  name,
+  value,
+  options = [],
+  onChange,
+  helperText,
+  error,
+  required = false,
+}) {
+  return (
+    <div data-field={name} tabIndex={error ? -1 : undefined}>
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+        {label}
+        {required && <span className="ml-1 text-[#B91C1C]">*</span>}
+      </p>
+      <div className="grid gap-2">
+        {options.map((option) => (
+          <label
+            key={option.value}
+            className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#475569]"
+          >
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={value === option.value}
+              onChange={() => onChange(option.value)}
+              className="h-4 w-4 accent-[#B91C1C]"
+            />
+            <span
+              className={
+                value === option.value
+                  ? "font-semibold text-[#B91C1C]"
+                  : "text-[#475569]"
+              }
+            >
+              {option.label}
+            </span>
+          </label>
+        ))}
+      </div>
+      {helperText && (
+        <p className="mt-2 text-xs leading-relaxed text-[#64748B]">
+          {helperText}
+        </p>
+      )}
+      {error && <p className="mt-2 text-[11px] font-medium text-[#B91C1C]">{error}</p>}
+    </div>
+  );
+}
+
 function ImmunizationVisitFields({
-  ageInfo,
   entries,
   dateOfVisit,
   temperature,
@@ -4674,21 +5168,10 @@ function ImmunizationVisitFields({
   onToggleVaccine,
   onNotesChange,
 }) {
-  const showAgeWarning = ageInfo.mode === "unknown";
   const selectedVaccines = new Set(entries.map((entry) => entry.vaccineName));
 
   return (
     <div className="space-y-5">
-      {showAgeWarning && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
-          <AlertCircle size={16} className="mt-0.5 shrink-0" />
-          <p className="text-xs leading-relaxed">
-            Patient age is not available. Please verify the patient's
-            birthdate before recording immunization details.
-          </p>
-        </div>
-      )}
-
       <ClinicalFieldGroup title="Vaccines Given This Visit">
         {errors.vaccineEntries && (
           <p

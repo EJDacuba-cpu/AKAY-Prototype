@@ -34,10 +34,13 @@ import {
 } from "../../utils/filterUtils";
 import {
   getEpiVaccineEntries,
+  getHypertensionDiabeticData,
   getRecordDateValue,
   getRecordId,
   getServiceTypeLabel,
   formatServiceType,
+  formatHypertensionDiabeticClientStatus,
+  formatHypertensionDiabeticCondition,
   isEpiRecord,
   isFamilyPlanningRecord,
   isMaternalRecord,
@@ -73,6 +76,12 @@ const REPORT_TYPES = [
     description: "Diagnosis and notifiable condition reporting from health records.",
   },
   {
+    key: "community_surveillance",
+    slug: "community-based-surveillance",
+    label: "Community-Based Surveillance",
+    description: "Disease-specific surveillance lists generated from marked health records.",
+  },
+  {
     key: "family_planning",
     slug: "family-planning",
     label: "Family Planning",
@@ -81,8 +90,8 @@ const REPORT_TYPES = [
   {
     key: "ncd",
     slug: "ncd",
-    label: "NCD Monitoring",
-    description: "Non-communicable disease monitoring and follow-up reporting.",
+    label: "Hypertension and Diabetic Club Monitoring Sheet",
+    description: "Hypertension and Diabetic Club Monitoring Sheet.",
   },
   {
     key: "maternal",
@@ -136,6 +145,7 @@ const EMPTY_FILTERS = {
   aogRange: "",
   disease: "",
   notifiableStatus: "",
+  surveillanceList: "hfmd",
 };
 
 export default function BHCReports() {
@@ -436,6 +446,8 @@ function SelectedReport(props) {
       return <EpiTargetClientListReportView {...props} />;
     case "morbidity":
       return <MorbidityReportView {...props} />;
+    case "community_surveillance":
+      return <CommunitySurveillanceReportView {...props} />;
     case "followups":
       return <FollowUpReportView {...props} />;
     case "ncd":
@@ -462,7 +474,13 @@ function normalizeReportSlug(value) {
     "follow-up": "follow-ups",
     "follow-up-monitoring": "follow-ups",
     "morbidity-notifiable": "morbidity",
+    surveillance: "community-based-surveillance",
+    "community-surveillance": "community-based-surveillance",
+    "community-based-surveillance": "community-based-surveillance",
+    hfmd: "community-based-surveillance",
     "ncd-monitoring": "ncd",
+    "hypertension-diabetic-monitoring": "ncd",
+    "hypertension-and-diabetic-monitoring": "ncd",
     "maternal-prenatal": "maternal",
   };
 
@@ -696,6 +714,46 @@ function MorbidityReportView({ records, filters, patientMap }) {
   );
 }
 
+function CommunitySurveillanceReportView({ records, filters, patientMap }) {
+  const selectedList = filters.surveillanceList || "hfmd";
+  const rows = records
+    .filter((record) => isCommunitySurveillanceRecord(record, selectedList))
+    .filter(
+      (record) =>
+        matchesDateRange(getRecordDateValue(record), filters) &&
+        matchesValue(getRecordBarangay(record, patientMap), filters.barangay),
+    )
+    .map((record, index) =>
+      normalizeCommunitySurveillanceRow(record, patientMap, index + 1),
+    );
+
+  return (
+    <>
+      <SummaryGrid>
+        <SummaryCard label="HFMD Cases" value={rows.length} icon={<ClipboardList size={16} />} />
+        <SummaryCard
+          label="Areas / Sitios"
+          value={new Set(rows.map((row) => row.areaSitio).filter(Boolean)).size}
+          icon={<UsersRound size={16} />}
+        />
+        <SummaryCard
+          label="This Week"
+          value={rows.filter((row) => isDateInPreset(row.date, "this_week")).length}
+          tone="amber"
+          icon={<FileHeart size={16} />}
+        />
+        <SummaryCard
+          label="Included"
+          value={rows.length}
+          tone="emerald"
+          icon={<Stethoscope size={16} />}
+        />
+      </SummaryGrid>
+      <CommunitySurveillanceTable rows={rows} />
+    </>
+  );
+}
+
 function matchesDisease(record, disease) {
   if (!disease) return true;
   return recordContains(record, disease);
@@ -752,35 +810,56 @@ function FollowUpReportView({ followUps, filters }) {
 function NcdReportView({ records, filters, patientMap }) {
   const rows = records
     .filter(isNcdRecord)
-    .map((record) => normalizeProgramRecord(record, patientMap))
+    .map((record, index) =>
+      normalizeHypertensionDiabeticReportRow(record, patientMap, index + 1),
+    )
     .filter(
-      (record) =>
-        matchesDateRange(record.date, filters) &&
-        matchesValue(record.barangay, filters.barangay) &&
-        matchesCondition(record.raw, filters.conditionType) &&
-        matchesValue(record.raw.status, filters.status),
+      (row) =>
+        matchesDateRange(row.date, filters) &&
+        matchesValue(row.barangay, filters.barangay) &&
+        matchesCondition(row.conditionType, filters.conditionType) &&
+        matchesValue(row.status, filters.status),
     );
+  const hpnCount = rows.filter((row) => row.conditionType === "hpn").length;
+  const dmCount = rows.filter((row) => row.conditionType === "dm").length;
+  const bothCount = rows.filter((row) => row.conditionType === "both").length;
 
   return (
     <>
       <SummaryGrid>
-        <SummaryCard label="NCD Visits" value={rows.length} icon={<HeartPulse size={16} />} />
-        <SummaryCard label="Hypertension" value={rows.filter((row) => recordContains(row.raw, "hypertension")).length} icon={<FileHeart size={16} />} />
-        <SummaryCard label="Diabetes" value={rows.filter((row) => recordContains(row.raw, "diabetes")).length} tone="amber" icon={<ClipboardList size={16} />} />
+        <SummaryCard label="Target Clients" value={rows.length} icon={<HeartPulse size={16} />} />
+        <SummaryCard label="HPN" value={hpnCount} icon={<FileHeart size={16} />} />
+        <SummaryCard label="DM" value={dmCount} tone="amber" icon={<ClipboardList size={16} />} />
+        <SummaryCard label="BOTH" value={bothCount} tone="emerald" icon={<UsersRound size={16} />} />
       </SummaryGrid>
       <ReportTable
-        columns={["Record ID", "Date", "Patient", "Barangay", "Condition", "BP", "Status"]}
-        rows={rows.map((row) => [
-          `#${getRecordId(row.raw)}`,
-          formatDate(row.date, "Not recorded"),
+        columns={[
+          "No.",
+          "Name",
+          "Address",
+          "Age",
+          "BP",
+          "FBS",
+          "HPN / DM / BOTH",
+          "Old / New",
+          "Date of Last Consultation",
+          "Date of Follow-up Check-up",
+        ]}
+        rows={rows.map((row, index) => [
+          index + 1,
           row.patientName,
-          row.barangay || "Not recorded",
-          inferCondition(row.raw),
-          formatBloodPressure(row.raw),
-          row.raw.status || "Not recorded",
+          row.address || EMPTY_MARK,
+          row.age || EMPTY_MARK,
+          row.bp || EMPTY_MARK,
+          row.fbs || EMPTY_MARK,
+          formatHypertensionDiabeticCondition(row.conditionType) || EMPTY_MARK,
+          formatHypertensionDiabeticClientStatus(row.clientStatus) || EMPTY_MARK,
+          formatDate(row.dateOfLastConsultation, EMPTY_MARK),
+          formatDate(row.followUpDate, EMPTY_MARK),
         ])}
-        emptyTitle="No NCD monitoring records"
-        emptyMessage="No NCD records match the selected filters."
+        emptyTitle="No Hypertension / Diabetic Monitoring records"
+        emptyMessage="No hypertension or diabetic monitoring records match the selected filters."
+        minWidth="min-w-[1180px]"
       />
     </>
   );
@@ -1110,6 +1189,86 @@ function MorbidityDailyLogTable({ rows }) {
   );
 }
 
+function CommunitySurveillanceTable({ rows }) {
+  const columns = [
+    "Week",
+    "Date",
+    "No.",
+    "Name of Child",
+    "Age",
+    "Birthday",
+    "Area / Sitio",
+    "Signs and Symptoms",
+  ];
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 px-4 py-3 text-center">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#0F172A]">
+          Community-Based Surveillance
+        </p>
+        <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
+          List of Hand, Foot, and Mouth Disease Cases
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1200px] text-left">
+          <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            <tr className="border-b border-slate-200">
+              {columns.map((column) => (
+                <th key={column} className="whitespace-nowrap border-r border-slate-200 px-3 py-3 align-top">
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 text-sm">
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length} className="px-6 py-16 text-center">
+                  <FileText className="mx-auto text-slate-300" size={28} />
+                  <p className="mt-3 font-semibold text-slate-600">
+                    No HFMD surveillance cases
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    No notifiable records marked for the HFMD surveillance list match the selected filters.
+                  </p>
+                </td>
+              </tr>
+            ) : (
+              rows.map((row, index) => (
+                <tr key={`${row.patientId || row.name}-${row.date}-${index}`} className="hover:bg-slate-50/70">
+                  {[
+                    row.week,
+                    formatDate(row.date, EMPTY_MARK),
+                    row.number,
+                    row.name,
+                    row.age,
+                    formatDate(row.birthday, EMPTY_MARK),
+                    row.areaSitio,
+                    row.signsSymptoms,
+                  ].map((value, columnIndex) => (
+                    <td
+                      key={`${index}-${columnIndex}`}
+                      className={`border-r border-slate-100 px-3 py-3 align-top ${
+                        columnIndex === 3
+                          ? "font-semibold text-[#0F172A]"
+                          : "text-slate-600"
+                      }`}
+                    >
+                      {formatDisplayValue(value, EMPTY_MARK)}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function PrintReportHeader({ title, filters }) {
   return (
     <div className="hidden print:block">
@@ -1182,7 +1341,7 @@ function getReportFilterFields(type, barangays, facilities) {
       "Child Health / EPI",
       "Maternal / Prenatal",
       "Family Planning",
-      "NCD Monitoring",
+      "Hypertension / Diabetic Monitoring",
       "TB DOTS / TB Monitoring",
     ],
   };
@@ -1227,6 +1386,20 @@ function getReportFilterFields(type, barangays, facilities) {
         { key: "disease", label: "Disease / Diagnosis", type: "text", placeholder: "Search diagnosis" },
         { key: "notifiableStatus", label: "Notifiable Status", type: "select", resetValue: "", placeholder: "All Records", options: ["Notifiable", "Non-notifiable"] },
       ];
+    case "community_surveillance":
+      return [
+        dateField,
+        barangay,
+        {
+          key: "surveillanceList",
+          label: "Surveillance List",
+          type: "select",
+          resetValue: "hfmd",
+          options: [
+            { value: "hfmd", label: "Hand, Foot, and Mouth Disease" },
+          ],
+        },
+      ];
     case "followups":
       return [
         dateField,
@@ -1238,7 +1411,7 @@ function getReportFilterFields(type, barangays, facilities) {
       return [
         dateField,
         barangay,
-        { key: "conditionType", label: "Condition Type", type: "select", resetValue: "", placeholder: "All Conditions", options: ["Hypertension", "Diabetes", "Other"] },
+        { key: "conditionType", label: "Condition Type", type: "select", resetValue: "", placeholder: "All Conditions", options: ["HPN", "DM", "BOTH"] },
         status(["Pending", "Active", "Completed"]),
       ];
     case "maternal":
@@ -1276,6 +1449,44 @@ function normalizeProgramRecord(record, patientMap) {
   };
 }
 
+function normalizeHypertensionDiabeticReportRow(record, patientMap, number) {
+  const normalized = normalizeProgramRecord(record, patientMap);
+  const patient =
+    record.patient && typeof record.patient === "object"
+      ? record.patient
+      : patientMap.get(normalized.patientId) || {};
+  const data = getHypertensionDiabeticData(record);
+  const birthday = getPatientBirthDate(patient, record);
+
+  return {
+    ...normalized,
+    number,
+    patientName: normalized.patientName,
+    address: firstFilledValue(
+      patient.address,
+      patient.completeAddress,
+      patient.complete_address,
+      record.patientAddress,
+      record.patient_address,
+      normalized.barangay,
+    ),
+    age: getPatientAge(patient, record, birthday),
+    bp: data.bp,
+    fbs: data.fbs,
+    conditionType: data.conditionType,
+    clientStatus: data.clientStatus,
+    dateOfLastConsultation: data.dateOfLastConsultation,
+    followUpDate:
+      record.followUpDate ||
+      record.follow_up_date ||
+      record.monitoringData?.followUpDate ||
+      record.monitoring_data?.followUpDate ||
+      record.monitoring_data?.follow_up_date ||
+      "",
+    status: record.status || record.followUpStatus || record.follow_up_status || "",
+  };
+}
+
 function normalizeMorbidityLogRow(record, patientMap) {
   const normalized = normalizeProgramRecord(record, patientMap);
   const patient =
@@ -1298,10 +1509,32 @@ function normalizeMorbidityLogRow(record, patientMap) {
   };
 }
 
+function normalizeCommunitySurveillanceRow(record, patientMap, number) {
+  const normalized = normalizeMorbidityLogRow(record, patientMap);
+  const patient =
+    record.patient && typeof record.patient === "object"
+      ? record.patient
+      : patientMap.get(normalized.patientId) || {};
+
+  return {
+    ...normalized,
+    number,
+    week: getWeekNumber(normalized.date),
+    name: normalized.patientName,
+    age: formatPatientAgeAtDate(normalized.birthday, normalized.date),
+    areaSitio: getPatientAreaSitio(patient, record),
+  };
+}
+
 function isMorbidityReportRecord(record = {}) {
   return ["morbidity", "notifiable"].includes(
     getMorbidityReportingStatus(record),
   );
+}
+
+function isCommunitySurveillanceRecord(record = {}, surveillanceList = "hfmd") {
+  if (surveillanceList !== "hfmd") return false;
+  return getHfmdSurveillance(record) || getSurveillanceCategory(record) === "hfmd";
 }
 
 function getMorbidityReportingStatus(record = {}) {
@@ -1343,6 +1576,54 @@ function getMorbidityReportingStatus(record = {}) {
   return notifiable ? "notifiable" : "morbidity";
 }
 
+function getSurveillanceCategory(record = {}) {
+  const monitoringData = record.monitoringData || record.monitoring_data || {};
+  return normalizeSurveillanceCategory(
+    firstFilledValue(
+      record.surveillanceCategory,
+      record.surveillance_category,
+      record.diseaseSurveillanceCategory,
+      record.disease_surveillance_category,
+      record.diseaseCategory,
+      record.disease_category,
+      monitoringData.surveillanceCategory,
+      monitoringData.surveillance_category,
+      monitoringData.diseaseSurveillanceCategory,
+      monitoringData.disease_surveillance_category,
+      monitoringData.diseaseCategory,
+      monitoringData.disease_category,
+    ),
+  );
+}
+
+function getHfmdSurveillance(record = {}) {
+  const monitoringData = record.monitoringData || record.monitoring_data || {};
+  const explicit = firstFilledValue(
+    record.hfmdSurveillance,
+    record.hfmd_surveillance,
+    monitoringData.hfmdSurveillance,
+    monitoringData.hfmd_surveillance,
+  );
+
+  if (explicit !== "") return toReportBoolean(explicit);
+  return getSurveillanceCategory(record) === "hfmd";
+}
+
+function normalizeSurveillanceCategory(value = "") {
+  const normalized = normalizeText(value);
+  if (!normalized) return "";
+  if (
+    normalized === "hfmd" ||
+    normalized.includes("hand, foot") ||
+    normalized.includes("hand foot") ||
+    normalized.includes("mouth disease")
+  ) {
+    return "hfmd";
+  }
+  if (normalized === "other") return "other";
+  return normalized;
+}
+
 function normalizeMorbidityStatus(value) {
   const normalized = normalizeText(value).replace(/\s+/g, "_");
   return ["not_included", "morbidity", "notifiable"].includes(normalized)
@@ -1353,6 +1634,14 @@ function normalizeMorbidityStatus(value) {
 function toReportBoolean(value) {
   const normalized = normalizeText(value);
   return value === true || ["true", "yes", "1"].includes(normalized);
+}
+
+function getWeekNumber(value) {
+  const date = parseDateOnly(value);
+  if (!date) return EMPTY_MARK;
+  const start = new Date(date.getFullYear(), 0, 1);
+  const dayOfYear = Math.floor((date - start) / 86400000) + 1;
+  return Math.ceil((dayOfYear + start.getDay()) / 7);
 }
 
 function getPatientBirthDate(patient = {}, record = {}) {
@@ -1370,6 +1659,38 @@ function getPatientBirthDate(patient = {}, record = {}) {
   );
 }
 
+function getPatientAreaSitio(patient = {}, record = {}) {
+  return firstFilledValue(
+    patient.purokArea,
+    patient.purok_area,
+    patient.purok,
+    patient.sitio,
+    patient.area,
+    record.purokArea,
+    record.purok_area,
+    record.purok,
+    record.sitio,
+    record.area,
+    patient.address,
+    record.patientAddress,
+    record.patient_address,
+    patient.barangay,
+    record.barangay,
+  );
+}
+
+function getRecordBarangay(record = {}, patientMap = new Map()) {
+  const patientId = String(
+    record.patientId || record.patient_id || record.patient?.id || "",
+  );
+  const patient =
+    record.patient && typeof record.patient === "object"
+      ? record.patient
+      : patientMap.get(patientId) || {};
+
+  return firstFilledValue(patient.barangay, record.barangay);
+}
+
 function getPatientAge(patient = {}, record = {}, birthday = "") {
   return (
     calculateAgeYears(birthday) ||
@@ -1380,6 +1701,39 @@ function getPatientAge(patient = {}, record = {}, birthday = "") {
       record.age,
     )
   );
+}
+
+function formatPatientAgeAtDate(birthdate, referenceDate) {
+  const birth = parseDateOnly(birthdate);
+  const reference = parseDateOnly(referenceDate);
+  if (!birth || !reference || reference < birth) return EMPTY_MARK;
+
+  const ageInDays = daysBetween(birth, reference);
+  if (ageInDays < 30) {
+    return `${ageInDays} ${ageInDays === 1 ? "day" : "days"}`;
+  }
+
+  let months =
+    (reference.getFullYear() - birth.getFullYear()) * 12 +
+    (reference.getMonth() - birth.getMonth());
+  if (reference.getDate() < birth.getDate()) months -= 1;
+
+  if (months < 12) {
+    const safeMonths = Math.max(months, 1);
+    return `${safeMonths} ${safeMonths === 1 ? "month" : "months"}`;
+  }
+
+  let years = reference.getFullYear() - birth.getFullYear();
+  const birthdayThisYear = new Date(
+    reference.getFullYear(),
+    birth.getMonth(),
+    birth.getDate(),
+  );
+  if (reference < birthdayThisYear) years -= 1;
+
+  return years >= 0
+    ? `${years} ${years === 1 ? "year" : "years"}`
+    : EMPTY_MARK;
 }
 
 function getPatientSex(patient = {}, record = {}) {
@@ -1967,12 +2321,14 @@ function matchesAgeRange(age, range) {
   return value >= 50;
 }
 
-function matchesCondition(record, condition) {
+function matchesCondition(value, condition) {
   if (!condition) return true;
-  if (condition === "Other") {
-    return !recordContains(record, "hypertension") && !recordContains(record, "diabetes");
-  }
-  return recordContains(record, condition);
+  const normalizedValue = normalizeText(value);
+  const normalizedCondition = normalizeText(condition);
+  if (normalizedCondition === "hpn") return normalizedValue === "hpn";
+  if (normalizedCondition === "dm") return normalizedValue === "dm";
+  if (normalizedCondition === "both") return normalizedValue === "both";
+  return normalizedValue === normalizedCondition;
 }
 
 function matchesAog(value, range) {
@@ -2007,12 +2363,6 @@ function recordContains(record, term) {
       .filter(Boolean)
       .join(" "),
   ).includes(normalizeText(term));
-}
-
-function inferCondition(record) {
-  if (recordContains(record, "hypertension")) return "Hypertension";
-  if (recordContains(record, "diabetes")) return "Diabetes";
-  return record.diagnosis || "Other";
 }
 
 function formatBloodPressure(record) {

@@ -166,12 +166,15 @@ export function normalizeServiceType(value = "") {
   if (
     normalized === "ncd" ||
     normalized.includes("ncd monitoring") ||
+    normalized.includes("hypertension diabetic") ||
+    normalized.includes("hypertension and diabetic") ||
     normalized.includes("hypertension") ||
+    normalized.includes("diabetic") ||
     normalized.includes("diabetes") ||
     normalized.includes("non communicable") ||
     normalized.includes("senior citizen")
   ) {
-    return "NCD Monitoring";
+    return "Hypertension / Diabetic Monitoring";
   }
   if (
     normalized === "tb" ||
@@ -220,6 +223,13 @@ export function getRecordSearchText(record = {}) {
   const maternalData = record.maternalData || record.maternal_data || {};
   const familyPlanningData =
     record.familyPlanningData || record.family_planning_data || {};
+  const monitoringData = record.monitoringData || record.monitoring_data || {};
+  const hypertensionDiabeticData =
+    monitoringData.hypertensionDiabeticData ||
+    monitoringData.hypertension_diabetic_data ||
+    record.hypertensionDiabeticData ||
+    record.hypertension_diabetic_data ||
+    {};
 
   return [
     getRecordClassificationText(record),
@@ -229,6 +239,10 @@ export function getRecordSearchText(record = {}) {
     record.notes,
     record.medicalHistory,
     record.medical_history,
+    monitoringData.conditionType,
+    monitoringData.condition_type,
+    hypertensionDiabeticData.conditionType,
+    hypertensionDiabeticData.condition_type,
     maternalData.recordType,
     familyPlanningData.clientType,
     familyPlanningData.methodUsed,
@@ -270,9 +284,126 @@ export function isNcdRecord(record = {}) {
   return hasAnyTerm(record, [
     "ncd",
     "hypertension",
+    "diabetic",
     "diabetes",
     "non communicable",
+    "senior citizen",
   ]);
+}
+
+function readFirstValue(source = {}, keys = []) {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+
+  return "";
+}
+
+export function getHypertensionDiabeticData(record = {}) {
+  const monitoringData = record.monitoringData || record.monitoring_data || {};
+  const nested =
+    monitoringData.hypertensionDiabeticData ||
+    monitoringData.hypertension_diabetic_data ||
+    record.hypertensionDiabeticData ||
+    record.hypertension_diabetic_data ||
+    {};
+  const merged = {
+    ...monitoringData,
+    ...nested,
+    ...record,
+  };
+
+  return {
+    bp: readFirstValue(merged, ["bp", "bloodPressure", "blood_pressure"]) ||
+      formatBpFromParts(record),
+    fbs: readFirstValue(merged, [
+      "fbs",
+      "fastingBloodSugar",
+      "fasting_blood_sugar",
+      "bloodSugar",
+      "blood_sugar",
+    ]),
+    conditionType: normalizeHypertensionDiabeticCondition(
+      readFirstValue(merged, ["conditionType", "condition_type"]),
+    ),
+    clientStatus: normalizeHypertensionDiabeticClientStatus(
+      readFirstValue(merged, ["clientStatus", "client_status"]),
+    ),
+    dateOfLastConsultation: readFirstValue(merged, [
+      "dateOfLastConsultation",
+      "date_of_last_consultation",
+      "lastConsultationDate",
+      "last_consultation_date",
+    ]),
+    treatmentActionTaken: readFirstValue(merged, [
+      "treatmentActionTaken",
+      "treatment_action_taken",
+      "actionTaken",
+      "action_taken",
+      "treatment",
+      "medication",
+      "treatmentNotes",
+      "treatment_notes",
+      "initialActionsTaken",
+      "initial_actions_taken",
+    ]),
+  };
+}
+
+export function normalizeHypertensionDiabeticCondition(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "";
+  if (["hpn", "hypertension", "high blood pressure"].includes(normalized)) {
+    return "hpn";
+  }
+  if (["dm", "diabetes", "diabetic", "diabetes mellitus"].includes(normalized)) {
+    return "dm";
+  }
+  if (["both", "hpn/dm", "hpn dm", "hypertension diabetes"].includes(normalized)) {
+    return "both";
+  }
+  return normalized;
+}
+
+export function formatHypertensionDiabeticCondition(value = "") {
+  const normalized = normalizeHypertensionDiabeticCondition(value);
+  if (normalized === "hpn") return "HPN";
+  if (normalized === "dm") return "DM";
+  if (normalized === "both") return "BOTH";
+  return value || "";
+}
+
+export function normalizeHypertensionDiabeticClientStatus(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["new", "old"].includes(normalized)) return normalized;
+  return normalized;
+}
+
+export function formatHypertensionDiabeticClientStatus(value = "") {
+  const normalized = normalizeHypertensionDiabeticClientStatus(value);
+  if (normalized === "new") return "New";
+  if (normalized === "old") return "Old";
+  return value || "";
+}
+
+function formatBpFromParts(record = {}) {
+  const systolic =
+    record.systolicBp ||
+    record.systolic_bp ||
+    record.vitalSigns?.systolicBp ||
+    record.vitalSigns?.systolic_bp ||
+    record.vital_signs?.systolicBp ||
+    record.vital_signs?.systolic_bp;
+  const diastolic =
+    record.diastolicBp ||
+    record.diastolic_bp ||
+    record.vitalSigns?.diastolicBp ||
+    record.vitalSigns?.diastolic_bp ||
+    record.vital_signs?.diastolicBp ||
+    record.vital_signs?.diastolic_bp;
+
+  return systolic || diastolic ? `${systolic || "N/A"}/${diastolic || "N/A"}` : "";
 }
 
 export function isTbRecord(record = {}) {

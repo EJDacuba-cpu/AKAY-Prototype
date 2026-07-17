@@ -236,7 +236,10 @@ export default function HealthRecords() {
         { value: "General Consultation", label: "General Consultation" },
         { value: "Maternal / Prenatal", label: "Maternal / Prenatal" },
         { value: "Child Health / EPI", label: "Child Health / EPI" },
-        { value: "NCD Monitoring", label: "NCD Monitoring" },
+        {
+          value: "Hypertension / Diabetic Monitoring",
+          label: "Hypertension / Diabetic Monitoring",
+        },
         { value: "Family Planning", label: "Family Planning" },
         { value: "TB DOTS / TB Monitoring", label: "TB DOTS / TB Monitoring" },
       ],

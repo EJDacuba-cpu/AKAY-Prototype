@@ -3,8 +3,8 @@ import { Link, useNavigate, useParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  CalendarClock,
   Check,
+  ChevronRight,
   ClipboardList,
   Eye,
   FileText,
@@ -41,7 +41,6 @@ import {
 import {
   getRecordIdLabel,
   getServiceTypeLabel,
-  hasSpecializedRecords,
 } from "../../utils/healthRecordPrograms";
 import { queryKeys } from "../../utils/queryKeys";
 
@@ -66,7 +65,6 @@ const TAB_LABELS = {
   general: "General",
   records: "Health Records",
   specialized: "Specialized Records",
-  followups: "Follow-ups",
   referrals: "Referral History",
 };
 
@@ -126,7 +124,6 @@ export default function PatientDetails() {
 
   const {
     data: followUpTasksData = [],
-    isLoading: followUpsLoading,
     isFetching: followUpsFetching,
     error: followUpsError,
     refetch: refetchFollowUps,
@@ -313,7 +310,10 @@ export default function PatientDetails() {
       effectiveState: getEffectiveFollowUpState(task),
     }))
     .sort((a, b) => getDateTimeValue(b) - getDateTimeValue(a));
-  const hasSpecialized = hasSpecializedRecords(records);
+  const activePatientFollowUp =
+    patientFollowUps
+      .filter((task) => isActiveFollowUpState(task.effectiveState))
+      .sort((a, b) => getDateTimeValue(a) - getDateTimeValue(b))[0] || null;
   const visibleRecords = showAllRecords ? records : records.slice(0, 5);
   const visibleReferrals = showAllReferrals
     ? referrals
@@ -390,7 +390,11 @@ export default function PatientDetails() {
           </div>
 
           <div className="grid min-w-0 gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
-            <QuickPatientProfile patient={patient} patientId={patientId} />
+            <QuickPatientProfile
+              patient={patient}
+              patientId={patientId}
+              activeFollowUp={activePatientFollowUp}
+            />
 
 <section className="min-w-0">
   <nav
@@ -398,14 +402,10 @@ export default function PatientDetails() {
     aria-label="Patient chart sections"
   >
     {Object.entries(TAB_LABELS).map(([key, label]) => {
-      if (key === "specialized" && !hasSpecialized) return null;
-
       const count =
         key === "records"
           ? records.length
-          : key === "followups"
-            ? patientFollowUps.length
-            : key === "referrals"
+          : key === "referrals"
               ? referrals.length
               : null;
 
@@ -450,6 +450,7 @@ export default function PatientDetails() {
                   isFetching={recordsFetching}
                   isError={Boolean(recordsError)}
                   showAll={showAllRecords}
+                  followUpTasks={patientFollowUps}
                   onToggleShowAll={() => setShowAllRecords((value) => !value)}
                   onView={(recordId) =>
                     navigate(`/bhc/health-records/${recordId}`)
@@ -457,19 +458,11 @@ export default function PatientDetails() {
                 />
               )}
 
-              {activeTab === "specialized" && hasSpecialized && (
-                <SpecializedRecordsTab records={records} basePath="/bhc" />
-              )}
-
-              {activeTab === "followups" && (
-                <PatientFollowUpsTab
-                  tasks={patientFollowUps}
-                  isLoading={followUpsLoading}
-                  isFetching={followUpsFetching}
-                  isError={Boolean(followUpsError)}
-                  onViewRecord={(recordId) =>
-                    navigate(`/bhc/health-records/${recordId}`)
-                  }
+              {activeTab === "specialized" && (
+                <SpecializedRecordsTab
+                  records={records}
+                  patient={patient}
+                  basePath="/bhc"
                 />
               )}
 
@@ -515,7 +508,7 @@ export default function PatientDetails() {
   );
 }
 
-function QuickPatientProfile({ patient, patientId }) {
+function QuickPatientProfile({ patient, patientId, activeFollowUp }) {
   const patientName = formatPatientName(patient, "Unnamed Patient");
   const ageSex = [
     getPatientValue(patient, ["age"], ""),
@@ -537,6 +530,15 @@ function QuickPatientProfile({ patient, patientId }) {
         <span className="mt-2 inline-flex rounded-md border border-red-100 bg-red-50 px-2 py-1 font-mono text-[10px] font-bold text-[#B91C1C]">
           ID #{patient.patientId || patientId}
         </span>
+        {activeFollowUp && (
+          <div className="mt-2 flex justify-center">
+            <FollowUpStateBadge
+              state={activeFollowUp.effectiveState}
+              date={activeFollowUp.dueDate}
+              context="profile"
+            />
+          </div>
+        )}
       </div>
       <dl className="mt-5 divide-y divide-slate-100 border-t border-slate-100 pt-3">
         <QuickDetail label="Age / Sex" value={ageSex} />
@@ -608,14 +610,18 @@ function GeneralPatientTab({
       ["relationshipToHouseholdHead", "relationship_to_household_head"],
     ],
   ];
-  const hasParentData = parentFields.some(([, keys]) =>
-    hasDisplayValue(getPatientValue(patient, keys, "")),
-  );
   const linkedMother =
     patient.motherPatient || patient.mother_patient || patient.mother || null;
   const linkedMotherName = linkedMother
     ? formatPatientName(linkedMother, "")
     : "";
+  const displayMotherName =
+    getPatientValue(patient, ["motherName", "mother_name"], "") ||
+    linkedMotherName;
+  const hasParentData =
+    parentFields.some(([, keys]) =>
+      hasDisplayValue(getPatientValue(patient, keys, "")),
+    ) || hasDisplayValue(displayMotherName);
   const birthFields = [
     ["Birth Place", ["birthPlace", "birth_place"]],
     ["Time of Birth", ["birthTime", "birth_time"]],
@@ -627,7 +633,6 @@ function GeneralPatientTab({
   );
   const showChildSections =
     hasParentData ||
-    hasDisplayValue(linkedMotherName) ||
     hasBirthData ||
     Number(getPatientValue(patient, ["age"], 99)) < 18;
 
@@ -800,16 +805,16 @@ function GeneralPatientTab({
         <DetailItem label="Municipality / City" value={getPatientValue(patient, ["municipality", "city"])} />
       </RegistrationSection>
 
-      {(hasParentData || hasDisplayValue(linkedMotherName)) && (
+      {hasParentData && (
         <RegistrationSection
           title="Parent / Household Information"
           description="Parent and guardian details saved for this patient."
         >
-          {hasDisplayValue(linkedMotherName) && (
-            <DetailItem label="Linked Mother Patient" value={linkedMotherName} />
-          )}
           {parentFields.map(([label, keys]) => {
-            const value = getPatientValue(patient, keys, "");
+            const value =
+              label === "Mother Name"
+                ? displayMotherName
+                : getPatientValue(patient, keys, "");
             return hasDisplayValue(value) ? (
               <DetailItem
                 key={label}
@@ -918,7 +923,7 @@ function EditLinkedMotherSelect({
   return (
     <label className="min-w-0">
       <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
-        Linked Mother Patient
+        Registered Mother Link
       </span>
       <input
         type="search"
@@ -950,6 +955,7 @@ function HealthRecordsTab({
   isFetching,
   isError,
   showAll,
+  followUpTasks = [],
   onToggleShowAll,
   onView,
 }) {
@@ -968,18 +974,20 @@ function HealthRecordsTab({
         />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[620px] text-left">
+          <table className="w-full min-w-[720px] text-left">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                 <th className="px-5 py-3">Record ID</th>
                 <th className="px-4 py-3">Date of Visit</th>
                 <th className="px-4 py-3">Service Type</th>
+                <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
               {visibleRecords.map((record) => {
                 const recordId = getHealthRecordId(record);
+                const followUpState = getRecordFollowUpState(record, followUpTasks);
                 return (
                   <tr key={recordId} className="transition hover:bg-slate-50/80">
                     <td className="whitespace-nowrap px-5 py-4 font-mono text-xs font-bold text-[#B91C1C]">
@@ -991,13 +999,24 @@ function HealthRecordsTab({
                     <td className="px-4 py-4 text-xs font-semibold text-[#0F172A]">
                       {getServiceTypeLabel(record)}
                     </td>
+                    <td className="whitespace-nowrap px-4 py-4">
+                      {followUpState ? (
+                        <FollowUpStateBadge state={followUpState} />
+                      ) : (
+                        <span className="text-sm font-semibold text-slate-300">
+                          &mdash;
+                        </span>
+                      )}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-4 text-right">
                       <button
                         type="button"
                         onClick={() => onView(recordId)}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
+                        aria-label="View health record"
+                        title="View health record"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-[#0F172A] shadow-sm transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
                       >
-                        <Eye size={12} /> View Record
+                        <ChevronRight size={16} />
                       </button>
                     </td>
                   </tr>
@@ -1018,73 +1037,6 @@ function HealthRecordsTab({
       <SoftLoadingOverlay
         isVisible={isLoading || (isFetching && records.length > 0)}
         message={isLoading ? "Loading records..." : "Refreshing records..."}
-      />
-    </div>
-  );
-}
-
-function PatientFollowUpsTab({
-  tasks,
-  isLoading,
-  isFetching,
-  isError,
-  onViewRecord,
-}) {
-  return (
-    <div className="relative overflow-hidden rounded-xl border border-slate-200">
-      <TabHeader
-        title="Follow-up Monitoring"
-        subtitle="Scheduled return visits and their monitoring status."
-      />
-      {isError && tasks.length === 0 ? (
-        <TabErrorState message="Unable to load follow-up tasks right now." />
-      ) : tasks.length === 0 && !isLoading ? (
-        <TabEmptyState
-          icon={<CalendarClock size={32} />}
-          message="No follow-up tasks found for this patient."
-        />
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[680px] text-left">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                <th className="px-5 py-3">Service Type</th>
-                <th className="px-4 py-3">Next Follow-up Date</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
-              {tasks.map((task) => (
-                <tr key={task.id} className="transition hover:bg-slate-50/80">
-                  <td className="px-5 py-4 font-semibold text-[#0F172A]">
-                    {getHealthRecordType(task.healthRecord)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-4 text-slate-600">
-                    {formatDate(task.dueDate, "Not recorded")}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-4">
-                    <FollowUpStateBadge state={task.effectiveState} />
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-4 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onViewRecord(task.healthRecordId)}
-                      disabled={!task.healthRecordId}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Eye size={12} /> View Record
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <SoftLoadingOverlay
-        isVisible={isLoading || (isFetching && tasks.length > 0)}
-        message={isLoading ? "Loading follow-ups..." : "Refreshing follow-ups..."}
       />
     </div>
   );
@@ -1229,7 +1181,7 @@ function ShowAllButton({ showAll, count, noun, onClick }) {
   );
 }
 
-function FollowUpStateBadge({ state }) {
+function FollowUpStateBadge({ state, date, context = "row" }) {
   const styles = {
     upcoming: "border-slate-200 bg-slate-50 text-slate-600",
     rescheduled: "border-slate-200 bg-slate-50 text-slate-600",
@@ -1246,6 +1198,20 @@ function FollowUpStateBadge({ state }) {
     fulfilled: "Completed",
     cancelled: "Cancelled",
   };
+  const profileLabels = {
+    upcoming: "Pending Follow-up",
+    rescheduled: "Pending Follow-up",
+    due_today: "Due Today",
+    no_show: "No Show",
+    fulfilled: "Completed",
+    cancelled: "Cancelled",
+  };
+
+  const label =
+    context === "profile"
+      ? profileLabels[state] || "Pending Follow-up"
+      : labels[state] || "Pending";
+  const dateText = date ? formatDate(date, "") : "";
 
   return (
     <span
@@ -1253,7 +1219,7 @@ function FollowUpStateBadge({ state }) {
         styles[state] || styles.upcoming
       }`}
     >
-      {labels[state] || "Pending"}
+      {dateText ? `${label} \u2022 ${dateText}` : label}
     </span>
   );
 }
@@ -1430,8 +1396,35 @@ function getHealthRecordDate(record = {}) {
   );
 }
 
-function getHealthRecordType(record = {}) {
-  return getServiceTypeLabel(record, "Not recorded");
+function getRecordFollowUpState(record = {}, tasks = []) {
+  const recordId = getHealthRecordId(record);
+  if (!recordId) return "";
+
+  const linkedTasks = tasks
+    .filter((task) => getFollowUpTaskRecordId(task) === recordId)
+    .sort((a, b) => getDateTimeValue(a) - getDateTimeValue(b));
+  const activeTask = linkedTasks.find((task) =>
+    isActiveFollowUpState(task.effectiveState),
+  );
+  if (activeTask) return activeTask.effectiveState;
+
+  const completedTask = linkedTasks.find(
+    (task) => task.effectiveState === "fulfilled",
+  );
+  return completedTask ? "fulfilled" : "";
+}
+
+function getFollowUpTaskRecordId(task = {}) {
+  return String(
+    task.healthRecordId ||
+      task.health_record_id ||
+      getHealthRecordId(task.healthRecord) ||
+      "",
+  );
+}
+
+function isActiveFollowUpState(state) {
+  return ["upcoming", "due_today", "no_show", "rescheduled"].includes(state);
 }
 
 function getReferralDate(referral = {}) {

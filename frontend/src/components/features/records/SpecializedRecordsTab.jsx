@@ -7,11 +7,14 @@ import {
   getConfirmedBreastfeedingMonths,
   getEpiBreastfeedingMonitoring,
   getEpiVaccineEntries,
+  getHypertensionDiabeticData,
   getRecordClassificationText,
   getRecordDateValue,
   getRecordId,
   getRecordTimeValue,
   getRecordValue,
+  formatHypertensionDiabeticClientStatus,
+  formatHypertensionDiabeticCondition,
   isEpiRecord,
   isFamilyPlanningRecord,
   isMaternalRecord,
@@ -21,12 +24,22 @@ import {
 } from "../../../utils/healthRecordPrograms";
 import { formatDate, formatDisplayValue } from "../../../utils/formatters";
 
-export default function SpecializedRecordsTab({ records = [], basePath = "/bhc" }) {
-  const epiRecords = records.filter(isEpiRecord);
-  const maternalRecords = records.filter(isMaternalRecord);
-  const fpRecords = records.filter(isFamilyPlanningRecord);
-  const ncdRecords = records.filter(isNcdRecord);
-  const tbRecords = records.filter(isTbRecord);
+const EMPTY_MARK = "\u2014";
+
+export default function SpecializedRecordsTab({
+  records = [],
+  patient = null,
+  basePath = "/bhc",
+}) {
+  const ownRecords = records.filter((record) =>
+    isOwnPatientRecord(record, patient),
+  );
+  const isFemale = isFemalePatient(patient);
+  const epiRecords = ownRecords.filter(isEpiRecord);
+  const maternalRecords = isFemale ? ownRecords.filter(isMaternalRecord) : [];
+  const fpRecords = ownRecords.filter(isFamilyPlanningRecord);
+  const ncdRecords = ownRecords.filter(isNcdRecord);
+  const tbRecords = ownRecords.filter(isTbRecord);
   const hasAny =
     epiRecords.length ||
     maternalRecords.length ||
@@ -38,7 +51,7 @@ export default function SpecializedRecordsTab({ records = [], basePath = "/bhc" 
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center text-sm text-slate-400 shadow-sm">
         <ClipboardList className="mx-auto mb-3 text-slate-300" size={32} />
-        No specialized records available for this patient.
+        No specialized records recorded for this patient yet.
       </div>
     );
   }
@@ -51,7 +64,7 @@ export default function SpecializedRecordsTab({ records = [], basePath = "/bhc" 
           title="Immunization / EPI History"
           subtitle="Compiled from all Child Health / EPI health record visits."
         >
-          <EpiHistory records={epiRecords} basePath={basePath} />
+          <EpiHistory records={epiRecords} />
         </SpecializedSection>
       )}
 
@@ -78,10 +91,10 @@ export default function SpecializedRecordsTab({ records = [], basePath = "/bhc" 
       {ncdRecords.length > 0 && (
         <SpecializedSection
           icon={<HeartPulse size={15} />}
-          title="NCD Monitoring History"
-          subtitle="Compiled non-communicable disease monitoring visits."
+          title="Hypertension / Diabetic Monitoring History"
+          subtitle="Compiled BP, FBS, HPN/DM status, treatment, and follow-up visits."
         >
-          <NcdHistory records={ncdRecords} basePath={basePath} />
+          <NcdHistory records={ncdRecords} />
         </SpecializedSection>
       )}
 
@@ -115,7 +128,31 @@ function SpecializedSection({ icon, title, subtitle, children }) {
   );
 }
 
-function EpiHistory({ records, basePath }) {
+function isFemalePatient(patient = {}) {
+  const normalized = String(patient?.sex || patient?.gender || "")
+    .trim()
+    .toLowerCase();
+  return normalized === "female" || normalized === "f";
+}
+
+function isOwnPatientRecord(record = {}, patient = {}) {
+  const patientId = String(
+    patient?.id || patient?.patientId || patient?.patient_id || "",
+  );
+  const recordPatientId = String(
+    record.patientId ||
+      record.patient_id ||
+      record.patient?.id ||
+      record.patient?.patientId ||
+      record.patient?.patient_id ||
+      "",
+  );
+
+  if (!patientId || !recordPatientId) return true;
+  return patientId === recordPatientId;
+}
+
+function EpiHistory({ records }) {
   const rows = compileEpiRows(records);
   const breastfeedingMonths = compileBreastfeedingMonths(records);
 
@@ -125,28 +162,22 @@ function EpiHistory({ records, basePath }) {
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
             <TableHead>Vaccine</TableHead>
-            <TableHead>Date Given</TableHead>
+            <TableHead>Given</TableHead>
             <TableHead>Weight</TableHead>
             <TableHead>Height</TableHead>
             <TableHead>Temp</TableHead>
-            <TableHead>Source Visit</TableHead>
+            <TableHead>Remarks</TableHead>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 text-sm">
           {rows.map((row) => (
             <tr key={row.vaccineName} className="transition-colors hover:bg-slate-50/80">
               <TableCell strong>{row.vaccineName}</TableCell>
-              <TableCell>{row.entry ? formatDate(row.dateGiven, "Not recorded") : "Not recorded"}</TableCell>
+              <TableCell>{row.entry ? formatDate(row.dateGiven, EMPTY_MARK) : EMPTY_MARK}</TableCell>
               <TableCell>{formatMeasurement(row.weight, "kg")}</TableCell>
               <TableCell>{formatMeasurement(row.height, "cm")}</TableCell>
               <TableCell>{formatMeasurement(row.temperature, "C")}</TableCell>
-              <TableCell>
-                {row.record ? (
-                  <SourceVisitLink record={row.record} basePath={basePath} />
-                ) : (
-                  "Not recorded"
-                )}
-              </TableCell>
+              <TableCell>{row.remarks || EMPTY_MARK}</TableCell>
             </tr>
           ))}
         </tbody>
@@ -197,13 +228,13 @@ function MaternalHistory({ records, basePath }) {
           const maternalData = record.maternalData || record.maternal_data || {};
           return (
             <tr key={getRecordId(record)} className="transition-colors hover:bg-slate-50/80">
-              <TableCell>{formatDate(getRecordDateValue(record), "Not recorded")}</TableCell>
-              <TableCell>{getRecordValue(maternalData, ["aog", "ageOfGestation", "age_of_gestation"], record.aog || "") || "Not recorded"}</TableCell>
+              <TableCell>{formatDate(getRecordDateValue(record), EMPTY_MARK)}</TableCell>
+              <TableCell>{getRecordValue(maternalData, ["aog", "ageOfGestation", "age_of_gestation"], record.aog || "") || EMPTY_MARK}</TableCell>
               <TableCell>{formatBp(record)}</TableCell>
               <TableCell>{formatMeasurement(record.weight, "kg")}</TableCell>
               <TableCell>{getNotes(record)}</TableCell>
               <TableCell>{formatSupplements(record)}</TableCell>
-              <TableCell>{formatDate(getFollowUpDate(record), "Not recorded")}</TableCell>
+              <TableCell>{formatDate(getFollowUpDate(record), EMPTY_MARK)}</TableCell>
               <TableCell><SourceVisitLink record={record} basePath={basePath} /></TableCell>
             </tr>
           );
@@ -232,12 +263,12 @@ function FamilyPlanningHistory({ records, basePath }) {
           const data = record.familyPlanningData || record.family_planning_data || {};
           return (
             <tr key={getRecordId(record)} className="transition-colors hover:bg-slate-50/80">
-              <TableCell>{formatDate(getRecordDateValue(record), "Not recorded")}</TableCell>
-              <TableCell>{getRecordValue(data, ["clientType", "client_type"], "Not recorded")}</TableCell>
-              <TableCell>{getRecordValue(data, ["methodUsed", "method_used"], "Not recorded")}</TableCell>
-              <TableCell>{getRecordValue(data, ["concern", "findings"], "Not recorded")}</TableCell>
-              <TableCell>{getRecordValue(data, ["actionTaken", "action_taken", "adviceGiven", "advice_given"], "Not recorded")}</TableCell>
-              <TableCell>{formatDate(getRecordValue(data, ["nextAppointmentDate", "next_appointment_date"], ""), "Not recorded")}</TableCell>
+              <TableCell>{formatDate(getRecordDateValue(record), EMPTY_MARK)}</TableCell>
+              <TableCell>{getRecordValue(data, ["clientType", "client_type"], EMPTY_MARK)}</TableCell>
+              <TableCell>{getRecordValue(data, ["methodUsed", "method_used"], EMPTY_MARK)}</TableCell>
+              <TableCell>{getRecordValue(data, ["concern", "findings"], EMPTY_MARK)}</TableCell>
+              <TableCell>{getRecordValue(data, ["actionTaken", "action_taken", "adviceGiven", "advice_given"], EMPTY_MARK)}</TableCell>
+              <TableCell>{formatDate(getRecordValue(data, ["nextAppointmentDate", "next_appointment_date"], ""), EMPTY_MARK)}</TableCell>
               <TableCell><SourceVisitLink record={record} basePath={basePath} /></TableCell>
             </tr>
           );
@@ -247,34 +278,35 @@ function FamilyPlanningHistory({ records, basePath }) {
   );
 }
 
-function NcdHistory({ records, basePath }) {
+function NcdHistory({ records }) {
   return (
     <ResponsiveTable minWidth="min-w-[1040px]">
       <thead>
         <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
           <TableHead>Visit Date</TableHead>
           <TableHead>BP</TableHead>
-          <TableHead>Blood Sugar</TableHead>
-          <TableHead>Weight</TableHead>
-          <TableHead>Findings</TableHead>
-          <TableHead>Medication / Action</TableHead>
+          <TableHead>FBS</TableHead>
+          <TableHead>Condition</TableHead>
+          <TableHead>Client Status</TableHead>
           <TableHead>Next Follow-up</TableHead>
-          <TableHead>Source Visit</TableHead>
+          <TableHead>Remarks / Action Taken</TableHead>
         </tr>
       </thead>
       <tbody className="divide-y divide-slate-100 text-sm">
-        {records.map((record) => (
-          <tr key={getRecordId(record)} className="transition-colors hover:bg-slate-50/80">
-            <TableCell>{formatDate(getRecordDateValue(record), "Not recorded")}</TableCell>
-            <TableCell>{formatBp(record)}</TableCell>
-            <TableCell>{getRecordValue(record, ["bloodSugar", "blood_sugar", "rbs", "fbs"], "Not recorded")}</TableCell>
-            <TableCell>{formatMeasurement(record.weight, "kg")}</TableCell>
-            <TableCell>{getNotes(record)}</TableCell>
-            <TableCell>{getActionTaken(record)}</TableCell>
-            <TableCell>{formatDate(getFollowUpDate(record), "Not recorded")}</TableCell>
-            <TableCell><SourceVisitLink record={record} basePath={basePath} /></TableCell>
-          </tr>
-        ))}
+        {records.map((record) => {
+          const data = getHypertensionDiabeticData(record);
+          return (
+            <tr key={getRecordId(record)} className="transition-colors hover:bg-slate-50/80">
+              <TableCell>{formatDate(getRecordDateValue(record), EMPTY_MARK)}</TableCell>
+              <TableCell>{data.bp || formatBp(record)}</TableCell>
+              <TableCell>{data.fbs || EMPTY_MARK}</TableCell>
+              <TableCell>{formatHypertensionDiabeticCondition(data.conditionType) || EMPTY_MARK}</TableCell>
+              <TableCell>{formatHypertensionDiabeticClientStatus(data.clientStatus) || EMPTY_MARK}</TableCell>
+              <TableCell>{formatDate(getFollowUpDate(record), EMPTY_MARK)}</TableCell>
+              <TableCell>{data.treatmentActionTaken || getActionTaken(record)}</TableCell>
+            </tr>
+          );
+        })}
       </tbody>
     </ResponsiveTable>
   );
@@ -297,12 +329,12 @@ function TbHistory({ records, basePath }) {
       <tbody className="divide-y divide-slate-100 text-sm">
         {records.map((record) => (
           <tr key={getRecordId(record)} className="transition-colors hover:bg-slate-50/80">
-            <TableCell>{formatDate(getRecordDateValue(record), "Not recorded")}</TableCell>
-            <TableCell>{getRecordValue(record, ["phase", "category"], getRecordClassificationText(record) || "Not recorded")}</TableCell>
-            <TableCell>{getRecordValue(record, ["symptoms", "chiefComplaint", "chief_complaint"], "Not recorded")}</TableCell>
+            <TableCell>{formatDate(getRecordDateValue(record), EMPTY_MARK)}</TableCell>
+            <TableCell>{getRecordValue(record, ["phase", "category"], getRecordClassificationText(record) || EMPTY_MARK)}</TableCell>
+            <TableCell>{getRecordValue(record, ["symptoms", "chiefComplaint", "chief_complaint"], EMPTY_MARK)}</TableCell>
             <TableCell>{getActionTaken(record)}</TableCell>
             <TableCell>{getNotes(record)}</TableCell>
-            <TableCell>{formatDate(getFollowUpDate(record), "Not recorded")}</TableCell>
+            <TableCell>{formatDate(getFollowUpDate(record), EMPTY_MARK)}</TableCell>
             <TableCell><SourceVisitLink record={record} basePath={basePath} /></TableCell>
           </tr>
         ))}
@@ -346,7 +378,7 @@ function SourceVisitLink({ record, basePath }) {
     .filter(Boolean)
     .join(" / ");
 
-  if (!recordId) return formatDisplayValue(label, "Not recorded");
+  if (!recordId) return formatDisplayValue(label, EMPTY_MARK);
 
   return (
     <Link
@@ -367,6 +399,12 @@ function compileEpiRows(records) {
       weight: entry.weight || record.weight || "",
       height: entry.height || record.height || "",
       temperature: entry.temperature || record.temperature || record.temp || "",
+      remarks:
+        entry.remarks ||
+        entry.notes ||
+        record.remarks ||
+        record.notes ||
+        getImmunizationRemarks(record),
     })),
   );
 
@@ -384,8 +422,14 @@ function compileEpiRows(records) {
       weight: entry?.weight || "",
       height: entry?.height || "",
       temperature: entry?.temperature || "",
+      remarks: entry?.remarks || "",
     };
   });
+}
+
+function getImmunizationRemarks(record = {}) {
+  const data = record.immunizationData || record.immunization_data || {};
+  return data.remarks || data.notes || data.remark || "";
 }
 
 function compileBreastfeedingMonths(records) {
@@ -405,7 +449,7 @@ function getTime(value) {
 
 function formatMeasurement(value, unit) {
   const clean = String(value || "").trim();
-  if (!clean) return "Not recorded";
+  if (!clean) return EMPTY_MARK;
   return clean.toLowerCase().includes(unit.toLowerCase())
     ? clean
     : `${clean} ${unit}`;
@@ -427,7 +471,7 @@ function formatBp(record = {}) {
     vitalObject.diastolic_bp;
 
   if (systolic && diastolic) return `${systolic}/${diastolic}`;
-  return "Not recorded";
+  return EMPTY_MARK;
 }
 
 function formatSupplements(record = {}) {
@@ -440,7 +484,7 @@ function formatSupplements(record = {}) {
     [];
 
   if (!Array.isArray(supplements) || supplements.length === 0) {
-    return "Not recorded";
+    return EMPTY_MARK;
   }
 
   return supplements
@@ -463,11 +507,11 @@ function getNotes(record = {}) {
       record.notes ||
       record.consultationNotes ||
       record.consultation_notes ||
-      record.monitoringNotes ||
-      record.monitoring_notes ||
-      record.medicalHistory ||
-      record.medical_history,
-    "Not recorded",
+    record.monitoringNotes ||
+    record.monitoring_notes ||
+    record.medicalHistory ||
+    record.medical_history,
+    EMPTY_MARK,
   );
 }
 
@@ -480,7 +524,7 @@ function getActionTaken(record = {}) {
       record.medication ||
       record.actionTaken ||
       record.action_taken,
-    "Not recorded",
+    EMPTY_MARK,
   );
 }
 
@@ -496,4 +540,3 @@ function getFollowUpDate(record = {}) {
     ""
   );
 }
-

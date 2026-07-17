@@ -335,19 +335,17 @@ export default function MedicineManagement() {
                     </td>
 
                     <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
-                      <div className="flex flex-col gap-1">
-                        <span>{formatDate(item.expiryDate)}</span>
-                        <ExpiryBadge status={getMedicineExpiryStatus(item)} />
-                      </div>
+                      {formatDate(item.expiryDate)}
                     </td>
 
                     <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#9CA3AF]">
-                      <div>
-                        <p>{item.lastUpdated}</p>
-                        <p className="mt-0.5 text-[10px] text-[#BCC3CD]">
-                          {item.updatedBy}
-                        </p>
-                      </div>
+                      {formatDateTime(
+                        item.updated_at ||
+                          item.updatedAt ||
+                          item.created_at ||
+                          item.createdAt ||
+                          item.lastUpdated,
+                      )}
                     </td>
 
                     <td className="max-w-[220px] truncate px-4 py-3.5 text-sm text-[#6B7280]">
@@ -401,7 +399,6 @@ function filterMedicineItems(items, filters) {
       item.name,
       item.category,
       item.notes,
-      item.updatedBy,
     ]
       .filter(Boolean)
       .join(" ")
@@ -564,33 +561,30 @@ function CategoryBadge({ category }) {
   );
 }
 
-function ExpiryBadge({ status }) {
-  const map = {
-    Valid: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-    "Expiring Soon": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    Expired: "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
-  };
-
-  return (
-    <span
-      className={`w-fit rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-        map[status] || map.Valid
-      }`}
-    >
-      {status}
-    </span>
-  );
-}
-
 function formatDate(value) {
-  if (!value) return "-";
+  if (!value) return "\u2014";
 
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  if (Number.isNaN(date.getTime())) return "\u2014";
 
   return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
+  });
+}
+
+function formatDateTime(value) {
+  if (!value) return "\u2014";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "\u2014";
+
+  return date.toLocaleString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 }

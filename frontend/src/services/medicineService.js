@@ -61,8 +61,12 @@ function normalizeMedicine(item = {}) {
     ruralHealthUnitId: item.rural_health_unit_id || item.ruralHealthUnitId || "",
     barangayHealthCenterId:
       item.barangay_health_center_id || item.barangayHealthCenterId || "",
-    lastUpdated: item.updated_at || item.lastUpdated || "",
-    updatedBy: item.updatedBy || "RHU Staff",
+    updatedAt: item.updated_at || item.updatedAt || "",
+    updated_at: item.updated_at || item.updatedAt || "",
+    createdAt: item.created_at || item.createdAt || "",
+    created_at: item.created_at || item.createdAt || "",
+    lastUpdated: item.updated_at || item.updatedAt || item.lastUpdated || "",
+    updatedBy: item.updatedBy || item.updated_by || "",
     notes: item.description || item.notes || "",
   };
 }

@@ -51,6 +51,65 @@ function deriveMorbidityReportingStatus(record = {}, monitoringData = {}) {
   return notifiable ? "notifiable" : "morbidity";
 }
 
+function getSurveillanceCategory(record = {}, monitoringData = {}) {
+  return normalizeSurveillanceCategory(
+    firstPresent([
+    record.surveillanceCategory,
+    record.surveillance_category,
+    record.diseaseSurveillanceCategory,
+    record.disease_surveillance_category,
+    record.diseaseCategory,
+    record.disease_category,
+    monitoringData.surveillanceCategory,
+    monitoringData.surveillance_category,
+    monitoringData.diseaseSurveillanceCategory,
+    monitoringData.disease_surveillance_category,
+    monitoringData.diseaseCategory,
+    monitoringData.disease_category,
+    ]),
+  );
+}
+
+function getOtherSurveillanceCategory(record = {}, monitoringData = {}) {
+  return firstPresent([
+    record.otherSurveillanceCategory,
+    record.other_surveillance_category,
+    record.otherDiseaseCondition,
+    record.other_disease_condition,
+    monitoringData.otherSurveillanceCategory,
+    monitoringData.other_surveillance_category,
+    monitoringData.otherDiseaseCondition,
+    monitoringData.other_disease_condition,
+  ]);
+}
+
+function getHfmdSurveillance(record = {}, monitoringData = {}) {
+  const explicit = firstPresent([
+    record.hfmdSurveillance,
+    record.hfmd_surveillance,
+    monitoringData.hfmdSurveillance,
+    monitoringData.hfmd_surveillance,
+  ]);
+
+  if (explicit !== "") return toBoolean(explicit);
+  return getSurveillanceCategory(record, monitoringData) === "hfmd";
+}
+
+function normalizeSurveillanceCategory(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "";
+  if (
+    normalized === "hfmd" ||
+    normalized.includes("hand, foot") ||
+    normalized.includes("hand foot") ||
+    normalized.includes("mouth disease")
+  ) {
+    return "hfmd";
+  }
+  if (normalized === "other") return "other";
+  return normalized;
+}
+
 function normalizeSupplementsGiven(record = {}, maternalData = {}) {
   const supplements =
     record.supplementsGiven ||
@@ -110,6 +169,120 @@ function normalizeDispensedMedicines(record = {}) {
   }));
 }
 
+function normalizeHypertensionDiabeticValue(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "";
+  if (["hpn", "hypertension", "high blood pressure"].includes(normalized)) {
+    return "hpn";
+  }
+  if (["dm", "diabetes", "diabetic", "diabetes mellitus"].includes(normalized)) {
+    return "dm";
+  }
+  if (["both", "hpn/dm", "hpn dm", "hypertension diabetes"].includes(normalized)) {
+    return "both";
+  }
+  return normalized;
+}
+
+function normalizeClientStatusValue(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["new", "old"].includes(normalized) ? normalized : normalized;
+}
+
+function getHypertensionDiabeticData(record = {}, monitoringData = {}) {
+  const nested =
+    record.hypertensionDiabeticData ||
+    record.hypertension_diabetic_data ||
+    monitoringData.hypertensionDiabeticData ||
+    monitoringData.hypertension_diabetic_data ||
+    {};
+  const merged = {
+    ...monitoringData,
+    ...nested,
+    ...record,
+  };
+
+  const systolic =
+    record.systolicBp ||
+    record.systolic_bp ||
+    record.vitalSigns?.systolicBp ||
+    record.vitalSigns?.systolic_bp ||
+    record.vital_signs?.systolicBp ||
+    record.vital_signs?.systolic_bp;
+  const diastolic =
+    record.diastolicBp ||
+    record.diastolic_bp ||
+    record.vitalSigns?.diastolicBp ||
+    record.vitalSigns?.diastolic_bp ||
+    record.vital_signs?.diastolicBp ||
+    record.vital_signs?.diastolic_bp;
+  const bp = firstPresent([
+    merged.bp,
+    merged.bloodPressure,
+    merged.blood_pressure,
+    systolic || diastolic ? `${systolic || "N/A"}/${diastolic || "N/A"}` : "",
+  ]);
+
+  return {
+    bp,
+    fbs: firstPresent([
+      merged.fbs,
+      merged.fastingBloodSugar,
+      merged.fasting_blood_sugar,
+      merged.bloodSugar,
+      merged.blood_sugar,
+    ]),
+    conditionType: normalizeHypertensionDiabeticValue(
+      firstPresent([merged.conditionType, merged.condition_type]),
+    ),
+    condition_type: normalizeHypertensionDiabeticValue(
+      firstPresent([merged.conditionType, merged.condition_type]),
+    ),
+    clientStatus: normalizeClientStatusValue(
+      firstPresent([merged.clientStatus, merged.client_status]),
+    ),
+    client_status: normalizeClientStatusValue(
+      firstPresent([merged.clientStatus, merged.client_status]),
+    ),
+    dateOfLastConsultation: firstPresent([
+      merged.dateOfLastConsultation,
+      merged.date_of_last_consultation,
+      merged.lastConsultationDate,
+      merged.last_consultation_date,
+    ]),
+    date_of_last_consultation: firstPresent([
+      merged.dateOfLastConsultation,
+      merged.date_of_last_consultation,
+      merged.lastConsultationDate,
+      merged.last_consultation_date,
+    ]),
+    treatmentActionTaken: firstPresent([
+      merged.treatmentActionTaken,
+      merged.treatment_action_taken,
+      merged.actionTaken,
+      merged.action_taken,
+      merged.treatment,
+      merged.medication,
+      merged.treatmentNotes,
+      merged.treatment_notes,
+      merged.initialActionsTaken,
+      merged.initial_actions_taken,
+    ]),
+    treatment_action_taken: firstPresent([
+      merged.treatmentActionTaken,
+      merged.treatment_action_taken,
+      merged.actionTaken,
+      merged.action_taken,
+      merged.treatment,
+      merged.medication,
+      merged.treatmentNotes,
+      merged.treatment_notes,
+      merged.initialActionsTaken,
+      merged.initial_actions_taken,
+    ]),
+  };
+}
+
 function normalizeRecord(record = {}) {
   const vitalSigns = record.vital_signs || record.vitalSigns || {};
   const patient = record.patient ? normalizePatient(record.patient) : null;
@@ -123,10 +296,21 @@ function normalizeRecord(record = {}) {
   };
   const immunizationData = record.immunization_data || record.immunizationData || {};
   const monitoringData = record.monitoring_data || record.monitoringData || {};
+  const hypertensionDiabeticData = getHypertensionDiabeticData(
+    record,
+    monitoringData,
+  );
   const morbidityReportingStatus = deriveMorbidityReportingStatus(
     record,
     monitoringData,
   );
+  const surveillanceCategory =
+    getHfmdSurveillance(record, monitoringData) ? "hfmd" : "";
+  const hfmdSurveillance = surveillanceCategory === "hfmd";
+  const otherSurveillanceCategory =
+    surveillanceCategory === "other"
+      ? getOtherSurveillanceCategory(record, monitoringData)
+      : "";
   const familyPlanningData =
     record.family_planning_data || record.familyPlanningData || {};
   const parentHealthRecordId =
@@ -258,12 +442,22 @@ function normalizeRecord(record = {}) {
     immunization_data: immunizationData,
     monitoringData,
     monitoring_data: monitoringData,
+    hypertensionDiabeticData,
+    hypertension_diabetic_data: hypertensionDiabeticData,
     morbidityReportingStatus,
     morbidity_reporting_status: morbidityReportingStatus,
     includeInMorbidityReport: morbidityReportingStatus !== "not_included",
     include_in_morbidity_report: morbidityReportingStatus !== "not_included",
     isNotifiableDisease: morbidityReportingStatus === "notifiable",
     is_notifiable_disease: morbidityReportingStatus === "notifiable",
+    surveillanceCategory,
+    surveillance_category: surveillanceCategory,
+    diseaseSurveillanceCategory: surveillanceCategory,
+    disease_surveillance_category: surveillanceCategory,
+    hfmdSurveillance,
+    hfmd_surveillance: hfmdSurveillance,
+    otherSurveillanceCategory,
+    other_surveillance_category: otherSurveillanceCategory,
     familyPlanningData,
     family_planning_data: familyPlanningData,
     needsReferral,
@@ -274,6 +468,18 @@ function normalizeRecord(record = {}) {
     temp: vitalSigns.temperature || record.temperature || record.temp || "",
     pulseRate: vitalSigns.pulseRate || vitalSigns.pulse_rate || record.pulseRate || "",
     pulse: vitalSigns.pulseRate || vitalSigns.pulse_rate || record.pulse || "",
+    respiratoryRate:
+      vitalSigns.respiratoryRate ||
+      vitalSigns.respiratory_rate ||
+      record.respiratoryRate ||
+      record.respiratory_rate ||
+      "",
+    respiratory_rate:
+      vitalSigns.respiratoryRate ||
+      vitalSigns.respiratory_rate ||
+      record.respiratoryRate ||
+      record.respiratory_rate ||
+      "",
     weight: vitalSigns.weight || record.weight || "",
     height: vitalSigns.height || record.height || "",
     status:
@@ -360,6 +566,18 @@ function toPayload(record = {}, { partial = false } = {}) {
     deriveMorbidityReportingStatus(record, {
       ...(record.monitoringData || record.monitoring_data || {}),
     });
+  const sourceMonitoringData = record.monitoringData || record.monitoring_data || {};
+  const hypertensionDiabeticData = getHypertensionDiabeticData(
+    record,
+    sourceMonitoringData,
+  );
+  const surveillanceCategory =
+    getHfmdSurveillance(record, sourceMonitoringData) ? "hfmd" : null;
+  const hfmdSurveillance = surveillanceCategory === "hfmd";
+  const otherSurveillanceCategory =
+    surveillanceCategory === "other"
+      ? getOtherSurveillanceCategory(record, sourceMonitoringData)
+      : "";
   const maternalData = {
     ...(record.maternalData || record.maternal_data || {}),
     lmp: record.lmp || record.LMP || null,
@@ -395,7 +613,7 @@ function toPayload(record = {}, { partial = false } = {}) {
     given_by_name: item.given_by_name || "",
   }));
   const monitoringData = {
-    ...(record.monitoringData || record.monitoring_data || {}),
+    ...sourceMonitoringData,
     followUpStatus: record.followUpStatus || record.status || null,
     followUpDate: record.followUpDate || null,
     monitoringNotes: record.monitoringNotes || null,
@@ -414,6 +632,16 @@ function toPayload(record = {}, { partial = false } = {}) {
     include_in_morbidity_report: morbidityReportingStatus !== "not_included",
     isNotifiableDisease: morbidityReportingStatus === "notifiable",
     is_notifiable_disease: morbidityReportingStatus === "notifiable",
+    surveillanceCategory,
+    surveillance_category: surveillanceCategory,
+    diseaseSurveillanceCategory: surveillanceCategory,
+    disease_surveillance_category: surveillanceCategory,
+    hfmdSurveillance,
+    hfmd_surveillance: hfmdSurveillance,
+    otherSurveillanceCategory,
+    other_surveillance_category: otherSurveillanceCategory,
+    hypertensionDiabeticData,
+    hypertension_diabetic_data: hypertensionDiabeticData,
   };
   const familyPlanningData = {
     ...(record.familyPlanningData || record.family_planning_data || {}),
@@ -610,6 +838,7 @@ function toPayload(record = {}, { partial = false } = {}) {
       diastolicBp: record.diastolicBp || null,
       temperature: record.temperature || record.temp || null,
       pulseRate: record.pulseRate || record.pulse || null,
+      respiratoryRate: record.respiratoryRate || record.respiratory_rate || null,
       weight: record.weight || null,
       height: record.height || null,
     },
@@ -667,6 +896,8 @@ function toPayload(record = {}, { partial = false } = {}) {
       "temp",
       "pulseRate",
       "pulse",
+      "respiratoryRate",
+      "respiratory_rate",
       "weight",
       "height",
       "vitalSigns",
@@ -741,6 +972,16 @@ function toPayload(record = {}, { partial = false } = {}) {
       "include_in_morbidity_report",
       "isNotifiableDisease",
       "is_notifiable_disease",
+      "surveillanceCategory",
+      "surveillance_category",
+      "diseaseSurveillanceCategory",
+      "disease_surveillance_category",
+      "hfmdSurveillance",
+      "hfmd_surveillance",
+      "otherSurveillanceCategory",
+      "other_surveillance_category",
+      "hypertensionDiabeticData",
+      "hypertension_diabetic_data",
     ])
   ) {
     delete payload.monitoring_data;
