@@ -6,6 +6,7 @@ export default function ConnectionIssueModal({
   message = "Your internet connection was interrupted. Your current form data can be saved as a local draft and submitted once your connection is restored.",
   canRetry = true,
   retryDisabled = false,
+  retryLabel = "Retry",
   onContinue,
   onSaveDraft,
   onRetry,
@@ -69,7 +70,7 @@ export default function ConnectionIssueModal({
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 py-2.5 text-[13px] font-semibold text-white transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <RotateCw size={14} />
-                Retry
+                {retryLabel}
               </button>
             )}
           </div>

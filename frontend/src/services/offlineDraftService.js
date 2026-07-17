@@ -20,19 +20,37 @@ function createDraftId(moduleType) {
   return `${moduleType}-${timestamp}-${random}`;
 }
 
-export function saveOfflineDraft({ moduleType, formData, status = "local_draft" }) {
+export function saveOfflineDraft({
+  moduleType,
+  formData,
+  status = "local_draft",
+  id = "",
+  metadata = {},
+}) {
   const now = new Date().toISOString();
   const drafts = readDrafts();
+  const existingDraft = id
+    ? drafts.find((draft) => draft.id === id || draft.localDraftId === id)
+    : null;
+  const draftId = existingDraft?.id || id || createDraftId(moduleType);
   const draft = {
-    id: createDraftId(moduleType),
+    ...(existingDraft || {}),
+    ...metadata,
+    id: draftId,
+    localDraftId: metadata.localDraftId || existingDraft?.localDraftId || draftId,
     moduleType,
     formData,
-    createdAt: now,
+    createdAt: existingDraft?.createdAt || metadata.createdAt || now,
     updatedAt: now,
     status,
   };
 
-  writeDrafts([draft, ...drafts]);
+  writeDrafts([
+    draft,
+    ...drafts.filter(
+      (item) => item.id !== draftId && item.localDraftId !== draftId,
+    ),
+  ]);
   return draft;
 }
 
@@ -46,11 +64,94 @@ export function getOfflineDrafts(moduleType = "") {
 export function updateOfflineDraftStatus(id, status) {
   const drafts = readDrafts();
   const nextDrafts = drafts.map((draft) =>
-    draft.id === id
+    draft.id === id || draft.localDraftId === id
       ? { ...draft, status, updatedAt: new Date().toISOString() }
       : draft,
   );
   writeDrafts(nextDrafts);
+}
+
+export function deleteOfflineDraft(localDraftId) {
+  const drafts = readDrafts();
+  writeDrafts(
+    drafts.filter(
+      (draft) =>
+        draft.id !== localDraftId && draft.localDraftId !== localDraftId,
+    ),
+  );
+}
+
+export function saveHealthRecordDraft({
+  localDraftId = "",
+  patientId = "",
+  patientName = "",
+  serviceType = "",
+  visitDate = "",
+  formData = {},
+  userId = "",
+  role = "",
+  facility = "",
+  label = "",
+  mode = "create",
+  recordId = "",
+  source = "add_health_record",
+  status = "local_draft",
+}) {
+  return saveOfflineDraft({
+    id: localDraftId,
+    moduleType: "health_record",
+    formData,
+    status,
+    metadata: {
+      draftType: "health_record",
+      source,
+      patientId,
+      patientName,
+      serviceType,
+      visitDate,
+      userId,
+      role,
+      facility,
+      label,
+      mode,
+      recordId,
+    },
+  });
+}
+
+export function listHealthRecordDrafts({
+  role = "",
+  userId = "",
+  patientId = "",
+  serviceType = "",
+} = {}) {
+  return readDrafts().filter((draft) => {
+    if (draft.moduleType !== "health_record") return false;
+    if (draft.status === "synced" || draft.status === "discarded") return false;
+    if (role && draft.role && draft.role !== role) return false;
+    if (userId && draft.userId && String(draft.userId) !== String(userId)) {
+      return false;
+    }
+    if (
+      patientId &&
+      String(draft.patientId || draft.formData?.selectedPatientId || "") !==
+        String(patientId)
+    ) {
+      return false;
+    }
+    if (
+      serviceType &&
+      draft.serviceType &&
+      String(draft.serviceType) !== String(serviceType)
+    ) {
+      return false;
+    }
+    return true;
+  });
+}
+
+export async function deleteHealthRecordDraft(localDraftId) {
+  deleteOfflineDraft(localDraftId);
 }
 
 export function createClientSubmissionId() {
@@ -128,10 +229,5 @@ export async function updateReferralDraft(localDraftId, updates = {}) {
 }
 
 export async function deleteReferralDraft(localDraftId) {
-  const drafts = readDrafts();
-  writeDrafts(
-    drafts.filter(
-      (draft) => draft.id !== localDraftId && draft.localDraftId !== localDraftId,
-    ),
-  );
+  deleteOfflineDraft(localDraftId);
 }
