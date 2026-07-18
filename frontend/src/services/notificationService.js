@@ -1,10 +1,11 @@
-import { apiRequest, unwrapList } from "./apiClient";
+import { apiRequest, isConnectionError, unwrapList } from "./apiClient";
 
 const UPDATE_EVENT = "akay:notifications-updated";
 const DEFAULT_STALE_MS = 60_000;
 let notificationCache = [];
 let loadingPromise = null;
 let lastFetchedAt = 0;
+let lastLoadError = null;
 
 function emitUpdate() {
   if (typeof window !== "undefined") {
@@ -117,10 +118,19 @@ export async function refreshNotifications({
     .then((response) => {
       notificationCache = unwrapList(response).map(normalizeNotification);
       lastFetchedAt = Date.now();
+      lastLoadError = null;
       emitUpdate();
       return notificationCache;
     })
-    .catch(() => {
+    .catch((error) => {
+      lastLoadError = {
+        isConnectionError: isConnectionError(error),
+        message:
+          error?.message ||
+          "Unable to load notifications. Please check your connection and try again.",
+        status: error?.status || null,
+        code: error?.code || "",
+      };
       emitUpdate();
       return notificationCache;
     })
@@ -133,6 +143,10 @@ export async function refreshNotifications({
 
 export function getAllNotifications() {
   return notificationCache;
+}
+
+export function getNotificationLoadError() {
+  return lastLoadError;
 }
 
 export function getNotificationsForUser() {

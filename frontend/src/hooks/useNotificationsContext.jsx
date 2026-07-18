@@ -13,6 +13,7 @@ import {
   clearNotificationsForUser,
   deleteNotifications as deleteStoredNotifications,
   deleteNotification as deleteStoredNotification,
+  getNotificationLoadError,
   getNotificationsForUser,
   markAllNotificationsAsRead,
   markNotificationsAsRead,
@@ -39,6 +40,10 @@ export function NotificationProvider({ children }) {
   const [notifications, setNotifications] = useState(() =>
     getNotificationsForUser(userContext.role, userContext.facilityId),
   );
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState(() =>
+    getNotificationLoadError(),
+  );
   const [selectedNotif, setSelectedNotif] = useState(null);
   const isMountedRef = useRef(false);
   const pendingFetchRef = useRef(null);
@@ -49,6 +54,7 @@ export function NotificationProvider({ children }) {
     setNotifications(
       getNotificationsForUser(nextContext.role, nextContext.facilityId),
     );
+    setNotificationsError(getNotificationLoadError());
   }, []);
 
   const refreshNotifications = useCallback(
@@ -57,16 +63,20 @@ export function NotificationProvider({ children }) {
 
       const nextContext = getNotificationUserContext();
       setUserContext(nextContext);
+      setNotificationsLoading(true);
+      setNotificationsError(null);
 
       pendingFetchRef.current = fetchNotifications({ force, maxAgeMs })
         .then((nextNotifications) => {
           if (isMountedRef.current) {
             setNotifications(nextNotifications);
+            setNotificationsError(getNotificationLoadError());
           }
           return nextNotifications;
         })
         .finally(() => {
           pendingFetchRef.current = null;
+          if (isMountedRef.current) setNotificationsLoading(false);
         });
 
       return pendingFetchRef.current;
@@ -224,6 +234,8 @@ export function NotificationProvider({ children }) {
   const value = useMemo(
     () => ({
       notifications,
+      notificationsLoading,
+      notificationsError,
       unreadCount,
       getLatestNotifications,
       refreshNotifications,
@@ -245,6 +257,8 @@ export function NotificationProvider({ children }) {
       markAsRead,
       markSelectedAsRead,
       notifications,
+      notificationsError,
+      notificationsLoading,
       refreshNotifications,
       selectedNotif,
       unreadCount,

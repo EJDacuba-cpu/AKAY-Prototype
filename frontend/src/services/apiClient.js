@@ -198,6 +198,7 @@ export function isConnectionError(error = {}) {
       error.isNetworkError ||
       error.code === "OFFLINE" ||
       error.code === "TIMEOUT" ||
-      error.code === "NETWORK_ERROR",
+      error.code === "NETWORK_ERROR" ||
+      [502, 503, 504].includes(Number(error.status)),
   );
 }

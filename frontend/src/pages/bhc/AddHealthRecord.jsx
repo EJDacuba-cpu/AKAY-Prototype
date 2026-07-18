@@ -869,62 +869,6 @@ function getDraftServiceType(draft = {}) {
   );
 }
 
-function findMatchingHealthRecordDraft(
-  drafts = [],
-  {
-    patientId = "",
-    serviceType = "",
-    mode = "create",
-    recordId = "",
-    activeDraftId = "",
-  } = {},
-) {
-  const normalizedPatientId = String(patientId || "");
-  const normalizedServiceType = normalizeRecordType(serviceType);
-
-  return (
-    [...drafts]
-      .filter((draft) => {
-        const draftId = getDraftLocalId(draft);
-        if (!draftId || draftId === activeDraftId) return false;
-
-        const draftRecordId = String(
-          draft.recordId || draft.formData?.recordId || "",
-        );
-        if (recordId && draftRecordId && draftRecordId !== String(recordId)) {
-          return false;
-        }
-        if (!recordId && draftRecordId) return false;
-
-        const draftMode = draft.mode || draft.formData?.mode || "create";
-        if (mode && draftMode && draftMode !== mode) return false;
-
-        if (
-          normalizedPatientId &&
-          getDraftPatientId(draft) !== normalizedPatientId
-        ) {
-          return false;
-        }
-
-        const draftServiceType = getDraftServiceType(draft);
-        if (
-          normalizedServiceType &&
-          draftServiceType &&
-          draftServiceType !== normalizedServiceType
-        ) {
-          return false;
-        }
-
-        return true;
-      })
-      .sort(
-        (a, b) =>
-          new Date(b.updatedAt || b.createdAt || 0).getTime() -
-          new Date(a.updatedAt || a.createdAt || 0).getTime(),
-      )[0] || null
-  );
-}
-
 /* ═══════════════════════════════════════════════════════════════
    IMMUNIZATION — CONSTANTS & HELPERS
    ═══════════════════════════════════════════════════════════════ */
@@ -965,9 +909,11 @@ export default function AddHealthRecord() {
 
   const [patients, setPatients] = useState([]);
   const [patientsLoading, setPatientsLoading] = useState(true);
+  const [patientsLoadError, setPatientsLoadError] = useState("");
+  const [patientsReloadKey, setPatientsReloadKey] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(null);
-  const [draftSavedModal, setDraftSavedModal] = useState(null);
+  const [draftSavedToast, setDraftSavedToast] = useState("");
   const [noticeModal, setNoticeModal] = useState(null);
   const [connectionIssue, setConnectionIssue] = useState(null);
   const [lastFailedSubmit, setLastFailedSubmit] = useState(null);
@@ -1084,10 +1030,21 @@ export default function AddHealthRecord() {
     async function loadPatients() {
       try {
         setPatientsLoading(true);
+        setPatientsLoadError("");
         const parsedPatients = await getPatientDetailsListByRole("bhc");
         if (!active) return;
         setPatients(parsedPatients || []);
+        setPatientsLoadError("");
         if (preselectedPatientId) setSelectedPatientId(preselectedPatientId);
+      } catch (error) {
+        if (!active) return;
+        console.error("Failed to load patients for health record form:", error);
+        setPatientsLoadError(
+          isConnectionError(error)
+            ? "Unable to load patients. Please check your connection and try again."
+            : error?.message ||
+                "Unable to load patients. Please check your connection and try again.",
+        );
       } finally {
         if (active) setPatientsLoading(false);
       }
@@ -1098,7 +1055,7 @@ export default function AddHealthRecord() {
     return () => {
       active = false;
     };
-  }, [preselectedPatientId]);
+  }, [preselectedPatientId, patientsReloadKey]);
 
   useEffect(() => {
     let active = true;
@@ -1335,6 +1292,12 @@ export default function AddHealthRecord() {
     refreshHealthRecordDrafts();
   }, [refreshHealthRecordDrafts]);
 
+  useEffect(() => {
+    if (!draftSavedToast) return undefined;
+    const timer = window.setTimeout(() => setDraftSavedToast(""), 2600);
+    return () => window.clearTimeout(timer);
+  }, [draftSavedToast]);
+
   const normalizedSearch = searchTerm.trim().toLowerCase();
 
   const matchingPatients = useMemo(() => {
@@ -1521,30 +1484,6 @@ export default function AddHealthRecord() {
     dateOfVisit,
   );
   const immunizationVaccineEntries = getVaccineEntries(immunizationData);
-  const matchingHealthRecordDraft = useMemo(
-    () => {
-      const draftPatientId = selectedPatientId || preselectedPatientId;
-      if (!draftPatientId) return null;
-
-      return findMatchingHealthRecordDraft(healthRecordDrafts, {
-        patientId: selectedPatientId || preselectedPatientId,
-        serviceType: normalizedHealthRecordType || preselectedClassification,
-        mode,
-        recordId,
-        activeDraftId: activeHealthRecordDraftId,
-      });
-    },
-    [
-      activeHealthRecordDraftId,
-      healthRecordDrafts,
-      mode,
-      normalizedHealthRecordType,
-      preselectedClassification,
-      preselectedPatientId,
-      recordId,
-      selectedPatientId,
-    ],
-  );
 
   const formattedBp = (() => {
     const sys = systolicBp || "N/A";
@@ -2109,9 +2048,9 @@ export default function AddHealthRecord() {
   }
 
   function handleSaveCurrentHealthRecordDraft() {
-    const savedDraft = persistHealthRecordDraft();
+    persistHealthRecordDraft();
     setConnectionIssue(null);
-    setDraftSavedModal(savedDraft);
+    setDraftSavedToast("Draft saved on this device.");
   }
 
   function handleResumeHealthRecordDraft(draft) {
@@ -2266,11 +2205,11 @@ export default function AddHealthRecord() {
   }
 
   function handleSaveHealthRecordDraft() {
-    const savedDraft = persistHealthRecordDraft(
+    persistHealthRecordDraft(
       lastFailedSubmit?.draftSnapshot || buildHealthRecordDraftSnapshot(),
     );
     setConnectionIssue(null);
-    setDraftSavedModal(savedDraft);
+    setDraftSavedToast("Draft saved on this device.");
   }
 
   async function handleRetryFailedHealthRecord() {
@@ -3089,17 +3028,6 @@ export default function AddHealthRecord() {
         </div>
       </div>
 
-      {matchingHealthRecordDraft && !saveSuccess && (
-        <HealthRecordDraftNotice
-          draft={matchingHealthRecordDraft}
-          onResume={() => handleResumeHealthRecordDraft(matchingHealthRecordDraft)}
-          onViewAll={() => {
-            refreshHealthRecordDrafts();
-            setDraftManagerOpen(true);
-          }}
-        />
-      )}
-
       {!isFollowUp && !isEditingRecord && !setupComplete ? (
         <HealthRecordSetupStep
           selectedPatientId={selectedPatientId}
@@ -3117,8 +3045,10 @@ export default function AddHealthRecord() {
             matchingPatientCount: matchingPatients.length,
             visibleLimit: visiblePatientLimit,
             loading: patientsLoading && patients.length === 0,
+            loadError: patientsLoadError,
             isSearching: Boolean(normalizedSearch),
             onSeeAll: () => navigate("/bhc/patients"),
+            onRetryLoad: () => setPatientsReloadKey((key) => key + 1),
             highlightIndex,
             onSearchChange: handlePatientSearchChange,
             onOpen: () => {
@@ -4421,24 +4351,6 @@ export default function AddHealthRecord() {
         ]}
       />
 
-      <SuccessModal
-        open={Boolean(draftSavedModal)}
-        title="Draft saved on this device."
-        description="This record will not appear in official records until submitted."
-        onClose={() => setDraftSavedModal(null)}
-        actions={[
-          {
-            label: "Continue Editing",
-            onClick: () => setDraftSavedModal(null),
-          },
-          {
-            label: "Back to Health Records",
-            variant: "primary",
-            onClick: () => navigate(healthRecordsPath),
-          },
-        ]}
-      />
-
       <HealthRecordDraftsModal
         open={draftManagerOpen}
         drafts={healthRecordDrafts}
@@ -4446,6 +4358,10 @@ export default function AddHealthRecord() {
         onResume={handleResumeHealthRecordDraft}
         onDelete={handleDiscardHealthRecordDraft}
       />
+
+      {draftSavedToast && (
+        <LocalDraftToast message={draftSavedToast} />
+      )}
 
       {noticeModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 px-4 py-5 backdrop-blur-sm">
@@ -4484,6 +4400,7 @@ export default function AddHealthRecord() {
           saving || (typeof navigator !== "undefined" && navigator.onLine === false)
         }
         retryLabel="Retry Save"
+        retryLoading={saving}
         onContinue={() => setConnectionIssue(null)}
         onSaveDraft={handleSaveHealthRecordDraft}
         onRetry={handleRetryFailedHealthRecord}
@@ -4585,35 +4502,18 @@ function HealthRecordSetupStep({
   );
 }
 
-function HealthRecordDraftNotice({ draft, onResume, onViewAll }) {
-  const patientName =
-    draft?.patientName || draft?.formData?.patientName || "this patient";
-
+function LocalDraftToast({ message }) {
   return (
-    <div className="anim-fade-up mb-4 ml-0 mr-auto w-full max-w-7xl rounded-xl border border-[#E8ECF0] bg-white px-4 py-3 shadow-sm">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2 text-sm text-[#475569]">
-          <ClipboardList size={15} className="text-[#94A3B8]" />
-          <span>
-            A saved draft is available for {patientName}. Drafts are saved on
-            this device only.
-          </span>
+    <div className="fixed bottom-5 right-5 z-[10000] w-[calc(100%-2.5rem)] max-w-sm rounded-xl border border-[#E8ECF0] bg-white px-4 py-3 shadow-xl shadow-slate-900/10">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#F8FAFC] text-[#64748B]">
+          <ClipboardList size={15} />
         </div>
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
-          <button
-            type="button"
-            onClick={onViewAll}
-            className="rounded-lg border border-[#E8ECF0] bg-white px-3 py-1.5 text-xs font-semibold text-[#64748B] transition hover:bg-slate-50"
-          >
-            View Drafts
-          </button>
-          <button
-            type="button"
-            onClick={onResume}
-            className="rounded-lg bg-[#B91C1C] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
-          >
-            Resume
-          </button>
+        <div>
+          <p className="text-sm font-bold text-[#0F172A]">{message}</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-[#64748B]">
+            This is not yet an official health record.
+          </p>
         </div>
       </div>
     </div>
@@ -4665,11 +4565,10 @@ function HealthRecordDraftsModal({
             <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-[#F8FAFC] px-5 py-10 text-center">
               <ClipboardList className="mx-auto text-[#94A3B8]" size={30} />
               <h3 className="mt-3 text-sm font-bold text-[#0F172A]">
-                No saved drafts
+                No saved drafts yet.
               </h3>
               <p className="mt-1 text-sm leading-relaxed text-[#64748B]">
-                Save a form as draft to keep a local recovery copy on this
-                device.
+                Drafts you save from Add Health Record will appear here.
               </p>
             </div>
           ) : (
@@ -5334,8 +5233,10 @@ function PatientSearchDropdown({
   matchingPatientCount,
   visibleLimit,
   loading,
+  loadError,
   isSearching,
   onSeeAll,
+  onRetryLoad,
   highlightIndex,
   onSearchChange,
   onOpen,
@@ -5388,7 +5289,9 @@ function PatientSearchDropdown({
         >
           <div className="flex items-center justify-between border-b border-[#F3F4F6] px-3.5 py-2">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              {loading
+              {loadError
+                ? "Unable to load"
+                : loading
                 ? "Loading"
                 : `${matchingPatientCount} result${matchingPatientCount !== 1 ? "s" : ""}`}
             </p>
@@ -5399,7 +5302,24 @@ function PatientSearchDropdown({
             )}
           </div>
 
-          {loading ? (
+          {loadError ? (
+            <div className="px-3.5 py-8 text-center">
+              <AlertCircle size={22} className="mx-auto mb-2 text-[#B91C1C]" />
+              <p className="text-xs font-bold text-[#0F172A]">
+                Unable to load patients.
+              </p>
+              <p className="mx-auto mt-1 max-w-xs text-[11px] leading-relaxed text-[#64748B]">
+                Please check your connection and try again.
+              </p>
+              <button
+                type="button"
+                onClick={onRetryLoad}
+                className="mt-3 rounded-lg border border-[#E8ECF0] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569] transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
+              >
+                Retry
+              </button>
+            </div>
+          ) : loading ? (
             <div className="px-3.5 py-8 text-center">
               <InlineSpinner
                 label={
