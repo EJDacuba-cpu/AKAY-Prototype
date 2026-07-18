@@ -58,6 +58,19 @@ class HealthRecordController extends Controller
         $data = $request->validated();
         $patient = Patient::findOrFail($data['patient_id']);
         $this->authorizePatient($request, $patient);
+        if (
+            empty($data['parent_health_record_id'])
+            && ($data['visit_type'] ?? 'initial_consultation') !== 'follow_up_visit'
+            && ($matchingTask = $followUpTasks->findActiveMatchingTask($patient, $data['category'] ?? null))
+        ) {
+            $data['parent_health_record_id'] = $matchingTask->health_record_id;
+            $data['visit_type'] = 'follow_up_visit';
+            $data['monitoring_data'] = [
+                ...($data['monitoring_data'] ?? []),
+                'followUpTaskId' => $matchingTask->id,
+                'follow_up_task_id' => $matchingTask->id,
+            ];
+        }
         $this->normalizeVisitTypeData($request, $data, true);
         $this->normalizeMaternalSupplements($request, $data);
         $this->normalizeFamilyPlanningData($data);

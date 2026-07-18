@@ -7,9 +7,9 @@ let loadingPromise = null;
 let lastFetchedAt = 0;
 let lastLoadError = null;
 
-function emitUpdate() {
+function emitUpdate(detail = {}) {
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent(UPDATE_EVENT));
+    window.dispatchEvent(new CustomEvent(UPDATE_EVENT, { detail }));
   }
 }
 
@@ -106,6 +106,7 @@ export function notifyNotificationChange() {
 export async function refreshNotifications({
   force = false,
   maxAgeMs = DEFAULT_STALE_MS,
+  soundEligible = false,
 } = {}) {
   const now = Date.now();
 
@@ -119,7 +120,7 @@ export async function refreshNotifications({
       notificationCache = unwrapList(response).map(normalizeNotification);
       lastFetchedAt = Date.now();
       lastLoadError = null;
-      emitUpdate();
+      emitUpdate({ reason: "fetch", soundEligible });
       return notificationCache;
     })
     .catch((error) => {
@@ -131,7 +132,7 @@ export async function refreshNotifications({
         status: error?.status || null,
         code: error?.code || "",
       };
-      emitUpdate();
+      emitUpdate({ reason: "fetch-error", soundEligible: false });
       return notificationCache;
     })
     .finally(() => {
@@ -160,7 +161,7 @@ export function createNotification(notification) {
     createdAt: new Date().toISOString(),
   });
   notificationCache = [normalized, ...notificationCache];
-  emitUpdate();
+  emitUpdate({ reason: "create", soundEligible: true });
   return normalized;
 }
 
@@ -181,7 +182,7 @@ export async function markNotificationAsRead(notificationId) {
       ? { ...notification, isRead: true, read: true }
       : notification,
   );
-  emitUpdate();
+  emitUpdate({ reason: "mark-read", soundEligible: false });
 
   try {
     await apiRequest(`/notifications/${notificationId}/read`, {
@@ -203,7 +204,7 @@ export async function markNotificationsAsRead(notificationIds = []) {
       ? { ...notification, isRead: true, read: true }
       : notification,
   );
-  emitUpdate();
+  emitUpdate({ reason: "mark-read", soundEligible: false });
 
   try {
     await Promise.all(
@@ -226,7 +227,7 @@ export async function markAllNotificationsAsRead() {
     isRead: true,
     read: true,
   }));
-  emitUpdate();
+  emitUpdate({ reason: "mark-read", soundEligible: false });
 
   try {
     await apiRequest("/notifications/read-all", { method: "PATCH" });
@@ -246,7 +247,7 @@ export async function deleteNotification(notificationId) {
   notificationCache = notificationCache.filter(
     (notification) => notification.id !== String(notificationId),
   );
-  emitUpdate();
+  emitUpdate({ reason: "delete", soundEligible: false });
 
   try {
     await apiRequest(`/notifications/${notificationId}`, { method: "DELETE" });
@@ -264,7 +265,7 @@ export async function deleteNotifications(notificationIds = []) {
   notificationCache = notificationCache.filter(
     (notification) => !ids.includes(String(notification.id)),
   );
-  emitUpdate();
+  emitUpdate({ reason: "delete", soundEligible: false });
 
   try {
     await Promise.all(
@@ -279,7 +280,7 @@ export async function deleteNotifications(notificationIds = []) {
 
 export async function clearNotificationsForUser() {
   notificationCache = [];
-  emitUpdate();
+  emitUpdate({ reason: "clear", soundEligible: false });
 
   try {
     await apiRequest("/notifications", { method: "DELETE" });
@@ -292,7 +293,7 @@ export async function clearNotificationsForUser() {
 
 export function subscribeToNotifications(callback) {
   if (typeof window === "undefined") return () => {};
-  const handler = () => callback();
+  const handler = (event) => callback(event.detail || {});
   window.addEventListener(UPDATE_EVENT, handler);
 
   return () => window.removeEventListener(UPDATE_EVENT, handler);

@@ -4,10 +4,33 @@ namespace App\Services;
 
 use App\Models\FollowUpTask;
 use App\Models\HealthRecord;
+use App\Models\Patient;
 use App\Models\User;
 
 class FollowUpTaskSyncService
 {
+    public function findActiveMatchingTask(Patient $patient, ?string $category): ?FollowUpTask
+    {
+        $normalizedCategory = $this->normalizeCategory($category);
+        if (! $normalizedCategory) {
+            return null;
+        }
+
+        return FollowUpTask::query()
+            ->with('healthRecord')
+            ->where('patient_id', $patient->id)
+            ->whereIn('state', [
+                FollowUpTask::STATE_PENDING,
+                FollowUpTask::STATE_RESCHEDULED,
+                FollowUpTask::STATE_NO_SHOW,
+            ])
+            ->whereNull('fulfilled_at')
+            ->get()
+            ->first(function (FollowUpTask $task) use ($normalizedCategory): bool {
+                return $this->normalizeCategory($task->healthRecord?->category) === $normalizedCategory;
+            });
+    }
+
     public function syncRecord(HealthRecord $record, ?User $user = null): void
     {
         if ($record->visit_type === 'follow_up_visit' && $record->parent_health_record_id) {
@@ -79,49 +102,44 @@ class FollowUpTaskSyncService
 
     private function syncFollowUpVisit(HealthRecord $record, ?User $user = null): void
     {
-        FollowUpTask::where('health_record_id', $record->id)->delete();
+        FollowUpTask::where('health_record_id', $record->id)
+            ->whereNull('fulfilled_at')
+            ->delete();
 
-        $task = FollowUpTask::where('health_record_id', $record->parent_health_record_id)
-            ->where('patient_id', $record->patient_id)
-            ->first();
+        $task = $this->linkedFollowUpTask($record)
+            ?? FollowUpTask::where('health_record_id', $record->parent_health_record_id)
+                ->where('patient_id', $record->patient_id)
+                ->first();
         $dueDate = $this->followUpDate($record);
 
-        if (! $task && ! $dueDate) {
-            return;
-        }
-
-        if (! $task) {
-            $parentRecord = HealthRecord::find($record->parent_health_record_id);
-            $task = FollowUpTask::create([
-                'health_record_id' => $record->parent_health_record_id,
-                'patient_id' => $record->patient_id,
-                'barangay_health_center_id' => $parentRecord?->barangay_health_center_id ?? $record->barangay_health_center_id,
-                'due_date' => $dueDate,
-                'state' => FollowUpTask::STATE_PENDING,
-                'created_by' => $parentRecord?->created_by ?? $record->created_by,
+        if ($task && ! $task->fulfilled_at) {
+            $task->update([
+                'state' => FollowUpTask::STATE_FULFILLED,
+                'fulfilled_at' => now(),
+                'fulfilled_by_health_record_id' => $record->id,
                 'updated_by' => $user?->id,
             ]);
         }
 
-        if ($dueDate) {
-            $task->update([
+        if (! $dueDate) {
+            return;
+        }
+
+        FollowUpTask::updateOrCreate(
+            ['health_record_id' => $record->id],
+            [
+                'patient_id' => $record->patient_id,
+                'barangay_health_center_id' => $record->barangay_health_center_id,
                 'due_date' => $dueDate,
                 'state' => FollowUpTask::STATE_PENDING,
                 'fulfilled_at' => null,
-                'fulfilled_by_health_record_id' => $record->id,
+                'fulfilled_by_health_record_id' => null,
                 'no_show_at' => null,
                 'rescheduled_at' => null,
+                'created_by' => $record->created_by,
                 'updated_by' => $user?->id,
-            ]);
-            return;
-        }
-
-        $task->update([
-            'state' => FollowUpTask::STATE_FULFILLED,
-            'fulfilled_at' => now(),
-            'fulfilled_by_health_record_id' => $record->id,
-            'updated_by' => $user?->id,
-        ]);
+            ]
+        );
     }
 
     private function deleteUnfulfilledTask(HealthRecord $record): void
@@ -129,6 +147,25 @@ class FollowUpTaskSyncService
         FollowUpTask::where('health_record_id', $record->id)
             ->whereNull('fulfilled_at')
             ->delete();
+    }
+
+    private function linkedFollowUpTask(HealthRecord $record): ?FollowUpTask
+    {
+        $monitoringData = $record->monitoring_data ?? [];
+        $taskId = $monitoringData['followUpTaskId']
+            ?? $monitoringData['follow_up_task_id']
+            ?? $monitoringData['followUpId']
+            ?? $monitoringData['follow_up_id']
+            ?? null;
+
+        if (! $taskId) {
+            return null;
+        }
+
+        return FollowUpTask::query()
+            ->whereKey($taskId)
+            ->where('patient_id', $record->patient_id)
+            ->first();
     }
 
     private function healthRecordStatus(HealthRecord $record): string
@@ -140,6 +177,30 @@ class FollowUpTaskSyncService
             ?? 'Routine Monitoring';
 
         return str_replace(['_', '-'], ' ', strtolower(trim($status)));
+    }
+
+    private function normalizeCategory(?string $category): string
+    {
+        $value = str_replace(['_', '-'], ' ', strtolower(trim((string) $category)));
+
+        if ($value === '') return '';
+        if (str_contains($value, 'immun') || str_contains($value, 'epi') || str_contains($value, 'child health')) {
+            return 'immunization';
+        }
+        if (str_contains($value, 'maternal') || str_contains($value, 'prenatal')) {
+            return 'maternal';
+        }
+        if (str_contains($value, 'family') || str_contains($value, 'planning')) {
+            return 'family planning';
+        }
+        if (str_contains($value, 'hypertension') || str_contains($value, 'diabetic') || str_contains($value, 'diabetes') || str_contains($value, 'ncd')) {
+            return 'hypertension diabetic monitoring';
+        }
+        if (str_contains($value, 'general') || str_contains($value, 'consult')) {
+            return 'general consultation';
+        }
+
+        return $value;
     }
 
     private function followUpDate(HealthRecord $record): ?string

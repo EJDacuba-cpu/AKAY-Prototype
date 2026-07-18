@@ -2,11 +2,9 @@ import { Link } from "react-router";
 import { Baby, ClipboardList, HeartPulse, UsersRound } from "lucide-react";
 
 import {
-  EPI_VACCINE_ROWS,
   formatDisplayTime,
   getConfirmedBreastfeedingMonths,
   getEpiBreastfeedingMonitoring,
-  getEpiVaccineEntries,
   getHypertensionDiabeticData,
   getRecordClassificationText,
   getRecordDateValue,
@@ -20,8 +18,12 @@ import {
   isMaternalRecord,
   isNcdRecord,
   isTbRecord,
-  normalizeVaccineName,
 } from "../../../utils/healthRecordPrograms";
+import {
+  REQUIRED_EPI_ITEMS,
+  compileEpiHistory,
+  formatEpiDate,
+} from "../../../utils/epiTracking";
 import { formatDate, formatDisplayValue } from "../../../utils/formatters";
 
 const EMPTY_MARK = "Not recorded";
@@ -173,18 +175,42 @@ function isOwnPatientRecord(record = {}, patient = {}) {
 function EpiHistory({ records, basePath }) {
   const rows = compileEpiRows(records);
   const breastfeedingMonths = compileBreastfeedingMonths(records);
+  const remainingRows = rows.filter((row) => row.status !== "Given");
+  const complete = remainingRows.length === 0;
 
   return (
     <div>
-      <ResponsiveTable minWidth="min-w-[980px]">
+      <div className="border-b border-slate-100 px-6 py-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              EPI Status
+            </p>
+            <p
+              className={`mt-1 text-sm font-bold ${
+                complete ? "text-emerald-700" : "text-[#B91C1C]"
+              }`}
+            >
+              {complete ? "Complete" : "Incomplete"}
+            </p>
+          </div>
+          {!complete && (
+            <p className="max-w-xl text-xs leading-relaxed text-slate-500">
+              Remaining vaccines/services:{" "}
+              <span className="font-semibold text-[#0F172A]">
+                {remainingRows.map((row) => row.vaccineName).join(", ")}
+              </span>
+            </p>
+          )}
+        </div>
+      </div>
+
+      <ResponsiveTable minWidth="min-w-[760px]">
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-            <TableHead>Vaccine</TableHead>
-            <TableHead>Given</TableHead>
-            <TableHead>Weight</TableHead>
-            <TableHead>Height</TableHead>
-            <TableHead>Temp</TableHead>
-            <TableHead>Remarks</TableHead>
+            <TableHead>Vaccine / Service</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Date Given</TableHead>
             <TableHead>Source Visit</TableHead>
           </tr>
         </thead>
@@ -192,14 +218,25 @@ function EpiHistory({ records, basePath }) {
           {rows.map((row) => (
             <tr key={row.vaccineName} className="transition-colors hover:bg-slate-50/80">
               <TableCell strong>{row.vaccineName}</TableCell>
-              <TableCell>{row.entry ? formatDate(row.dateGiven, EMPTY_MARK) : EMPTY_MARK}</TableCell>
-              <TableCell>{formatMeasurement(row.weight, "kg")}</TableCell>
-              <TableCell>{formatMeasurement(row.height, "cm")}</TableCell>
-              <TableCell>{formatMeasurement(row.temperature, "C")}</TableCell>
-              <TableCell>{row.remarks || EMPTY_MARK}</TableCell>
+              <TableCell>
+                <span
+                  className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                    row.status === "Given"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-slate-100 text-slate-500"
+                  }`}
+                >
+                  {row.status}
+                </span>
+              </TableCell>
+              <TableCell>{row.dateGiven ? formatEpiDate(row.dateGiven) : SOURCE_EMPTY_MARK}</TableCell>
               <TableCell>
                 {row.record ? (
-                  <SourceVisitLink record={row.record} basePath={basePath} label="View" />
+                  <SourceVisitLink
+                    record={row.record}
+                    basePath={basePath}
+                    label={row.sourceVisitLabel}
+                  />
                 ) : (
                   SOURCE_EMPTY_MARK
                 )}
@@ -474,45 +511,21 @@ function SourceVisitLink({ record, basePath, label: explicitLabel }) {
 }
 
 function compileEpiRows(records) {
-  const allEntries = records.flatMap((record) =>
-    getEpiVaccineEntries(record).map((entry) => ({
-      ...entry,
-      record,
-      dateGiven: entry.dateGiven || getRecordDateValue(record),
-      weight: entry.weight || record.weight || "",
-      height: entry.height || record.height || "",
-      temperature: entry.temperature || record.temperature || record.temp || "",
-      remarks:
-        entry.remarks ||
-        entry.notes ||
-        record.remarks ||
-        record.notes ||
-        getImmunizationRemarks(record),
-    })),
-  );
+  const historyByCode = compileEpiHistory(records);
 
-  return EPI_VACCINE_ROWS.map((vaccineName) => {
-    const matchingEntries = allEntries
-      .filter((entry) => normalizeVaccineName(entry.vaccineName) === vaccineName)
-      .sort((a, b) => getTime(a.dateGiven) - getTime(b.dateGiven));
-    const entry = matchingEntries[0] || null;
-
+  return REQUIRED_EPI_ITEMS.map((item) => {
+    const entry = historyByCode.get(item.code) || null;
     return {
-      vaccineName,
+      vaccineName: item.label,
+      status: entry ? "Given" : "Pending",
       entry,
       record: entry?.record || null,
       dateGiven: entry?.dateGiven || "",
-      weight: entry?.weight || "",
-      height: entry?.height || "",
-      temperature: entry?.temperature || "",
-      remarks: entry?.remarks || "",
+      sourceVisitLabel: entry?.record
+        ? `Record #${getRecordId(entry.record)}`
+        : SOURCE_EMPTY_MARK,
     };
   });
-}
-
-function getImmunizationRemarks(record = {}) {
-  const data = normalizeObject(record.immunizationData || record.immunization_data);
-  return data.remarks || data.notes || data.remark || "";
 }
 
 function compileBreastfeedingMonths(records) {

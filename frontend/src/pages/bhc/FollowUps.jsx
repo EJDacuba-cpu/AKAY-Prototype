@@ -227,6 +227,7 @@ export default function FollowUps() {
         "Due Today",
         "Pending",
         "No Show",
+        "Rescheduled",
         "Completed",
         "Cancelled",
       ],
@@ -290,11 +291,17 @@ export default function FollowUps() {
 
   function recordFollowUpVisit(task) {
     const params = new URLSearchParams({
-      recordId: task.healthRecordId,
-      mode: "follow-up",
+      mode: "followup",
+      followUpId: task.id,
       patientId: task.patientId,
-      classification: getTaskClassification(task) || getTaskServiceTypeLabel(task),
+      serviceType: getTaskClassification(task) || getTaskServiceTypeLabel(task),
+      followUpStatus: formatStateLabel(task.effectiveState),
+      followUpDate: task.dueDate || "",
     });
+
+    if (task.healthRecordId) {
+      params.set("recordId", task.healthRecordId);
+    }
 
     navigate(`/bhc/health-records/add?${params.toString()}`);
   }
@@ -483,7 +490,7 @@ function buildTaskActions(task, handlers) {
 
   if (["due_today", "no_show", "upcoming", "rescheduled"].includes(task.effectiveState)) {
     actions.push({
-      label: "Record Visit",
+      label: "Add Health Record",
       onClick: handlers.onRecordVisit,
     });
     actions.push({
@@ -501,7 +508,7 @@ function StateBadge({ state }) {
     due_today: ["Due Today", "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]"],
     upcoming: ["Pending", "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"],
     no_show: ["No Show", "border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]"],
-    rescheduled: ["Pending", "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]"],
+    rescheduled: ["Rescheduled", "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]"],
     fulfilled: ["Completed", "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"],
     cancelled: ["Cancelled", "border-[#CBD5E1] bg-[#F8FAFC] text-[#64748B]"],
   }[state] || ["Pending", "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"];
@@ -722,7 +729,7 @@ function FollowUpDetailsModal({
                   onClick={() => onRecordVisit(task)}
                   className="rounded-xl bg-[#B91C1C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#991B1B]"
                 >
-                  Record Visit
+                  Add Health Record
                 </button>
               )}
             </>
@@ -770,6 +777,7 @@ function normalizeFilterState(value) {
     "Due Today": "due_today",
     Pending: "upcoming",
     "No Show": "no_show",
+    Rescheduled: "rescheduled",
     Completed: "fulfilled",
     Cancelled: "cancelled",
   };
@@ -782,7 +790,7 @@ function formatStateLabel(state) {
     due_today: "Due Today",
     upcoming: "Pending",
     no_show: "No Show",
-    rescheduled: "Pending",
+    rescheduled: "Rescheduled",
     fulfilled: "Completed",
     cancelled: "Cancelled",
   };

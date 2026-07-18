@@ -552,6 +552,12 @@ function toPayload(record = {}, { partial = false } = {}) {
     record.original_health_record_id ||
     record.previousRecordId ||
     null;
+  const followUpTaskId =
+    record.followUpTaskId ||
+    record.follow_up_task_id ||
+    record.followUpId ||
+    record.follow_up_id ||
+    null;
   const visitType =
     record.visitType ||
     record.visit_type ||
@@ -624,6 +630,8 @@ function toPayload(record = {}, { partial = false } = {}) {
     referralTrackingId: record.referralTrackingId || null,
     previousRecordId: parentHealthRecordId,
     parentHealthRecordId,
+    followUpTaskId,
+    follow_up_task_id: followUpTaskId,
     visitType,
     isFollowUp: record.isFollowUp || visitType === "follow_up_visit",
     morbidityReportingStatus,
@@ -963,6 +971,10 @@ function toPayload(record = {}, { partial = false } = {}) {
       "previousRecordId",
       "parentHealthRecordId",
       "parent_health_record_id",
+      "followUpTaskId",
+      "follow_up_task_id",
+      "followUpId",
+      "follow_up_id",
       "visitType",
       "visit_type",
       "isFollowUp",

@@ -26,13 +26,16 @@ import InlineSpinner from "../../components/common/loading/InlineSpinner";
 import DispensedMedicinesSection from "../../components/features/medicine/DispensedMedicinesSection";
 import healthRecordService, {
   getHealthRecordById,
+  getHealthRecordsByPatient,
 } from "../../services/healthRecordService";
 import {
   BHC_MEDICINES_UPDATED_EVENT,
   getBhcMedicines,
+  loadMedicineAvailability,
   refreshRhuMedicines,
 } from "../../services/medicineService";
 import { getPatientDetailsListByRole } from "../../services/patientService";
+import { getFollowUpTasks } from "../../services/followUpTaskService";
 import { createReferral } from "../../services/referrals";
 import { isConnectionError } from "../../services/apiClient";
 import {
@@ -41,6 +44,12 @@ import {
   saveHealthRecordDraft,
 } from "../../services/offlineDraftService";
 import { getCurrentUser } from "../../utils/auth";
+import {
+  compileEpiHistory,
+  formatEpiDate,
+  getEpiCode,
+  getEpiCompletionState,
+} from "../../utils/epiTracking";
 import {
   formatDisplayValue,
   formatFacilityName,
@@ -589,6 +598,13 @@ function normalizeRecordType(value) {
   return raw;
 }
 
+function formatRecordTypeForDisplay(value = "") {
+  const normalized = normalizeRecordType(value);
+  if (normalized === "Immunization") return "Child Health / EPI";
+  if (normalized === "Maternal") return "Maternal / Prenatal";
+  return normalized || "selected service";
+}
+
 function normalizeHypertensionDiabeticCondition(value = "") {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return "";
@@ -692,6 +708,72 @@ function normalizePatientStatus(status) {
   }
 
   return value || "Routine Monitoring";
+}
+
+function normalizeDateOnly(value) {
+  if (!value) return "";
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
+function getFollowUpTaskState(task = {}) {
+  const state = String(task.state || task.status || task.followUpStatus || "")
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (state === "fulfilled" || state === "completed") return "fulfilled";
+  if (state === "cancelled" || state === "canceled") return "cancelled";
+  if (state === "no show") return "no_show";
+  if (state === "due today") return "due_today";
+  if (state === "rescheduled") return "rescheduled";
+  if (state === "pending") return "pending";
+
+  const dueDate = normalizeDateOnly(task.dueDate || task.due_date);
+  const today = new Date().toISOString().slice(0, 10);
+  if (dueDate && dueDate < today) return "no_show";
+  if (dueDate === today) return "due_today";
+  return "pending";
+}
+
+function isActiveFollowUpTask(task = {}) {
+  return ["pending", "due_today", "no_show", "rescheduled"].includes(
+    getFollowUpTaskState(task),
+  );
+}
+
+function getFollowUpTaskStatusLabel(task = {}) {
+  const state = getFollowUpTaskState(task);
+  const labels = {
+    pending: "Pending",
+    due_today: "Due Today",
+    no_show: "No Show",
+    rescheduled: "Rescheduled",
+  };
+  return labels[state] || "Pending";
+}
+
+function getFollowUpTaskServiceType(task = {}) {
+  const source =
+    task.healthRecord?.category ||
+    task.healthRecord?.patientClassification ||
+    task.healthRecord?.recordType ||
+    task.healthRecord?.record_type ||
+    task.category ||
+    task.patientClassification ||
+    task.recordType ||
+    "";
+  return normalizeRecordType(source);
+}
+
+function formatFollowUpTaskDate(value = "") {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value || "not scheduled";
+  return date.toLocaleDateString(undefined, {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function calculateAgeInYears(birthdate, referenceDate = new Date()) {
@@ -889,23 +971,55 @@ export default function AddHealthRecord() {
     currentUser?.assignedBarangayHealthCenter ||
     currentUser?.assignedRuralHealthUnit ||
     "";
+  const currentBhcFacilityId = String(
+    currentUser?.barangayHealthCenterId ||
+      currentUser?.bhcId ||
+      currentUser?.facilityId ||
+      "",
+  ).trim();
   const basePath = userRole === "bhc" ? "/bhc" : "/rhu";
   const healthRecordsPath = `${basePath}/health-records`;
 
   const recordId = searchParams.get("recordId");
+  const followUpTaskId =
+    searchParams.get("followUpId") || searchParams.get("follow_up_id") || "";
+  const routeFollowUpStatus =
+    searchParams.get("followUpStatus") ||
+    searchParams.get("follow_up_status") ||
+    searchParams.get("status") ||
+    "";
+  const routeFollowUpDate =
+    searchParams.get("followUpDate") ||
+    searchParams.get("follow_up_date") ||
+    searchParams.get("dueDate") ||
+    searchParams.get("scheduledDate") ||
+    "";
   const preselectedPatientId = searchParams.get("patientId") || "";
   const preselectedClassification = normalizeRecordType(
-    searchParams.get("classification") ||
+    searchParams.get("serviceType") ||
+      searchParams.get("classification") ||
       searchParams.get("category") ||
       searchParams.get("recordType") ||
       searchParams.get("healthRecordType"),
   );
   const requestedMode =
     searchParams.get("mode") || (recordId ? "follow-up" : "create");
+  const normalizedRequestedMode = requestedMode
+    .toLowerCase()
+    .replace(/[_-]+/g, "");
   const mode = requestedMode;
-  const isFollowUp = !!recordId && mode === "follow-up";
-  const isOrphanFollowUpRequest = !recordId && requestedMode === "follow-up";
-  const isEditingRecord = !!recordId && mode === "edit";
+  const isFollowUpRouteMode = ["followup"].includes(normalizedRequestedMode);
+  const isFollowUp = !!recordId && isFollowUpRouteMode;
+  const isOrphanFollowUpRequest =
+    !recordId &&
+    isFollowUpRouteMode &&
+    !followUpTaskId &&
+    !(preselectedPatientId && preselectedClassification);
+  const isEditingRecord = !!recordId && normalizedRequestedMode === "edit";
+  const hasRouteFollowUpContext =
+    !isEditingRecord &&
+    isFollowUpRouteMode &&
+    Boolean(followUpTaskId || (preselectedPatientId && preselectedClassification));
 
   const [patients, setPatients] = useState([]);
   const [patientsLoading, setPatientsLoading] = useState(true);
@@ -996,6 +1110,12 @@ export default function AddHealthRecord() {
 
   const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
   const [bhcMedicineInventory, setBhcMedicineInventory] = useState([]);
+  const [bhcMedicineInventoryLoading, setBhcMedicineInventoryLoading] =
+    useState(false);
+  const [bhcMedicineInventoryError, setBhcMedicineInventoryError] =
+    useState("");
+  const [bhcMedicineInventoryReloadKey, setBhcMedicineInventoryReloadKey] =
+    useState(0);
   const [dispensedMedicines, setDispensedMedicines] = useState([]);
   const [familyPlanningData, setFamilyPlanningData] = useState(
     EMPTY_FAMILY_PLANNING_DATA,
@@ -1010,6 +1130,15 @@ export default function AddHealthRecord() {
   const [immunizationData, setImmunizationData] = useState(
     EMPTY_IMMUNIZATION_DATA,
   );
+  const [epiHistoryRecords, setEpiHistoryRecords] = useState([]);
+  const [epiHistoryLoading, setEpiHistoryLoading] = useState(false);
+  const [epiHistoryError, setEpiHistoryError] = useState("");
+  const [routeLinkedFollowUpTask, setRouteLinkedFollowUpTask] = useState(null);
+  const [autoLinkedFollowUpTask, setAutoLinkedFollowUpTask] = useState(null);
+  const [activeFollowUpLookup, setActiveFollowUpLookup] = useState({
+    key: "",
+    isChecking: false,
+  });
 
   useEffect(() => {
     if (!isOrphanFollowUpRequest) return undefined;
@@ -1060,15 +1189,44 @@ export default function AddHealthRecord() {
   useEffect(() => {
     let active = true;
 
+    function getScopedBhcMedicines(medicines = []) {
+      return medicines.filter((item) => {
+        if (item.ruralHealthUnitId) return false;
+        const itemBhcId = String(
+          item.barangayHealthCenterId ||
+            item.barangay_health_center_id ||
+            item.bhcId ||
+            "",
+        ).trim();
+        return !currentBhcFacilityId || !itemBhcId || itemBhcId === currentBhcFacilityId;
+      });
+    }
+
     async function loadMedicines() {
-      const medicines = await refreshRhuMedicines();
-      if (active) {
-        setBhcMedicineInventory(medicines.filter((item) => !item.ruralHealthUnitId));
+      setBhcMedicineInventoryLoading(true);
+      setBhcMedicineInventoryError("");
+
+      try {
+        const medicines = await loadMedicineAvailability();
+        if (active) {
+          setBhcMedicineInventory(getScopedBhcMedicines(medicines));
+        }
+      } catch (error) {
+        if (active) {
+          setBhcMedicineInventoryError(
+            isConnectionError(error)
+              ? "Unable to load BHC inventory. Please check your connection and try again."
+              : error?.message ||
+                  "Unable to load BHC inventory. Please check your connection and try again.",
+          );
+        }
+      } finally {
+        if (active) setBhcMedicineInventoryLoading(false);
       }
     }
 
     function syncFromCache() {
-      setBhcMedicineInventory(getBhcMedicines());
+      setBhcMedicineInventory(getScopedBhcMedicines(getBhcMedicines()));
     }
 
     syncFromCache();
@@ -1079,7 +1237,7 @@ export default function AddHealthRecord() {
       active = false;
       window.removeEventListener(BHC_MEDICINES_UPDATED_EVENT, syncFromCache);
     };
-  }, []);
+  }, [bhcMedicineInventoryReloadKey, currentBhcFacilityId]);
 
   useEffect(() => {
     if (currentUserName && !attendingStaff) {
@@ -1240,7 +1398,9 @@ export default function AddHealthRecord() {
   useEffect(() => {
     async function loadFollowUpPreview() {
       if (!isFollowUp) {
-        setFollowUpRecord(null);
+        if (!routeLinkedFollowUpTask?.healthRecord) {
+          setFollowUpRecord(null);
+        }
         return;
       }
 
@@ -1260,13 +1420,58 @@ export default function AddHealthRecord() {
     }
 
     loadFollowUpPreview();
-  }, [isFollowUp, recordId]);
+  }, [isFollowUp, recordId, routeLinkedFollowUpTask]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadRouteFollowUpTask() {
+      if (!hasRouteFollowUpContext || !followUpTaskId) {
+        setRouteLinkedFollowUpTask(null);
+        return;
+      }
+
+      try {
+        const tasks = await getFollowUpTasks();
+        if (!active) return;
+        const task = (Array.isArray(tasks) ? tasks : []).find(
+          (item) => String(item.id) === String(followUpTaskId),
+        );
+
+        setRouteLinkedFollowUpTask(task || null);
+
+        if (!task) return;
+
+        if (task.patientId) setSelectedPatientId(String(task.patientId));
+        const taskServiceType = getFollowUpTaskServiceType(task);
+        if (taskServiceType) {
+          setHealthRecordType(taskServiceType);
+        }
+        if (task.healthRecord) {
+          setFollowUpRecord(task.healthRecord);
+        }
+        setSetupComplete(true);
+      } catch {
+        if (active) setRouteLinkedFollowUpTask(null);
+      }
+    }
+
+    loadRouteFollowUpTask();
+
+    return () => {
+      active = false;
+    };
+  }, [followUpTaskId, hasRouteFollowUpContext]);
 
   const selectedPatientFromList = patients.find(
     (patient) => String(patient.id) === String(selectedPatientId),
   );
   const selectedPatient =
     selectedPatientFromList ||
+    (routeLinkedFollowUpTask?.patient &&
+    String(routeLinkedFollowUpTask.patientId) === String(selectedPatientId)
+      ? routeLinkedFollowUpTask.patient
+      : null) ||
     (isFollowUp &&
     followUpRecord?.patient &&
     getHealthRecordPatientId(followUpRecord) === String(selectedPatientId)
@@ -1320,6 +1525,8 @@ export default function AddHealthRecord() {
   const visitType = isFollowUp ? "follow_up_visit" : "initial_consultation";
   const followUpPatientName =
     getPatientName(selectedPatient) ||
+    routeLinkedFollowUpTask?.patientName ||
+    routeLinkedFollowUpTask?.patient?.name ||
     followUpRecord?.patientName ||
     followUpRecord?.patient?.name ||
     "Selected patient";
@@ -1445,6 +1652,18 @@ export default function AddHealthRecord() {
   }
 
   const normalizedHealthRecordType = normalizeRecordType(healthRecordType);
+  const activeFollowUpLookupKey =
+    !isFollowUp &&
+    !isEditingRecord &&
+    !hasRouteFollowUpContext &&
+    selectedPatientId &&
+    normalizedHealthRecordType
+      ? `${selectedPatientId}::${normalizedHealthRecordType}`
+      : "";
+  const isResolvingFollowUpMode =
+    Boolean(activeFollowUpLookupKey) &&
+    (activeFollowUpLookup.isChecking ||
+      activeFollowUpLookup.key !== activeFollowUpLookupKey);
   const recordTypeKey = normalizedHealthRecordType.toLowerCase();
   const isImmunization = recordTypeKey === "immunization";
   const isMaternal = recordTypeKey === "maternal";
@@ -1484,6 +1703,164 @@ export default function AddHealthRecord() {
     dateOfVisit,
   );
   const immunizationVaccineEntries = getVaccineEntries(immunizationData);
+  const epiHistoryByCode = useMemo(
+    () =>
+      compileEpiHistory(epiHistoryRecords, {
+        excludeRecordId: isEditingRecord ? recordId : "",
+      }),
+    [epiHistoryRecords, isEditingRecord, recordId],
+  );
+  const epiCompletion = useMemo(
+    () => getEpiCompletionState(epiHistoryByCode, immunizationVaccineEntries),
+    [epiHistoryByCode, immunizationVaccineEntries],
+  );
+  const epiWillComplete = isImmunization && epiCompletion.completeAfterSave;
+  const epiNeedsNextFollowUp =
+    isImmunization && !needsReferral && !epiWillComplete;
+  const effectiveLinkedFollowUpTask =
+    routeLinkedFollowUpTask || (isFollowUp ? null : autoLinkedFollowUpTask);
+  const effectiveFollowUpParentRecordId = isFollowUp
+    ? recordId
+    : effectiveLinkedFollowUpTask?.healthRecordId || "";
+  const effectiveFollowUpTaskId = effectiveLinkedFollowUpTask?.id || followUpTaskId || "";
+  const isFollowUpVisitMode =
+    isFollowUp ||
+    Boolean(effectiveLinkedFollowUpTask) ||
+    Boolean(hasRouteFollowUpContext);
+  const isLinkedFollowUpVisit = isFollowUp || Boolean(effectiveLinkedFollowUpTask);
+  const linkedFollowUpScheduledDate =
+    effectiveLinkedFollowUpTask?.dueDate ||
+    effectiveLinkedFollowUpTask?.due_date ||
+    routeFollowUpDate ||
+    followUpRecord?.followUpDate ||
+    followUpRecord?.follow_up_date ||
+    followUpRecord?.monitoringData?.followUpDate ||
+    followUpRecord?.monitoring_data?.followUpDate ||
+    followUpRecord?.monitoring_data?.follow_up_date ||
+    followUpDate ||
+    "";
+  const linkedFollowUpServiceType = formatRecordTypeForDisplay(
+    getFollowUpTaskServiceType(effectiveLinkedFollowUpTask || {}) ||
+      normalizedHealthRecordType,
+  );
+  const fallbackLinkedFollowUpState =
+    routeFollowUpStatus ||
+    (normalizePatientStatus(
+      followUpRecord?.followUpStatus || followUpRecord?.status,
+    ) === "Completed"
+      ? "fulfilled"
+      : "pending");
+  const linkedFollowUpStatusLabel = getFollowUpTaskStatusLabel(
+    effectiveLinkedFollowUpTask || {
+      state: fallbackLinkedFollowUpState,
+      dueDate: linkedFollowUpScheduledDate,
+    },
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    async function detectActiveFollowUp() {
+      if (!activeFollowUpLookupKey) {
+        setAutoLinkedFollowUpTask(null);
+        setActiveFollowUpLookup({ key: "", isChecking: false });
+        return;
+      }
+
+      setAutoLinkedFollowUpTask(null);
+      setActiveFollowUpLookup({
+        key: activeFollowUpLookupKey,
+        isChecking: true,
+      });
+
+      try {
+        const tasks = await getFollowUpTasks();
+        if (!active) return;
+
+        const matchingTask = (Array.isArray(tasks) ? tasks : []).find(
+          (task) =>
+            isActiveFollowUpTask(task) &&
+            String(task.patientId) === String(selectedPatientId) &&
+            getFollowUpTaskServiceType(task) === normalizedHealthRecordType,
+        );
+
+        setAutoLinkedFollowUpTask(matchingTask || null);
+      } catch {
+        if (active) setAutoLinkedFollowUpTask(null);
+      } finally {
+        if (active) {
+          setActiveFollowUpLookup({
+            key: activeFollowUpLookupKey,
+            isChecking: false,
+          });
+        }
+      }
+    }
+
+    detectActiveFollowUp();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    activeFollowUpLookupKey,
+    normalizedHealthRecordType,
+    selectedPatientId,
+  ]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadEpiHistory() {
+      if (!isImmunization || !selectedPatientId) {
+        setEpiHistoryRecords([]);
+        setEpiHistoryError("");
+        setEpiHistoryLoading(false);
+        return;
+      }
+
+      setEpiHistoryLoading(true);
+      setEpiHistoryError("");
+
+      try {
+        const records = await getHealthRecordsByPatient(selectedPatientId);
+        if (!active) return;
+        setEpiHistoryRecords(
+          [
+            ...(Array.isArray(records) ? records : []),
+            followUpRecord || null,
+          ].filter(Boolean),
+        );
+      } catch (error) {
+        if (!active) return;
+        setEpiHistoryError(
+          isConnectionError(error)
+            ? "Unable to load previous EPI history. Please check your connection and try again."
+            : error?.message ||
+                "Unable to load previous EPI history. Please check your connection and try again.",
+        );
+      } finally {
+        if (active) setEpiHistoryLoading(false);
+      }
+    }
+
+    loadEpiHistory();
+
+    return () => {
+      active = false;
+    };
+  }, [followUpRecord, isImmunization, selectedPatientId]);
+
+  useEffect(() => {
+    if (!isImmunization || needsReferral) return;
+    if (epiWillComplete) {
+      clearValidationError("followUpDate");
+      setFollowUpDate("");
+      setFollowUpStatus("Completed");
+      return;
+    }
+    setFollowUpStatus("Follow-up Required");
+  }, [epiWillComplete, isImmunization, needsReferral]);
 
   const formattedBp = (() => {
     const sys = systolicBp || "N/A";
@@ -1661,10 +2038,21 @@ export default function AddHealthRecord() {
         ...entry,
         dateGiven: entry.dateGiven || dateOfVisit,
       }));
+      const duplicateEntry = preparedEntries.find((entry) =>
+        epiCompletion.alreadyGivenCodes.has(getEpiCode(entry.vaccineName)),
+      );
 
       if (preparedEntries.length === 0 && !consultationNotes.trim()) {
         errors.vaccineEntries =
           "Select at least one vaccine or enter remarks if no vaccine was given.";
+      }
+      if (duplicateEntry) {
+        errors.vaccineEntries =
+          "This vaccine/service was already recorded for this patient.";
+      }
+      if (epiNeedsNextFollowUp && !followUpDate) {
+        errors.followUpDate =
+          "Next follow-up date is required because there are still remaining EPI vaccines/services.";
       }
 
       return errors;
@@ -1863,6 +2251,9 @@ export default function AddHealthRecord() {
   }
 
   function handleVaccineToggle(vaccineName, checked) {
+    const vaccineCode = getEpiCode(vaccineName);
+    if (vaccineCode && epiCompletion.alreadyGivenCodes.has(vaccineCode)) return;
+
     clearValidationError("vaccineEntries");
     setImmunizationData((prev) => {
       const existingEntries = getVaccineEntries(prev);
@@ -2239,7 +2630,7 @@ export default function AddHealthRecord() {
             failedFormData.followUpStatus,
         ),
         needsReferral: failedFormData.needs_referral === true,
-        isFollowUp,
+        isFollowUp: isLinkedFollowUpVisit,
         isEditingRecord,
       });
     } catch (error) {
@@ -2389,13 +2780,22 @@ export default function AddHealthRecord() {
       preparedVaccineEntries.find((entry) => entry.nextScheduleDate)
         ?.nextScheduleDate || "";
     const finalNeedsReferral = !isFollowUp && Boolean(needsReferral);
-    const effectiveFollowUpDate = finalNeedsReferral
-      ? ""
-      : followUpDate || immunizationNextScheduleDate || "";
+    const effectiveVisitType = isLinkedFollowUpVisit
+      ? "follow_up_visit"
+      : visitType;
+    const linkedParentRecordId = effectiveFollowUpParentRecordId;
+    const immunizationWillComplete =
+      effectiveHealthRecordType === "Immunization" &&
+      epiCompletion.completeAfterSave;
+    const effectiveFollowUpDate =
+      finalNeedsReferral || immunizationWillComplete
+        ? ""
+        : followUpDate || immunizationNextScheduleDate || "";
 
     if (
       effectiveHealthRecordType === "Immunization" &&
       !finalNeedsReferral &&
+      !immunizationWillComplete &&
       !followUpDate &&
       immunizationNextScheduleDate
     ) {
@@ -2403,9 +2803,11 @@ export default function AddHealthRecord() {
     }
 
     const finalChiefComplaint =
-      isFollowUp && !chiefComplaint
+      isLinkedFollowUpVisit && !chiefComplaint
         ? `Follow-up visit: ${
-            followUpRecord?.chiefComplaint || "Return consultation"
+            followUpRecord?.chiefComplaint ||
+            effectiveLinkedFollowUpTask?.healthRecord?.chiefComplaint ||
+            "Return consultation"
           }`
         : isImmunization && !chiefComplaint
           ? "Vaccination Visit"
@@ -2512,11 +2914,16 @@ export default function AddHealthRecord() {
         hypertensionDiabeticData.treatmentActionTaken || "",
     };
 
-    const finalPatientStatus = isFollowUp
-      ? normalizePatientStatus(followUpStatus)
-      : effectiveFollowUpDate
-        ? "Follow-up Required"
-        : "Completed";
+    const finalPatientStatus =
+      effectiveHealthRecordType === "Immunization"
+        ? effectiveFollowUpDate
+          ? "Follow-up Required"
+          : "Completed"
+        : isFollowUp
+          ? normalizePatientStatus(followUpStatus)
+          : effectiveFollowUpDate
+            ? "Follow-up Required"
+            : "Completed";
     const morbidityDecision = getMorbidityDecisionFlags(
       morbidityReportingStatus,
     );
@@ -2531,11 +2938,13 @@ export default function AddHealthRecord() {
       category: effectiveHealthRecordType,
       recordType: effectiveHealthRecordType,
       patientClassification: effectiveHealthRecordType,
-      visitType,
-      visit_type: visitType,
-      parentHealthRecordId: isFollowUp ? recordId : null,
-      parent_health_record_id: isFollowUp ? recordId : null,
-      previousRecordId: isFollowUp ? recordId : "",
+      visitType: effectiveVisitType,
+      visit_type: effectiveVisitType,
+      parentHealthRecordId: linkedParentRecordId || null,
+      parent_health_record_id: linkedParentRecordId || null,
+      previousRecordId: linkedParentRecordId || "",
+      followUpTaskId: effectiveFollowUpTaskId || null,
+      follow_up_task_id: effectiveFollowUpTaskId || null,
       dateOfVisit,
       timeOfVisit,
       chiefComplaint: finalChiefComplaint,
@@ -2562,7 +2971,7 @@ export default function AddHealthRecord() {
       followUpDate: effectiveFollowUpDate,
       monitoringNotes,
       patientCondition:
-        isFollowUp || effectiveFollowUpDate ? patientCondition : "",
+        isLinkedFollowUpVisit || effectiveFollowUpDate ? patientCondition : "",
       morbidityReportingStatus,
       includeInMorbidityReport: morbidityDecision.includeInMorbidityReport,
       isNotifiableDisease: morbidityDecision.isNotifiableDisease,
@@ -2684,7 +3093,7 @@ export default function AddHealthRecord() {
         patientId: selectedPatientId,
         status: savedStatus,
         needsReferral: formData.needs_referral === true,
-        isFollowUp,
+        isFollowUp: isLinkedFollowUpVisit,
         isEditingRecord,
       });
     } catch (error) {
@@ -2919,30 +3328,32 @@ export default function AddHealthRecord() {
   }
 
   const isPrimaryActionLoading = saving;
+  const isResolvingClinicalMode =
+    setupComplete && isResolvingFollowUpMode;
   const primaryActionLabel = saving
     ? "Saving health record..."
-    : isFollowUp
+    : isFollowUpVisitMode
       ? "Save Follow-up Visit"
       : needsReferral && userRole === "bhc" && !isEditingRecord
         ? "Continue to Referral Details"
       : "Save Health Record";
   const pageStepLabel = null;
-  const pageTitle = isFollowUp
-    ? "Follow-up Visit"
-    : isEditingRecord
-      ? "Edit Health Record"
-      : referralDetailsStep
-        ? "Referral Details"
-      : "Add Health Record";
-  const pageSubtitle = isFollowUp
+  const pageTitle = isResolvingClinicalMode
+    ? "Health Record"
+    : isFollowUpVisitMode
+      ? "Follow-up Visit"
+      : isEditingRecord
+        ? "Edit Health Record"
+        : referralDetailsStep
+          ? "Referral Details"
+        : "Add Health Record";
+  const pageSubtitle = isFollowUpVisitMode
     ? "Record the patient's return visit and update the follow-up schedule if needed."
     : isEditingRecord
       ? "Correct or update details in this existing health record."
       : referralDetailsStep
         ? "Complete the referral details before submitting this health record and referral."
-      : setupComplete
-          ? "Complete the clinical details for this visit."
-          : "Search patient and choose the record type before recording a visit.";
+      : "Complete the clinical details for this visit.";
   const monitoringNotesLabel =
     normalizedPatientStatus === "Completed"
       ? "Outcome Notes"
@@ -2968,7 +3379,7 @@ export default function AddHealthRecord() {
       return;
     }
 
-    if (setupComplete && !isFollowUp && !isEditingRecord) {
+    if (setupComplete && !isFollowUpVisitMode && !isEditingRecord) {
       setSetupComplete(false);
       setCareDecisionStep(false);
       setDropdownOpen(false);
@@ -2979,13 +3390,14 @@ export default function AddHealthRecord() {
   }
 
   return (
-    <DashboardLayout role={userRole} title={isFollowUp ? "Follow-up Visit" : "Add Health Record"}>
+    <DashboardLayout role={userRole} title={pageTitle}>
       <style>{keyframes}</style>
 
-      <div
-         className="anim-fade-up mb-3 ml-0 mr-auto w-full max-w-7xl"
-        style={stagger(0)}
-      >
+      {!isResolvingClinicalMode && (
+        <div
+          className="anim-fade-up mb-3 ml-0 mr-auto w-full max-w-7xl"
+          style={stagger(0)}
+        >
         <button
           type="button"
           onClick={handleStepBack}
@@ -3006,9 +3418,15 @@ export default function AddHealthRecord() {
             <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-[#6B7280]">
               {pageSubtitle}
             </p>
-            {isFollowUp && (selectedPatient || followUpRecord) && (
-              <p className="mt-1 text-[11px] font-medium text-[#6B7280]">
-                This visit is linked to the original follow-up schedule.
+            {isFollowUpVisitMode && (
+              <p className="mt-2 inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1.5 text-[11px] font-semibold text-[#64748B]">
+                <span>
+                  Linked to active {linkedFollowUpServiceType} follow-up
+                </span>
+                <span className="text-[#CBD5E1]">&bull;</span>
+                <span>{linkedFollowUpStatusLabel}</span>
+                <span className="text-[#CBD5E1]">&bull;</span>
+                <span>{formatFollowUpTaskDate(linkedFollowUpScheduledDate)}</span>
               </p>
             )}
           </div>
@@ -3026,9 +3444,26 @@ export default function AddHealthRecord() {
             </button>
           )}
         </div>
-      </div>
+        </div>
+      )}
 
-      {!isFollowUp && !isEditingRecord && !setupComplete ? (
+      {isResolvingClinicalMode ? (
+        <div
+          className="ml-0 mr-auto w-full max-w-7xl"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex min-h-36 items-center justify-center rounded-xl border border-[#E8ECF0] bg-white px-6 py-10 shadow-sm">
+            <div className="flex items-center gap-3 text-sm font-medium text-[#64748B]">
+              <span
+                className="h-4 w-4 animate-spin rounded-full border-2 border-[#E2E8F0] border-t-[#64748B]"
+                aria-hidden="true"
+              />
+              <span>Checking active follow-up...</span>
+            </div>
+          </div>
+        </div>
+      ) : !isFollowUp && !isEditingRecord && !setupComplete ? (
         <HealthRecordSetupStep
           selectedPatientId={selectedPatientId}
           selectedPatient={selectedPatient}
@@ -3307,6 +3742,10 @@ export default function AddHealthRecord() {
 
           <ImmunizationVisitFields
             entries={immunizationVaccineEntries}
+            epiHistoryByCode={epiHistoryByCode}
+            epiCompletion={epiCompletion}
+            epiHistoryLoading={epiHistoryLoading}
+            epiHistoryError={epiHistoryError}
             dateOfVisit={dateOfVisit}
             temperature={temp}
             weight={weight}
@@ -3321,21 +3760,37 @@ export default function AddHealthRecord() {
               onEntryChange={handleVaccineEntryChange}
               onToggleVaccine={handleVaccineToggle}
               onNotesChange={setConsultationNotes}
-            />
-          </FormSection>
-        )}
-
-        {!patientGateLocked && !usesCareDecisionStep && isImmunization && (
-          <FormSection
-            title="Medicines / Supplies Dispensed"
-            subtitle="Optional medicines or supplies given from BHC inventory."
-            delay={3}
-          >
-            <DispensedMedicinesSection
-              inventory={bhcMedicineInventory}
-              value={dispensedMedicines}
-              onChange={setDispensedMedicines}
-              disabled={isEditingRecord}
+              renderAfterVaccines={
+                !usesCareDecisionStep ? (
+                  <div className="rounded-2xl border border-amber-100 bg-amber-50/40 p-4">
+                    <div className="mb-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-medium leading-relaxed text-amber-800">
+                      If vaccines were given during this visit, add the
+                      corresponding vaccine item below to deduct stock from BHC
+                      inventory.
+                    </div>
+                    <div className="mb-3">
+                      <h3 className="text-sm font-bold text-[#0F172A]">
+                        Medicines / Supplies Dispensed
+                      </h3>
+                      <p className="mt-0.5 text-xs leading-relaxed text-[#64748B]">
+                        Optional inventory deduction for vaccines, medicines, or
+                        supplies given during this EPI visit.
+                      </p>
+                    </div>
+                    <DispensedMedicinesSection
+                      inventory={bhcMedicineInventory}
+                      value={dispensedMedicines}
+                      onChange={setDispensedMedicines}
+                      disabled={isEditingRecord}
+                      loading={bhcMedicineInventoryLoading}
+                      error={bhcMedicineInventoryError}
+                      onRetry={() =>
+                        setBhcMedicineInventoryReloadKey((key) => key + 1)
+                      }
+                    />
+                  </div>
+                ) : null
+              }
             />
           </FormSection>
         )}
@@ -3348,18 +3803,34 @@ export default function AddHealthRecord() {
           >
             <div className="grid gap-4 lg:grid-cols-2">
               <div>
-                <FieldInput
-                  label="Next Follow-up Date"
-                  type="date"
-                  value={followUpDate}
-                  name="followUpDate"
-                  error={validationErrors.followUpDate}
-                  disabled={needsReferral}
-                  onChange={(event) => {
-                    clearValidationError("followUpDate");
-                    setFollowUpDate(event.target.value);
-                  }}
-                />
+                {epiWillComplete ? (
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold leading-relaxed text-emerald-700">
+                    No next follow-up date is needed because the EPI record will
+                    be complete after saving.
+                  </div>
+                ) : (
+                  <>
+                    <FieldInput
+                      label="Next Follow-up Date"
+                      type="date"
+                      value={followUpDate}
+                      name="followUpDate"
+                      error={validationErrors.followUpDate}
+                      disabled={needsReferral}
+                      required={epiNeedsNextFollowUp}
+                      onChange={(event) => {
+                        clearValidationError("followUpDate");
+                        setFollowUpDate(event.target.value);
+                      }}
+                    />
+                    {epiNeedsNextFollowUp && (
+                      <p className="mt-2 text-xs leading-relaxed text-[#64748B]">
+                        Next follow-up date is required because there are still
+                        remaining EPI vaccines/services.
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
               <YesNoRadioGroup
                 label="Needs RHU Referral?"
@@ -3575,6 +4046,9 @@ export default function AddHealthRecord() {
         value={dispensedMedicines}
         onChange={setDispensedMedicines}
         disabled={isEditingRecord}
+        loading={bhcMedicineInventoryLoading}
+        error={bhcMedicineInventoryError}
+        onRetry={() => setBhcMedicineInventoryReloadKey((key) => key + 1)}
       />
     </div>
   </div>
@@ -3930,6 +4404,9 @@ export default function AddHealthRecord() {
               value={dispensedMedicines}
               onChange={setDispensedMedicines}
               disabled={isEditingRecord}
+              loading={bhcMedicineInventoryLoading}
+              error={bhcMedicineInventoryError}
+              onRetry={() => setBhcMedicineInventoryReloadKey((key) => key + 1)}
             />
           </FormSection>
         )}
@@ -4029,6 +4506,9 @@ export default function AddHealthRecord() {
                 value={dispensedMedicines}
                 onChange={setDispensedMedicines}
                 disabled={isEditingRecord}
+                loading={bhcMedicineInventoryLoading}
+                error={bhcMedicineInventoryError}
+                onRetry={() => setBhcMedicineInventoryReloadKey((key) => key + 1)}
               />
             </FormSection>
 
@@ -4207,6 +4687,9 @@ export default function AddHealthRecord() {
                 value={dispensedMedicines}
                 onChange={setDispensedMedicines}
                 disabled={isEditingRecord}
+                loading={bhcMedicineInventoryLoading}
+                error={bhcMedicineInventoryError}
+                onRetry={() => setBhcMedicineInventoryReloadKey((key) => key + 1)}
               />
             </LockedFormContent>
           </FormSection>
@@ -5700,6 +6183,10 @@ function RadioChoiceGroup({
 
 function ImmunizationVisitFields({
   entries,
+  epiHistoryByCode,
+  epiCompletion,
+  epiHistoryLoading = false,
+  epiHistoryError = "",
   dateOfVisit,
   temperature,
   weight,
@@ -5707,6 +6194,7 @@ function ImmunizationVisitFields({
   breastfeedingMonitoring = {},
   consultationNotes,
   errors = {},
+  renderAfterVaccines = null,
   onTemperatureChange,
   onWeightChange,
   onHeightChange,
@@ -5716,6 +6204,9 @@ function ImmunizationVisitFields({
   onNotesChange,
 }) {
   const selectedVaccines = new Set(entries.map((entry) => entry.vaccineName));
+  const historyByCode = epiHistoryByCode || new Map();
+  const completion =
+    epiCompletion || getEpiCompletionState(historyByCode, entries);
 
   return (
     <div className="space-y-5">
@@ -5729,28 +6220,76 @@ function ImmunizationVisitFields({
             {errors.vaccineEntries}
           </p>
         )}
+        {epiHistoryLoading && (
+          <p className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-[#64748B]">
+            Checking previous EPI history...
+          </p>
+        )}
+        {epiHistoryError && (
+          <p className="mb-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+            {epiHistoryError}
+          </p>
+        )}
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
       {CHILD_VACCINE_OPTIONS.map((vaccineName) => {
-        const checked = selectedVaccines.has(vaccineName);
+        const code = getEpiCode(vaccineName);
+        const lockedEntry = historyByCode.get(code);
+        const locked = Boolean(lockedEntry);
+        const checked = locked || selectedVaccines.has(vaccineName);
+        const givenDate = formatEpiDate(lockedEntry?.dateGiven);
 
         return (
             <label
               key={vaccineName}
-              className="flex cursor-pointer items-center gap-2 py-1 text-sm font-medium text-[#475569]"
+              className={`flex items-start gap-2 rounded-lg px-2 py-1.5 text-sm font-medium ${
+                locked
+                  ? "cursor-not-allowed bg-slate-50 text-[#94A3B8]"
+                  : "cursor-pointer text-[#475569]"
+              }`}
             >
             <input
               type="checkbox"
               checked={checked}
+              disabled={locked}
               onChange={(event) =>
                 onToggleVaccine(vaccineName, event.target.checked)
               }
-              className="h-4 w-4 rounded border-[#D1D5DB] accent-[#B91C1C]"
+              className="mt-0.5 h-4 w-4 rounded border-[#D1D5DB] accent-[#B91C1C] disabled:cursor-not-allowed"
             />
 
-            <span>{vaccineName}</span>
+            <span>
+              <span>{vaccineName}</span>
+              {locked && (
+                <span className="block text-[11px] font-medium text-[#64748B]">
+                  Already given{givenDate ? ` on ${givenDate}` : ""}
+                </span>
+              )}
+            </span>
           </label>
         );
       })}
+        </div>
+
+        <div className="mt-4 rounded-xl border border-[#E8ECF0] bg-[#F8FAFC] px-4 py-3">
+          {completion.completeAfterSave ? (
+            <p className="text-xs font-semibold leading-relaxed text-emerald-700">
+              All required EPI vaccines/services will be completed after saving.
+              No next follow-up date is needed.
+            </p>
+          ) : (
+            <div className="space-y-1">
+              <p className="text-xs font-semibold leading-relaxed text-[#0F172A]">
+                Remaining after this visit:{" "}
+                <span className="text-[#B91C1C]">
+                  {completion.remainingItems.map((item) => item.label).join(", ")}
+                </span>
+              </p>
+              <p className="text-xs leading-relaxed text-[#64748B]">
+                Next follow-up date is required because there are still
+                remaining EPI vaccines/services.
+              </p>
+            </div>
+          )}
         </div>
 
         {entries.some((entry) => entry.__legacyDetailsVisible === "showLegacyDetails") && (
@@ -5838,6 +6377,8 @@ function ImmunizationVisitFields({
           </div>
         )}
       </ClinicalFieldGroup>
+
+      {renderAfterVaccines}
 
       <ClinicalFieldGroup title="Basic Monitoring">
         <div className="grid gap-4 sm:grid-cols-3">

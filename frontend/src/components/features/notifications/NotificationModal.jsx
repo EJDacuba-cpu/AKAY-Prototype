@@ -106,6 +106,7 @@ export default function NotificationModal({
   notification,
   onViewRecord,
   onDelete,
+  deleteLabel = "Discard Notification",
 }) {
   useEffect(() => {
     function handleEsc(e) {
@@ -233,7 +234,7 @@ export default function NotificationModal({
             className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-500 transition-all hover:bg-red-50 hover:border-red-200 hover:text-red-600"
           >
             <Trash2 size={12} />
-            Discard Notification
+            {deleteLabel}
           </button>
 
           <div className="flex gap-2">
