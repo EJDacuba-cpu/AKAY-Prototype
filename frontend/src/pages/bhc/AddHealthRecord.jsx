@@ -36,10 +36,7 @@ import {
 } from "../../services/medicineService";
 import { getPatientDetailsListByRole } from "../../services/patientService";
 import { getFollowUpTasks } from "../../services/followUpTaskService";
-import {
-  createReferral,
-  getReferralDestination,
-} from "../../services/referrals";
+import { getReferralDestination } from "../../services/referrals";
 import { isConnectionError } from "../../services/apiClient";
 import {
   deleteHealthRecordDraft,
@@ -60,6 +57,7 @@ import {
   formatUserName,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
+import { createIdempotencyKey } from "../../utils/idempotency";
 
 /* ═══════════════════════════════════════════════════════════════
    KEYFRAMES
@@ -1034,6 +1032,7 @@ export default function AddHealthRecord() {
   const [noticeModal, setNoticeModal] = useState(null);
   const [connectionIssue, setConnectionIssue] = useState(null);
   const [lastFailedSubmit, setLastFailedSubmit] = useState(null);
+  const officialSubmissionRef = useRef(null);
   const [healthRecordDrafts, setHealthRecordDrafts] = useState([]);
   const [draftManagerOpen, setDraftManagerOpen] = useState(false);
   const [activeHealthRecordDraftId, setActiveHealthRecordDraftId] =
@@ -2582,7 +2581,105 @@ export default function AddHealthRecord() {
     refreshHealthRecordDrafts();
   }
 
-  async function saveHealthRecord(formData) {
+  function beginOfficialSubmission(formData) {
+    if (!officialSubmissionRef.current) {
+      officialSubmissionRef.current = {
+        idempotencyKey: createIdempotencyKey(),
+        payload: JSON.parse(JSON.stringify(formData)),
+      };
+    }
+
+    return officialSubmissionRef.current;
+  }
+
+  function clearOfficialSubmission() {
+    officialSubmissionRef.current = null;
+  }
+
+  function isIdempotencyPayloadMismatch(error) {
+    return (
+      Number(error?.status) === 409 &&
+      error?.payload?.code === "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH"
+    );
+  }
+
+  function isFollowUpAlreadyProcessed(error) {
+    return (
+      Number(error?.status) === 409 &&
+      error?.payload?.code === "FOLLOW_UP_ALREADY_PROCESSED"
+    );
+  }
+
+  function showSubmissionConflict() {
+    setConnectionIssue(null);
+    setNoticeModal({
+      title: "Submission Conflict",
+      message:
+        "This submission key was already used for different health-record information. Your current form has not been submitted. Review the patient's health-record history before trying again.",
+    });
+  }
+
+  async function refreshFollowUpConflictState(taskId = "") {
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecords(userRole),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.followUpTasks("bhc"),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.patientDetails(userRole, selectedPatientId),
+      }),
+    ]);
+
+    try {
+      const tasks = await getFollowUpTasks();
+      const refreshedTask = tasks.find(
+        (task) => String(task.id) === String(taskId),
+      );
+      if (refreshedTask) {
+        if (isFollowUp) setRouteLinkedFollowUpTask(refreshedTask);
+        else setAutoLinkedFollowUpTask(refreshedTask);
+      }
+    } catch (error) {
+      console.error("Failed to refresh follow-up state:", error);
+    }
+  }
+
+  function showFollowUpAlreadyProcessed(error) {
+    const taskId = error?.payload?.follow_up_task_id || effectiveFollowUpTaskId;
+    const latestRecordId = error?.payload?.health_record_id || "";
+    setConnectionIssue(null);
+    void refreshFollowUpConflictState(taskId);
+    setNoticeModal({
+      title: "Follow-up Already Processed",
+      message:
+        "This follow-up was already completed through another health-record submission. No new record was created from this attempt.",
+      actions: [
+        ...(latestRecordId
+          ? [
+              {
+                label: "View Latest Health Record",
+                onClick: () =>
+                  navigate(`${healthRecordsPath}/${latestRecordId}`),
+              },
+            ]
+          : []),
+        {
+          label: "Return to Follow-ups",
+          variant: "secondary",
+          onClick: () => navigate("/bhc/follow-ups"),
+        },
+        {
+          label: "Refresh",
+          variant: "secondary",
+          onClick: () => void refreshFollowUpConflictState(taskId),
+        },
+      ],
+    });
+  }
+
+  async function saveHealthRecord(formData, submission = null) {
     const savedRecord = isEditingRecord
       ? await healthRecordService.updateHealthRecordById(
           recordId,
@@ -2602,8 +2699,11 @@ export default function AddHealthRecord() {
               isFollowUp: true,
             },
             "bhc",
+            { idempotencyKey: submission?.idempotencyKey },
           )
-        : await healthRecordService.createHealthRecord(formData, "bhc");
+        : await healthRecordService.createHealthRecord(formData, "bhc", {
+            idempotencyKey: submission?.idempotencyKey,
+          });
     const savedId =
       savedRecord?.id ||
       savedRecord?._id ||
@@ -2652,7 +2752,15 @@ export default function AddHealthRecord() {
     if (!failedFormData || saving) return;
     setSaving(true);
     try {
-      const { savedRecord, savedId } = await saveHealthRecord(failedFormData);
+      const submission = {
+        idempotencyKey: lastFailedSubmit.idempotencyKey,
+        payload: failedFormData,
+      };
+      officialSubmissionRef.current = submission;
+      const { savedRecord, savedId } = await saveHealthRecord(
+        submission.payload,
+        submission,
+      );
       const savedRecordId =
         savedId ||
         savedRecord?.id ||
@@ -2663,6 +2771,7 @@ export default function AddHealthRecord() {
         "";
       setConnectionIssue(null);
       setLastFailedSubmit(null);
+      clearOfficialSubmission();
       setCareDecisionStep(false);
       await deleteActiveHealthRecordDraft();
       setSaveSuccess({
@@ -2674,15 +2783,35 @@ export default function AddHealthRecord() {
             failedFormData.followUpStatus,
         ),
         needsReferral: failedFormData.needs_referral === true,
+        referralSubmitted: Boolean(savedRecord?.officialResult?.referral_id),
+        referralTrackingId:
+          savedRecord?.referrals?.[0]?.tracking_id ||
+          savedRecord?.referrals?.[0]?.trackingId ||
+          "",
         isFollowUp: isLinkedFollowUpVisit,
         isEditingRecord,
       });
     } catch (error) {
       console.error("Failed to retry health record save:", error);
-      setConnectionIssue({
-        title: "Connection Lost",
-        message: HEALTH_RECORD_CONNECTION_LOST_MESSAGE,
-      });
+      if (isFollowUpAlreadyProcessed(error)) {
+        showFollowUpAlreadyProcessed(error);
+      } else if (isIdempotencyPayloadMismatch(error)) {
+        showSubmissionConflict();
+      } else if (isConnectionError(error)) {
+        setConnectionIssue({
+          title: "Connection Lost",
+          message: HEALTH_RECORD_CONNECTION_LOST_MESSAGE,
+        });
+      } else {
+        clearOfficialSubmission();
+        setConnectionIssue(null);
+        setNoticeModal({
+          title: "Save Failed",
+          message:
+            error?.message ||
+            "Unable to save the health record. Please review the form and try again.",
+        });
+      }
     } finally {
       setSaving(false);
     }
@@ -3112,7 +3241,13 @@ export default function AddHealthRecord() {
     setSaving(true);
 
     try {
-      const { savedRecord, savedId } = await saveHealthRecord(formData);
+      const submission = isEditingRecord
+        ? null
+        : beginOfficialSubmission(formData);
+      const { savedRecord, savedId } = await saveHealthRecord(
+        submission?.payload || formData,
+        submission,
+      );
       const savedRecordId =
         savedId ||
         savedRecord?.id ||
@@ -3131,6 +3266,7 @@ export default function AddHealthRecord() {
 
       setCareDecisionStep(false);
       setLastFailedSubmit(null);
+      clearOfficialSubmission();
       await deleteActiveHealthRecordDraft();
       setSaveSuccess({
         recordId: savedRecordId,
@@ -3142,7 +3278,16 @@ export default function AddHealthRecord() {
       });
     } catch (error) {
       console.error("Failed to save record:", error);
+      if (isFollowUpAlreadyProcessed(error)) {
+        showFollowUpAlreadyProcessed(error);
+        return;
+      }
+      if (isIdempotencyPayloadMismatch(error)) {
+        showSubmissionConflict();
+        return;
+      }
       if (error?.status === 422 && error?.errors) {
+        clearOfficialSubmission();
         const backendErrors = Object.fromEntries(
           Object.entries(error.errors).map(([field, messages]) => [
             field,
@@ -3152,8 +3297,10 @@ export default function AddHealthRecord() {
         if (setValidationErrorsAndFocus(backendErrors)) return;
       }
       if (isConnectionError(error)) {
+        const submission = officialSubmissionRef.current;
         setLastFailedSubmit({
-          formData,
+          formData: submission?.payload || formData,
+          idempotencyKey: submission?.idempotencyKey,
           draftSnapshot: buildHealthRecordDraftSnapshot(),
         });
         setConnectionIssue({
@@ -3162,6 +3309,7 @@ export default function AddHealthRecord() {
         });
         return;
       }
+      clearOfficialSubmission();
       setNoticeModal({
         title: "Save Failed",
         message:
@@ -3190,71 +3338,26 @@ export default function AddHealthRecord() {
       return;
     }
 
-    setSaving(true);
-    let savedRecordId =
-      pendingReferralDraft.savedHealthRecordId ||
-      pendingReferralDraft.savedRecord?.id ||
-      pendingReferralDraft.savedRecord?._id ||
-      "";
-    let savedRecord = pendingReferralDraft.savedRecord || null;
-    const referralDraftMedicines = pendingReferralDraft.formData.dispensedMedicines || [];
-
-    try {
-      if (!savedRecordId) {
-        const result = await saveHealthRecord({
-          ...pendingReferralDraft.formData,
-          dispensedMedicines: [],
-        });
-        savedRecord = result.savedRecord;
-        savedRecordId =
-          result.savedId ||
-          savedRecord?.id ||
-          savedRecord?._id ||
-          savedRecord?.data?.id ||
-          savedRecord?.data?._id ||
-          "";
-
-        setPendingReferralDraft((prev) => ({
-          ...(prev || {}),
-          savedHealthRecordId: savedRecordId,
-          savedRecord,
-        }));
-      }
-
-      if (!savedRecordId) {
-        throw new Error("Saved health record ID was not returned.");
-      }
-
-      const referralUrgency =
-        referralForm.urgencyLevel === "Urgent" ? "Urgent" : "Normal";
-      const preferredDoctorNote = String(
-        referralForm.preferredDoctor || "",
-      ).trim();
-      const referralRemarks = [
-        referralForm.clinicalSummary,
-        preferredDoctorNote
-          ? `Preferred Doctor: ${preferredDoctorNote}`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-
-      const referral = await createReferral({
-        patientId: selectedPatientId,
-        patientName: getPatientName(selectedPatient),
-        healthRecordId: savedRecordId,
-        recordId: savedRecordId,
-        receivingFacility:
-          referralDestination?.receivingRuralHealthUnit?.name || "",
+    const referralUrgency =
+      referralForm.urgencyLevel === "Urgent" ? "Urgent" : "Normal";
+    const preferredDoctorNote = String(
+      referralForm.preferredDoctor || "",
+    ).trim();
+    const referralRemarks = [
+      referralForm.clinicalSummary,
+      preferredDoctorNote ? `Preferred Doctor: ${preferredDoctorNote}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    const officialPayload = {
+      ...pendingReferralDraft.formData,
+      referral: {
         referralCategory: pendingReferralDraft.formData.category,
-        category: pendingReferralDraft.formData.category,
         urgencyLevel: referralUrgency,
-        priority: referralUrgency,
         reasonForReferral: referralForm.reasonForReferral,
         chiefComplaint:
-          referralForm.chiefComplaint || pendingReferralDraft.formData.chiefComplaint,
-        diagnosis:
-          referralForm.initialDiagnosis || pendingReferralDraft.formData.diagnosis,
+          referralForm.chiefComplaint ||
+          pendingReferralDraft.formData.chiefComplaint,
         initialDiagnosis:
           referralForm.initialDiagnosis || pendingReferralDraft.formData.diagnosis,
         initialActionsTaken:
@@ -3265,44 +3368,29 @@ export default function AddHealthRecord() {
           pendingReferralDraft.formData.attendingStaff,
         referralDate: referralForm.dateOfReferral,
         referralTime: referralForm.timeOfReferral,
-        referringHci: referralForm.referringHci,
-        philHealthNumber:
-          referralForm.philHealthNumber ||
-          getPatientPhilHealthNumber(selectedPatient),
-        philHealthCategory:
-          referralForm.philHealthCategory ||
-          getPatientPhilHealthCategory(selectedPatient),
-        birthDate: getPatientBirthDate(selectedPatient),
-        patientAddress: getPatientAddress(selectedPatient),
-        ageSex: getPatientAgeSexCivilStatus(selectedPatient),
-        preferredRhuDoctorName: preferredDoctorNote,
-        preferredDoctor: preferredDoctorNote,
-        summaryOfPresentIllness: referralForm.clinicalSummary,
         remarks: referralRemarks || null,
-      });
+      },
+    };
+    const submission = beginOfficialSubmission(officialPayload);
 
-      if (referral?.trackingId) {
-        try {
-          await healthRecordService.updateHealthRecordById(
-            savedRecordId,
-            {
-              linkedTrackingId: referral.trackingId,
-              referralTrackingId: referral.trackingId,
-            },
-            "bhc",
-          );
-        } catch (linkError) {
-          console.warn("Referral submitted, but record link update failed:", linkError);
-        }
-      }
+    setSaving(true);
 
-      if (referralDraftMedicines.length > 0) {
-        savedRecord = await healthRecordService.dispenseHealthRecordMedicines(
-          savedRecordId,
-          referralDraftMedicines,
-        );
-        await refreshRhuMedicines();
-      }
+    try {
+      const result = await saveHealthRecord(submission.payload, submission);
+      const savedRecord = result.savedRecord;
+      const savedRecordId =
+        result.savedId ||
+        savedRecord?.id ||
+        savedRecord?._id ||
+        savedRecord?.data?.id ||
+        savedRecord?.data?._id ||
+        "";
+
+      if (!savedRecordId) throw new Error("Saved health record ID was not returned.");
+
+      const referral = savedRecord?.referrals?.[0] || null;
+      const referralTrackingId =
+        referral?.tracking_id || referral?.trackingId || "";
 
       queryClient.invalidateQueries({ queryKey: queryKeys.referrals("bhc") });
       queryClient.invalidateQueries({
@@ -3328,6 +3416,7 @@ export default function AddHealthRecord() {
       setPendingReferralDraft(null);
       setCareDecisionStep(false);
       setLastFailedSubmit(null);
+      clearOfficialSubmission();
       await deleteActiveHealthRecordDraft();
       setSaveSuccess({
         recordId: savedRecordId,
@@ -3339,15 +3428,24 @@ export default function AddHealthRecord() {
         ),
         needsReferral: true,
         referralSubmitted: true,
-        referralTrackingId: referral?.trackingId || "",
+        referralTrackingId,
         isFollowUp,
         isEditingRecord,
       });
     } catch (error) {
       console.error("Failed to submit health record referral:", error);
+      if (isFollowUpAlreadyProcessed(error)) {
+        showFollowUpAlreadyProcessed(error);
+        return;
+      }
+      if (isIdempotencyPayloadMismatch(error)) {
+        showSubmissionConflict();
+        return;
+      }
       if (isConnectionError(error)) {
         setLastFailedSubmit({
-          formData: pendingReferralDraft.formData,
+          formData: submission.payload,
+          idempotencyKey: submission.idempotencyKey,
           draftSnapshot: buildHealthRecordDraftSnapshot(),
         });
         setConnectionIssue({
@@ -3356,13 +3454,12 @@ export default function AddHealthRecord() {
         });
         return;
       }
+      clearOfficialSubmission();
       setNoticeModal({
-        title: savedRecordId ? "Referral Submission Failed" : "Save Failed",
+        title: "Save Failed",
         message:
           error?.message ||
-          (savedRecordId
-            ? "The health record was saved, but the referral could not be submitted. Please try again."
-            : "Unable to save the health record before submitting the referral. Please review the form and try again."),
+          "Unable to save the health record and referral. Please review the form and try again.",
       });
     } finally {
       setSaving(false);
@@ -4910,12 +5007,27 @@ export default function AddHealthRecord() {
                   </p>
                 </div>
               </div>
-              <div className="mt-5 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => { const onClose = noticeModal.onClose; setNoticeModal(null); onClose?.(); }}
-                  className="rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
-                >{noticeModal.buttonLabel || "OK"}</button>
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                {(noticeModal.actions?.length
+                  ? noticeModal.actions
+                  : [{ label: noticeModal.buttonLabel || "OK", onClick: noticeModal.onClose }]
+                ).map((action) => (
+                  <button
+                    key={action.label}
+                    type="button"
+                    onClick={() => {
+                      setNoticeModal(null);
+                      action.onClick?.();
+                    }}
+                    className={
+                      action.variant === "secondary"
+                        ? "rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                        : "rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
+                    }
+                  >
+                    {action.label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>

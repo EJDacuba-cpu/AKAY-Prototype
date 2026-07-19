@@ -38,6 +38,7 @@ import {
   formatUserName,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
+import { createIdempotencyKey } from "../../utils/idempotency";
 
 /* ═══════════════════════════════════════════════════════════════
    KEYFRAMES
@@ -428,6 +429,7 @@ export default function AddHealthRecord() {
   const [patients, setPatients] = useState([]);
   const [patientsLoading, setPatientsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const officialSubmissionRef = useRef(null);
   const [saveSuccess, setSaveSuccess] = useState(null);
   const [noticeModal, setNoticeModal] = useState(null);
   const [validationErrors, setValidationErrors] = useState({});
@@ -1444,12 +1446,20 @@ export default function AddHealthRecord() {
         createdByRole: "rhu",
       };
 
+      const submission = isEditingRecord
+        ? null
+        : officialSubmissionRef.current || {
+            idempotencyKey: createIdempotencyKey(),
+            payload: JSON.parse(JSON.stringify(recordData)),
+          };
+      if (submission) officialSubmissionRef.current = submission;
+
       const savedRecord = isEditingRecord
         ? await updateHealthRecordById(recordId, recordData, "rhu")
         : isFollowUp
           ? await createFollowUpHealthRecord(
               {
-                ...recordData,
+                ...submission.payload,
                 previousRecordId: recordId,
                 parentHealthRecordId: recordId,
                 parent_health_record_id: recordId,
@@ -1459,8 +1469,11 @@ export default function AddHealthRecord() {
                 isFollowUp: true,
               },
               "rhu",
+              { idempotencyKey: submission.idempotencyKey },
             )
-          : await createRhuHealthRecord(recordData);
+          : await createRhuHealthRecord(submission.payload, {
+              idempotencyKey: submission.idempotencyKey,
+            });
       const savedId =
         savedRecord?.id ||
         savedRecord?._id ||
@@ -1488,6 +1501,7 @@ export default function AddHealthRecord() {
       }
 
       setCareDecisionStep(false);
+      officialSubmissionRef.current = null;
       setSaveSuccess({
         recordId: savedId || recordId || "",
         patientId: selectedPatientId,
@@ -1497,7 +1511,64 @@ export default function AddHealthRecord() {
       });
     } catch (error) {
       console.error("Failed to save RHU health record:", error);
+      if (
+        Number(error?.status) === 409 &&
+        error?.payload?.code === "FOLLOW_UP_ALREADY_PROCESSED"
+      ) {
+        const latestRecordId = error?.payload?.health_record_id || "";
+        void Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.healthRecords("rhu"),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.patientDetails("rhu", selectedPatientId),
+          }),
+        ]);
+        setNoticeModal({
+          title: "Follow-up Already Processed",
+          message:
+            "This follow-up was already completed through another health-record submission. No new record was created from this attempt.",
+          actions: [
+            ...(latestRecordId
+              ? [
+                  {
+                    label: "View Latest Health Record",
+                    onClick: () =>
+                      navigate(`${healthRecordsPath}/${latestRecordId}`),
+                  },
+                ]
+              : []),
+            {
+              label: "Back to Health Records",
+              variant: "secondary",
+              onClick: () => navigate(healthRecordsPath),
+            },
+            {
+              label: "Refresh",
+              variant: "secondary",
+              onClick: () => {
+                void queryClient.invalidateQueries({
+                  queryKey: queryKeys.healthRecords("rhu"),
+                });
+              },
+            },
+          ],
+        });
+        return;
+      }
+      if (
+        Number(error?.status) === 409 &&
+        error?.payload?.code === "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH"
+      ) {
+        setNoticeModal({
+          title: "Submission Conflict",
+          message:
+            "This submission key was already used for different health-record information. Your current form has not been submitted. Review the patient's health-record history before trying again.",
+        });
+        return;
+      }
       if (error?.status === 422 && error?.errors) {
+        officialSubmissionRef.current = null;
         const backendErrors = Object.fromEntries(
           Object.entries(error.errors).map(([field, messages]) => [
             field,
@@ -1505,6 +1576,12 @@ export default function AddHealthRecord() {
           ]),
         );
         if (setValidationErrorsAndFocus(backendErrors)) return;
+      }
+      if ([403, 404, 422].includes(Number(error?.status))) {
+        officialSubmissionRef.current = null;
+      }
+      if (Number(error?.status) >= 400 && ![502, 503, 504].includes(Number(error.status))) {
+        officialSubmissionRef.current = null;
       }
       setNoticeModal({
         title: "Save Failed",
@@ -2399,12 +2476,27 @@ export default function AddHealthRecord() {
                   </p>
                 </div>
               </div>
-              <div className="mt-5 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => { const onClose = noticeModal.onClose; setNoticeModal(null); onClose?.(); }}
-                  className="rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
-                >{noticeModal.buttonLabel || "OK"}</button>
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                {(noticeModal.actions?.length
+                  ? noticeModal.actions
+                  : [{ label: noticeModal.buttonLabel || "OK", onClick: noticeModal.onClose }]
+                ).map((action) => (
+                  <button
+                    key={action.label}
+                    type="button"
+                    onClick={() => {
+                      setNoticeModal(null);
+                      action.onClick?.();
+                    }}
+                    className={
+                      action.variant === "secondary"
+                        ? "rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                        : "rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
+                    }
+                  >
+                    {action.label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>

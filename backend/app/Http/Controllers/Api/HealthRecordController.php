@@ -128,10 +128,15 @@ class HealthRecordController extends Controller
                 $auditLogger,
                 $idempotencyKey
             ) {
+                $lockedFollowUpTask = $followUpTasks->lockTaskForProcessing(
+                    $data,
+                    $patient,
+                    $request->user()
+                );
                 $record = HealthRecord::create($data);
                 $this->recordDispensedMedicines($request, $record, $dispensedMedicines);
-                $followUpTasks->syncRecord($record, $request->user());
-                $followUpTasks->fulfillParentTask($record, $request->user());
+                $followUpTasks->syncRecord($record, $request->user(), $lockedFollowUpTask);
+                $followUpTasks->fulfillParentTask($record, $request->user(), $lockedFollowUpTask);
 
                 if (is_array($referralData)) {
                     $referral = $referralCreation->create($request, $patient, [
@@ -429,6 +434,8 @@ class HealthRecordController extends Controller
                 ])));
             }
         }
+
+        ksort($merged, SORT_NUMERIC);
 
         foreach (array_values($merged) as $item) {
             $medicine = Medicine::query()

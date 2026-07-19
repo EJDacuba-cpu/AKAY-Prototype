@@ -165,6 +165,7 @@ export async function saveReferralDraft({
   healthRecordId = "",
   payload = {},
   errorMessage = "",
+  officialHealthRecordSubmission = null,
 }) {
   const draft = saveOfflineDraft({
     moduleType: "referral",
@@ -188,6 +189,7 @@ export async function saveReferralDraft({
     },
     clientSubmissionId,
     errorMessage,
+    officialHealthRecordSubmission,
   };
 
   const drafts = readDrafts();

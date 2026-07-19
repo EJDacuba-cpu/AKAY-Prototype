@@ -49,6 +49,7 @@ import {
   updateReferralDraft,
 } from "../../services/offlineDraftService";
 import useOfflineDrafts from "../../hooks/useOfflineDrafts";
+import { createIdempotencyKey } from "../../utils/idempotency";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -140,6 +141,7 @@ export default function CreateReferral() {
   const [offlineDraftNotice, setOfflineDraftNotice] = useState(null);
   const [retryingDraft, setRetryingDraft] = useState(false);
   const retryingDraftIdsRef = useRef(new Set());
+  const officialHealthRecordSubmissionRef = useRef(null);
   const [rhuDoctorAvailability, setRhuDoctorAvailability] = useState(() =>
     getDoctorAvailability(),
   );
@@ -465,23 +467,8 @@ export default function CreateReferral() {
     }
 
     const shouldCreateDraftRecord = draftRecordData && !(record?.id || record?._id);
-    const sourceRecord =
-      shouldCreateDraftRecord
-        ? await createHealthRecord(
-            {
-              ...draftRecordData,
-              needsReferral: true,
-              needs_referral: true,
-            },
-            "bhc",
-          )
-        : record;
-    if (shouldCreateDraftRecord) savedDraftRecord = sourceRecord;
-    const sourceRecordId = sourceRecord?.id || sourceRecord?._id || "";
-
-    if (draftRecordData && sourceRecordId) {
-      setRecord(sourceRecord);
-    }
+    let sourceRecord = shouldCreateDraftRecord ? draftRecordData : record;
+    let sourceRecordId = sourceRecord?.id || sourceRecord?._id || "";
 
     const availabilitySnapshot = createDoctorAvailabilitySnapshot(
       rhuDoctorAvailability,
@@ -570,9 +557,54 @@ export default function CreateReferral() {
       suggestedSpecialization,
     };
 
-    const referral = await createReferral(referralPayload);
+    let referral;
+    if (shouldCreateDraftRecord) {
+      const officialPayload = {
+        ...draftRecordData,
+        needsReferral: true,
+        needs_referral: true,
+        referral: {
+          referralCategory: referralPayload.referralCategory,
+          urgencyLevel:
+            form.urgencyLevel === "Urgent" ? "Urgent" : "Normal",
+          reasonForReferral: referralPayload.reasonForReferral,
+          chiefComplaint: referralPayload.chiefComplaint,
+          initialDiagnosis: referralPayload.diagnosis,
+          initialActionsTaken: referralPayload.initialActionsTaken,
+          referringPractitioner: referringPractitioner,
+          referralDate: form.dateOfReferral,
+          referralTime: form.timeOfReferral,
+          remarks: referralPayload.summaryOfPresentIllness || null,
+        },
+      };
+      const submission = officialHealthRecordSubmissionRef.current || {
+        idempotencyKey: createIdempotencyKey(),
+        payload: JSON.parse(JSON.stringify(officialPayload)),
+      };
+      officialHealthRecordSubmissionRef.current = submission;
+      sourceRecord = await createHealthRecord(submission.payload, "bhc", {
+        idempotencyKey: submission.idempotencyKey,
+      });
+      savedDraftRecord = sourceRecord;
+      sourceRecordId = sourceRecord?.id || sourceRecord?._id || "";
+      const rawReferral = sourceRecord?.referrals?.[0] || {};
+      referral = {
+        ...rawReferral,
+        id: rawReferral.id || sourceRecord?.officialResult?.referral_id || "",
+        trackingId: rawReferral.tracking_id || rawReferral.trackingId || "",
+      };
+      referralPayload = {
+        ...referralPayload,
+        healthRecordId: sourceRecordId,
+        recordId: sourceRecordId,
+      };
+      setRecord(sourceRecord);
+      officialHealthRecordSubmissionRef.current = null;
+    } else {
+      referral = await createReferral(referralPayload);
+    }
 
-    if (sourceRecordId) {
+    if (sourceRecordId && !shouldCreateDraftRecord) {
       await updateHealthRecordById(
         sourceRecordId,
         {
@@ -587,6 +619,8 @@ export default function CreateReferral() {
     showSuccessfulReferral(referral, referralPayload);
     } catch (error) {
       if (referralPayload && isNetworkSubmissionError(error)) {
+        const officialHealthRecordSubmission =
+          officialHealthRecordSubmissionRef.current;
         const draft = await saveReferralDraft({
           ...draftScope,
           patientId: patient?.id,
@@ -597,6 +631,7 @@ export default function CreateReferral() {
             record?._id ||
             targetRecordId,
           payload: referralPayload,
+          officialHealthRecordSubmission,
           errorMessage:
             "Internet connection lost before this referral reached the backend.",
         });
@@ -612,11 +647,19 @@ export default function CreateReferral() {
       }
 
       console.error("Failed to submit referral:", error);
+      if (
+        Number(error?.status) === 409 &&
+        error?.payload?.code === "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH"
+      ) {
+        setSubmissionErrorNotice(
+          "Submission Conflict: This submission key was already used for different health-record information. Your current form has not been submitted. Review the patient's health-record history before trying again.",
+        );
+        return;
+      }
+      officialHealthRecordSubmissionRef.current = null;
       setSubmissionErrorNotice(
         error?.message ||
-          (savedDraftRecord
-            ? "The health record was saved, but referral submission failed. Please try submitting the referral again."
-            : "Referral failed. Try again."),
+          "The health record and referral could not be submitted. Please review the form and try again.",
       );
     } finally {
       setSubmitting(false);
@@ -632,6 +675,26 @@ export default function CreateReferral() {
     setRetryingDraft(true);
     let draftForRetry = draft;
     try {
+      if (draft.officialHealthRecordSubmission?.idempotencyKey) {
+        const submission = draft.officialHealthRecordSubmission;
+        const savedRecord = await createHealthRecord(submission.payload, "bhc", {
+          idempotencyKey: submission.idempotencyKey,
+        });
+        const rawReferral = savedRecord?.referrals?.[0] || {};
+        const referral = {
+          ...rawReferral,
+          id: rawReferral.id || savedRecord?.officialResult?.referral_id || "",
+          trackingId: rawReferral.tracking_id || rawReferral.trackingId || "",
+        };
+
+        await deleteReferralDraft(localDraftId);
+        await refreshDrafts();
+        setOfflineDraftNotice(null);
+        officialHealthRecordSubmissionRef.current = null;
+        showSuccessfulReferral(referral, draft.payload);
+        return;
+      }
+
       const clientSubmissionId =
         draft.clientSubmissionId ||
         draft.payload?.clientSubmissionId ||

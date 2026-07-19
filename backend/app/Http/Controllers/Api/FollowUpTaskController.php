@@ -9,6 +9,7 @@ use App\Services\FacilityAccessService;
 use App\Services\FollowUpNotificationService;
 use App\Services\FollowUpTaskSyncService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class FollowUpTaskController extends Controller
@@ -40,46 +41,72 @@ class FollowUpTaskController extends Controller
         return response()->json(['data' => $query->paginate($request->integer('per_page', 100))]);
     }
 
-    public function markNoShow(Request $request, FollowUpTask $followUpTask, AuditLogger $auditLogger)
+    public function markNoShow(
+        Request $request,
+        FollowUpTask $followUpTask,
+        AuditLogger $auditLogger,
+        FollowUpTaskSyncService $followUpTasks
+    )
     {
-        $this->facilityAccess->authorizeFollowUpTask($request->user(), $followUpTask);
-
         $data = $request->validate([
             'notes' => ['nullable', 'string'],
         ]);
 
-        $followUpTask->update([
-            'state' => FollowUpTask::STATE_NO_SHOW,
-            'notes' => $data['notes'] ?? $followUpTask->notes,
-            'no_show_at' => now(),
-            'updated_by' => $request->user()->id,
-        ]);
+        $followUpTask = DB::transaction(function () use (
+            $request,
+            $followUpTask,
+            $followUpTasks,
+            $data,
+            $auditLogger
+        ): FollowUpTask {
+            $lockedTask = $followUpTasks->lockTaskForManagement($followUpTask, $request->user());
+            $lockedTask->update([
+                'state' => FollowUpTask::STATE_NO_SHOW,
+                'notes' => $data['notes'] ?? $lockedTask->notes,
+                'no_show_at' => now(),
+                'updated_by' => $request->user()->id,
+            ]);
+            $auditLogger->log($request, 'no_show', 'follow_up_tasks', "Marked follow-up task {$lockedTask->id} as no-show.");
 
-        $auditLogger->log($request, 'no_show', 'follow_up_tasks', "Marked follow-up task {$followUpTask->id} as no-show.");
+            return $lockedTask;
+        });
 
         return response()->json(['data' => $followUpTask->fresh()->load(['patient', 'healthRecord.patient', 'fulfilledByHealthRecord'])]);
     }
 
-    public function reschedule(Request $request, FollowUpTask $followUpTask, AuditLogger $auditLogger)
+    public function reschedule(
+        Request $request,
+        FollowUpTask $followUpTask,
+        AuditLogger $auditLogger,
+        FollowUpTaskSyncService $followUpTasks
+    )
     {
-        $this->facilityAccess->authorizeFollowUpTask($request->user(), $followUpTask);
-
         $data = $request->validate([
             'due_date' => ['required', 'date'],
             'notes' => ['nullable', 'string'],
             'state' => ['nullable', Rule::in([FollowUpTask::STATE_PENDING, FollowUpTask::STATE_RESCHEDULED])],
         ]);
 
-        $followUpTask->update([
-            'due_date' => $data['due_date'],
-            'state' => $data['state'] ?? FollowUpTask::STATE_RESCHEDULED,
-            'notes' => $data['notes'] ?? $followUpTask->notes,
-            'rescheduled_at' => now(),
-            'no_show_at' => null,
-            'updated_by' => $request->user()->id,
-        ]);
+        $followUpTask = DB::transaction(function () use (
+            $request,
+            $followUpTask,
+            $followUpTasks,
+            $data,
+            $auditLogger
+        ): FollowUpTask {
+            $lockedTask = $followUpTasks->lockTaskForManagement($followUpTask, $request->user());
+            $lockedTask->update([
+                'due_date' => $data['due_date'],
+                'state' => $data['state'] ?? FollowUpTask::STATE_RESCHEDULED,
+                'notes' => $data['notes'] ?? $lockedTask->notes,
+                'rescheduled_at' => now(),
+                'no_show_at' => null,
+                'updated_by' => $request->user()->id,
+            ]);
+            $auditLogger->log($request, 'rescheduled', 'follow_up_tasks', "Rescheduled follow-up task {$lockedTask->id}.");
 
-        $auditLogger->log($request, 'rescheduled', 'follow_up_tasks', "Rescheduled follow-up task {$followUpTask->id}.");
+            return $lockedTask;
+        });
 
         return response()->json(['data' => $followUpTask->fresh()->load(['patient', 'healthRecord.patient', 'fulfilledByHealthRecord'])]);
     }

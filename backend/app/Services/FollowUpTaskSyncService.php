@@ -6,6 +6,7 @@ use App\Models\FollowUpTask;
 use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\User;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Validation\ValidationException;
 
 class FollowUpTaskSyncService
@@ -51,10 +52,74 @@ class FollowUpTaskSyncService
             });
     }
 
-    public function syncRecord(HealthRecord $record, ?User $user = null): void
+    public function lockTaskForProcessing(
+        array $recordData,
+        Patient $patient,
+        User $user
+    ): ?FollowUpTask {
+        if (
+            ($recordData['visit_type'] ?? null) !== 'follow_up_visit'
+            || empty($recordData['parent_health_record_id'])
+        ) {
+            return null;
+        }
+
+        $taskId = $this->followUpTaskId($recordData['monitoring_data'] ?? []);
+        if ($taskId !== null && (! filter_var($taskId, FILTER_VALIDATE_INT) || (int) $taskId <= 0)) {
+            $this->invalidTask();
+        }
+
+        $query = FollowUpTask::query()->with('healthRecord');
+        $task = $taskId
+            ? $query->whereKey((int) $taskId)->lockForUpdate()->first()
+            : $query
+                ->where('health_record_id', $recordData['parent_health_record_id'])
+                ->lockForUpdate()
+                ->first();
+
+        if (! $task && $taskId === null) {
+            return null;
+        }
+
+        if (! $task) {
+            $this->invalidTask();
+        }
+
+        $this->facilityAccess->authorizeFollowUpTask($user, $task);
+        $this->assertTaskMatchesSubmission($task, $recordData, $patient);
+
+        if (! $this->isProcessable($task)) {
+            $this->alreadyProcessed($task);
+        }
+
+        return $task;
+    }
+
+    public function lockTaskForManagement(FollowUpTask $task, User $user): FollowUpTask
+    {
+        $lockedTask = FollowUpTask::query()
+            ->with(['patient', 'healthRecord'])
+            ->whereKey($task->id)
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        $this->facilityAccess->authorizeFollowUpTask($user, $lockedTask);
+
+        if (! $this->isProcessable($lockedTask)) {
+            $this->alreadyProcessed($lockedTask);
+        }
+
+        return $lockedTask;
+    }
+
+    public function syncRecord(
+        HealthRecord $record,
+        ?User $user = null,
+        ?FollowUpTask $lockedTask = null
+    ): void
     {
         if ($record->visit_type === 'follow_up_visit' && $record->parent_health_record_id) {
-            $this->syncFollowUpVisit($record, $user);
+            $this->syncFollowUpVisit($record, $user, $lockedTask);
             return;
         }
 
@@ -98,7 +163,11 @@ class FollowUpTaskSyncService
         });
     }
 
-    public function fulfillParentTask(HealthRecord $record, ?User $user = null): void
+    public function fulfillParentTask(
+        HealthRecord $record,
+        ?User $user = null,
+        ?FollowUpTask $lockedTask = null
+    ): void
     {
         if (
             $record->visit_type !== 'follow_up_visit'
@@ -108,20 +177,25 @@ class FollowUpTaskSyncService
             return;
         }
 
-        $task = $this->matchingParentTask($record, $user);
+        $task = $lockedTask ?? $this->matchingParentTask($record, $user);
 
         if ($task) {
             $this->fulfillTask($task, $record, $user);
         }
     }
 
-    private function syncFollowUpVisit(HealthRecord $record, ?User $user = null): void
+    private function syncFollowUpVisit(
+        HealthRecord $record,
+        ?User $user = null,
+        ?FollowUpTask $lockedTask = null
+    ): void
     {
         FollowUpTask::where('health_record_id', $record->id)
             ->whereNull('fulfilled_at')
             ->delete();
 
-        $task = $this->linkedFollowUpTask($record, $user)
+        $task = $lockedTask
+            ?? $this->linkedFollowUpTask($record, $user)
             ?? $this->matchingParentTask($record, $user);
         $dueDate = $this->followUpDate($record);
 
@@ -274,6 +348,58 @@ class FollowUpTaskSyncService
             'fulfilled_by_health_record_id' => $record->id,
             'updated_by' => $user?->id,
         ]);
+    }
+
+    private function assertTaskMatchesSubmission(
+        FollowUpTask $task,
+        array $recordData,
+        Patient $patient
+    ): void {
+        $isValid = (int) $task->patient_id === (int) $patient->id
+            && (int) $task->health_record_id
+                === (int) $recordData['parent_health_record_id']
+            && (int) $task->barangay_health_center_id
+                === (int) $patient->barangay_health_center_id
+            && $task->healthRecord !== null
+            && (int) $task->healthRecord->patient_id === (int) $patient->id
+            && (int) $task->healthRecord->barangay_health_center_id
+                === (int) $task->barangay_health_center_id
+            && $this->normalizeCategory($task->healthRecord->category)
+                === $this->normalizeCategory($recordData['category'] ?? null);
+
+        if (! $isValid) {
+            $this->invalidTask();
+        }
+    }
+
+    private function isProcessable(FollowUpTask $task): bool
+    {
+        return in_array($task->state, [
+            FollowUpTask::STATE_PENDING,
+            FollowUpTask::STATE_RESCHEDULED,
+            FollowUpTask::STATE_NO_SHOW,
+        ], true)
+            && $task->fulfilled_at === null
+            && $task->fulfilled_by_health_record_id === null;
+    }
+
+    private function followUpTaskId(array $monitoringData): mixed
+    {
+        return $monitoringData['followUpTaskId']
+            ?? $monitoringData['follow_up_task_id']
+            ?? $monitoringData['followUpId']
+            ?? $monitoringData['follow_up_id']
+            ?? null;
+    }
+
+    private function alreadyProcessed(FollowUpTask $task): never
+    {
+        throw new HttpResponseException(response()->json([
+            'message' => 'This follow-up has already been processed through another health-record submission.',
+            'code' => 'FOLLOW_UP_ALREADY_PROCESSED',
+            'follow_up_task_id' => $task->id,
+            'health_record_id' => $task->fulfilled_by_health_record_id,
+        ], 409));
     }
 
     private function invalidTask(): never

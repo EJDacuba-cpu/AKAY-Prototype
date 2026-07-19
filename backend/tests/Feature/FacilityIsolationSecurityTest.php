@@ -454,8 +454,8 @@ class FacilityIsolationSecurityTest extends TestCase
                 $this->recordA,
                 $this->taskA
             ))
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors('monitoring_data.followUpTaskId');
+            ->assertConflict()
+            ->assertJsonPath('code', 'FOLLOW_UP_ALREADY_PROCESSED');
     }
 
     public function test_valid_same_facility_follow_up_linking_succeeds(): void

@@ -1,5 +1,6 @@
 import { apiRequest, unwrapData, unwrapList } from "./apiClient";
 import { normalizePatient } from "./patientService";
+import { createIdempotencyKey } from "../utils/idempotency";
 
 export const BHC_RECORDS_KEY = "api:bhc_health_records";
 export const RHU_RECORDS_KEY = "api:rhu_health_records";
@@ -888,6 +889,47 @@ function toPayload(record = {}, { partial = false } = {}) {
           remarks: item.remarks || null,
         }))
       : [],
+    referral: record.referral
+      ? {
+          referral_category:
+            record.referral.referralCategory ||
+            record.referral.referral_category ||
+            record.referral.category ||
+            null,
+          urgency_level:
+            record.referral.urgencyLevel ||
+            record.referral.urgency_level ||
+            "Normal",
+          reason_for_referral:
+            record.referral.reasonForReferral ||
+            record.referral.reason_for_referral ||
+            "",
+          chief_complaint:
+            record.referral.chiefComplaint ||
+            record.referral.chief_complaint ||
+            null,
+          initial_diagnosis:
+            record.referral.initialDiagnosis ||
+            record.referral.initial_diagnosis ||
+            record.referral.diagnosis ||
+            null,
+          initial_action_taken:
+            record.referral.initialActionsTaken ||
+            record.referral.initial_action_taken ||
+            null,
+          referring_practitioner:
+            record.referral.referringPractitioner ||
+            record.referral.referring_practitioner ||
+            null,
+          referral_datetime:
+            record.referral.referralDateTime ||
+            record.referral.referral_datetime ||
+            (record.referral.referralDate
+              ? `${record.referral.referralDate} ${record.referral.referralTime || "00:00"}`
+              : null),
+          remarks: record.referral.remarks || null,
+        }
+      : undefined,
   };
 
   if (!partial) return payload;
@@ -1004,6 +1046,7 @@ function toPayload(record = {}, { partial = false } = {}) {
   if (!hasAny(record, ["dispensedMedicines", "dispensed_medicines"])) {
     delete payload.dispensed_medicines;
   }
+  if (!record.referral) delete payload.referral;
   if (!hasAny(record, ["chiefComplaint"])) delete payload.chief_complaint;
   if (!hasAny(record, ["diagnosis"])) delete payload.diagnosis;
   if (
@@ -1088,25 +1131,33 @@ export async function getHealthRecordsByPatient(patient) {
   return listRecords({ patient_id: patientId });
 }
 
-export async function createHealthRecord(recordData, role = "bhc") {
+export async function createHealthRecord(recordData, role = "bhc", options = {}) {
   void role;
+  const idempotencyKey = options.idempotencyKey || createIdempotencyKey();
   const response = await apiRequest("/health-records", {
     method: "POST",
+    headers: {
+      "Idempotency-Key": idempotencyKey,
+    },
     body: toPayload(recordData, { partial: true }),
   });
-  return normalizeRecord(unwrapData(response));
+  return {
+    ...normalizeRecord(unwrapData(response)),
+    idempotentReplay: Boolean(response?.idempotent_replay),
+    officialResult: response?.result || {},
+  };
 }
 
-export async function createBhcHealthRecord(recordData) {
-  return createHealthRecord(recordData, "bhc");
+export async function createBhcHealthRecord(recordData, options = {}) {
+  return createHealthRecord(recordData, "bhc", options);
 }
 
-export async function createRhuHealthRecord(recordData) {
-  return createHealthRecord(recordData, "rhu");
+export async function createRhuHealthRecord(recordData, options = {}) {
+  return createHealthRecord(recordData, "rhu", options);
 }
 
-export async function createFollowUpHealthRecord(recordData, role = "bhc") {
-  return createHealthRecord(recordData, role);
+export async function createFollowUpHealthRecord(recordData, role = "bhc", options = {}) {
+  return createHealthRecord(recordData, role, options);
 }
 
 export async function updateHealthRecordById(recordId, recordData) {
