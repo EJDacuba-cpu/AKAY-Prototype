@@ -12,6 +12,7 @@ use App\Models\RuralHealthUnit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class FacilityIsolationSecurityTest extends TestCase
@@ -304,8 +305,7 @@ class FacilityIsolationSecurityTest extends TestCase
 
     public function test_bhw_cannot_create_health_record_for_other_bhc_patient(): void
     {
-        $this->actingAs($this->bhwA, 'sanctum')
-            ->postJson('/api/health-records', $this->healthRecordPayload($this->patientB))
+        $this->postHealthRecord($this->bhwA, $this->healthRecordPayload($this->patientB))
             ->assertForbidden();
     }
 
@@ -337,8 +337,7 @@ class FacilityIsolationSecurityTest extends TestCase
 
     public function test_same_facility_health_record_creation_succeeds(): void
     {
-        $this->actingAs($this->bhwA, 'sanctum')
-            ->postJson('/api/health-records', $this->healthRecordPayload($this->patientA))
+        $this->postHealthRecord($this->bhwA, $this->healthRecordPayload($this->patientA))
             ->assertCreated()
             ->assertJsonPath('data.barangay_health_center_id', $this->bhcA->id)
             ->assertJsonPath('data.rural_health_unit_id', null);
@@ -396,8 +395,7 @@ class FacilityIsolationSecurityTest extends TestCase
 
     public function test_bhw_cannot_fulfill_other_bhc_follow_up_task(): void
     {
-        $this->actingAs($this->bhwA, 'sanctum')
-            ->postJson('/api/health-records', $this->followUpPayload(
+        $this->postHealthRecord($this->bhwA, $this->followUpPayload(
                 $this->patientA,
                 $this->recordA,
                 $this->taskB
@@ -412,8 +410,7 @@ class FacilityIsolationSecurityTest extends TestCase
         $otherPatient = $this->createPatient('Follow Up', 'Other', $this->bhcA->id);
         $otherRecord = $this->createScheduledRecord($otherPatient, $this->bhwA, $this->bhcA);
 
-        $this->actingAs($this->bhwA, 'sanctum')
-            ->postJson('/api/health-records', $this->followUpPayload(
+        $this->postHealthRecord($this->bhwA, $this->followUpPayload(
                 $otherPatient,
                 $otherRecord,
                 $this->taskA
@@ -427,8 +424,7 @@ class FacilityIsolationSecurityTest extends TestCase
         $payload = $this->followUpPayload($this->patientA, $this->recordA, $this->taskA);
         $payload['category'] = 'Maternal Care';
 
-        $this->actingAs($this->bhwA, 'sanctum')
-            ->postJson('/api/health-records', $payload)
+        $this->postHealthRecord($this->bhwA, $payload)
             ->assertUnprocessable()
             ->assertJsonValidationErrors('monitoring_data.followUpTaskId');
     }
@@ -437,8 +433,7 @@ class FacilityIsolationSecurityTest extends TestCase
     {
         $otherParent = $this->createScheduledRecord($this->patientA, $this->bhwA, $this->bhcA);
 
-        $this->actingAs($this->bhwA, 'sanctum')
-            ->postJson('/api/health-records', $this->followUpPayload(
+        $this->postHealthRecord($this->bhwA, $this->followUpPayload(
                 $this->patientA,
                 $otherParent,
                 $this->taskA
@@ -454,8 +449,7 @@ class FacilityIsolationSecurityTest extends TestCase
             'fulfilled_at' => now(),
         ]);
 
-        $this->actingAs($this->bhwA, 'sanctum')
-            ->postJson('/api/health-records', $this->followUpPayload(
+        $this->postHealthRecord($this->bhwA, $this->followUpPayload(
                 $this->patientA,
                 $this->recordA,
                 $this->taskA
@@ -466,8 +460,7 @@ class FacilityIsolationSecurityTest extends TestCase
 
     public function test_valid_same_facility_follow_up_linking_succeeds(): void
     {
-        $response = $this->actingAs($this->bhwA, 'sanctum')
-            ->postJson('/api/health-records', $this->followUpPayload(
+        $response = $this->postHealthRecord($this->bhwA, $this->followUpPayload(
                 $this->patientA,
                 $this->recordA,
                 $this->taskA
@@ -481,8 +474,7 @@ class FacilityIsolationSecurityTest extends TestCase
 
     public function test_existing_follow_up_record_can_be_edited_without_reusing_task(): void
     {
-        $response = $this->actingAs($this->bhwA, 'sanctum')
-            ->postJson('/api/health-records', $this->followUpPayload(
+        $response = $this->postHealthRecord($this->bhwA, $this->followUpPayload(
                 $this->patientA,
                 $this->recordA,
                 $this->taskA
@@ -506,8 +498,7 @@ class FacilityIsolationSecurityTest extends TestCase
             'quantity' => 2,
         ]];
 
-        $this->actingAs($this->bhwA, 'sanctum')
-            ->postJson('/api/health-records', $payload)
+        $this->postHealthRecord($this->bhwA, $payload)
             ->assertUnprocessable();
 
         $this->assertSame(20, $this->medicineB->fresh()->quantity);
@@ -521,8 +512,7 @@ class FacilityIsolationSecurityTest extends TestCase
             'quantity' => 2,
         ]];
 
-        $this->actingAs($this->bhwA, 'sanctum')
-            ->postJson('/api/health-records', $payload)
+        $this->postHealthRecord($this->bhwA, $payload)
             ->assertCreated()
             ->assertJsonPath('data.dispensed_medicines.0.medicine_id', $this->medicineA->id);
 
@@ -719,6 +709,13 @@ class FacilityIsolationSecurityTest extends TestCase
             'category' => 'Maternal Care',
             'chief_complaint' => 'Routine visit',
         ];
+    }
+
+    private function postHealthRecord(User $user, array $payload)
+    {
+        return $this->actingAs($user, 'sanctum')
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/health-records', $payload);
     }
 
     private function referralPayload(

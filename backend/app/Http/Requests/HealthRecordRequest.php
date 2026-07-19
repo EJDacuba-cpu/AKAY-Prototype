@@ -3,9 +3,19 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class HealthRecordRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if ($this->isMethod('post')) {
+            $this->merge([
+                'idempotency_key' => $this->header('Idempotency-Key'),
+            ]);
+        }
+    }
+
     public function authorize(): bool
     {
         return (bool) $this->user();
@@ -14,6 +24,9 @@ class HealthRecordRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'idempotency_key' => $this->isMethod('post')
+                ? ['bail', 'required', 'uuid', 'max:64']
+                : ['prohibited'],
             'patient_id' => [$this->isMethod('post') ? 'required' : 'sometimes', 'exists:patients,id'],
             'date_recorded' => ['nullable', 'date'],
             'vital_signs' => ['nullable', 'array'],
@@ -102,12 +115,24 @@ class HealthRecordRequest extends FormRequest
             'dispensed_medicines.*.quantity' => ['required', 'integer', 'min:1'],
             'dispensed_medicines.*.unit' => ['nullable', 'string', 'max:50'],
             'dispensed_medicines.*.remarks' => ['nullable', 'string'],
+            'referral' => ['nullable', 'array'],
+            'referral.referral_category' => ['nullable', 'string', 'max:100'],
+            'referral.urgency_level' => ['nullable', Rule::in(['Low', 'Normal', 'Urgent', 'Emergency'])],
+            'referral.reason_for_referral' => ['required_with:referral', 'string'],
+            'referral.chief_complaint' => ['nullable', 'string'],
+            'referral.initial_diagnosis' => ['nullable', 'string'],
+            'referral.initial_action_taken' => ['nullable', 'string'],
+            'referral.referring_practitioner' => ['nullable', 'string', 'max:255'],
+            'referral.referral_datetime' => ['nullable', 'date'],
+            'referral.remarks' => ['nullable', 'string'],
         ];
     }
 
     public function messages(): array
     {
         return [
+            'idempotency_key.required' => 'An Idempotency-Key header is required for official health-record creation.',
+            'idempotency_key.uuid' => 'The Idempotency-Key header must be a valid UUID.',
             'dispensed_medicines.*.medicine_id.required' => 'Please select a medicine.',
             'dispensed_medicines.*.medicine_id.exists' => 'Medicine stock changed. Please refresh and try again.',
             'dispensed_medicines.*.quantity.required' => 'Quantity must be greater than 0.',

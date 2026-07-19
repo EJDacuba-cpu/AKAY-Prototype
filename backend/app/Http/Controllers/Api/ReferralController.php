@@ -13,12 +13,13 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
 use App\Services\ReferralNoShowService;
+use App\Services\ReferralCreationService;
 use App\Services\ReferralRoutingService;
-use App\Services\ReferralService;
 use App\Services\UserNotificationService;
 use App\Support\StoredFunction;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ReferralController extends Controller
 {
@@ -89,31 +90,16 @@ class ReferralController extends Controller
 
     public function store(
         ReferralRequest $request,
-        ReferralService $referralService,
-        AuditLogger $auditLogger,
-        UserNotificationService $notifications
+        ReferralCreationService $referralCreation
     ) {
         $user = $request->user();
         $data = $request->validated();
 
-        abort_unless($user->isBhw(), 403, 'Only BHW accounts can create referrals.');
-        $route = $this->referralRouting->resolveForBhw($user);
         $patient = Patient::findOrFail($data['patient_id']);
         $this->facilityAccess->authorizePatientModification($user, $patient);
-        $data['barangay_health_center_id'] = $route['bhc']->id;
-        $data['rural_health_unit_id'] = $route['rhu']->id;
-
-        if (! empty($data['health_record_id'])) {
-            $record = HealthRecord::findOrFail($data['health_record_id']);
-            $this->facilityAccess->authorizeHealthRecord($user, $record);
-
-            abort_unless(
-                (int) $record->patient_id === (int) $patient->id
-                    && (int) $record->barangay_health_center_id === (int) $user->barangay_health_center_id,
-                422,
-                'Health record must belong to the referred patient.'
-            );
-        }
+        $record = ! empty($data['health_record_id'])
+            ? HealthRecord::findOrFail($data['health_record_id'])
+            : null;
 
         if (! empty($data['client_submission_id'])) {
             $existingReferral = $this->scope(Referral::query(), $request)
@@ -126,16 +112,9 @@ class ReferralController extends Controller
         }
 
         try {
-            $trackingId = $referralService->makeTrackingId();
-            $referral = Referral::create([
-                ...$data,
-                'tracking_id' => $trackingId,
-                'qr_code_value' => $referralService->makeQrValue($trackingId),
-                'created_by' => $user->id,
-                'status' => Referral::STATUS_PENDING,
-                'urgency_level' => $data['urgency_level'] ?? 'Normal',
-                'referral_datetime' => $data['referral_datetime'] ?? now(),
-            ]);
+            $referral = DB::transaction(
+                fn (): Referral => $referralCreation->create($request, $patient, $data, $record)
+            );
         } catch (QueryException $exception) {
             if (! empty($data['client_submission_id']) && $this->isClientSubmissionConflict($exception)) {
                 $existingReferral = $this->scope(Referral::query(), $request)
@@ -149,42 +128,6 @@ class ReferralController extends Controller
 
             throw $exception;
         }
-
-        ReferralUpdate::create([
-            'referral_id' => $referral->id,
-            'user_id' => $user->id,
-            'status' => Referral::STATUS_PENDING,
-            'remarks' => 'Referral submitted.',
-        ]);
-
-        $referral->loadMissing(['patient', 'barangayHealthCenter', 'ruralHealthUnit']);
-        $patientName = $this->patientName($referral);
-        $bhcName = $this->bhcName($referral);
-
-        $notifications->notifyUsersOnce(
-            $this->rhuUsers($referral),
-            'New Incoming Referral',
-            "{$bhcName} sent a referral for {$patientName}.",
-            'incoming_referral',
-            $referral->id,
-            $this->rhuReferralLink($referral),
-            'referral',
-            $referral->id
-        );
-
-        $notifications->notifyUsersOnce(
-            $this->bhcUsers($referral),
-            'Referral Submitted',
-            'The referral was successfully sent to RHU.',
-            'referral_submitted',
-            $referral->id,
-            $this->bhcReferralLink($referral),
-            'referral',
-            $referral->id
-        );
-
-        // TODO: Add admin-level referral activity notifications once an admin referral destination page is defined.
-        $auditLogger->log($request, 'submitted', 'referrals', "Submitted referral {$referral->tracking_id}.");
 
         return $this->storeResponse($referral, 201);
     }

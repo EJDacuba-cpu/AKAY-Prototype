@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\UserNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class AkayApiTest extends TestCase
@@ -666,6 +667,7 @@ class AkayApiTest extends TestCase
         ]);
 
         $response = $this->actingAs($bhw, 'sanctum')
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/health-records', [
                 'patient_id' => $patient->id,
                 'category' => 'Family Planning',

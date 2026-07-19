@@ -5,13 +5,17 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\HealthRecordRequest;
 use App\Models\HealthRecord;
+use App\Models\FollowUpTask;
 use App\Models\Medicine;
 use App\Models\Patient;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
 use App\Services\FollowUpTaskSyncService;
+use App\Services\HealthRecordIdempotencyService;
+use App\Services\ReferralCreationService;
 use App\Support\StoredFunction;
 use Illuminate\Http\Request;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -60,12 +64,28 @@ class HealthRecordController extends Controller
     public function store(
         HealthRecordRequest $request,
         AuditLogger $auditLogger,
-        FollowUpTaskSyncService $followUpTasks
+        FollowUpTaskSyncService $followUpTasks,
+        HealthRecordIdempotencyService $idempotency,
+        ReferralCreationService $referralCreation
     )
     {
         $data = $request->validated();
         $patient = Patient::findOrFail($data['patient_id']);
         $this->facilityAccess->authorizePatientModification($request->user(), $patient);
+        $idempotencyKey = $data['idempotency_key'];
+        $idempotencyHash = $idempotency->hash($data);
+
+        if ($existing = HealthRecord::query()
+            ->where('created_by', $request->user()->id)
+            ->where('idempotency_key', $idempotencyKey)
+            ->first()) {
+            return $this->replayResponse($request, $existing, $idempotencyHash);
+        }
+
+        unset($data['idempotency_key']);
+        $referralData = $data['referral'] ?? null;
+        unset($data['referral']);
+
         if (
             empty($data['parent_health_record_id'])
             && ($data['visit_type'] ?? 'initial_consultation') !== 'follow_up_visit'
@@ -90,21 +110,64 @@ class HealthRecordController extends Controller
         unset($data['dispensed_medicines']);
 
         $data['created_by'] = $request->user()->id;
+        $data['idempotency_key'] = $idempotencyKey;
+        $data['idempotency_hash'] = $idempotencyHash;
         $data['barangay_health_center_id'] = $patient->barangay_health_center_id;
         $data['rural_health_unit_id'] = $patient->rural_health_unit_id;
         $data['date_recorded'] ??= now();
 
-        $record = DB::transaction(function () use ($data, $dispensedMedicines, $request, $followUpTasks, $auditLogger) {
-            $record = HealthRecord::create($data);
-            $this->recordDispensedMedicines($request, $record, $dispensedMedicines);
-            $followUpTasks->syncRecord($record, $request->user());
-            $followUpTasks->fulfillParentTask($record, $request->user());
-            $auditLogger->log($request, 'created', 'health_records', "Created health record {$record->id}.");
+        try {
+            $record = DB::transaction(function () use (
+                $data,
+                $dispensedMedicines,
+                $referralData,
+                $patient,
+                $request,
+                $followUpTasks,
+                $referralCreation,
+                $auditLogger,
+                $idempotencyKey
+            ) {
+                $record = HealthRecord::create($data);
+                $this->recordDispensedMedicines($request, $record, $dispensedMedicines);
+                $followUpTasks->syncRecord($record, $request->user());
+                $followUpTasks->fulfillParentTask($record, $request->user());
 
-            return $record;
-        });
+                if (is_array($referralData)) {
+                    $referral = $referralCreation->create($request, $patient, [
+                        ...$referralData,
+                        'client_submission_id' => "health-record:{$idempotencyKey}",
+                    ], $record);
+                    $record->update([
+                        'monitoring_data' => [
+                            ...($record->monitoring_data ?? []),
+                            'linkedTrackingId' => $referral->tracking_id,
+                            'referralTrackingId' => $referral->tracking_id,
+                        ],
+                    ]);
+                }
 
-        return response()->json(['data' => $record->load(['patient', 'dispensedMedicines'])], 201);
+                $auditLogger->log($request, 'created', 'health_records', "Created health record {$record->id}.");
+
+                return $record;
+            });
+        } catch (QueryException $exception) {
+            if (! $this->isIdempotencyConflict($exception)) {
+                throw $exception;
+            }
+
+            $record = HealthRecord::where('idempotency_key', $idempotencyKey)->first();
+            if (! $record || (int) $record->created_by !== (int) $request->user()->id) {
+                return $this->idempotencyConflictResponse(
+                    'This submission key is not available for this health-record save.',
+                    'IDEMPOTENCY_KEY_UNAVAILABLE'
+                );
+            }
+
+            return $this->replayResponse($request, $record, $idempotencyHash);
+        }
+
+        return $this->storeResponse($record, false, 201);
     }
 
     public function show(Request $request, HealthRecord $healthRecord)
@@ -436,6 +499,63 @@ class HealthRecordController extends Controller
             ?? null;
 
         return filled($date);
+    }
+
+    private function replayResponse(
+        Request $request,
+        HealthRecord $record,
+        string $idempotencyHash
+    ) {
+        $this->facilityAccess->authorizeHealthRecord($request->user(), $record);
+
+        if (! hash_equals((string) $record->idempotency_hash, $idempotencyHash)) {
+            return $this->idempotencyConflictResponse(
+                'This submission key was already used for different health-record data.',
+                'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH'
+            );
+        }
+
+        return $this->storeResponse($record, true, 200);
+    }
+
+    private function storeResponse(HealthRecord $record, bool $replay, int $status)
+    {
+        $completedFollowUpTaskId = FollowUpTask::query()
+            ->where('fulfilled_by_health_record_id', $record->id)
+            ->value('id');
+        $nextFollowUpTaskId = FollowUpTask::query()
+            ->where('health_record_id', $record->id)
+            ->whereNull('fulfilled_at')
+            ->value('id');
+        $referralId = $record->referrals()->value('id');
+
+        return response()->json([
+            'data' => $record->load(['patient', 'dispensedMedicines', 'referrals']),
+            'idempotent_replay' => $replay,
+            'result' => [
+                'health_record_id' => $record->id,
+                'referral_id' => $referralId,
+                'completed_follow_up_task_id' => $completedFollowUpTaskId,
+                'next_follow_up_task_id' => $nextFollowUpTaskId,
+            ],
+        ], $status);
+    }
+
+    private function idempotencyConflictResponse(string $message, string $code)
+    {
+        return response()->json([
+            'message' => $message,
+            'code' => $code,
+        ], 409);
+    }
+
+    private function isIdempotencyConflict(QueryException $exception): bool
+    {
+        $sqlState = $exception->errorInfo[0] ?? null;
+        $message = strtolower($exception->getMessage());
+
+        return in_array($sqlState, ['23505', '23000'], true)
+            && str_contains($message, 'idempotency_key');
     }
 
 }

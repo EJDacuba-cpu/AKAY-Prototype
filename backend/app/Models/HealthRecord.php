@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class HealthRecord extends Model
 {
     protected $fillable = [
+        'idempotency_key',
+        'idempotency_hash',
         'patient_id',
         'created_by',
         'barangay_health_center_id',
@@ -29,6 +31,11 @@ class HealthRecord extends Model
         'treatment_notes',
         'medical_history',
         'notes',
+    ];
+
+    protected $hidden = [
+        'idempotency_key',
+        'idempotency_hash',
     ];
 
     protected $casts = [
