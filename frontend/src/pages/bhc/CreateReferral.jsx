@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -20,6 +20,7 @@ import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
 import { SoftLoadingArea } from "../../components/common";
 import {
   createReferral,
+  getReferralDestination,
   getReferralByHealthRecordId,
   getReferralByTrackingId,
   getReferralsByPatient,
@@ -96,8 +97,6 @@ export default function CreateReferral() {
   const referringHci =
     currentUser?.assignedBarangayHealthCenter || currentUser?.facility || "";
   const referringPractitioner = currentUser?.fullName || currentUser?.name || "";
-  const assignedRhu = currentUser?.assignedRuralHealthUnit || "";
-
   const today = new Date().toISOString().split("T")[0];
   const currentTime = new Date().toLocaleTimeString([], {
     hour: "2-digit",
@@ -114,7 +113,7 @@ export default function CreateReferral() {
   const [form, setForm] = useState({
     dateOfReferral: today,
     timeOfReferral: currentTime,
-    receivingFacility: assignedRhu,
+    receivingFacility: "",
     preferredVisitDate: "",
     preferredVisitTime: "",
     urgencyLevel: "Non-Urgent",
@@ -130,6 +129,9 @@ export default function CreateReferral() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [activeReferralWarning, setActiveReferralWarning] = useState(null);
   const [submissionErrorNotice, setSubmissionErrorNotice] = useState("");
+  const [referralDestination, setReferralDestination] = useState(null);
+  const [destinationLoading, setDestinationLoading] = useState(true);
+  const [destinationError, setDestinationError] = useState("");
   const [showUnavailableDoctorModal, setShowUnavailableDoctorModal] =
     useState(false);
   const [unavailableDoctorNotice, setUnavailableDoctorNotice] = useState(null);
@@ -167,6 +169,33 @@ export default function CreateReferral() {
   useEffect(() => {
     return listenDoctorAvailabilityUpdates(setRhuDoctorAvailability);
   }, []);
+
+  const loadReferralDestination = useCallback(async () => {
+    setDestinationLoading(true);
+    setDestinationError("");
+
+    try {
+      const destination = await getReferralDestination();
+      setReferralDestination(destination);
+      setForm((previous) => ({
+        ...previous,
+        receivingFacility: destination.receivingRuralHealthUnit.name,
+      }));
+    } catch (error) {
+      setReferralDestination(null);
+      setForm((previous) => ({ ...previous, receivingFacility: "" }));
+      setDestinationError(
+        error?.message ||
+          "Unable to load the receiving Rural Health Unit. Please try again.",
+      );
+    } finally {
+      setDestinationLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadReferralDestination();
+  }, [loadReferralDestination]);
 
   useEffect(() => {
     if (draftRecordData) {
@@ -255,35 +284,55 @@ export default function CreateReferral() {
     return "General Consultation";
   }, [referralClassification]);
 
+  const receivingRhu = referralDestination?.receivingRuralHealthUnit || null;
+  const destinationReady = Boolean(receivingRhu?.id && receivingRhu?.name);
+
   const rhuDoctors = useMemo(() => {
     const rawDoctors = Array.isArray(rhuDoctorAvailability?.doctors)
       ? rhuDoctorAvailability.doctors
       : [];
 
-    return rawDoctors.map((doctor, index) => ({
-      id: doctor.doctorId || doctor.id || `DOC-${String(index + 1).padStart(3, "0")}`,
-      name: doctor.doctorName || doctor.name || `Doctor ${index + 1}`,
-      role:
-        doctor.designation ||
-        doctor.doctorType ||
-        doctor.role ||
-        "General Practitioner",
-      status: normalizeStatus(doctor.availabilityStatus || doctor.status),
-      expectedAvailableAt:
-        doctor.expectedAvailableAt ||
-        doctor.expected_available_at ||
-        doctor.availabilityNote ||
-        doctor.note ||
-        "",
-      note:
-        doctor.expectedAvailableAt ||
-        doctor.expected_available_at ||
-        doctor.availabilityNote ||
-        doctor.note ||
-        "",
-      updatedAt: doctor.updatedAt || rhuDoctorAvailability?.updatedAt || null,
-    }));
-  }, [rhuDoctorAvailability]);
+    return rawDoctors
+      .filter((doctor) => {
+        const doctorRhuId =
+          doctor.ruralHealthUnitId ||
+          doctor.rural_health_unit_id ||
+          doctor.rhuId ||
+          doctor.rhu_id;
+
+        return Boolean(
+          doctorRhuId &&
+            receivingRhu?.id &&
+            String(doctorRhuId) === String(receivingRhu.id),
+        );
+      })
+      .map((doctor, index) => ({
+        id:
+          doctor.doctorId ||
+          doctor.id ||
+          `DOC-${String(index + 1).padStart(3, "0")}`,
+        name: doctor.doctorName || doctor.name || `Doctor ${index + 1}`,
+        role:
+          doctor.designation ||
+          doctor.doctorType ||
+          doctor.role ||
+          "General Practitioner",
+        status: normalizeStatus(doctor.availabilityStatus || doctor.status),
+        expectedAvailableAt:
+          doctor.expectedAvailableAt ||
+          doctor.expected_available_at ||
+          doctor.availabilityNote ||
+          doctor.note ||
+          "",
+        note:
+          doctor.expectedAvailableAt ||
+          doctor.expected_available_at ||
+          doctor.availabilityNote ||
+          doctor.note ||
+          "",
+        updatedAt: doctor.updatedAt || rhuDoctorAvailability?.updatedAt || null,
+      }));
+  }, [receivingRhu, rhuDoctorAvailability]);
 
   const totalDoctorCount = rhuDoctors.length;
   const availableDoctorCount = rhuDoctors.filter(
@@ -353,6 +402,14 @@ export default function CreateReferral() {
     e.preventDefault();
     if (checkingSubmission || submitting) return;
 
+    if (!destinationReady) {
+      setSubmissionErrorNotice(
+        destinationError ||
+          "A receiving Rural Health Unit must be configured before this referral can be submitted.",
+      );
+      return;
+    }
+
     setCheckingSubmission(true);
     try {
       const existingReferral = await findExistingReferralForRecord();
@@ -385,6 +442,15 @@ export default function CreateReferral() {
 
   async function confirmReferralSubmission() {
     if (submitting) return;
+
+    if (!destinationReady) {
+      setShowConfirmModal(false);
+      setSubmissionErrorNotice(
+        destinationError ||
+          "A receiving Rural Health Unit must be configured before this referral can be submitted.",
+      );
+      return;
+    }
 
     setSubmitting(true);
     let referralPayload = null;
@@ -435,14 +501,14 @@ export default function CreateReferral() {
       // Referring facility must be the Barangay Health Center.
       bhc: referringHci,
       referringFacility: referringHci,
-      referringHci,
-      barangayHealthCenterId: currentUser?.barangayHealthCenterId || "",
+      referringHci:
+        referralDestination?.referringBarangayHealthCenter?.name ||
+        referringHci,
 
       // Receiving facility for the BHC → RHU referral.
-      receivingFacility: form.receivingFacility,
-      referredFacility: form.receivingFacility, // backward compatibility
-      destinationFacility: form.receivingFacility,
-      ruralHealthUnitId: currentUser?.ruralHealthUnitId || "",
+      receivingFacility: receivingRhu.name,
+      referredFacility: receivingRhu.name,
+      destinationFacility: receivingRhu.name,
 
       // Category is based on the linked health record, with patient fallback for old data.
       referralCategory: referralClassification,
@@ -547,9 +613,10 @@ export default function CreateReferral() {
 
       console.error("Failed to submit referral:", error);
       setSubmissionErrorNotice(
-        savedDraftRecord
-          ? "The health record was saved, but referral submission failed. Please try submitting the referral again."
-          : "Referral failed. Try again.",
+        error?.message ||
+          (savedDraftRecord
+            ? "The health record was saved, but referral submission failed. Please try submitting the referral again."
+            : "Referral failed. Try again."),
       );
     } finally {
       setSubmitting(false);
@@ -1136,7 +1203,7 @@ export default function CreateReferral() {
               <button
                 type="button"
                 onClick={confirmReferralSubmission}
-                disabled={submitting}
+                disabled={submitting || !destinationReady}
                 className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {submitting ? <ButtonSpinner /> : <Send size={14} />}
@@ -1454,12 +1521,11 @@ export default function CreateReferral() {
 
             <SectionDivider label="Receiving Facility & RHU Coordination" />
             <div className="grid gap-4 pt-3 pb-1 lg:grid-cols-2">
-              <FieldInput
-                label="Receiving Facility"
-                name="receivingFacility"
-                value={form.receivingFacility}
-                onChange={handleChange}
-                required
+              <ReferralDestinationStatus
+                destination={referralDestination}
+                isLoading={destinationLoading}
+                error={destinationError}
+                onRetry={loadReferralDestination}
               />
 
               <RhuDoctorPreferenceSelect
@@ -1662,7 +1728,12 @@ export default function CreateReferral() {
               </button>
               <button
                 type="submit"
-                disabled={checkingSubmission || submitting}
+                disabled={
+                  checkingSubmission ||
+                  submitting ||
+                  destinationLoading ||
+                  !destinationReady
+                }
                 className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {checkingSubmission || submitting ? (
@@ -1780,6 +1851,64 @@ function Info({ label, value, mono, highlight }) {
       >
         {value || "—"}
       </p>
+    </div>
+  );
+}
+
+function ReferralDestinationStatus({
+  destination,
+  isLoading,
+  error,
+  onRetry,
+}) {
+  const receivingRhu = destination?.receivingRuralHealthUnit;
+
+  return (
+    <div>
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        Receiving Facility
+      </p>
+
+      {isLoading ? (
+        <div className="flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4">
+          <span className="h-4 w-4 animate-pulse rounded-full bg-slate-300" />
+          <span className="text-xs font-medium text-slate-500">
+            Loading assigned RHU...
+          </span>
+        </div>
+      ) : error ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="mt-0.5 shrink-0 text-amber-600" size={15} />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-amber-900">
+                Receiving RHU unavailable
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-amber-800">
+                {error}
+              </p>
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-2 text-[11px] font-bold text-[#991B1B] hover:text-[#7F1D1D]"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+            <ShieldCheck size={15} className="shrink-0 text-[#B91C1C]" />
+            <span>{receivingRhu?.name}</span>
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+            Automatically assigned based on the patient&apos;s Barangay Health
+            Center.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

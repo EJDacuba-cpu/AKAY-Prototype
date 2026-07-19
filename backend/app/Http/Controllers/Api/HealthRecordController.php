@@ -8,16 +8,22 @@ use App\Models\HealthRecord;
 use App\Models\Medicine;
 use App\Models\Patient;
 use App\Services\AuditLogger;
+use App\Services\FacilityAccessService;
 use App\Services\FollowUpTaskSyncService;
 use App\Support\StoredFunction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class HealthRecordController extends Controller
 {
+    public function __construct(private readonly FacilityAccessService $facilityAccess)
+    {
+    }
+
     public function index(Request $request)
     {
-        if (StoredFunction::available()) {
+        if (StoredFunction::available() && $request->user()->isAdmin()) {
             $perPage = $request->integer('per_page', 25);
             $page = max(1, $request->integer('page', 1));
             $rows = StoredFunction::select(
@@ -36,7 +42,9 @@ class HealthRecordController extends Controller
             return response()->json(['data' => StoredFunction::paginatedResponse($rows, $request)]);
         }
 
-        $query = $this->scope(HealthRecord::query(), $request)->with('patient');
+        $query = $this->facilityAccess
+            ->scopeHealthRecords(HealthRecord::query(), $request->user())
+            ->with('patient');
 
         if ($request->query('patient_id')) {
             $query->where('patient_id', $request->query('patient_id'));
@@ -57,11 +65,15 @@ class HealthRecordController extends Controller
     {
         $data = $request->validated();
         $patient = Patient::findOrFail($data['patient_id']);
-        $this->authorizePatient($request, $patient);
+        $this->facilityAccess->authorizePatientModification($request->user(), $patient);
         if (
             empty($data['parent_health_record_id'])
             && ($data['visit_type'] ?? 'initial_consultation') !== 'follow_up_visit'
-            && ($matchingTask = $followUpTasks->findActiveMatchingTask($patient, $data['category'] ?? null))
+            && ($matchingTask = $followUpTasks->findActiveMatchingTask(
+                $patient,
+                $data['category'] ?? null,
+                $request->user()
+            ))
         ) {
             $data['parent_health_record_id'] = $matchingTask->health_record_id;
             $data['visit_type'] = 'follow_up_visit';
@@ -97,9 +109,9 @@ class HealthRecordController extends Controller
 
     public function show(Request $request, HealthRecord $healthRecord)
     {
-        $this->authorizeRecord($request, $healthRecord);
+        $this->facilityAccess->authorizeHealthRecord($request->user(), $healthRecord);
 
-        if (StoredFunction::available()) {
+        if (StoredFunction::available() && $request->user()->isAdmin()) {
             $data = StoredFunction::selectJson(
                 'SELECT akay_health_record_details(?, ?, ?, ?) AS data',
                 [
@@ -116,7 +128,12 @@ class HealthRecordController extends Controller
             return response()->json(['data' => $data]);
         }
 
-        return response()->json(['data' => $healthRecord->load(['patient', 'dispensedMedicines'])]);
+        return response()->json(['data' => $healthRecord->load([
+            'patient',
+            'dispensedMedicines',
+            'referrals' => fn ($query) => $this->facilityAccess
+                ->scopeReferrals($query, $request->user()),
+        ])]);
     }
 
     public function update(
@@ -126,22 +143,36 @@ class HealthRecordController extends Controller
         FollowUpTaskSyncService $followUpTasks
     )
     {
-        $this->authorizeRecord($request, $healthRecord);
+        $this->facilityAccess->authorizeHealthRecord($request->user(), $healthRecord);
         $data = $request->validated();
-        $this->normalizeVisitTypeData($request, $data);
+
+        if (
+            array_key_exists('patient_id', $data)
+            && (int) $data['patient_id'] !== (int) $healthRecord->patient_id
+        ) {
+            throw ValidationException::withMessages([
+                'patient_id' => 'A health record cannot be reassigned to another patient.',
+            ]);
+        }
+
+        unset($data['patient_id']);
+        $this->normalizeVisitTypeData($request, $data, false, $healthRecord);
         $this->normalizeMaternalSupplements($request, $data);
         $this->normalizeFamilyPlanningData($data, $healthRecord);
         unset($data['dispensed_medicines']);
-        $healthRecord->update($data);
-        $followUpTasks->syncRecord($healthRecord->fresh(), $request->user());
-        $auditLogger->log($request, 'updated', 'health_records', "Updated health record {$healthRecord->id}.");
+
+        DB::transaction(function () use ($healthRecord, $data, $followUpTasks, $request, $auditLogger): void {
+            $healthRecord->update($data);
+            $followUpTasks->syncRecord($healthRecord->fresh(), $request->user());
+            $auditLogger->log($request, 'updated', 'health_records', "Updated health record {$healthRecord->id}.");
+        });
 
         return response()->json(['data' => $healthRecord->fresh()->load(['patient', 'dispensedMedicines'])]);
     }
 
     public function dispenseMedicines(Request $request, HealthRecord $healthRecord)
     {
-        $this->authorizeRecord($request, $healthRecord);
+        $this->facilityAccess->authorizeHealthRecord($request->user(), $healthRecord);
         $data = $request->validate(
             [
                 'dispensed_medicines' => ['nullable', 'array'],
@@ -178,44 +209,18 @@ class HealthRecordController extends Controller
 
     public function destroy(Request $request, HealthRecord $healthRecord)
     {
-        $this->authorizeRecord($request, $healthRecord);
+        $this->facilityAccess->authorizeHealthRecord($request->user(), $healthRecord);
         $healthRecord->delete();
 
         return response()->json(status: 204);
     }
 
-    private function scope($query, Request $request)
-    {
-        $user = $request->user();
-
-        if ($user->isBhw()) {
-            $query->where('barangay_health_center_id', $user->barangay_health_center_id);
-        } elseif ($user->isRhuStaff()) {
-            $query->where('rural_health_unit_id', $user->rural_health_unit_id);
-        }
-
-        return $query;
-    }
-
-    private function authorizeRecord(Request $request, HealthRecord $record): void
-    {
-        $allowed = $request->user()->isAdmin()
-            || ($request->user()->isBhw() && $record->barangay_health_center_id === $request->user()->barangay_health_center_id)
-            || ($request->user()->isRhuStaff() && $record->rural_health_unit_id === $request->user()->rural_health_unit_id);
-
-        abort_unless($allowed, 403, 'Health record is outside your assigned facility.');
-    }
-
-    private function authorizePatient(Request $request, Patient $patient): void
-    {
-        $allowed = $request->user()->isAdmin()
-            || ($request->user()->isBhw() && $patient->barangay_health_center_id === $request->user()->barangay_health_center_id)
-            || ($request->user()->isRhuStaff() && $patient->rural_health_unit_id === $request->user()->rural_health_unit_id);
-
-        abort_unless($allowed, 403, 'Patient is outside your assigned facility.');
-    }
-
-    private function normalizeVisitTypeData(Request $request, array &$data, bool $defaultInitial = false): void
+    private function normalizeVisitTypeData(
+        Request $request,
+        array &$data,
+        bool $defaultInitial = false,
+        ?HealthRecord $record = null
+    ): void
     {
         if (!$defaultInitial && !array_key_exists('visit_type', $data) && !array_key_exists('parent_health_record_id', $data)) {
             return;
@@ -229,7 +234,12 @@ class HealthRecordController extends Controller
             abort_if(empty($data['parent_health_record_id']), 422, 'Follow-up visits must be linked to an original health record.');
 
             $parentRecord = HealthRecord::findOrFail($data['parent_health_record_id']);
-            $this->authorizeRecord($request, $parentRecord);
+            $this->facilityAccess->authorizeHealthRecord($request->user(), $parentRecord);
+            abort_unless(
+                (int) $parentRecord->patient_id === (int) ($data['patient_id'] ?? $record?->patient_id),
+                422,
+                'Follow-up visits must be linked to a record for the same patient.'
+            );
             abort_unless(
                 $this->healthRecordStatus($parentRecord) === 'follow up required'
                     || $this->hasFollowUpDate($parentRecord),
@@ -360,12 +370,18 @@ class HealthRecordController extends Controller
         foreach (array_values($merged) as $item) {
             $medicine = Medicine::query()
                 ->whereKey($item['medicine_id'])
-                ->whereNull('rural_health_unit_id')
-                ->where('barangay_health_center_id', $record->barangay_health_center_id)
                 ->lockForUpdate()
                 ->first();
 
-            abort_unless($medicine, 422, 'Please select a medicine from BHC inventory.');
+            abort_unless(
+                $medicine && $this->facilityAccess->canDispenseMedicine(
+                    $request->user(),
+                    $medicine,
+                    $record
+                ),
+                422,
+                'Please select a medicine from BHC inventory.'
+            );
             abort_if((int) $medicine->quantity <= 0, 422, 'This medicine is out of stock.');
             abort_if((int) $item['quantity'] > (int) $medicine->quantity, 422, 'Quantity cannot exceed available stock.');
 

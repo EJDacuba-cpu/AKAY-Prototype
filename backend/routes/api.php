@@ -36,27 +36,32 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
     Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
 
-    Route::apiResource('patients', PatientController::class);
-    Route::apiResource('health-records', HealthRecordController::class);
-    Route::post('health-records/{healthRecord}/dispensed-medicines', [HealthRecordController::class, 'dispenseMedicines']);
-    Route::apiResource('referrals', ReferralController::class)->except(['update']);
-    Route::patch('/referrals/{referral}/status', [ReferralController::class, 'updateStatus']);
-    Route::get('/tracking/{value}', [TrackingController::class, 'show']);
-    Route::apiResource('feedback', FeedbackController::class)->only(['index', 'store', 'show']);
-    Route::apiResource('medicines', MedicineController::class);
-    Route::get('/rhu-patient-volumes', [RhuPatientVolumeController::class, 'index']);
-    Route::post('/rhu-patient-volumes', [RhuPatientVolumeController::class, 'store']);
+    Route::middleware('facility.assigned')->group(function () {
+        Route::apiResource('patients', PatientController::class);
+        Route::apiResource('health-records', HealthRecordController::class);
+        Route::post('health-records/{healthRecord}/dispensed-medicines', [HealthRecordController::class, 'dispenseMedicines']);
+        Route::apiResource('referrals', ReferralController::class)->except(['store', 'update']);
+        Route::post('/referrals', [ReferralController::class, 'store'])->middleware('role:bhw');
+        Route::patch('/referrals/{referral}/status', [ReferralController::class, 'updateStatus'])->middleware('role:rhu_staff');
+        Route::get('/tracking/{value}', [TrackingController::class, 'show']);
+        Route::apiResource('feedback', FeedbackController::class)->only(['index', 'show']);
+        Route::post('/feedback', [FeedbackController::class, 'store'])->middleware('role:rhu_staff');
+        Route::apiResource('medicines', MedicineController::class);
+        Route::get('/rhu-patient-volumes', [RhuPatientVolumeController::class, 'index']);
+        Route::post('/rhu-patient-volumes', [RhuPatientVolumeController::class, 'store']);
 
-    Route::middleware('role:rhu_staff')->group(function () {
-        Route::get('/incoming-referrals', [IncomingReferralController::class, 'index']);
-        Route::get('/reports/rhu', [ReportController::class, 'rhu']);
-    });
+        Route::middleware('role:rhu_staff')->group(function () {
+            Route::get('/incoming-referrals', [IncomingReferralController::class, 'index']);
+            Route::get('/reports/rhu', [ReportController::class, 'rhu']);
+        });
 
-    Route::middleware('role:bhw')->group(function () {
-        Route::get('/follow-up-tasks', [FollowUpTaskController::class, 'index']);
-        Route::patch('/follow-up-tasks/{followUpTask}/no-show', [FollowUpTaskController::class, 'markNoShow']);
-        Route::patch('/follow-up-tasks/{followUpTask}/reschedule', [FollowUpTaskController::class, 'reschedule']);
-        Route::get('/reports/bhw', [ReportController::class, 'bhw']);
+        Route::middleware('role:bhw')->group(function () {
+            Route::get('/referral-routing', [ReferralController::class, 'destination']);
+            Route::get('/follow-up-tasks', [FollowUpTaskController::class, 'index']);
+            Route::patch('/follow-up-tasks/{followUpTask}/no-show', [FollowUpTaskController::class, 'markNoShow']);
+            Route::patch('/follow-up-tasks/{followUpTask}/reschedule', [FollowUpTaskController::class, 'reschedule']);
+            Route::get('/reports/bhw', [ReportController::class, 'bhw']);
+        });
     });
 
     Route::middleware('role:admin')->group(function () {

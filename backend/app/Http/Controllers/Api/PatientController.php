@@ -6,15 +6,20 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\PatientRequest;
 use App\Models\Patient;
 use App\Services\AuditLogger;
+use App\Services\FacilityAccessService;
 use App\Support\StoredFunction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
 class PatientController extends Controller
 {
+    public function __construct(private readonly FacilityAccessService $facilityAccess)
+    {
+    }
+
     public function index(Request $request)
     {
-        if (StoredFunction::available()) {
+        if (StoredFunction::available() && $request->user()->isAdmin()) {
             $perPage = $request->integer('per_page', 25);
             $page = max(1, $request->integer('page', 1));
             $rows = StoredFunction::select(
@@ -35,7 +40,15 @@ class PatientController extends Controller
             return response()->json(['data' => StoredFunction::paginatedResponse($rows, $request)]);
         }
 
-        $query = $this->scope(Patient::query(), $request)->with(['barangayHealthCenter', 'ruralHealthUnit', 'mother']);
+        $user = $request->user();
+        $query = $this->facilityAccess
+            ->scopePatients(Patient::query(), $user)
+            ->with([
+                'barangayHealthCenter',
+                'ruralHealthUnit',
+                'mother' => fn ($query) => $this->facilityAccess
+                    ->scopePatients($query, $user),
+            ]);
 
         if ($search = $request->query('search')) {
             $query->where(fn ($q) => $q
@@ -62,10 +75,14 @@ class PatientController extends Controller
         $data['created_by'] = $user->id;
 
         if ($user->isBhw()) {
+            unset($data['rural_health_unit_id']);
             $data['barangay_health_center_id'] = $user->barangay_health_center_id;
+            $data['rural_health_unit_id'] = null;
         }
 
         if ($user->isRhuStaff()) {
+            unset($data['barangay_health_center_id']);
+            $data['barangay_health_center_id'] = null;
             $data['rural_health_unit_id'] = $user->rural_health_unit_id;
         }
 
@@ -77,9 +94,9 @@ class PatientController extends Controller
 
     public function show(Request $request, Patient $patient)
     {
-        $this->authorizePatient($request, $patient);
+        $this->facilityAccess->authorizePatient($request->user(), $patient);
 
-        if (StoredFunction::available()) {
+        if (StoredFunction::available() && $request->user()->isAdmin()) {
             $data = StoredFunction::selectJson(
                 'SELECT akay_patient_details(?, ?, ?, ?) AS data',
                 [
@@ -95,13 +112,37 @@ class PatientController extends Controller
             return response()->json(['data' => $data]);
         }
 
-        return response()->json(['data' => $patient->load(['healthRecords', 'referrals.feedback', 'mother'])]);
+        $user = $request->user();
+        $patient->load([
+            'healthRecords' => fn ($query) => $this->facilityAccess
+                ->scopePatientHealthRecords($query, $user),
+            'referrals' => fn ($query) => $this->facilityAccess
+                ->scopeReferrals($query, $user)
+                ->with('feedback'),
+            'mother' => fn ($query) => $this->facilityAccess
+                ->scopePatients($query, $user),
+        ]);
+        $patient->loadCount([
+            'healthRecords' => fn ($query) => $this->facilityAccess
+                ->scopePatientHealthRecords($query, $user),
+            'referrals' => fn ($query) => $this->facilityAccess
+                ->scopeReferrals($query, $user),
+        ]);
+
+        return response()->json(['data' => $patient]);
     }
 
     public function update(PatientRequest $request, Patient $patient, AuditLogger $auditLogger)
     {
-        $this->authorizePatient($request, $patient);
+        $this->facilityAccess->authorizePatientModification($request->user(), $patient);
         $data = $this->normalizeProfileFields($request->validated(), $patient);
+        if (! $request->user()->isAdmin()) {
+            unset(
+                $data['barangay_health_center_id'],
+                $data['rural_health_unit_id'],
+                $data['facility_id']
+            );
+        }
         $this->authorizeMotherLink($request, $data['mother_patient_id'] ?? null);
         $patient->update($data);
         $auditLogger->log($request, 'updated', 'patients', "Updated patient {$patient->full_name}.");
@@ -111,33 +152,11 @@ class PatientController extends Controller
 
     public function destroy(Request $request, Patient $patient, AuditLogger $auditLogger)
     {
-        $this->authorizePatient($request, $patient);
+        $this->facilityAccess->authorizePatientModification($request->user(), $patient);
         $patient->update(['status' => 'inactive']);
         $auditLogger->log($request, 'deactivated', 'patients', "Deactivated patient {$patient->full_name}.");
 
         return response()->json(['data' => $patient->fresh()]);
-    }
-
-    private function scope($query, Request $request)
-    {
-        $user = $request->user();
-
-        if ($user->isBhw()) {
-            $query->where('barangay_health_center_id', $user->barangay_health_center_id);
-        } elseif ($user->isRhuStaff()) {
-            $query->where('rural_health_unit_id', $user->rural_health_unit_id);
-        }
-
-        return $query;
-    }
-
-    private function authorizePatient(Request $request, Patient $patient): void
-    {
-        $allowed = $request->user()->isAdmin()
-            || ($request->user()->isBhw() && $patient->barangay_health_center_id === $request->user()->barangay_health_center_id)
-            || ($request->user()->isRhuStaff() && $patient->rural_health_unit_id === $request->user()->rural_health_unit_id);
-
-        abort_unless($allowed, 403, 'Patient is outside your assigned facility.');
     }
 
     private function authorizeMotherLink(Request $request, mixed $motherPatientId): void
@@ -156,7 +175,7 @@ class PatientController extends Controller
 
         $mother = Patient::find($motherPatientId);
         abort_unless($mother, 422, 'Selected mother patient was not found.');
-        $this->authorizePatient($request, $mother);
+        $this->facilityAccess->authorizePatient($request->user(), $mother);
     }
 
     private function normalizeProfileFields(array $data, ?Patient $patient = null): array

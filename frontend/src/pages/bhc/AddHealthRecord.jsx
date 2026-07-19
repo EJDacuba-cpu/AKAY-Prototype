@@ -36,7 +36,10 @@ import {
 } from "../../services/medicineService";
 import { getPatientDetailsListByRole } from "../../services/patientService";
 import { getFollowUpTasks } from "../../services/followUpTaskService";
-import { createReferral } from "../../services/referrals";
+import {
+  createReferral,
+  getReferralDestination,
+} from "../../services/referrals";
 import { isConnectionError } from "../../services/apiClient";
 import {
   deleteHealthRecordDraft,
@@ -1084,11 +1087,12 @@ export default function AddHealthRecord() {
   const [referralDetailsStep, setReferralDetailsStep] = useState(false);
   const [pendingReferralDraft, setPendingReferralDraft] = useState(null);
   const [referralValidationErrors, setReferralValidationErrors] = useState({});
+  const [referralDestination, setReferralDestination] = useState(null);
+  const [referralDestinationLoading, setReferralDestinationLoading] =
+    useState(false);
+  const [referralDestinationError, setReferralDestinationError] = useState("");
   const [referralForm, setReferralForm] = useState({
-    receivingFacility:
-      currentUser?.assignedRuralHealthUnit ||
-      currentUser?.ruralHealthUnit ||
-      "",
+    receivingFacility: "",
     urgencyLevel: "Non-urgent",
     dateOfReferral: toDateInputValue(),
     timeOfReferral: toTimeInputValue(),
@@ -1139,6 +1143,38 @@ export default function AddHealthRecord() {
     key: "",
     isChecking: false,
   });
+
+  const loadReferralDestination = useCallback(async () => {
+    setReferralDestinationLoading(true);
+    setReferralDestinationError("");
+
+    try {
+      const destination = await getReferralDestination();
+      setReferralDestination(destination);
+      setReferralForm((previous) => ({
+        ...previous,
+        receivingFacility: destination.receivingRuralHealthUnit.name,
+      }));
+    } catch (error) {
+      setReferralDestination(null);
+      setReferralForm((previous) => ({
+        ...previous,
+        receivingFacility: "",
+      }));
+      setReferralDestinationError(
+        error?.message ||
+          "Unable to load the receiving Rural Health Unit. Please try again.",
+      );
+    } finally {
+      setReferralDestinationLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (referralDetailsStep) {
+      loadReferralDestination();
+    }
+  }, [loadReferralDestination, referralDetailsStep]);
 
   useEffect(() => {
     if (!isOrphanFollowUpRequest) return undefined;
@@ -2101,6 +2137,14 @@ export default function AddHealthRecord() {
 
   function getReferralValidationErrors() {
     const errors = {};
+    if (
+      referralDestinationLoading ||
+      !referralDestination?.receivingRuralHealthUnit?.id
+    ) {
+      errors.receivingFacility =
+        referralDestinationError ||
+        "A receiving Rural Health Unit must be configured before this referral can be submitted.";
+    }
     if (!String(referralForm.dateOfReferral || "").trim()) {
       errors.dateOfReferral = "Date of referral is required.";
     }
@@ -3028,7 +3072,7 @@ export default function AddHealthRecord() {
       setReferralForm((prev) => ({
         ...prev,
         receivingFacility:
-          prev.receivingFacility || getReceivingFacilityName(currentUser),
+          referralDestination?.receivingRuralHealthUnit?.name || "",
         urgencyLevel: prev.urgencyLevel || "Non-urgent",
         dateOfReferral: prev.dateOfReferral || dateOfVisit || toDateInputValue(),
         timeOfReferral: prev.timeOfReferral || timeOfVisit || toTimeInputValue(),
@@ -3200,10 +3244,8 @@ export default function AddHealthRecord() {
         patientName: getPatientName(selectedPatient),
         healthRecordId: savedRecordId,
         recordId: savedRecordId,
-        barangayHealthCenterId: currentUser?.barangayHealthCenterId || "",
-        ruralHealthUnitId: currentUser?.ruralHealthUnitId || "",
         receivingFacility:
-          referralForm.receivingFacility || getReceivingFacilityName(currentUser),
+          referralDestination?.receivingRuralHealthUnit?.name || "",
         referralCategory: pendingReferralDraft.formData.category,
         category: pendingReferralDraft.formData.category,
         urgencyLevel: referralUrgency,
@@ -3506,7 +3548,11 @@ export default function AddHealthRecord() {
         form={referralForm}
         errors={referralValidationErrors}
         saving={saving}
+        destination={referralDestination}
+        destinationLoading={referralDestinationLoading}
+        destinationError={referralDestinationError}
         onChange={handleReferralFormChange}
+        onRetryDestination={loadReferralDestination}
         onSaveDraft={handleSaveCurrentHealthRecordDraft}
         onSubmit={handleSubmitReferralDetails}
       />
@@ -5423,10 +5469,17 @@ function ReferralDetailsStep({
   form,
   errors = {},
   saving,
+  destination,
+  destinationLoading,
+  destinationError,
   onChange,
+  onRetryDestination,
   onSaveDraft,
   onSubmit,
 }) {
+  const destinationReady = Boolean(
+    destination?.receivingRuralHealthUnit?.id,
+  );
 
   return (
     <form
@@ -5455,6 +5508,13 @@ function ReferralDetailsStep({
             title="Referral Information"
             description="Referral timestamp and referring BHC details."
           >
+            <ReferralDestinationField
+              destination={destination}
+              isLoading={destinationLoading}
+              error={destinationError || errors.receivingFacility}
+              onRetry={onRetryDestination}
+            />
+
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <DatePickerField
                 label="Date of Referral"
@@ -5595,7 +5655,7 @@ function ReferralDetailsStep({
           </button>
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || destinationLoading || !destinationReady}
             className="group flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
           >
             {saving ? <ButtonSpinner /> : <Save size={15} />}
@@ -5606,6 +5666,55 @@ function ReferralDetailsStep({
         </div>
       </div>
     </form>
+  );
+}
+
+function ReferralDestinationField({ destination, isLoading, error, onRetry }) {
+  const receivingRhu = destination?.receivingRuralHealthUnit;
+
+  return (
+    <div className="mb-5" data-field="receivingFacility" tabIndex={-1}>
+      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-[#6B7280]">
+        Receiving Facility
+      </p>
+
+      {isLoading ? (
+        <div className="flex min-h-12 items-center gap-2.5 rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3 text-xs font-medium text-[#64748B]">
+          <InlineSpinner label="Loading assigned RHU..." />
+        </div>
+      ) : error ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="mt-0.5 shrink-0 text-amber-600" size={15} />
+            <div>
+              <p className="text-xs font-semibold text-amber-900">
+                Receiving RHU unavailable
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-amber-800">
+                {error}
+              </p>
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-2 text-[11px] font-bold text-[#991B1B] hover:text-[#7F1D1D]"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3">
+          <p className="text-sm font-semibold text-[#1F2937]">
+            {receivingRhu?.name}
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-[#64748B]">
+            Automatically assigned based on the patient&apos;s Barangay Health
+            Center.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -6635,16 +6744,6 @@ function getReferringFacilityName(user = {}) {
       user.facilityName ||
       user.facility_name,
     "Barangay Health Center",
-  );
-}
-
-function getReceivingFacilityName(user = {}) {
-  return formatFacilityName(
-    user.ruralHealthUnit ||
-      user.rural_health_unit ||
-      user.assignedRuralHealthUnit ||
-      user.receivingFacility,
-    "",
   );
 }
 

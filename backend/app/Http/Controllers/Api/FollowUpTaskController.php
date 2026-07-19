@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\FollowUpTask;
 use App\Services\AuditLogger;
+use App\Services\FacilityAccessService;
 use App\Services\FollowUpNotificationService;
 use App\Services\FollowUpTaskSyncService;
 use Illuminate\Http\Request;
@@ -12,6 +13,10 @@ use Illuminate\Validation\Rule;
 
 class FollowUpTaskController extends Controller
 {
+    public function __construct(private readonly FacilityAccessService $facilityAccess)
+    {
+    }
+
     public function index(
         Request $request,
         FollowUpNotificationService $followUpNotifications,
@@ -23,13 +28,10 @@ class FollowUpTaskController extends Controller
         $followUpTasks->syncEligibleRecordsForUser($request->user());
         $followUpNotifications->notifyDueForUser($request->user());
 
-        $query = FollowUpTask::query()
+        $query = $this->facilityAccess
+            ->scopeFollowUpTasks(FollowUpTask::query(), $request->user())
             ->with(['patient', 'healthRecord.patient', 'fulfilledByHealthRecord'])
             ->latest('due_date');
-
-        if ($request->user()->isBhw()) {
-            $query->where('barangay_health_center_id', $request->user()->barangay_health_center_id);
-        }
 
         if ($state = $request->query('state')) {
             $query->where('state', $state);
@@ -40,7 +42,7 @@ class FollowUpTaskController extends Controller
 
     public function markNoShow(Request $request, FollowUpTask $followUpTask, AuditLogger $auditLogger)
     {
-        $this->authorizeTask($request, $followUpTask);
+        $this->facilityAccess->authorizeFollowUpTask($request->user(), $followUpTask);
 
         $data = $request->validate([
             'notes' => ['nullable', 'string'],
@@ -60,7 +62,7 @@ class FollowUpTaskController extends Controller
 
     public function reschedule(Request $request, FollowUpTask $followUpTask, AuditLogger $auditLogger)
     {
-        $this->authorizeTask($request, $followUpTask);
+        $this->facilityAccess->authorizeFollowUpTask($request->user(), $followUpTask);
 
         $data = $request->validate([
             'due_date' => ['required', 'date'],
@@ -82,11 +84,4 @@ class FollowUpTaskController extends Controller
         return response()->json(['data' => $followUpTask->fresh()->load(['patient', 'healthRecord.patient', 'fulfilledByHealthRecord'])]);
     }
 
-    private function authorizeTask(Request $request, FollowUpTask $followUpTask): void
-    {
-        $allowed = $request->user()->isAdmin()
-            || ($request->user()->isBhw() && $followUpTask->barangay_health_center_id === $request->user()->barangay_health_center_id);
-
-        abort_unless($allowed, 403, 'Follow-up task is outside your assigned facility.');
-    }
 }

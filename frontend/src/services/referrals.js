@@ -103,8 +103,6 @@ function toPayload(referral = {}) {
     patient_id: referral.patientId || referral.patient_id,
     health_record_id:
       referral.healthRecordId || referral.health_record_id || referral.recordId || null,
-    barangay_health_center_id: referral.barangayHealthCenterId || referral.bhcId || null,
-    rural_health_unit_id: referral.ruralHealthUnitId || referral.rhuId || referral.rhu_id,
     referral_category: referral.referralCategory || referral.category || null,
     urgency_level: normalizeUrgencyLevel(referral.urgencyLevel || referral.priority),
     reason_for_referral: referral.reasonForReferral || referral.reason || "",
@@ -119,6 +117,30 @@ function toPayload(referral = {}) {
         ? `${referral.referralDate} ${referral.referralTime || "00:00"}`
         : null),
     remarks: referral.remarks || null,
+  };
+}
+
+export async function getReferralDestination() {
+  const response = await apiRequest("/referral-routing");
+  const data = unwrapData(response) || {};
+  const bhc =
+    data.referring_barangay_health_center ||
+    data.referringBarangayHealthCenter ||
+    {};
+  const rhu =
+    data.receiving_rural_health_unit || data.receivingRuralHealthUnit || {};
+
+  return {
+    referringBarangayHealthCenter: {
+      ...bhc,
+      id: bhc.id ? String(bhc.id) : "",
+      name: bhc.name || "",
+    },
+    receivingRuralHealthUnit: {
+      ...rhu,
+      id: rhu.id ? String(rhu.id) : "",
+      name: rhu.name || "",
+    },
   };
 }
 
@@ -259,6 +281,7 @@ export default {
   getReferralsByPatient,
   hasActiveReferralForPatient,
   getReferralByHealthRecordId,
+  getReferralDestination,
   createReferral,
   updateReferralStatus,
   updateReferralByTrackingId,

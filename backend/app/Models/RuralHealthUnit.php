@@ -25,6 +25,11 @@ class RuralHealthUnit extends Model
         return $this->hasMany(Referral::class);
     }
 
+    public function barangayHealthCenters(): HasMany
+    {
+        return $this->hasMany(BarangayHealthCenter::class);
+    }
+
     public function volume(): HasOne
     {
         return $this->hasOne(RhuPatientVolume::class);

@@ -15,6 +15,7 @@
     Loader2,
     LockKeyhole,
     Mail,
+    ShieldCheck,
     UserPlus,
   } from "lucide-react";
 
@@ -57,11 +58,21 @@
       workflowDescription:
         "This account can receive referrals, check in patients, manage RHU records, and submit feedback/return slips.",
     },
+    {
+      value: "admin",
+      label: "Admin Account",
+      roleLabel: "Municipal Health Office Administrator",
+      subtitle: "System Administration",
+      accessRole: "Admin",
+      workflowDescription:
+        "This account can manage users, facilities, reports, and administrative system records without a clinical facility assignment.",
+    },
   ];
 
   const POSITION_BY_ACCOUNT_ROLE = {
     bhc_worker: "Barangay Health Worker",
     rhu_staff: "RHU Staff",
+    admin: "Municipal Health Officer",
   };
 
   const keyframes = `
@@ -89,6 +100,7 @@
     const [accounts, setAccounts] = useState(() => getAdminAccounts());
     const [facilities, setFacilities] = useState({ bhcs: [], rhus: [] });
     const [facilityError, setFacilityError] = useState("");
+    const [submissionError, setSubmissionError] = useState("");
 
     const mode = searchParams.get("mode");
     const userId = searchParams.get("userId");
@@ -123,13 +135,13 @@
           position: POSITION_BY_ACCOUNT_ROLE[values.accountRole] || "",
           facility: selectedFacility,
           bhcFacility: isBhcAccount ? values.bhcFacility : "",
-          rhuFacility: isBhcAccount || isRhuAccount ? values.rhuFacility : "",
-          barangayHealthCenterId: isBhcAccount ? values.bhcFacilityId : "",
-          ruralHealthUnitId:
-            isBhcAccount || isRhuAccount ? values.rhuFacilityId : "",
+          rhuFacility: isRhuAccount ? values.rhuFacility : "",
+          barangayHealthCenterId: isBhcAccount
+            ? values.bhcFacilityId
+            : null,
+          ruralHealthUnitId: isRhuAccount ? values.rhuFacilityId : null,
           assignedBarangayHealthCenter: isBhcAccount ? values.bhcFacility : "",
-          assignedRuralHealthUnit:
-            isBhcAccount || isRhuAccount ? values.rhuFacility : "",
+          assignedRuralHealthUnit: isRhuAccount ? values.rhuFacility : "",
           status: existingUser?.status || "Active",
         };
 
@@ -137,20 +149,42 @@
           payload.password = values.password;
         }
 
-        if (isEditMode) {
-          await updateAdminAccount(existingUser.id, payload);
+        try {
+          setSubmissionError("");
+
+          if (isEditMode) {
+            await updateAdminAccount(existingUser.id, payload);
+            setConfirmationModalOpen(false);
+            setSuccessModal({
+              title: "Changes saved.",
+              message: "The account information has been updated successfully.",
+            });
+          } else {
+            await createAdminAccount(payload);
+            setConfirmationModalOpen(false);
+            setSuccessModal({
+              title: "User added.",
+              message: "The new account has been created successfully.",
+            });
+          }
+        } catch (error) {
+          const backendErrors = getBackendFormErrors(error);
+          const errorMessage = getSubmissionErrorMessage(error, backendErrors);
+
+          form.setErrors((previous) => ({ ...previous, ...backendErrors }));
+          setStepErrors((previous) => ({ ...previous, ...backendErrors }));
+          setSubmissionError(errorMessage);
           setConfirmationModalOpen(false);
-          setSuccessModal({
-            title: "Changes saved.",
-            message: "The account information has been updated successfully.",
-          });
-        } else {
-          await createAdminAccount(payload);
-          setConfirmationModalOpen(false);
-          setSuccessModal({
-            title: "User added.",
-            message: "The new account has been created successfully.",
-          });
+
+          if (
+            Object.keys(backendErrors).some((field) =>
+              ["fullName", "email", "password", "accountRole"].includes(field),
+            )
+          ) {
+            setCurrentStep(1);
+          } else {
+            setCurrentStep(2);
+          }
         }
       },
       {
@@ -163,6 +197,7 @@
     const selectedAccountRole = getAccountRole(form.values.accountRole);
     const isBhcAccount = form.values.accountRole === "bhc_worker";
     const isRhuAccount = form.values.accountRole === "rhu_staff";
+    const isAdminAccount = form.values.accountRole === "admin";
 
     const bhcFacilityOptions = useMemo(
       () =>
@@ -221,7 +256,13 @@
     }, [existingUser]);
 
     function clearFieldError(name) {
+      setSubmissionError("");
       setStepErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+      form.setErrors((prev) => {
         const next = { ...prev };
         delete next[name];
         return next;
@@ -229,7 +270,13 @@
     }
 
     function clearMultipleErrors(names) {
+      setSubmissionError("");
       setStepErrors((prev) => {
+        const next = { ...prev };
+        names.forEach((name) => delete next[name]);
+        return next;
+      });
+      form.setErrors((prev) => {
         const next = { ...prev };
         names.forEach((name) => delete next[name]);
         return next;
@@ -305,9 +352,9 @@
           accountRole: roleValue,
           position: POSITION_BY_ACCOUNT_ROLE[roleValue] || "",
           bhcFacilityId: isBhc ? safeBhcId : "",
-          rhuFacilityId: isBhc || isRhu ? safeRhuId : "",
+          rhuFacilityId: isRhu ? safeRhuId : "",
           bhcFacility: isBhc ? safeBhcFacility : "",
-          rhuFacility: isBhc || isRhu ? safeRhuFacility : "",
+          rhuFacility: isRhu ? safeRhuFacility : "",
           facility: isBhc ? safeBhcFacility : isRhu ? safeRhuFacility : "",
         };
       });
@@ -350,10 +397,6 @@
       if (form.values.accountRole === "bhc_worker") {
         if (!form.values.bhcFacilityId) {
           errors.bhcFacilityId = "Assigned Barangay Health Center is required.";
-        }
-
-        if (!form.values.rhuFacilityId) {
-          errors.rhuFacilityId = "Assigned Rural Health Unit is required.";
         }
       }
 
@@ -441,7 +484,7 @@
                   <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[#6B7280]">
                     {isEditMode
                       ? "Update the account profile, role, and facility assignment."
-                      : "Create an authorized account for Barangay Health Center or Rural Health Unit staff."}
+                      : "Create an authorized BHC, RHU, or administrative account."}
                   </p>
                 </div>
               </div>
@@ -449,6 +492,20 @@
           </div>
 
           <form onSubmit={handleFinalSubmit} className="space-y-5 pb-4">
+            {submissionError && (
+              <div
+                role="alert"
+                className="flex items-start gap-3 rounded-lg border border-red-100 bg-[#FEF2F2] px-4 py-3 text-sm text-[#991B1B]"
+              >
+                <AlertCircle className="mt-0.5 shrink-0" size={16} />
+                <div>
+                  <p className="font-semibold">Unable to save this account.</p>
+                  <p className="mt-0.5 text-[12px] leading-relaxed text-[#B91C1C]">
+                    {submissionError}
+                  </p>
+                </div>
+              </div>
+            )}
             {currentStep === 1 && (
               <FormSection
                 title="Basic Profile"
@@ -536,7 +593,7 @@
                     )}
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {ACCOUNT_ROLES.map((role) => (
                       <RoleCard
                         key={role.value}
@@ -581,14 +638,24 @@
                   title={
                     isBhcAccount
                       ? "BHC Facility Assignment"
-                      : "RHU Facility Assignment"
+                      : isRhuAccount
+                        ? "RHU Facility Assignment"
+                        : "Administrative Access"
                   }
                   subtitle={
                     isBhcAccount
-                      ? "Assign the account to one Barangay Health Center and its connected Rural Health Unit."
-                      : "Assign the account to the Rural Health Unit workspace."
+                      ? "Assign the account to one Barangay Health Center."
+                      : isRhuAccount
+                        ? "Assign the account to the Rural Health Unit workspace."
+                        : "Administrative accounts do not require a clinical facility assignment."
                   }
-                  icon={<Building2 size={14} />}
+                  icon={
+                    isAdminAccount ? (
+                      <ShieldCheck size={14} />
+                    ) : (
+                      <Building2 size={14} />
+                    )
+                  }
                   delay={1}
                 >
                   {facilityError && (
@@ -596,7 +663,7 @@
                   )}
 
                   {isBhcAccount && (
-                    <div className="grid gap-5 lg:grid-cols-2">
+                    <div className="max-w-2xl">
                       <div>
                         <FormGroup
                           label="Assigned Barangay Health Center"
@@ -629,37 +696,6 @@
                         )}
                       </div>
 
-                      <div>
-                        <FormGroup
-                          label="Connected Rural Health Unit"
-                          error={getError("rhuFacilityId")}
-                          required
-                        >
-                          <Select
-                            name="rhuFacilityId"
-                            value={form.values.rhuFacilityId}
-                            onChange={handleAccountChange}
-                            className="h-11 bg-white shadow-sm"
-                            options={[
-                              {
-                                value: "",
-                                label: "Select Rural Health Unit",
-                              },
-                              ...rhuFacilityOptions,
-                            ]}
-                          />
-                          <FieldNote icon={<Hospital size={13} />}>
-                            This keeps the BHC account connected to its receiving
-                            Rural Health Unit.
-                          </FieldNote>
-                        </FormGroup>
-
-                        {rhuFacilityOptions.length === 0 && !facilityError && (
-                          <FacilityNotice>
-                            No Rural Health Unit facilities are available.
-                          </FacilityNotice>
-                        )}
-                      </div>
                     </div>
                   )}
 
@@ -694,6 +730,12 @@
                         </FacilityNotice>
                       )}
                     </div>
+                  )}
+
+                  {isAdminAccount && (
+                    <FacilityNotice>
+                      This account will be saved without a BHC or RHU assignment.
+                    </FacilityNotice>
                   )}
                 </FormSection>
 
@@ -755,6 +797,7 @@
             selectedAccountRole={selectedAccountRole}
             isBhcAccount={isBhcAccount}
             isRhuAccount={isRhuAccount}
+            isAdminAccount={isAdminAccount}
             isEditMode={isEditMode}
             isSubmitting={form.isSubmitting}
             onCancel={() => setConfirmationModalOpen(false)}
@@ -868,7 +911,12 @@ function FormSection({ title, subtitle, icon, aside, children, delay = 0 }) {
   }
 
   function RoleCard({ role, selected, onClick }) {
-    const Icon = role.value === "bhc_worker" ? Building2 : Hospital;
+    const Icon =
+      role.value === "bhc_worker"
+        ? Building2
+        : role.value === "rhu_staff"
+          ? Hospital
+          : ShieldCheck;
 
     return (
       <button
@@ -938,6 +986,7 @@ function FormSection({ title, subtitle, icon, aside, children, delay = 0 }) {
     selectedAccountRole,
     isBhcAccount,
     isRhuAccount,
+    isAdminAccount,
     isEditMode,
     isSubmitting,
     onCancel,
@@ -982,19 +1031,18 @@ function FormSection({ title, subtitle, icon, aside, children, delay = 0 }) {
                 />
               )}
 
-              {isBhcAccount && (
-                <SummaryRow
-                  label="Connected Rural Health Unit"
-                  value={values.rhuFacility}
-                  fallback="Not selected"
-                />
-              )}
-
               {isRhuAccount && (
                 <SummaryRow
                   label="Assigned Rural Health Unit"
                   value={values.rhuFacility}
                   fallback="Not selected"
+                />
+              )}
+
+              {isAdminAccount && (
+                <SummaryRow
+                  label="Facility Assignment"
+                  value="No facility assignment"
                 />
               )}
             </div>
@@ -1114,15 +1162,19 @@ function FormSection({ title, subtitle, icon, aside, children, delay = 0 }) {
       accountRole: inferredAccountRole,
       position:
         user?.position || POSITION_BY_ACCOUNT_ROLE[inferredAccountRole] || "",
-      bhcFacilityId: user?.barangayHealthCenterId || user?.bhcId || "",
-      rhuFacilityId: user?.ruralHealthUnitId || user?.rhuId || "",
+      bhcFacilityId: isBhcAccount
+        ? user?.barangayHealthCenterId || user?.bhcId || ""
+        : "",
+      rhuFacilityId: isRhuAccount
+        ? user?.ruralHealthUnitId || user?.rhuId || ""
+        : "",
       facility: isBhcAccount
         ? assignedBhc
         : isRhuAccount
           ? assignedRhu
-          : user?.facility || "",
-      bhcFacility: assignedBhc,
-      rhuFacility: isBhcAccount || isRhuAccount ? assignedRhu : "",
+          : "",
+      bhcFacility: isBhcAccount ? assignedBhc : "",
+      rhuFacility: isRhuAccount ? assignedRhu : "",
     };
   }
 
@@ -1144,6 +1196,14 @@ function FormSection({ title, subtitle, icon, aside, children, delay = 0 }) {
       .join(" ")
       .toLowerCase();
 
+    if (
+      roleText.includes("admin") ||
+      roleText.includes("municipal health officer") ||
+      roleText.includes("mho")
+    ) {
+      return "admin";
+    }
+
     if (roleText.includes("bhc") || roleText.includes("barangay health")) {
       return "bhc_worker";
     }
@@ -1153,4 +1213,42 @@ function FormSection({ title, subtitle, icon, aside, children, delay = 0 }) {
     }
 
     return "";
+  }
+
+  const BACKEND_ACCOUNT_FIELD_MAP = {
+    name: "fullName",
+    email: "email",
+    password: "password",
+    role: "accountRole",
+    barangay_health_center_id: "bhcFacilityId",
+    rural_health_unit_id: "rhuFacilityId",
+  };
+
+  function getBackendFormErrors(error) {
+    return Object.entries(error?.errors || {}).reduce(
+      (mappedErrors, [backendField, messages]) => {
+        const formField = BACKEND_ACCOUNT_FIELD_MAP[backendField];
+        const message = Array.isArray(messages) ? messages[0] : messages;
+
+        if (formField && message) {
+          mappedErrors[formField] = String(message);
+        }
+
+        return mappedErrors;
+      },
+      {},
+    );
+  }
+
+  function getSubmissionErrorMessage(error, backendErrors) {
+    const firstBackendMessage = Object.values(error?.errors || {})
+      .flat()
+      .find(Boolean);
+
+    return String(
+      firstBackendMessage ||
+        Object.values(backendErrors)[0] ||
+        error?.message ||
+        "Unable to save this account. Please review the form and try again.",
+    );
   }

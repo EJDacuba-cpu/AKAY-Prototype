@@ -9,21 +9,32 @@ use App\Models\Referral;
 use App\Models\ReferralUpdate;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\FacilityAccessService;
 use App\Services\UserNotificationService;
 use Illuminate\Http\Request;
 
 class FeedbackController extends Controller
 {
+    public function __construct(private readonly FacilityAccessService $facilityAccess)
+    {
+    }
+
     public function index(Request $request)
     {
         $query = Feedback::query()->with('referral.patient');
         $user = $request->user();
 
-        if ($user->isBhw()) {
-            $query->whereHas('referral', fn ($q) => $q->where('barangay_health_center_id', $user->barangay_health_center_id));
-        } elseif ($user->isRhuStaff()) {
-            $query->whereHas('referral', fn ($q) => $q->where('rural_health_unit_id', $user->rural_health_unit_id));
-        }
+        $query->whereHas(
+            'referral',
+            function ($referrals) use ($user): void {
+                $this->facilityAccess->scopeReferrals($referrals, $user);
+
+                if ($user->isBhw()) {
+                    $referrals->whereHas('patient', fn ($patients) => $patients
+                        ->where('barangay_health_center_id', $user->barangay_health_center_id));
+                }
+            }
+        );
 
         return response()->json(['data' => $query->latest()->paginate($request->integer('per_page', 25))]);
     }
@@ -32,7 +43,7 @@ class FeedbackController extends Controller
     {
         $data = $request->validated();
         $referral = Referral::findOrFail($data['referral_id']);
-        $this->authorizeReferral($request, $referral);
+        $this->facilityAccess->authorizeRhuReferralAction($request->user(), $referral);
 
         $feedback = Feedback::updateOrCreate(
             ['referral_id' => $referral->id],
@@ -71,18 +82,9 @@ class FeedbackController extends Controller
 
     public function show(Request $request, Feedback $feedback)
     {
-        $this->authorizeReferral($request, $feedback->referral);
+        $this->facilityAccess->authorizeReferral($request->user(), $feedback->referral);
 
         return response()->json(['data' => $feedback->load('referral.patient')]);
-    }
-
-    private function authorizeReferral(Request $request, Referral $referral): void
-    {
-        $allowed = $request->user()->isAdmin()
-            || ($request->user()->isBhw() && $referral->barangay_health_center_id === $request->user()->barangay_health_center_id)
-            || ($request->user()->isRhuStaff() && $referral->rural_health_unit_id === $request->user()->rural_health_unit_id);
-
-        abort_unless($allowed, 403, 'Referral is outside your assigned facility.');
     }
 
     private function bhcUsers(Referral $referral)

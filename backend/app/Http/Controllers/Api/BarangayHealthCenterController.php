@@ -12,7 +12,9 @@ class BarangayHealthCenterController extends Controller
 {
     public function index(Request $request)
     {
-        $query = BarangayHealthCenter::query()->withCount(['users', 'patients']);
+        $query = BarangayHealthCenter::query()
+            ->with('ruralHealthUnit')
+            ->withCount(['users', 'patients']);
 
         if ($request->query('status')) {
             $query->where('status', $request->query('status'));
@@ -26,12 +28,12 @@ class BarangayHealthCenterController extends Controller
         $bhc = BarangayHealthCenter::create($request->validated());
         $auditLogger->log($request, 'created', 'barangay_health_centers', "Created BHC {$bhc->name}.");
 
-        return response()->json(['data' => $bhc], 201);
+        return response()->json(['data' => $bhc->load('ruralHealthUnit')], 201);
     }
 
     public function show(BarangayHealthCenter $barangayHealthCenter)
     {
-        return response()->json(['data' => $barangayHealthCenter->load(['users', 'patients'])]);
+        return response()->json(['data' => $barangayHealthCenter->load(['users', 'patients', 'ruralHealthUnit'])]);
     }
 
     public function update(FacilityRequest $request, BarangayHealthCenter $barangayHealthCenter, AuditLogger $auditLogger)
@@ -39,7 +41,7 @@ class BarangayHealthCenterController extends Controller
         $barangayHealthCenter->update($request->validated());
         $auditLogger->log($request, 'updated', 'barangay_health_centers', "Updated BHC {$barangayHealthCenter->name}.");
 
-        return response()->json(['data' => $barangayHealthCenter->fresh()]);
+        return response()->json(['data' => $barangayHealthCenter->fresh()->load('ruralHealthUnit')]);
     }
 
     public function destroy(Request $request, BarangayHealthCenter $barangayHealthCenter, AuditLogger $auditLogger)

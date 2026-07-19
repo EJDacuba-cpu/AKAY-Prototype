@@ -5,12 +5,17 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Referral;
 use App\Services\AuditLogger;
+use App\Services\FacilityAccessService;
 use App\Services\ReferralNoShowService;
 use App\Support\StoredFunction;
 use Illuminate\Http\Request;
 
 class TrackingController extends Controller
 {
+    public function __construct(private readonly FacilityAccessService $facilityAccess)
+    {
+    }
+
     public function show(
         Request $request,
         string $value,
@@ -23,11 +28,7 @@ class TrackingController extends Controller
             ->with(['patient', 'healthRecord', 'updates', 'feedback', 'barangayHealthCenter', 'ruralHealthUnit'])
             ->firstOrFail();
 
-        $allowed = $request->user()->isAdmin()
-            || ($request->user()->isBhw() && $referral->barangay_health_center_id === $request->user()->barangay_health_center_id)
-            || ($request->user()->isRhuStaff() && $referral->rural_health_unit_id === $request->user()->rural_health_unit_id);
-
-        abort_unless($allowed, 403, 'Referral is outside your assigned facility.');
+        $this->facilityAccess->authorizeReferral($request->user(), $referral);
         $noShowService->markOverduePending($referral);
         $referral->refresh();
         $auditLogger->log($request, 'lookup', 'tracking', "Looked up referral {$referral->tracking_id}.");

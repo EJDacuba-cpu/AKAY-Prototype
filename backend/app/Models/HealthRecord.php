@@ -70,4 +70,9 @@ class HealthRecord extends Model
     {
         return $this->hasMany(HealthRecordMedicine::class);
     }
+
+    public function referrals(): HasMany
+    {
+        return $this->hasMany(Referral::class);
+    }
 }

@@ -10,7 +10,7 @@ class ReferralStatusRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return (bool) $this->user();
+        return $this->user()?->isRhuStaff() ?? false;
     }
 
     public function rules(): array

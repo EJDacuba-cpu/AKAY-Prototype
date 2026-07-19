@@ -6,10 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\MedicineRequest;
 use App\Models\Medicine;
 use App\Services\AuditLogger;
+use App\Services\FacilityAccessService;
 use Illuminate\Http\Request;
 
 class MedicineController extends Controller
 {
+    public function __construct(private readonly FacilityAccessService $facilityAccess)
+    {
+    }
+
     public function index(Request $request)
     {
         $query = Medicine::query()->with(['ruralHealthUnit', 'barangayHealthCenter']);
@@ -73,14 +78,14 @@ class MedicineController extends Controller
 
     public function show(Request $request, Medicine $medicine)
     {
-        $this->authorizeMedicine($request, $medicine);
+        $this->facilityAccess->authorizeMedicine($request->user(), $medicine);
 
         return response()->json(['data' => $medicine->load(['ruralHealthUnit', 'barangayHealthCenter'])]);
     }
 
     public function update(MedicineRequest $request, Medicine $medicine, AuditLogger $auditLogger)
     {
-        $this->authorizeMedicine($request, $medicine);
+        $this->facilityAccess->authorizeMedicine($request->user(), $medicine);
         $data = $request->validated();
         if ($request->user()->isRhuStaff()) {
             $data['rural_health_unit_id'] = $request->user()->rural_health_unit_id;
@@ -107,32 +112,10 @@ class MedicineController extends Controller
 
     public function destroy(Request $request, Medicine $medicine)
     {
-        $this->authorizeMedicine($request, $medicine);
+        $this->facilityAccess->authorizeMedicine($request->user(), $medicine);
         $medicine->delete();
 
         return response()->json(status: 204);
-    }
-
-    private function authorizeMedicine(Request $request, Medicine $medicine): void
-    {
-        abort_unless(
-            $request->user()->isAdmin()
-            || (
-                $request->user()->isBhw()
-                && $request->user()->barangay_health_center_id !== null
-                && $medicine->rural_health_unit_id === null
-                && $medicine->barangay_health_center_id !== null
-                && (int) $medicine->barangay_health_center_id === (int) $request->user()->barangay_health_center_id
-            )
-            || (
-                $request->user()->isRhuStaff()
-                && $request->user()->rural_health_unit_id !== null
-                && $medicine->rural_health_unit_id !== null
-                && (int) $medicine->rural_health_unit_id === (int) $request->user()->rural_health_unit_id
-            ),
-            403,
-            'Medicine is outside your assigned facility.'
-        );
     }
 
     private function medicineStatus(int $quantity, int $lowStockThreshold = 10): string

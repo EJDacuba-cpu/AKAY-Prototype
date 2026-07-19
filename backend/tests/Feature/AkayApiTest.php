@@ -404,6 +404,7 @@ class AkayApiTest extends TestCase
     {
         $bhc = BarangayHealthCenter::create(['name' => 'Pitpitan BHC']);
         $rhu = RuralHealthUnit::create(['name' => 'Bulakan RHU']);
+        $bhc->update(['rural_health_unit_id' => $rhu->id]);
         $bhw = User::create([
             'name' => 'BHW',
             'email' => 'referral-bhw@example.test',
@@ -531,6 +532,7 @@ class AkayApiTest extends TestCase
     {
         $bhc = BarangayHealthCenter::create(['name' => 'Pitpitan BHC']);
         $rhu = RuralHealthUnit::create(['name' => 'Bulakan RHU']);
+        $bhc->update(['rural_health_unit_id' => $rhu->id]);
         $bhw = User::create([
             'name' => 'BHW',
             'email' => 'idempotent-bhw@example.test',

@@ -68,6 +68,16 @@ function normalizeAccount(account = {}) {
 
 function toBackendPayload(account = {}) {
   const role = mapRoleForBackend(account.accountRole || account.role);
+  const selectedBhcId =
+    account.barangayHealthCenterId ??
+    account.barangay_health_center_id ??
+    account.bhcId ??
+    null;
+  const selectedRhuId =
+    account.ruralHealthUnitId ??
+    account.rural_health_unit_id ??
+    account.rhuId ??
+    null;
 
   return {
     name: account.fullName || account.name,
@@ -78,9 +88,15 @@ function toBackendPayload(account = {}) {
       String(account.status || "Active").toLowerCase() === "active"
         ? "active"
         : "inactive",
-    barangay_health_center_id: account.barangayHealthCenterId || account.bhcId || null,
-    rural_health_unit_id: account.ruralHealthUnitId || account.rhuId || null,
+    barangay_health_center_id:
+      role === "bhw" ? normalizeFacilityId(selectedBhcId) : null,
+    rural_health_unit_id:
+      role === "rhu_staff" ? normalizeFacilityId(selectedRhuId) : null,
   };
+}
+
+function normalizeFacilityId(value) {
+  return value === "" || value === undefined || value === null ? null : value;
 }
 
 export function getAdminAccounts() {

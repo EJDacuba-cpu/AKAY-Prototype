@@ -77,6 +77,13 @@ function mapDoctorToForm(doctor) {
 }
 
 export default function DoctorSchedule() {
+  const currentUser = getCurrentUser();
+  const assignedRhuId = String(
+    currentUser?.ruralHealthUnitId ||
+      currentUser?.rural_health_unit_id ||
+      currentUser?.rhuId ||
+      "",
+  );
   const [availability, setAvailability] = useState(getDoctorAvailability);
   const [mode, setMode] = useState("add");
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
@@ -90,8 +97,22 @@ export default function DoctorSchedule() {
 
   const doctors = useMemo(
     () =>
-      (availability.doctors || []).filter((doctor) => doctor.active !== false),
-    [availability.doctors],
+      (availability.doctors || []).filter((doctor) => {
+        const doctorRhuId = String(
+          doctor.ruralHealthUnitId ||
+            doctor.rural_health_unit_id ||
+            doctor.rhuId ||
+            doctor.rhu_id ||
+            "",
+        );
+
+        return (
+          doctor.active !== false &&
+          Boolean(assignedRhuId) &&
+          doctorRhuId === assignedRhuId
+        );
+      }),
+    [assignedRhuId, availability.doctors],
   );
   const selectedDoctor =
     doctors.find((doctor) => getDoctorId(doctor) === selectedDoctorId) || null;
@@ -172,12 +193,14 @@ export default function DoctorSchedule() {
       availabilityStatus: status,
       expectedAvailableAt:
         status === "Unavailable" ? form.expectedAvailableAt : "",
+      ruralHealthUnitId: assignedRhuId,
+      rural_health_unit_id: assignedRhuId,
       updatedAt: now,
       updatedBy,
     });
     const nextAvailability = saveDoctorAvailability({
       ...availability,
-      doctors: [...doctors, nextDoctor],
+      doctors: [...(availability.doctors || []), nextDoctor],
       updatedAt: now,
       updatedBy,
     });
@@ -213,6 +236,8 @@ export default function DoctorSchedule() {
         availabilityNote:
           status === "Unavailable" ? form.expectedAvailableAt : "",
         note: status === "Unavailable" ? form.expectedAvailableAt : "",
+        ruralHealthUnitId: assignedRhuId,
+        rural_health_unit_id: assignedRhuId,
         updatedAt: now,
         updatedBy,
       };

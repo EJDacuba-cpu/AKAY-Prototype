@@ -6,11 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\ReferralRequest;
 use App\Http\Requests\ReferralStatusRequest;
 use App\Models\HealthRecord;
+use App\Models\Patient;
 use App\Models\Referral;
 use App\Models\ReferralUpdate;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\FacilityAccessService;
 use App\Services\ReferralNoShowService;
+use App\Services\ReferralRoutingService;
 use App\Services\ReferralService;
 use App\Services\UserNotificationService;
 use App\Support\StoredFunction;
@@ -19,11 +22,29 @@ use Illuminate\Http\Request;
 
 class ReferralController extends Controller
 {
+    public function __construct(
+        private readonly FacilityAccessService $facilityAccess,
+        private readonly ReferralRoutingService $referralRouting
+    ) {
+    }
+
+    public function destination(Request $request)
+    {
+        $route = $this->referralRouting->resolveForBhw($request->user());
+
+        return response()->json([
+            'data' => [
+                'referring_barangay_health_center' => $route['bhc']->only(['id', 'name', 'status']),
+                'receiving_rural_health_unit' => $route['rhu']->only(['id', 'name', 'status']),
+            ],
+        ]);
+    }
+
     public function index(Request $request, ReferralNoShowService $noShowService)
     {
         $noShowService->markOverduePending();
 
-        if (StoredFunction::available()) {
+        if (StoredFunction::available() && $request->user()->isAdmin()) {
             $perPage = $request->integer('per_page', 25);
             $page = max(1, $request->integer('page', 1));
             $rows = StoredFunction::select(
@@ -75,17 +96,20 @@ class ReferralController extends Controller
         $user = $request->user();
         $data = $request->validated();
 
-        if ($user->isBhw()) {
-            $data['barangay_health_center_id'] = $user->barangay_health_center_id;
-        }
-
-        abort_unless($data['barangay_health_center_id'] ?? null, 422, 'Barangay health center is required.');
+        abort_unless($user->isBhw(), 403, 'Only BHW accounts can create referrals.');
+        $route = $this->referralRouting->resolveForBhw($user);
+        $patient = Patient::findOrFail($data['patient_id']);
+        $this->facilityAccess->authorizePatientModification($user, $patient);
+        $data['barangay_health_center_id'] = $route['bhc']->id;
+        $data['rural_health_unit_id'] = $route['rhu']->id;
 
         if (! empty($data['health_record_id'])) {
             $record = HealthRecord::findOrFail($data['health_record_id']);
+            $this->facilityAccess->authorizeHealthRecord($user, $record);
 
             abort_unless(
-                (int) $record->patient_id === (int) $data['patient_id'],
+                (int) $record->patient_id === (int) $patient->id
+                    && (int) $record->barangay_health_center_id === (int) $user->barangay_health_center_id,
                 422,
                 'Health record must belong to the referred patient.'
             );
@@ -167,11 +191,11 @@ class ReferralController extends Controller
 
     public function show(Request $request, Referral $referral, ReferralNoShowService $noShowService)
     {
-        $this->authorizeReferral($request, $referral);
+        $this->facilityAccess->authorizeReferral($request->user(), $referral);
         $noShowService->markOverduePending($referral);
         $referral->refresh();
 
-        if (StoredFunction::available()) {
+        if (StoredFunction::available() && $request->user()->isAdmin()) {
             $data = StoredFunction::selectJson(
                 'SELECT akay_referral_details(?, ?, ?, ?) AS data',
                 [
@@ -196,7 +220,7 @@ class ReferralController extends Controller
         AuditLogger $auditLogger,
         UserNotificationService $notifications
     ) {
-        $this->authorizeReferral($request, $referral);
+        $this->facilityAccess->authorizeRhuReferralAction($request->user(), $referral);
         $data = $request->validated();
         $previous = $referral->status;
 
@@ -272,7 +296,7 @@ class ReferralController extends Controller
 
     public function destroy(Request $request, Referral $referral)
     {
-        $this->authorizeReferral($request, $referral);
+        $this->facilityAccess->authorizeReferral($request->user(), $referral);
         $referral->delete();
 
         return response()->json(status: 204);
@@ -280,15 +304,7 @@ class ReferralController extends Controller
 
     protected function scope($query, Request $request)
     {
-        $user = $request->user();
-
-        if ($user->isBhw()) {
-            $query->where('barangay_health_center_id', $user->barangay_health_center_id);
-        } elseif ($user->isRhuStaff()) {
-            $query->where('rural_health_unit_id', $user->rural_health_unit_id);
-        }
-
-        return $query;
+        return $this->facilityAccess->scopeReferrals($query, $request->user());
     }
 
     protected function storeResponse(Referral $referral, int $status)
@@ -305,15 +321,6 @@ class ReferralController extends Controller
 
         return in_array($sqlState, ['23505', '23000'], true)
             && str_contains($message, 'client_submission_id');
-    }
-
-    protected function authorizeReferral(Request $request, Referral $referral): void
-    {
-        $allowed = $request->user()->isAdmin()
-            || ($request->user()->isBhw() && $referral->barangay_health_center_id === $request->user()->barangay_health_center_id)
-            || ($request->user()->isRhuStaff() && $referral->rural_health_unit_id === $request->user()->rural_health_unit_id);
-
-        abort_unless($allowed, 403, 'Referral is outside your assigned facility.');
     }
 
     private function bhcUsers(Referral $referral)

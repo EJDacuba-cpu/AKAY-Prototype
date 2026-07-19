@@ -9,7 +9,7 @@ class ReferralRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return (bool) $this->user();
+        return $this->user()?->isBhw() ?? false;
     }
 
     public function rules(): array
@@ -18,8 +18,6 @@ class ReferralRequest extends FormRequest
             'patient_id' => ['required', 'exists:patients,id'],
             'health_record_id' => ['nullable', 'exists:health_records,id'],
             'client_submission_id' => ['nullable', 'string', 'max:100'],
-            'rural_health_unit_id' => ['required', 'exists:rural_health_units,id'],
-            'barangay_health_center_id' => ['nullable', 'exists:barangay_health_centers,id'],
             'referral_category' => ['nullable', 'string', 'max:100'],
             'urgency_level' => ['nullable', Rule::in(['Low', 'Normal', 'Urgent', 'Emergency'])],
             'reason_for_referral' => ['required', 'string'],

@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'active' => \App\Http\Middleware\EnsureUserIsActive::class,
+            'facility.assigned' => \App\Http\Middleware\EnsureValidFacilityAssignment::class,
             'role' => \App\Http\Middleware\EnsureRole::class,
         ]);
     })
