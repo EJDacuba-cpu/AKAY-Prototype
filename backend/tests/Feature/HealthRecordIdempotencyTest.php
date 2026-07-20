@@ -150,7 +150,9 @@ class HealthRecordIdempotencyTest extends TestCase
                 'medicine_id' => $medicine->id,
                 'quantity' => 99,
             ]],
-        ]), (string) Str::uuid())->assertUnprocessable();
+        ]), (string) Str::uuid())
+            ->assertConflict()
+            ->assertJsonPath('code', 'INSUFFICIENT_STOCK');
 
         $this->assertSame(6, $medicine->fresh()->quantity);
         $this->assertDatabaseCount('health_records', 1);

@@ -112,7 +112,7 @@ class HealthRecordRequest extends FormRequest
             'notes' => ['nullable', 'string'],
             'dispensed_medicines' => ['nullable', 'array'],
             'dispensed_medicines.*.medicine_id' => ['required', 'integer', 'exists:medicines,id'],
-            'dispensed_medicines.*.quantity' => ['required', 'integer', 'min:1'],
+            'dispensed_medicines.*.quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
             'dispensed_medicines.*.unit' => ['nullable', 'string', 'max:50'],
             'dispensed_medicines.*.remarks' => ['nullable', 'string'],
             'referral' => ['nullable', 'array'],

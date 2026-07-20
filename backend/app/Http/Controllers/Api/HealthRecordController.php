@@ -6,12 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\HealthRecordRequest;
 use App\Models\HealthRecord;
 use App\Models\FollowUpTask;
-use App\Models\Medicine;
 use App\Models\Patient;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
 use App\Services\FollowUpTaskSyncService;
 use App\Services\HealthRecordIdempotencyService;
+use App\Services\MedicineStockService;
 use App\Services\ReferralCreationService;
 use App\Support\StoredFunction;
 use Illuminate\Http\Request;
@@ -21,8 +21,10 @@ use Illuminate\Validation\ValidationException;
 
 class HealthRecordController extends Controller
 {
-    public function __construct(private readonly FacilityAccessService $facilityAccess)
-    {
+    public function __construct(
+        private readonly FacilityAccessService $facilityAccess,
+        private readonly MedicineStockService $medicineStock
+    ) {
     }
 
     public function index(Request $request)
@@ -74,12 +76,18 @@ class HealthRecordController extends Controller
         $this->facilityAccess->authorizePatientModification($request->user(), $patient);
         $idempotencyKey = $data['idempotency_key'];
         $idempotencyHash = $idempotency->hash($data);
+        $legacyIdempotencyHash = $idempotency->legacyHash($data);
 
         if ($existing = HealthRecord::query()
             ->where('created_by', $request->user()->id)
             ->where('idempotency_key', $idempotencyKey)
             ->first()) {
-            return $this->replayResponse($request, $existing, $idempotencyHash);
+            return $this->replayResponse(
+                $request,
+                $existing,
+                $idempotencyHash,
+                $legacyIdempotencyHash
+            );
         }
 
         unset($data['idempotency_key']);
@@ -133,8 +141,13 @@ class HealthRecordController extends Controller
                     $patient,
                     $request->user()
                 );
+                $lockedMedicines = $this->medicineStock->lockAndValidate(
+                    $request->user(),
+                    $patient->barangay_health_center_id,
+                    $dispensedMedicines
+                );
                 $record = HealthRecord::create($data);
-                $this->recordDispensedMedicines($request, $record, $dispensedMedicines);
+                $this->medicineStock->dispense($request->user(), $record, $lockedMedicines);
                 $followUpTasks->syncRecord($record, $request->user(), $lockedFollowUpTask);
                 $followUpTasks->fulfillParentTask($record, $request->user(), $lockedFollowUpTask);
 
@@ -169,7 +182,12 @@ class HealthRecordController extends Controller
                 );
             }
 
-            return $this->replayResponse($request, $record, $idempotencyHash);
+            return $this->replayResponse(
+                $request,
+                $record,
+                $idempotencyHash,
+                $legacyIdempotencyHash
+            );
         }
 
         return $this->storeResponse($record, false, 201);
@@ -245,7 +263,7 @@ class HealthRecordController extends Controller
             [
                 'dispensed_medicines' => ['nullable', 'array'],
                 'dispensed_medicines.*.medicine_id' => ['required', 'integer', 'exists:medicines,id'],
-                'dispensed_medicines.*.quantity' => ['required', 'integer', 'min:1'],
+                'dispensed_medicines.*.quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
                 'dispensed_medicines.*.unit' => ['nullable', 'string', 'max:50'],
                 'dispensed_medicines.*.remarks' => ['nullable', 'string'],
             ],
@@ -258,18 +276,24 @@ class HealthRecordController extends Controller
             ]
         );
 
-        abort_if(
-            $healthRecord->dispensedMedicines()->exists(),
-            422,
-            'Medicines have already been dispensed for this health record.'
-        );
+        DB::transaction(function () use ($request, $healthRecord, $data): void {
+            $lockedRecord = HealthRecord::query()
+                ->whereKey($healthRecord->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $this->facilityAccess->authorizeHealthRecord($request->user(), $lockedRecord);
+            abort_if(
+                $lockedRecord->dispensedMedicines()->exists(),
+                422,
+                'Medicines have already been dispensed for this health record.'
+            );
 
-        DB::transaction(function () use ($request, $healthRecord, $data) {
-            $this->recordDispensedMedicines(
-                $request,
-                $healthRecord,
+            $lockedMedicines = $this->medicineStock->lockAndValidate(
+                $request->user(),
+                $lockedRecord->barangay_health_center_id,
                 $data['dispensed_medicines'] ?? []
             );
+            $this->medicineStock->dispense($request->user(), $lockedRecord, $lockedMedicines);
         });
 
         return response()->json(['data' => $healthRecord->fresh()->load(['patient', 'dispensedMedicines'])]);
@@ -401,92 +425,6 @@ class HealthRecordController extends Controller
         ];
     }
 
-    private function recordDispensedMedicines(Request $request, HealthRecord $record, array $dispensedMedicines): void
-    {
-        if (empty($dispensedMedicines)) {
-            return;
-        }
-
-        abort_unless($request->user()->isBhw(), 422, 'Medicine dispensing is only available for BHC visits.');
-
-        $merged = [];
-        foreach ($dispensedMedicines as $item) {
-            $medicineId = (int) ($item['medicine_id'] ?? 0);
-            $quantity = (int) ($item['quantity'] ?? 0);
-
-            abort_if($medicineId <= 0, 422, 'Please select a medicine.');
-            abort_if($quantity <= 0, 422, 'Quantity must be greater than 0.');
-
-            if (! isset($merged[$medicineId])) {
-                $merged[$medicineId] = [
-                    'medicine_id' => $medicineId,
-                    'quantity' => 0,
-                    'unit' => $item['unit'] ?? null,
-                    'remarks' => $item['remarks'] ?? null,
-                ];
-            }
-
-            $merged[$medicineId]['quantity'] += $quantity;
-            if (! empty($item['remarks'])) {
-                $merged[$medicineId]['remarks'] = trim(implode(' ', array_filter([
-                    $merged[$medicineId]['remarks'],
-                    $item['remarks'],
-                ])));
-            }
-        }
-
-        ksort($merged, SORT_NUMERIC);
-
-        foreach (array_values($merged) as $item) {
-            $medicine = Medicine::query()
-                ->whereKey($item['medicine_id'])
-                ->lockForUpdate()
-                ->first();
-
-            abort_unless(
-                $medicine && $this->facilityAccess->canDispenseMedicine(
-                    $request->user(),
-                    $medicine,
-                    $record
-                ),
-                422,
-                'Please select a medicine from BHC inventory.'
-            );
-            abort_if((int) $medicine->quantity <= 0, 422, 'This medicine is out of stock.');
-            abort_if((int) $item['quantity'] > (int) $medicine->quantity, 422, 'Quantity cannot exceed available stock.');
-
-            $newQuantity = (int) $medicine->quantity - (int) $item['quantity'];
-            $medicine->update([
-                'quantity' => $newQuantity,
-                'availability_status' => $this->medicineStatus(
-                    $newQuantity,
-                    (int) ($medicine->low_stock_threshold ?? 10)
-                ),
-                'updated_by' => $request->user()->id,
-            ]);
-
-            $record->dispensedMedicines()->create([
-                'medicine_id' => $medicine->id,
-                'medicine_name_snapshot' => $medicine->name,
-                'category_snapshot' => $medicine->category,
-                'quantity' => $item['quantity'],
-                'unit' => $item['unit'] ?: $medicine->unit,
-                'remarks' => $item['remarks'] ?? null,
-                'dispensed_by' => $request->user()->id,
-                'barangay_health_center_id' => $record->barangay_health_center_id,
-            ]);
-        }
-    }
-
-    private function medicineStatus(int $quantity, int $lowStockThreshold = 10): string
-    {
-        if ($quantity <= 0) {
-            return 'Unavailable';
-        }
-
-        return $quantity <= $lowStockThreshold ? 'Low Stock' : 'Available';
-    }
-
     private function healthRecordStatus(HealthRecord $record): string
     {
         $monitoringData = $record->monitoring_data ?? [];
@@ -511,11 +449,16 @@ class HealthRecordController extends Controller
     private function replayResponse(
         Request $request,
         HealthRecord $record,
-        string $idempotencyHash
+        string $idempotencyHash,
+        string $legacyIdempotencyHash
     ) {
         $this->facilityAccess->authorizeHealthRecord($request->user(), $record);
 
-        if (! hash_equals((string) $record->idempotency_hash, $idempotencyHash)) {
+        $storedHash = (string) $record->idempotency_hash;
+        if (
+            ! hash_equals($storedHash, $idempotencyHash)
+            && ! hash_equals($storedHash, $legacyIdempotencyHash)
+        ) {
             return $this->idempotencyConflictResponse(
                 'This submission key was already used for different health-record data.',
                 'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH'

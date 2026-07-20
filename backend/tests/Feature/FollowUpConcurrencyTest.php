@@ -253,7 +253,8 @@ class FollowUpConcurrencyTest extends TestCase
         ]);
 
         $this->postRecord($this->bhw, $payload, (string) Str::uuid())
-            ->assertUnprocessable();
+            ->assertConflict()
+            ->assertJsonPath('code', 'INSUFFICIENT_STOCK');
 
         $this->assertSame(FollowUpTask::STATE_PENDING, $task->fresh()->state);
         $this->assertNull($task->fresh()->fulfilled_at);

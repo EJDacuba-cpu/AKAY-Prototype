@@ -341,11 +341,23 @@ class FacilityAccessService
         Medicine $medicine,
         HealthRecord $record
     ): bool {
+        return $this->canDispenseMedicineForBarangayHealthCenter(
+            $user,
+            $medicine,
+            $record->barangay_health_center_id
+        );
+    }
+
+    public function canDispenseMedicineForBarangayHealthCenter(
+        User $user,
+        Medicine $medicine,
+        mixed $barangayHealthCenterId
+    ): bool {
         return $user->isBhw()
             && $this->hasValidFacilityAssignment($user)
             && $medicine->rural_health_unit_id === null
             && $this->sameAssignedId(
-                $record->barangay_health_center_id,
+                $barangayHealthCenterId,
                 $user->barangay_health_center_id
             )
             && $this->sameAssignedId(
