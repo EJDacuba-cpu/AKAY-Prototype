@@ -7,7 +7,9 @@ use App\Http\Requests\UserRequest;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\UserNotificationService;
+use App\Services\UserSessionRevocationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class UserController extends Controller
 {
@@ -51,31 +53,63 @@ class UserController extends Controller
         return response()->json(['data' => $user->load(['barangayHealthCenter', 'ruralHealthUnit', 'creator'])]);
     }
 
-    public function update(UserRequest $request, User $user, AuditLogger $auditLogger, UserNotificationService $notifications)
-    {
+    public function update(
+        UserRequest $request,
+        User $user,
+        AuditLogger $auditLogger,
+        UserNotificationService $notifications,
+        UserSessionRevocationService $sessions
+    ) {
         $data = $request->validated();
         if (($data['password'] ?? null) === null) {
             unset($data['password']);
         }
 
-        $previousStatus = $user->status;
-        $user->update($data);
-
-        if ($previousStatus !== $user->status && $user->status === User::STATUS_INACTIVE) {
-            $user->tokens()->delete();
-            $notifications->notifyUser($user, 'Account deactivated', 'Your AKAY account has been deactivated.', 'account_deactivated');
+        $securityContextChanged = array_key_exists('password', $data);
+        foreach (['role', 'status', 'barangay_health_center_id', 'rural_health_unit_id'] as $field) {
+            if (array_key_exists($field, $data)
+                && (string) $user->{$field} !== (string) $data[$field]) {
+                $securityContextChanged = true;
+            }
         }
 
-        $auditLogger->log($request, 'updated', 'users', "Updated user {$user->email}.");
+        DB::transaction(function () use (
+            $request,
+            $user,
+            $data,
+            $securityContextChanged,
+            $auditLogger,
+            $notifications,
+            $sessions
+        ): void {
+            $previousStatus = $user->status;
+            $user->update($data);
+
+            if ($securityContextChanged) {
+                $sessions->revokeAllTokens($user, 'account-security-context-changed');
+            }
+
+            if ($previousStatus !== $user->status && $user->status === User::STATUS_INACTIVE) {
+                $notifications->notifyUser($user, 'Account deactivated', 'Your AKAY account has been deactivated.', 'account_deactivated');
+            }
+
+            $auditLogger->log($request, 'updated', 'users', "Updated user {$user->email}.");
+        });
 
         return response()->json(['data' => $user->fresh()->load(['barangayHealthCenter', 'ruralHealthUnit'])]);
     }
 
-    public function destroy(Request $request, User $user, AuditLogger $auditLogger)
-    {
-        $user->update(['status' => User::STATUS_INACTIVE]);
-        $user->tokens()->delete();
-        $auditLogger->log($request, 'deactivated', 'users', "Deactivated user {$user->email}.");
+    public function destroy(
+        Request $request,
+        User $user,
+        AuditLogger $auditLogger,
+        UserSessionRevocationService $sessions
+    ) {
+        DB::transaction(function () use ($request, $user, $auditLogger, $sessions): void {
+            $user->update(['status' => User::STATUS_INACTIVE]);
+            $sessions->revokeAllTokens($user, 'account-deactivated');
+            $auditLogger->log($request, 'deactivated', 'users', "Deactivated user {$user->email}.");
+        });
 
         return response()->json(['data' => $user->fresh()]);
     }

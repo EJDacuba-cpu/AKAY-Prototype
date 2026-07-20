@@ -145,8 +145,8 @@ export default function RHURecordDetails() {
           queryKey: queryKeys.patientDetails("rhu", patient?.id || record?.patientId),
         });
       }
-    } catch (error) {
-      console.error("Failed to update RHU health record:", error);
+    } catch {
+      // The edit modal remains open so the user can retry.
     } finally {
       setSaving(false);
     }

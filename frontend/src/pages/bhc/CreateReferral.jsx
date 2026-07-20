@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -44,12 +44,9 @@ import ReferralPrintSlip from "../../components/features/referrals/ReferralPrint
 import { queryKeys } from "../../utils/queryKeys";
 import {
   createClientSubmissionId,
-  deleteReferralDraft,
-  saveReferralDraft,
-  updateReferralDraft,
-} from "../../services/offlineDraftService";
-import useOfflineDrafts from "../../hooks/useOfflineDrafts";
-import { createIdempotencyKey } from "../../utils/idempotency";
+  createIdempotencyKey,
+} from "../../utils/idempotency";
+import { SENSITIVE_SESSION_CLEARED_EVENT } from "../../utils/sessionPrivacy";
 
 /* ─── Keyframes ─── */
 const keyframes = `
@@ -66,35 +63,16 @@ const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 
 export default function CreateReferral() {
   const navigate = useNavigate();
-  const location = useLocation();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const targetRecordId = searchParams.get("recordId");
-  const draftReferralContext = location.state?.healthRecordDraft || null;
+  // Browser-persistent clinical route drafts are intentionally unsupported.
+  const draftReferralContext = null;
   const draftRecordData = draftReferralContext?.formData || null;
   const draftPatientId =
-    draftRecordData?.patientId ||
-    draftReferralContext?.patientId ||
     searchParams.get("patientId") ||
     "";
   const currentUser = getCurrentUser();
-  const draftScope = useMemo(
-    () => ({
-      userId:
-        currentUser?.id ||
-        currentUser?.userId ||
-        currentUser?.email ||
-        currentUser?.username ||
-        "",
-      role: currentUser?.role || "bhc",
-    }),
-    [currentUser],
-  );
-  const {
-    pendingReferralDraftCount,
-    refreshDrafts,
-    markDraftFailed,
-  } = useOfflineDrafts(draftScope);
   const referringHci =
     currentUser?.assignedBarangayHealthCenter || currentUser?.facility || "";
   const referringPractitioner = currentUser?.fullName || currentUser?.name || "";
@@ -140,11 +118,28 @@ export default function CreateReferral() {
   const [successReferral, setSuccessReferral] = useState(null);
   const [offlineDraftNotice, setOfflineDraftNotice] = useState(null);
   const [retryingDraft, setRetryingDraft] = useState(false);
-  const retryingDraftIdsRef = useRef(new Set());
   const officialHealthRecordSubmissionRef = useRef(null);
   const [rhuDoctorAvailability, setRhuDoctorAvailability] = useState(() =>
     getDoctorAvailability(),
   );
+
+  useEffect(() => {
+    function clearInMemorySubmissionState() {
+      officialHealthRecordSubmissionRef.current = null;
+      setOfflineDraftNotice(null);
+      setRetryingDraft(false);
+    }
+
+    window.addEventListener(
+      SENSITIVE_SESSION_CLEARED_EVENT,
+      clearInMemorySubmissionState,
+    );
+    return () =>
+      window.removeEventListener(
+        SENSITIVE_SESSION_CLEARED_EVENT,
+        clearInMemorySubmissionState,
+      );
+  }, []);
 
   useEffect(() => {
     async function loadReferralContext() {
@@ -158,8 +153,8 @@ export default function CreateReferral() {
 
         setPatients(patientList);
         setHealthRecords(records);
-      } catch (error) {
-        console.error("Failed to load referral context:", error);
+      } catch {
+        // The existing unavailable-state UI handles context load failures.
       } finally {
         setLoading(false);
       }
@@ -621,9 +616,7 @@ export default function CreateReferral() {
       if (referralPayload && isNetworkSubmissionError(error)) {
         const officialHealthRecordSubmission =
           officialHealthRecordSubmissionRef.current;
-        const draft = await saveReferralDraft({
-          ...draftScope,
-          patientId: patient?.id,
+        const draft = {
           healthRecordId:
             savedDraftRecord?.id ||
             savedDraftRecord?._id ||
@@ -632,21 +625,18 @@ export default function CreateReferral() {
             targetRecordId,
           payload: referralPayload,
           officialHealthRecordSubmission,
-          errorMessage:
-            "Internet connection lost before this referral reached the backend.",
-        });
-        await refreshDrafts();
+          clientSubmissionId: referralPayload.clientSubmissionId,
+        };
         setShowConfirmModal(false);
         setOfflineDraftNotice({
           draft,
           message:
-            "Internet connection lost. This referral was saved as a local draft and has not been submitted to the RHU yet. Please retry when the connection is restored.",
+            "The server did not confirm this referral. Your form remains available in this tab. Keep this page open, check recent patient records, and retry when the connection is stable.",
           errorMessage: "",
         });
         return;
       }
 
-      console.error("Failed to submit referral:", error);
       if (
         Number(error?.status) === 409 &&
         error?.payload?.code === "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH"
@@ -666,12 +656,9 @@ export default function CreateReferral() {
     }
   }
 
-  async function retryOfflineDraft(draft = offlineDraftNotice?.draft) {
-    const localDraftId = draft?.localDraftId;
-    if (!draft || !localDraftId || retryingDraftIdsRef.current.has(localDraftId))
-      return;
+  async function retryUnconfirmedSubmission(draft = offlineDraftNotice?.draft) {
+    if (!draft || retryingDraft) return;
 
-    retryingDraftIdsRef.current.add(localDraftId);
     setRetryingDraft(true);
     let draftForRetry = draft;
     try {
@@ -687,8 +674,6 @@ export default function CreateReferral() {
           trackingId: rawReferral.tracking_id || rawReferral.trackingId || "",
         };
 
-        await deleteReferralDraft(localDraftId);
-        await refreshDrafts();
         setOfflineDraftNotice(null);
         officialHealthRecordSubmissionRef.current = null;
         showSuccessfulReferral(referral, draft.payload);
@@ -701,28 +686,15 @@ export default function CreateReferral() {
         draft.payload?.client_submission_id ||
         createClientSubmissionId();
 
-      if (
-        !draft.clientSubmissionId ||
-        !draft.payload?.clientSubmissionId ||
-        draft.payload?.clientSubmissionId !== clientSubmissionId
-      ) {
-        const updatedDraft = await updateReferralDraft(localDraftId, {
+      if (!draft.payload?.clientSubmissionId) {
+        draftForRetry = {
+          ...draft,
           clientSubmissionId,
           payload: {
             ...draft.payload,
             clientSubmissionId,
           },
-          errorMessage: "",
-        });
-        draftForRetry =
-          updatedDraft || {
-            ...draft,
-            clientSubmissionId,
-            payload: {
-              ...draft.payload,
-              clientSubmissionId,
-            },
-          };
+        };
       }
 
       const referral = await createReferral(draftForRetry.payload);
@@ -738,23 +710,18 @@ export default function CreateReferral() {
         );
       }
 
-      await deleteReferralDraft(draftForRetry.localDraftId);
-      await refreshDrafts();
       setOfflineDraftNotice(null);
       showSuccessfulReferral(referral, draftForRetry.payload);
     } catch (error) {
       const errorMessage = isNetworkSubmissionError(error)
-        ? "Still offline. This referral remains saved as a local draft and has not been submitted."
-        : error?.message || "Retry failed. This draft is still pending sync.";
-      await updateReferralDraft(localDraftId, { errorMessage });
-      await markDraftFailed(localDraftId, errorMessage);
+        ? "The server still has not confirmed this referral. Keep this tab open and retry when the connection is stable."
+        : error?.message || "Retry failed. Review the form and try again.";
       setOfflineDraftNotice((prev) => ({
         ...(prev || {}),
         draft: draftForRetry,
         errorMessage,
       }));
     } finally {
-      retryingDraftIdsRef.current.delete(localDraftId);
       setRetryingDraft(false);
     }
   }
@@ -1466,7 +1433,7 @@ export default function CreateReferral() {
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-slate-800">
-                    Saved as Draft / Pending Sync
+                    Submission Not Confirmed
                   </h2>
                   <p className="mt-1 text-sm leading-relaxed text-slate-600">
                     {offlineDraftNotice.message}
@@ -1497,7 +1464,7 @@ export default function CreateReferral() {
                 <button
                   type="button"
                   disabled={retryingDraft}
-                  onClick={() => retryOfflineDraft()}
+                  onClick={() => retryUnconfirmedSubmission()}
                   className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {retryingDraft ? <ButtonSpinner /> : <Send size={14} />}
@@ -1544,13 +1511,6 @@ export default function CreateReferral() {
             </div>
           </div>
         </header>
-
-        {pendingReferralDraftCount > 0 && (
-          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
-            You have {pendingReferralDraftCount} unsent referral draft
-            {pendingReferralDraftCount === 1 ? "" : "s"}. Status: Pending sync.
-          </div>
-        )}
 
         {draftRecordData && (
           <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">

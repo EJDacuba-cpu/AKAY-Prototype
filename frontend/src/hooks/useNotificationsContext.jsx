@@ -30,27 +30,9 @@ import {
   setNotificationSoundEnabled as saveNotificationSoundEnabled,
   unlockAkayUrgentAlertSound,
 } from "../utils/notificationSound";
+import { SENSITIVE_SESSION_CLEARED_EVENT } from "../utils/sessionPrivacy";
 
 const NotificationContext = createContext(null);
-const NOTIFICATION_TRASH_STORAGE_KEY = "akay_notification_trash";
-
-function readNotificationTrashMap() {
-  try {
-    const raw = window.localStorage.getItem(NOTIFICATION_TRASH_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeNotificationTrashMap(trashMap) {
-  window.localStorage.setItem(
-    NOTIFICATION_TRASH_STORAGE_KEY,
-    JSON.stringify(trashMap),
-  );
-}
-
 function applyNotificationTrashState(notifications = [], trashMap = {}) {
   return notifications.map((notification) => {
     const id = String(notification.id);
@@ -66,9 +48,11 @@ function applyNotificationTrashState(notifications = [], trashMap = {}) {
 function getNotificationUserContext() {
   const user = getCurrentUser() || {};
   const role = normalizeRole(user.role || "bhc");
-  const facilityId = normalizeFacilityId(user.facility, role);
+  const facilityId = normalizeFacilityId(
+    user.barangayHealthCenterId || user.ruralHealthUnitId || user.facilityId,
+  );
 
-  return { role, facilityId };
+  return { userId: String(user.id || ""), role, facilityId };
 }
 
 export function NotificationProvider({ children }) {
@@ -76,13 +60,15 @@ export function NotificationProvider({ children }) {
   const [userContext, setUserContext] = useState(getNotificationUserContext);
   const [notifications, setNotifications] = useState(() =>
     applyNotificationTrashState(
-      getNotificationsForUser(userContext.role, userContext.facilityId),
-      readNotificationTrashMap(),
+      getNotificationsForUser(
+        userContext.role,
+        userContext.facilityId,
+        userContext.userId,
+      ),
+      {},
     ),
   );
-  const [notificationTrashMap, setNotificationTrashMap] = useState(
-    readNotificationTrashMap,
-  );
+  const [notificationTrashMap, setNotificationTrashMap] = useState({});
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState(() =>
     getNotificationLoadError(),
@@ -142,7 +128,11 @@ export function NotificationProvider({ children }) {
     const nextContext = getNotificationUserContext();
     setUserContext(nextContext);
     applyNotificationsWithAlertCheck(
-      getNotificationsForUser(nextContext.role, nextContext.facilityId),
+      getNotificationsForUser(
+        nextContext.role,
+        nextContext.facilityId,
+        nextContext.userId,
+      ),
       { allowSound: eventDetail.soundEligible === true },
     );
     setNotificationsError(getNotificationLoadError());
@@ -161,6 +151,7 @@ export function NotificationProvider({ children }) {
         force,
         maxAgeMs,
         soundEligible,
+        identity: nextContext,
       })
         .then((nextNotifications) => {
           if (isMountedRef.current) {
@@ -186,6 +177,30 @@ export function NotificationProvider({ children }) {
     return () => {
       isMountedRef.current = false;
     };
+  }, []);
+
+  useEffect(() => {
+    function resetSensitiveNotificationState() {
+      pendingFetchRef.current = null;
+      knownNotificationIdsRef.current = new Set();
+      hasPrimedNotificationSoundRef.current = false;
+      setNotifications([]);
+      setNotificationTrashMap({});
+      setNotificationsLoading(false);
+      setNotificationsError(null);
+      setSelectedNotif(null);
+      setUserContext(getNotificationUserContext());
+    }
+
+    window.addEventListener(
+      SENSITIVE_SESSION_CLEARED_EVENT,
+      resetSensitiveNotificationState,
+    );
+    return () =>
+      window.removeEventListener(
+        SENSITIVE_SESSION_CLEARED_EVENT,
+        resetSensitiveNotificationState,
+      );
   }, []);
 
   useEffect(() => {
@@ -219,7 +234,6 @@ export function NotificationProvider({ children }) {
       normalizedIds.forEach((id) => {
         next[id] = next[id] || now;
       });
-      writeNotificationTrashMap(next);
       return next;
     });
     setNotifications((prev) =>
@@ -238,7 +252,6 @@ export function NotificationProvider({ children }) {
       normalizedIds.forEach((id) => {
         delete next[id];
       });
-      writeNotificationTrashMap(next);
       return next;
     });
     setNotifications((prev) =>

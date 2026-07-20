@@ -45,7 +45,8 @@ class AkayApiTest extends TestCase
         $this->postJson('/api/auth/login', [
             'email' => 'inactive@example.test',
             'password' => 'password123',
-        ])->assertForbidden();
+        ])->assertUnprocessable()
+            ->assertJsonPath('code', 'LOGIN_FAILED');
     }
 
     public function test_role_middleware_blocks_wrong_role_access(): void

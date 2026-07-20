@@ -45,7 +45,6 @@ import {
   updatePatient,
 } from "../../services/patientService";
 import { isConnectionError } from "../../services/apiClient";
-import { saveOfflineDraft } from "../../services/offlineDraftService";
 import { queryKeys } from "../../utils/queryKeys";
 
 // Animation Utility
@@ -258,7 +257,6 @@ export function PatientRegistrationPage({
   const [modals, setModals] = useState({
     confirm: false,
     success: false,
-    draftSaved: false,
   });
   const [connectionIssue, setConnectionIssue] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -616,15 +614,6 @@ function handleBirthDateChange(valueOrEvent) {
     };
   }
 
-  function handleSavePatientDraft() {
-    saveOfflineDraft({
-      moduleType: "patient",
-      formData: buildPatientPayload(),
-    });
-    setConnectionIssue(null);
-    setModals((prev) => ({ ...prev, confirm: false, draftSaved: true }));
-  }
-
   const handleSubmit = async () => {
     if (saving) return;
 
@@ -656,7 +645,6 @@ function handleBirthDateChange(valueOrEvent) {
       setCreatedPatientId(nextId);
       setModals({ ...modals, confirm: false, success: true });
     } catch (error) {
-      console.error("Submission failed:", error);
       if (isConnectionError(error)) {
         setConnectionIssue({
           title: error.isTimeout ? "Request Timed Out" : "Connection Lost",
@@ -664,7 +652,7 @@ function handleBirthDateChange(valueOrEvent) {
             error?.message ||
             (isEditMode
               ? "Your internet connection was interrupted. Please retry once the connection is stable."
-              : "Your internet connection was interrupted. Your current form data can be saved as a local draft and submitted once your connection is restored."),
+              : "The server did not confirm this registration. Your form remains available while this tab stays open."),
         });
       }
     } finally {
@@ -1201,13 +1189,6 @@ function handleBirthDateChange(valueOrEvent) {
           navigate(`${addHealthRecordPath}?patientId=${createdPatientId}`)
         }
       />
-      <SuccessModal
-        open={modals.draftSaved}
-        title="Draft saved locally."
-        description="This patient registration was saved only on this device. Submit it manually once the connection is stable."
-        buttonText="Continue Editing"
-        onClose={() => setModals((prev) => ({ ...prev, draftSaved: false }))}
-      />
       <ConfirmationModal
         open={modals.confirm}
         title={isEditMode ? "Save Patient Profile Changes?" : "Confirm Patient Registration?"}
@@ -1231,7 +1212,6 @@ function handleBirthDateChange(valueOrEvent) {
           saving || (typeof navigator !== "undefined" && navigator.onLine === false)
         }
         onContinue={() => setConnectionIssue(null)}
-        onSaveDraft={isEditMode ? undefined : handleSavePatientDraft}
         onRetry={handleSubmit}
       />
     </>

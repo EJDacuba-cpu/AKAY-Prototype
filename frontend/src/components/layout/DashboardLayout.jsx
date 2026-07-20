@@ -212,9 +212,13 @@ export default function DashboardLayout({
     try {
       await logoutUser();
     } catch (error) {
-      console.error("Logout request failed; clearing local session.", error);
+      if (import.meta.env.DEV) {
+        console.warn("Logout endpoint was unavailable; local session cleared.", {
+          status: error?.status || null,
+          code: error?.code || "",
+        });
+      }
     } finally {
-      queryClient.clear();
       setLogoutModalOpen(false);
       setLogoutLoading(false);
       navigate("/login", { replace: true });
@@ -393,7 +397,7 @@ export default function DashboardLayout({
       <ConfirmationModal
         open={logoutModalOpen}
         title="Log out?"
-        description="Are you sure you want to log out of AKAY?"
+        description="Signing out will discard unfinished form data on this device."
         confirmText="Log out"
         cancelText="Cancel"
         loading={logoutLoading}

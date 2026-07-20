@@ -205,8 +205,8 @@ export default function HealthRecordDetails() {
           queryKey: queryKeys.patientDetails("bhc", record.patientId),
         });
       }
-    } catch (error) {
-      console.error("Failed to update health record info:", error);
+    } catch {
+      // The edit modal remains open so the user can retry.
     } finally {
       setSaving(false);
     }

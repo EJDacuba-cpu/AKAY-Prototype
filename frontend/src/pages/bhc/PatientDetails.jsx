@@ -338,8 +338,8 @@ export default function PatientDetails() {
         }),
         queryClient.invalidateQueries({ queryKey: queryKeys.patients("bhc") }),
       ]);
-    } catch (error) {
-      console.error("Failed to update patient profile:", error);
+    } catch {
+      // The edit modal remains open so the user can retry.
     } finally {
       setSaving(false);
     }

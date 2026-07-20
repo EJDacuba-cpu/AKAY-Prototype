@@ -8,9 +8,11 @@ use App\Models\PasswordResetRequest;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\UserNotificationService;
+use App\Services\UserSessionRevocationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 
@@ -90,8 +92,11 @@ class PasswordResetRequestController extends Controller
         ]);
     }
 
-    public function complete(Request $request, AuditLogger $auditLogger)
-    {
+    public function complete(
+        Request $request,
+        AuditLogger $auditLogger,
+        UserSessionRevocationService $sessions
+    ) {
         $validated = $request->validate([
             'token' => ['required', 'string'],
             'password' => ['required', 'confirmed', PasswordRule::min(8)->mixedCase()->numbers()],
@@ -103,19 +108,27 @@ class PasswordResetRequestController extends Controller
             return response()->json(['message' => 'This password reset link is invalid or expired.'], 422);
         }
 
-        $resetRequest->user->forceFill([
-            'password' => $validated['password'],
-        ])->save();
-        $resetRequest->user->tokens()->delete();
+        DB::transaction(function () use (
+            $request,
+            $resetRequest,
+            $validated,
+            $auditLogger,
+            $sessions
+        ): void {
+            $resetRequest->user->forceFill([
+                'password' => $validated['password'],
+            ])->save();
+            $sessions->revokeAllTokens($resetRequest->user, 'password-reset');
 
-        $resetRequest->update([
-            'status' => PasswordResetRequest::STATUS_COMPLETED,
-            'completed_at' => now(),
-            'reset_token_hash' => null,
-            'expires_at' => null,
-        ]);
+            $resetRequest->update([
+                'status' => PasswordResetRequest::STATUS_COMPLETED,
+                'completed_at' => now(),
+                'reset_token_hash' => null,
+                'expires_at' => null,
+            ]);
 
-        $auditLogger->log($request, 'password reset completed', 'auth', "Password reset completed for {$resetRequest->email}.");
+            $auditLogger->log($request, 'password reset completed', 'auth', "Password reset completed for {$resetRequest->email}.");
+        });
 
         return response()->json(['message' => 'Password changed successfully. You may now sign in.']);
     }

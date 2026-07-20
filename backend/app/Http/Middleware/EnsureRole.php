@@ -15,6 +15,7 @@ class EnsureRole
         if (! $user || ! in_array($user->role, $roles, true)) {
             return response()->json([
                 'message' => 'This action is not allowed for your role.',
+                'code' => 'AUTHORIZATION_DENIED',
             ], 403);
         }
 

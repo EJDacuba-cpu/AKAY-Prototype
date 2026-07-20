@@ -419,8 +419,8 @@ export default function FeedbackReturnSlip() {
       }
 
       setSubmitted(true);
-    } catch (error) {
-      console.error("Failed to submit return slip:", error);
+    } catch {
+      // The form remains available for a manual retry.
     } finally {
       setSubmitting(false);
     }

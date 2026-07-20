@@ -50,7 +50,7 @@ return [
     |
     */
 
-    'expiration' => null,
+    'expiration' => max(1, (int) env('AKAY_AUTH_TOKEN_EXPIRATION_MINUTES', 480)),
 
     /*
     |--------------------------------------------------------------------------

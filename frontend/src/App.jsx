@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { Navigate, Route, Routes, useLocation, useParams } from "react-router";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import {
@@ -12,6 +19,12 @@ import DashboardLayout from "./components/layout/DashboardLayout";
 import { FullScreenAkayLoader } from "./components/common";
 import { AkayLoadingLifecycleProvider } from "./hooks/useAkayLoadingLifecycle";
 import NotificationsPage from "./pages/bhc/NotificationsPage";
+import { queryClient } from "./lib/queryClient";
+import {
+  clearSensitiveSessionState,
+  SENSITIVE_SESSION_CLEARED_EVENT,
+  subscribeToCrossTabSessionClear,
+} from "./utils/sessionPrivacy";
 
 // BHC Pages
 import BHCDashboard from "./pages/bhc/BHCDashboard";
@@ -157,7 +170,12 @@ function useAuthBootLoaderReady(shouldRestoreStoredSession) {
         if (shouldClearStoredSession(error) || !hasFallbackUser) {
           clearStoredAuthSession();
         } else {
-          console.warn("Unable to verify stored AKAY session during boot.", error);
+          if (import.meta.env.DEV) {
+            console.warn("Unable to verify stored AKAY session during boot.", {
+              status: error?.status || null,
+              code: error?.code || "",
+            });
+          }
         }
       } finally {
         if (isMounted) setIsBootCheckDone(true);
@@ -177,6 +195,9 @@ function useAuthBootLoaderReady(shouldRestoreStoredSession) {
 
 export default function App() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const [, setSessionEpoch] = useState(0);
+  const [isRevalidatingBfcache, setIsRevalidatingBfcache] = useState(false);
   const [shouldRestoreStoredSession] = useState(
     () => Boolean(getStoredAuthToken()) && !isPublicBootRoute(location.pathname),
   );
@@ -184,7 +205,107 @@ export default function App() {
   const hasCompletedInitialBoot =
     !shouldRestoreStoredSession || isBootLoaderReady;
 
-  if (shouldRestoreStoredSession && !isBootLoaderReady) {
+  useEffect(() => {
+    function handleSensitiveSessionCleared(event) {
+      if (event.detail?.preserveAuthentication) {
+        setSessionEpoch((epoch) => epoch + 1);
+        return;
+      }
+
+      clearStoredAuthSession();
+      setSessionEpoch((epoch) => epoch + 1);
+
+      if (!isPublicBootRoute(window.location.pathname)) {
+        navigate("/login", {
+          replace: true,
+          state: {
+            sessionEnded: ["session-expired", "session-invalid"].includes(
+              event.detail?.reason,
+            ),
+          },
+        });
+      }
+    }
+
+    async function handleCrossTabSessionClear() {
+      clearStoredAuthSession();
+      await clearSensitiveSessionState({
+        queryClient,
+        reason: "cross-tab-session-cleared",
+        broadcast: false,
+      });
+      window.location.replace("/login");
+    }
+
+    window.addEventListener(
+      SENSITIVE_SESSION_CLEARED_EVENT,
+      handleSensitiveSessionCleared,
+    );
+    const unsubscribe = subscribeToCrossTabSessionClear(
+      handleCrossTabSessionClear,
+    );
+
+    return () => {
+      window.removeEventListener(
+        SENSITIVE_SESSION_CLEARED_EVENT,
+        handleSensitiveSessionCleared,
+      );
+      unsubscribe();
+    };
+  }, [navigate]);
+
+  useEffect(() => {
+    async function handlePageShow(event) {
+      if (!event.persisted || isPublicBootRoute(window.location.pathname)) {
+        return;
+      }
+
+      setIsRevalidatingBfcache(true);
+
+      if (!getStoredAuthToken()) {
+        await clearSensitiveSessionState({
+          queryClient,
+          reason: "bfcache-missing-session",
+          broadcast: false,
+        });
+        clearStoredAuthSession();
+        window.location.replace("/login");
+        return;
+      }
+
+      try {
+        const user = await restoreCurrentUserSession();
+        if (!hasUsableAuthUser(user)) {
+          await clearSensitiveSessionState({
+            queryClient,
+            reason: "bfcache-invalid-session",
+          });
+          clearStoredAuthSession();
+          window.location.replace("/login");
+          return;
+        }
+      } catch {
+        await clearSensitiveSessionState({
+          queryClient,
+          reason: "bfcache-session-revalidation-failed",
+          broadcast: false,
+        });
+        clearStoredAuthSession();
+        window.location.replace("/login");
+        return;
+      } finally {
+        setIsRevalidatingBfcache(false);
+      }
+    }
+
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, []);
+
+  if (
+    (shouldRestoreStoredSession && !isBootLoaderReady) ||
+    isRevalidatingBfcache
+  ) {
     return <FullScreenAkayLoader />;
   }
 

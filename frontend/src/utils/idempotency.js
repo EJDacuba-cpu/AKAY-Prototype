@@ -24,3 +24,7 @@ export function createIdempotencyKey() {
     hex.slice(10).join(""),
   ].join("-");
 }
+
+export function createClientSubmissionId() {
+  return `client-${createIdempotencyKey()}`;
+}

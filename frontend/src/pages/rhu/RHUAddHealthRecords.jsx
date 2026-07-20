@@ -39,6 +39,7 @@ import {
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 import { createIdempotencyKey } from "../../utils/idempotency";
+import { SENSITIVE_SESSION_CLEARED_EVENT } from "../../utils/sessionPrivacy";
 
 /* ═══════════════════════════════════════════════════════════════
    KEYFRAMES
@@ -431,6 +432,23 @@ export default function AddHealthRecord() {
   const [saving, setSaving] = useState(false);
   const officialSubmissionRef = useRef(null);
   const [saveSuccess, setSaveSuccess] = useState(null);
+
+  useEffect(() => {
+    function clearInMemorySubmissionState() {
+      officialSubmissionRef.current = null;
+      setNoticeModal(null);
+    }
+
+    window.addEventListener(
+      SENSITIVE_SESSION_CLEARED_EVENT,
+      clearInMemorySubmissionState,
+    );
+    return () =>
+      window.removeEventListener(
+        SENSITIVE_SESSION_CLEARED_EVENT,
+        clearInMemorySubmissionState,
+      );
+  }, []);
   const [noticeModal, setNoticeModal] = useState(null);
   const [validationErrors, setValidationErrors] = useState({});
   const [searchTerm, setSearchTerm] = useState("");
@@ -1510,7 +1528,6 @@ export default function AddHealthRecord() {
         isFollowUp,
       });
     } catch (error) {
-      console.error("Failed to save RHU health record:", error);
       if (
         Number(error?.status) === 409 &&
         error?.payload?.code === "FOLLOW_UP_ALREADY_PROCESSED"

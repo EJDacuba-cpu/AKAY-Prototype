@@ -1,3 +1,9 @@
+import { queryClient } from "../lib/queryClient";
+import {
+  clearSensitiveSessionState,
+  isForcedSessionInvalidation,
+} from "../utils/sessionPrivacy";
+
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ||
   "http://localhost:8000/api";
@@ -125,6 +131,7 @@ export async function apiRequest(endpoint, options = {}) {
   const requestPromise = fetch(url, {
     ...options,
     headers,
+    cache: options.cache || "no-store",
     signal: options.signal || controller.signal,
     body:
       options.body && !(options.body instanceof FormData)
@@ -162,12 +169,15 @@ export async function apiRequest(endpoint, options = {}) {
     const errorMessage =
       payload.message || firstValidationError || "API request failed.";
 
-    if (import.meta.env.DEV) {
-      console.debug("API request failed", {
-        status: response.status,
-        endpoint,
-        payload,
+    if (isForcedSessionInvalidation(response.status, payload)) {
+      await clearSensitiveSessionState({
+        queryClient,
+        reason:
+          payload?.code === "SESSION_EXPIRED"
+            ? "session-expired"
+            : "session-invalid",
       });
+      clearAuthSession();
     }
 
     const error = new Error(errorMessage);

@@ -1,34 +1,29 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { AlertTriangle, LoaderCircle, RotateCw, Save, X } from "lucide-react";
+import { AlertTriangle, LoaderCircle, RotateCw, X } from "lucide-react";
 
 export default function ConnectionIssueModal({
   open,
   title = "Connection Lost",
-  message = "Your internet connection was interrupted. Your current form data can be saved as a local draft and submitted once your connection is restored.",
+  message = "The server did not confirm this submission. Your form remains available while this tab stays open.",
   canRetry = true,
   retryDisabled = false,
   retryLabel = "Retry",
   retryLoading = false,
   retryLoadingLabel = "Retrying...",
   onContinue,
-  onSaveDraft,
   onRetry,
 }) {
   const titleId = useId();
   const descriptionId = useId();
   const retryButtonRef = useRef(null);
   const mountedRef = useRef(false);
-  const [draftSaving, setDraftSaving] = useState(false);
   const [internalRetrying, setInternalRetrying] = useState(false);
-  const hasDraftAction = Boolean(onSaveDraft);
   const retryBusy = Boolean(retryLoading || internalRetrying);
-  const actionBusy = retryBusy || draftSaving;
-  const actionGridClass = canRetry && hasDraftAction ? "lg:grid-cols-3" : "sm:grid-cols-2";
+  const actionBusy = retryBusy;
 
   useEffect(() => {
     if (!open) {
       mountedRef.current = false;
-      setDraftSaving(false);
       setInternalRetrying(false);
       return undefined;
     }
@@ -48,16 +43,6 @@ export default function ConnectionIssueModal({
   function handleContinue() {
     if (actionBusy) return;
     onContinue?.();
-  }
-
-  async function handleSaveDraft() {
-    if (!onSaveDraft || actionBusy) return;
-    setDraftSaving(true);
-    try {
-      await onSaveDraft();
-    } finally {
-      if (mountedRef.current) setDraftSaving(false);
-    }
   }
 
   async function handleRetry() {
@@ -120,13 +105,12 @@ export default function ConnectionIssueModal({
 
           <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-3">
             <p className="text-xs leading-relaxed text-slate-500">
-              Your entries are still on this form. Continue editing, keep a
-              local draft on this device, or retry the official save when the
-              connection is stable.
+              Your entries are still on this form. Continue editing, keep this
+              tab open, or retry the official save when the connection is stable.
             </p>
           </div>
 
-          <div className={`mt-6 grid gap-2 ${actionGridClass}`}>
+          <div className="mt-6 grid gap-2 sm:grid-cols-2">
             <button
               type="button"
               onClick={handleContinue}
@@ -135,22 +119,6 @@ export default function ConnectionIssueModal({
             >
               Continue Editing
             </button>
-            {hasDraftAction && (
-              <button
-                type="button"
-                onClick={handleSaveDraft}
-                disabled={actionBusy}
-                aria-busy={draftSaving}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 text-sm font-semibold text-[#B91C1C] transition hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/15 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {draftSaving ? (
-                  <LoaderCircle size={15} className="animate-spin" />
-                ) : (
-                  <Save size={15} />
-                )}
-                {draftSaving ? "Saving..." : "Save as Draft"}
-              </button>
-            )}
             {canRetry && (
               <button
                 ref={retryButtonRef}

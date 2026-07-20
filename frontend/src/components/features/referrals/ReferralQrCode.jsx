@@ -76,8 +76,7 @@ export default function ReferralQrCode({
         });
 
         if (active) setDataUrl(nextDataUrl);
-      } catch (error) {
-        console.error("Failed to render referral QR code:", error);
+      } catch {
         if (active) setDataUrl("");
       }
     }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Lock, Mail, ArrowRight, Activity, CheckCircle2 } from "lucide-react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { loginUser } from "../utils/auth";
 import { submitPasswordResetRequest } from "../services/passwordResetService";
 import ButtonSpinner from "../components/common/loading/ButtonSpinner";
@@ -9,10 +9,15 @@ const LOGO_SRC = "/akay-logo-only.svg";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() =>
+    location.state?.sessionEnded
+      ? "Your session has ended. Please sign in again."
+      : "",
+  );
   const [mode, setMode] = useState("signin");
   const [resetEmail, setResetEmail] = useState("");
   const [resetSuccess, setResetSuccess] = useState("");
@@ -25,9 +30,9 @@ export default function Login() {
     try {
       const user = await loginUser(email, password);
 
-      if (user.role === "admin") navigate("/admin/dashboard");
-      if (user.role === "bhc") navigate("/bhc/dashboard");
-      if (user.role === "rhu") navigate("/rhu/dashboard");
+      if (user.role === "admin") navigate("/admin/dashboard", { replace: true });
+      if (user.role === "bhc") navigate("/bhc/dashboard", { replace: true });
+      if (user.role === "rhu") navigate("/rhu/dashboard", { replace: true });
     } catch (error) {
       setError(error.message || "Invalid email or password.");
     } finally {

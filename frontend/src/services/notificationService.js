@@ -3,6 +3,7 @@ import { apiRequest, isConnectionError, unwrapList } from "./apiClient";
 const UPDATE_EVENT = "akay:notifications-updated";
 const DEFAULT_STALE_MS = 60_000;
 let notificationCache = [];
+let notificationCacheIdentity = "";
 let loadingPromise = null;
 let lastFetchedAt = 0;
 let lastLoadError = null;
@@ -11,6 +12,19 @@ function emitUpdate(detail = {}) {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(UPDATE_EVENT, { detail }));
   }
+}
+
+function buildNotificationIdentity({ userId = "", role = "", facilityId = "" } = {}) {
+  return [String(userId), normalizeRole(role), normalizeFacilityId(facilityId)].join(":");
+}
+
+export function resetNotificationSessionCache() {
+  notificationCache = [];
+  notificationCacheIdentity = "";
+  loadingPromise = null;
+  lastFetchedAt = 0;
+  lastLoadError = null;
+  emitUpdate({ reason: "session-reset", soundEligible: false });
 }
 
 function formatNotificationTime(value) {
@@ -107,16 +121,29 @@ export async function refreshNotifications({
   force = false,
   maxAgeMs = DEFAULT_STALE_MS,
   soundEligible = false,
+  identity = {},
 } = {}) {
   const now = Date.now();
+  const requestedIdentity = buildNotificationIdentity(identity);
+
+  if (!requestedIdentity || requestedIdentity.startsWith(":")) {
+    resetNotificationSessionCache();
+    return [];
+  }
+
+  if (notificationCacheIdentity !== requestedIdentity) {
+    resetNotificationSessionCache();
+    notificationCacheIdentity = requestedIdentity;
+  }
 
   if (loadingPromise) return loadingPromise;
   if (!force && lastFetchedAt && now - lastFetchedAt < maxAgeMs) {
     return notificationCache;
   }
 
-  loadingPromise = apiRequest("/notifications")
+  const requestPromise = apiRequest("/notifications")
     .then((response) => {
+      if (notificationCacheIdentity !== requestedIdentity) return [];
       notificationCache = unwrapList(response).map(normalizeNotification);
       lastFetchedAt = Date.now();
       lastLoadError = null;
@@ -124,6 +151,7 @@ export async function refreshNotifications({
       return notificationCache;
     })
     .catch((error) => {
+      if (notificationCacheIdentity !== requestedIdentity) return [];
       lastLoadError = {
         isConnectionError: isConnectionError(error),
         message:
@@ -136,10 +164,11 @@ export async function refreshNotifications({
       return notificationCache;
     })
     .finally(() => {
-      loadingPromise = null;
+      if (loadingPromise === requestPromise) loadingPromise = null;
     });
 
-  return loadingPromise;
+  loadingPromise = requestPromise;
+  return requestPromise;
 }
 
 export function getAllNotifications() {
@@ -150,8 +179,15 @@ export function getNotificationLoadError() {
   return lastLoadError;
 }
 
-export function getNotificationsForUser() {
-  return getAllNotifications();
+export function getNotificationsForUser(role, facilityId, userId) {
+  const requestedIdentity = buildNotificationIdentity({
+    userId,
+    role,
+    facilityId,
+  });
+  return requestedIdentity === notificationCacheIdentity
+    ? getAllNotifications()
+    : [];
 }
 
 export function createNotification(notification) {
@@ -313,3 +349,10 @@ export default {
   clearNotificationsForUser,
   subscribeToNotifications,
 };
+
+if (typeof window !== "undefined") {
+  window.addEventListener(
+    "akay:sensitive-session-cleared",
+    resetNotificationSessionCache,
+  );
+}

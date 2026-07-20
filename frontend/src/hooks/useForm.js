@@ -55,8 +55,8 @@ export default function useForm(initialValues, onSubmit, validators = {}) {
       try {
         setIsSubmitting(true);
         await onSubmit?.(values);
-      } catch (error) {
-        console.error("Form submission error:", error);
+      } catch {
+        // The caller owns user-facing submission error handling.
       } finally {
         setIsSubmitting(false);
       }

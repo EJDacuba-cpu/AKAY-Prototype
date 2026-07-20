@@ -7,6 +7,9 @@ import "./index.css";
 import { Toaster } from "react-hot-toast";
 import { NotificationProvider } from "./hooks/useNotificationsContext";
 import { queryClient } from "./lib/queryClient";
+import { clearLegacySensitiveBrowserData } from "./utils/sessionPrivacy";
+
+void clearLegacySensitiveBrowserData();
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
