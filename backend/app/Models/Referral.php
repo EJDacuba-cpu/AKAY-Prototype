@@ -18,6 +18,10 @@ class Referral extends Model
     protected $fillable = [
         'tracking_id',
         'qr_code_value',
+        'qr_token_hash',
+        'qr_token_encrypted',
+        'qr_token_issued_at',
+        'qr_token_last_used_at',
         'client_submission_id',
         'patient_id',
         'health_record_id',
@@ -38,6 +42,16 @@ class Referral extends Model
 
     protected $casts = [
         'referral_datetime' => 'datetime',
+        'qr_token_issued_at' => 'datetime',
+        'qr_token_last_used_at' => 'datetime',
+    ];
+
+    protected $hidden = [
+        'qr_code_value',
+        'qr_token_hash',
+        'qr_token_encrypted',
+        'qr_token_issued_at',
+        'qr_token_last_used_at',
     ];
 
     public function patient(): BelongsTo

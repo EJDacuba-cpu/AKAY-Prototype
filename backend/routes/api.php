@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\PasswordResetRequestController;
 use App\Http\Controllers\Api\ReferralController;
+use App\Http\Controllers\Api\ReferralQrController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RhuPatientVolumeController;
 use App\Http\Controllers\Api\RuralHealthUnitController;
@@ -40,10 +41,17 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::apiResource('patients', PatientController::class);
         Route::apiResource('health-records', HealthRecordController::class);
         Route::post('health-records/{healthRecord}/dispensed-medicines', [HealthRecordController::class, 'dispenseMedicines']);
+        Route::post('/referrals/qr/resolve', [ReferralQrController::class, 'resolve'])
+            ->middleware('throttle:referral-qr-resolve');
+        Route::post('/referrals/tracking/resolve', [TrackingController::class, 'resolve'])
+            ->middleware('throttle:referral-tracking-resolve');
+        Route::get('/referrals/{referral}/qr', [ReferralQrController::class, 'show'])
+            ->middleware('throttle:referral-qr-display');
+        Route::post('/referrals/{referral}/qr/regenerate', [ReferralQrController::class, 'regenerate'])
+            ->middleware('throttle:referral-qr-regenerate');
         Route::apiResource('referrals', ReferralController::class)->except(['store', 'update']);
         Route::post('/referrals', [ReferralController::class, 'store'])->middleware('role:bhw');
         Route::patch('/referrals/{referral}/status', [ReferralController::class, 'updateStatus'])->middleware('role:rhu_staff');
-        Route::get('/tracking/{value}', [TrackingController::class, 'show']);
         Route::apiResource('feedback', FeedbackController::class)->only(['index', 'show']);
         Route::post('/feedback', [FeedbackController::class, 'store'])->middleware('role:rhu_staff');
         Route::apiResource('medicines', MedicineController::class);

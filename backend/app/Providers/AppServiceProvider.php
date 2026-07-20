@@ -25,5 +25,14 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(120)->by($request->user()?->id ?: $request->ip());
         });
+
+        RateLimiter::for('referral-qr-resolve', fn (Request $request) => Limit::perMinute(60)
+            ->by(($request->user()?->id ?: 'guest').'|'.$request->ip()));
+        RateLimiter::for('referral-tracking-resolve', fn (Request $request) => Limit::perMinute(30)
+            ->by(($request->user()?->id ?: 'guest').'|'.$request->ip()));
+        RateLimiter::for('referral-qr-display', fn (Request $request) => Limit::perMinute(60)
+            ->by(($request->user()?->id ?: 'guest').'|'.$request->ip()));
+        RateLimiter::for('referral-qr-regenerate', fn (Request $request) => Limit::perMinute(10)
+            ->by(($request->user()?->id ?: 'guest').'|'.$request->ip()));
     }
 }

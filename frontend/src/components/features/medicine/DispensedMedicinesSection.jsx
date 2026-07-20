@@ -204,7 +204,10 @@ export default function DispensedMedicinesSection({
 
   if (loading && availableInventory.length === 0) {
     return (
-      <div className="rounded-xl border border-[#E8ECF0] bg-white p-4">
+      <div
+        data-dispensed-medicines-section
+        className="rounded-xl border border-[#E8ECF0] bg-white p-4"
+      >
         <div className="flex items-center gap-2 text-sm font-semibold text-[#64748B]">
           <LoaderCircle size={16} className="animate-spin" />
           Loading BHC inventory...
@@ -221,7 +224,10 @@ export default function DispensedMedicinesSection({
 
   if (error && availableInventory.length === 0) {
     return (
-      <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+      <div
+        data-dispensed-medicines-section
+        className="rounded-xl border border-red-100 bg-red-50 p-4"
+      >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex gap-3">
             <AlertCircle size={18} className="mt-0.5 shrink-0 text-[#B91C1C]" />
@@ -251,14 +257,17 @@ export default function DispensedMedicinesSection({
 
   if (!loading && availableInventory.length === 0) {
     return (
-      <div className="rounded-xl border border-[#E8ECF0] bg-white px-4 py-6 text-center text-sm text-[#64748B]">
+      <div
+        data-dispensed-medicines-section
+        className="rounded-xl border border-[#E8ECF0] bg-white px-4 py-6 text-center text-sm text-[#64748B]"
+      >
         No medicines or supplies registered in BHC inventory.
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div data-dispensed-medicines-section className="space-y-4">
       <div className="rounded-xl border border-[#E8ECF0] bg-white p-4">
         <div>
           <p className="text-xs leading-relaxed text-[#64748B]">

@@ -6,8 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Referral;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
-use App\Services\ReferralNoShowService;
-use App\Support\StoredFunction;
 use Illuminate\Http\Request;
 
 class TrackingController extends Controller
@@ -16,37 +14,45 @@ class TrackingController extends Controller
     {
     }
 
-    public function show(
-        Request $request,
-        string $value,
-        AuditLogger $auditLogger,
-        ReferralNoShowService $noShowService
-    )
+    public function resolve(Request $request, AuditLogger $auditLogger)
     {
-        $referral = Referral::where('tracking_id', $value)
-            ->orWhere('qr_code_value', $value)
-            ->with(['patient', 'healthRecord', 'updates', 'feedback', 'barangayHealthCenter', 'ruralHealthUnit'])
-            ->firstOrFail();
+        $trackingId = strtoupper(trim((string) $request->input('tracking_id', '')));
+        $user = $request->user();
 
-        $this->facilityAccess->authorizeReferral($request->user(), $referral);
-        $noShowService->markOverduePending($referral);
-        $referral->refresh();
-        $auditLogger->log($request, 'lookup', 'tracking', "Looked up referral {$referral->tracking_id}.");
-
-        if (StoredFunction::available()) {
-            $data = StoredFunction::selectJson(
-                'SELECT akay_referral_lookup(?, ?, ?, ?) AS data',
-                [
-                    $value,
-                    $request->user()->role,
-                    $request->user()->barangay_health_center_id,
-                    $request->user()->rural_health_unit_id,
-                ]
-            );
-
-            return response()->json(['data' => $data ?: $referral]);
+        if (
+            preg_match('/^AKY-\d{8}-[A-Z0-9]{6}$/D', $trackingId) !== 1
+            || (! $user->isBhw() && ! $user->isRhuStaff())
+        ) {
+            return $this->lookupFailed();
         }
 
-        return response()->json(['data' => $referral]);
+        $referral = Referral::where('tracking_id', $trackingId)->first();
+        if (! $referral || ! $this->facilityAccess->canAccessReferral($user, $referral)) {
+            return $this->lookupFailed();
+        }
+
+        $auditLogger->log(
+            $request,
+            'tracking_resolved',
+            'referrals',
+            'Resolved an authorized referral tracking ID.'
+        );
+
+        $rolePath = $user->isBhw() ? 'bhc' : 'rhu';
+
+        return response()->json(['data' => [
+            'referral_id' => $referral->id,
+            'tracking_id' => $referral->tracking_id,
+            'status' => $referral->status,
+            'display_url' => "/{$rolePath}/referrals/{$referral->tracking_id}",
+        ]]);
+    }
+
+    private function lookupFailed()
+    {
+        return response()->json([
+            'message' => 'This tracking ID is invalid, unavailable, or not accessible to your account.',
+            'code' => 'TRACKING_LOOKUP_FAILED',
+        ], 404);
     }
 }

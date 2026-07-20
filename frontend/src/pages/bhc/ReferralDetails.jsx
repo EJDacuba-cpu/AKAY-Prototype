@@ -10,13 +10,18 @@ import {
   MessageSquare,
   Phone,
   Printer,
+  QrCode,
+  RefreshCw,
   Stethoscope,
   User,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { RefreshingIndicator, SoftLoadingArea } from "../../components/common";
-import { getReferralByTrackingId } from "../../services/referrals";
+import {
+  getReferralByTrackingId,
+  regenerateReferralQrPayload,
+} from "../../services/referrals";
 import { getPatientById } from "../../services/patientService";
 import {
   formatDisplayValue,
@@ -26,6 +31,7 @@ import {
   formatUserName,
 } from "../../utils/formatters";
 import ReferralPrintSlip from "../../components/features/referrals/ReferralPrintSlip";
+import ReferralQrCode from "../../components/features/referrals/ReferralQrCode";
 import { queryKeys } from "../../utils/queryKeys";
 
 const keyframes = `
@@ -54,6 +60,9 @@ const stagger = (index) => ({ animationDelay: `${index * 55}ms` });
 export default function ReferralDetails() {
   const { trackingId } = useParams();
   const [activeTab, setActiveTab] = useState("clinical");
+  const [qrRefreshKey, setQrRefreshKey] = useState(0);
+  const [qrRegenerating, setQrRegenerating] = useState(false);
+  const [qrMessage, setQrMessage] = useState("");
 
   const {
     data: details,
@@ -77,6 +86,30 @@ export default function ReferralDetails() {
   const loading = isLoading && !details;
   const detailsUpdating = isFetching && !loading && Boolean(referral);
   const notFound = !loading && !referral;
+
+  async function handleRegenerateQr() {
+    if (!referral?.id || qrRegenerating) return;
+    const confirmed = window.confirm(
+      "Regenerate QR Code?\n\nThe previous QR code will stop working.",
+    );
+    if (!confirmed) return;
+
+    setQrRegenerating(true);
+    setQrMessage("");
+    try {
+      await regenerateReferralQrPayload(referral.id);
+      setQrRefreshKey((current) => current + 1);
+      setQrMessage("A new secure QR code is ready. The previous code no longer works.");
+    } catch (error) {
+      setQrMessage(
+        error?.status === 429
+          ? "Too many regeneration attempts. Please wait briefly and try again."
+          : "Unable to regenerate the QR code. Please try again.",
+      );
+    } finally {
+      setQrRegenerating(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -139,6 +172,39 @@ export default function ReferralDetails() {
         isUpdating={detailsUpdating}
       />
 
+      <section className="anim-fade-up mb-5 flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-4">
+          <ReferralQrCode
+            referralId={referral.id}
+            refreshKey={qrRefreshKey}
+            size={112}
+            className="h-28 w-28 shrink-0 rounded-lg border border-slate-200 p-1"
+            imageClassName="h-24 w-24"
+          />
+          <div>
+            <p className="flex items-center gap-2 text-sm font-bold text-slate-800">
+              <QrCode size={16} className="text-[#B91C1C]" />
+              Secure Referral QR
+            </p>
+            <p className="mt-1 max-w-md text-xs leading-relaxed text-slate-500">
+              Print this code for authenticated receiving-facility verification.
+            </p>
+            {qrMessage && (
+              <p className="mt-2 text-xs font-medium text-slate-600">{qrMessage}</p>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleRegenerateQr}
+          disabled={qrRegenerating}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <RefreshCw size={14} className={qrRegenerating ? "animate-spin" : ""} />
+          {qrRegenerating ? "Regenerating..." : "Regenerate QR"}
+        </button>
+      </section>
+
 
 
       <div
@@ -175,7 +241,12 @@ export default function ReferralDetails() {
         {activeTab === "returnSlip" && <ReturnSlipTab referral={referral} />}
       </main>
 
-      <ReferralPrintSlip referral={referral} patient={patient} printOnly />
+      <ReferralPrintSlip
+        referral={referral}
+        patient={patient}
+        printOnly
+        qrRefreshKey={qrRefreshKey}
+      />
       </div>
     </DashboardLayout>
   );

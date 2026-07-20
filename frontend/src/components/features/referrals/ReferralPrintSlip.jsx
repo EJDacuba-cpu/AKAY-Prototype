@@ -1,10 +1,11 @@
-import ReferralQrCode, { getReferralQrValue } from "./ReferralQrCode";
+import ReferralQrCode from "./ReferralQrCode";
 
 export function buildReferralSlipData(referral = {}, patient = null) {
   const referralDate = getReferralDate(referral);
 
   return {
     trackingId: referral.trackingId || referral.tracking_id || "",
+    referralId: referral.id || referral.referral_id || "",
     patientName:
       referral.patientName ||
       patient?.fullName ||
@@ -37,7 +38,6 @@ export function buildReferralSlipData(referral = {}, patient = null) {
       referral.priority ||
       "Normal",
     dateTimeSent: referralDate ? formatDateTime(referralDate) : "Not recorded",
-    qrValue: getReferralQrValue(referral),
   };
 }
 
@@ -46,6 +46,7 @@ export default function ReferralPrintSlip({
   patient,
   className = "",
   printOnly = false,
+  qrRefreshKey = 0,
 }) {
   const slip = buildReferralSlipData(referral, patient);
 
@@ -78,8 +79,8 @@ export default function ReferralPrintSlip({
 
         <div className="border-b border-dashed border-slate-400 py-3 text-center">
           <ReferralQrCode
-            value={slip.qrValue}
-            trackingId={slip.trackingId}
+            referralId={slip.referralId}
+            refreshKey={qrRefreshKey}
             size={156}
             className="mx-auto inline-flex rounded-md border border-slate-200 p-1 print:border-0"
             imageClassName="h-[39mm] w-[39mm]"
@@ -87,8 +88,8 @@ export default function ReferralPrintSlip({
           <p className="mt-2 text-[10px] font-black uppercase tracking-wide">
             Scan to verify referral
           </p>
-          <p className="mt-1 break-all text-[8px] leading-snug text-slate-500">
-            {slip.qrValue || "Verification URL unavailable"}
+          <p className="mt-1 text-[8px] leading-snug text-slate-500">
+            Secure AKAY referral code
           </p>
         </div>
 

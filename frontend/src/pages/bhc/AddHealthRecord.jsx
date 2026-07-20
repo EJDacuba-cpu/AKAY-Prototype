@@ -2610,6 +2610,62 @@ export default function AddHealthRecord() {
     );
   }
 
+  function isInsufficientStock(error) {
+    return (
+      Number(error?.status) === 409 &&
+      error?.payload?.code === "INSUFFICIENT_STOCK"
+    );
+  }
+
+  function refreshMedicineStock() {
+    setBhcMedicineInventoryReloadKey((current) => current + 1);
+  }
+
+  function reviewDispensedMedicines() {
+    window.requestAnimationFrame(() => {
+      const section = document.querySelector(
+        "[data-dispensed-medicines-section]",
+      );
+      section?.scrollIntoView({ behavior: "smooth", block: "center" });
+      section?.querySelector("select, input, button")?.focus();
+    });
+  }
+
+  function showMedicineStockConflict(error) {
+    const affectedItems = Array.isArray(error?.payload?.items)
+      ? error.payload.items
+      : [];
+    const itemDetails = affectedItems
+      .map(
+        (item) =>
+          `${item.medicine_name || "Medicine or supply"}\nRequested: ${item.requested_quantity}\nAvailable: ${item.available_quantity}`,
+      )
+      .join("\n\n");
+
+    setConnectionIssue(null);
+    setLastFailedSubmit(null);
+    clearOfficialSubmission();
+    refreshMedicineStock();
+    setNoticeModal({
+      title: "Medicine Stock Changed",
+      message: [
+        "One or more selected medicines no longer have enough available stock. No health record was created.",
+        itemDetails,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+      actions: [
+        {
+          label: "Review Medicines",
+          variant: "secondary",
+          onClick: reviewDispensedMedicines,
+        },
+        { label: "Refresh Stock", onClick: refreshMedicineStock },
+        { label: "Close", variant: "secondary" },
+      ],
+    });
+  }
+
   function showSubmissionConflict() {
     setConnectionIssue(null);
     setNoticeModal({
@@ -2795,6 +2851,8 @@ export default function AddHealthRecord() {
       console.error("Failed to retry health record save:", error);
       if (isFollowUpAlreadyProcessed(error)) {
         showFollowUpAlreadyProcessed(error);
+      } else if (isInsufficientStock(error)) {
+        showMedicineStockConflict(error);
       } else if (isIdempotencyPayloadMismatch(error)) {
         showSubmissionConflict();
       } else if (isConnectionError(error)) {
@@ -3282,6 +3340,10 @@ export default function AddHealthRecord() {
         showFollowUpAlreadyProcessed(error);
         return;
       }
+      if (isInsufficientStock(error)) {
+        showMedicineStockConflict(error);
+        return;
+      }
       if (isIdempotencyPayloadMismatch(error)) {
         showSubmissionConflict();
         return;
@@ -3436,6 +3498,10 @@ export default function AddHealthRecord() {
       console.error("Failed to submit health record referral:", error);
       if (isFollowUpAlreadyProcessed(error)) {
         showFollowUpAlreadyProcessed(error);
+        return;
+      }
+      if (isInsufficientStock(error)) {
+        showMedicineStockConflict(error);
         return;
       }
       if (isIdempotencyPayloadMismatch(error)) {
@@ -5002,7 +5068,7 @@ export default function AddHealthRecord() {
                   <h2 className="text-base font-bold text-slate-800">
                     {noticeModal.title}
                   </h2>
-                  <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                  <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-slate-600">
                     {noticeModal.message}
                   </p>
                 </div>

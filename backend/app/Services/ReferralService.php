@@ -16,8 +16,8 @@ class ReferralService
         return $trackingId;
     }
 
-    public function makeQrValue(string $trackingId): string
+    public function makeLegacyQrPlaceholder(): string
     {
-        return 'AKAY:REFERRAL:'.$trackingId;
+        return 'AKAY:LEGACY-DISABLED:'.Str::uuid();
     }
 }

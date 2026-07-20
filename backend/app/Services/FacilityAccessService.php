@@ -250,8 +250,13 @@ class FacilityAccessService
 
     public function authorizeReferral(User $user, Referral $referral): void
     {
+        abort_unless($this->canAccessReferral($user, $referral), 403, self::DENIED_MESSAGE);
+    }
+
+    public function canAccessReferral(User $user, Referral $referral): bool
+    {
         if ($user->isAdmin()) {
-            return;
+            return true;
         }
 
         $referral->loadMissing(['patient', 'healthRecord']);
@@ -279,7 +284,7 @@ class FacilityAccessService
                 $user->rural_health_unit_id
             )));
 
-        abort_unless($allowed, 403, self::DENIED_MESSAGE);
+        return $allowed;
     }
 
     public function authorizeRhuReferralAction(User $user, Referral $referral): void

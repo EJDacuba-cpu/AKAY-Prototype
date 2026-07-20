@@ -66,7 +66,13 @@ class ReferralController extends Controller
                 ]
             );
 
-            return response()->json(['data' => StoredFunction::paginatedResponse($rows, $request)]);
+            $response = StoredFunction::paginatedResponse($rows, $request);
+            $response['data'] = array_map(
+                fn (?array $item): ?array => $this->stripQrSecrets($item),
+                $response['data']
+            );
+
+            return response()->json(['data' => $response]);
         }
 
         $query = $this->scope(Referral::query(), $request)->with(['patient', 'healthRecord', 'barangayHealthCenter', 'ruralHealthUnit', 'feedback']);
@@ -151,7 +157,7 @@ class ReferralController extends Controller
 
             abort_unless($data, 404);
 
-            return response()->json(['data' => $data]);
+            return response()->json(['data' => $this->stripQrSecrets($data)]);
         }
 
         return response()->json(['data' => $referral->load(['patient', 'healthRecord', 'updates.user', 'feedback', 'barangayHealthCenter', 'ruralHealthUnit'])]);
@@ -264,6 +270,23 @@ class ReferralController extends Controller
 
         return in_array($sqlState, ['23505', '23000'], true)
             && str_contains($message, 'client_submission_id');
+    }
+
+    private function stripQrSecrets(?array $data): ?array
+    {
+        if ($data === null) {
+            return null;
+        }
+
+        unset(
+            $data['qr_code_value'],
+            $data['qr_token_hash'],
+            $data['qr_token_encrypted'],
+            $data['qr_token_issued_at'],
+            $data['qr_token_last_used_at']
+        );
+
+        return $data;
     }
 
     private function bhcUsers(Referral $referral)

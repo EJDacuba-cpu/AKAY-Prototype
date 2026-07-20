@@ -24,7 +24,9 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   getIncomingReferrals,
-  getReferralByTrackingId,
+  getReferralById,
+  resolveReferralQrToken,
+  resolveReferralTrackingId,
   updateReferralByTrackingId,
 } from "../../services/referrals";
 import { linkReferralPatientToRhu } from "../../services/patientService";
@@ -88,7 +90,7 @@ export default function QRScanner() {
 
   const scannerRef = useRef(null);
   const scanLockedRef = useRef(false);
-  const lastScanRef = useRef({ trackingId: "", at: 0 });
+  const lastScanRef = useRef({ token: "", at: 0 });
 
   const [trackingInput, setTrackingInput] = useState("");
   const [selectedReferral, setSelectedReferral] = useState(null);
@@ -164,28 +166,34 @@ export default function QRScanner() {
     }
   }, [selectedDeviceId]);
 
-  const verifyTrackingId = useCallback(
+  const verifyReferral = useCallback(
     async (value, source = "manual") => {
-      const trackingId = normalizeQrPayload(value);
+      const lookupValue =
+        source === "camera"
+          ? extractSecureQrToken(value)
+          : String(value || "").trim();
 
-      if (!trackingId) {
+      if (!lookupValue) {
         setSelectedReferral(null);
         setResult({
           type: "error",
           message:
             source === "camera"
-              ? "Invalid QR code. Please scan a valid AKAY referral slip."
+              ? "The scanned code is not a valid AKAY referral QR code."
               : "Please enter a valid AKAY referral Tracking ID.",
         });
         return null;
       }
 
       setVerifying(true);
-      setTrackingInput(trackingId);
-      setResult({ type: "loading", message: "Verifying referral..." });
+      setResult({ type: "loading", message: "Securely verifying referral..." });
 
       try {
-        const referral = await getReferralByTrackingId(trackingId);
+        const resolution =
+          source === "camera"
+            ? await resolveReferralQrToken(lookupValue)
+            : await resolveReferralTrackingId(lookupValue);
+        const referral = await getReferralById(resolution.referralId);
         setSelectedReferral(referral);
         setResult({
           type: isCheckedIn(referral) ? "warning" : "success",
@@ -198,10 +206,13 @@ export default function QRScanner() {
         setSelectedReferral(null);
         setResult({
           type: "error",
-          message: getVerificationErrorMessage(error),
+          message: getVerificationErrorMessage(error, source),
         });
         return null;
       } finally {
+        if (source === "camera") {
+          lastScanRef.current = { token: "", at: 0 };
+        }
         setVerifying(false);
       }
     },
@@ -210,31 +221,31 @@ export default function QRScanner() {
 
   const handleDetectedQr = useCallback(
     async (rawValue) => {
-      const trackingId = normalizeQrPayload(rawValue);
+      const token = extractSecureQrToken(rawValue);
 
-      if (!trackingId) {
+      if (!token) {
         stopCamera();
         setSelectedReferral(null);
         setResult({
           type: "error",
-          message: "Invalid QR code. Please scan a valid AKAY referral slip.",
+          message: "The scanned code is not a valid AKAY referral QR code.",
         });
         return;
       }
 
       const now = Date.now();
       const isDuplicate =
-        lastScanRef.current.trackingId === trackingId &&
+        lastScanRef.current.token === token &&
         now - lastScanRef.current.at < SCAN_COOLDOWN_MS;
 
       if (scanLockedRef.current || isDuplicate) return;
 
       scanLockedRef.current = true;
-      lastScanRef.current = { trackingId, at: now };
+      lastScanRef.current = { token, at: now };
       await stopCamera();
-      await verifyTrackingId(trackingId, "camera");
+      await verifyReferral(rawValue, "camera");
     },
-    [stopCamera, verifyTrackingId],
+    [stopCamera, verifyReferral],
   );
 
   async function startCamera() {
@@ -356,7 +367,7 @@ export default function QRScanner() {
     setResult({ type: "idle", message: "" });
     setCameraMessage("");
     scanLockedRef.current = false;
-    lastScanRef.current = { trackingId: "", at: 0 };
+    lastScanRef.current = { token: "", at: 0 };
     if (activeTab === "camera") startCamera();
   }
 
@@ -429,7 +440,7 @@ export default function QRScanner() {
           onStartCamera={startCamera}
           onStopCamera={stopCamera}
           onRetryScan={scanAgain}
-          onManualVerify={() => verifyTrackingId(trackingInput, "manual")}
+          onManualVerify={() => verifyReferral(trackingInput, "manual")}
         />
 
         <ResultsPanel
@@ -791,7 +802,9 @@ function EmptyResults({ result, verifying }) {
         <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-red-50 text-red-400">
           <AlertCircle size={34} />
         </div>
-        <h3 className="text-[14px] font-bold text-slate-700">Verification failed</h3>
+        <h3 className="text-[14px] font-bold text-slate-700">
+          Unable to Open Referral
+        </h3>
         <p className="mt-2 max-w-[280px] text-[12px] leading-relaxed text-slate-400">
           {result.message}
         </p>
@@ -933,60 +946,30 @@ function StatusBadge({ status }) {
   );
 }
 
-function normalizeQrPayload(value) {
+function extractSecureQrToken(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
 
-  const parsedJson = parseJsonPayload(raw);
-  if (parsedJson) return normalizeQrPayload(parsedJson);
-
-  const urlTrackingId = extractTrackingIdFromUrl(raw);
-  if (urlTrackingId) return urlTrackingId;
-
-  const withoutPrefix = raw.replace(/^AKAY:REFERRAL:/i, "").trim();
-  const trackingMatch = withoutPrefix.match(/AKY-\d{8}-[A-Z0-9]+/i);
-  if (trackingMatch) return trackingMatch[0].toUpperCase();
-
-  return "";
+  const match = raw.match(/^AKAY-REFERRAL:v1:([A-Za-z0-9_-]{43})$/);
+  return match?.[1] || "";
 }
 
-function parseJsonPayload(value) {
-  if (!value.startsWith("{")) return "";
-
-  try {
-    const parsed = JSON.parse(value);
-    return (
-      parsed.trackingId ||
-      parsed.tracking_id ||
-      parsed.qrCodeValue ||
-      parsed.qr_code_value ||
-      ""
-    );
-  } catch {
-    return "";
+function getVerificationErrorMessage(error = {}, source = "manual") {
+  if (error.status === 429) {
+    return "Too many lookup attempts. Please wait briefly and try again.";
   }
-}
-
-function extractTrackingIdFromUrl(value) {
-  try {
-    const url = new URL(value, window.location?.origin || "http://akay.local");
-    const params = ["trackingId", "tracking_id", "id"];
-    for (const param of params) {
-      const candidate = url.searchParams.get(param);
-      const trackingId = candidate?.match(/AKY-\d{8}-[A-Z0-9]+/i)?.[0];
-      if (trackingId) return trackingId.toUpperCase();
-    }
-
-    const pathTrackingId = url.pathname.match(/AKY-\d{8}-[A-Z0-9]+/i)?.[0];
-    return pathTrackingId ? pathTrackingId.toUpperCase() : "";
-  } catch {
-    return "";
+  if (error?.payload?.code === "INVALID_QR_FORMAT") {
+    return "The scanned code is not a valid AKAY referral QR code.";
   }
-}
-
-function getVerificationErrorMessage(error = {}) {
-  if (error.status === 403) return "This referral is not assigned to your facility.";
-  if (error.status === 404) return "No referral record matches this QR code.";
+  if (error?.payload?.code === "QR_LOOKUP_FAILED" || source === "camera") {
+    return "This QR code is invalid, expired, revoked, or not assigned to your facility.";
+  }
+  if (error?.payload?.code === "TRACKING_LOOKUP_FAILED") {
+    return "This tracking ID is invalid, unavailable, or not assigned to your facility.";
+  }
+  if (error.status === 403 || error.status === 404) {
+    return "This referral is unavailable or not assigned to your facility.";
+  }
   if (error.status === 409) return "This referral has already been checked in.";
   return "Unable to verify referral. Please try again.";
 }

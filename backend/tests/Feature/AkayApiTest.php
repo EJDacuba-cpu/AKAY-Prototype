@@ -437,7 +437,9 @@ class AkayApiTest extends TestCase
             ])
             ->assertCreated()
             ->assertJsonPath('data.status', Referral::STATUS_PENDING)
-            ->assertJsonStructure(['data' => ['tracking_id', 'qr_code_value']]);
+            ->assertJsonStructure(['data' => ['tracking_id']])
+            ->assertJsonMissingPath('data.qr_code_value')
+            ->assertJsonMissingPath('data.qr_token_hash');
 
         $this->assertDatabaseHas('notifications', ['type' => 'referral_submitted']);
         $this->assertDatabaseHas('audit_logs', ['module' => 'referrals', 'action' => 'submitted']);
@@ -569,13 +571,13 @@ class AkayApiTest extends TestCase
             ->assertCreated();
 
         $trackingId = $firstResponse->json('data.tracking_id');
-        $qrCodeValue = $firstResponse->json('data.qr_code_value');
+        $firstResponse->assertJsonMissingPath('data.qr_code_value');
 
         $this->actingAs($bhw, 'sanctum')
             ->postJson('/api/referrals', $payload)
             ->assertOk()
             ->assertJsonPath('data.tracking_id', $trackingId)
-            ->assertJsonPath('data.qr_code_value', $qrCodeValue);
+            ->assertJsonMissingPath('data.qr_code_value');
 
         $this->assertSame(1, Referral::where('client_submission_id', 'offline-draft-123')->count());
         $this->assertSame(1, Referral::count());

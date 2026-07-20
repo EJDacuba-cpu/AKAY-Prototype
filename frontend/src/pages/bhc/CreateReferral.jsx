@@ -962,7 +962,7 @@ export default function CreateReferral() {
             </div>
             <div className="flex flex-col items-center p-8">
               <ReferralQrCode
-                trackingId={generatedTrackingId}
+                referralId={submittedReferral.id}
                 size={144}
                 className="rounded-xl border border-slate-200 p-2"
                 imageClassName="h-36 w-36"
@@ -1382,7 +1382,7 @@ export default function CreateReferral() {
                 </div>
                 <div className="flex flex-col items-center px-5 py-6">
                   <ReferralQrCode
-                    trackingId={successTrackingId}
+                    referralId={submittedReferral.id}
                     size={148}
                     className="rounded-xl border border-slate-200 p-2"
                     imageClassName="h-36 w-36"

@@ -20,7 +20,6 @@ function normalizeReferral(referral = {}) {
     ...referral,
     id: referral.id ? String(referral.id) : "",
     trackingId: referral.tracking_id || referral.trackingId || "",
-    qrCodeValue: referral.qr_code_value || referral.qrCodeValue || "",
     clientSubmissionId:
       referral.client_submission_id || referral.clientSubmissionId || "",
     patientId: referral.patient_id ? String(referral.patient_id) : referral.patientId || "",
@@ -186,8 +185,52 @@ export async function getReferralById(referralId) {
 }
 
 export async function getReferralByTrackingId(trackingId) {
-  const response = await apiRequest(`/tracking/${encodeURIComponent(trackingId)}`);
-  return normalizeReferral(unwrapData(response));
+  const resolution = await resolveReferralTrackingId(trackingId);
+  return getReferralById(resolution.referralId);
+}
+
+export async function resolveReferralTrackingId(trackingId) {
+  const response = await apiRequest("/referrals/tracking/resolve", {
+    method: "POST",
+    body: { tracking_id: String(trackingId || "").trim() },
+  });
+  const data = unwrapData(response) || {};
+
+  return {
+    referralId: String(data.referral_id || data.referralId || ""),
+    trackingId: data.tracking_id || data.trackingId || "",
+    status: data.status || "",
+    displayUrl: data.display_url || data.displayUrl || "",
+  };
+}
+
+export async function resolveReferralQrToken(token) {
+  const response = await apiRequest("/referrals/qr/resolve", {
+    method: "POST",
+    body: { token },
+  });
+  const data = unwrapData(response) || {};
+
+  return {
+    referralId: String(data.referral_id || data.referralId || ""),
+    trackingId: data.tracking_id || data.trackingId || "",
+    status: data.status || "",
+    displayUrl: data.display_url || data.displayUrl || "",
+  };
+}
+
+export async function getReferralQrPayload(referralId) {
+  const response = await apiRequest(`/referrals/${referralId}/qr`);
+  const data = unwrapData(response) || {};
+  return data.qr_value || data.qrValue || "";
+}
+
+export async function regenerateReferralQrPayload(referralId) {
+  const response = await apiRequest(`/referrals/${referralId}/qr/regenerate`, {
+    method: "POST",
+  });
+  const data = unwrapData(response) || {};
+  return data.qr_value || data.qrValue || "";
 }
 
 export async function getReferralByRouteParam(routeParam) {
@@ -278,6 +321,10 @@ export default {
   getReferralById,
   getReferralByTrackingId,
   getReferralByRouteParam,
+  resolveReferralTrackingId,
+  resolveReferralQrToken,
+  getReferralQrPayload,
+  regenerateReferralQrPayload,
   getReferralsByPatient,
   hasActiveReferralForPatient,
   getReferralByHealthRecordId,

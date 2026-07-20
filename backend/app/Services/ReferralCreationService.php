@@ -50,7 +50,7 @@ class ReferralCreationService
             'barangay_health_center_id' => $route['bhc']->id,
             'rural_health_unit_id' => $route['rhu']->id,
             'tracking_id' => $trackingId = $this->referrals->makeTrackingId(),
-            'qr_code_value' => $this->referrals->makeQrValue($trackingId),
+            'qr_code_value' => $this->referrals->makeLegacyQrPlaceholder(),
             'created_by' => $user->id,
             'status' => Referral::STATUS_PENDING,
             'urgency_level' => $data['urgency_level'] ?? 'Normal',
