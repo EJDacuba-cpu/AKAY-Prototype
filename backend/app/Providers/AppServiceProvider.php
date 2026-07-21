@@ -46,5 +46,8 @@ class AppServiceProvider extends ServiceProvider
             ->by(($request->user()?->id ?: 'guest').'|'.$request->ip()));
         RateLimiter::for('referral-qr-regenerate', fn (Request $request) => Limit::perMinute(10)
             ->by(($request->user()?->id ?: 'guest').'|'.$request->ip()));
+        RateLimiter::for('health-record-drafts', fn (Request $request) => Limit::perMinute(
+            config('health_record_drafts.write_rate_limit_per_minute')
+        )->by(($request->user()?->id ?: 'guest').'|'.$request->ip()));
     }
 }

@@ -25,6 +25,7 @@ return [
         'Content-Type',
         'Authorization',
         'Idempotency-Key',
+        'X-Health-Record-Draft-ID',
         'X-Requested-With',
     ],
 

@@ -5,11 +5,14 @@ import {
   AlertCircle,
   ArrowLeft,
   Check,
+  FileClock,
   HeartPulse,
+  RotateCcw,
   Save,
   Search,
   Stethoscope,
   Syringe,
+  Trash2,
   User,
   X,
 } from "lucide-react";
@@ -26,6 +29,13 @@ import healthRecordService, {
   getHealthRecordById,
   getHealthRecordsByPatient,
 } from "../../services/healthRecordService";
+import {
+  createHealthRecordDraft,
+  discardHealthRecordDraft,
+  getHealthRecordDraft,
+  listHealthRecordDrafts,
+  updateHealthRecordDraft,
+} from "../../services/healthRecordDraftService";
 import {
   BHC_MEDICINES_UPDATED_EVENT,
   getBhcMedicines,
@@ -85,6 +95,36 @@ const RECORD_TYPE_OPTIONS = [
 ];
 const HEALTH_RECORD_CONNECTION_LOST_MESSAGE =
   "The server did not confirm this submission. Your form remains available in this tab. Keep this page open, check the patient's recent records, and retry when the connection is stable.";
+const DRAFT_SUPPORTED_RECORD_TYPES = new Set([
+  "General Consultation",
+  "Immunization",
+  "Maternal",
+  "Family Planning",
+  "Hypertension / Diabetic Monitoring",
+]);
+
+function pickDraftFields(source = {}, keys = []) {
+  return Object.fromEntries(keys.map((key) => [key, source?.[key] ?? ""]));
+}
+
+function formatDraftDateTime(value) {
+  if (!value) return "Not available";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not available";
+  return new Intl.DateTimeFormat("en-PH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function formatDraftExpiry(value) {
+  if (!value) return "Expiry unavailable";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Expiry unavailable";
+  return `Expires ${new Intl.DateTimeFormat("en-PH", {
+    dateStyle: "medium",
+  }).format(date)}`;
+}
 
 const RECORD_TYPE_DETAILS = {
   "General Consultation": {
@@ -939,6 +979,8 @@ export default function AddHealthRecord() {
     !isEditingRecord &&
     isFollowUpRouteMode &&
     Boolean(followUpTaskId || (preselectedPatientId && preselectedClassification));
+  const isDraftRouteEligible =
+    userRole === "bhc" && !isEditingRecord && !isFollowUpRouteMode;
 
   const [patients, setPatients] = useState([]);
   const [patientsLoading, setPatientsLoading] = useState(true);
@@ -1033,6 +1075,36 @@ export default function AddHealthRecord() {
   const [bhcMedicineInventoryReloadKey, setBhcMedicineInventoryReloadKey] =
     useState(0);
   const [dispensedMedicines, setDispensedMedicines] = useState([]);
+  const [healthRecordDrafts, setHealthRecordDrafts] = useState([]);
+  const [draftListLoading, setDraftListLoading] = useState(false);
+  const [draftListError, setDraftListError] = useState("");
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftResumingId, setDraftResumingId] = useState("");
+  const [draftDiscardingId, setDraftDiscardingId] = useState("");
+  const [activeDraft, setActiveDraft] = useState(null);
+  const [draftSavedAt, setDraftSavedAt] = useState("");
+  const [draftMedicineWarnings, setDraftMedicineWarnings] = useState([]);
+
+  const loadHealthRecordDrafts = useCallback(async () => {
+    if (!isDraftRouteEligible) return;
+    setDraftListLoading(true);
+    setDraftListError("");
+    try {
+      setHealthRecordDrafts(await listHealthRecordDrafts());
+    } catch (error) {
+      setDraftListError(
+        isConnectionError(error)
+          ? "Unable to load drafts. Please check your connection and try again."
+          : error?.message || "Unable to load drafts right now.",
+      );
+    } finally {
+      setDraftListLoading(false);
+    }
+  }, [isDraftRouteEligible]);
+
+  useEffect(() => {
+    void loadHealthRecordDrafts();
+  }, [loadHealthRecordDrafts]);
 
   useEffect(() => {
     function clearInMemorySubmissionState() {
@@ -1040,6 +1112,10 @@ export default function AddHealthRecord() {
       setLastFailedSubmit(null);
       setPendingReferralDraft(null);
       setConnectionIssue(null);
+      setHealthRecordDrafts([]);
+      setActiveDraft(null);
+      setDraftSavedAt("");
+      setDraftMedicineWarnings([]);
     }
 
     window.addEventListener(
@@ -1553,6 +1629,7 @@ export default function AddHealthRecord() {
     setImmunizationData(EMPTY_IMMUNIZATION_DATA);
     setFamilyPlanningData(EMPTY_FAMILY_PLANNING_DATA);
     setHypertensionDiabeticData(EMPTY_HYPERTENSION_DIABETIC_DATA);
+    setDraftMedicineWarnings([]);
   }
 
   function selectPatient(id) {
@@ -1669,6 +1746,12 @@ export default function AddHealthRecord() {
     Boolean(effectiveLinkedFollowUpTask) ||
     Boolean(hasRouteFollowUpContext);
   const isLinkedFollowUpVisit = isFollowUp || Boolean(effectiveLinkedFollowUpTask);
+  const canSaveCurrentDraft =
+    isDraftRouteEligible &&
+    setupComplete &&
+    Boolean(selectedPatientId) &&
+    DRAFT_SUPPORTED_RECORD_TYPES.has(normalizedHealthRecordType) &&
+    !isFollowUpVisitMode;
   const linkedFollowUpScheduledDate =
     effectiveLinkedFollowUpTask?.dueDate ||
     effectiveLinkedFollowUpTask?.due_date ||
@@ -1697,6 +1780,363 @@ export default function AddHealthRecord() {
       dueDate: linkedFollowUpScheduledDate,
     },
   );
+
+  function handleDispensedMedicinesChange(nextMedicines) {
+    setDispensedMedicines(nextMedicines);
+    setDraftMedicineWarnings([]);
+  }
+
+  function buildHealthRecordDraftPayload() {
+    return {
+      dateOfVisit,
+      timeOfVisit,
+      chiefComplaint,
+      summaryOfPresentIllness,
+      diagnosis,
+      medication,
+      attendingStaff,
+      consultationNotes,
+      systolicBp,
+      diastolicBp,
+      temp,
+      pulse,
+      respiratoryRate,
+      weight,
+      height,
+      followUpStatus,
+      followUpDate,
+      monitoringNotes,
+      patientCondition,
+      morbidityReportingStatus,
+      hfmdSurveillance,
+      needsReferral,
+      careDecisionStep,
+      referralDetailsStep,
+      expectedDeliveryDate,
+      aog,
+      maternalData: {
+        ...pickDraftFields(maternalData, [
+          "lmp",
+          "pmp",
+          "cycleDuration",
+          "gravida",
+          "para",
+          "term",
+          "preterm",
+          "abortion",
+          "living",
+          "bmi",
+          "treatment",
+          "previousFpMethodUsed",
+          "previousFpMethodOther",
+        ]),
+        previousPregnancyHistory: Array.isArray(
+          maternalData.previousPregnancyHistory,
+        )
+          ? maternalData.previousPregnancyHistory.map((item) =>
+              pickDraftFields(item, [
+                "pregnancyNo",
+                "placeOfDelivery",
+                "year",
+                "notes",
+              ]),
+            )
+          : [],
+        riskAssessment: pickDraftFields(maternalData.riskAssessment, [
+          "ageRisk",
+          "heightRisk",
+          "grandMultipara",
+          "previousCs",
+          "recurrentMiscarriageOrStillbirth",
+          "postpartumHemorrhage",
+          "tuberculosis",
+          "heartDisease",
+          "diabetes",
+          "bronchialAsthma",
+          "goiter",
+          "hypertensive",
+          "alcoholUser",
+          "smoker",
+        ]),
+        laboratoryResults: pickDraftFields(maternalData.laboratoryResults, [
+          "hemoglobin",
+          "cbc",
+          "hbsag",
+          "bloodType",
+          "hiv",
+          "syphilis",
+          "urinalysis",
+        ]),
+        tetanusToxoidStatus: pickDraftFields(
+          maternalData.tetanusToxoidStatus,
+          ["tt1", "tt2", "tt3", "tt4", "tt5"],
+        ),
+        ultrasound: pickDraftFields(maternalData.ultrasound, [
+          "result",
+          "dateDone",
+        ]),
+      },
+      immunizationData: {
+        ...pickDraftFields(immunizationData, [
+          "bcg_vaccine",
+          "hepb_birth",
+          "pentavalent_dose1",
+          "pentavalent_dose2",
+          "pentavalent_dose3",
+          "opv_dose1",
+          "opv_dose2",
+          "opv_dose3",
+          "ipv_dose1",
+          "ipv_dose2",
+          "pcv_dose1",
+          "pcv_dose2",
+          "pcv_dose3",
+          "mmr_dose1",
+          "mmr_dose2",
+          "feeding_status",
+        ]),
+        vaccineEntries: getVaccineEntries(immunizationData).map((entry) =>
+          pickDraftFields(entry, [
+            "vaccineName",
+            "customVaccineName",
+            "dose",
+            "dateGiven",
+            "weight",
+            "height",
+            "temperature",
+            "nextScheduleDate",
+            "siteRoute",
+            "reason",
+            "remarks",
+          ]),
+        ),
+        breastfeedingMonitoring: pickDraftFields(
+          immunizationData.breastfeedingMonitoring,
+          ["month1", "month2", "month3", "month4", "month5", "month6"],
+        ),
+      },
+      familyPlanningData: pickDraftFields(familyPlanningData, [
+        "clientType",
+        "methodUsed",
+        "previousMethod",
+        "fpVisitType",
+        "source",
+        "dateRegistered",
+        "dateOfVisit",
+        "nextAppointmentDate",
+        "remarks",
+        "actionTaken",
+        "hasClinicalConcern",
+        "concern",
+        "findings",
+        "adviceGiven",
+      ]),
+      hypertensionDiabeticData: pickDraftFields(hypertensionDiabeticData, [
+        "bp",
+        "fbs",
+        "conditionType",
+        "clientStatus",
+        "dateOfLastConsultation",
+        "treatmentActionTaken",
+      ]),
+      referralForm: pickDraftFields(referralForm, [
+        "urgencyLevel",
+        "dateOfReferral",
+        "timeOfReferral",
+        "referringPractitioner",
+        "chiefComplaint",
+        "initialDiagnosis",
+        "initialActionsTaken",
+        "reasonForReferral",
+        "clinicalSummary",
+        "preferredDoctor",
+      ]),
+      dispensedMedicines: dispensedMedicines.map((item) => ({
+        medicineId: Number(item.medicineId),
+        quantity: Number(item.quantity),
+      })),
+    };
+  }
+
+  function restoreHealthRecordDraft(draft) {
+    const payload = draft.payload || {};
+    setSelectedPatientId(draft.patient.id);
+    setHealthRecordType(normalizeRecordType(draft.classification));
+    setDateOfVisit(payload.dateOfVisit || toDateInputValue());
+    setTimeOfVisit(payload.timeOfVisit || toTimeInputValue());
+    setChiefComplaint(payload.chiefComplaint || "");
+    setSummaryOfPresentIllness(payload.summaryOfPresentIllness || "");
+    setDiagnosis(payload.diagnosis || "");
+    setMedication(payload.medication || "");
+    setAttendingStaff(payload.attendingStaff || currentUserName);
+    setConsultationNotes(payload.consultationNotes || "");
+    setSystolicBp(payload.systolicBp || "");
+    setDiastolicBp(payload.diastolicBp || "");
+    setTemp(payload.temp || "");
+    setPulse(payload.pulse || "");
+    setRespiratoryRate(payload.respiratoryRate || "");
+    setWeight(payload.weight || "");
+    setHeight(payload.height || "");
+    setFollowUpStatus(payload.followUpStatus || "Routine Monitoring");
+    setFollowUpDate(payload.followUpDate || "");
+    setMonitoringNotes(payload.monitoringNotes || "");
+    setPatientCondition(payload.patientCondition || "Improving");
+    setMorbidityReportingStatus(payload.morbidityReportingStatus || "not_included");
+    setHfmdSurveillance(Boolean(payload.hfmdSurveillance));
+    setNeedsReferral(Boolean(payload.needsReferral));
+    setCareDecisionStep(Boolean(payload.careDecisionStep));
+    setReferralDetailsStep(Boolean(payload.referralDetailsStep));
+    setExpectedDeliveryDate(payload.expectedDeliveryDate || "");
+    setAog(payload.aog || "");
+    setMaternalData(mergeMaternalData(payload.maternalData));
+    setImmunizationData({
+      ...EMPTY_IMMUNIZATION_DATA,
+      ...(payload.immunizationData || {}),
+      vaccineEntries: payload.immunizationData?.vaccineEntries || [],
+      vaccinesGiven: payload.immunizationData?.vaccineEntries || [],
+      breastfeedingMonitoring: {
+        ...EMPTY_IMMUNIZATION_DATA.breastfeedingMonitoring,
+        ...(payload.immunizationData?.breastfeedingMonitoring || {}),
+      },
+    });
+    setFamilyPlanningData({
+      ...EMPTY_FAMILY_PLANNING_DATA,
+      ...(payload.familyPlanningData || {}),
+    });
+    setHypertensionDiabeticData({
+      ...EMPTY_HYPERTENSION_DIABETIC_DATA,
+      ...(payload.hypertensionDiabeticData || {}),
+    });
+    setReferralForm((current) => ({
+      ...current,
+      ...(payload.referralForm || {}),
+    }));
+
+    const warnings = [];
+    setDispensedMedicines(
+      draft.medicineSelections.map((selection) => {
+        if (selection.warning) warnings.push(selection.warning);
+        const medicine = selection.medicine;
+        return {
+          medicineId: String(selection.medicine_id),
+          medicineName: medicine?.name || "Unavailable medicine",
+          category: medicine?.category || "Unavailable",
+          availableStock: medicine?.quantity ?? 0,
+          quantity: selection.quantity,
+          unit: medicine?.unit || "",
+          remarks: "",
+        };
+      }),
+    );
+    setDraftMedicineWarnings(Array.from(new Set(warnings)));
+    setActiveDraft({ id: draft.id, version: draft.version });
+    setDraftSavedAt(draft.lastSavedAt);
+    setSetupComplete(true);
+    setValidationErrors({});
+    setReferralValidationErrors({});
+  }
+
+  async function handleSaveDraft() {
+    if (!canSaveCurrentDraft || draftSaving) return;
+    setDraftSaving(true);
+    try {
+      const request = {
+        patientId: Number(selectedPatientId),
+        classification: normalizedHealthRecordType,
+        payload: buildHealthRecordDraftPayload(),
+      };
+      const saved = activeDraft
+        ? await updateHealthRecordDraft(activeDraft.id, {
+            ...request,
+            version: activeDraft.version,
+          })
+        : await createHealthRecordDraft(request);
+      setActiveDraft({ id: saved.id, version: saved.version });
+      setDraftSavedAt(saved.lastSavedAt);
+      setHealthRecordDrafts((current) => [
+        saved,
+        ...current.filter((item) => item.id !== saved.id),
+      ]);
+    } catch (error) {
+      if (error?.status === 409 && error?.payload?.code === "DRAFT_VERSION_CONFLICT") {
+        setNoticeModal({
+          title: "Draft Updated Elsewhere",
+          message:
+            "A newer version of this draft was saved in another tab. Reload the latest version before saving again.",
+          actions: [
+            {
+              label: "Reload Latest",
+              onClick: () => void handleResumeDraft(activeDraft?.id),
+            },
+            { label: "Keep Editing", variant: "secondary" },
+          ],
+        });
+      } else {
+        setNoticeModal({
+          title: "Draft Not Saved",
+          message: isConnectionError(error)
+            ? "Unable to reach the server. Your entries remain on this form. Please reconnect and try Save Draft again."
+            : error?.message ||
+              "Unable to save this draft. Your entries remain on this form.",
+        });
+      }
+    } finally {
+      setDraftSaving(false);
+    }
+  }
+
+  async function handleResumeDraft(draftId) {
+    if (!draftId || draftResumingId) return;
+    setDraftResumingId(draftId);
+    try {
+      restoreHealthRecordDraft(await getHealthRecordDraft(draftId));
+    } catch (error) {
+      setNoticeModal({
+        title: "Unable to Resume Draft",
+        message: isConnectionError(error)
+          ? "Unable to reach the server. Please check your connection and try again."
+          : error?.message || "This draft is no longer available.",
+      });
+      void loadHealthRecordDrafts();
+    } finally {
+      setDraftResumingId("");
+    }
+  }
+
+  function handleDiscardDraft(draft) {
+    setNoticeModal({
+      title: "Discard Draft?",
+      message: `Discard the ${draft.classification} draft for ${draft.patient.label}? This cannot be restored.`,
+      actions: [
+        {
+          label: "Discard Draft",
+          onClick: async () => {
+            setDraftDiscardingId(draft.id);
+            try {
+              await discardHealthRecordDraft(draft.id);
+              setHealthRecordDrafts((current) =>
+                current.filter((item) => item.id !== draft.id),
+              );
+              if (activeDraft?.id === draft.id) {
+                setActiveDraft(null);
+                setDraftSavedAt("");
+              }
+            } catch (error) {
+              setNoticeModal({
+                title: "Draft Not Discarded",
+                message: isConnectionError(error)
+                  ? "Unable to reach the server. Please check your connection and try again."
+                  : error?.message || "Unable to discard this draft.",
+              });
+            } finally {
+              setDraftDiscardingId("");
+            }
+          },
+        },
+        { label: "Keep Draft", variant: "secondary" },
+      ],
+    });
+  }
 
   useEffect(() => {
     let active = true;
@@ -2466,11 +2906,22 @@ export default function AddHealthRecord() {
               isFollowUp: true,
             },
             "bhc",
-            { idempotencyKey: submission?.idempotencyKey },
+            {
+              idempotencyKey: submission?.idempotencyKey,
+              draftId: activeDraft?.id,
+            },
           )
         : await healthRecordService.createHealthRecord(formData, "bhc", {
             idempotencyKey: submission?.idempotencyKey,
+            draftId: activeDraft?.id,
           });
+    if (!isEditingRecord && activeDraft?.id) {
+      setHealthRecordDrafts((current) =>
+        current.filter((item) => item.id !== activeDraft.id),
+      );
+      setActiveDraft(null);
+      setDraftSavedAt("");
+    }
     const savedId =
       savedRecord?.id ||
       savedRecord?._id ||
@@ -3347,7 +3798,64 @@ export default function AddHealthRecord() {
               </p>
             )}
           </div>
+          {canSaveCurrentDraft && (
+            <div className="flex shrink-0 flex-col items-start gap-1.5 sm:items-end">
+              <button
+                type="button"
+                onClick={handleSaveDraft}
+                disabled={draftSaving || saving}
+                aria-busy={draftSaving}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[#DDE3E9] bg-white px-4 text-sm font-semibold text-[#475569] shadow-sm transition hover:border-[#B91C1C]/30 hover:bg-[#FFF7F7] hover:text-[#B91C1C] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/15 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {draftSaving ? <ButtonSpinner /> : <FileClock size={16} />}
+                {draftSaving
+                  ? "Saving draft..."
+                  : activeDraft
+                    ? "Update Draft"
+                    : "Save Draft"}
+              </button>
+              {draftSavedAt && (
+                <span
+                  className="text-[11px] font-medium text-[#64748B]"
+                  aria-live="polite"
+                >
+                  Saved {formatDraftDateTime(draftSavedAt)}
+                </span>
+              )}
+            </div>
+          )}
         </div>
+        </div>
+      )}
+
+      {isDraftRouteEligible && !setupComplete && !isResolvingClinicalMode && (
+        <HealthRecordDraftManager
+          drafts={healthRecordDrafts}
+          loading={draftListLoading}
+          error={draftListError}
+          resumingId={draftResumingId}
+          discardingId={draftDiscardingId}
+          activeDraftId={activeDraft?.id || ""}
+          onRetry={loadHealthRecordDrafts}
+          onResume={handleResumeDraft}
+          onDiscard={handleDiscardDraft}
+        />
+      )}
+
+      {setupComplete && draftMedicineWarnings.length > 0 && (
+        <div
+          className="mb-4 ml-0 mr-auto flex w-full max-w-7xl items-start gap-3 rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-900"
+          role="status"
+        >
+          <AlertCircle size={17} className="mt-0.5 shrink-0 text-amber-600" />
+          <div>
+            <p className="font-semibold">Review resumed medicine selections</p>
+            {draftMedicineWarnings.map((warning) => (
+              <p key={warning} className="mt-1 text-xs leading-5 text-amber-800">
+                {warning}
+              </p>
+            ))}
+          </div>
         </div>
       )}
 
@@ -3687,7 +4195,7 @@ export default function AddHealthRecord() {
                     <DispensedMedicinesSection
                       inventory={bhcMedicineInventory}
                       value={dispensedMedicines}
-                      onChange={setDispensedMedicines}
+                      onChange={handleDispensedMedicinesChange}
                       disabled={isEditingRecord}
                       loading={bhcMedicineInventoryLoading}
                       error={bhcMedicineInventoryError}
@@ -3951,7 +4459,7 @@ export default function AddHealthRecord() {
       <DispensedMedicinesSection
         inventory={bhcMedicineInventory}
         value={dispensedMedicines}
-        onChange={setDispensedMedicines}
+        onChange={handleDispensedMedicinesChange}
         disabled={isEditingRecord}
         loading={bhcMedicineInventoryLoading}
         error={bhcMedicineInventoryError}
@@ -4309,7 +4817,7 @@ export default function AddHealthRecord() {
             <DispensedMedicinesSection
               inventory={bhcMedicineInventory}
               value={dispensedMedicines}
-              onChange={setDispensedMedicines}
+              onChange={handleDispensedMedicinesChange}
               disabled={isEditingRecord}
               loading={bhcMedicineInventoryLoading}
               error={bhcMedicineInventoryError}
@@ -4411,7 +4919,7 @@ export default function AddHealthRecord() {
               <DispensedMedicinesSection
                 inventory={bhcMedicineInventory}
                 value={dispensedMedicines}
-                onChange={setDispensedMedicines}
+                onChange={handleDispensedMedicinesChange}
                 disabled={isEditingRecord}
                 loading={bhcMedicineInventoryLoading}
                 error={bhcMedicineInventoryError}
@@ -4592,7 +5100,7 @@ export default function AddHealthRecord() {
               <DispensedMedicinesSection
                 inventory={bhcMedicineInventory}
                 value={dispensedMedicines}
-                onChange={setDispensedMedicines}
+                onChange={handleDispensedMedicinesChange}
                 disabled={isEditingRecord}
                 loading={bhcMedicineInventoryLoading}
                 error={bhcMedicineInventoryError}
@@ -4793,6 +5301,121 @@ export default function AddHealthRecord() {
 /* ═══════════════════════════════════════════════════════════════
    PATIENT SEARCH DROPDOWN
    ═══════════════════════════════════════════════════════════════ */
+function HealthRecordDraftManager({
+  drafts,
+  loading,
+  error,
+  resumingId,
+  discardingId,
+  activeDraftId,
+  onRetry,
+  onResume,
+  onDiscard,
+}) {
+  return (
+    <section className="anim-fade-up mb-5 ml-0 mr-auto w-full max-w-7xl overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-sm">
+      <div className="flex flex-col gap-2 border-b border-[#EEF2F6] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B91C1C]">
+            <FileClock size={18} />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-[#1E293B]">Saved Drafts</h2>
+            <p className="text-xs text-[#64748B]">
+              Resume an incomplete record saved securely to AKAY.
+            </p>
+          </div>
+        </div>
+        {!loading && !error && drafts.length > 0 && (
+          <span className="text-xs font-semibold text-[#64748B]">
+            {drafts.length} active {drafts.length === 1 ? "draft" : "drafts"}
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="px-5 py-5" role="status">
+          <InlineSpinner label="Loading saved drafts..." />
+        </div>
+      ) : error ? (
+        <div className="flex flex-col gap-3 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2 text-sm text-[#64748B]">
+            <AlertCircle size={17} className="mt-0.5 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#DDE3E9] bg-white px-3 text-xs font-semibold text-[#475569] transition hover:bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/15"
+          >
+            <RotateCcw size={14} /> Retry
+          </button>
+        </div>
+      ) : drafts.length === 0 ? (
+        <div className="px-5 py-5 text-sm text-[#64748B]">
+          No active drafts. Select a patient and classification to start a new
+          health record.
+        </div>
+      ) : (
+        <div className="divide-y divide-[#EEF2F6]">
+          {drafts.map((draft) => {
+            const resumeBusy = resumingId === draft.id;
+            const discardBusy = discardingId === draft.id;
+            return (
+              <div
+                key={draft.id}
+                className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-sm font-semibold text-[#1E293B]">
+                      {draft.patient.label}
+                    </p>
+                    <span className="rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-2 py-0.5 text-[10px] font-bold text-[#64748B]">
+                      {draft.classification}
+                    </span>
+                    {activeDraftId === draft.id && (
+                      <span className="text-[10px] font-bold uppercase text-[#B91C1C]">
+                        Current
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-[#64748B]">
+                    Saved {formatDraftDateTime(draft.lastSavedAt)}
+                    <span className="mx-1.5 text-[#CBD5E1]">&bull;</span>
+                    {formatDraftExpiry(draft.expiresAt)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onResume(draft.id)}
+                    disabled={Boolean(resumingId || discardingId)}
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-3.5 text-xs font-semibold text-white transition hover:bg-[#991B1B] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/20 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {resumeBusy ? <ButtonSpinner /> : <RotateCcw size={14} />}
+                    {resumeBusy ? "Opening..." : "Resume"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDiscard(draft)}
+                    disabled={Boolean(resumingId || discardingId)}
+                    aria-label={`Discard draft for ${draft.patient.label}`}
+                    title="Discard draft"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#DDE3E9] text-[#64748B] transition hover:border-red-200 hover:bg-red-50 hover:text-[#B91C1C] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/15 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {discardBusy ? <ButtonSpinner /> : <Trash2 size={15} />}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function HealthRecordSetupStep({
   selectedPatientId,
   selectedPatient,

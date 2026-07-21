@@ -4,8 +4,8 @@ namespace Tests\Feature;
 
 use App\Support\SecurityConfiguration;
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Route;
 use InvalidArgumentException;
 use RuntimeException;
 use Tests\TestCase;
@@ -31,6 +31,7 @@ class ProductionSecurityHeadersTest extends TestCase
                 'Content-Type',
                 'Authorization',
                 'Idempotency-Key',
+                'X-Health-Record-Draft-ID',
                 'X-Requested-With',
             ],
             'cors.supports_credentials' => false,
@@ -112,7 +113,7 @@ class ProductionSecurityHeadersTest extends TestCase
         $response = $this->call('OPTIONS', '/api/auth/login', [], [], [], [
             'HTTP_ORIGIN' => self::TRUSTED_ORIGIN,
             'HTTP_ACCESS_CONTROL_REQUEST_METHOD' => 'POST',
-            'HTTP_ACCESS_CONTROL_REQUEST_HEADERS' => 'Authorization, Idempotency-Key',
+            'HTTP_ACCESS_CONTROL_REQUEST_HEADERS' => 'Authorization, Idempotency-Key, X-Health-Record-Draft-ID',
         ]);
 
         $response->assertNoContent();
@@ -123,6 +124,10 @@ class ProductionSecurityHeadersTest extends TestCase
         );
         $this->assertStringContainsString(
             'idempotency-key',
+            strtolower((string) $response->headers->get('Access-Control-Allow-Headers'))
+        );
+        $this->assertStringContainsString(
+            'x-health-record-draft-id',
             strtolower((string) $response->headers->get('Access-Control-Allow-Headers'))
         );
         $allowedMethods = (string) $response->headers->get('Access-Control-Allow-Methods');

@@ -15,6 +15,11 @@ return [
             1,
             (int) env('AKAY_TOKEN_PRUNE_OVERLAP_MINUTES', 120)
         ),
+        'draft_prune_time' => env('AKAY_DRAFT_PRUNE_TIME', '02:45'),
+        'draft_prune_overlap_minutes' => max(
+            1,
+            (int) env('AKAY_DRAFT_PRUNE_OVERLAP_MINUTES', 120)
+        ),
     ],
 
     'health' => [

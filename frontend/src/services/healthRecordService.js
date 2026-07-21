@@ -1134,10 +1134,12 @@ export async function getHealthRecordsByPatient(patient) {
 export async function createHealthRecord(recordData, role = "bhc", options = {}) {
   void role;
   const idempotencyKey = options.idempotencyKey || createIdempotencyKey();
+  const draftId = String(options.draftId || "").trim();
   const response = await apiRequest("/health-records", {
     method: "POST",
     headers: {
       "Idempotency-Key": idempotencyKey,
+      ...(draftId ? { "X-Health-Record-Draft-ID": draftId } : {}),
     },
     body: toPayload(recordData, { partial: true }),
   });

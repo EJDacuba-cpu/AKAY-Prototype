@@ -12,6 +12,7 @@ class HealthRecordRequest extends FormRequest
         if ($this->isMethod('post')) {
             $this->merge([
                 'idempotency_key' => $this->header('Idempotency-Key'),
+                'draft_public_id' => $this->header('X-Health-Record-Draft-ID'),
             ]);
         }
     }
@@ -26,6 +27,9 @@ class HealthRecordRequest extends FormRequest
         return [
             'idempotency_key' => $this->isMethod('post')
                 ? ['bail', 'required', 'uuid', 'max:64']
+                : ['prohibited'],
+            'draft_public_id' => $this->isMethod('post')
+                ? ['nullable', 'uuid']
                 : ['prohibited'],
             'patient_id' => [$this->isMethod('post') ? 'required' : 'sometimes', 'exists:patients,id'],
             'date_recorded' => ['nullable', 'date'],

@@ -140,7 +140,11 @@ scanner, and notification audio. No external CDN origin is currently required.
 9. Build once with a missing API URL and once with an absolute HTTP production URL;
    both must fail. Build with `/api` for an HTTPS same-origin deployment or an
    absolute HTTPS API URL; it must pass.
-10. Configure the production web server/CDN to send the documented frontend
+10. Verify the reverse proxy forwards `Authorization`, `Idempotency-Key`, and
+    `X-Health-Record-Draft-ID` unchanged. Confirm an approved-origin OPTIONS
+    request allows the three headers and that proxy access logs do not record
+    authorization values or clinical request bodies.
+11. Configure the production web server/CDN to send the documented frontend
     headers. Vite preview validates the policy but is not a production web server.
 
 Actual deployment still requires final domains, TLS certificates, exact proxy

@@ -2,21 +2,24 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\DraftFinalizationConflictException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\HealthRecordRequest;
-use App\Models\HealthRecord;
 use App\Models\FollowUpTask;
+use App\Models\HealthRecord;
+use App\Models\HealthRecordDraft;
 use App\Models\Patient;
 use App\Services\AkayCacheService;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
 use App\Services\FollowUpTaskSyncService;
+use App\Services\HealthRecordDraftService;
 use App\Services\HealthRecordIdempotencyService;
 use App\Services\MedicineStockService;
 use App\Services\ReferralCreationService;
 use App\Support\StoredFunction;
-use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -26,8 +29,7 @@ class HealthRecordController extends Controller
         private readonly FacilityAccessService $facilityAccess,
         private readonly MedicineStockService $medicineStock,
         private readonly AkayCacheService $cache
-    ) {
-    }
+    ) {}
 
     public function index(Request $request)
     {
@@ -70,12 +72,14 @@ class HealthRecordController extends Controller
         AuditLogger $auditLogger,
         FollowUpTaskSyncService $followUpTasks,
         HealthRecordIdempotencyService $idempotency,
-        ReferralCreationService $referralCreation
-    )
-    {
+        ReferralCreationService $referralCreation,
+        HealthRecordDraftService $drafts
+    ) {
         $data = $request->validated();
         $patient = Patient::findOrFail($data['patient_id']);
         $this->facilityAccess->authorizePatientModification($request->user(), $patient);
+        $draftPublicId = $data['draft_public_id'] ?? null;
+        unset($data['draft_public_id']);
         $idempotencyKey = $data['idempotency_key'];
         $idempotencyHash = $idempotency->hash($data);
         $legacyIdempotencyHash = $idempotency->legacyHash($data);
@@ -84,12 +88,14 @@ class HealthRecordController extends Controller
             ->where('created_by', $request->user()->id)
             ->where('idempotency_key', $idempotencyKey)
             ->first()) {
-            return $this->replayResponse(
+            $response = $this->replayResponse(
                 $request,
                 $existing,
                 $idempotencyHash,
                 $legacyIdempotencyHash
             );
+
+            return $response;
         }
 
         unset($data['idempotency_key']);
@@ -136,8 +142,18 @@ class HealthRecordController extends Controller
                 $followUpTasks,
                 $referralCreation,
                 $auditLogger,
-                $idempotencyKey
+                $idempotencyKey,
+                $drafts,
+                $draftPublicId
             ) {
+                $lockedDraft = $draftPublicId
+                    ? $drafts->lockForOfficialSave(
+                        $request->user(),
+                        $draftPublicId,
+                        (int) $patient->id,
+                        $data['category'] ?? null
+                    )
+                    : null;
                 $lockedFollowUpTask = $followUpTasks->lockTaskForProcessing(
                     $data,
                     $patient,
@@ -163,9 +179,37 @@ class HealthRecordController extends Controller
                 }
 
                 $auditLogger->log($request, 'created', 'health_records', "Created health record {$record->id}.");
+                if ($lockedDraft !== null) {
+                    $drafts->consumeLocked(
+                        $request->user(),
+                        $lockedDraft,
+                        (int) $record->id
+                    );
+                    $this->auditDraftConsumed(
+                        $request,
+                        $auditLogger,
+                        $lockedDraft
+                    );
+                }
 
                 return $record;
             });
+        } catch (DraftFinalizationConflictException $exception) {
+            $record = HealthRecord::query()
+                ->where('created_by', $request->user()->id)
+                ->where('idempotency_key', $idempotencyKey)
+                ->first();
+
+            if ($record !== null) {
+                return $this->replayResponse(
+                    $request,
+                    $record,
+                    $idempotencyHash,
+                    $legacyIdempotencyHash
+                );
+            }
+
+            throw $exception;
         } catch (QueryException $exception) {
             if (! $this->isIdempotencyConflict($exception)) {
                 throw $exception;
@@ -179,12 +223,14 @@ class HealthRecordController extends Controller
                 );
             }
 
-            return $this->replayResponse(
+            $response = $this->replayResponse(
                 $request,
                 $record,
                 $idempotencyHash,
                 $legacyIdempotencyHash
             );
+
+            return $response;
         }
 
         if ($dispensedMedicines !== []) {
@@ -218,6 +264,7 @@ class HealthRecordController extends Controller
             abort_unless($data, 404);
 
             $data['dispensed_medicines'] = $healthRecord->dispensedMedicines()->latest()->get();
+
             return response()->json(['data' => $data]);
         }
 
@@ -234,8 +281,7 @@ class HealthRecordController extends Controller
         HealthRecord $healthRecord,
         AuditLogger $auditLogger,
         FollowUpTaskSyncService $followUpTasks
-    )
-    {
+    ) {
         $this->facilityAccess->authorizeHealthRecord($request->user(), $healthRecord);
         $data = $request->validated();
 
@@ -323,9 +369,8 @@ class HealthRecordController extends Controller
         array &$data,
         bool $defaultInitial = false,
         ?HealthRecord $record = null
-    ): void
-    {
-        if (!$defaultInitial && !array_key_exists('visit_type', $data) && !array_key_exists('parent_health_record_id', $data)) {
+    ): void {
+        if (! $defaultInitial && ! array_key_exists('visit_type', $data) && ! array_key_exists('parent_health_record_id', $data)) {
             return;
         }
 
@@ -393,6 +438,7 @@ class HealthRecordController extends Controller
             if (array_key_exists('category', $data) || $record === null) {
                 $data['family_planning_data'] = null;
             }
+
             return;
         }
 
@@ -402,6 +448,7 @@ class HealthRecordController extends Controller
 
         if (! is_array($data['family_planning_data'])) {
             $data['family_planning_data'] = [];
+
             return;
         }
 
@@ -519,4 +566,22 @@ class HealthRecordController extends Controller
             && str_contains($message, 'idempotency_key');
     }
 
+    private function auditDraftConsumed(
+        Request $request,
+        AuditLogger $auditLogger,
+        HealthRecordDraft $draft
+    ): void {
+        $auditLogger->log(
+            $request,
+            'draft_consumed',
+            'health_record_drafts',
+            implode('; ', [
+                "draft_public_id={$draft->public_id}",
+                "owner_user_id={$draft->owner_user_id}",
+                "bhc_id={$draft->barangay_health_center_id}",
+                "classification={$draft->classification}",
+                "version={$draft->version}",
+            ]).'.'
+        );
+    }
 }

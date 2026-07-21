@@ -5,13 +5,14 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BarangayHealthCenterController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\FollowUpTaskController;
-use App\Http\Controllers\Api\HealthRecordController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\HealthRecordController;
+use App\Http\Controllers\Api\HealthRecordDraftController;
 use App\Http\Controllers\Api\IncomingReferralController;
 use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\NotificationController;
-use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\PasswordResetRequestController;
+use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\ReferralController;
 use App\Http\Controllers\Api\ReferralQrController;
 use App\Http\Controllers\Api\ReportController;
@@ -72,6 +73,13 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'active'])->group(funct
         });
 
         Route::middleware('role:bhw')->group(function () {
+            Route::get('/health-record-drafts', [HealthRecordDraftController::class, 'index']);
+            Route::get('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'show']);
+            Route::delete('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'destroy']);
+            Route::post('/health-record-drafts', [HealthRecordDraftController::class, 'store'])
+                ->middleware('throttle:health-record-drafts');
+            Route::put('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'update'])
+                ->middleware('throttle:health-record-drafts');
             Route::get('/referral-routing', [ReferralController::class, 'destination']);
             Route::get('/follow-up-tasks', [FollowUpTaskController::class, 'index']);
             Route::patch('/follow-up-tasks/{followUpTask}/no-show', [FollowUpTaskController::class, 'markNoShow']);

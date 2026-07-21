@@ -30,6 +30,7 @@ class DeploymentReadinessService
             $this->check('Database configuration', fn () => $this->databaseConfigured()),
             $this->check('Database connectivity', fn () => $this->databaseReachable()),
             $this->check('CORS origins', fn () => $this->validCorsOrigins($production)),
+            $this->check('CORS request headers', fn () => $this->validCorsHeaders()),
             $this->check('Frontend URL', fn () => $this->validFrontendUrl($production)),
             $this->check('Token expiration', fn () => $this->validTokenExpiration()),
             $this->check('Security headers policy', fn () => ! $production
@@ -130,6 +131,17 @@ class DeploymentReadinessService
             && (! $production || str_starts_with($frontendUrl, 'https://'));
     }
 
+    private function validCorsHeaders(): bool
+    {
+        $headers = collect(config('cors.allowed_headers', []))
+            ->map(fn (mixed $header): string => strtolower(trim((string) $header)));
+
+        return ! $headers->contains('*')
+            && $headers->contains('authorization')
+            && $headers->contains('idempotency-key')
+            && $headers->contains('x-health-record-draft-id');
+    }
+
     private function validTokenExpiration(): bool
     {
         $expiration = (int) config('sanctum.expiration');
@@ -191,6 +203,8 @@ class DeploymentReadinessService
             fn (string $command) => str_contains($command, 'referrals:mark-no-show')
         ) && collect($commands)->contains(
             fn (string $command) => str_contains($command, 'sanctum:prune-expired')
+        ) && collect($commands)->contains(
+            fn (string $command) => str_contains($command, 'health-record-drafts:prune')
         );
     }
 

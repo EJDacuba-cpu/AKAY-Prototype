@@ -6,13 +6,11 @@ use Illuminate\Support\Arr;
 
 class HealthRecordIdempotencyService
 {
-    public function __construct(private readonly MedicineStockService $medicineStock)
-    {
-    }
+    public function __construct(private readonly MedicineStockService $medicineStock) {}
 
     public function hash(array $payload): string
     {
-        $officialPayload = Arr::except($payload, ['idempotency_key']);
+        $officialPayload = Arr::except($payload, ['idempotency_key', 'draft_public_id']);
         if (is_array($officialPayload['dispensed_medicines'] ?? null)) {
             $officialPayload['dispensed_medicines'] = $this->medicineStock->normalize(
                 $officialPayload['dispensed_medicines']
@@ -24,7 +22,10 @@ class HealthRecordIdempotencyService
 
     public function legacyHash(array $payload): string
     {
-        return $this->hashNormalized(Arr::except($payload, ['idempotency_key']));
+        return $this->hashNormalized(Arr::except($payload, [
+            'idempotency_key',
+            'draft_public_id',
+        ]));
     }
 
     private function hashNormalized(array $payload): string

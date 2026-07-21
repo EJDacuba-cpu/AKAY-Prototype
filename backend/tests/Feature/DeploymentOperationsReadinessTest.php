@@ -45,6 +45,25 @@ class DeploymentOperationsReadinessTest extends TestCase
         $this->assertSame(480, config('sanctum.expiration'));
     }
 
+    public function test_scheduler_registers_daily_health_record_draft_pruning_without_overlap(): void
+    {
+        $event = $this->scheduledEvent('health-record-drafts:prune');
+
+        $this->assertSame('45 2 * * *', $event->expression);
+        $this->assertSame(config('app.timezone'), $event->timezone);
+        $this->assertTrue($event->withoutOverlapping);
+        $this->assertSame(
+            config('operations.scheduler.draft_prune_overlap_minutes'),
+            $event->expiresAt
+        );
+        $this->assertFalse($event->onOneServer);
+        $this->assertTrue(
+            Artisan::all()['health-record-drafts:prune']
+                ->getDefinition()
+                ->hasOption('dry-run')
+        );
+    }
+
     public function test_liveness_is_safe_rate_limited_and_not_cached(): void
     {
         $response = $this->getJson('/up');
@@ -117,6 +136,8 @@ class DeploymentOperationsReadinessTest extends TestCase
             ['app.key', ''],
             ['app.url', 'http://api.example.test'],
             ['cors.allowed_origins', ['*']],
+            ['cors.allowed_headers', ['*']],
+            ['cors.allowed_headers', ['Authorization', 'Idempotency-Key']],
             ['security.trusted_hosts', ['.*']],
             ['security.trusted_proxies', ['*']],
             ['security.csp.mode', 'report-only'],
@@ -179,6 +200,14 @@ class DeploymentOperationsReadinessTest extends TestCase
             'database.connections.sqlite.database' => ':memory:',
             'cache.default' => 'array',
             'cors.allowed_origins' => ['https://akay.example.test'],
+            'cors.allowed_headers' => [
+                'Accept',
+                'Content-Type',
+                'Authorization',
+                'Idempotency-Key',
+                'X-Health-Record-Draft-ID',
+                'X-Requested-With',
+            ],
             'security.frontend_url' => 'https://akay.example.test',
             'security.headers_enabled' => true,
             'security.csp.mode' => 'enforce',

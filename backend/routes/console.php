@@ -1,10 +1,12 @@
 <?php
 
+use App\Services\DeploymentReadinessService;
+use App\Services\HealthRecordDraftPruner;
+use App\Services\ReferralNoShowService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
-use App\Services\ReferralNoShowService;
-use App\Services\DeploymentReadinessService;
+use Symfony\Component\Console\Command\Command;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -31,9 +33,14 @@ Artisan::command('akay:deployment-check {--production : Enforce production deplo
     }
 
     return collect($checks)->every('passed')
-        ? \Symfony\Component\Console\Command\Command::SUCCESS
-        : \Symfony\Component\Console\Command\Command::FAILURE;
+        ? Command::SUCCESS
+        : Command::FAILURE;
 })->purpose('Validate AKAY deployment configuration without printing secrets');
+
+Artisan::command('health-record-drafts:prune {--dry-run : Count eligible drafts without changing them}', function (HealthRecordDraftPruner $pruner) {
+    $result = $pruner->prune((bool) $this->option('dry-run'));
+    $this->info("Expired: {$result['expired']}; pruned: {$result['pruned']}.");
+})->purpose('Expire and prune health-record drafts without exposing clinical payloads');
 
 Schedule::command('referrals:mark-no-show')
     ->hourly()
@@ -46,3 +53,8 @@ Schedule::command('sanctum:prune-expired', [
     ->dailyAt(config('operations.scheduler.token_prune_time'))
     ->timezone(config('app.timezone'))
     ->withoutOverlapping(config('operations.scheduler.token_prune_overlap_minutes'));
+
+Schedule::command('health-record-drafts:prune')
+    ->dailyAt(config('operations.scheduler.draft_prune_time'))
+    ->timezone(config('app.timezone'))
+    ->withoutOverlapping(config('operations.scheduler.draft_prune_overlap_minutes'));
