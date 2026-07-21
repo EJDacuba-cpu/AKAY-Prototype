@@ -167,8 +167,8 @@ class MedicineInventoryStoredProcedureTest extends TestCase
             'current_database_user',
             'function_owner',
             'runtime_role_can_execute',
-            'public_can_execute',
-            "r.rolname IN ('anon', 'authenticated')",
+            'public_execute_is_revoked',
+            "VALUES ('anon'), ('authenticated')",
             'has_table_privilege',
             'has_sequence_privilege',
             'runtime_role_placeholder',
@@ -179,6 +179,56 @@ class MedicineInventoryStoredProcedureTest extends TestCase
         foreach (['DB_PASSWORD', 'DATABASE_URL=', 'postgres://', 'postgresql://'] as $secretPattern) {
             $this->assertStringNotContainsString($secretPattern, $combined);
         }
+    }
+
+    public function test_preflight_is_safe_before_and_after_phase_4a_migrations(): void
+    {
+        $preflight = file_get_contents(base_path('../docs/medicine-inventory-preflight.sql'));
+        $postMigrationStart = strpos($preflight, '-- POST-MIGRATION VERIFICATION');
+
+        $this->assertStringContainsString('-- PRE-MIGRATION CHECKS', $preflight);
+        $this->assertNotFalse($postMigrationStart);
+
+        $preMigration = substr($preflight, 0, $postMigrationStart);
+        $postMigration = substr($preflight, $postMigrationStart);
+
+        foreach ([
+            'public.medicines',
+            'public.health_record_medicines',
+            'blocker_negative_medicine_quantities',
+            'blocker_medicines_with_both_bhc_and_rhu',
+            'blocker_medicines_with_neither_facility',
+            'blocker_orphaned_health_record_medicine_references',
+            'informational_expired_positive_stock',
+        ] as $expected) {
+            $this->assertStringContainsString($expected, $preMigration);
+        }
+
+        $this->assertStringNotContainsString('public.health_records', $preMigration);
+        $this->assertStringNotContainsString('medicine_inventory_transactions', $preMigration);
+
+        foreach ([
+            "to_regclass('public.medicine_inventory_transactions')",
+            'to_regprocedure(function_signature)',
+            'SKIPPED: Phase 4A migrations pending',
+            'DO $ledger_data_checks$',
+            'null operation keys',
+            'duplicate (operation_key, medicine_id) pairs',
+            'UNIQUE (operation_key, medicine_id)',
+            'append-only trigger',
+            'SECURITY INVOKER',
+            'runtime_role_can_execute',
+            'public_execute_is_revoked',
+            "VALUES ('anon'), ('authenticated')",
+        ] as $expected) {
+            $this->assertStringContainsString($expected, $postMigration);
+        }
+
+        $this->assertStringNotContainsString("\nFROM public.medicine_inventory_transactions", $postMigration);
+        $this->assertStringNotContainsString('CREATE TEMP', strtoupper($preflight));
+        $this->assertStringNotContainsString('INSERT INTO', strtoupper($preflight));
+        $this->assertStringNotContainsString('UPDATE public.', $preflight);
+        $this->assertStringNotContainsString('DELETE FROM', strtoupper($preflight));
     }
 
     private function functionSection(string $function): string
