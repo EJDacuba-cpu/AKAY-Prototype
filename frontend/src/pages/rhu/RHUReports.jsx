@@ -286,7 +286,7 @@ export default function RHUReports() {
             tone="amber"
           />
           <StatCard
-            title="Done"
+            title="Completed"
             value={stats.completed}
             icon={<SearchCheck size={16} />}
             tone="emerald"
@@ -637,7 +637,7 @@ function BarangayReferralTable({ barangayReports }) {
             <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
               <th className="px-5 py-3">Barangay / Source</th>
               <th className="px-4 py-3">Referrals</th>
-              <th className="px-4 py-3">Done</th>
+              <th className="px-4 py-3">Completed</th>
               <th className="px-4 py-3">Monitoring</th>
               <th className="px-4 py-3">Referral Count</th>
             </tr>

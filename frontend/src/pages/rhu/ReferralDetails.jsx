@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity,
   AlertTriangle,
   ArrowLeft,
   ClipboardList,
@@ -12,17 +11,21 @@ import {
   Stethoscope,
   User,
   UserCheck,
+  X,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { RefreshingIndicator, SoftLoadingArea } from "../../components/common";
+import {
+  ConfirmationModal,
+  RefreshingIndicator,
+  SoftLoadingArea,
+} from "../../components/common";
 import {
   getReferralByRouteParam,
+  isReferralWorkflowConflict,
+  refreshReferralWorkflowData,
   updateReferralByTrackingId,
 } from "../../services/referrals";
-import {
-  linkReferralPatientToRhu,
-} from "../../services/patientService";
 import {
   formatDisplayValue,
   formatFacilityName,
@@ -40,13 +43,7 @@ const keyframes = `
   .anim-fade-up { animation: fadeUp 0.45s cubic-bezier(0.22,1,0.36,1) both; }
 `;
 
-const OFFICIAL_REFERRAL_STATUSES = [
-  "Pending",
-  "Received",
-  "For Monitoring",
-  "Completed",
-  "No-Show",
-];
+const OFFICIAL_REFERRAL_STATUSES = ["Pending", "Received", "Completed", "No-Show"];
 
 const stagger = (index) => ({ animationDelay: `${index * 55}ms` });
 
@@ -55,6 +52,9 @@ export default function RHUReferralDetails() {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [conflict, setConflict] = useState(null);
+  const [lateArrivalOpen, setLateArrivalOpen] = useState(false);
+  const [lateArrivalNote, setLateArrivalNote] = useState("");
 
   const {
     data: details,
@@ -88,40 +88,46 @@ export default function RHUReferralDetails() {
     setMessage("");
 
     try {
-      let patientId = referral.patientId;
-
-      if (nextStatus === "Received") {
-        const linkedPatient = await linkReferralPatientToRhu(referral);
-        patientId = linkedPatient?.id || linkedPatient?.patientId || patientId;
-      }
-
       const updated = await updateReferralByTrackingId(referral.trackingId, {
         status: nextStatus,
-        patientId,
         ...extra,
       });
 
       if (updated) {
         setMessage(getStatusMessage(nextStatus, extra));
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.referralDetails("rhu", trackingId),
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.referrals("bhc"),
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.incomingReferrals("rhu"),
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.patients("rhu"),
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.dashboardSummary("rhu"),
-        });
+        await refreshReferralWorkflowData(queryClient, trackingId);
       }
+      return Boolean(updated);
+    } catch (error) {
+      if (isReferralWorkflowConflict(error)) {
+        setConflict(error.payload || {});
+        await refreshReferralWorkflowData(queryClient, trackingId);
+        return false;
+      }
+      setMessage(error.message || "Unable to update this referral.");
+      return false;
     } finally {
       setBusy(false);
     }
+  }
+
+  async function confirmLateArrival() {
+    const note = lateArrivalNote.trim();
+    if (!note) return;
+
+    const updated = await applyStatus("Received", {
+      lateArrival: true,
+      remarks: note,
+    });
+    if (updated) {
+      setLateArrivalOpen(false);
+      setLateArrivalNote("");
+    }
+  }
+
+  async function loadLatestStatus() {
+    setConflict(null);
+    await refreshReferralWorkflowData(queryClient, trackingId);
   }
 
   if (loading) {
@@ -179,6 +185,7 @@ export default function RHUReferralDetails() {
         patient={patient}
         busy={busy}
         onStatusChange={applyStatus}
+        onLateArrival={() => setLateArrivalOpen(true)}
         isUpdating={detailsUpdating}
       />
 
@@ -207,6 +214,23 @@ export default function RHUReferralDetails() {
         <ReferralRecord referral={referral} patient={patient} />
       </main>
       </div>
+      <LateArrivalModal
+        open={lateArrivalOpen}
+        note={lateArrivalNote}
+        onNoteChange={setLateArrivalNote}
+        onCancel={() => !busy && setLateArrivalOpen(false)}
+        onConfirm={confirmLateArrival}
+        loading={busy}
+      />
+      <ConfirmationModal
+        open={Boolean(conflict)}
+        title="Referral Status Changed"
+        description="This referral was updated by another user or can no longer perform this action. The latest status will now be loaded."
+        confirmText="Refresh"
+        cancelText="View Latest Status"
+        onConfirm={loadLatestStatus}
+        onCancel={loadLatestStatus}
+      />
     </DashboardLayout>
   );
 }
@@ -216,6 +240,7 @@ function ReferralHeader({
   patient,
   busy,
   onStatusChange,
+  onLateArrival,
   isUpdating = false,
 }) {
   const referralDate = getReferralDate(referral);
@@ -252,6 +277,7 @@ function ReferralHeader({
           referral={referral}
           busy={busy}
           onStatusChange={onStatusChange}
+          onLateArrival={onLateArrival}
         />
       </div>
 
@@ -419,7 +445,7 @@ function ReferralRecord({ referral, patient }) {
   );
 }
 
-function ReferralActions({ referral, busy, onStatusChange }) {
+function ReferralActions({ referral, busy, onStatusChange, onLateArrival }) {
   const status = getOfficialStatus(referral.status);
   const button =
     "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60";
@@ -446,13 +472,7 @@ function ReferralActions({ referral, busy, onStatusChange }) {
         <button
           type="button"
           disabled={busy}
-          onClick={() =>
-            onStatusChange("Received", {
-              lateArrival: true,
-              previousStatus: "No-Show",
-              receivedAt: new Date().toISOString(),
-            })
-          }
+          onClick={onLateArrival}
           className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
         >
           <UserCheck size={14} />
@@ -461,37 +481,12 @@ function ReferralActions({ referral, busy, onStatusChange }) {
       )}
 
       {status === "Received" && (
-        <>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() =>
-              onStatusChange("For Monitoring", {
-                monitoringStartedAt: new Date().toISOString(),
-              })
-            }
-            className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
-          >
-            <Activity size={14} />
-            Start Monitoring
-          </button>
-          <Link
-            to={`/rhu/feedback/${referral.trackingId}`}
-            className={`${button} border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100`}
-          >
-            <FileText size={14} />
-            Submit Return Slip
-          </Link>
-        </>
-      )}
-
-      {status === "For Monitoring" && (
         <Link
           to={`/rhu/feedback/${referral.trackingId}`}
-          className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
+          className={`${button} border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100`}
         >
           <FileText size={14} />
-          End Monitoring / Submit Return Slip
+          Record RHU Feedback
         </Link>
       )}
 
@@ -593,8 +588,7 @@ function StatusBadge({ status }) {
   const map = {
     Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
     Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
-    "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    Done: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
     "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
   };
 
@@ -641,13 +635,11 @@ function getOfficialStatus(status) {
   if (OFFICIAL_REFERRAL_STATUSES.includes(raw)) return raw;
 
   const lower = raw.toLowerCase();
-  if (lower.includes("assessment") || lower.includes("monitoring")) {
-    return "For Monitoring";
-  }
+  if (lower.includes("assessment") || lower.includes("monitoring")) return "Received";
   if (lower.includes("received")) return "Received";
   if (lower.includes("completed") || lower === "complete") return "Completed";
   if (lower.includes("show")) return "No-Show";
-  return "Pending";
+  return raw;
 }
 
 function getStatusMessage(status, extra = {}) {
@@ -656,10 +648,63 @@ function getStatusMessage(status, extra = {}) {
   }
   if (status === "Received") return "Patient has been received by RHU.";
   if (status === "No-Show") return "Referral has been marked as No-Show.";
-  if (status === "For Monitoring") {
-    return "Referral status updated to For Monitoring.";
-  }
   return `Referral status updated to ${status}.`;
+}
+
+function LateArrivalModal({
+  open,
+  note,
+  onNoteChange,
+  onCancel,
+  onConfirm,
+  loading,
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/30 p-4 backdrop-blur-[2px]">
+      <div className="relative w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-900/10">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={loading}
+          aria-label="Close late-arrival confirmation"
+          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-600 disabled:opacity-50"
+        >
+          <X size={16} />
+        </button>
+        <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-amber-100 bg-amber-50 text-amber-600">
+          <AlertTriangle size={20} />
+        </div>
+        <h2 className="mt-4 text-base font-bold text-slate-900">Mark Patient as Arrived?</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          This referral was previously marked No-Show. Continue only if the patient has now arrived at the RHU.
+        </p>
+        <label className="mt-5 block text-xs font-semibold text-slate-700" htmlFor="late-arrival-note">
+          Late-arrival note <span className="text-[#B91C1C]">*</span>
+        </label>
+        <textarea
+          id="late-arrival-note"
+          value={note}
+          onChange={(event) => onNoteChange(event.target.value)}
+          rows={3}
+          maxLength={1000}
+          autoFocus
+          disabled={loading}
+          className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 disabled:bg-slate-50"
+          placeholder="Briefly note the patient's late arrival."
+        />
+        <div className="mt-6 flex justify-end gap-2.5">
+          <button type="button" onClick={onCancel} disabled={loading} className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm} disabled={loading || !note.trim()} className="h-10 rounded-lg bg-[#B91C1C] px-4 text-sm font-semibold text-white hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-50">
+            {loading ? "Saving..." : "Mark as Arrived"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function isRhuFacility(value = "") {

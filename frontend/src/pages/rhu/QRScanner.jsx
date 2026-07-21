@@ -27,17 +27,15 @@ import {
   getReferralById,
   resolveReferralQrToken,
   resolveReferralTrackingId,
+  refreshReferralWorkflowData,
   updateReferralByTrackingId,
 } from "../../services/referrals";
-import { linkReferralPatientToRhu } from "../../services/patientService";
-import { createFacilityNotification } from "../../services/notificationService";
 import {
   formatDisplayValue,
   formatFacilityName,
   formatPatientName,
   formatReferralStatus,
 } from "../../utils/formatters";
-import { getCurrentUser } from "../../utils/auth";
 import { queryKeys } from "../../utils/queryKeys";
 
 const keyframes = `
@@ -78,7 +76,7 @@ const SCANNER_TABS = [
 ];
 
 const SCAN_COOLDOWN_MS = 3500;
-const CHECKED_IN_STATUSES = ["Received", "For Monitoring", "Completed"];
+const CHECKED_IN_STATUSES = ["Received", "Completed"];
 const QR_READER_ELEMENT_ID = "rhu-qr-reader";
 
 const stagger = (index) => ({ animationDelay: `${index * 80}ms` });
@@ -86,7 +84,6 @@ const stagger = (index) => ({ animationDelay: `${index * 80}ms` });
 export default function QRScanner() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const currentUser = getCurrentUser();
 
   const scannerRef = useRef(null);
   const scanLockedRef = useRef(false);
@@ -312,15 +309,8 @@ export default function QRScanner() {
     setResult({ type: "loading", message: "Checking in patient..." });
 
     try {
-      const linkedPatient = await linkReferralPatientToRhu(selectedReferral);
-      const patientId =
-        linkedPatient?.id ||
-        linkedPatient?.patientId ||
-        selectedReferral.patientId ||
-        selectedReferral.patient_id;
       const updated = await updateReferralByTrackingId(selectedReferral.trackingId, {
         status: "Received",
-        patientId,
         remarks: "Patient checked in at RHU via QR scanner.",
       });
 
@@ -330,28 +320,12 @@ export default function QRScanner() {
         message: "Patient checked in successfully.",
       });
 
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.incomingReferrals("rhu"),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.referralDetails("rhu", selectedReferral.trackingId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.patients("rhu"),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.dashboardSummary("rhu"),
-      });
-
-      createFacilityNotification("rhu", currentUser?.ruralHealthUnitId, {
-        title: "Patient checked in",
-        message: `${getReferralPatientName(updated)} is ready for referral processing.`,
-        type: "referral",
-        referenceId: `${updated.trackingId}-rhu-check-in`,
-        link: `/rhu/referrals/${updated.trackingId}`,
-        sender: "RHU QR Scanner",
-      });
+      await refreshReferralWorkflowData(queryClient, selectedReferral.trackingId);
     } catch (error) {
+      if (error.status === 409 && selectedReferral.id) {
+        const latest = await getReferralById(selectedReferral.id).catch(() => null);
+        if (latest) setSelectedReferral(latest);
+      }
       setResult({
         type: "error",
         message: getVerificationErrorMessage(error),
@@ -907,13 +881,7 @@ function StatusBadge({ status }) {
       dot: "#3B82F6",
       border: "#BFDBFE",
     },
-    "For Monitoring": {
-      bg: "#FFFBEB",
-      text: "#B45309",
-      dot: "#F59E0B",
-      border: "#FDE68A",
-    },
-    Done: {
+    Completed: {
       bg: "#ECFDF5",
       text: "#047857",
       dot: "#10B981",
@@ -970,7 +938,9 @@ function getVerificationErrorMessage(error = {}, source = "manual") {
   if (error.status === 403 || error.status === 404) {
     return "This referral is unavailable or not assigned to your facility.";
   }
-  if (error.status === 409) return "This referral has already been checked in.";
+  if (error.status === 409) {
+    return "Referral Status Changed. This referral was updated by another user; the latest status will now be loaded.";
+  }
   return "Unable to verify referral. Please try again.";
 }
 
@@ -993,10 +963,10 @@ function getOfficialStatus(status) {
   if (raw.includes("receive") || raw.includes("checked") || raw.includes("arrived")) {
     return "Received";
   }
-  if (raw.includes("monitor")) return "For Monitoring";
+  if (raw.includes("monitor")) return "Received";
   if (raw.includes("complete")) return "Completed";
   if (raw.includes("show")) return "No-Show";
-  return "Pending";
+  return String(status || "Pending").trim();
 }
 
 function getReferralPatientName(referral = {}) {

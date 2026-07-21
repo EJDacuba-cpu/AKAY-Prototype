@@ -1,13 +1,51 @@
 import { apiRequest, unwrapData, unwrapList } from "./apiClient";
 import { formatReferralStatus } from "../utils/formatters";
+import { refreshNotifications } from "./notificationService";
+import { queryKeys } from "../utils/queryKeys";
 
 export function normalizeReferralStatus(status) {
-  const raw = String(status || "Pending").trim().toLowerCase();
-  if (raw.includes("receive")) return "Received";
-  if (raw.includes("show")) return "No-Show";
-  if (raw.includes("complete")) return "Completed";
-  if (raw.includes("monitor")) return "For Monitoring";
-  return "Pending";
+  const original = String(status || "").trim();
+  if (!original) return "Pending";
+
+  const raw = original.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  if (raw === "pending") return "Pending";
+  if (["received", "for monitoring"].includes(raw)) return "Received";
+  if (raw === "no show") return "No-Show";
+  if (["completed", "complete", "done"].includes(raw)) return "Completed";
+  return original;
+}
+
+export function isReferralWorkflowConflict(error = {}) {
+  return Number(error.status) === 409;
+}
+
+export async function refreshReferralWorkflowData(queryClient, trackingId = "") {
+  const invalidations = [
+    queryClient.invalidateQueries({ queryKey: queryKeys.referrals("bhc") }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.incomingReferrals("rhu") }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.dashboardSummary("bhc") }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.dashboardSummary("rhu") }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.patients("rhu") }),
+  ];
+
+  if (trackingId) {
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.referralDetails("bhc", trackingId),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.referralDetails("rhu", trackingId),
+      }),
+    );
+  }
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("akay:referrals-updated"));
+    window.dispatchEvent(new CustomEvent("akay:rhu-referrals-updated"));
+  }
+
+  await Promise.allSettled(invalidations);
+  void refreshNotifications({ force: true, maxAgeMs: 0, soundEligible: false });
 }
 
 function normalizeReferral(referral = {}) {
@@ -253,7 +291,7 @@ export async function getReferralsByPatient(patient) {
 export async function hasActiveReferralForPatient(patient) {
   const referrals = await getReferralsByPatient(patient);
   return referrals.some((referral) =>
-    ["Pending", "Received", "For Monitoring"].includes(referral.status),
+    ["Pending", "Received"].includes(referral.status),
   );
 }
 
@@ -333,6 +371,7 @@ export default {
   updateReferralStatus,
   updateReferralByTrackingId,
   submitReturnSlip,
+  refreshReferralWorkflowData,
   autoMarkNoShowReferrals,
   saveReferrals,
 };

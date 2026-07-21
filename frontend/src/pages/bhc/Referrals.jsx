@@ -89,14 +89,8 @@ function matchesReferralStatus(referralStatus, selectedStatus) {
       referralStatus === "Received" || referralStatus === "Received by RHU"
     );
   }
-  if (selectedStatus === "For Monitoring") {
-    return (
-      referralStatus === "For Monitoring" ||
-      referralStatus === "Under Assessment"
-    );
-  }
-  if (selectedStatus === "Done") {
-    return referralStatus === "Completed" || referralStatus === "Done";
+  if (selectedStatus === "Completed") {
+    return referralStatus === "Completed";
   }
 
   return referralStatus === selectedStatus;
@@ -232,8 +226,7 @@ export default function Referrals() {
         "All",
         "Pending",
         "Received",
-        "For Monitoring",
-        "Done",
+        "Completed",
         "No-Show",
       ],
     },
@@ -439,11 +432,10 @@ function StatusBadge({ status }) {
   const map = {
     "Pending RHU Review": "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
     Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
-    "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
     Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
     "Received by RHU": "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
     "Under Assessment": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    Done: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
     "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
   };
 

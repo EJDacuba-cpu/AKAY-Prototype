@@ -50,7 +50,6 @@ const TABS = [
 const OFFICIAL_REFERRAL_STATUSES = [
   "Pending",
   "Received",
-  "For Monitoring",
   "Completed",
   "No-Show",
 ];
@@ -580,8 +579,7 @@ function StatusBadge({ status }) {
   const map = {
     Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
     Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
-    "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    Done: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
+    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
     "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
   };
 
@@ -632,13 +630,11 @@ function getOfficialStatus(status) {
   if (OFFICIAL_REFERRAL_STATUSES.includes(raw)) return raw;
 
   const lower = raw.toLowerCase();
-  if (lower.includes("assessment") || lower.includes("monitoring")) {
-    return "For Monitoring";
-  }
+  if (lower.includes("assessment") || lower.includes("monitoring")) return "Received";
   if (lower.includes("received")) return "Received";
   if (lower.includes("completed")) return "Completed";
   if (lower.includes("show")) return "No-Show";
-  return "Pending";
+  return raw;
 }
 
 function isRhuFacility(value = "") {

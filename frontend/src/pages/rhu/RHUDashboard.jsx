@@ -151,7 +151,7 @@ export default function RHUDashboard() {
     (referral) => referral.status === "Pending",
   ).length;
   const forFeedback = incomingReferrals.filter((referral) =>
-    ["Received", "For Monitoring"].includes(referral.status),
+    referral.status === "Received",
   ).length;
   const noShowCases = incomingReferrals.filter(
     (referral) => referral.status === "No-Show",

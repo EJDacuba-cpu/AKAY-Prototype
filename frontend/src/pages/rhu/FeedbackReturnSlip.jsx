@@ -18,9 +18,15 @@ import {
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
-import { SoftLoadingArea } from "../../components/common";
+import { ConfirmationModal, SoftLoadingArea } from "../../components/common";
 
-import { getReferrals, submitReturnSlip } from "../../services/referrals";
+import {
+  getReferralByTrackingId,
+  getReferrals,
+  isReferralWorkflowConflict,
+  refreshReferralWorkflowData,
+  submitReturnSlip,
+} from "../../services/referrals";
 import {
   getDoctorAvailability,
   listenDoctorAvailabilityUpdates,
@@ -292,6 +298,7 @@ export default function FeedbackReturnSlip() {
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
   const [referrals, setReferrals] = useState([]);
+  const [conflict, setConflict] = useState(null);
 
   const isAutoLoaded = !!routeTrackingId;
 
@@ -329,14 +336,12 @@ export default function FeedbackReturnSlip() {
   );
   const selectedStatus = getOfficialStatus(selectedReferral?.status);
   const canCreateReturnSlip =
-    selectedReferral &&
-    (selectedStatus === "Received" || selectedStatus === "For Monitoring");
+    selectedReferral && selectedStatus === "Received";
   const isCompletedReferral = selectedStatus === "Completed";
 
   function getCurrentStep() {
     if (!selectedReferral) return 0;
     if (selectedStatus === "Received") return 1;
-    if (selectedStatus === "For Monitoring") return 2;
     if (selectedStatus === "Completed") return 3;
     return 0;
   }
@@ -419,11 +424,26 @@ export default function FeedbackReturnSlip() {
       }
 
       setSubmitted(true);
-    } catch {
-      // The form remains available for a manual retry.
+    } catch (error) {
+      if (isReferralWorkflowConflict(error)) {
+        setConflict(error.payload || {});
+      }
+      // The form remains available for a manual retry or conflict review.
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function refreshSelectedReferral() {
+    if (!selectedReferral?.trackingId) return;
+
+    await refreshReferralWorkflowData(queryClient, selectedReferral.trackingId);
+    const latest = await getReferralByTrackingId(selectedReferral.trackingId);
+    setReferrals((current) =>
+      current.map((item) =>
+        item.trackingId === latest.trackingId ? latest : item,
+      ),
+    );
   }
 
   if (loading) {
@@ -538,8 +558,8 @@ export default function FeedbackReturnSlip() {
             Return Slip Not Available
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            Submit Return Slip is available only when a referral is Received or
-            For Monitoring. Current status:{" "}
+             Submit Return Slip is available only when a referral is Received.
+             Current status:{" "}
             <span className="font-medium text-slate-800">{selectedStatus}</span>
           </p>
           <Link
@@ -609,9 +629,7 @@ export default function FeedbackReturnSlip() {
                       <option value="">Select referral</option>
                       {referrals
                         .filter((r) =>
-                          ["Received", "For Monitoring"].includes(
-                            getOfficialStatus(r.status),
-                          ),
+                          getOfficialStatus(r.status) === "Received",
                         )
                         .map((referral) => (
                           <option
@@ -779,7 +797,7 @@ export default function FeedbackReturnSlip() {
                 Select a referral to begin
               </p>
               <p className="mt-1 text-xs text-slate-300">
-                Choose a Received or For Monitoring referral from the dropdown
+                 Choose a Received referral from the dropdown
                 above.
               </p>
             </div>
@@ -809,6 +827,18 @@ export default function FeedbackReturnSlip() {
             </div>
           </div>
         )}
+        <ConfirmationModal
+          open={Boolean(conflict)}
+          title="Referral Status Changed"
+          description="This referral was updated by another user or can no longer perform this action. The latest status will now be loaded."
+          confirmText="Refresh"
+          cancelText="View Latest Status"
+          onConfirm={async () => {
+            await refreshSelectedReferral();
+            setConflict(null);
+          }}
+          onCancel={() => setConflict(null)}
+        />
       </div>
     </DashboardLayout>
   );
@@ -939,7 +969,7 @@ function shouldShowFollowUpDate(outcome) {
 function getOfficialStatus(status) {
   const raw = String(status || "Pending").trim();
   if (
-    ["Pending", "Received", "For Monitoring", "Completed", "No-Show"].includes(
+    ["Pending", "Received", "Completed", "No-Show"].includes(
       raw,
     )
   ) {
@@ -947,13 +977,11 @@ function getOfficialStatus(status) {
   }
 
   const lower = raw.toLowerCase();
-  if (lower.includes("assessment") || lower.includes("monitoring")) {
-    return "For Monitoring";
-  }
+  if (lower.includes("assessment") || lower.includes("monitoring")) return "Received";
   if (lower.includes("received")) return "Received";
   if (lower.includes("completed")) return "Completed";
   if (lower.includes("show")) return "No-Show";
-  return "Pending";
+  return raw;
 }
 
 function isRhuFacility(value = "") {

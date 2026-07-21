@@ -266,9 +266,15 @@ export function formatReferralStatus(status, fallback = "Pending") {
     .replace(/\s+/g, " ")
     .trim();
 
-  if (compact.includes("receive")) return "Received";
+  if (
+    compact.includes("receive") ||
+    compact.includes("monitor") ||
+    compact.includes("assessment")
+  ) {
+    return "Received";
+  }
   if (compact.includes("show")) return "No-Show";
-  if (compact.includes("complete") || compact === "done") return "Done";
+  if (compact.includes("complete") || compact === "done") return "Completed";
   if (compact.includes("pending")) return "Pending";
 
   return raw;

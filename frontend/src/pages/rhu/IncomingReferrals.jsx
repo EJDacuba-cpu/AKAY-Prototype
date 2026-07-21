@@ -66,8 +66,7 @@ const REFERRAL_STATUS_OPTIONS = [
   { key: "All Status", label: "All" },
   { key: "Pending", label: "Pending" },
   { key: "Received", label: "Received" },
-  { key: "For Monitoring", label: "Monitoring" },
-  { key: "Completed", label: "Done" },
+  { key: "Completed", label: "Completed" },
   { key: "No-Show", label: "No-Show" },
 ];
 
@@ -292,13 +291,7 @@ function StatusBadge({ status, animate = false }) {
       border: "#BFDBFE",
       dot: "#3B82F6",
     },
-    "For Monitoring": {
-      bg: "#FFFBEB",
-      text: "#B45309",
-      border: "#FDE68A",
-      dot: "#F59E0B",
-    },
-    Done: {
+    Completed: {
       bg: "#ECFDF5",
       text: "#047857",
       border: "#A7F3D0",
@@ -629,7 +622,7 @@ export default function IncomingReferrals() {
     filters.status !== "All Status" && {
       key: "status",
       label:
-        filters.status === "For Monitoring" ? "Monitoring" : filters.status,
+        filters.status,
     },
     filters.category !== "All Categories" && {
       key: "category",
