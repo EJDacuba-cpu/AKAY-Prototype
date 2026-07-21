@@ -1,28 +1,36 @@
 <?php
 
+use App\Support\SecurityConfiguration;
+
+$environment = (string) env('APP_ENV', 'production');
+$localOrigins = $environment === 'local'
+    ? 'http://localhost:5173,http://127.0.0.1:5173'
+    : '';
+$allowedOrigins = SecurityConfiguration::parseOrigins(
+    env('AKAY_ALLOWED_ORIGINS', $localOrigins),
+    env('FRONTEND_URL')
+);
+
 return [
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
-    'allowed_methods' => ['*'],
+    'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 
-    'allowed_origins' => [
-        'http://localhost:5173',
-        'http://127.0.0.1:5173',
+    'allowed_origins' => $allowedOrigins,
 
-        // Same WiFi 
-        'http://192.168.1.2:5173',
+    'allowed_origins_patterns' => SecurityConfiguration::originPatterns($allowedOrigins),
 
-        // Dev Tunnel frontend 
-        'https://1mtd98m5-5173.asse.devtunnels.ms',
+    'allowed_headers' => [
+        'Accept',
+        'Content-Type',
+        'Authorization',
+        'Idempotency-Key',
+        'X-Requested-With',
     ],
-
-    'allowed_origins_patterns' => [],
-
-    'allowed_headers' => ['*'],
 
     'exposed_headers' => [],
 
-    'max_age' => 0,
+    'max_age' => 600,
 
     'supports_credentials' => false,
 ];
