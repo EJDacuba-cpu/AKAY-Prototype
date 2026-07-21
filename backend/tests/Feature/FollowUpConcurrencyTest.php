@@ -89,7 +89,8 @@ class FollowUpConcurrencyTest extends TestCase
         $this->assertSame(1, FollowUpTask::where('health_record_id', $winnerRecordId)->count());
         $this->assertSame($nextTaskId, FollowUpTask::where('health_record_id', $winnerRecordId)->value('id'));
         $this->assertSame(1, Referral::whereKey($referralId)->count());
-        $this->assertSame(2, AuditLog::count());
+        $this->assertSame(3, AuditLog::count());
+        $this->assertSame(1, AuditLog::where('action', 'medicine_dispensed')->count());
         $this->assertSame('FOLLOW_UP_ALREADY_PROCESSED', $loser->json('code'));
     }
 

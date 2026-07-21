@@ -121,12 +121,13 @@ class AkayApiTest extends TestCase
         $medicineId = $response->json('data.id');
 
         $this->actingAs($bhw, 'sanctum')
-            ->patchJson("/api/medicines/{$medicineId}", [
-                'quantity' => 15,
-                'low_stock_threshold' => 20,
+            ->postJson("/api/medicines/{$medicineId}/adjust", [
+                'action' => 'adjustment_out',
+                'quantity' => 85,
+                'reason' => 'Issued through the controlled stock workflow.',
             ])
             ->assertOk()
-            ->assertJsonPath('data.availability_status', 'Low Stock');
+            ->assertJsonPath('data.medicine.availability_status', 'Low Stock');
 
         $this->assertDatabaseHas('medicines', [
             'id' => $medicineId,

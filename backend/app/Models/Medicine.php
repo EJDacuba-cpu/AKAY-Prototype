@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Medicine extends Model
 {
@@ -20,10 +21,14 @@ class Medicine extends Model
         'barangay_health_center_id',
         'created_by',
         'updated_by',
+        'is_active',
+        'archived_at',
     ];
 
     protected $casts = [
         'expiration_date' => 'date',
+        'is_active' => 'boolean',
+        'archived_at' => 'datetime',
     ];
 
     public function ruralHealthUnit(): BelongsTo
@@ -34,5 +39,10 @@ class Medicine extends Model
     public function barangayHealthCenter(): BelongsTo
     {
         return $this->belongsTo(BarangayHealthCenter::class);
+    }
+
+    public function inventoryTransactions(): HasMany
+    {
+        return $this->hasMany(MedicineInventoryTransaction::class);
     }
 }

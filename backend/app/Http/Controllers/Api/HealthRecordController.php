@@ -141,13 +141,8 @@ class HealthRecordController extends Controller
                     $patient,
                     $request->user()
                 );
-                $lockedMedicines = $this->medicineStock->lockAndValidate(
-                    $request->user(),
-                    $patient->barangay_health_center_id,
-                    $dispensedMedicines
-                );
                 $record = HealthRecord::create($data);
-                $this->medicineStock->dispense($request->user(), $record, $lockedMedicines);
+                $this->medicineStock->dispense($request, $record, $dispensedMedicines);
                 $followUpTasks->syncRecord($record, $request->user(), $lockedFollowUpTask);
                 $followUpTasks->fulfillParentTask($record, $request->user(), $lockedFollowUpTask);
 
@@ -288,12 +283,11 @@ class HealthRecordController extends Controller
                 'Medicines have already been dispensed for this health record.'
             );
 
-            $lockedMedicines = $this->medicineStock->lockAndValidate(
-                $request->user(),
-                $lockedRecord->barangay_health_center_id,
+            $this->medicineStock->dispense(
+                $request,
+                $lockedRecord,
                 $data['dispensed_medicines'] ?? []
             );
-            $this->medicineStock->dispense($request->user(), $lockedRecord, $lockedMedicines);
         });
 
         return response()->json(['data' => $healthRecord->fresh()->load(['patient', 'dispensedMedicines'])]);

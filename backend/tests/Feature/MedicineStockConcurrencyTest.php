@@ -59,6 +59,15 @@ class MedicineStockConcurrencyTest extends TestCase
             'barangay_health_center_id' => $this->bhc->id,
         ]);
         $this->assertDatabaseCount('health_record_medicines', 1);
+        $this->assertDatabaseHas('medicine_inventory_transactions', [
+            'medicine_id' => $medicine->id,
+            'transaction_type' => 'dispense',
+            'quantity_delta' => -5,
+            'quantity_before' => 10,
+            'quantity_after' => 5,
+            'source_type' => 'health_record',
+            'source_id' => $response->json('data.id'),
+        ]);
     }
 
     public function test_insufficient_stock_returns_safe_conflict_and_creates_no_official_effects(): void
@@ -85,6 +94,7 @@ class MedicineStockConcurrencyTest extends TestCase
         $this->assertSame(1, $medicine->fresh()->quantity);
         $this->assertDatabaseCount('health_records', 0);
         $this->assertDatabaseCount('health_record_medicines', 0);
+        $this->assertDatabaseCount('medicine_inventory_transactions', 0);
         $this->assertDatabaseCount('referrals', 0);
         $this->assertDatabaseCount('follow_up_tasks', 0);
         $this->assertDatabaseCount('audit_logs', 0);
@@ -128,6 +138,7 @@ class MedicineStockConcurrencyTest extends TestCase
         $this->assertSame(1, $medicine->fresh()->quantity);
         $this->assertDatabaseCount('health_records', 1);
         $this->assertDatabaseCount('health_record_medicines', 1);
+        $this->assertDatabaseCount('medicine_inventory_transactions', 1);
     }
 
     public function test_all_rows_are_validated_before_any_multi_item_deduction(): void
@@ -148,6 +159,7 @@ class MedicineStockConcurrencyTest extends TestCase
         $this->assertSame(1, $second->fresh()->quantity);
         $this->assertDatabaseCount('health_records', 0);
         $this->assertDatabaseCount('health_record_medicines', 0);
+        $this->assertDatabaseCount('medicine_inventory_transactions', 0);
     }
 
     public function test_multiple_sufficient_items_deduct_once_regardless_of_browser_order(): void
@@ -390,6 +402,7 @@ class MedicineStockConcurrencyTest extends TestCase
         $this->assertDatabaseCount('health_records', 0);
         $this->assertDatabaseCount('health_record_medicines', 0);
         $this->assertDatabaseCount('audit_logs', 0);
+        $this->assertDatabaseCount('medicine_inventory_transactions', 0);
     }
 
     public function test_direct_dispense_endpoint_deducts_once_for_an_existing_record(): void

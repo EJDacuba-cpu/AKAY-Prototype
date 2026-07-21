@@ -59,6 +59,9 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'active'])->group(funct
         Route::patch('/referrals/{referral}/status', [ReferralController::class, 'updateStatus'])->middleware('role:rhu_staff');
         Route::apiResource('feedback', FeedbackController::class)->only(['index', 'show']);
         Route::post('/feedback', [FeedbackController::class, 'store'])->middleware('role:rhu_staff');
+        Route::post('/medicines/{medicine}/restock', [MedicineController::class, 'restock']);
+        Route::post('/medicines/{medicine}/adjust', [MedicineController::class, 'adjust']);
+        Route::get('/medicines/{medicine}/transactions', [MedicineController::class, 'transactions']);
         Route::apiResource('medicines', MedicineController::class);
         Route::get('/rhu-patient-volumes', [RhuPatientVolumeController::class, 'index']);
         Route::post('/rhu-patient-volumes', [RhuPatientVolumeController::class, 'store']);
