@@ -17,7 +17,8 @@ class ReferralWorkflowService
     public function __construct(
         private readonly FacilityAccessService $facilityAccess,
         private readonly UserNotificationService $notifications,
-        private readonly AuditLogger $auditLogger
+        private readonly AuditLogger $auditLogger,
+        private readonly AkayCacheService $cache
     ) {
     }
 
@@ -27,7 +28,7 @@ class ReferralWorkflowService
         string $requestedStatus,
         ?string $reason = null
     ): array {
-        return DB::transaction(function () use ($request, $referralId, $requestedStatus, $reason): array {
+        $result = DB::transaction(function () use ($request, $referralId, $requestedStatus, $reason): array {
             $referral = $this->lockReferralForTransition($referralId);
             $this->facilityAccess->authorizeRhuReferralAction($request->user(), $referral);
 
@@ -87,6 +88,12 @@ class ReferralWorkflowService
 
             return $this->result($referral->fresh(), false);
         });
+
+        if (! $result['status_unchanged']) {
+            $this->cache->invalidateReferralReports($result['referral']);
+        }
+
+        return $result;
     }
 
     public function completeWithFeedback(
@@ -94,7 +101,7 @@ class ReferralWorkflowService
         int $referralId,
         array $feedbackData
     ): Feedback {
-        return DB::transaction(function () use ($request, $referralId, $feedbackData): Feedback {
+        $feedback = DB::transaction(function () use ($request, $referralId, $feedbackData): Feedback {
             $referral = $this->lockReferralForTransition($referralId);
             $this->facilityAccess->authorizeRhuReferralAction($request->user(), $referral);
             $current = $this->canonicalStatusOrConflict(
@@ -145,11 +152,15 @@ class ReferralWorkflowService
 
             return $feedback->load('referral.patient');
         });
+
+        $this->cache->invalidateReferralReports($feedback->referral);
+
+        return $feedback;
     }
 
     public function markNoShow(int $referralId): bool
     {
-        return DB::transaction(function () use ($referralId): bool {
+        $updated = DB::transaction(function () use ($referralId): bool {
             $referral = $this->lockReferralForTransition($referralId);
             $current = Referral::normalizeWorkflowStatus($referral->status);
 
@@ -176,6 +187,15 @@ class ReferralWorkflowService
 
             return true;
         });
+
+        if ($updated) {
+            $referral = Referral::find($referralId);
+            if ($referral !== null) {
+                $this->cache->invalidateReferralReports($referral);
+            }
+        }
+
+        return $updated;
     }
 
     public function isOverdue(Referral $referral): bool

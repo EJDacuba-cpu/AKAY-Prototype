@@ -6,6 +6,7 @@ import {
   Boxes,
   CheckCircle2,
   Edit3,
+  History,
   MoreVertical,
   PackagePlus,
   SlidersHorizontal,
@@ -21,6 +22,7 @@ import {
 } from "../../components/common";
 import MedicineFormModal from "../../components/features/medicine/MedicineFormModal";
 import MedicineInventoryActionModal from "../../components/features/medicine/MedicineInventoryActionModal";
+import MedicineInventoryHistoryModal from "../../components/features/medicine/MedicineInventoryHistoryModal";
 import {
   addRhuMedicine,
   adjustMedicine,
@@ -32,6 +34,7 @@ import {
   restockMedicine,
   updateRhuMedicine,
 } from "../../services/medicineService";
+import { getCurrentUser } from "../../utils/auth";
 import { queryKeys } from "../../utils/queryKeys";
 
 const MEDICINE_STATUS_TABS = [
@@ -50,11 +53,13 @@ const DEFAULT_FILTERS = {
 
 export default function MedicineManagement() {
   const queryClient = useQueryClient();
+  const currentUser = getCurrentUser();
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [modalMode, setModalMode] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [openMenuId, setOpenMenuId] = useState("");
   const [inventoryAction, setInventoryAction] = useState(null);
+  const [historyItem, setHistoryItem] = useState(null);
   const {
     data: medicineItems = [],
     isLoading,
@@ -172,6 +177,11 @@ export default function MedicineManagement() {
     setSelectedItem(null);
   }
 
+  function openInventoryHistory(item) {
+    setOpenMenuId("");
+    setHistoryItem(item);
+  }
+
   async function handleSubmit(payload) {
     const nextItems =
       modalMode === "edit" && selectedItem
@@ -207,6 +217,9 @@ export default function MedicineManagement() {
     );
     await queryClient.invalidateQueries({
       queryKey: queryKeys.medicineAvailability("rhu"),
+    });
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.medicineTransactions(currentUser, selectedItem.id),
     });
     closeInventoryAction();
   }
@@ -395,6 +408,7 @@ export default function MedicineManagement() {
                         onEdit={() => openEditModal(item)}
                         onRestock={() => openInventoryAction(item, "restock")}
                         onAdjust={() => openInventoryAction(item, "adjust")}
+                        onHistory={() => openInventoryHistory(item)}
                         onDelete={() => handleDelete(item)}
                       />
                     </td>
@@ -424,6 +438,12 @@ export default function MedicineManagement() {
         item={selectedItem}
         onClose={closeInventoryAction}
         onSubmit={handleInventoryAction}
+      />
+      <MedicineInventoryHistoryModal
+        open={Boolean(historyItem)}
+        item={historyItem}
+        user={currentUser}
+        onClose={() => setHistoryItem(null)}
       />
       </div>
       </PageStateWrapper>
@@ -467,6 +487,7 @@ function ActionMenu({
   onEdit,
   onRestock,
   onAdjust,
+  onHistory,
   onDelete,
 }) {
   const btnRef = useRef(null);
@@ -477,7 +498,7 @@ function ActionMenu({
     if (!btnRef.current) return;
     const rect = btnRef.current.getBoundingClientRect();
     const menuWidth = 176;
-    const menuHeight = 176;
+    const menuHeight = 218;
     const padding = 12;
     let top = rect.bottom + 6;
     let left = rect.right - menuWidth;
@@ -553,6 +574,17 @@ function ActionMenu({
             >
               <Edit3 size={14} className="text-[#9CA3AF]" />
               Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onHistory();
+                onClose();
+              }}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#0F172A]"
+            >
+              <History size={14} className="text-[#9CA3AF]" />
+              Inventory History
             </button>
             <button
               type="button"

@@ -8,6 +8,8 @@ use App\Http\Requests\MedicineRequest;
 use App\Http\Requests\RestockMedicineRequest;
 use App\Models\HealthRecordMedicine;
 use App\Models\Medicine;
+use App\Models\MedicineInventoryTransaction;
+use App\Services\AkayCacheService;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
 use App\Services\MedicineStockService;
@@ -18,7 +20,8 @@ class MedicineController extends Controller
 {
     public function __construct(
         private readonly FacilityAccessService $facilityAccess,
-        private readonly MedicineStockService $medicineStock
+        private readonly MedicineStockService $medicineStock,
+        private readonly AkayCacheService $cache
     ) {
     }
 
@@ -52,7 +55,36 @@ class MedicineController extends Controller
             $query->where('name', 'like', "%{$search}%");
         }
 
-        return response()->json(['data' => $query->orderBy('name')->paginate($request->integer('per_page', 25))]);
+        $page = max($request->integer('page', 1), 1);
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $filters = [
+            'category' => (string) $request->query('category', ''),
+            'availability_status' => (string) $request->query('availability_status', ''),
+            'rural_health_unit_id' => (string) $request->query('rural_health_unit_id', ''),
+            'barangay_health_center_id' => (string) $request->query('barangay_health_center_id', ''),
+            'search' => mb_strtolower(trim((string) $request->query('search', ''))),
+            'per_page' => $perPage,
+        ];
+        $dependencies = $request->user()->isBhw()
+            ? [$this->cache->medicineRhuFeedDependency()]
+            : [];
+        $data = $this->cache->rememberForUser(
+            AkayCacheService::DOMAIN_MEDICINE_AVAILABILITY,
+            $request->user(),
+            $filters,
+            $page,
+            (int) config('akay_cache.ttl.medicine_availability_seconds', 20),
+            fn (): array => $query
+                ->orderBy('name')
+                ->paginate($perPage, ['*'], 'page', $page)
+                ->through(fn (Medicine $item): array => $this->medicineListItem($item))
+                ->toArray(),
+            $dependencies
+        );
+
+        return $this->cache->addDiagnosticHeader(
+            response()->json(['data' => $data])
+        );
     }
 
     public function store(MedicineRequest $request, AuditLogger $auditLogger)
@@ -92,6 +124,7 @@ class MedicineController extends Controller
 
             return $medicine;
         });
+        $this->cache->invalidateMedicine($medicine);
 
         return response()->json(['data' => $medicine->fresh()], 201);
     }
@@ -118,6 +151,7 @@ class MedicineController extends Controller
             'medicines',
             "medicine_id={$medicine->id}."
         );
+        $this->cache->invalidateMedicine($medicine);
 
         return response()->json(['data' => $medicine->fresh()]);
     }
@@ -130,6 +164,7 @@ class MedicineController extends Controller
             (int) $request->validated('quantity'),
             (string) $request->validated('reason')
         ));
+        $this->cache->invalidateMedicine($medicine);
 
         return response()->json([
             'data' => [
@@ -150,6 +185,7 @@ class MedicineController extends Controller
             $data['reason'],
             $data['direction'] ?? null
         ));
+        $this->cache->invalidateMedicine($medicine);
 
         return response()->json([
             'data' => [
@@ -162,12 +198,35 @@ class MedicineController extends Controller
     public function transactions(Request $request, Medicine $medicine)
     {
         $this->facilityAccess->authorizeMedicine($request->user(), $medicine);
+        $perPage = min(max($request->integer('per_page', 15), 1), 100);
 
         $transactions = $medicine->inventoryTransactions()
+            ->select([
+                'transaction_type',
+                'quantity_before',
+                'quantity_delta',
+                'quantity_after',
+                'reason',
+                'source_type',
+                'created_at',
+                'actor_user_id',
+            ])
             ->with(['actor:id,name'])
             ->latest('created_at')
             ->latest('id')
-            ->paginate($request->integer('per_page', 25));
+            ->paginate($perPage)
+            ->through(fn (MedicineInventoryTransaction $transaction): array => [
+                'transaction_type' => $transaction->transaction_type,
+                'quantity_before' => $transaction->quantity_before,
+                'quantity_delta' => $transaction->quantity_delta,
+                'quantity_after' => $transaction->quantity_after,
+                'reason' => $transaction->reason,
+                'source_type' => $transaction->source_type,
+                'created_at' => $transaction->created_at?->toISOString(),
+                'actor' => $transaction->actor
+                    ? ['name' => $transaction->actor->name]
+                    : null,
+            ]);
 
         return response()->json(['data' => $transactions]);
     }
@@ -176,7 +235,7 @@ class MedicineController extends Controller
     {
         $this->facilityAccess->authorizeMedicine($request->user(), $medicine);
 
-        return DB::transaction(function () use ($request, $medicine, $auditLogger) {
+        $response = DB::transaction(function () use ($request, $medicine, $auditLogger) {
             $locked = Medicine::query()->whereKey($medicine->id)->lockForUpdate()->firstOrFail();
             $this->facilityAccess->authorizeMedicine($request->user(), $locked);
             $hasDispenseHistory = HealthRecordMedicine::query()
@@ -211,6 +270,30 @@ class MedicineController extends Controller
 
             return response()->json(['data' => $locked->fresh()]);
         });
+        $this->cache->invalidateMedicine($medicine);
+
+        return $response;
+    }
+
+    private function medicineListItem(Medicine $medicine): array
+    {
+        return [
+            'id' => $medicine->id,
+            'name' => $medicine->name,
+            'category' => $medicine->category,
+            'description' => $medicine->description,
+            'quantity' => (int) $medicine->quantity,
+            'low_stock_threshold' => (int) ($medicine->low_stock_threshold ?? 10),
+            'unit' => $medicine->unit,
+            'availability_status' => $medicine->availability_status,
+            'expiration_date' => $medicine->expiration_date?->toDateString(),
+            'rural_health_unit_id' => $medicine->rural_health_unit_id,
+            'barangay_health_center_id' => $medicine->barangay_health_center_id,
+            'created_at' => $medicine->created_at?->toISOString(),
+            'updated_at' => $medicine->updated_at?->toISOString(),
+            'rural_health_unit' => $medicine->ruralHealthUnit?->only(['id', 'name', 'status']),
+            'barangay_health_center' => $medicine->barangayHealthCenter?->only(['id', 'name', 'status']),
+        ];
     }
 
     private function medicineStatus(int $quantity, int $lowStockThreshold): string

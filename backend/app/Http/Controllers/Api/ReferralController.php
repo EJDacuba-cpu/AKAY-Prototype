@@ -8,6 +8,7 @@ use App\Http\Requests\ReferralStatusRequest;
 use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\Referral;
+use App\Services\AkayCacheService;
 use App\Services\FacilityAccessService;
 use App\Services\ReferralCreationService;
 use App\Services\ReferralRoutingService;
@@ -21,7 +22,8 @@ class ReferralController extends Controller
 {
     public function __construct(
         private readonly FacilityAccessService $facilityAccess,
-        private readonly ReferralRoutingService $referralRouting
+        private readonly ReferralRoutingService $referralRouting,
+        private readonly AkayCacheService $cache
     ) {
     }
 
@@ -129,6 +131,8 @@ class ReferralController extends Controller
             throw $exception;
         }
 
+        $this->cache->invalidateReferralReports($referral);
+
         return $this->storeResponse($referral, 201);
     }
 
@@ -180,6 +184,7 @@ class ReferralController extends Controller
     {
         $this->facilityAccess->authorizeReferral($request->user(), $referral);
         $referral->delete();
+        $this->cache->invalidateReferralReports($referral);
 
         return response()->json(status: 204);
     }

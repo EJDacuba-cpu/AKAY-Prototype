@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\RhuPatientVolumeRequest;
 use App\Models\RhuPatientVolume;
+use App\Services\AkayCacheService;
 use App\Services\AuditLogger;
 use Illuminate\Http\Request;
 
 class RhuPatientVolumeController extends Controller
 {
+    public function __construct(private readonly AkayCacheService $cache) {}
+
     public function index(Request $request)
     {
         $query = RhuPatientVolume::query()->with('ruralHealthUnit');
@@ -36,6 +39,7 @@ class RhuPatientVolumeController extends Controller
         );
 
         $auditLogger->log($request, 'updated', 'rhu_patient_volume', "Updated RHU {$rhuId} volume to {$volume->status}.");
+        $this->cache->invalidateRhuReport((int) $rhuId);
 
         return response()->json(['data' => $volume->load('ruralHealthUnit')]);
     }

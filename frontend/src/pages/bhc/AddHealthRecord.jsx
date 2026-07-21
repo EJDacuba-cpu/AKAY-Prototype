@@ -2502,6 +2502,23 @@ export default function AddHealthRecord() {
       });
     }
     await refreshRhuMedicines();
+    const dispensedMedicineIds = Array.from(
+      new Set(
+        dispensedMedicines
+          .map((item) => String(item?.medicineId || item?.medicine_id || ""))
+          .filter(Boolean),
+      ),
+    );
+    await Promise.all(
+      dispensedMedicineIds.map((medicineId) =>
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.medicineTransactions(
+            currentUser,
+            medicineId,
+          ),
+        }),
+      ),
+    );
 
     return { savedRecord, savedId };
   }

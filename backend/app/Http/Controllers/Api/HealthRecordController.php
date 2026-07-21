@@ -7,6 +7,7 @@ use App\Http\Requests\HealthRecordRequest;
 use App\Models\HealthRecord;
 use App\Models\FollowUpTask;
 use App\Models\Patient;
+use App\Services\AkayCacheService;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
 use App\Services\FollowUpTaskSyncService;
@@ -23,7 +24,8 @@ class HealthRecordController extends Controller
 {
     public function __construct(
         private readonly FacilityAccessService $facilityAccess,
-        private readonly MedicineStockService $medicineStock
+        private readonly MedicineStockService $medicineStock,
+        private readonly AkayCacheService $cache
     ) {
     }
 
@@ -185,6 +187,16 @@ class HealthRecordController extends Controller
             );
         }
 
+        if ($dispensedMedicines !== []) {
+            $this->cache->invalidateBhcMedicineDisplay((int) $patient->barangay_health_center_id);
+        }
+        if (is_array($referralData)) {
+            $referral = $record->referrals()->first();
+            if ($referral !== null) {
+                $this->cache->invalidateReferralReports($referral);
+            }
+        }
+
         return $this->storeResponse($record, false, 201);
     }
 
@@ -289,6 +301,11 @@ class HealthRecordController extends Controller
                 $data['dispensed_medicines'] ?? []
             );
         });
+        if (($data['dispensed_medicines'] ?? []) !== []) {
+            $this->cache->invalidateBhcMedicineDisplay(
+                (int) $healthRecord->barangay_health_center_id
+            );
+        }
 
         return response()->json(['data' => $healthRecord->fresh()->load(['patient', 'dispensedMedicines'])]);
     }

@@ -289,6 +289,194 @@ class MedicineInventoryWorkflowTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_history_response_uses_a_safe_allowlist_for_all_transaction_types(): void
+    {
+        $medicine = $this->medicine('Allowlisted History Medicine', 10, $this->bhc->id);
+        $transactions = [
+            [
+                'transaction_type' => 'opening_balance',
+                'quantity_before' => 0,
+                'quantity_delta' => 10,
+                'quantity_after' => 10,
+                'reason' => null,
+                'source_type' => 'opening_balance',
+            ],
+            [
+                'transaction_type' => 'restock',
+                'quantity_before' => 10,
+                'quantity_delta' => 5,
+                'quantity_after' => 15,
+                'reason' => 'Monthly replenishment',
+                'source_type' => 'manual_restock',
+            ],
+            [
+                'transaction_type' => 'adjustment_in',
+                'quantity_before' => 15,
+                'quantity_delta' => 1,
+                'quantity_after' => 16,
+                'reason' => 'Counted stock added',
+                'source_type' => 'manual_adjustment',
+            ],
+            [
+                'transaction_type' => 'damaged_disposal',
+                'quantity_before' => 16,
+                'quantity_delta' => -3,
+                'quantity_after' => 13,
+                'reason' => 'Damaged packaging',
+                'source_type' => 'disposal',
+            ],
+            [
+                'transaction_type' => 'dispense',
+                'quantity_before' => 13,
+                'quantity_delta' => -3,
+                'quantity_after' => 10,
+                'reason' => null,
+                'source_type' => 'health_record',
+            ],
+        ];
+
+        foreach ($transactions as $index => $transaction) {
+            MedicineInventoryTransaction::create([
+                'medicine_id' => $medicine->id,
+                'actor_user_id' => $this->bhw->id,
+                ...$transaction,
+                'source_id' => 1000 + $index,
+                'operation_key' => "allowlist-history-{$index}",
+            ]);
+        }
+
+        $response = $this->actingAs($this->bhw, 'sanctum')
+            ->getJson("/api/medicines/{$medicine->id}/transactions?per_page=10")
+            ->assertOk()
+            ->assertJsonPath('data.current_page', 1)
+            ->assertJsonPath('data.last_page', 1)
+            ->assertJsonPath('data.per_page', 10)
+            ->assertJsonPath('data.total', 5)
+            ->assertJsonPath('data.data.0.transaction_type', 'dispense')
+            ->assertJsonPath('data.data.1.transaction_type', 'damaged_disposal')
+            ->assertJsonPath('data.data.2.transaction_type', 'adjustment_in')
+            ->assertJsonPath('data.data.3.transaction_type', 'restock')
+            ->assertJsonPath('data.data.4.transaction_type', 'opening_balance')
+            ->assertJsonPath('data.data.0.actor.name', $this->bhw->name);
+
+        $rows = $response->json('data.data');
+        $this->assertCount(5, $rows);
+        foreach ($rows as $row) {
+            $this->assertSame([
+                'transaction_type',
+                'quantity_before',
+                'quantity_delta',
+                'quantity_after',
+                'reason',
+                'source_type',
+                'created_at',
+                'actor',
+            ], array_keys($row));
+            $this->assertSame(['name'], array_keys($row['actor']));
+            $this->assertNotEmpty($row['created_at']);
+        }
+
+        $this->assertJsonDoesNotContainKeys($response->json(), [
+            'id',
+            'operation_key',
+            'source_id',
+            'medicine_id',
+            'actor_user_id',
+            'barangay_health_center_id',
+            'rural_health_unit_id',
+            'email',
+            'username',
+            'password',
+            'remember_token',
+            'token',
+        ]);
+        $encoded = json_encode($response->json(), JSON_THROW_ON_ERROR);
+        foreach (array_keys($transactions) as $index) {
+            $this->assertStringNotContainsString("allowlist-history-{$index}", $encoded);
+        }
+
+        $this->actingAs($this->bhw, 'sanctum')
+            ->getJson("/api/medicines/{$medicine->id}/transactions?per_page=10000")
+            ->assertOk()
+            ->assertJsonPath('data.per_page', 100);
+    }
+
+    public function test_history_returns_null_actor_after_staff_account_is_removed(): void
+    {
+        $medicine = $this->medicine('Former Staff History Medicine', 4, $this->bhc->id);
+        $formerStaff = $this->user(
+            'Former Inventory Staff',
+            'former-inventory-staff@example.test',
+            User::ROLE_BHW,
+            $this->bhc->id
+        );
+        $transaction = MedicineInventoryTransaction::create([
+            'medicine_id' => $medicine->id,
+            'actor_user_id' => $formerStaff->id,
+            'transaction_type' => 'restock',
+            'quantity_before' => 2,
+            'quantity_delta' => 2,
+            'quantity_after' => 4,
+            'reason' => 'Former staff restock',
+            'source_type' => 'manual_restock',
+            'source_id' => $medicine->id,
+            'operation_key' => 'former-staff-history',
+        ]);
+
+        $formerStaff->delete();
+        $this->assertNull($transaction->fresh()->actor_user_id);
+
+        $response = $this->actingAs($this->bhw, 'sanctum')
+            ->getJson("/api/medicines/{$medicine->id}/transactions")
+            ->assertOk()
+            ->assertJsonPath('data.per_page', 15)
+            ->assertJsonPath('data.data.0.actor', null);
+
+        $this->assertJsonDoesNotContainKeys($response->json(), [
+            'actor_user_id',
+            'email',
+            'password',
+            'token',
+        ]);
+    }
+
+    public function test_rhu_history_is_available_only_to_its_own_rhu_staff(): void
+    {
+        $medicine = $this->medicine('RHU History Medicine', 8, null, $this->rhu->id);
+        $this->actingAs($this->rhuStaff, 'sanctum')
+            ->postJson("/api/medicines/{$medicine->id}/restock", [
+                'quantity' => 2,
+                'reason' => 'RHU history verification',
+            ])
+            ->assertOk();
+
+        $this->actingAs($this->rhuStaff, 'sanctum')
+            ->getJson("/api/medicines/{$medicine->id}/transactions")
+            ->assertOk()
+            ->assertJsonPath('data.data.0.quantity_before', 8)
+            ->assertJsonPath('data.data.0.quantity_delta', 2)
+            ->assertJsonPath('data.data.0.quantity_after', 10)
+            ->assertJsonPath('data.data.0.source_type', 'manual_restock')
+            ->assertJsonPath('data.data.0.actor.name', $this->rhuStaff->name);
+
+        $this->actingAs($this->bhw, 'sanctum')
+            ->getJson("/api/medicines/{$medicine->id}/transactions")
+            ->assertForbidden();
+
+        $otherRhu = RuralHealthUnit::create(['name' => 'Other Inventory RHU']);
+        $otherRhuStaff = $this->user(
+            'Other Inventory RHU Staff',
+            'other-inventory-rhu@example.test',
+            User::ROLE_RHU_STAFF,
+            null,
+            $otherRhu->id
+        );
+
+        $this->actingAs($otherRhuStaff, 'sanctum')
+            ->getJson("/api/medicines/{$medicine->id}/transactions")
+            ->assertForbidden();
+    }
+
     public function test_duplicate_restock_operation_key_increases_stock_only_once(): void
     {
         $medicine = $this->medicine('Idempotent Restock', 5, $this->bhc->id);
@@ -542,6 +730,30 @@ class MedicineInventoryWorkflowTest extends TestCase
             'barangay_health_center_id' => $bhcId,
             'rural_health_unit_id' => $rhuId,
         ]);
+    }
+
+    private function assertJsonDoesNotContainKeys(array $payload, array $forbiddenKeys): void
+    {
+        $keys = [];
+        $collectKeys = function (array $value) use (&$collectKeys, &$keys): void {
+            foreach ($value as $key => $nestedValue) {
+                if (is_string($key)) {
+                    $keys[] = $key;
+                }
+                if (is_array($nestedValue)) {
+                    $collectKeys($nestedValue);
+                }
+            }
+        };
+        $collectKeys($payload);
+
+        foreach ($forbiddenKeys as $forbiddenKey) {
+            $this->assertNotContains(
+                $forbiddenKey,
+                $keys,
+                "The history response must not expose the {$forbiddenKey} key."
+            );
+        }
     }
 
     private function requestFor(User $user): Request

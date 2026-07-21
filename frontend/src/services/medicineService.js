@@ -212,8 +212,19 @@ export async function adjustMedicine(id, data) {
   });
 }
 
+export async function getMedicineTransactions(id, params = {}) {
+  const searchParams = new URLSearchParams({
+    page: String(params.page || 1),
+    per_page: String(params.perPage || params.per_page || 15),
+  });
+
+  return apiRequest(
+    `/medicines/${encodeURIComponent(id)}/transactions?${searchParams.toString()}`,
+  );
+}
+
 export async function loadMedicineTransactions(id, page = 1) {
-  return apiRequest(`/medicines/${id}/transactions?page=${page}`);
+  return getMedicineTransactions(id, { page });
 }
 
 async function mutateMedicineInventory(id, operation, body) {
