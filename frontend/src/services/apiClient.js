@@ -1,12 +1,9 @@
 import { queryClient } from "../lib/queryClient";
+import { API_BASE_URL } from "../config/environment";
 import {
   clearSensitiveSessionState,
   isForcedSessionInvalidation,
 } from "../utils/sessionPrivacy";
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ||
-  "http://localhost:8000/api";
 
 const TOKEN_KEY = "akay_auth_token";
 const USER_KEY = "akay_auth_user";

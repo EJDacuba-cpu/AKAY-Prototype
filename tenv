@@ -1,0 +1,138 @@
+warning: in the working copy of 'frontend/package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/services/apiClient.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/vite.config.js', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/frontend/package.json b/frontend/package.json[m
+[1mindex 7e7bd86..1c5287f 100644[m
+[1m--- a/frontend/package.json[m
+[1m+++ b/frontend/package.json[m
+[36m@@ -7,6 +7,7 @@[m
+     "dev": "vite",[m
+     "build": "vite build",[m
+     "lint": "eslint .",[m
+[32m+[m[32m    "test:env": "node --test config/environment.test.js",[m
+     "preview": "vite preview"[m
+   },[m
+   "dependencies": {[m
+[1mdiff --git a/frontend/src/services/apiClient.js b/frontend/src/services/apiClient.js[m
+[1mindex fcbdf51..e98b55c 100644[m
+[1m--- a/frontend/src/services/apiClient.js[m
+[1m+++ b/frontend/src/services/apiClient.js[m
+[36m@@ -1,13 +1,10 @@[m
+ import { queryClient } from "../lib/queryClient";[m
+[32m+[m[32mimport { API_BASE_URL } from "../config/environment";[m
+ import {[m
+   clearSensitiveSessionState,[m
+   isForcedSessionInvalidation,[m
+ } from "../utils/sessionPrivacy";[m
+ [m
+[31m-const API_BASE_URL =[m
+[31m-  import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ||[m
+[31m-  "http://localhost:8000/api";[m
+[31m-[m
+ const TOKEN_KEY = "akay_auth_token";[m
+ const USER_KEY = "akay_auth_user";[m
+ const REQUEST_TIMEOUT_MS = 15000;[m
+[1mdiff --git a/frontend/vite.config.js b/frontend/vite.config.js[m
+[1mindex 1fdd650..7b63bf2 100644[m
+[1m--- a/frontend/vite.config.js[m
+[1m+++ b/frontend/vite.config.js[m
+[36m@@ -1,22 +1,81 @@[m
+[31m-import { defineConfig } from "vite";[m
+[32m+[m[32mimport { defineConfig, loadEnv } from "vite";[m
+[32m+[m[32mimport process from "node:process";[m
+ import react from "@vitejs/plugin-react";[m
+ import tailwindcss from "@tailwindcss/vite";[m
+[32m+[m[32mimport { apiOrigin, validateApiBaseUrl } from "./config/environment";[m
+ [m
+[31m-// https://vite.dev/config/[m
+[31m-export default defineConfig({[m
+[31m-  plugins: [react(), tailwindcss()],[m
+[31m-  server: {[m
+[31m-    host: "0.0.0.0",[m
+[31m-    port: 5173,[m
+[31m-    proxy: {[m
+[31m-      "/api": {[m
+[31m-        target: "http://localhost:8000",[m
+[31m-        changeOrigin: true,[m
+[31m-      },[m
+[31m-      "/sanctum": {[m
+[31m-        target: "http://localhost:8000",[m
+[31m-        changeOrigin: true,[m
+[32m+[m[32mconst browserHeaders = (apiBaseUrl, reportOnly = false) => {[m
+[32m+[m[32m  const connectSources = ["'self'"];[m
+[32m+[m[32m  const configuredApiOrigin = apiOrigin(apiBaseUrl);[m
+[32m+[m
+[32m+[m[32m  if (configuredApiOrigin) connectSources.push(configuredApiOrigin);[m
+[32m+[m[32m  if (reportOnly) connectSources.push("ws:", "wss:");[m
+[32m+[m
+[32m+[m[32m  const csp = [[m
+[32m+[m[32m    "default-src 'self'",[m
+[32m+[m[32m    "base-uri 'self'",[m
+[32m+[m[32m    "object-src 'none'",[m
+[32m+[m[32m    "frame-ancestors 'none'",[m
+[32m+[m[32m    "form-action 'self'",[m
+[32m+[m[32m    "script-src 'self'",[m
+[32m+[m[32m    "style-src 'self' 'unsafe-inline'",[m
+[32m+[m[32m    "img-src 'self' data: blob:",[m
+[32m+[m[32m    "font-src 'self'",[m
+[32m+[m[32m    `connect-src ${[...new Set(connectSources)].join(" ")}`,[m
+[32m+[m[32m    "media-src 'self' blob:",[m
+[32m+[m[32m    "worker-src 'self' blob:",[m
+[32m+[m[32m    "manifest-src 'self'",[m
+[32m+[m[32m  ].join("; ");[m
+[32m+[m
+[32m+[m[32m  return {[m
+[32m+[m[32m    "X-Content-Type-Options": "nosniff",[m
+[32m+[m[32m    "Referrer-Policy": "strict-origin-when-cross-origin",[m
+[32m+[m[32m    "X-Frame-Options": "DENY",[m
+[32m+[m[32m    "Permissions-Policy":[m
+[32m+[m[32m      "camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",[m
+[32m+[m[32m    "Cross-Origin-Opener-Policy": "same-origin",[m
+[32m+[m[32m    [reportOnly[m
+[32m+[m[32m      ? "Content-Security-Policy-Report-Only"[m
+[32m+[m[32m      : "Content-Security-Policy"]: csp,[m
+[32m+[m[32m  };[m
+[32m+[m[32m};[m
+[32m+[m
+[32m+[m[32mfunction parseAllowedHosts(value) {[m
+[32m+[m[32m  return String(value || "")[m
+[32m+[m[32m    .split(",")[m
+[32m+[m[32m    .map((host) => host.trim())[m
+[32m+[m[32m    .filter(Boolean);[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport default defineConfig(({ mode }) => {[m
+[32m+[m[32m  const env = loadEnv(mode, process.cwd(), "");[m
+[32m+[m[32m  const isProduction = mode === "production";[m
+[32m+[m[32m  const apiBaseUrl = validateApiBaseUrl(env.VITE_API_BASE_URL, {[m
+[32m+[m[32m    isProduction,[m
+[32m+[m[32m  });[m
+[32m+[m[32m  const proxyTarget = env.AKAY_DEV_API_PROXY_TARGET || "http://localhost:8000";[m
+[32m+[m[32m  const allowedHosts = parseAllowedHosts(env.AKAY_VITE_ALLOWED_HOSTS);[m
+[32m+[m
+[32m+[m[32m  return {[m
+[32m+[m[32m    plugins: [react(), tailwindcss()],[m
+[32m+[m[32m    server: {[m
+[32m+[m[32m      host: "0.0.0.0",[m
+[32m+[m[32m      port: 5173,[m
+[32m+[m[32m      headers: browserHeaders(apiBaseUrl, true),[m
+[32m+[m[32m      ...(allowedHosts.length > 0 ? { allowedHosts } : {}),[m
+[32m+[m[32m      proxy: {[m
+[32m+[m[32m        "/api": {[m
+[32m+[m[32m          target: proxyTarget,[m
+[32m+[m[32m          changeOrigin: true,[m
+[32m+[m[32m        },[m
+[32m+[m[32m        "/sanctum": {[m
+[32m+[m[32m          target: proxyTarget,[m
+[32m+[m[32m          changeOrigin: true,[m
+[32m+[m[32m        },[m
+       },[m
+     },[m
+[31m-  },[m
+[31m-});[m
+\ No newline at end of file[m
+[32m+[m[32m    preview: {[m
+[32m+[m[32m      headers: browserHeaders(apiBaseUrl),[m
+[32m+[m[32m    },[m
+[32m+[m[32m  };[m
+[32m+[m[32m});[m
