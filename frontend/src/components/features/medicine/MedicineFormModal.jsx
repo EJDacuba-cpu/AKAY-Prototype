@@ -46,10 +46,8 @@ export default function MedicineFormModal({
 
   if (!open) return null;
 
-  const previewStatus = computeMedicineStatus(
-    form.quantity,
-    form.lowStockThreshold,
-  );
+  const previewQuantity = mode === "edit" ? item?.quantity : form.quantity;
+  const previewStatus = computeMedicineStatus(previewQuantity, form.lowStockThreshold);
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -58,13 +56,18 @@ export default function MedicineFormModal({
   function handleSubmit(event) {
     event.preventDefault();
     if (!form.name.trim()) return;
-    onSubmit?.({
+    const payload = {
       ...form,
       name: form.name.trim(),
-      quantity: parseInt(form.quantity, 10) || 0,
       lowStockThreshold: parseInt(form.lowStockThreshold, 10) || 0,
       notes: form.notes.trim(),
-    });
+    };
+    if (mode === "add") {
+      payload.quantity = parseInt(form.quantity, 10) || 0;
+    } else {
+      delete payload.quantity;
+    }
+    onSubmit?.(payload);
   }
 
   return (
@@ -81,7 +84,9 @@ export default function MedicineFormModal({
               {title || (mode === "edit" ? "Edit Medicine" : "Add Medicine")}
             </h2>
             <p className="mt-0.5 text-xs text-[#9CA3AF]">
-              Availability is computed from quantity and low stock threshold.
+              {mode === "edit"
+                ? "Edit item details. Use Restock or Adjust Stock to change quantity."
+                : "Opening balance sets the first ledgered stock quantity."}
             </p>
           </div>
 
@@ -131,19 +136,21 @@ export default function MedicineFormModal({
               />
             </Field>
 
-            <Field label="Quantity" required>
-              <input
-                type="number"
-                min="0"
-                value={form.quantity}
-                onChange={(event) =>
-                  updateField("quantity", event.target.value)
-                }
-                placeholder="0"
-                className={inputClass}
-                required
-              />
-            </Field>
+            {mode === "add" && (
+              <Field label="Opening Balance" required>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.quantity}
+                  onChange={(event) =>
+                    updateField("quantity", event.target.value)
+                  }
+                  placeholder="0"
+                  className={inputClass}
+                  required
+                />
+              </Field>
+            )}
 
             <Field label="Unit">
               <select
@@ -172,10 +179,12 @@ export default function MedicineFormModal({
 
             <div className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2.5">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                Computed Status
+                {mode === "edit" ? "Current Stock" : "Computed Status"}
               </p>
               <p className="mt-1 text-sm font-semibold text-[#B91C1C]">
-                {previewStatus}
+                {mode === "edit"
+                  ? `${Number(item?.quantity || 0).toLocaleString()} ${item?.unit || ""}`
+                  : previewStatus}
               </p>
             </div>
 

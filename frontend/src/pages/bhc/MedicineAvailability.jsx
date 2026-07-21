@@ -7,7 +7,9 @@ import {
   Eye,
   MoreVertical,
   Package,
+  PackagePlus,
   Plus,
+  SlidersHorizontal,
   Trash2,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -18,13 +20,16 @@ import {
   TablePagination,
 } from "../../components/common";
 import MedicineFormModal from "../../components/features/medicine/MedicineFormModal";
+import MedicineInventoryActionModal from "../../components/features/medicine/MedicineInventoryActionModal";
 import {
   addBhcMedicine,
+  adjustMedicine,
   deleteBhcMedicine,
   formatMedicineQuantity,
   getMedicineExpiryStatus,
   loadMedicineAvailability,
   MEDICINE_CATEGORIES,
+  restockMedicine,
   updateBhcMedicine,
 } from "../../services/medicineService";
 import { getCurrentUser } from "../../utils/auth";
@@ -47,6 +52,7 @@ export default function MedicineAvailability() {
   const [modalMode, setModalMode] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [openMenuId, setOpenMenuId] = useState("");
+  const [inventoryAction, setInventoryAction] = useState(null);
   const {
     data: medicineItems = [],
     isLoading,
@@ -152,6 +158,17 @@ export default function MedicineAvailability() {
     setSelectedItem(null);
   }
 
+  function openInventoryAction(item, action) {
+    setOpenMenuId("");
+    setSelectedItem(item);
+    setInventoryAction(action);
+  }
+
+  function closeInventoryAction() {
+    setInventoryAction(null);
+    setSelectedItem(null);
+  }
+
   async function handleSubmit(payload) {
     const nextItems =
       modalMode === "edit" && selectedItem
@@ -175,6 +192,21 @@ export default function MedicineAvailability() {
         Array.isArray(nextItems) ? nextItems : [],
       );
     });
+  }
+
+  async function handleInventoryAction(payload) {
+    const result =
+      inventoryAction === "restock"
+        ? await restockMedicine(selectedItem.id, payload)
+        : await adjustMedicine(selectedItem.id, payload);
+    queryClient.setQueryData(
+      queryKeys.medicineAvailability("bhc"),
+      Array.isArray(result.items) ? result.items : [],
+    );
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.medicineAvailability("bhc"),
+    });
+    closeInventoryAction();
   }
 
   return (
@@ -291,6 +323,8 @@ export default function MedicineAvailability() {
           openMenuId={openMenuId}
           setOpenMenuId={setOpenMenuId}
           onEdit={openEditModal}
+          onRestock={(item) => openInventoryAction(item, "restock")}
+          onAdjust={(item) => openInventoryAction(item, "adjust")}
           onDelete={handleDelete}
         />
 
@@ -307,6 +341,13 @@ export default function MedicineAvailability() {
         onClose={closeModal}
         onSubmit={handleSubmit}
       />
+      <MedicineInventoryActionModal
+        open={Boolean(inventoryAction)}
+        mode={inventoryAction}
+        item={selectedItem}
+        onClose={closeInventoryAction}
+        onSubmit={handleInventoryAction}
+      />
       </div>
       </PageStateWrapper>
     </DashboardLayout>
@@ -319,6 +360,8 @@ function MedicineTable({
   openMenuId,
   setOpenMenuId,
   onEdit,
+  onRestock,
+  onAdjust,
   onDelete,
 }) {
   return (
@@ -413,6 +456,8 @@ function MedicineTable({
                       }
                       onClose={() => setOpenMenuId("")}
                       onEdit={() => onEdit(item)}
+                      onRestock={() => onRestock(item)}
+                      onAdjust={() => onAdjust(item)}
                       onDelete={() => onDelete(item)}
                     />
                   </td>
@@ -454,7 +499,16 @@ function filterMedicineItems(items, filters) {
   });
 }
 
-function ActionMenu({ item, open, onToggle, onClose, onEdit, onDelete }) {
+function ActionMenu({
+  item,
+  open,
+  onToggle,
+  onClose,
+  onEdit,
+  onRestock,
+  onAdjust,
+  onDelete,
+}) {
   const btnRef = useRef(null);
   const menuRef = useRef(null);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -463,7 +517,7 @@ function ActionMenu({ item, open, onToggle, onClose, onEdit, onDelete }) {
     if (!btnRef.current) return;
     const rect = btnRef.current.getBoundingClientRect();
     const menuWidth = 176;
-    const menuHeight = 96;
+    const menuHeight = 176;
     const padding = 12;
     let top = rect.bottom + 6;
     let left = rect.right - menuWidth;
@@ -539,6 +593,28 @@ function ActionMenu({ item, open, onToggle, onClose, onEdit, onDelete }) {
             >
               <Edit3 size={14} className="text-[#9CA3AF]" />
               Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onRestock();
+                onClose();
+              }}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#0F172A]"
+            >
+              <PackagePlus size={14} className="text-[#9CA3AF]" />
+              Restock
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onAdjust();
+                onClose();
+              }}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#0F172A]"
+            >
+              <SlidersHorizontal size={14} className="text-[#9CA3AF]" />
+              Adjust Stock
             </button>
             <button
               type="button"

@@ -71,7 +71,7 @@ function normalizeMedicine(item = {}) {
   };
 }
 
-function toPayload(item = {}) {
+function toCreatePayload(item = {}) {
   return {
     name: item.name,
     category: item.category || null,
@@ -79,11 +79,21 @@ function toPayload(item = {}) {
     quantity: parseQuantity(item.quantity),
     low_stock_threshold: parseQuantity(item.lowStockThreshold ?? item.low_stock_threshold ?? 10),
     unit: item.unit || "pcs",
-    availability_status:
-      item.availabilityStatus || item.status || computeMedicineStatus(item.quantity, item.lowStockThreshold),
     expiration_date: item.expiryDate || item.expirationDate || item.expiration_date || null,
-    rural_health_unit_id: item.ruralHealthUnitId || item.rhuId || null,
-    barangay_health_center_id: item.barangayHealthCenterId || item.bhcId || null,
+  };
+}
+
+function toMetadataPayload(item = {}) {
+  return {
+    name: item.name,
+    category: item.category || null,
+    description: item.description || item.notes || null,
+    low_stock_threshold: parseQuantity(
+      item.lowStockThreshold ?? item.low_stock_threshold ?? 10,
+    ),
+    unit: item.unit || "pcs",
+    expiration_date:
+      item.expiryDate || item.expirationDate || item.expiration_date || null,
   };
 }
 
@@ -126,7 +136,10 @@ export async function saveRhuMedicines() {
 }
 
 export async function addRhuMedicine(data) {
-  const response = await apiRequest("/medicines", { method: "POST", body: toPayload(data) });
+  const response = await apiRequest("/medicines", {
+    method: "POST",
+    body: toCreatePayload(data),
+  });
   const created = normalizeMedicine(unwrapData(response));
   medicineCache = [created, ...medicineCache.filter((item) => item.id !== created.id)];
   emit(RHU_UPDATE_EVENT);
@@ -137,7 +150,7 @@ export async function addRhuMedicine(data) {
 export async function updateRhuMedicine(id, data) {
   const response = await apiRequest(`/medicines/${id}`, {
     method: "PATCH",
-    body: toPayload(data),
+    body: toMetadataPayload(data),
   });
   const updated = normalizeMedicine(unwrapData(response));
   medicineCache = medicineCache.map((item) => (item.id === String(id) ? updated : item));
@@ -181,6 +194,45 @@ export async function updateBhcMedicine(id, data) {
 
 export async function deleteBhcMedicine(id) {
   return deleteRhuMedicine(id);
+}
+
+export async function restockMedicine(id, data) {
+  return mutateMedicineInventory(id, "restock", {
+    quantity: parseQuantity(data.quantity),
+    reason: String(data.reason || "").trim(),
+  });
+}
+
+export async function adjustMedicine(id, data) {
+  return mutateMedicineInventory(id, "adjust", {
+    action: data.action,
+    direction: data.action === "correction" ? data.direction : null,
+    quantity: parseQuantity(data.quantity),
+    reason: String(data.reason || "").trim(),
+  });
+}
+
+export async function loadMedicineTransactions(id, page = 1) {
+  return apiRequest(`/medicines/${id}/transactions?page=${page}`);
+}
+
+async function mutateMedicineInventory(id, operation, body) {
+  const response = await apiRequest(`/medicines/${id}/${operation}`, {
+    method: "POST",
+    body,
+  });
+  const payload = unwrapData(response);
+  const updated = normalizeMedicine(payload?.medicine || {});
+  medicineCache = medicineCache.map((item) =>
+    item.id === String(id) ? updated : item,
+  );
+  emit(RHU_UPDATE_EVENT);
+  emit(BHC_UPDATE_EVENT);
+
+  return {
+    items: medicineCache,
+    transaction: payload?.transaction || null,
+  };
 }
 
 export function formatMedicineQuantity(item) {

@@ -8,6 +8,7 @@ import {
   Edit3,
   MoreVertical,
   PackagePlus,
+  SlidersHorizontal,
   Trash2,
   XCircle,
 } from "lucide-react";
@@ -19,13 +20,16 @@ import {
   TablePagination,
 } from "../../components/common";
 import MedicineFormModal from "../../components/features/medicine/MedicineFormModal";
+import MedicineInventoryActionModal from "../../components/features/medicine/MedicineInventoryActionModal";
 import {
   addRhuMedicine,
+  adjustMedicine,
   deleteRhuMedicine,
   formatMedicineQuantity,
   getMedicineExpiryStatus,
   loadMedicineAvailability,
   MEDICINE_CATEGORIES,
+  restockMedicine,
   updateRhuMedicine,
 } from "../../services/medicineService";
 import { queryKeys } from "../../utils/queryKeys";
@@ -50,6 +54,7 @@ export default function MedicineManagement() {
   const [modalMode, setModalMode] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [openMenuId, setOpenMenuId] = useState("");
+  const [inventoryAction, setInventoryAction] = useState(null);
   const {
     data: medicineItems = [],
     isLoading,
@@ -156,6 +161,17 @@ export default function MedicineManagement() {
     setSelectedItem(null);
   }
 
+  function openInventoryAction(item, action) {
+    setOpenMenuId("");
+    setSelectedItem(item);
+    setInventoryAction(action);
+  }
+
+  function closeInventoryAction() {
+    setInventoryAction(null);
+    setSelectedItem(null);
+  }
+
   async function handleSubmit(payload) {
     const nextItems =
       modalMode === "edit" && selectedItem
@@ -178,6 +194,21 @@ export default function MedicineManagement() {
       queryKeys.medicineAvailability("rhu"),
       Array.isArray(nextItems) ? nextItems : [],
     );
+  }
+
+  async function handleInventoryAction(payload) {
+    const result =
+      inventoryAction === "restock"
+        ? await restockMedicine(selectedItem.id, payload)
+        : await adjustMedicine(selectedItem.id, payload);
+    queryClient.setQueryData(
+      queryKeys.medicineAvailability("rhu"),
+      Array.isArray(result.items) ? result.items : [],
+    );
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.medicineAvailability("rhu"),
+    });
+    closeInventoryAction();
   }
 
   return (
@@ -362,6 +393,8 @@ export default function MedicineManagement() {
                         }
                         onClose={() => setOpenMenuId("")}
                         onEdit={() => openEditModal(item)}
+                        onRestock={() => openInventoryAction(item, "restock")}
+                        onAdjust={() => openInventoryAction(item, "adjust")}
                         onDelete={() => handleDelete(item)}
                       />
                     </td>
@@ -384,6 +417,13 @@ export default function MedicineManagement() {
         title={modalMode === "edit" ? "Edit Medicine" : "Add Medicine"}
         onClose={closeModal}
         onSubmit={handleSubmit}
+      />
+      <MedicineInventoryActionModal
+        open={Boolean(inventoryAction)}
+        mode={inventoryAction}
+        item={selectedItem}
+        onClose={closeInventoryAction}
+        onSubmit={handleInventoryAction}
       />
       </div>
       </PageStateWrapper>
@@ -419,7 +459,16 @@ function filterMedicineItems(items, filters) {
   });
 }
 
-function ActionMenu({ item, open, onToggle, onClose, onEdit, onDelete }) {
+function ActionMenu({
+  item,
+  open,
+  onToggle,
+  onClose,
+  onEdit,
+  onRestock,
+  onAdjust,
+  onDelete,
+}) {
   const btnRef = useRef(null);
   const menuRef = useRef(null);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -428,7 +477,7 @@ function ActionMenu({ item, open, onToggle, onClose, onEdit, onDelete }) {
     if (!btnRef.current) return;
     const rect = btnRef.current.getBoundingClientRect();
     const menuWidth = 176;
-    const menuHeight = 96;
+    const menuHeight = 176;
     const padding = 12;
     let top = rect.bottom + 6;
     let left = rect.right - menuWidth;
@@ -504,6 +553,28 @@ function ActionMenu({ item, open, onToggle, onClose, onEdit, onDelete }) {
             >
               <Edit3 size={14} className="text-[#9CA3AF]" />
               Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onRestock();
+                onClose();
+              }}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#0F172A]"
+            >
+              <PackagePlus size={14} className="text-[#9CA3AF]" />
+              Restock
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onAdjust();
+                onClose();
+              }}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#0F172A]"
+            >
+              <SlidersHorizontal size={14} className="text-[#9CA3AF]" />
+              Adjust Stock
             </button>
             <button
               type="button"
