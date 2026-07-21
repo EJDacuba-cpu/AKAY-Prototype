@@ -585,6 +585,12 @@ class FacilityIsolationSecurityTest extends TestCase
     public function test_rhu_staff_can_submit_feedback_for_own_rhu_referral(): void
     {
         $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->patchJson("/api/referrals/{$this->referralA->id}/status", [
+                'status' => Referral::STATUS_RECEIVED,
+            ])
+            ->assertOk();
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
             ->postJson('/api/feedback', $this->feedbackPayload($this->referralA))
             ->assertCreated()
             ->assertJsonPath('data.referral_id', $this->referralA->id);

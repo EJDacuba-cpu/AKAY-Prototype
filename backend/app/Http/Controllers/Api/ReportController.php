@@ -16,7 +16,7 @@ class ReportController extends Controller
 {
     public function bhw(Request $request, AuditLogger $auditLogger)
     {
-        $query = Referral::where('barangay_health_center_id', $request->user()->barangay_health_center_id);
+        $query = Referral::where('referrals.barangay_health_center_id', $request->user()->barangay_health_center_id);
         $auditLogger->log($request, 'generated', 'reports', 'Generated BHW report.');
 
         return response()->json(['data' => $this->referralReport($query)]);
@@ -24,7 +24,7 @@ class ReportController extends Controller
 
     public function rhu(Request $request, AuditLogger $auditLogger)
     {
-        $query = Referral::where('rural_health_unit_id', $request->user()->rural_health_unit_id);
+        $query = Referral::where('referrals.rural_health_unit_id', $request->user()->rural_health_unit_id);
         $auditLogger->log($request, 'generated', 'reports', 'Generated RHU report.');
 
         return response()->json([
@@ -68,17 +68,18 @@ class ReportController extends Controller
             );
 
             if ($data) {
-                return $data;
+                return $this->normalizeReferralStatusBuckets($data);
             }
         }
 
         $base = clone $query;
+        $statusCounts = $this->canonicalStatusCounts($base);
 
         return [
             'total_referrals' => (clone $base)->count(),
-            'completed_referrals' => (clone $base)->where('status', Referral::STATUS_COMPLETED)->count(),
-            'no_show_referrals' => (clone $base)->where('status', Referral::STATUS_NO_SHOW)->count(),
-            'referrals_by_status' => (clone $base)->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status'),
+            'completed_referrals' => $statusCounts[Referral::STATUS_COMPLETED] ?? 0,
+            'no_show_referrals' => $statusCounts[Referral::STATUS_NO_SHOW] ?? 0,
+            'referrals_by_status' => $statusCounts,
             'referrals_by_category' => (clone $base)->selectRaw('referral_category, count(*) as total')->groupBy('referral_category')->pluck('total', 'referral_category'),
             'referrals_by_barangay' => (clone $base)
                 ->join('barangay_health_centers', 'referrals.barangay_health_center_id', '=', 'barangay_health_centers.id')
@@ -87,6 +88,38 @@ class ReportController extends Controller
                 ->pluck('total', 'barangay'),
             'weekly_referrals' => (clone $base)->where('created_at', '>=', now()->subWeek())->count(),
             'monthly_referrals' => (clone $base)->where('created_at', '>=', now()->subMonth())->count(),
+        ];
+    }
+
+    private function canonicalStatusCounts($query): array
+    {
+        return collect((clone $query)
+            ->selectRaw('status, count(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status'))
+            ->reduce(function (array $counts, mixed $total, string $status): array {
+                $canonical = Referral::normalizeWorkflowStatus($status) ?? $status;
+                $counts[$canonical] = ($counts[$canonical] ?? 0) + (int) $total;
+
+                return $counts;
+            }, []);
+    }
+
+    private function normalizeReferralStatusBuckets(array $report): array
+    {
+        $counts = collect($report['referrals_by_status'] ?? [])
+            ->reduce(function (array $normalized, mixed $total, string $status): array {
+                $canonical = Referral::normalizeWorkflowStatus($status) ?? $status;
+                $normalized[$canonical] = ($normalized[$canonical] ?? 0) + (int) $total;
+
+                return $normalized;
+            }, []);
+
+        return [
+            ...$report,
+            'completed_referrals' => $counts[Referral::STATUS_COMPLETED] ?? 0,
+            'no_show_referrals' => $counts[Referral::STATUS_NO_SHOW] ?? 0,
+            'referrals_by_status' => $counts,
         ];
     }
 }

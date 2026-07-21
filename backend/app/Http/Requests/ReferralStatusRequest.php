@@ -8,6 +8,15 @@ use Illuminate\Validation\Rule;
 
 class ReferralStatusRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $normalized = Referral::normalizeWorkflowStatus($this->input('status'));
+
+        if ($normalized !== null) {
+            $this->merge(['status' => $normalized]);
+        }
+    }
+
     public function authorize(): bool
     {
         return $this->user()?->isRhuStaff() ?? false;
@@ -19,11 +28,10 @@ class ReferralStatusRequest extends FormRequest
             'status' => ['required', Rule::in([
                 Referral::STATUS_PENDING,
                 Referral::STATUS_RECEIVED,
-                Referral::STATUS_FOR_MONITORING,
                 Referral::STATUS_NO_SHOW,
                 Referral::STATUS_COMPLETED,
             ])],
-            'remarks' => ['nullable', 'string'],
+            'remarks' => ['nullable', 'string', 'max:1000'],
         ];
     }
 }

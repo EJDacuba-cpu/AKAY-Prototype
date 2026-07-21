@@ -8,14 +8,10 @@ use App\Http\Requests\ReferralStatusRequest;
 use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\Referral;
-use App\Models\ReferralUpdate;
-use App\Models\User;
-use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
-use App\Services\ReferralNoShowService;
 use App\Services\ReferralCreationService;
 use App\Services\ReferralRoutingService;
-use App\Services\UserNotificationService;
+use App\Services\ReferralWorkflowService;
 use App\Support\StoredFunction;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -41,10 +37,8 @@ class ReferralController extends Controller
         ]);
     }
 
-    public function index(Request $request, ReferralNoShowService $noShowService)
+    public function index(Request $request)
     {
-        $noShowService->markOverduePending();
-
         if (StoredFunction::available() && $request->user()->isAdmin()) {
             $perPage = $request->integer('per_page', 25);
             $page = max(1, $request->integer('page', 1));
@@ -138,11 +132,9 @@ class ReferralController extends Controller
         return $this->storeResponse($referral, 201);
     }
 
-    public function show(Request $request, Referral $referral, ReferralNoShowService $noShowService)
+    public function show(Request $request, Referral $referral)
     {
         $this->facilityAccess->authorizeReferral($request->user(), $referral);
-        $noShowService->markOverduePending($referral);
-        $referral->refresh();
 
         if (StoredFunction::available() && $request->user()->isAdmin()) {
             $data = StoredFunction::selectJson(
@@ -166,81 +158,22 @@ class ReferralController extends Controller
     public function updateStatus(
         ReferralStatusRequest $request,
         Referral $referral,
-        AuditLogger $auditLogger,
-        UserNotificationService $notifications
+        ReferralWorkflowService $workflow
     ) {
-        $this->facilityAccess->authorizeRhuReferralAction($request->user(), $referral);
         $data = $request->validated();
-        $previous = $referral->status;
 
-        $referral->update([
-            'status' => $data['status'],
-            'remarks' => $data['remarks'] ?? $referral->remarks,
+        $result = $workflow->transition(
+            $request,
+            $referral->getKey(),
+            $data['status'],
+            $data['remarks'] ?? null
+        );
+
+        return response()->json([
+            'data' => $result['referral'],
+            'status_unchanged' => $result['status_unchanged'],
+            'status' => $result['status'],
         ]);
-
-        ReferralUpdate::create([
-            'referral_id' => $referral->id,
-            'user_id' => $request->user()->id,
-            'previous_status' => $previous,
-            'status' => $data['status'],
-            'remarks' => $data['remarks'] ?? null,
-        ]);
-
-        $referral->loadMissing(['patient', 'ruralHealthUnit']);
-
-        if ($previous !== Referral::STATUS_RECEIVED && $data['status'] === Referral::STATUS_RECEIVED) {
-            $patientName = $this->patientName($referral);
-            $rhuName = $this->rhuName($referral);
-
-            if (
-                $request->user()->isRhuStaff()
-                && $referral->patient
-                && (int) $referral->patient->rural_health_unit_id !== (int) $referral->rural_health_unit_id
-            ) {
-                $referral->patient->update([
-                    'rural_health_unit_id' => $referral->rural_health_unit_id,
-                ]);
-            }
-
-            $notifications->notifyUsersOnce(
-                $this->bhcUsers($referral),
-                'Referral Received by RHU',
-                "{$rhuName} has received the referral for {$patientName}.",
-                'referral_received_by_rhu',
-                $referral->id,
-                $this->bhcReferralLink($referral),
-                'referral_received',
-                $referral->id
-            );
-
-            if ($request->user()->isRhuStaff()) {
-                $notifications->notifyUsersOnce(
-                    $this->bhcUsers($referral),
-                    'Patient Checked In at RHU',
-                    "{$patientName} has arrived and was checked in at {$rhuName}.",
-                    'patient_checked_in_rhu',
-                    $referral->id,
-                    $this->bhcReferralLink($referral),
-                    'referral_check_in_bhc',
-                    $referral->id
-                );
-
-                $notifications->notifyUsersOnce(
-                    $this->rhuUsers($referral),
-                    'Patient Checked In',
-                    "{$patientName} is ready for referral processing.",
-                    'patient_checked_in',
-                    $referral->id,
-                    $this->rhuReferralLink($referral),
-                    'referral_check_in_rhu',
-                    $referral->id
-                );
-            }
-        }
-
-        $auditLogger->log($request, 'status_updated', 'referrals', "Updated referral {$referral->tracking_id} to {$data['status']}.");
-
-        return response()->json(['data' => $referral->fresh()->load(['patient', 'healthRecord', 'updates'])]);
     }
 
     public function destroy(Request $request, Referral $referral)
@@ -289,44 +222,4 @@ class ReferralController extends Controller
         return $data;
     }
 
-    private function bhcUsers(Referral $referral)
-    {
-        return User::where('role', User::ROLE_BHW)
-            ->where('barangay_health_center_id', $referral->barangay_health_center_id)
-            ->where('status', User::STATUS_ACTIVE)
-            ->get();
-    }
-
-    private function rhuUsers(Referral $referral)
-    {
-        return User::where('role', User::ROLE_RHU_STAFF)
-            ->where('rural_health_unit_id', $referral->rural_health_unit_id)
-            ->where('status', User::STATUS_ACTIVE)
-            ->get();
-    }
-
-    private function patientName(Referral $referral): string
-    {
-        return $referral->patient?->full_name ?: 'The referred patient';
-    }
-
-    private function bhcName(Referral $referral): string
-    {
-        return $referral->barangayHealthCenter?->name ?: 'BHC';
-    }
-
-    private function rhuName(Referral $referral): string
-    {
-        return $referral->ruralHealthUnit?->name ?: 'Rural Health Unit Bulakan';
-    }
-
-    private function bhcReferralLink(Referral $referral): string
-    {
-        return "/bhc/referrals/{$referral->tracking_id}";
-    }
-
-    private function rhuReferralLink(Referral $referral): string
-    {
-        return "/rhu/referrals/{$referral->tracking_id}";
-    }
 }

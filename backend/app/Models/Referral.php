@@ -11,9 +11,17 @@ class Referral extends Model
 {
     public const STATUS_PENDING = 'Pending';
     public const STATUS_RECEIVED = 'Received';
+    // Legacy rows may still use this value; workflow code treats it as Received.
     public const STATUS_FOR_MONITORING = 'For Monitoring';
     public const STATUS_NO_SHOW = 'No-Show';
     public const STATUS_COMPLETED = 'Completed';
+
+    public const WORKFLOW_STATUSES = [
+        self::STATUS_PENDING,
+        self::STATUS_RECEIVED,
+        self::STATUS_NO_SHOW,
+        self::STATUS_COMPLETED,
+    ];
 
     protected $fillable = [
         'tracking_id',
@@ -87,5 +95,19 @@ class Referral extends Model
     public function feedback(): HasOne
     {
         return $this->hasOne(Feedback::class);
+    }
+
+    public static function normalizeWorkflowStatus(mixed $status): ?string
+    {
+        $normalized = strtolower(trim((string) $status));
+        $normalized = preg_replace('/[\s_-]+/', ' ', $normalized) ?: '';
+
+        return match ($normalized) {
+            'pending' => self::STATUS_PENDING,
+            'received', 'for monitoring' => self::STATUS_RECEIVED,
+            'no show' => self::STATUS_NO_SHOW,
+            'completed', 'complete', 'done' => self::STATUS_COMPLETED,
+            default => null,
+        };
     }
 }
