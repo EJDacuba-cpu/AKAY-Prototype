@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BarangayHealthCenterController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\FollowUpTaskController;
 use App\Http\Controllers\Api\HealthRecordController;
+use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\IncomingReferralController;
 use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\NotificationController;
@@ -19,6 +20,9 @@ use App\Http\Controllers\Api\RuralHealthUnitController;
 use App\Http\Controllers\Api\TrackingController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('/health/ready', [HealthController::class, 'ready'])
+    ->middleware(['sensitive.no-store', 'throttle:health']);
 
 Route::post('/auth/login', [AuthController::class, 'login'])
     ->middleware(['sensitive.no-store', 'throttle:login']);

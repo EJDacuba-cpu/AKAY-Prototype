@@ -51,6 +51,8 @@ $cspPolicy = implode(' ', [
 return [
     'headers_enabled' => $securityHeadersEnabled,
 
+    'frontend_url' => SecurityConfiguration::originFromUrl(env('FRONTEND_URL')),
+
     'trusted_hosts' => SecurityConfiguration::trustedHostPatterns(
         env('AKAY_TRUSTED_HOSTS'),
         env('APP_URL')

@@ -34,6 +34,10 @@ class AppServiceProvider extends ServiceProvider
                 'code' => 'LOGIN_THROTTLED',
             ], 429)));
 
+        RateLimiter::for('health', fn (Request $request) => Limit::perMinute(
+            config('operations.health.rate_limit_per_minute')
+        )->by($request->ip()));
+
         RateLimiter::for('referral-qr-resolve', fn (Request $request) => Limit::perMinute(60)
             ->by(($request->user()?->id ?: 'guest').'|'.$request->ip()));
         RateLimiter::for('referral-tracking-resolve', fn (Request $request) => Limit::perMinute(30)
