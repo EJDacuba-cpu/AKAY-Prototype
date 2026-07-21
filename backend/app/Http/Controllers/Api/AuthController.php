@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\PersistentSessionException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\LoginRequest;
 use App\Models\User;
@@ -12,6 +13,7 @@ use App\Services\UserSessionRevocationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
+use Symfony\Component\HttpFoundation\Cookie;
 
 class AuthController extends Controller
 {
@@ -41,15 +43,40 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $newAccessToken = $sessions->issueToken($user);
+        $session = $sessions->issuePersistentSession($user);
         $auditLogger->log($request, 'login', 'auth', 'User logged in.');
 
-        return response()->json([
-            'token' => $newAccessToken->plainTextToken,
-            'token_type' => 'Bearer',
-            'expires_at' => $newAccessToken->accessToken->expires_at,
-            'user' => $user->load(['barangayHealthCenter', 'ruralHealthUnit']),
-        ]);
+        return $this->sessionResponse($user, $session)
+            ->withCookie($this->refreshCookie(
+                $session['refresh']->plainTextToken,
+                $session['refresh']->accessToken->expires_at
+            ));
+    }
+
+    public function refresh(
+        Request $request,
+        FacilityAccessService $facilityAccess,
+        UserSessionRevocationService $sessions
+    ) {
+        try {
+            $session = $sessions->rotatePersistentSession(
+                $request->cookie(config('auth_persistence.cookie.name')),
+                $facilityAccess
+            );
+        } catch (PersistentSessionException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => $exception->codeName(),
+            ], 401)->withCookie($this->expiredRefreshCookie());
+        }
+
+        $user = $session['access']->accessToken->tokenable;
+
+        return $this->sessionResponse($user, $session)
+            ->withCookie($this->refreshCookie(
+                $session['refresh']->plainTextToken,
+                $session['refresh']->accessToken->expires_at
+            ));
     }
 
     public function logout(
@@ -58,15 +85,20 @@ class AuthController extends Controller
         UserSessionRevocationService $sessions
     ) {
         $auditLogger->log($request, 'logout', 'auth', 'User logged out.');
+        $sessions->revokePresentedRefreshToken(
+            $request->user(),
+            $request->cookie(config('auth_persistence.cookie.name'))
+        );
         $sessions->revokeCurrentToken($request->user());
 
-        return response()->json(['message' => 'Logged out.']);
+        return response()->json(['message' => 'Logged out.'])
+            ->withCookie($this->expiredRefreshCookie());
     }
 
     public function profile(Request $request)
     {
         return response()->json([
-            'user' => $request->user()->load(['barangayHealthCenter', 'ruralHealthUnit']),
+            'user' => $this->userPayload($request->user()),
         ]);
     }
 
@@ -108,5 +140,64 @@ class AuthController extends Controller
         return $status === Password::PASSWORD_RESET
             ? response()->json(['message' => __($status)])
             : response()->json(['message' => __($status)], 422);
+    }
+
+    private function sessionResponse(User $user, array $session)
+    {
+        return response()->json([
+            'token' => $session['access']->plainTextToken,
+            'token_type' => 'Bearer',
+            'expires_at' => $session['access']->accessToken->expires_at,
+            'user' => $this->userPayload($user),
+        ]);
+    }
+
+    private function userPayload(User $user): array
+    {
+        $user->loadMissing(['barangayHealthCenter:id,name', 'ruralHealthUnit:id,name']);
+        $facility = $user->isBhw()
+            ? $user->barangayHealthCenter
+            : ($user->isRhuStaff() ? $user->ruralHealthUnit : null);
+        $facilityType = $user->isBhw() ? 'bhc' : ($user->isRhuStaff() ? 'rhu' : null);
+        $homePath = match ($user->role) {
+            User::ROLE_BHW => '/bhc/dashboard',
+            User::ROLE_RHU_STAFF => '/rhu/dashboard',
+            default => '/admin/dashboard',
+        };
+
+        return [
+            'id' => $user->getKey(),
+            'name' => $user->name,
+            'role' => $user->role,
+            'status' => $user->status,
+            'barangay_health_center_id' => $user->barangay_health_center_id,
+            'rural_health_unit_id' => $user->rural_health_unit_id,
+            'facility' => $facility ? [
+                'id' => $facility->getKey(),
+                'name' => $facility->name,
+                'type' => $facilityType,
+            ] : null,
+            'navigation' => [
+                'home' => $homePath,
+                'scope' => $facilityType ?? 'admin',
+            ],
+        ];
+    }
+
+    private function refreshCookie(string $value, mixed $expiresAt): Cookie
+    {
+        return Cookie::create(config('auth_persistence.cookie.name'))
+            ->withValue($value)
+            ->withExpires($expiresAt)
+            ->withPath(config('auth_persistence.cookie.path'))
+            ->withDomain(config('auth_persistence.cookie.domain'))
+            ->withSecure(config('auth_persistence.cookie.secure'))
+            ->withHttpOnly(true)
+            ->withSameSite(config('auth_persistence.cookie.same_site'));
+    }
+
+    private function expiredRefreshCookie(): Cookie
+    {
+        return $this->refreshCookie('', now()->subYear());
     }
 }

@@ -6,6 +6,8 @@ const SESSION_CLEARED_MESSAGE = "SESSION_CLEARED";
 const SESSION_EVENT_STORAGE_KEY = "akay_session_event";
 
 export const LEGACY_SENSITIVE_STORAGE_KEYS = [
+  "akay_auth_token",
+  "akay_auth_user",
   "akay_offline_drafts",
   "akay_health_record_drafts",
   "akay_referral_drafts",

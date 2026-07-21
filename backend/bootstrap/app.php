@@ -1,18 +1,28 @@
 <?php
 
+use App\Http\Middleware\ApplySecurityHeaders;
+use App\Http\Middleware\EnforceProductionHttps;
+use App\Http\Middleware\EnsureAccessTokenAbility;
+use App\Http\Middleware\EnsureRole;
+use App\Http\Middleware\EnsureTrustedSessionRequest;
+use App\Http\Middleware\EnsureUserIsActive;
+use App\Http\Middleware\EnsureValidFacilityAssignment;
+use App\Http\Middleware\PreventSensitiveResponseCaching;
+use App\Http\Middleware\TrustAkayProxies;
 use App\Services\UserSessionRevocationService;
-use Illuminate\Foundation\Application;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
-use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Laravel\Sanctum\PersonalAccessToken;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -22,11 +32,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: null,
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->prepend(\App\Http\Middleware\ApplySecurityHeaders::class);
-        $middleware->append(\App\Http\Middleware\EnforceProductionHttps::class);
+        $middleware->prepend(ApplySecurityHeaders::class);
+        $middleware->append(EnforceProductionHttps::class);
         $middleware->replace(
-            \Illuminate\Http\Middleware\TrustProxies::class,
-            \App\Http\Middleware\TrustAkayProxies::class
+            TrustProxies::class,
+            TrustAkayProxies::class
         );
         $middleware->throttleApi();
 
@@ -36,14 +46,16 @@ return Application::configure(basePath: dirname(__DIR__))
         );
 
         $middleware->alias([
-            'active' => \App\Http\Middleware\EnsureUserIsActive::class,
-            'facility.assigned' => \App\Http\Middleware\EnsureValidFacilityAssignment::class,
-            'role' => \App\Http\Middleware\EnsureRole::class,
-            'sensitive.no-store' => \App\Http\Middleware\PreventSensitiveResponseCaching::class,
+            'active' => EnsureUserIsActive::class,
+            'facility.assigned' => EnsureValidFacilityAssignment::class,
+            'role' => EnsureRole::class,
+            'sensitive.no-store' => PreventSensitiveResponseCaching::class,
+            'auth.session-request' => EnsureTrustedSessionRequest::class,
+            'auth.access-token' => EnsureAccessTokenAbility::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        $exceptions->report(function (\Throwable $exception) {
+        $exceptions->report(function (Throwable $exception) {
             if (config('app.env') !== 'production'
                 || ! app()->bound('request')
                 || ! request()->is('api/*')) {
@@ -59,7 +71,7 @@ return Application::configure(basePath: dirname(__DIR__))
             return false;
         });
 
-        $exceptions->render(function (\Throwable $exception, Request $request) {
+        $exceptions->render(function (Throwable $exception, Request $request) {
             if (! $request->is('api/*')
                 || config('app.env') !== 'production') {
                 return null;
@@ -108,7 +120,7 @@ return Application::configure(basePath: dirname(__DIR__))
             ], 401, [
                 'Cache-Control' => 'no-store, private',
                 'Pragma' => 'no-cache',
-                'Vary' => 'Authorization',
+                'Vary' => 'Authorization, Cookie',
             ]);
         });
     })->create();

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
   Navigate,
   Route,
@@ -70,6 +70,7 @@ import PasswordResetRequests from "./pages/admin/PasswordResetRequests";
 const MIN_BOOT_LOADER_MS = 800;
 const PUBLIC_BOOT_ROUTES = new Set(["/", "/login", "/reset-password", "/unauthorized"]);
 const VALID_APP_ROLES = new Set(["admin", "bhc", "rhu"]);
+const AuthStateContext = createContext({ status: "restoring", user: null });
 
 function isPublicBootRoute(pathname = "") {
   return PUBLIC_BOOT_ROUTES.has(pathname);
@@ -84,10 +85,19 @@ function shouldClearStoredSession(error) {
 }
 
 function ProtectedPage({ allowedRole, children }) {
-  const token = getStoredAuthToken();
-  const user = token ? getCurrentUser() : null;
+  const location = useLocation();
+  const { status, user } = useContext(AuthStateContext);
 
-  if (!token || !user) return <Navigate to="/login" replace />;
+  if (status === "restoring") return <FullScreenAkayLoader message="Restoring your secure session..." />;
+  if (status === "unauthenticated" || !user) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: { pathname: location.pathname, search: location.search } }}
+      />
+    );
+  }
   if (user.role !== allowedRole) return <Navigate to="/unauthorized" replace />;
   return children;
 }
@@ -122,10 +132,19 @@ function LegacyBHCReportRedirect() {
 }
 
 function NotificationRouteWrapper() {
-  const token = getStoredAuthToken();
-  const user = token ? getCurrentUser() : null;
+  const location = useLocation();
+  const { status, user } = useContext(AuthStateContext);
 
-  if (!token || !user) return <Navigate to="/login" replace />;
+  if (status === "restoring") return <FullScreenAkayLoader message="Restoring your secure session..." />;
+  if (status === "unauthenticated" || !user) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: { pathname: location.pathname, search: location.search } }}
+      />
+    );
+  }
   return (
     <DashboardLayout role={user.role} title="Notifications">
       <NotificationsPage />
@@ -133,13 +152,14 @@ function NotificationRouteWrapper() {
   );
 }
 
-function useAuthBootLoaderReady(shouldRestoreStoredSession) {
+function useAuthBootLoaderReady(shouldRestoreStoredSession, retryKey) {
   const [isBootCheckDone, setIsBootCheckDone] = useState(
     () => !shouldRestoreStoredSession,
   );
   const [isMinimumDurationDone, setIsMinimumDurationDone] = useState(
     () => !shouldRestoreStoredSession,
   );
+  const [restoreError, setRestoreError] = useState(null);
 
   useEffect(() => {
     if (!shouldRestoreStoredSession) {
@@ -152,6 +172,7 @@ function useAuthBootLoaderReady(shouldRestoreStoredSession) {
 
     setIsBootCheckDone(false);
     setIsMinimumDurationDone(false);
+    setRestoreError(null);
 
     const minimumTimer = window.setTimeout(() => {
       if (isMounted) setIsMinimumDurationDone(true);
@@ -165,13 +186,12 @@ function useAuthBootLoaderReady(shouldRestoreStoredSession) {
           clearStoredAuthSession();
         }
       } catch (error) {
-        const hasFallbackUser = hasUsableAuthUser(getCurrentUser());
-
-        if (shouldClearStoredSession(error) || !hasFallbackUser) {
+        if (shouldClearStoredSession(error)) {
           clearStoredAuthSession();
         } else {
+          setRestoreError(error);
           if (import.meta.env.DEV) {
-            console.warn("Unable to verify stored AKAY session during boot.", {
+            console.warn("Unable to restore the AKAY session during boot.", {
               status: error?.status || null,
               code: error?.code || "",
             });
@@ -188,9 +208,35 @@ function useAuthBootLoaderReady(shouldRestoreStoredSession) {
       isMounted = false;
       window.clearTimeout(minimumTimer);
     };
-  }, [shouldRestoreStoredSession]);
+  }, [retryKey, shouldRestoreStoredSession]);
 
-  return isBootCheckDone && isMinimumDurationDone;
+  return {
+    isReady: isBootCheckDone && isMinimumDurationDone,
+    restoreError,
+  };
+}
+
+function SessionRestoreUnavailable({ onRetry }) {
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-white px-6">
+      <div className="w-full max-w-sm text-center">
+        <img src="/akay-logo-splash.svg" alt="" className="mx-auto h-24 w-24" />
+        <h1 className="mt-5 text-lg font-bold text-slate-900">
+          Unable to restore your secure session
+        </h1>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          Please check your connection and try again.
+        </p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-6 h-11 rounded-lg bg-[#B91C1C] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#991B1B] focus:outline-none focus:ring-4 focus:ring-red-700/15"
+        >
+          Retry
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function App() {
@@ -198,12 +244,26 @@ export default function App() {
   const navigate = useNavigate();
   const [, setSessionEpoch] = useState(0);
   const [isRevalidatingBfcache, setIsRevalidatingBfcache] = useState(false);
+  const [restoreRetryKey, setRestoreRetryKey] = useState(0);
   const [shouldRestoreStoredSession] = useState(
-    () => Boolean(getStoredAuthToken()) && !isPublicBootRoute(location.pathname),
+    () => !isPublicBootRoute(location.pathname),
   );
-  const isBootLoaderReady = useAuthBootLoaderReady(shouldRestoreStoredSession);
+  const { isReady: isBootLoaderReady, restoreError } = useAuthBootLoaderReady(
+    shouldRestoreStoredSession,
+    restoreRetryKey,
+  );
   const hasCompletedInitialBoot =
     !shouldRestoreStoredSession || isBootLoaderReady;
+  const authUser = getStoredAuthToken() ? getCurrentUser() : null;
+  const authStatus = !hasCompletedInitialBoot
+    ? "restoring"
+    : hasUsableAuthUser(authUser)
+      ? "authenticated"
+      : "unauthenticated";
+  const authState = useMemo(
+    () => ({ status: authStatus, user: authUser }),
+    [authStatus, authUser],
+  );
 
   useEffect(() => {
     function handleSensitiveSessionCleared(event) {
@@ -219,9 +279,8 @@ export default function App() {
         navigate("/login", {
           replace: true,
           state: {
-            sessionEnded: ["session-expired", "session-invalid"].includes(
-              event.detail?.reason,
-            ),
+            sessionEnded: ["session-expired", "session-invalid"].includes(event.detail?.reason),
+            sessionReason: event.detail?.reason,
           },
         });
       }
@@ -262,17 +321,6 @@ export default function App() {
 
       setIsRevalidatingBfcache(true);
 
-      if (!getStoredAuthToken()) {
-        await clearSensitiveSessionState({
-          queryClient,
-          reason: "bfcache-missing-session",
-          broadcast: false,
-        });
-        clearStoredAuthSession();
-        window.location.replace("/login");
-        return;
-      }
-
       try {
         const user = await restoreCurrentUserSession();
         if (!hasUsableAuthUser(user)) {
@@ -284,7 +332,11 @@ export default function App() {
           window.location.replace("/login");
           return;
         }
-      } catch {
+      } catch (error) {
+        if (!shouldClearStoredSession(error)) {
+          setIsRevalidatingBfcache(false);
+          return;
+        }
         await clearSensitiveSessionState({
           queryClient,
           reason: "bfcache-session-revalidation-failed",
@@ -309,10 +361,15 @@ export default function App() {
     return <FullScreenAkayLoader />;
   }
 
+  if (restoreError) {
+    return <SessionRestoreUnavailable onRetry={() => setRestoreRetryKey((key) => key + 1)} />;
+  }
+
   return (
-    <AkayLoadingLifecycleProvider
-      hasCompletedInitialBoot={hasCompletedInitialBoot}
-    >
+    <AuthStateContext.Provider value={authState}>
+      <AkayLoadingLifecycleProvider
+        hasCompletedInitialBoot={hasCompletedInitialBoot}
+      >
       <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/reset-password" element={<ResetPassword />} />
@@ -659,6 +716,7 @@ export default function App() {
       <Route path="/unauthorized" element={<Unauthorized />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
-    </AkayLoadingLifecycleProvider>
+      </AkayLoadingLifecycleProvider>
+    </AuthStateContext.Provider>
   );
 }

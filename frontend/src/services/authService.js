@@ -3,6 +3,8 @@ import {
   clearAuthSession,
   getStoredAuthUser,
   normalizeUser,
+  refreshAuthSession,
+  sessionRequestOptions,
   storeAuthSession,
 } from "./apiClient";
 import { queryClient } from "../lib/queryClient";
@@ -17,8 +19,7 @@ export function getUser() {
 
 export async function restoreSession() {
   const previousUser = getStoredAuthUser();
-  const response = await apiRequest("/auth/profile");
-  const user = response?.user || response?.data?.user || response?.data;
+  const user = await refreshAuthSession();
 
   if (!user) {
     throw new Error("Unable to restore authenticated session.");
@@ -44,7 +45,10 @@ export function saveUser(user) {
 }
 
 export async function logout() {
-  const logoutRequest = apiRequest("/auth/logout", { method: "POST" }).then(
+  const logoutRequest = apiRequest(
+    "/auth/logout",
+    sessionRequestOptions({ method: "POST" }),
+  ).then(
     (value) => ({ value, error: null }),
     (error) => ({ value: null, error }),
   );
@@ -66,9 +70,11 @@ export async function logout() {
 export async function loginUser(email, password) {
   const previousUser = getStoredAuthUser();
   const response = await apiRequest("/auth/login", {
-    method: "POST",
+    ...sessionRequestOptions({
+      method: "POST",
+      body: { email, password },
+    }),
     auth: false,
-    body: { email, password },
   });
 
   const normalized = normalizeUser(response.user);

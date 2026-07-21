@@ -26,16 +26,19 @@ Route::get('/health/ready', [HealthController::class, 'ready'])
     ->middleware(['sensitive.no-store', 'throttle:health']);
 
 Route::post('/auth/login', [AuthController::class, 'login'])
-    ->middleware(['sensitive.no-store', 'throttle:login']);
+    ->middleware(['sensitive.no-store', 'auth.session-request', 'throttle:login']);
+Route::post('/auth/refresh', [AuthController::class, 'refresh'])
+    ->middleware(['sensitive.no-store', 'auth.session-request', 'throttle:30,1']);
 Route::post('/auth/forgot-password', [PasswordResetRequestController::class, 'request'])->middleware('throttle:5,1');
 Route::post('/auth/reset-password', [PasswordResetRequestController::class, 'complete'])->middleware('throttle:10,1');
 Route::post('/auth/password-reset/request', [PasswordResetRequestController::class, 'request'])->middleware('throttle:5,1');
 Route::get('/auth/password-reset/verify', [PasswordResetRequestController::class, 'verify'])->middleware('throttle:20,1');
 Route::post('/auth/password-reset/complete', [PasswordResetRequestController::class, 'complete'])->middleware('throttle:10,1');
 
-Route::middleware(['sensitive.no-store', 'auth:sanctum', 'active'])->group(function () {
+Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'active'])->group(function () {
     Route::get('/auth/profile', [AuthController::class, 'profile']);
-    Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::post('/auth/logout', [AuthController::class, 'logout'])
+        ->middleware('auth.session-request');
 
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::patch('/notifications/read-all', [NotificationController::class, 'markAllRead']);

@@ -20,7 +20,7 @@ class EnforceProductionHttps
                 ], 426, [
                     'Cache-Control' => 'no-store, private',
                     'Pragma' => 'no-cache',
-                    'Vary' => 'Authorization',
+                    'Vary' => 'Authorization, Cookie',
                 ]);
             }
 

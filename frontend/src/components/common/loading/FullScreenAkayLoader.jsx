@@ -35,6 +35,8 @@ export default function FullScreenAkayLoader({
           ))}
         </h1>
 
+        <p className="mt-3 text-sm font-medium text-slate-500">{message}</p>
+
       </div>
 
       <style>{`

@@ -32,9 +32,10 @@ class ProductionSecurityHeadersTest extends TestCase
                 'Authorization',
                 'Idempotency-Key',
                 'X-Health-Record-Draft-ID',
+                'X-AKAY-Session',
                 'X-Requested-With',
             ],
-            'cors.supports_credentials' => false,
+            'cors.supports_credentials' => true,
             'security.headers_enabled' => true,
             'security.csp.mode' => 'enforce',
             'security.csp.policy' => implode(' ', [
@@ -113,7 +114,7 @@ class ProductionSecurityHeadersTest extends TestCase
         $response = $this->call('OPTIONS', '/api/auth/login', [], [], [], [
             'HTTP_ORIGIN' => self::TRUSTED_ORIGIN,
             'HTTP_ACCESS_CONTROL_REQUEST_METHOD' => 'POST',
-            'HTTP_ACCESS_CONTROL_REQUEST_HEADERS' => 'Authorization, Idempotency-Key, X-Health-Record-Draft-ID',
+            'HTTP_ACCESS_CONTROL_REQUEST_HEADERS' => 'Authorization, Idempotency-Key, X-Health-Record-Draft-ID, X-AKAY-Session',
         ]);
 
         $response->assertNoContent();
@@ -130,11 +131,15 @@ class ProductionSecurityHeadersTest extends TestCase
             'x-health-record-draft-id',
             strtolower((string) $response->headers->get('Access-Control-Allow-Headers'))
         );
+        $this->assertStringContainsString(
+            'x-akay-session',
+            strtolower((string) $response->headers->get('Access-Control-Allow-Headers'))
+        );
         $allowedMethods = (string) $response->headers->get('Access-Control-Allow-Methods');
         foreach (['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as $method) {
             $this->assertStringContainsString($method, $allowedMethods);
         }
-        $this->assertFalse($response->headers->has('Access-Control-Allow-Credentials'));
+        $response->assertHeader('Access-Control-Allow-Credentials', 'true');
     }
 
     public function test_unknown_origin_does_not_receive_cors_permission(): void
@@ -146,6 +151,7 @@ class ProductionSecurityHeadersTest extends TestCase
 
         $this->assertNotSame('*', $response->headers->get('Access-Control-Allow-Origin'));
         $this->assertNull($response->headers->get('Access-Control-Allow-Origin'));
+        $this->assertFalse($response->headers->has('Access-Control-Allow-Credentials'));
     }
 
     public function test_origin_parser_rejects_wildcards_and_malformed_origins(): void

@@ -31,6 +31,7 @@ class DeploymentReadinessService
             $this->check('Database connectivity', fn () => $this->databaseReachable()),
             $this->check('CORS origins', fn () => $this->validCorsOrigins($production)),
             $this->check('CORS request headers', fn () => $this->validCorsHeaders()),
+            $this->check('Authentication cookie policy', fn () => $this->validAuthenticationCookie($production)),
             $this->check('Frontend URL', fn () => $this->validFrontendUrl($production)),
             $this->check('Token expiration', fn () => $this->validTokenExpiration()),
             $this->check('Security headers policy', fn () => ! $production
@@ -139,7 +140,22 @@ class DeploymentReadinessService
         return ! $headers->contains('*')
             && $headers->contains('authorization')
             && $headers->contains('idempotency-key')
-            && $headers->contains('x-health-record-draft-id');
+            && $headers->contains('x-health-record-draft-id')
+            && $headers->contains('x-akay-session')
+            && config('cors.supports_credentials') === true;
+    }
+
+    private function validAuthenticationCookie(bool $production): bool
+    {
+        $cookie = config('auth_persistence.cookie', []);
+        $sameSite = $cookie['same_site'] ?? null;
+        $secure = ($cookie['secure'] ?? false) === true;
+
+        return ($cookie['http_only'] ?? false) === true
+            && ($cookie['path'] ?? null) === '/api/auth'
+            && in_array($sameSite, ['lax', 'strict', 'none'], true)
+            && ($sameSite !== 'none' || $secure)
+            && (! $production || $secure);
     }
 
     private function validTokenExpiration(): bool

@@ -14,7 +14,7 @@ class PreventSensitiveResponseCaching
 
         $response->headers->set('Cache-Control', 'no-store, private');
         $response->headers->set('Pragma', 'no-cache');
-        $response->headers->set('Vary', 'Authorization', false);
+        $response->headers->set('Vary', 'Authorization, Cookie');
 
         return $response;
     }

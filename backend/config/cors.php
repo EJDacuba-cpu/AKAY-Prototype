@@ -26,6 +26,7 @@ return [
         'Authorization',
         'Idempotency-Key',
         'X-Health-Record-Draft-ID',
+        'X-AKAY-Session',
         'X-Requested-With',
     ],
 
@@ -33,5 +34,5 @@ return [
 
     'max_age' => 600,
 
-    'supports_credentials' => false,
+    'supports_credentials' => true,
 ];

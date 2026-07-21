@@ -150,3 +150,23 @@ scanner, and notification audio. No external CDN origin is currently required.
 Actual deployment still requires final domains, TLS certificates, exact proxy
 addresses, web-server headers, CSP browser verification, scheduler setup, backups,
 monitoring, and the team's final HSTS decision.
+
+## Authentication persistence
+
+Browser refresh persistence uses the rotating HttpOnly refresh-cookie design in
+`docs/authentication-persistence.md`; it does not use Sanctum SPA session cookies.
+Production must set exact HTTPS frontend/API origins and review:
+
+```dotenv
+AKAY_AUTH_ACCESS_TOKEN_MINUTES=15
+AKAY_AUTH_REFRESH_TOKEN_MINUTES=480
+AKAY_AUTH_REFRESH_IDLE_MINUTES=120
+AKAY_AUTH_COOKIE_SECURE=true
+AKAY_AUTH_COOKIE_SAME_SITE=lax
+AKAY_AUTH_COOKIE_DOMAIN=
+```
+
+Keep the cookie domain empty for a host-only API cookie unless the reviewed
+deployment topology requires otherwise. `SameSite=None` is reserved for a genuine
+cross-site deployment and requires Secure HTTPS. The proxy must forward `Cookie`,
+`Origin`, `Authorization`, and `X-AKAY-Session` without logging their values.

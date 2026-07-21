@@ -14,8 +14,10 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(() =>
-    location.state?.sessionEnded
-      ? "Your session has ended. Please sign in again."
+    location.state?.sessionReason === "session-expired"
+      ? "Your session has expired. Please sign in again."
+      : location.state?.sessionEnded
+        ? "Your session is no longer valid. Please sign in again."
       : "",
   );
   const [mode, setMode] = useState("signin");
@@ -29,6 +31,16 @@ export default function Login() {
 
     try {
       const user = await loginUser(email, password);
+      const requestedPath = location.state?.from;
+      const requestedUrl = requestedPath?.pathname
+        ? `${requestedPath.pathname}${requestedPath.search || ""}`
+        : "";
+      const expectedPrefix = user.role === "admin" ? "/admin/" : `/${user.role}/`;
+
+      if (requestedUrl.startsWith(expectedPrefix)) {
+        navigate(requestedUrl, { replace: true });
+        return;
+      }
 
       if (user.role === "admin") navigate("/admin/dashboard", { replace: true });
       if (user.role === "bhc") navigate("/bhc/dashboard", { replace: true });
