@@ -147,3 +147,59 @@ allowlisted payload, 10,000 characters per text field, 50 medicine selections,
 30 pregnancy or vaccine entries, 15 metadata rows per API page, and 30
 create/update requests per minute. The frontend follows all metadata pages so
 every allowed active draft remains reachable.
+
+## Offline Resilience Design Rationale
+
+BHWs encode records at barangay health centers on connections that drop mid-form.
+Manual-only saving meant a failed request lost everything typed since the last
+save. The `useDraftAutosave` hook (`frontend/src/hooks/useDraftAutosave.js`) keeps
+unsaved input alive in memory and retries automatically when the link returns,
+surfaced to the encoder through `DraftSaveStatus`.
+
+### Why in-memory rather than browser storage
+
+Unsaved clinical input is held only in React state and refs — the queued payload
+lives in an in-memory `pendingSaveRef`, never in `localStorage`, `sessionStorage`,
+IndexedDB, a service-worker cache, or persisted TanStack Query storage. This is a
+deliberate privacy decision, not an oversight. BHW workstations are frequently
+shared, and PHI written to on-device storage would outlive the session, survive
+logout, and be readable by the next user or by anything with filesystem access.
+Keeping drafts in volatile memory means the sensitive-session-cleared event, a tab
+close, or a logout removes every trace of the unsaved data. The only durable copy
+of clinical content is the server-side ciphertext encrypted under `APP_KEY`, which
+inherits the existing key-custody, allowlist, and audit guarantees documented
+above. The autosave path adds no new persistence surface and no new place a draft
+can leak.
+
+### What this covers
+
+Intermittent connectivity during active encoding: request timeouts, transient
+network loss, `navigator.onLine` transitions, `502/503/504` responses, and server
+rate-limiting (`429`). While the tab stays open, typed input survives these and is
+flushed to the server automatically — debounced at 20s (at most three writes per
+minute, well under the 30/min limit), immediately on step/section change, with
+exponential backoff (5s, 10s, 30s, 60s cap) and an immediate flush on the `online`
+event. Version conflicts (`409 DRAFT_VERSION_CONFLICT`) stop the retry loop and
+prompt a non-destructive reload-or-keep choice; the newer server draft is never
+silently overwritten. Payload rejections (`422`) stop retrying and surface the
+field errors.
+
+### What this does NOT cover
+
+Because the pending draft is intentionally memory-only, it does not survive events
+that discard the tab's memory: a browser or OS crash, a power loss, or closing the
+tab or window (a `beforeunload` guard warns before an intentional close, but cannot
+prevent a crash). It is not offline authoring — a draft that has never reached the
+server has no server copy, and if the tab dies before connectivity returns, that
+unsaved content is gone. Autosave narrows, but does not eliminate, the window in
+which unsynced input can be lost.
+
+### Deferred to future work
+
+Encrypted on-device persistence — for example IndexedDB storage of drafts sealed
+with a server-issued, per-session derived key that is destroyed on logout and
+session clear — would let a draft survive a crash or power loss without leaving
+readable PHI at rest on a shared workstation. That approach requires a reviewed
+key-derivation and key-destruction design and is explicitly out of scope for this
+phase. Until it lands, the guarantee is: your work is safe as long as this tab
+stays open.

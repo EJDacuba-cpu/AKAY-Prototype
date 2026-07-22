@@ -19,6 +19,7 @@ import DashboardLayout from "./components/layout/DashboardLayout";
 import { FullScreenAkayLoader } from "./components/common";
 import { AkayLoadingLifecycleProvider } from "./hooks/useAkayLoadingLifecycle";
 import NotificationsPage from "./pages/bhc/NotificationsPage";
+import DesignTokens from "./pages/DesignTokens";
 import { queryClient } from "./lib/queryClient";
 import {
   clearSensitiveSessionState,
@@ -68,7 +69,13 @@ import AuditLogs from "./pages/admin/AuditLogs";
 import PasswordResetRequests from "./pages/admin/PasswordResetRequests";
 
 const MIN_BOOT_LOADER_MS = 800;
-const PUBLIC_BOOT_ROUTES = new Set(["/", "/login", "/reset-password", "/unauthorized"]);
+const PUBLIC_BOOT_ROUTES = new Set([
+  "/",
+  "/login",
+  "/reset-password",
+  "/unauthorized",
+  "/design-tokens",
+]);
 const VALID_APP_ROLES = new Set(["admin", "bhc", "rhu"]);
 const AuthStateContext = createContext({ status: "restoring", user: null });
 
@@ -714,6 +721,10 @@ export default function App() {
       <Route path="/notifications" element={<NotificationRouteWrapper />} />
 
       <Route path="/unauthorized" element={<Unauthorized />} />
+
+      {/* Design token preview / QA (public; no PHI). Step 1 evidence page. */}
+      <Route path="/design-tokens" element={<DesignTokens />} />
+
       <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
       </AkayLoadingLifecycleProvider>

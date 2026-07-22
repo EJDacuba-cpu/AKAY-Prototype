@@ -30,12 +30,12 @@ import healthRecordService, {
   getHealthRecordsByPatient,
 } from "../../services/healthRecordService";
 import {
-  createHealthRecordDraft,
   discardHealthRecordDraft,
   getHealthRecordDraft,
   listHealthRecordDrafts,
-  updateHealthRecordDraft,
 } from "../../services/healthRecordDraftService";
+import useDraftAutosave from "../../hooks/useDraftAutosave";
+import DraftSaveStatus from "../../components/features/health-records/DraftSaveStatus";
 import {
   BHC_MEDICINES_UPDATED_EVENT,
   getBhcMedicines,
@@ -1078,7 +1078,6 @@ export default function AddHealthRecord() {
   const [healthRecordDrafts, setHealthRecordDrafts] = useState([]);
   const [draftListLoading, setDraftListLoading] = useState(false);
   const [draftListError, setDraftListError] = useState("");
-  const [draftSaving, setDraftSaving] = useState(false);
   const [draftResumingId, setDraftResumingId] = useState("");
   const [draftDiscardingId, setDraftDiscardingId] = useState("");
   const [activeDraft, setActiveDraft] = useState(null);
@@ -2036,54 +2035,114 @@ export default function AddHealthRecord() {
     setReferralValidationErrors({});
   }
 
-  async function handleSaveDraft() {
-    if (!canSaveCurrentDraft || draftSaving) return;
-    setDraftSaving(true);
-    try {
-      const request = {
-        patientId: Number(selectedPatientId),
-        classification: normalizedHealthRecordType,
-        payload: buildHealthRecordDraftPayload(),
-      };
-      const saved = activeDraft
-        ? await updateHealthRecordDraft(activeDraft.id, {
-            ...request,
+  const handleDraftAutosaved = useCallback((saved) => {
+    setActiveDraft({ id: saved.id, version: saved.version });
+    setDraftSavedAt(saved.lastSavedAt || "");
+    setHealthRecordDrafts((current) => [
+      saved,
+      ...current.filter((item) => item.id !== saved.id),
+    ]);
+  }, []);
+
+  // In-memory autosave payload: rebuilt each render only while a draft can be
+  // saved, and never written to browser storage (privacy requirement).
+  const draftAutosavePayload = canSaveCurrentDraft
+    ? buildHealthRecordDraftPayload()
+    : null;
+  // Entering the referral/care-decision sub-steps flushes an immediate save.
+  const draftAutosaveSectionKey = `${normalizedHealthRecordType}|${referralDetailsStep}|${careDecisionStep}|${needsReferral}`;
+  const draftIdentity = useMemo(
+    () =>
+      activeDraft
+        ? {
+            id: activeDraft.id,
             version: activeDraft.version,
-          })
-        : await createHealthRecordDraft(request);
-      setActiveDraft({ id: saved.id, version: saved.version });
-      setDraftSavedAt(saved.lastSavedAt);
-      setHealthRecordDrafts((current) => [
-        saved,
-        ...current.filter((item) => item.id !== saved.id),
-      ]);
-    } catch (error) {
-      if (error?.status === 409 && error?.payload?.code === "DRAFT_VERSION_CONFLICT") {
-        setNoticeModal({
-          title: "Draft Updated Elsewhere",
-          message:
-            "A newer version of this draft was saved in another tab. Reload the latest version before saving again.",
-          actions: [
-            {
-              label: "Reload Latest",
-              onClick: () => void handleResumeDraft(activeDraft?.id),
-            },
-            { label: "Keep Editing", variant: "secondary" },
-          ],
-        });
-      } else {
-        setNoticeModal({
-          title: "Draft Not Saved",
-          message: isConnectionError(error)
-            ? "Unable to reach the server. Your entries remain on this form. Please reconnect and try Save Draft again."
-            : error?.message ||
-              "Unable to save this draft. Your entries remain on this form.",
-        });
-      }
-    } finally {
-      setDraftSaving(false);
+            lastSavedAt: draftSavedAt || null,
+          }
+        : null,
+    [activeDraft, draftSavedAt],
+  );
+
+  const draftAutosave = useDraftAutosave({
+    enabled: canSaveCurrentDraft,
+    patientId: selectedPatientId,
+    classification: normalizedHealthRecordType,
+    payload: draftAutosavePayload,
+    draft: draftIdentity,
+    sectionKey: draftAutosaveSectionKey,
+    onDraftSaved: handleDraftAutosaved,
+  });
+
+  const {
+    status: draftAutosaveStatus,
+    hasPendingChanges: draftHasPendingChanges,
+    conflict: draftConflict,
+    error: draftAutosaveError,
+    saveNow: saveDraftNow,
+    resolveConflict: resolveDraftConflict,
+  } = draftAutosave;
+
+  const handleManualSaveDraft = useCallback(() => {
+    if (!canSaveCurrentDraft) return;
+    void saveDraftNow();
+  }, [canSaveCurrentDraft, saveDraftNow]);
+
+  // Non-destructive conflict dialog: never silently overwrite a newer draft.
+  useEffect(() => {
+    if (!draftConflict) return;
+    setNoticeModal({
+      title: "Draft Updated Elsewhere",
+      message:
+        "This draft was updated in another tab or device. Reload the latest version (your unsaved edits here will be discarded) or keep editing without saving.",
+      actions: [
+        {
+          label: "Reload Latest",
+          onClick: async () => {
+            if (draftConflict.draftId) {
+              await handleResumeDraft(draftConflict.draftId);
+            }
+            resolveDraftConflict("reload");
+          },
+        },
+        {
+          label: "Keep Editing",
+          variant: "secondary",
+          onClick: () => resolveDraftConflict("keep"),
+        },
+      ],
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftConflict]);
+
+  // Surface allowlist/validation rejections; the retry loop has already stopped.
+  useEffect(() => {
+    if (!draftAutosaveError) return;
+    if (draftAutosaveError.type === "validation") {
+      setValidationErrors((current) => ({
+        ...current,
+        ...draftAutosaveError.fieldErrors,
+      }));
     }
-  }
+    setNoticeModal({
+      title: "Draft Not Saved",
+      message:
+        draftAutosaveError.message ||
+        "Some entries could not be saved. Your form remains available on this page.",
+    });
+  }, [draftAutosaveError]);
+
+  // Warn before leaving while unsaved changes are still only in memory.
+  useEffect(() => {
+    if (!draftHasPendingChanges) return undefined;
+    function handleBeforeUnload(event) {
+      event.preventDefault();
+      event.returnValue = "";
+      return "";
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () =>
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [draftHasPendingChanges]);
 
   async function handleResumeDraft(draftId) {
     if (!draftId || draftResumingId) return;
@@ -3802,29 +3861,40 @@ export default function AddHealthRecord() {
             <div className="flex shrink-0 flex-col items-start gap-1.5 sm:items-end">
               <button
                 type="button"
-                onClick={handleSaveDraft}
-                disabled={draftSaving || saving}
-                aria-busy={draftSaving}
+                onClick={handleManualSaveDraft}
+                disabled={draftAutosaveStatus === "saving" || saving}
+                aria-busy={draftAutosaveStatus === "saving"}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[#DDE3E9] bg-white px-4 text-sm font-semibold text-[#475569] shadow-sm transition hover:border-[#B91C1C]/30 hover:bg-[#FFF7F7] hover:text-[#B91C1C] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/15 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {draftSaving ? <ButtonSpinner /> : <FileClock size={16} />}
-                {draftSaving
+                {draftAutosaveStatus === "saving" ? (
+                  <ButtonSpinner />
+                ) : (
+                  <FileClock size={16} />
+                )}
+                {draftAutosaveStatus === "saving"
                   ? "Saving draft..."
                   : activeDraft
                     ? "Update Draft"
                     : "Save Draft"}
               </button>
-              {draftSavedAt && (
-                <span
-                  className="text-[11px] font-medium text-[#64748B]"
-                  aria-live="polite"
-                >
-                  Saved {formatDraftDateTime(draftSavedAt)}
-                </span>
+              {draftAutosaveStatus !== "offline" && (
+                <DraftSaveStatus
+                  status={draftAutosaveStatus}
+                  lastSavedAt={draftAutosave.lastSavedAt}
+                />
               )}
             </div>
           )}
         </div>
+        </div>
+      )}
+
+      {canSaveCurrentDraft && draftAutosaveStatus === "offline" && (
+        <div className="anim-fade-up mb-4 ml-0 mr-auto w-full max-w-7xl">
+          <DraftSaveStatus
+            status={draftAutosaveStatus}
+            lastSavedAt={draftAutosave.lastSavedAt}
+          />
         </div>
       )}
 

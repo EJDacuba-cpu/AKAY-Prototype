@@ -1,5 +1,123 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   AKAY DESIGN TOKENS — Step 1 (tokens only; components restyled in Step 2)
+   Direction: "Calm medical sanctuary" — warm-neutral base, clay brand red,
+   a separate vivid alert red used sparingly, restrained radius, serif headings.
+
+   @theme  → generating tokens. Tailwind v4 emits these as CSS vars AND builds
+             utilities from them (bg-brand-500, text-neutral-600, rounded-card,
+             font-serif, text-2xl, shadow-md, …).
+   :root   → SEMANTIC role vars. Not meant to generate utilities; components
+             consume THESE in Step 2. Structured so a dark theme can later
+             override the roles without touching the ramps.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@theme {
+  /* ── Color ramps ─────────────────────────────────────────────────────── */
+
+  /* Neutral — warm greige (replaces slate) */
+  --color-neutral-50: #fafaf9;
+  --color-neutral-100: #f5f4f2;
+  --color-neutral-200: #e8e7e3;
+  --color-neutral-300: #d6d4ce;
+  --color-neutral-400: #b0ada4;
+  --color-neutral-500: #8a867c;
+  --color-neutral-600: #6b6860;
+  --color-neutral-700: #4e4b45;
+  --color-neutral-800: #35332e;
+  --color-neutral-900: #21201c;
+
+  /* Brand — clay / brick (logo, nav, primary actions) */
+  --color-brand-50: #fbf1ef;
+  --color-brand-100: #f5ded9;
+  --color-brand-200: #e4b3aa;
+  --color-brand-300: #ce8578;
+  --color-brand-400: #b85a4b;
+  --color-brand-500: #a23f31;
+  --color-brand-600: #853327;
+  --color-brand-700: #67281f;
+  --color-brand-800: #4a1e17;
+  --color-brand-900: #331512;
+
+  /* Alert — vivid red (Emergency / No Show / destructive ONLY) */
+  --color-alert-50: #fdecec;
+  --color-alert-100: #fad1d1;
+  --color-alert-200: #f2a0a0;
+  --color-alert-300: #e96a6a;
+  --color-alert-400: #de3f3f;
+  --color-alert-500: #c81e1e;
+  --color-alert-600: #a31616;
+  --color-alert-700: #7d1010;
+
+  /* Status — muted, calm */
+  --color-success-50: #eaf2ec;
+  --color-success-500: #3f7a55;
+  --color-success-700: #2c5a3e;
+  --color-warning-50: #f7f0e1;
+  --color-warning-500: #b07d2b;
+  --color-warning-700: #855c18;
+  --color-info-50: #eaf1f6;
+  --color-info-500: #3a6b94;
+  --color-info-700: #29506f;
+
+  /* ── Typography ──────────────────────────────────────────────────────── */
+  --font-sans: "Public Sans Variable", system-ui, sans-serif;
+  --font-serif: "Source Serif 4 Variable", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Type scale (15px base) */
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+
+  /* ── Radius (restrained — do NOT round heavily) ──────────────────────── */
+  --radius-row: 3px;
+  --radius-input: 5px;
+  --radius-card: 8px;
+  --radius-lg: 10px;
+  --radius-modal: 14px;
+  --radius-pill: 999px;
+
+  /* ── Shadow (ONE soft system; overlays only — cards use borders) ─────── */
+  --shadow-sm: 0 1px 2px rgba(33, 32, 28, 0.05);
+  --shadow-md: 0 4px 12px rgba(33, 32, 28, 0.06);
+  --shadow-lg: 0 12px 28px rgba(33, 32, 28, 0.08);
+}
+
+:root {
+  /* ── Semantic roles (components consume THESE in Step 2) ─────────────── */
+  --color-bg: var(--color-neutral-50);
+  --color-surface: #ffffff;
+  --color-surface-2: var(--color-neutral-100);
+  --color-border: var(--color-neutral-200);
+  --color-border-strong: var(--color-neutral-300);
+  --color-text: var(--color-neutral-900);
+  --color-text-secondary: var(--color-neutral-600);
+  --color-text-muted: var(--color-neutral-500);
+  --color-primary: var(--color-brand-500);
+  --color-primary-hover: var(--color-brand-600);
+  --color-primary-soft: var(--color-brand-50);
+  --color-danger: var(--color-alert-500);
+  --color-danger-hover: var(--color-alert-600);
+  --color-danger-soft: var(--color-alert-50);
+  --color-ring: color-mix(in srgb, var(--color-brand-500) 30%, transparent);
+
+  /* ── Legacy aliases — keep the old --akay-* API working (re-pointed) ─── */
+  --akay-primary: var(--color-primary);
+  --akay-primary-dark: var(--color-primary-hover);
+  --akay-primary-soft: var(--color-primary-soft);
+  --akay-bg: var(--color-bg);
+  --akay-surface: var(--color-surface);
+  --akay-text: var(--color-text);
+  --akay-muted: var(--color-text-muted);
+  --akay-border: var(--color-border);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -10,35 +128,29 @@ html {
 
 body {
   margin: 0;
-  background: #f8fafc;
-  font-family:
-    Inter,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-  color: #1f2937;
+  background: var(--color-bg);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  color: var(--color-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-:root {
-  --akay-primary: #b91c1c;
-  --akay-primary-dark: #7f1d1d;
-  --akay-primary-soft: #fee2e2;
-  --akay-bg: #f8fafc;
-  --akay-surface: #ffffff;
-  --akay-text: #0f172a;
-  --akay-muted: #64748b;
-  --akay-border: #e5e7eb;
+/* Serif headings by default; utility classes (font-sans, font-bold, …) still
+   win by specificity, so components keep full control where they opt in. */
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-serif);
+  font-weight: 600;
 }
 
+/* Cards: border-only separation. Shadow is reserved for overlays. */
 .akay-card {
   border: 1px solid var(--akay-border);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-card);
   background: var(--akay-surface);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .akay-card-hover {
