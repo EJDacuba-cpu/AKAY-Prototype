@@ -4,7 +4,7 @@ use App\Support\SecurityConfiguration;
 
 $environment = (string) env('APP_ENV', 'production');
 $localOrigins = $environment === 'local'
-    ? 'http://localhost:5173,http://127.0.0.1:5173'
+    ? 'http://localhost:5173,http://192.168.100.150:5173'
     : '';
 $allowedOrigins = SecurityConfiguration::parseOrigins(
     env('AKAY_ALLOWED_ORIGINS', $localOrigins),

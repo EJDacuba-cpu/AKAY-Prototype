@@ -54,50 +54,53 @@ const REPORT_TYPES = [
   {
     key: "referrals",
     slug: "referrals",
-    label: "Referral Reports",
+    label: "Referral Tracking",
     description: "Referral activity, status, and receiving facility tracking.",
   },
   {
     key: "followups",
     slug: "follow-ups",
-    label: "Follow-ups / Monitoring",
+    label: "Follow-up and Monitoring",
     description: "Scheduled return visits and monitoring outcomes.",
   },
   {
     key: "epi",
     slug: "epi-target-client-list",
-    label: "EPI Target Client List",
+    label: "Child Immunization (EPI) Target Client List",
     description:
       "Generated from registered child patients, Child Health / EPI records, and follow-up schedules.",
   },
   {
     key: "morbidity",
     slug: "morbidity",
-    label: "Morbidity / Notifiable Diseases",
-    description: "Diagnosis and notifiable condition reporting from health records.",
+    label: "Morbidity and Notifiable Diseases",
+    description:
+      "Diagnosis and notifiable condition reporting from health records.",
   },
   {
     key: "community_surveillance",
     slug: "community-based-surveillance",
-    label: "Community-Based Surveillance",
-    description: "Disease-specific surveillance lists generated from marked health records.",
+    label: "Community-Based Disease Surveillance",
+    description:
+      "Disease-specific surveillance lists generated from marked health records.",
   },
   {
     key: "family_planning",
     slug: "family-planning",
-    label: "Family Planning",
+    label: "Family Planning Target Client List",
     description: "Family planning visits, methods, and client classifications.",
   },
   {
     key: "ncd",
     slug: "ncd",
-    label: "Hypertension and Diabetic Club Monitoring Sheet",
-    description: "Hypertension and Diabetic Club Monitoring Sheet.",
+    label: "Hypertension and Diabetes Monitoring",
+    description:
+      "Hypertension and Diabetes (NCD Club) monitoring sheet for enrolled clients.",
   },
   {
     key: "maternal",
     slug: "maternal",
-    label: "Maternal / Prenatal",
+    label: "Maternal and Prenatal Care Target Client List",
     description: "Prenatal visits, pregnancy details, and maternal follow-ups.",
   },
 ];

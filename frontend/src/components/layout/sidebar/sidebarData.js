@@ -13,13 +13,14 @@ import {
 export const LOGO_SRC = "/akay-logo-only.svg";
 
 export const reportNavItems = [
-  { label: "Referral Reports", slug: "referrals" },
-  { label: "Family Planning", slug: "family-planning" },
-  { label: "EPI Target Client List", slug: "epi-target-client-list" },
-  { label: "Morbidity / Notifiable Diseases", slug: "morbidity" },
-  { label: "Follow-ups / Monitoring", slug: "follow-ups" },
-  { label: "Hypertension and Diabetic Club Monitoring Sheet", slug: "ncd" },
-  { label: "Maternal / Prenatal", slug: "maternal" },
+  { label: "Referral Tracking", slug: "referrals" },
+  { label: "Family Planning Target Client List", slug: "family-planning" },
+  { label: "Child Immunization (EPI) Target Client List", slug: "epi-target-client-list" },
+  { label: "Morbidity and Notifiable Diseases", slug: "morbidity" },
+  { label: "Community-Based Disease Surveillance", slug: "community-based-surveillance" },
+  { label: "Follow-up and Monitoring", slug: "follow-ups" },
+  { label: "Hypertension and Diabetes Monitoring", slug: "ncd" },
+  { label: "Maternal and Prenatal Care Target Client List", slug: "maternal" },
 ];
 
 export function createReportChildren(basePath) {
