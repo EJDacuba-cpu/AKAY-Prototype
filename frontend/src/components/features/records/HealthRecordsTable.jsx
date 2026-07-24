@@ -122,8 +122,6 @@ export default function HealthRecordsTable({
                     title={patientName}
                     subtitle={`#${recordId}`}
                     viewLink={`/bhc/health-records/${recordId}`}
-                    editLink={`/bhc/health-records/${recordId}`}
-                    editLabel="Edit Record"
                     referralLink={
                       referralTarget
                         ? `/bhc/referrals/${referralTarget}`
@@ -207,8 +205,6 @@ export default function HealthRecordsTable({
                           title={patientName}
                           subtitle={`#${recordId}`}
                           viewLink={`/bhc/health-records/${recordId}`}
-                          editLink={`/bhc/health-records/${recordId}`}
-                          editLabel="Edit Record"
                           referralLink={
                             referralTarget
                               ? `/bhc/referrals/${referralTarget}`

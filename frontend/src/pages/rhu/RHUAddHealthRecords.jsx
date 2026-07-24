@@ -428,7 +428,9 @@ export default function AddHealthRecord() {
   const mode = requestedMode;
   const isFollowUp = !!recordId && mode === "follow-up";
   const isOrphanFollowUpRequest = !recordId && requestedMode === "follow-up";
-  const isEditingRecord = !!recordId && !isFollowUp;
+  // Editing an already-saved health record is intentionally disabled. Records are
+  // read-only after saving; corrections are made via a new record or follow-up visit.
+  const isEditingRecord = false;
 
   const [patients, setPatients] = useState([]);
   const [patientsLoading, setPatientsLoading] = useState(true);

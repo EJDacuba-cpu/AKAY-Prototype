@@ -978,7 +978,10 @@ export default function AddHealthRecord() {
     isFollowUpRouteMode &&
     !followUpTaskId &&
     !(preselectedPatientId && preselectedClassification);
-  const isEditingRecord = !!recordId && normalizedRequestedMode === "edit";
+  // Editing an already-saved health record is intentionally disabled. Records are
+  // read-only after saving; corrections are made via a new record or follow-up visit.
+  // The ?mode=edit URL path is no longer reachable from the UI and is neutralized here.
+  const isEditingRecord = false;
   const hasRouteFollowUpContext =
     !isEditingRecord &&
     isFollowUpRouteMode &&

@@ -6,7 +6,6 @@ import {
   Eye,
   FileText,
   MoreHorizontal,
-  Pencil,
   Plus,
 } from "lucide-react";
 
@@ -482,16 +481,6 @@ function ActionMenu({ record, open, onToggle, onClose }) {
               >
                 <Eye size={14} className="text-[#9CA3AF]" />
                 View Details
-              </Link>
-
-              <Link
-                to={`/rhu/health-records/${record.id}`}
-                state={{ startInEditMode: true }}
-                onClick={onClose}
-                className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-[#4B5563] transition-colors hover:bg-[#F9FAFB] hover:text-[#111827]"
-              >
-                <Pencil size={14} className="text-[#9CA3AF]" />
-                Edit Record
               </Link>
 
             </div>

@@ -1,15 +1,12 @@
-import { Link, useLocation, useParams, useNavigate } from "react-router";
+import { Link, useParams, useNavigate } from "react-router";
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
   FilePlus2,
-  Pencil,
-  X,
-  Check,
   HeartPulse,
   Syringe,
 } from "lucide-react";
@@ -17,23 +14,15 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 
 import { getPatientById } from "../../services/patientService";
-import {
-  getHealthRecordById,
-  updateHealthRecord,
-} from "../../services/healthRecordService";
+import { getHealthRecordById } from "../../services/healthRecordService";
 import {
   getReferralByHealthRecordId,
   getReferralByTrackingId,
 } from "../../services/referrals";
 import {
-  ButtonSpinner,
-  FormInput,
-  FormSelect,
-  FormTextarea,
   RefreshingIndicator,
   SideCard,
   SoftLoadingArea,
-  SuccessModal
 } from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 
@@ -57,21 +46,11 @@ import {
 export default function HealthRecordDetails() {
   const { recordId } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
-  const queryClient = useQueryClient();
 
   const [record, setRecord] = useState(null);
   const [patient, setPatient] = useState(null);
   const [linkedReferral, setLinkedReferral] = useState(null);
 
-  const [isEditing, setIsEditing] = useState(
-    Boolean(location.state?.startInEditMode),
-  );
-  const [openSuccess, setOpenSuccess] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const [form, setForm] = useState({});
-  const [formErrors, setFormErrors] = useState({});
 
   const {
     data: details,
@@ -113,110 +92,10 @@ export default function HealthRecordDetails() {
     setRecord(details.record);
     setPatient(details.patient);
     setLinkedReferral(details.linkedReferral);
-    if (details.record) initializeForm(details.record);
   }, [details]);
 
   const loading = isLoading && !details;
   const detailsUpdating = isFetching && !loading && Boolean(details);
-
-  function initializeForm(data) {
-    setForm({
-      category: formatDisplayValue(
-        data.category ||
-          data.classification ||
-          data.recordType ||
-          data.patientClassification,
-        "General Consultation",
-      ),
-      visitType: data.visitType || data.visit_type || getRecordVisitTypeValue(data),
-      parentHealthRecordId: getParentHealthRecordId(data) || null,
-      previousRecordId: getParentHealthRecordId(data) || "",
-      isFollowUp: getRecordVisitTypeValue(data) === "follow_up_visit",
-      diagnosis: getRecordDiagnosis(data, ""),
-      chiefComplaint: getRecordChiefComplaint(data, ""),
-      summaryOfPresentIllness: getRecordSummary(data, ""),
-      consultationNotes: getRecordNotes(data, ""),
-      medication: getRecordInitialActions(data, ""),
-      vitalSigns: getVitalSigns(data, ""),
-      followUpStatus: getRecordFollowUpStatus(data, "Consultation"),
-      followUpDate: getRecordValue(data, ["followUpDate", "follow_up_date"], ""),
-      patientCondition: getRecordValue(
-        data,
-        ["patientCondition", "patient_condition"],
-        "",
-      ),
-      monitoringNotes: getRecordValue(
-        data,
-        ["monitoringNotes", "monitoring_notes"],
-        "",
-      ),
-      attendingStaff: getRecordPractitioner(data, ""),
-      aog: getRecordValue(data, ["aog", "ageOfGestation", "age_of_gestation"], ""),
-      expectedDeliveryDate: getRecordValue(
-        data,
-        ["expectedDeliveryDate", "expected_delivery_date", "edd"],
-        "",
-      ),
-      maternalData: getMaternalData(data),
-    });
-  }
-
-  function handleChange(e) {
-    const { name, value } = e.target;
-    setForm((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-    if (formErrors[name]) {
-      setFormErrors((prev) => {
-        const next = { ...prev };
-        delete next[name];
-        return next;
-      });
-    }
-  }
-
-  async function handleInlineSubmit() {
-    if (saving) return;
-
-    const nextErrors = validateInlineForm(form);
-    if (Object.keys(nextErrors).length > 0) {
-      setFormErrors(nextErrors);
-      return;
-    }
-
-    try {
-      setSaving(true);
-      const updatedRecord = await updateHealthRecord(recordId, form);
-
-      setRecord(updatedRecord || ((prev) => ({ ...prev, ...form })));
-
-      setOpenSuccess(true);
-      setIsEditing(false);
-      setFormErrors({});
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.healthRecordDetails("bhc", recordId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.healthRecords("bhc"),
-      });
-      if (record?.patientId) {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.patientDetails("bhc", record.patientId),
-        });
-      }
-    } catch {
-      // The edit modal remains open so the user can retry.
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function handleCancelEdit() {
-    initializeForm(record);
-    setFormErrors({});
-    setIsEditing(false);
-  }
 
   if (loading) {
     return (
@@ -332,8 +211,7 @@ export default function HealthRecordDetails() {
     patientClassification === "Maternal / Prenatal" ||
     (!isImmunizationRecord &&
       !isHypertensionDiabeticRecord &&
-      (isMaternalProgramRecord(record) ||
-        formatServiceType(form.category, "") === "Maternal / Prenatal"));
+      isMaternalProgramRecord(record));
   const dispensedMedicines = getDispensedMedicines(record);
   const isGeneralConsultationRecord =
     patientClassification === "General Consultation";
@@ -384,41 +262,6 @@ export default function HealthRecordDetails() {
             </div>
 
             <div className="flex shrink-0 gap-2">
-              {isEditing ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleCancelEdit}
-                    disabled={saving}
-                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-500 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    <X size={14} />
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleInlineSubmit}
-                    disabled={saving}
-                    className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    {saving ? <ButtonSpinner /> : <Check size={14} />}
-                    {saving ? "Saving..." : "Save Changes"}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      initializeForm(record);
-                      setFormErrors({});
-                      setIsEditing(true);
-                    }}
-                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
-                  >
-                    <Pencil size={14} />
-                    Edit Record
-                  </button>
                   {canRecordFollowUpVisit && (
                     <Link
                       to={`/bhc/health-records/add?recordId=${record.id || record._id}&mode=follow-up`}
@@ -448,8 +291,6 @@ export default function HealthRecordDetails() {
                       Create Referral
                     </Link>
                   )}
-                </>
-              )}
             </div>
           </div>
           <div className="mt-5">
@@ -467,16 +308,14 @@ export default function HealthRecordDetails() {
         {/* ─── Main Content ─── */}
         <div
           className={
-            isEditing
-              ? "space-y-6"
-              : isImmunizationRecord || isMaternalRecord || isHypertensionDiabeticRecord
-                ? "space-y-5"
-                : "grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"
+            isImmunizationRecord || isMaternalRecord || isHypertensionDiabeticRecord
+              ? "space-y-5"
+              : "grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"
           }
         >
           {/* ═══ Clinical Record — Single Card ═══ */}
           <div className="space-y-6">
-            {!isEditing && isMaternalRecord ? (
+            {isMaternalRecord ? (
               <MaternalPrenatalRecordDetails
                 record={record}
                 patientName={patientName}
@@ -492,156 +331,23 @@ export default function HealthRecordDetails() {
             ) : (
             <SideCard
               title={
-                isImmunizationRecord && !isEditing
+                isImmunizationRecord
                   ? "Child Health / EPI Record"
-                  : isMaternalRecord && !isEditing
+                  : isMaternalRecord
                     ? "Maternal / Prenatal Record"
-                  : isHypertensionDiabeticRecord && !isEditing
+                  : isHypertensionDiabeticRecord
                     ? "Hypertension / Diabetic Monitoring Record"
                   : "Clinical Record"
               }
               icon={
-                isImmunizationRecord && !isEditing ? (
+                isImmunizationRecord ? (
                   <Syringe size={14} />
                 ) : (
                   <HeartPulse size={14} />
                 )
               }
             >
-              {isEditing ? (
-                /* ── Edit Mode ── */
-                <div className="space-y-1">
-                  <SectionDivider label="Clinical Assessment" />
-                  <div className="pt-3">
-                    <div className="grid gap-x-8 gap-y-3 md:grid-cols-2">
-                      <FieldWithError error={formErrors.category}>
-                        <FormSelect
-                          label="Classification"
-                          name="category"
-                          value={form.category || ""}
-                          onChange={handleChange}
-                          required
-                        >
-                          <option value="General Consultation">
-                            General Consultation
-                          </option>
-                          <option value="Maternal">Maternal</option>
-                          <option value="Immunization">Immunization</option>
-                          <option value="Hypertension / Diabetic Monitoring">
-                            Hypertension / Diabetic Monitoring
-                          </option>
-                          <option value="Family Planning">Family Planning</option>
-                        </FormSelect>
-                      </FieldWithError>
-                      <FieldWithError error={formErrors.diagnosis}>
-                        <FormInput
-                          label="Initial Diagnosis"
-                          name="diagnosis"
-                          value={form.diagnosis || ""}
-                          onChange={handleChange}
-                          required
-                        />
-                      </FieldWithError>
-                      <FieldWithError error={formErrors.attendingStaff}>
-                        <FormInput
-                          label="Name of Practitioner"
-                          name="attendingStaff"
-                          value={form.attendingStaff || ""}
-                          onChange={handleChange}
-                          required
-                        />
-                      </FieldWithError>
-                    </div>
-                  </div>
-                  <div className="pt-2">
-                    <FieldWithError error={formErrors.chiefComplaint}>
-                      <FormInput
-                        label="Chief Complaint"
-                        name="chiefComplaint"
-                        value={form.chiefComplaint || ""}
-                        onChange={handleChange}
-                        required
-                      />
-                    </FieldWithError>
-                  </div>
-                  <div className="pt-2">
-                    <FormTextarea
-                      label="Summary of Present Illness"
-                      name="summaryOfPresentIllness"
-                      value={form.summaryOfPresentIllness || ""}
-                      onChange={handleChange}
-                      placeholder="Details of the patient's current symptoms, onset, duration, and severity..."
-                    />
-                  </div>
-
-                  <SectionDivider label="Treatment & Actions" />
-                  <div className="pt-3">
-                    <FormTextarea
-                      label="Initial Action Taken"
-                      name="medication"
-                      value={form.medication || ""}
-                      onChange={handleChange}
-                    />
-                  </div>
-
-                  <SectionDivider label="Vital Signs" />
-                  <div className="pt-3">
-                    <FormTextarea
-                      label="Recorded Vitals"
-                      name="vitalSigns"
-                      value={form.vitalSigns || ""}
-                      onChange={handleChange}
-                      placeholder="e.g., BP: 120/80 mmHg, Temp: 36.5°C, HR: 80 bpm, Weight: 60kg"
-                    />
-                  </div>
-
-	                  {patientClassification === "Maternal" && (
-	                    <>
-	                      <SectionDivider label="Maternal Parameters" />
-                      <div className="grid gap-x-8 gap-y-3 pt-3 md:grid-cols-2">
-                        <FormInput
-                          label="Age of Gestation (AOG)"
-                          name="aog"
-                          value={form.aog || ""}
-                          onChange={handleChange}
-                        />
-                        <FormInput
-                          label="Expected Delivery Date (EDD)"
-                          name="expectedDeliveryDate"
-                          type="date"
-                          value={form.expectedDeliveryDate || ""}
-                          onChange={handleChange}
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  <SectionDivider label="Monitoring & Follow-up" />
-                  <div className="grid gap-x-8 gap-y-3 pt-3 md:grid-cols-2">
-                    <FormInput
-                      label="Follow-up Date"
-                      name="followUpDate"
-                      type="date"
-                      value={form.followUpDate || ""}
-                      onChange={handleChange}
-                    />
-                    <FormInput
-                      label="Patient Condition"
-                      name="patientCondition"
-                      value={form.patientCondition || ""}
-                      onChange={handleChange}
-                    />
-                  </div>
-                  <div className="pt-2 pb-2">
-                    <FormTextarea
-                      label="Monitoring Notes"
-                      name="monitoringNotes"
-                      value={form.monitoringNotes || ""}
-                      onChange={handleChange}
-                    />
-                  </div>
-                </div>
-              ) : isImmunizationRecord ? (
+              {isImmunizationRecord ? (
                 <EpiRecordDetails
                   record={record}
                   patientName={patientName}
@@ -872,8 +578,7 @@ export default function HealthRecordDetails() {
           </div>
 
           {/* ═══ Sidebar ═══ */}
-          {!isEditing &&
-            !isImmunizationRecord &&
+          {!isImmunizationRecord &&
             !isMaternalRecord &&
             !isHypertensionDiabeticRecord && (
             <aside className="space-y-3">
@@ -925,13 +630,6 @@ export default function HealthRecordDetails() {
         </div>
         </div>
       </DashboardLayout>
-
-      <SuccessModal
-        open={openSuccess}
-        title="Health Record Updated"
-        description="The health record information has been successfully saved."
-        onClose={() => setOpenSuccess(false)}
-      />
     </>
   );
 }
@@ -939,48 +637,6 @@ export default function HealthRecordDetails() {
 /* ─────────────────────────────────────────────
    LOCAL HELPERS
 ──────────────────────────────────────────── */
-
-function validateInlineForm(form = {}) {
-  const errors = {};
-  const requiredFields = [
-    ["category", "Classification is required."],
-    ["diagnosis", "Initial Diagnosis is required."],
-    ["attendingStaff", "Name of Practitioner is required."],
-    ["chiefComplaint", "Chief Complaint is required."],
-  ];
-
-  requiredFields.forEach(([field, message]) => {
-    if (!String(form[field] || "").trim()) {
-      errors[field] = message;
-    }
-  });
-
-  return errors;
-}
-
-function FieldWithError({ error, children }) {
-  return (
-    <div>
-      {children}
-      {error && (
-        <p className="mt-1.5 text-[11px] font-medium text-[#B91C1C]">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function SectionDivider({ label }) {
-  return (
-    <div className="flex items-center gap-3 pt-5 first:pt-2">
-      <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-widest text-slate-400">
-        {label}
-      </span>
-      <div className="h-px flex-1 bg-slate-100" />
-    </div>
-  );
-}
 
 function DetailSection({ title, children }) {
   return (
@@ -1675,15 +1331,6 @@ function getRecordPractitioner(record = {}, fallback = "Not recorded") {
 
   if (!value || isLikelyRawId(value)) return fallback;
   return value;
-}
-
-function getRecordFollowUpStatus(record = {}, fallback = "Routine Monitoring") {
-  const value = getNestedRecordValue(
-    record,
-    ["followUpStatus", "follow_up_status", "status"],
-    ["monitoringData", "monitoring_data"],
-  );
-  return value || fallback;
 }
 
 function getVitalSigns(record = {}, fallback = "") {

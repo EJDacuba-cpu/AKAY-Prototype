@@ -1,33 +1,21 @@
-import { Link, useLocation, useParams } from "react-router";
-import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useParams } from "react-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  Check,
   ClipboardList,
   FilePlus2,
   HeartPulse,
-  Pencil,
   Syringe,
-  X,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
-  ButtonSpinner,
-  FormInput,
-  FormSelect,
-  FormTextarea,
   RefreshingIndicator,
   SideCard,
   SoftLoadingArea,
-  SuccessModal,
 } from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
-import {
-  getRhuHealthRecords,
-  updateHealthRecord,
-} from "../../services/healthRecordService";
+import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
   getPatientDetailsListByRole,
   getPatientsByRole,
@@ -49,15 +37,6 @@ const keyframes = `
 
 export default function RHURecordDetails() {
   const { recordId } = useParams();
-  const location = useLocation();
-  const queryClient = useQueryClient();
-  const [isEditing, setIsEditing] = useState(
-    Boolean(location.state?.startInEditMode),
-  );
-  const [form, setForm] = useState({});
-  const [formErrors, setFormErrors] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [openSuccess, setOpenSuccess] = useState(false);
   const {
     data: details,
     isLoading,
@@ -94,63 +73,6 @@ export default function RHURecordDetails() {
   const patient = details?.patient || null;
   const loading = isLoading && !details;
   const detailsUpdating = isFetching && !loading && Boolean(details);
-
-  useEffect(() => {
-    if (record) {
-      setForm(buildInlineForm(record, patient));
-    }
-  }, [record, patient]);
-
-  function handleChange(e) {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-    if (formErrors[name]) {
-      setFormErrors((prev) => {
-        const next = { ...prev };
-        delete next[name];
-        return next;
-      });
-    }
-  }
-
-  function handleCancelEdit() {
-    setForm(buildInlineForm(record, patient));
-    setFormErrors({});
-    setIsEditing(false);
-  }
-
-  async function handleSaveChanges() {
-    if (saving) return;
-
-    const nextErrors = validateInlineForm(form);
-    if (Object.keys(nextErrors).length > 0) {
-      setFormErrors(nextErrors);
-      return;
-    }
-
-    try {
-      setSaving(true);
-      await updateHealthRecord(recordId, form, "rhu");
-      setFormErrors({});
-      setIsEditing(false);
-      setOpenSuccess(true);
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.healthRecordDetails("rhu", recordId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.healthRecords("rhu"),
-      });
-      if (patient?.id || record?.patientId) {
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.patientDetails("rhu", patient?.id || record?.patientId),
-        });
-      }
-    } catch {
-      // The edit modal remains open so the user can retry.
-    } finally {
-      setSaving(false);
-    }
-  }
 
   if (loading) {
     return (
@@ -289,41 +211,6 @@ export default function RHURecordDetails() {
           </div>
 
           <div className="flex shrink-0 flex-wrap gap-2">
-            {isEditing ? (
-              <>
-                <button
-                  type="button"
-                  onClick={handleCancelEdit}
-                  disabled={saving}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-500 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  <X size={14} />
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveChanges}
-                  disabled={saving}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {saving ? <ButtonSpinner /> : <Check size={14} />}
-                  {saving ? "Saving..." : "Save Changes"}
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setForm(buildInlineForm(record, patient));
-                    setFormErrors({});
-                    setIsEditing(true);
-                  }}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
-                >
-                  <Pencil size={14} />
-                  Edit Record
-                </button>
                 {canRecordFollowUpVisit && (
                   <Link
                     to={`/rhu/health-records/add?recordId=${getRecordId(record)}&mode=follow-up`}
@@ -344,8 +231,6 @@ export default function RHURecordDetails() {
                     View Referral
                   </Link>
                 )}
-              </>
-            )}
           </div>
         </div>
         <div className="mt-5">
@@ -363,136 +248,27 @@ export default function RHURecordDetails() {
 
       <div
         className={
-          isEditing
-            ? "space-y-6"
-            : isImmunizationRecord
-              ? "space-y-5"
-              : "grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"
+          isImmunizationRecord
+            ? "space-y-5"
+            : "grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"
         }
       >
         <div>
           <SideCard
             title={
-              isImmunizationRecord && !isEditing
+              isImmunizationRecord
                 ? "Child Health / EPI Record"
                 : "Clinical Record"
             }
             icon={
-              isImmunizationRecord && !isEditing ? (
+              isImmunizationRecord ? (
                 <Syringe size={14} />
               ) : (
                 <HeartPulse size={14} />
               )
             }
           >
-            {isEditing ? (
-              <div className="space-y-1">
-                <SectionDivider label="Clinical Assessment" />
-                <div className="grid gap-x-8 gap-y-3 pt-3 md:grid-cols-2">
-                  <FieldWithError error={formErrors.category}>
-                    <FormSelect
-                      label="Classification"
-                      name="category"
-                      value={form.category || ""}
-                      onChange={handleChange}
-                      required
-                    >
-                      <option value="General Consultation">
-                        General Consultation
-                      </option>
-                      <option value="Maternal">Maternal</option>
-                      <option value="Immunization">Immunization</option>
-                      <option value="Senior Citizen">Senior Citizen</option>
-                      <option value="Family Planning">Family Planning</option>
-                    </FormSelect>
-                  </FieldWithError>
-                  <FieldWithError error={formErrors.diagnosis}>
-                    <FormInput
-                      label="Initial Diagnosis"
-                      name="diagnosis"
-                      value={form.diagnosis || ""}
-                      onChange={handleChange}
-                      required
-                    />
-                  </FieldWithError>
-                  <FieldWithError error={formErrors.attendingStaff}>
-                    <FormInput
-                      label="Name of Practitioner"
-                      name="attendingStaff"
-                      value={form.attendingStaff || ""}
-                      onChange={handleChange}
-                      required
-                    />
-                  </FieldWithError>
-                </div>
-
-                <div className="pt-2">
-                  <FieldWithError error={formErrors.chiefComplaint}>
-                    <FormInput
-                      label="Chief Complaint"
-                      name="chiefComplaint"
-                      value={form.chiefComplaint || ""}
-                      onChange={handleChange}
-                      required
-                    />
-                  </FieldWithError>
-                </div>
-
-                <div className="pt-2">
-                  <FormTextarea
-                    label="Summary of Present Illness"
-                    name="summaryOfPresentIllness"
-                    value={form.summaryOfPresentIllness || ""}
-                    onChange={handleChange}
-                  />
-                </div>
-
-                <SectionDivider label="Treatment & Actions" />
-                <div className="pt-3">
-                  <FormTextarea
-                    label="Initial Action Taken"
-                    name="medication"
-                    value={form.medication || ""}
-                    onChange={handleChange}
-                  />
-                </div>
-
-                <SectionDivider label="Vital Signs" />
-                <div className="pt-3">
-                  <FormTextarea
-                    label="Recorded Vitals"
-                    name="vitalSigns"
-                    value={form.vitalSigns || ""}
-                    onChange={handleChange}
-                  />
-                </div>
-
-                <SectionDivider label="Monitoring & Follow-up" />
-                <div className="grid gap-x-8 gap-y-3 pt-3 md:grid-cols-2">
-                  <FormInput
-                    label="Follow-up Date"
-                    name="followUpDate"
-                    type="date"
-                    value={form.followUpDate || ""}
-                    onChange={handleChange}
-                  />
-                  <FormInput
-                    label="Patient Condition"
-                    name="patientCondition"
-                    value={form.patientCondition || ""}
-                    onChange={handleChange}
-                  />
-                </div>
-                <div className="pt-2">
-                  <FormTextarea
-                    label="Monitoring Notes"
-                    name="monitoringNotes"
-                    value={form.monitoringNotes || ""}
-                    onChange={handleChange}
-                  />
-                </div>
-              </div>
-            ) : isImmunizationRecord ? (
+            {isImmunizationRecord ? (
               <EpiRecordDetails
                 record={record}
                 vaccineEntries={epiVaccineEntries}
@@ -613,7 +389,7 @@ export default function RHURecordDetails() {
           </SideCard>
         </div>
 
-        {!isEditing && !isImmunizationRecord && (
+        {!isImmunizationRecord && (
           <aside className="space-y-3">
             <QuickSummaryCard
               vitalItems={getVitalSignItems(record)}
@@ -675,73 +451,8 @@ export default function RHURecordDetails() {
         )}
       </div>
       </div>
-      <SuccessModal
-        open={openSuccess}
-        title="Health Record Updated"
-        description="The health record information has been successfully saved."
-        onClose={() => setOpenSuccess(false)}
-      />
     </DashboardLayout>
   );
-}
-
-function validateInlineForm(form = {}) {
-  const errors = {};
-  const requiredFields = [
-    ["category", "Classification is required."],
-    ["diagnosis", "Initial Diagnosis is required."],
-    ["attendingStaff", "Name of Practitioner is required."],
-    ["chiefComplaint", "Chief Complaint is required."],
-  ];
-
-  requiredFields.forEach(([field, message]) => {
-    if (!String(form[field] || "").trim()) {
-      errors[field] = message;
-    }
-  });
-
-  return errors;
-}
-
-function FieldWithError({ error, children }) {
-  return (
-    <div>
-      {children}
-      {error && (
-        <p className="mt-1.5 text-[11px] font-medium text-[#B91C1C]">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function buildInlineForm(record, patient) {
-  return {
-    category: getRecordClassification(record, patient),
-    visitType: getRecordVisitTypeValue(record),
-    parentHealthRecordId: getParentHealthRecordId(record) || null,
-    previousRecordId: getParentHealthRecordId(record) || "",
-    isFollowUp: getRecordVisitTypeValue(record) === "follow_up_visit",
-    diagnosis: getRecordDiagnosis(record, ""),
-    chiefComplaint: getRecordConcern(record, ""),
-    summaryOfPresentIllness: getRecordSummary(record, ""),
-    medication: getRecordInitialActions(record, ""),
-    vitalSigns: getVitalSigns(record),
-    followUpStatus: getRecordFollowUpStatus(record, "Routine Monitoring"),
-    followUpDate: getRecordValue(record, ["followUpDate", "follow_up_date"], ""),
-    patientCondition: getRecordValue(
-      record,
-      ["patientCondition", "patient_condition"],
-      "",
-    ),
-    monitoringNotes: getRecordValue(
-      record,
-      ["monitoringNotes", "monitoring_notes"],
-      "",
-    ),
-    attendingStaff: getRecordPractitioner(record, ""),
-  };
 }
 
 function normalizeHealthRecordStatus(status) {
@@ -764,18 +475,6 @@ function ReferredChip() {
     <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
       Referred
     </span>
-  );
-}
-
-function SectionDivider({ label }) {
-  return (
-    <div className="flex items-center gap-3 pt-5 first:pt-2">
-      <div className="h-px flex-1 bg-slate-100" />
-      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-        {label}
-      </span>
-      <div className="h-px flex-1 bg-slate-100" />
-    </div>
   );
 }
 
@@ -1547,16 +1246,6 @@ function getRecordPractitioner(record = {}, fallback = "Not recorded") {
 
   if (!value || isLikelyRawId(value)) return fallback;
   return value;
-}
-
-function getRecordFollowUpStatus(record = {}, fallback = "Routine Monitoring") {
-  const value = getNestedRecordValue(
-    record,
-    ["followUpStatus", "follow_up_status", "status"],
-    ["monitoringData", "monitoring_data"],
-  );
-
-  return value || fallback;
 }
 
 function getRecordConcern(record, fallback = "Not recorded") {
