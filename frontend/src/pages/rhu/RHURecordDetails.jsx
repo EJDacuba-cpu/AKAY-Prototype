@@ -1,20 +1,20 @@
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ClipboardList,
   FilePlus2,
   HeartPulse,
-  Syringe,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
-  RefreshingIndicator,
+  Accordion,
   SideCard,
   SoftLoadingArea,
 } from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
+import RecordHeaderCard from "../../components/features/health-records/RecordHeaderCard";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import {
   getPatientDetailsListByRole,
@@ -37,6 +37,7 @@ const keyframes = `
 
 export default function RHURecordDetails() {
   const { recordId } = useParams();
+  const navigate = useNavigate();
   const {
     data: details,
     isLoading,
@@ -183,68 +184,42 @@ export default function RHURecordDetails() {
       <style>{keyframes}</style>
       <div className="min-h-[520px]">
 
-      <div className="mb-6">
-        <Link
-          to="/rhu/health-records"
-          className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition hover:text-[#0F172A]"
-        >
-          <ArrowLeft size={15} /> Back to Health Records
-        </Link>
-
-        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-xl font-bold text-[#0F172A]">
-                {pageTitle}
-              </h1>
-              {hasLinkedReferral && <ReferredChip />}
-              {detailsUpdating && (
-                <RefreshingIndicator label="Updating health record details..." />
-              )}
-            </div>
-
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-              <span className="font-mono text-[11px] font-semibold text-slate-600">
-                {getRecordId(record)}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex shrink-0 flex-wrap gap-2">
-                {canRecordFollowUpVisit && (
-                  <Link
-                    to={`/rhu/health-records/add?recordId=${getRecordId(record)}&mode=follow-up`}
-                    title="This action creates a follow-up visit linked to the current health record."
-                    aria-label="Record a follow-up visit linked to this health record"
-                    className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100"
-                  >
-                    <FilePlus2 size={14} />
-                    Record Follow-up Visit
-                  </Link>
-                )}
-                {hasLinkedReferral && (
-                  <Link
-                    to={`/rhu/referrals/${linkedReferralTarget}`}
-                    className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
-                  >
-                    <ClipboardList size={14} />
-                    View Referral
-                  </Link>
-                )}
-          </div>
-        </div>
-        <div className="mt-5">
-          <VisitInfoStrip
-            patientName={patientName}
-            patientId={patientId}
-            classification={recordClassification}
-            recordType={recordTypeLabel}
-            displayDate={displayDate}
-            displayTime={displayTime}
-            practitioner={getRecordPractitioner(record, "RHU Staff")}
-          />
-        </div>
-      </div>
+      <RecordHeaderCard
+        title={pageTitle}
+        recordId={getRecordId(record)}
+        hasLinkedReferral={hasLinkedReferral}
+        isUpdating={detailsUpdating}
+        onBack={() => navigate("/rhu/health-records")}
+        patientName={patientName}
+        serviceType={recordTypeLabel || recordClassification}
+        displayDate={displayDate}
+        displayTime={displayTime}
+        practitioner={getRecordPractitioner(record, "RHU Staff")}
+        actions={
+          <>
+            {canRecordFollowUpVisit && (
+              <Link
+                to={`/rhu/health-records/add?recordId=${getRecordId(record)}&mode=follow-up`}
+                title="This action creates a follow-up visit linked to the current health record."
+                aria-label="Record a follow-up visit linked to this health record"
+                className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100"
+              >
+                <FilePlus2 size={14} />
+                Record Follow-up Visit
+              </Link>
+            )}
+            {hasLinkedReferral && (
+              <Link
+                to={`/rhu/referrals/${linkedReferralTarget}`}
+                className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600"
+              >
+                <ClipboardList size={14} />
+                View Referral
+              </Link>
+            )}
+          </>
+        }
+      />
 
       <div
         className={
@@ -254,139 +229,35 @@ export default function RHURecordDetails() {
         }
       >
         <div>
-          <SideCard
-            title={
-              isImmunizationRecord
-                ? "Child Health / EPI Record"
-                : "Clinical Record"
-            }
-            icon={
-              isImmunizationRecord ? (
-                <Syringe size={14} />
-              ) : (
-                <HeartPulse size={14} />
-              )
-            }
-          >
-            {isImmunizationRecord ? (
-              <EpiRecordDetails
-                record={record}
-                vaccineEntries={epiVaccineEntries}
-                breastfeedingMonitoring={epiBreastfeedingMonitoring}
-                followUpDate={followUpDateValue}
-                needsReferral={needsRhuReferral}
-                linkedReferralTarget={linkedReferralTarget}
-              />
-            ) : (
-              <div className="divide-y divide-slate-100">
-                <DetailSection title="Clinical Assessment">
-                  {hasClinicalAssessmentDetails ? (
-                    <>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <PatientDetailItem
-                          label="Chief Complaint"
-                          value={chiefComplaintValue || "Not recorded"}
-                        />
-                        <PatientDetailItem
-                          label="Initial Diagnosis"
-                          value={diagnosisValue || "Not recorded"}
-                        />
-                      </div>
-
-                      {summaryValue && (
-                        <NarrativeBox
-                          label="Summary of Present Illness"
-                          value={summaryValue}
-                        />
-                      )}
-                    </>
-                  ) : (
-                    <SectionEmptyState text="No clinical assessment details recorded." />
-                  )}
-                </DetailSection>
-
-                <DetailSection title="Treatment & Actions">
-                  {hasTreatmentDetails ? (
-                    <>
-                      <PatientDetailItem
-                        label="Initial Action Taken"
-                        value={initialActionsValue || "Not recorded"}
-                      />
-                      {isDistinctRecordedValue(
-                        treatmentNotesValue,
-                        initialActionsValue,
-                      ) && (
-                        <NarrativeBox
-                          label="Treatment Notes"
-                          value={treatmentNotesValue}
-                        />
-                      )}
-                      {isDistinctRecordedValue(
-                        medicalNotesValue,
-                        initialActionsValue,
-                        treatmentNotesValue,
-                      ) && (
-                        <NarrativeBox
-                          label="Medical Notes"
-                          value={medicalNotesValue}
-                        />
-                      )}
-                    </>
-                  ) : (
-                    <SectionEmptyState text="No treatment or action details recorded." />
-                  )}
-                </DetailSection>
-
-                {isFamilyPlanningRecord && (
-                  <DetailSection title="Family Planning Details">
-                    {hasFamilyPlanningDetails ? (
-                      <div className="grid gap-4 md:grid-cols-2">
-                        {familyPlanningDetails.map((item) => (
-                          <PatientDetailItem
-                            key={item.label}
-                            label={item.label}
-                            value={item.value}
-                          />
-                        ))}
-                      </div>
-                    ) : (
-                      <SectionEmptyState text="No family planning details recorded." />
-                    )}
-                  </DetailSection>
-                )}
-
-                {shouldShowMonitoringFollowUp && (
-                  <DetailSection title="Monitoring & Follow-up">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {(patientConditionValue ||
-                        status === "Follow-up Required") && (
-                        <PatientDetailItem
-                          label="Patient Condition"
-                          value={patientConditionValue}
-                        />
-                      )}
-                      {(followUpDateValue ||
-                        status === "Follow-up Required") && (
-                        <PatientDetailItem
-                          label="Follow-up Date"
-                          value={formatLongDate(
-                            followUpDateValue,
-                            "Not recorded",
-                          )}
-                        />
-                      )}
-                    </div>
-                    {monitoringNotesValue && (
-                      <NarrativeBox
-                        label="Monitoring Notes"
-                        value={monitoringNotesValue}
-                      />
-                    )}
-                  </DetailSection>
-                )}
-              </div>
-            )}
-          </SideCard>
+          {isImmunizationRecord ? (
+            <EpiRecordDetails
+              record={record}
+              vaccineEntries={epiVaccineEntries}
+              breastfeedingMonitoring={epiBreastfeedingMonitoring}
+              followUpDate={followUpDateValue}
+              needsReferral={needsRhuReferral}
+              linkedReferralTarget={linkedReferralTarget}
+            />
+          ) : (
+            <GenericRecordDetails
+              hasClinicalAssessmentDetails={hasClinicalAssessmentDetails}
+              chiefComplaintValue={chiefComplaintValue}
+              diagnosisValue={diagnosisValue}
+              summaryValue={summaryValue}
+              hasTreatmentDetails={hasTreatmentDetails}
+              initialActionsValue={initialActionsValue}
+              treatmentNotesValue={treatmentNotesValue}
+              medicalNotesValue={medicalNotesValue}
+              isFamilyPlanningRecord={isFamilyPlanningRecord}
+              hasFamilyPlanningDetails={hasFamilyPlanningDetails}
+              familyPlanningDetails={familyPlanningDetails}
+              shouldShowMonitoringFollowUp={shouldShowMonitoringFollowUp}
+              patientConditionValue={patientConditionValue}
+              status={status}
+              followUpDateValue={followUpDateValue}
+              monitoringNotesValue={monitoringNotesValue}
+            />
+          )}
         </div>
 
         {!isImmunizationRecord && (
@@ -470,64 +341,16 @@ function normalizeHealthRecordStatus(status) {
   return "Routine Monitoring";
 }
 
-function ReferredChip() {
-  return (
-    <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-      Referred
-    </span>
-  );
+function buildPreview(pairs, emptyText = "Not recorded") {
+  const parts = pairs.filter(([, v]) => v).map(([l, v]) => `${l} ${v}`);
+  return parts.length ? parts.slice(0, 3).join(" · ") : emptyText;
 }
 
-function DetailSection({ title, children }) {
-  return (
-    <section className="py-5 first:pt-0 last:pb-0">
-      <div className="mb-4 flex items-center gap-3">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-          {title}
-        </span>
-        <div className="h-px flex-1 bg-slate-100" />
-      </div>
-      <div className="space-y-4">{children}</div>
-    </section>
-  );
-}
-
-function VisitInfoStrip({
-  patientName,
-  classification,
-  recordType,
-  displayDate,
-  displayTime,
-  practitioner,
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-        <MetadataItem label="Patient Full Name" value={patientName} />
-        <MetadataItem label="Classification" value={classification} />
-        <MetadataItem label="Record Type" value={recordType || classification} />
-        <MetadataItem label="Date of Visit" value={displayDate} />
-        <MetadataItem
-          label="Time of Visit"
-          value={displayTime || "Not recorded"}
-        />
-        <MetadataItem label="Name of Practitioner" value={practitioner} />
-      </div>
-    </div>
-  );
-}
-
-function MetadataItem({ label, value }) {
-  return (
-    <div>
-      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-        {label}
-      </p>
-      <p className="mt-1 truncate text-xs font-semibold text-slate-700">
-        {formatDisplayValue(value, "Not recorded")}
-      </p>
-    </div>
-  );
+function truncatePreview(text, maxLength = 60) {
+  if (!text) return "";
+  const trimmed = String(text).trim();
+  if (trimmed.length <= maxLength) return trimmed;
+  return `${trimmed.slice(0, maxLength).trimEnd()}…`;
 }
 
 function QuickSummaryCard({ vitalItems }) {
@@ -617,6 +440,147 @@ function VitalSignsGrid({ items, compact = false }) {
   );
 }
 
+function GenericRecordDetails({
+  hasClinicalAssessmentDetails,
+  chiefComplaintValue,
+  diagnosisValue,
+  summaryValue,
+  hasTreatmentDetails,
+  initialActionsValue,
+  treatmentNotesValue,
+  medicalNotesValue,
+  isFamilyPlanningRecord,
+  hasFamilyPlanningDetails,
+  familyPlanningDetails,
+  shouldShowMonitoringFollowUp,
+  patientConditionValue,
+  status,
+  followUpDateValue,
+  monitoringNotesValue,
+}) {
+  const sections = [
+    {
+      id: "clinical",
+      title: "Clinical Assessment",
+      preview: truncatePreview(chiefComplaintValue) || "Not recorded",
+      content: hasClinicalAssessmentDetails ? (
+        <>
+          <div className="grid gap-4 md:grid-cols-2">
+            <PatientDetailItem
+              label="Chief Complaint"
+              value={chiefComplaintValue || "Not recorded"}
+            />
+            <PatientDetailItem
+              label="Initial Diagnosis"
+              value={diagnosisValue || "Not recorded"}
+            />
+          </div>
+
+          {summaryValue && (
+            <NarrativeBox
+              label="Summary of Present Illness"
+              value={summaryValue}
+            />
+          )}
+        </>
+      ) : (
+        <SectionEmptyState text="No clinical assessment details recorded." />
+      ),
+    },
+    {
+      id: "treatment",
+      title: "Treatment & Actions",
+      preview: truncatePreview(initialActionsValue) || "Not recorded",
+      content: hasTreatmentDetails ? (
+        <>
+          <PatientDetailItem
+            label="Initial Action Taken"
+            value={initialActionsValue || "Not recorded"}
+          />
+          {isDistinctRecordedValue(treatmentNotesValue, initialActionsValue) && (
+            <NarrativeBox label="Treatment Notes" value={treatmentNotesValue} />
+          )}
+          {isDistinctRecordedValue(
+            medicalNotesValue,
+            initialActionsValue,
+            treatmentNotesValue,
+          ) && (
+            <NarrativeBox label="Medical Notes" value={medicalNotesValue} />
+          )}
+        </>
+      ) : (
+        <SectionEmptyState text="No treatment or action details recorded." />
+      ),
+    },
+  ];
+
+  if (isFamilyPlanningRecord) {
+    sections.push({
+      id: "familyPlanning",
+      title: "Family Planning Details",
+      preview: buildPreview([
+        [
+          "Client Type",
+          familyPlanningDetails.find((item) => item.label === "Client Type")
+            ?.value,
+        ],
+        [
+          "Method",
+          familyPlanningDetails.find(
+            (item) => item.label === "Method Used / Accepted",
+          )?.value,
+        ],
+      ]),
+      content: hasFamilyPlanningDetails ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          {familyPlanningDetails.map((item) => (
+            <PatientDetailItem
+              key={item.label}
+              label={item.label}
+              value={item.value}
+            />
+          ))}
+        </div>
+      ) : (
+        <SectionEmptyState text="No family planning details recorded." />
+      ),
+    });
+  }
+
+  if (shouldShowMonitoringFollowUp) {
+    sections.push({
+      id: "monitoring",
+      title: "Monitoring & Follow-up",
+      preview: followUpDateValue
+        ? `Follow-up ${formatLongDate(followUpDateValue, "")}`
+        : "No flags",
+      content: (
+        <>
+          <div className="grid gap-4 md:grid-cols-2">
+            {(patientConditionValue || status === "Follow-up Required") && (
+              <PatientDetailItem
+                label="Patient Condition"
+                value={patientConditionValue}
+              />
+            )}
+            {(followUpDateValue || status === "Follow-up Required") && (
+              <PatientDetailItem
+                label="Follow-up Date"
+                value={formatLongDate(followUpDateValue, "Not recorded")}
+              />
+            )}
+          </div>
+          {monitoringNotesValue && (
+            <NarrativeBox label="Monitoring Notes" value={monitoringNotesValue} />
+          )}
+        </>
+      ),
+    });
+  }
+
+  return <Accordion sections={sections} defaultOpenIds={["clinical"]} />;
+}
+
 function EpiRecordDetails({
   record,
   vaccineEntries = [],
@@ -629,25 +593,41 @@ function EpiRecordDetails({
   const visitMonitoringItems = getVisitLevelMonitoringItems(record);
   const confirmedMonths = getConfirmedBreastfeedingMonths(breastfeedingMonitoring);
 
-  return (
-    <div className="divide-y divide-slate-100">
-      <DetailSection title="Vaccines Given This Visit">
-        {vaccineEntries.length > 0 ? (
+  const sections = [
+    {
+      id: "vaccines",
+      title: "Vaccines Given This Visit",
+      preview:
+        vaccineEntries.length > 0
+          ? `${vaccineEntries.length} vaccine${vaccineEntries.length === 1 ? "" : "s"} given`
+          : "None given",
+      content:
+        vaccineEntries.length > 0 ? (
           <EpiVaccinesTable entries={vaccineEntries} record={record} />
         ) : (
           <div className="space-y-3">
             <SectionEmptyState text="No vaccine recorded for this visit." />
             {remarks && <NarrativeBox label="Remarks" value={remarks} />}
           </div>
-        )}
-      </DetailSection>
-
-      <DetailSection title="Visit-Level Monitoring">
-        <VitalSignsGrid items={visitMonitoringItems} />
-      </DetailSection>
-
-      <DetailSection title="Exclusive Breastfeeding Monitoring">
-        {confirmedMonths.length > 0 ? (
+        ),
+    },
+    {
+      id: "monitoring",
+      title: "Visit-Level Monitoring",
+      preview: buildPreview(
+        visitMonitoringItems.map((item) => [item.label, item.value]),
+      ),
+      content: <VitalSignsGrid items={visitMonitoringItems} />,
+    },
+    {
+      id: "breastfeeding",
+      title: "Exclusive Breastfeeding Monitoring",
+      preview:
+        confirmedMonths.length > 0
+          ? `${confirmedMonths.length} month${confirmedMonths.length === 1 ? "" : "s"} confirmed`
+          : "None recorded",
+      content:
+        confirmedMonths.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {confirmedMonths.map((month) => (
               <span
@@ -660,18 +640,27 @@ function EpiRecordDetails({
           </div>
         ) : (
           <SectionEmptyState text="No breastfeeding monitoring recorded." />
-        )}
-      </DetailSection>
-
-      <DetailSection title="Remarks">
-        {remarks ? (
-          <NarrativeBox label="Remarks" value={remarks} />
-        ) : (
-          <SectionEmptyState text="No remarks recorded." />
-        )}
-      </DetailSection>
-
-      <DetailSection title="Follow-up & Referral">
+        ),
+    },
+    {
+      id: "remarks",
+      title: "Remarks",
+      preview: truncatePreview(remarks) || "Not recorded",
+      content: remarks ? (
+        <NarrativeBox label="Remarks" value={remarks} />
+      ) : (
+        <SectionEmptyState text="No remarks recorded." />
+      ),
+    },
+    {
+      id: "followup",
+      title: "Follow-up & Referral",
+      preview: needsReferral
+        ? `Referral needed${linkedReferralTarget ? " · Referred" : ""}`
+        : followUpDate
+          ? `Follow-up ${formatLongDate(followUpDate, "")}`
+          : "No flags",
+      content: (
         <div className="grid gap-4 md:grid-cols-3">
           <PatientDetailItem
             label="Follow-up Date"
@@ -686,9 +675,11 @@ function EpiRecordDetails({
             value={linkedReferralTarget || "No referral linked to this record."}
           />
         </div>
-      </DetailSection>
-    </div>
-  );
+      ),
+    },
+  ];
+
+  return <Accordion sections={sections} defaultOpenIds={["vaccines"]} />;
 }
 
 function EpiVaccinesTable({ entries, record }) {

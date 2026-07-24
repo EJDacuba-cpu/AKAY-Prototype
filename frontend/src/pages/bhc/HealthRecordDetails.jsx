@@ -1,14 +1,10 @@
 import { Link, useParams, useNavigate } from "react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
   ClipboardList,
   FilePlus2,
   HeartPulse,
-  Syringe,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -20,11 +16,12 @@ import {
   getReferralByTrackingId,
 } from "../../services/referrals";
 import {
-  RefreshingIndicator,
+  Accordion,
   SideCard,
   SoftLoadingArea,
 } from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
+import RecordHeaderCard from "../../components/features/health-records/RecordHeaderCard";
 
 import {
   formatDisplayValue,
@@ -234,76 +231,52 @@ export default function HealthRecordDetails() {
         <div className="min-h-[520px]">
 
         {/* ─── Header ─── */}
-        <div className="mb-6">
-          <button
-            onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition hover:text-[#0F172A]"
-          >
-            <ArrowLeft size={15} /> Back to Health Records
-          </button>
-
-          <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-2.5">
-                <h1 className="text-xl font-bold text-[#0F172A]">
-                  {pageTitle}
-                </h1>
-                {hasLinkedReferral && <ReferredChip />}
-                {detailsUpdating && (
-                  <RefreshingIndicator label="Updating health record details..." />
-                )}
-              </div>
-
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                <span className="font-mono text-[11px] font-semibold text-slate-600">
-                  Record #{recordId}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex shrink-0 gap-2">
-                  {canRecordFollowUpVisit && (
-                    <Link
-                      to={`/bhc/health-records/add?recordId=${record.id || record._id}&mode=follow-up`}
-                      title="This action creates a follow-up visit linked to the current health record."
-                      aria-label="Record a follow-up visit linked to this health record"
-                      className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100"
-                    >
-                      <FilePlus2 size={14} />
-                      Record Follow-up Visit
-                    </Link>
-                  )}
-                  {hasLinkedReferral && (
-                    <Link
-                      to={`/bhc/referrals/${linkedReferralTarget}`}
-                      className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
-                    >
-                      <ClipboardList size={14} />
-                      View Referral
-                    </Link>
-                  )}
-                  {!hasLinkedReferral && needsRhuReferral && (
-                    <Link
-                      to={`/bhc/referrals/create?recordId=${record.id || record._id}&patientId=${patientId || ""}`}
-                      className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
-                    >
-                      <FilePlus2 size={14} />
-                      Create Referral
-                    </Link>
-                  )}
-            </div>
-          </div>
-          <div className="mt-5">
-            <VisitInfoStrip
-              patientName={patientName}
-              patientId={patientId}
-              serviceType={serviceType}
-              displayDate={displayDate}
-              displayTime={displayTime}
-              practitioner={getRecordPractitioner(record)}
-            />
-          </div>
-        </div>
+        <RecordHeaderCard
+          title={pageTitle}
+          recordId={recordId}
+          hasLinkedReferral={hasLinkedReferral}
+          referralStatus={linkedReferral?.status}
+          isUpdating={detailsUpdating}
+          onBack={() => navigate(-1)}
+          patientName={patientName}
+          serviceType={serviceType}
+          displayDate={displayDate}
+          displayTime={displayTime}
+          practitioner={getRecordPractitioner(record)}
+          actions={
+            <>
+              {canRecordFollowUpVisit && (
+                <Link
+                  to={`/bhc/health-records/add?recordId=${record.id || record._id}&mode=follow-up`}
+                  title="This action creates a follow-up visit linked to the current health record."
+                  aria-label="Record a follow-up visit linked to this health record"
+                  className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100"
+                >
+                  <FilePlus2 size={14} />
+                  Record Follow-up Visit
+                </Link>
+              )}
+              {hasLinkedReferral && (
+                <Link
+                  to={`/bhc/referrals/${linkedReferralTarget}`}
+                  className="flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600"
+                >
+                  <ClipboardList size={14} />
+                  View Referral
+                </Link>
+              )}
+              {!hasLinkedReferral && needsRhuReferral && (
+                <Link
+                  to={`/bhc/referrals/create?recordId=${record.id || record._id}&patientId=${patientId || ""}`}
+                  className="flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600"
+                >
+                  <FilePlus2 size={14} />
+                  Create Referral
+                </Link>
+              )}
+            </>
+          }
+        />
 
         {/* ─── Main Content ─── */}
         <div
@@ -313,268 +286,89 @@ export default function HealthRecordDetails() {
               : "grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"
           }
         >
-          {/* ═══ Clinical Record — Single Card ═══ */}
+          {/* ═══ Clinical Record — Accordion Sections ═══ */}
           <div className="space-y-6">
-            {isMaternalRecord ? (
+            {isImmunizationRecord ? (
+              <EpiRecordDetails
+                record={record}
+                vaccineEntries={epiVaccineEntries}
+                breastfeedingMonitoring={epiBreastfeedingMonitoring}
+                dispensedMedicines={dispensedMedicines}
+                followUpDate={followUpDateValue}
+                needsReferral={needsRhuReferral}
+                linkedReferralTarget={linkedReferralTarget}
+              />
+            ) : isMaternalRecord ? (
               <MaternalPrenatalRecordDetails
                 record={record}
-                patientName={patientName}
-                serviceType={serviceType}
-                displayDate={displayDate}
-                displayTime={displayTime}
-                practitioner={getRecordPractitioner(record)}
                 dispensedMedicines={dispensedMedicines}
                 followUpDate={followUpDateValue}
                 needsReferral={needsRhuReferral}
                 linkedReferral={linkedReferral}
               />
+            ) : isHypertensionDiabeticRecord ? (
+              <HypertensionDiabeticRecordDetails
+                record={record}
+                dispensedMedicines={dispensedMedicines}
+                followUpDate={followUpDateValue}
+                needsReferral={needsRhuReferral}
+                linkedReferral={linkedReferral}
+              />
+            ) : isFamilyPlanningRecord ? (
+              <FamilyPlanningRecordDetails
+                record={record}
+                details={familyPlanningDetails}
+                dispensedMedicines={dispensedMedicines}
+                followUpDate={followUpDateValue}
+                needsReferral={needsRhuReferral}
+                linkedReferral={linkedReferral}
+              />
+            ) : isGeneralConsultationRecord ? (
+              <GeneralConsultationRecordDetails
+                vitalItems={generalVitalItems}
+                chiefComplaint={chiefComplaintValue}
+                diagnosis={diagnosisValue}
+                signsSymptoms={summaryValue}
+                treatmentAction={initialActionsValue}
+                treatmentNotes={treatmentNotesValue}
+                medicalNotes={medicalNotesValue}
+                shouldShowReporting={shouldShowMorbidityReporting}
+                morbidityReportingStatus={morbidityReportingStatus}
+                hfmdSurveillance={hfmdSurveillance}
+                dispensedMedicines={dispensedMedicines}
+                followUpDate={followUpDateValue}
+                needsReferral={needsRhuReferral}
+                linkedReferral={linkedReferral}
+                patientCondition={patientConditionValue}
+                monitoringNotes={monitoringNotesValue}
+                status={status}
+              />
             ) : (
-            <SideCard
-              title={
-                isImmunizationRecord
-                  ? "Child Health / EPI Record"
-                  : isMaternalRecord
-                    ? "Maternal / Prenatal Record"
-                  : isHypertensionDiabeticRecord
-                    ? "Hypertension / Diabetic Monitoring Record"
-                  : "Clinical Record"
-              }
-              icon={
-                isImmunizationRecord ? (
-                  <Syringe size={14} />
-                ) : (
-                  <HeartPulse size={14} />
-                )
-              }
-            >
-              {isImmunizationRecord ? (
-                <EpiRecordDetails
-                  record={record}
-                  patientName={patientName}
-                  serviceType={serviceType}
-                  displayDate={displayDate}
-                  displayTime={displayTime}
-                  practitioner={getRecordPractitioner(record)}
-                  vaccineEntries={epiVaccineEntries}
-                  breastfeedingMonitoring={epiBreastfeedingMonitoring}
-                  dispensedMedicines={dispensedMedicines}
-                  followUpDate={followUpDateValue}
-                  needsReferral={needsRhuReferral}
-                  linkedReferralTarget={linkedReferralTarget}
-                />
-              ) : isMaternalRecord ? (
-                <MaternalPrenatalRecordDetails
-                  record={record}
-                  patientName={patientName}
-                  serviceType={serviceType}
-                  displayDate={displayDate}
-                  displayTime={displayTime}
-                  practitioner={getRecordPractitioner(record)}
-                  dispensedMedicines={dispensedMedicines}
-                  followUpDate={followUpDateValue}
-                  needsReferral={needsRhuReferral}
-                  linkedReferral={linkedReferral}
-                />
-              ) : isHypertensionDiabeticRecord ? (
-                <HypertensionDiabeticRecordDetails
-                  record={record}
-                  patientName={patientName}
-                  serviceType={serviceType}
-                  displayDate={displayDate}
-                  displayTime={displayTime}
-                  practitioner={getRecordPractitioner(record)}
-                  dispensedMedicines={dispensedMedicines}
-                  followUpDate={followUpDateValue}
-                  needsReferral={needsRhuReferral}
-                  linkedReferral={linkedReferral}
-                />
-              ) : isFamilyPlanningRecord ? (
-                <FamilyPlanningRecordDetails
-                  record={record}
-                  patientName={patientName}
-                  serviceType={serviceType}
-                  displayDate={displayDate}
-                  displayTime={displayTime}
-                  practitioner={getRecordPractitioner(record)}
-                  details={familyPlanningDetails}
-                  dispensedMedicines={dispensedMedicines}
-                  followUpDate={followUpDateValue}
-                  needsReferral={needsRhuReferral}
-                  linkedReferral={linkedReferral}
-                />
-              ) : isGeneralConsultationRecord ? (
-                <GeneralConsultationRecordDetails
-                  patientName={patientName}
-                  serviceType={serviceType}
-                  displayDate={displayDate}
-                  displayTime={displayTime}
-                  practitioner={getRecordPractitioner(record)}
-                  vitalItems={generalVitalItems}
-                  chiefComplaint={chiefComplaintValue}
-                  diagnosis={diagnosisValue}
-                  signsSymptoms={summaryValue}
-                  treatmentAction={initialActionsValue}
-                  treatmentNotes={treatmentNotesValue}
-                  medicalNotes={medicalNotesValue}
-                  shouldShowReporting={shouldShowMorbidityReporting}
-                  morbidityReportingStatus={morbidityReportingStatus}
-                  hfmdSurveillance={hfmdSurveillance}
-                  dispensedMedicines={dispensedMedicines}
-                  followUpDate={followUpDateValue}
-                  needsReferral={needsRhuReferral}
-                  linkedReferral={linkedReferral}
-                  patientCondition={patientConditionValue}
-                  monitoringNotes={monitoringNotesValue}
-                  status={status}
-                />
-              ) : (
-                /* ── View Mode ── */
-                <div className="divide-y divide-slate-100">
-                  <DetailSection title="Visit Overview">
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <PatientDetailItem label="Date of Visit" value={displayDate} />
-                      <PatientDetailItem
-                        label="Time of Visit"
-                        value={displayTime || "Not recorded"}
-                      />
-                      <PatientDetailItem
-                        label="Name of Practitioner"
-                        value={getRecordPractitioner(record)}
-                      />
-                    </div>
-                  </DetailSection>
-
-                  <DetailSection title="Vital Signs">
-                    <VitalSignsGrid items={generalVitalItems} />
-                  </DetailSection>
-
-                  <DetailSection title="Consultation Information">
-                    {hasClinicalAssessmentDetails || hasTreatmentDetails ? (
-                      <>
-                        <div className="grid gap-4 md:grid-cols-2">
-                          <PatientDetailItem
-                            label="Chief Complaint"
-                            value={chiefComplaintValue || "Not recorded"}
-                          />
-                          <PatientDetailItem
-                            label="Diagnosis / Assessment"
-                            value={diagnosisValue || "Not recorded"}
-                          />
-                          <PatientDetailItem
-                            label="Treatment / Action Taken"
-                            value={initialActionsValue || "Not recorded"}
-                          />
-                        </div>
-                        {summaryValue && (
-                          <NarrativeBox
-                            label="Signs & Symptoms"
-                            value={summaryValue}
-                          />
-                        )}
-                        {isDistinctRecordedValue(
-                          treatmentNotesValue,
-                          initialActionsValue,
-                        ) && (
-                          <NarrativeBox
-                            label="Treatment Notes"
-                            value={treatmentNotesValue}
-                          />
-                        )}
-                        {isDistinctRecordedValue(
-                          medicalNotesValue,
-                          initialActionsValue,
-                          treatmentNotesValue,
-                        ) && (
-                          <NarrativeBox
-                            label="Medical Notes"
-                            value={medicalNotesValue}
-                          />
-                        )}
-                      </>
-                    ) : (
-                      <SectionEmptyState text="No consultation details recorded." />
-                    )}
-                  </DetailSection>
-
-                  {shouldShowMorbidityReporting && (
-                    <DetailSection title="Morbidity / Notifiable Disease Record">
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <PatientDetailItem
-                          label="Reporting Status"
-                          value={formatMorbidityReportingStatus(
-                            morbidityReportingStatus,
-                          )}
-                        />
-                      </div>
-                    </DetailSection>
-                  )}
-
-                  {isGeneralConsultationRecord && (
-                    <DetailSection title="Community-Based Surveillance">
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <PatientDetailItem
-                          label="HFMD Surveillance"
-                          value={hfmdSurveillance ? "Yes" : "No"}
-                        />
-                      </div>
-                    </DetailSection>
-                  )}
-
-                  <DetailSection title="Medicines / Supplies Dispensed">
-                    <DispensedMedicinesList medicines={dispensedMedicines} />
-                  </DetailSection>
-
-                  {isFamilyPlanningRecord && (
-                    <DetailSection title="Family Planning Details">
-                      {hasFamilyPlanningDetails ? (
-                        <div className="grid gap-4 md:grid-cols-2">
-                          {familyPlanningDetails.map((item) => (
-                            <PatientDetailItem
-                              key={item.label}
-                              label={item.label}
-                              value={item.value}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <SectionEmptyState text="No family planning details recorded." />
-                      )}
-                    </DetailSection>
-                  )}
-
-                  <DetailSection title="Follow-up & Referral">
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <PatientDetailItem
-                        label="Follow-up Date"
-                        value={formatLongDate(
-                          followUpDateValue,
-                          "No follow-up date recorded.",
-                        )}
-                      />
-                      <PatientDetailItem
-                        label="Needs RHU Referral"
-                        value={needsRhuReferral ? "Yes" : "No"}
-                      />
-                      {(patientConditionValue ||
-                        status === "Follow-up Required") && (
-                        <PatientDetailItem
-                          label="Patient Condition"
-                          value={patientConditionValue}
-                        />
-                      )}
-                    </div>
-                    {monitoringNotesValue && (
-                      <NarrativeBox
-                        label="Monitoring Notes"
-                        value={monitoringNotesValue}
-                      />
-                    )}
-                  </DetailSection>
-	                </div>
-	              )}
-            </SideCard>
+              <GenericRecordDetails
+                generalVitalItems={generalVitalItems}
+                hasClinicalAssessmentDetails={hasClinicalAssessmentDetails}
+                hasTreatmentDetails={hasTreatmentDetails}
+                chiefComplaintValue={chiefComplaintValue}
+                diagnosisValue={diagnosisValue}
+                initialActionsValue={initialActionsValue}
+                summaryValue={summaryValue}
+                treatmentNotesValue={treatmentNotesValue}
+                medicalNotesValue={medicalNotesValue}
+                shouldShowMorbidityReporting={shouldShowMorbidityReporting}
+                morbidityReportingStatus={morbidityReportingStatus}
+                isGeneralConsultationRecord={isGeneralConsultationRecord}
+                hfmdSurveillance={hfmdSurveillance}
+                dispensedMedicines={dispensedMedicines}
+                isFamilyPlanningRecord={isFamilyPlanningRecord}
+                hasFamilyPlanningDetails={hasFamilyPlanningDetails}
+                familyPlanningDetails={familyPlanningDetails}
+                followUpDateValue={followUpDateValue}
+                needsRhuReferral={needsRhuReferral}
+                patientConditionValue={patientConditionValue}
+                status={status}
+                monitoringNotesValue={monitoringNotesValue}
+              />
             )}
-
           </div>
 
           {/* ═══ Sidebar ═══ */}
@@ -638,6 +432,18 @@ export default function HealthRecordDetails() {
    LOCAL HELPERS
 ──────────────────────────────────────────── */
 
+function buildPreview(pairs, emptyText = "Not recorded") {
+  const parts = pairs.filter(([, v]) => v).map(([l, v]) => `${l} ${v}`);
+  return parts.length ? parts.slice(0, 3).join(" · ") : emptyText;
+}
+
+function truncatePreview(text, maxLength = 60) {
+  if (!text) return "";
+  const trimmed = String(text).trim();
+  if (trimmed.length <= maxLength) return trimmed;
+  return `${trimmed.slice(0, maxLength).trimEnd()}…`;
+}
+
 function DetailSection({ title, children }) {
   return (
     <section className="py-5 first:pt-0 last:pb-0">
@@ -649,42 +455,6 @@ function DetailSection({ title, children }) {
       </div>
       <div className="space-y-4">{children}</div>
     </section>
-  );
-}
-
-function VisitInfoStrip({
-  patientName,
-  serviceType,
-  displayDate,
-  displayTime,
-  practitioner,
-}) {
-  return (
-    <div className="  px-3 py-2 ">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <MetadataItem label="Patient Full Name" value={patientName} />
-        <MetadataItem label="Service Type" value={serviceType} />
-        <MetadataItem label="Date of Visit" value={displayDate} />
-        <MetadataItem
-          label="Time of Visit"
-          value={displayTime || "Not recorded"}
-        />
-        <MetadataItem label="Name of Practitioner" value={practitioner} />
-      </div>
-    </div>
-  );
-}
-
-function MetadataItem({ label, value }) {
-  return (
-    <div>
-      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-        {label}
-      </p>
-      <p className="mt-1 truncate text-xs font-semibold text-slate-700">
-        {formatDisplayValue(value, "Not recorded")}
-      </p>
-    </div>
   );
 }
 
@@ -1002,14 +772,6 @@ function getHealthRecordDetailsTitle(serviceType = "") {
   if (normalized === "TB DOTS / TB Monitoring") return "TB Follow-up Record";
   if (normalized === "General Consultation") return "General Consultation Record";
   return normalized ? `${normalized} Record` : "Health Record Details";
-}
-
-function ReferredChip() {
-  return (
-    <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-      Referred
-    </span>
-  );
 }
 
 function getParentHealthRecordId(record = {}) {
@@ -1825,17 +1587,11 @@ HypertensionDiabeticRecordDetails.Legacy = HypertensionDiabeticLegacyDetails;
 
 function HypertensionDiabeticTabbedRecordDetails({
   record,
-  patientName,
-  serviceType,
-  displayDate,
-  displayTime,
-  practitioner,
   dispensedMedicines,
   followUpDate,
   needsReferral,
   linkedReferral,
 }) {
-  const [activeTab, setActiveTab] = useState("summary");
   const data = getHypertensionDiabeticData(record);
   const referralStatus =
     linkedReferral?.status ||
@@ -1843,40 +1599,14 @@ function HypertensionDiabeticTabbedRecordDetails({
     record.referral_status ||
     "";
 
-  const tabs = [
-    {
-      id: "summary",
-      label: "Summary",
-      content: (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <TabbedDetailItem label="Patient" value={patientName} />
-          <TabbedDetailItem label="Service Type" value={serviceType} />
-          <TabbedDetailItem
-            label="Date and Time"
-            value={[displayDate, displayTime].filter(Boolean).join(" / ")}
-          />
-          <TabbedDetailItem label="Practitioner" value={practitioner} />
-          <TabbedDetailItem label="BP" value={data.bp} />
-          <TabbedDetailItem label="FBS" value={data.fbs} />
-          <TabbedDetailItem
-            label="Condition Type"
-            value={formatHypertensionDiabeticCondition(data.conditionType)}
-          />
-          <TabbedDetailItem
-            label="Client Status"
-            value={formatHypertensionDiabeticClientStatus(data.clientStatus)}
-          />
-          <TabbedDetailItem
-            label="Next Follow-up Date"
-            value={formatLongDate(followUpDate, "Not recorded")}
-          />
-          <TabbedDetailItem label="Referral Status" value={referralStatus} />
-        </div>
-      ),
-    },
+  const sections = [
     {
       id: "monitoring",
-      label: "Monitoring Details",
+      title: "Monitoring Details",
+      preview: buildPreview([
+        ["BP", data.bp],
+        ["FBS", data.fbs],
+      ]),
       content: (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <TabbedDetailItem label="BP" value={data.bp} />
@@ -1898,7 +1628,8 @@ function HypertensionDiabeticTabbedRecordDetails({
     },
     {
       id: "treatment",
-      label: "Treatment / Action Taken",
+      title: "Treatment / Action Taken",
+      preview: truncatePreview(data.treatmentActionTaken) || "Not recorded",
       content: data.treatmentActionTaken ? (
         <TabbedNarrativeBlock
           label="Treatment / Action Taken"
@@ -1910,12 +1641,20 @@ function HypertensionDiabeticTabbedRecordDetails({
     },
     {
       id: "medicines",
-      label: "Medicines",
+      title: "Medicines",
+      preview: dispensedMedicines?.length
+        ? `${dispensedMedicines.length} prescribed`
+        : "None dispensed",
       content: <DispensedMedicinesList medicines={dispensedMedicines} />,
     },
     {
       id: "followup",
-      label: "Follow-up & Referral",
+      title: "Follow-up & Referral",
+      preview: needsReferral
+        ? `Referral needed${referralStatus ? ` · ${referralStatus}` : ""}`
+        : followUpDate
+          ? `Follow-up ${formatLongDate(followUpDate, "")}`
+          : "No flags",
       content: (
         <div className="grid gap-4 md:grid-cols-3">
           <TabbedDetailItem
@@ -1932,21 +1671,197 @@ function HypertensionDiabeticTabbedRecordDetails({
     },
   ];
 
-  return (
-    <TabbedDetailsCard
-      tabs={tabs}
-      activeTab={activeTab}
-      onTabChange={setActiveTab}
-    />
-  );
+  return <Accordion sections={sections} defaultOpenIds={["monitoring"]} />;
+}
+
+function GenericRecordDetails({
+  generalVitalItems,
+  hasClinicalAssessmentDetails,
+  hasTreatmentDetails,
+  chiefComplaintValue,
+  diagnosisValue,
+  initialActionsValue,
+  summaryValue,
+  treatmentNotesValue,
+  medicalNotesValue,
+  shouldShowMorbidityReporting,
+  morbidityReportingStatus,
+  isGeneralConsultationRecord,
+  hfmdSurveillance,
+  dispensedMedicines,
+  isFamilyPlanningRecord,
+  hasFamilyPlanningDetails,
+  familyPlanningDetails,
+  followUpDateValue,
+  needsRhuReferral,
+  patientConditionValue,
+  status,
+  monitoringNotesValue,
+}) {
+  const sections = [
+    {
+      id: "vitals",
+      title: "Vital Signs",
+      preview: buildPreview(
+        generalVitalItems.map((item) => [item.label, item.value]),
+      ),
+      content: <VitalSignsGrid items={generalVitalItems} />,
+    },
+    {
+      id: "consultation",
+      title: "Consultation Information",
+      preview: truncatePreview(chiefComplaintValue) || "Not recorded",
+      content:
+        hasClinicalAssessmentDetails || hasTreatmentDetails ? (
+          <>
+            <div className="grid gap-4 md:grid-cols-2">
+              <PatientDetailItem
+                label="Chief Complaint"
+                value={chiefComplaintValue || "Not recorded"}
+              />
+              <PatientDetailItem
+                label="Diagnosis / Assessment"
+                value={diagnosisValue || "Not recorded"}
+              />
+              <PatientDetailItem
+                label="Treatment / Action Taken"
+                value={initialActionsValue || "Not recorded"}
+              />
+            </div>
+            {summaryValue && (
+              <NarrativeBox label="Signs & Symptoms" value={summaryValue} />
+            )}
+            {isDistinctRecordedValue(
+              treatmentNotesValue,
+              initialActionsValue,
+            ) && (
+              <NarrativeBox
+                label="Treatment Notes"
+                value={treatmentNotesValue}
+              />
+            )}
+            {isDistinctRecordedValue(
+              medicalNotesValue,
+              initialActionsValue,
+              treatmentNotesValue,
+            ) && (
+              <NarrativeBox label="Medical Notes" value={medicalNotesValue} />
+            )}
+          </>
+        ) : (
+          <SectionEmptyState text="No consultation details recorded." />
+        ),
+    },
+  ];
+
+  if (shouldShowMorbidityReporting) {
+    sections.push({
+      id: "morbidity",
+      title: "Morbidity / Notifiable Disease Record",
+      preview:
+        formatMorbidityReportingStatus(morbidityReportingStatus) ||
+        "No flags",
+      content: (
+        <div className="grid gap-4 md:grid-cols-2">
+          <PatientDetailItem
+            label="Reporting Status"
+            value={formatMorbidityReportingStatus(morbidityReportingStatus)}
+          />
+        </div>
+      ),
+    });
+  }
+
+  if (isGeneralConsultationRecord) {
+    sections.push({
+      id: "surveillance",
+      title: "Community-Based Surveillance",
+      preview: hfmdSurveillance
+        ? "HFMD surveillance: Yes"
+        : "HFMD surveillance: No",
+      content: (
+        <div className="grid gap-4 md:grid-cols-2">
+          <PatientDetailItem
+            label="HFMD Surveillance"
+            value={hfmdSurveillance ? "Yes" : "No"}
+          />
+        </div>
+      ),
+    });
+  }
+
+  sections.push({
+    id: "medicines",
+    title: "Medicines / Supplies Dispensed",
+    preview: dispensedMedicines?.length
+      ? `${dispensedMedicines.length} prescribed`
+      : "None dispensed",
+    content: <DispensedMedicinesList medicines={dispensedMedicines} />,
+  });
+
+  if (isFamilyPlanningRecord) {
+    sections.push({
+      id: "familyPlanning",
+      title: "Family Planning Details",
+      preview: buildPreview(
+        familyPlanningDetails.map((item) => [item.label, item.value]),
+      ),
+      content: hasFamilyPlanningDetails ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          {familyPlanningDetails.map((item) => (
+            <PatientDetailItem
+              key={item.label}
+              label={item.label}
+              value={item.value}
+            />
+          ))}
+        </div>
+      ) : (
+        <SectionEmptyState text="No family planning details recorded." />
+      ),
+    });
+  }
+
+  sections.push({
+    id: "followup",
+    title: "Follow-up & Referral",
+    preview: needsRhuReferral
+      ? "Referral needed"
+      : followUpDateValue
+        ? `Follow-up ${formatLongDate(followUpDateValue, "")}`
+        : "No flags",
+    content: (
+      <div>
+        <div className="grid gap-4 md:grid-cols-3">
+          <PatientDetailItem
+            label="Follow-up Date"
+            value={formatLongDate(
+              followUpDateValue,
+              "No follow-up date recorded.",
+            )}
+          />
+          <PatientDetailItem
+            label="Needs RHU Referral"
+            value={needsRhuReferral ? "Yes" : "No"}
+          />
+          {(patientConditionValue || status === "Follow-up Required") && (
+            <PatientDetailItem
+              label="Patient Condition"
+              value={patientConditionValue}
+            />
+          )}
+        </div>
+        {monitoringNotesValue && (
+          <NarrativeBox label="Monitoring Notes" value={monitoringNotesValue} />
+        )}
+      </div>
+    ),
+  });
+
+  return <Accordion sections={sections} defaultOpenIds={["vitals"]} />;
 }
 
 function GeneralConsultationRecordDetails({
-  patientName,
-  serviceType,
-  displayDate,
-  displayTime,
-  practitioner,
   vitalItems = [],
   chiefComplaint,
   diagnosis,
@@ -1965,7 +1880,6 @@ function GeneralConsultationRecordDetails({
   monitoringNotes,
   status,
 }) {
-  const [activeTab, setActiveTab] = useState("summary");
   const referralStatus =
     linkedReferral?.status || linkedReferral?.referralStatus || "";
   const hasConsultationDetails = Boolean(
@@ -1977,37 +1891,17 @@ function GeneralConsultationRecordDetails({
       medicalNotes,
   );
 
-  const tabs = [
-    {
-      id: "summary",
-      label: "Summary",
-      content: (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <TabbedDetailItem label="Patient" value={patientName} />
-          <TabbedDetailItem label="Service Type" value={serviceType} />
-          <TabbedDetailItem
-            label="Date and Time"
-            value={[displayDate, displayTime].filter(Boolean).join(" / ")}
-          />
-          <TabbedDetailItem label="Practitioner" value={practitioner} />
-          <TabbedDetailItem label="Chief Complaint" value={chiefComplaint} />
-          <TabbedDetailItem label="Diagnosis" value={diagnosis} />
-          <TabbedDetailItem
-            label="Next Follow-up Date"
-            value={formatLongDate(followUpDate, "Not recorded")}
-          />
-          <TabbedDetailItem label="Referral Status" value={referralStatus} />
-        </div>
-      ),
-    },
+  const sections = [
     {
       id: "vitals",
-      label: "Vital Signs",
+      title: "Vital Signs",
+      preview: buildPreview(vitalItems.map((item) => [item.label, item.value])),
       content: <VitalSignsGrid items={vitalItems} />,
     },
     {
       id: "consultation",
-      label: "Consultation Details",
+      title: "Consultation Details",
+      preview: truncatePreview(chiefComplaint) || "Not recorded",
       content: hasConsultationDetails ? (
         <div className="space-y-4">
           <TabbedNarrativeBlock label="Chief Complaint" value={chiefComplaint} />
@@ -2036,7 +1930,10 @@ function GeneralConsultationRecordDetails({
     },
     {
       id: "reporting",
-      label: "Reporting Decision",
+      title: "Reporting Decision",
+      preview: shouldShowReporting
+        ? formatMorbidityReportingStatus(morbidityReportingStatus) || "No flags"
+        : "Not applicable",
       content: shouldShowReporting ? (
         <div className="grid gap-4 md:grid-cols-2">
           <TabbedDetailItem
@@ -2054,12 +1951,20 @@ function GeneralConsultationRecordDetails({
     },
     {
       id: "medicines",
-      label: "Medicines",
+      title: "Medicines",
+      preview: dispensedMedicines?.length
+        ? `${dispensedMedicines.length} prescribed`
+        : "None dispensed",
       content: <DispensedMedicinesList medicines={dispensedMedicines} />,
     },
     {
       id: "followup",
-      label: "Follow-up & Referral",
+      title: "Follow-up & Referral",
+      preview: needsReferral
+        ? `Referral needed${referralStatus ? ` · ${referralStatus}` : ""}`
+        : followUpDate
+          ? `Follow-up ${formatLongDate(followUpDate, "")}`
+          : "No flags",
       content: (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3">
@@ -2090,29 +1995,17 @@ function GeneralConsultationRecordDetails({
     },
   ];
 
-  return (
-    <TabbedDetailsCard
-      tabs={tabs}
-      activeTab={activeTab}
-      onTabChange={setActiveTab}
-    />
-  );
+  return <Accordion sections={sections} defaultOpenIds={["vitals"]} />;
 }
 
 function FamilyPlanningRecordDetails({
   record,
-  patientName,
-  serviceType,
-  displayDate,
-  displayTime,
-  practitioner,
   details = [],
   dispensedMedicines = [],
   followUpDate,
   needsReferral,
   linkedReferral,
 }) {
-  const [activeTab, setActiveTab] = useState("summary");
   const getDetailValue = (label) =>
     details.find((item) => item.label === label)?.value || "";
   const referralStatus =
@@ -2126,39 +2019,14 @@ function FamilyPlanningRecordDetails({
   const advice = getDetailValue("Advice Given");
   const actionTaken = getDetailValue("Action Taken");
 
-  const tabs = [
-    {
-      id: "summary",
-      label: "Summary",
-      content: (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <TabbedDetailItem label="Patient" value={patientName} />
-          <TabbedDetailItem label="Service Type" value={serviceType} />
-          <TabbedDetailItem
-            label="Date and Time"
-            value={[displayDate, displayTime].filter(Boolean).join(" / ")}
-          />
-          <TabbedDetailItem label="Practitioner" value={practitioner} />
-          <TabbedDetailItem label="Client Type" value={getDetailValue("Client Type")} />
-          <TabbedDetailItem
-            label="Method Used / Accepted"
-            value={getDetailValue("Method Used / Accepted")}
-          />
-          <TabbedDetailItem
-            label="Next Appointment Date"
-            value={getDetailValue("Next Appointment Date")}
-          />
-          <TabbedDetailItem
-            label="Next Follow-up Date"
-            value={formatLongDate(followUpDate, "Not recorded")}
-          />
-          <TabbedDetailItem label="Referral Status" value={referralStatus} />
-        </div>
-      ),
-    },
+  const sections = [
     {
       id: "details",
-      label: "Family Planning Details",
+      title: "Family Planning Details",
+      preview: buildPreview([
+        ["Client Type", getDetailValue("Client Type")],
+        ["Method", getDetailValue("Method Used / Accepted")],
+      ]),
       content: hasDetails ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {details.map((item) => (
@@ -2175,7 +2043,8 @@ function FamilyPlanningRecordDetails({
     },
     {
       id: "clinical",
-      label: "Clinical Concern",
+      title: "Clinical Concern",
+      preview: truncatePreview(concern) || "Not recorded",
       content:
         concern || findings || advice || actionTaken ? (
           <div className="space-y-4">
@@ -2190,12 +2059,20 @@ function FamilyPlanningRecordDetails({
     },
     {
       id: "medicines",
-      label: "Medicines / Supplies",
+      title: "Medicines / Supplies",
+      preview: dispensedMedicines?.length
+        ? `${dispensedMedicines.length} prescribed`
+        : "None dispensed",
       content: <DispensedMedicinesList medicines={dispensedMedicines} />,
     },
     {
       id: "followup",
-      label: "Follow-up & Referral",
+      title: "Follow-up & Referral",
+      preview: needsReferral
+        ? `Referral needed${referralStatus ? ` · ${referralStatus}` : ""}`
+        : followUpDate
+          ? `Follow-up ${formatLongDate(followUpDate, "")}`
+          : "No flags",
       content: (
         <div className="grid gap-4 md:grid-cols-3">
           <TabbedDetailItem
@@ -2212,29 +2089,17 @@ function FamilyPlanningRecordDetails({
     },
   ];
 
-  return (
-    <TabbedDetailsCard
-      tabs={tabs}
-      activeTab={activeTab}
-      onTabChange={setActiveTab}
-    />
-  );
+  return <Accordion sections={sections} defaultOpenIds={["details"]} />;
 }
 
 function MaternalPrenatalRecordDetails({
   record,
-  patientName,
-  serviceType,
-  displayDate,
-  displayTime,
-  practitioner,
   dispensedMedicines,
   followUpDate,
   needsReferral,
   linkedReferral,
 }) {
   const EMPTY_VALUE = "Not recorded";
-  const [activeTab, setActiveTab] = useState("summary");
   const maternal = getMaternalData(record);
   const term = getMaternalValue(maternal, record, ["term"], "");
   const preterm = getMaternalValue(maternal, record, ["preterm"], "");
@@ -2308,35 +2173,14 @@ function MaternalPrenatalRecordDetails({
   const previousFpMethod = getPreviousFpMethodValue(maternal);
   const hasPreviousFpMethod = Boolean(previousFpMethod);
 
-  const tabs = [
-    {
-      id: "summary",
-      label: "Summary",
-      content: (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <TabbedDetailItem label="Patient" value={patientName} />
-          <TabbedDetailItem label="Service Type" value={serviceType} />
-          <TabbedDetailItem
-            label="Date and Time"
-            value={[displayDate, displayTime].filter(Boolean).join(" / ")}
-          />
-          <TabbedDetailItem label="Practitioner" value={practitioner} />
-          <TabbedDetailItem label="BP" value={bp} />
-          <TabbedDetailItem label="Weight" value={weight} />
-          <TabbedDetailItem label="LMP" value={formatLongDate(lmp, EMPTY_VALUE)} />
-          <TabbedDetailItem label="EDC" value={formatLongDate(edc, EMPTY_VALUE)} />
-          <TabbedDetailItem label="AOG" value={aog} />
-          <TabbedDetailItem
-            label="Next Follow-up Date"
-            value={formatLongDate(followUpDate, EMPTY_VALUE)}
-          />
-          <TabbedDetailItem label="Referral Status" value={referralStatus} />
-        </div>
-      ),
-    },
+  const sections = [
     {
       id: "pregnancy",
-      label: "Pregnancy Details",
+      title: "Pregnancy Details",
+      preview: buildPreview([
+        ["AOG", aog],
+        ["EDC", formatLongDate(edc, "")],
+      ]),
       content: (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <TabbedDetailItem label="LMP" value={formatLongDate(lmp, EMPTY_VALUE)} />
@@ -2358,7 +2202,11 @@ function MaternalPrenatalRecordDetails({
     },
     {
       id: "vitals",
-      label: "Vital Signs",
+      title: "Vital Signs",
+      preview: buildPreview([
+        ["BP", bp],
+        ["Weight", weight],
+      ]),
       content: (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <TabbedDetailItem label="Blood Pressure" value={bp} />
@@ -2373,7 +2221,8 @@ function MaternalPrenatalRecordDetails({
     },
     {
       id: "complaint",
-      label: "Complaint & Treatment",
+      title: "Complaint & Treatment",
+      preview: truncatePreview(chiefComplaint) || "Not recorded",
       content: (
         <div className="space-y-4">
           <TabbedNarrativeBlock
@@ -2395,17 +2244,26 @@ function MaternalPrenatalRecordDetails({
     },
     {
       id: "medicines",
-      label: "Medicines",
+      title: "Medicines",
+      preview: dispensedMedicines?.length
+        ? `${dispensedMedicines.length} prescribed`
+        : "None dispensed",
       content: <DispensedMedicinesList medicines={dispensedMedicines} />,
     },
     {
       id: "history",
-      label: "Pregnancy History",
+      title: "Pregnancy History",
+      preview: previousPregnancyHistory.length
+        ? `${previousPregnancyHistory.length} prior pregnanc${previousPregnancyHistory.length === 1 ? "y" : "ies"}`
+        : "None recorded",
       content: <PreviousPregnancyHistoryTable rows={previousPregnancyHistory} />,
     },
     {
       id: "riskLabs",
-      label: "Risk / Labs",
+      title: "Risk / Labs",
+      preview: selectedRiskLabels.length
+        ? `${selectedRiskLabels.length} risk factor${selectedRiskLabels.length === 1 ? "" : "s"} flagged`
+        : "No risk factors flagged",
       content: (
         <div className="space-y-6">
           <TabbedSubsection title="Medical History / Risk Codes">
@@ -2451,7 +2309,11 @@ function MaternalPrenatalRecordDetails({
     },
     {
       id: "tt",
-      label: "TT / Td Recorded",
+      title: "TT / Td Recorded",
+      preview:
+        recordedTetanusDoses.length > 0
+          ? `${recordedTetanusDoses.length} dose${recordedTetanusDoses.length === 1 ? "" : "s"} recorded`
+          : "None recorded",
       content:
         recordedTetanusDoses.length > 0 ? (
           <div className="space-y-4">
@@ -2486,7 +2348,12 @@ function MaternalPrenatalRecordDetails({
     },
     {
       id: "ultrasound",
-      label: "Ultrasound",
+      title: "Ultrasound",
+      preview:
+        ultrasoundResult || ultrasoundDate || ultrasoundRemarks
+          ? truncatePreview(ultrasoundResult) ||
+            formatLongDate(ultrasoundDate, "Done")
+          : "Not done",
       content:
         ultrasoundResult || ultrasoundDate || ultrasoundRemarks ? (
           <div className="space-y-4">
@@ -2513,7 +2380,12 @@ function MaternalPrenatalRecordDetails({
     },
     {
       id: "followup",
-      label: "Follow-up & Referral",
+      title: "Follow-up & Referral",
+      preview: needsReferral
+        ? `Referral needed${referralStatus ? ` · ${referralStatus}` : ""}`
+        : followUpDate
+          ? `Follow-up ${formatLongDate(followUpDate, "")}`
+          : "No flags",
       content: (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -2537,114 +2409,7 @@ function MaternalPrenatalRecordDetails({
     },
   ];
 
-  return (
-    <TabbedDetailsCard
-      tabs={tabs}
-      activeTab={activeTab}
-      onTabChange={setActiveTab}
-    />
-  );
-}
-
-function TabbedDetailsCard({ tabs = [], activeTab, onTabChange }) {
-  const tabListRef = useRef(null);
-  const [scrollState, setScrollState] = useState({
-    canScrollLeft: false,
-    canScrollRight: false,
-  });
-  const selectedTab = tabs.find((tab) => tab.id === activeTab) || tabs[0];
-
-  function updateScrollState() {
-    const element = tabListRef.current;
-    if (!element) return;
-    const maxScrollLeft = element.scrollWidth - element.clientWidth;
-    setScrollState({
-      canScrollLeft: element.scrollLeft > 4,
-      canScrollRight: element.scrollLeft < maxScrollLeft - 4,
-    });
-  }
-
-  function scrollTabs(direction) {
-    const element = tabListRef.current;
-    if (!element) return;
-    element.scrollBy({
-      left: direction === "left" ? -220 : 220,
-      behavior: "smooth",
-    });
-  }
-
-  useEffect(() => {
-    updateScrollState();
-    const element = tabListRef.current;
-    if (!element) return undefined;
-
-    element.addEventListener("scroll", updateScrollState, { passive: true });
-    window.addEventListener("resize", updateScrollState);
-
-    return () => {
-      element.removeEventListener("scroll", updateScrollState);
-      window.removeEventListener("resize", updateScrollState);
-    };
-  }, [tabs.length]);
-
-  return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 bg-white px-3 py-3">
-        <style>{`
-          .akay-tab-scrollbar {
-            scrollbar-width: none;
-            -ms-overflow-style: none;
-          }
-          .akay-tab-scrollbar::-webkit-scrollbar {
-            display: none;
-          }
-        `}</style>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => scrollTabs("left")}
-            disabled={!scrollState.canScrollLeft}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C] disabled:pointer-events-none disabled:opacity-30"
-            aria-label="Scroll tabs left"
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <div
-            ref={tabListRef}
-            className="akay-tab-scrollbar flex min-w-0 flex-1 gap-1 overflow-x-auto"
-          >
-          {tabs.map((tab) => {
-            const selected = tab.id === selectedTab?.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => onTabChange(tab.id)}
-                className={`whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-bold transition ${
-                  selected
-                    ? "bg-[#B91C1C] text-white shadow-sm"
-                    : "text-slate-500 hover:bg-red-50 hover:text-[#B91C1C]"
-                }`}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
-          </div>
-          <button
-            type="button"
-            onClick={() => scrollTabs("right")}
-            disabled={!scrollState.canScrollRight}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C] disabled:pointer-events-none disabled:opacity-30"
-            aria-label="Scroll tabs right"
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      </div>
-      <div className="p-5 sm:p-6">{selectedTab?.content}</div>
-    </section>
-  );
+  return <Accordion sections={sections} defaultOpenIds={["pregnancy"]} />;
 }
 
 function TabbedSubsection({ title, children }) {
@@ -2702,11 +2467,6 @@ function formatTabValue(value) {
 
 function EpiRecordDetails({
   record,
-  patientName,
-  serviceType,
-  displayDate,
-  displayTime,
-  practitioner,
   vaccineEntries = [],
   breastfeedingMonitoring = {},
   dispensedMedicines = [],
@@ -2714,7 +2474,6 @@ function EpiRecordDetails({
   needsReferral,
   linkedReferralTarget,
 }) {
-  const [activeTab, setActiveTab] = useState("summary");
   const remarks = getEpiRemarks(record);
   const visitMonitoringItems = getVisitLevelMonitoringItems(record);
   const confirmedMonths = getConfirmedBreastfeedingMonths(breastfeedingMonitoring);
@@ -2722,40 +2481,14 @@ function EpiRecordDetails({
   const height = visitMonitoringItems.find((item) => item.label === "Height")?.value || "";
   const temperature =
     visitMonitoringItems.find((item) => item.label === "Temperature")?.value || "";
-  const tabs = [
-    {
-      id: "summary",
-      label: "Summary",
-      content: (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <TabbedDetailItem label="Patient" value={patientName} />
-          <TabbedDetailItem label="Service Type" value={serviceType} />
-          <TabbedDetailItem
-            label="Date and Time"
-            value={[displayDate, displayTime].filter(Boolean).join(" / ")}
-          />
-          <TabbedDetailItem label="Practitioner" value={practitioner} />
-          <TabbedDetailItem
-            label="Vaccines Given Count"
-            value={String(vaccineEntries.length)}
-          />
-          <TabbedDetailItem label="Weight" value={weight} />
-          <TabbedDetailItem label="Height" value={height} />
-          <TabbedDetailItem label="Temperature" value={temperature} />
-          <TabbedDetailItem
-            label="Next Follow-up Date"
-            value={formatLongDate(followUpDate, "Not recorded")}
-          />
-          <TabbedDetailItem
-            label="Referral Status"
-            value={linkedReferralTarget ? "Referred" : ""}
-          />
-        </div>
-      ),
-    },
+  const sections = [
     {
       id: "vaccines",
-      label: "Vaccines Given",
+      title: "Vaccines Given",
+      preview:
+        vaccineEntries.length > 0
+          ? `${vaccineEntries.length} vaccine${vaccineEntries.length === 1 ? "" : "s"} given`
+          : "None given",
       content:
         vaccineEntries.length > 0 ? (
           <EpiVaccinesTable entries={vaccineEntries} record={record} />
@@ -2765,7 +2498,12 @@ function EpiRecordDetails({
     },
     {
       id: "monitoring",
-      label: "Visit Monitoring",
+      title: "Visit Monitoring",
+      preview: buildPreview([
+        ["Weight", weight],
+        ["Height", height],
+        ["Temp", temperature],
+      ]),
       content: (
         <div className="grid gap-4 md:grid-cols-3">
           <TabbedDetailItem label="Weight" value={weight} />
@@ -2776,7 +2514,11 @@ function EpiRecordDetails({
     },
     {
       id: "breastfeeding",
-      label: "Breastfeeding Monitoring",
+      title: "Breastfeeding Monitoring",
+      preview:
+        confirmedMonths.length > 0
+          ? `${confirmedMonths.length} month${confirmedMonths.length === 1 ? "" : "s"} confirmed`
+          : "None recorded",
       content:
         confirmedMonths.length > 0 ? (
           <div className="flex flex-wrap gap-2">
@@ -2795,7 +2537,8 @@ function EpiRecordDetails({
     },
     {
       id: "remarks",
-      label: "Remarks",
+      title: "Remarks",
+      preview: truncatePreview(remarks) || "Not recorded",
       content: remarks ? (
         <TabbedNarrativeBlock label="Remarks" value={remarks} />
       ) : (
@@ -2804,12 +2547,20 @@ function EpiRecordDetails({
     },
     {
       id: "medicines",
-      label: "Medicines",
+      title: "Medicines",
+      preview: dispensedMedicines?.length
+        ? `${dispensedMedicines.length} prescribed`
+        : "None dispensed",
       content: <DispensedMedicinesList medicines={dispensedMedicines} />,
     },
     {
       id: "followup",
-      label: "Follow-up & Referral",
+      title: "Follow-up & Referral",
+      preview: needsReferral
+        ? `Referral needed${linkedReferralTarget ? " · Referred" : ""}`
+        : followUpDate
+          ? `Follow-up ${formatLongDate(followUpDate, "")}`
+          : "No flags",
       content: (
         <div className="grid gap-4 md:grid-cols-3">
           <TabbedDetailItem
@@ -2829,13 +2580,7 @@ function EpiRecordDetails({
     },
   ];
 
-  return (
-    <TabbedDetailsCard
-      tabs={tabs}
-      activeTab={activeTab}
-      onTabChange={setActiveTab}
-    />
-  );
+  return <Accordion sections={sections} defaultOpenIds={["vaccines"]} />;
 }
 
 function EpiVaccinesTable({ entries, record }) {

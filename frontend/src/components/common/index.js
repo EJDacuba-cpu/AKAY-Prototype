@@ -1,3 +1,5 @@
+export { default as Accordion } from "./accordion/Accordion";
+export { default as AccordionSection } from "./accordion/AccordionSection";
 export { default as ActionMenu } from "./tables/ActionMenu";
 export { default as DataTableEmptyState } from "./tables/DataTableEmptyState";
 export { default as ModuleTableCard } from "./tables/ModuleTableCard";

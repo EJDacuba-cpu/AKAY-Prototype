@@ -61,11 +61,12 @@ const TYPE_SCALE = [
 ];
 
 const RADII = [
-  { token: "--radius-row", label: "row", px: "3px" },
-  { token: "--radius-input", label: "input", px: "5px" },
-  { token: "--radius-card", label: "card", px: "8px" },
-  { token: "--radius-lg", label: "lg", px: "10px" },
-  { token: "--radius-modal", label: "modal", px: "14px" },
+  { token: "--radius-row", label: "row", px: "4px" },
+  { token: "--radius-input", label: "input", px: "8px" },
+  { token: "--radius-card", label: "card", px: "12px" },
+  { token: "--radius-card-sm", label: "card-sm", px: "10px" },
+  { token: "--radius-lg", label: "lg", px: "14px" },
+  { token: "--radius-modal", label: "modal", px: "16px" },
   { token: "--radius-pill", label: "pill", px: "999px" },
 ];
 
@@ -73,6 +74,7 @@ const SHADOWS = [
   { token: "--shadow-sm", label: "shadow-sm" },
   { token: "--shadow-md", label: "shadow-md" },
   { token: "--shadow-lg", label: "shadow-lg" },
+  { token: "--shadow-card", label: "shadow-card" },
 ];
 
 const STATUS_BADGES = [
@@ -499,7 +501,7 @@ export default function DesignTokens() {
         {/* Shadow */}
         <Section
           title="Shadow"
-          description="One soft elevation system, reserved for overlays (menus, modals, toasts). Cards separate with borders instead."
+          description="One soft elevation system. shadow-sm/md/lg stay reserved for overlays (menus, modals, toasts). shadow-card pairs with a border on elevated surfaces (record headers, accordion sections, stat tiles); nested cards inside them stay border-only."
         >
           <div
             style={{

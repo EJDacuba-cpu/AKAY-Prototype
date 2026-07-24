@@ -136,25 +136,37 @@ specificity, so a component can always opt out.
 
 ## Radius (restrained — do **not** round heavily)
 
-| Utility          | Token            | Value | Use                         |
-| ---------------- | ---------------- | ----- | --------------------------- |
-| `rounded-row`    | `--radius-row`   | 3px   | Table rows, list items      |
-| `rounded-input`  | `--radius-input` | 5px   | Inputs, small controls      |
-| `rounded-card`   | `--radius-card`  | 8px   | Cards, panels               |
-| `rounded-lg`     | `--radius-lg`    | 10px  | Larger containers           |
-| `rounded-modal`  | `--radius-modal` | 14px  | Modals, dialogs             |
-| `rounded-pill`   | `--radius-pill`  | 999px | Pills, badges, avatars      |
+| Utility           | Token               | Value | Use                                          |
+| ----------------- | ------------------- | ----- | --------------------------------------------- |
+| `rounded-row`     | `--radius-row`      | 4px   | Table rows, list items                        |
+| `rounded-input`   | `--radius-input`    | 8px   | Inputs, buttons                               |
+| `rounded-card`    | `--radius-card`     | 12px  | Cards, stat tiles, patient header             |
+| `rounded-card-sm` | `--radius-card-sm`  | 10px  | Nested/small cards inside a section (task/medication cards) |
+| `rounded-lg`      | `--radius-lg`       | 14px  | Larger panels, sidebars                       |
+| `rounded-modal`   | `--radius-modal`    | 16px  | Modals, dialogs                               |
+| `rounded-pill`    | `--radius-pill`     | 999px | Pills, badges, avatars                        |
 
 ## Elevation / shadow
 
-One soft system, **reserved for overlays** (menus, modals, toasts). Cards
-separate with **borders**, not shadows — never use both on the same element.
+`shadow-sm` / `shadow-md` / `shadow-lg` stay **reserved for overlays** (menus,
+modals, toasts). `shadow-card` is the exception: it pairs **with** a border on
+elevated/primary surfaces — the intent is gentle layering, not drama.
 
-| Utility     | Token         | Value                          |
-| ----------- | ------------- | ------------------------------ |
-| `shadow-sm` | `--shadow-sm` | `0 1px 2px rgba(33,32,28,.05)` |
-| `shadow-md` | `--shadow-md` | `0 4px 12px rgba(33,32,28,.06)`|
-| `shadow-lg` | `--shadow-lg` | `0 12px 28px rgba(33,32,28,.08)`|
+- **Elevated cards** (patient/record header, top-level accordion sections,
+  stat tiles): `border border-neutral-200` **+** `shadow-card`, `rounded-card`.
+- **Nested/small cards** living inside an elevated card (medicine rows, task
+  cards): `border` only, **no shadow**, `rounded-card-sm`. The absence of
+  shadow is what marks them as content inside a surface rather than a surface
+  of their own.
+- Don't stack `shadow-md`/`shadow-lg` on top of `shadow-card` — those stay for
+  genuine overlays and hover states.
+
+| Utility        | Token            | Value                                                              |
+| -------------- | ---------------- | ------------------------------------------------------------------- |
+| `shadow-sm`    | `--shadow-sm`    | `0 1px 2px rgba(33,32,28,.05)`                                      |
+| `shadow-md`    | `--shadow-md`    | `0 4px 12px rgba(33,32,28,.06)`                                     |
+| `shadow-lg`    | `--shadow-lg`    | `0 12px 28px rgba(33,32,28,.08)`                                    |
+| `shadow-card`  | `--shadow-card`  | `0 1px 2px rgba(33,32,28,.05), 0 2px 8px rgba(33,32,28,.05)`        |
 
 ---
 
@@ -209,7 +221,8 @@ Prefer, in order:
 **Do**
 
 - Use `brand-*` for identity/primary, `alert-*` only for danger/urgency.
-- Separate cards with `border border-neutral-200`; keep `shadow-*` for overlays.
+- Elevated cards: `border border-neutral-200` + `shadow-card`. Nested cards
+  inside them: `border` only, no shadow. Keep `shadow-sm/md/lg` for overlays.
 - Use serif for headings, mono for IDs/codes, sans everywhere else.
 - Reach for semantic roles (`--color-text`, `--color-surface`) over raw shades
   when the value could differ under a future dark theme.
@@ -218,7 +231,8 @@ Prefer, in order:
 
 - Hardcode hex (`#B91C1C`, `#0f172a`) or `slate-*` utilities — those are the
   Step 2 migration targets.
-- Put both a border and a shadow on the same card.
+- Add `shadow-card` to a nested/small card, or stack `shadow-md`/`shadow-lg`
+  on top of an already-elevated card.
 - Spend `alert-*` on ordinary status — that's what muted success/warning/info
   are for.
 
