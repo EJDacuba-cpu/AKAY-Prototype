@@ -22,10 +22,7 @@ export default function PageStateWrapper({
     return (
       <ConnectionErrorState
         fullPage
-        title={
-          errorTitle ||
-          (isConnectionError(error) ? "Connection Lost" : "Unable to Load Data")
-        }
+        title={errorTitle}
         message={errorMessage}
         onRetry={onRetry}
         retrying={isFetching}

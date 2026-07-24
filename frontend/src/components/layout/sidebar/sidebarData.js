@@ -21,6 +21,7 @@ export const reportNavItems = [
   { label: "Follow-up and Monitoring", slug: "follow-ups" },
   { label: "Hypertension and Diabetes Monitoring", slug: "ncd" },
   { label: "Maternal and Prenatal Care Target Client List", slug: "maternal" },
+  { label: "TB Program Register", slug: "tb" },
 ];
 
 export function createReportChildren(basePath) {

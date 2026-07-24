@@ -30,6 +30,10 @@ import {
   getRhuHealthRecords,
   updateHealthRecordById,
 } from "../../services/healthRecordService";
+import TbTreatmentCardForm, {
+  EMPTY_TB_DATA,
+  normalizeTbData,
+} from "../../components/features/health-records/TbTreatmentCardForm";
 import { getPatientDetailsListByRole } from "../../services/patientService";
 import { getCurrentUser } from "../../utils/auth";
 import {
@@ -103,7 +107,6 @@ const RECORD_TYPE_DETAILS = {
     title: "TB DOTS / TB Monitoring",
     description: "For TB screening, treatment monitoring, and follow-up.",
     icon: Stethoscope,
-    comingSoon: true,
   },
 };
 
@@ -496,6 +499,7 @@ export default function AddHealthRecord() {
   const [familyPlanningData, setFamilyPlanningData] = useState(
     EMPTY_FAMILY_PLANNING_DATA,
   );
+  const [tbData, setTbData] = useState(EMPTY_TB_DATA);
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
   const [aog, setAog] = useState("");
   const [followUpRecord, setFollowUpRecord] = useState(null);
@@ -602,6 +606,7 @@ export default function AddHealthRecord() {
           "",
       );
       setAog(existingMaternalData.aog || found.aog || "");
+      setTbData(normalizeTbData(found.tbData || found.tb_data));
       const existingFamilyPlanningData =
         found.familyPlanningData || found.family_planning_data || {};
       setFamilyPlanningData({
@@ -804,6 +809,7 @@ export default function AddHealthRecord() {
     setAog("");
     setImmunizationData(EMPTY_IMMUNIZATION_DATA);
     setFamilyPlanningData(EMPTY_FAMILY_PLANNING_DATA);
+    setTbData(EMPTY_TB_DATA);
   }
 
   function selectPatient(id) {
@@ -848,8 +854,9 @@ export default function AddHealthRecord() {
   const isImmunization = recordTypeKey === "immunization";
   const isMaternal = recordTypeKey === "maternal";
   const isFamilyPlanning = recordTypeKey === "family planning";
+  const isTb = recordTypeKey === "tb dots / tb monitoring";
   const isGeneralConsultationFollowUp =
-    isFollowUp && !isImmunization && !isMaternal && !isFamilyPlanning;
+    isFollowUp && !isImmunization && !isMaternal && !isFamilyPlanning && !isTb;
   const patientGateLocked = !isFollowUp && !selectedPatientId;
   const selectedPatientIsMale = !isFollowUp && isPatientMale(selectedPatient);
   const selectedPatientSexMissing =
@@ -906,6 +913,7 @@ export default function AddHealthRecord() {
       setAog("");
       setImmunizationData(EMPTY_IMMUNIZATION_DATA);
       setFamilyPlanningData(EMPTY_FAMILY_PLANNING_DATA);
+      setTbData(EMPTY_TB_DATA);
     }
 
     setHealthRecordType(nextType);
@@ -1176,6 +1184,17 @@ export default function AddHealthRecord() {
       return errors;
     }
 
+    if (isTb) {
+      if (!String(tbData.diagnosis.tbCaseNumber || "").trim()) {
+        errors["tbData.diagnosis.tbCaseNumber"] = "TB case number is required.";
+      }
+      if (!String(tbData.phases.intensiveStart || "").trim()) {
+        errors["tbData.phases.intensiveStart"] =
+          "Intensive phase start date is required.";
+      }
+      return errors;
+    }
+
     if (!chiefComplaint.trim()) {
       errors.chiefComplaint = "Chief complaint is required.";
     }
@@ -1350,6 +1369,9 @@ export default function AddHealthRecord() {
             ? familyPlanningData.fpVisitType === "Side-effect Concern"
               ? familyPlanningData.concern || "Family Planning Concern"
               : "Family Planning Visit"
+          : effectiveHealthRecordType === "TB DOTS / TB Monitoring" &&
+              !chiefComplaint
+            ? "TB DOTS / TB Monitoring Visit"
           : chiefComplaint;
     const formattedBp = (() => {
       const sys = systolicBp || "N/A";
@@ -1456,6 +1478,10 @@ export default function AddHealthRecord() {
         familyPlanningData:
           effectiveHealthRecordType === "Family Planning"
             ? recordFamilyPlanningData
+            : null,
+        tbData:
+          effectiveHealthRecordType === "TB DOTS / TB Monitoring"
+            ? tbData
             : null,
         linkedTrackingId,
         previousRecordId: isFollowUp ? recordId : "",
@@ -2265,7 +2291,22 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && (
+        {!patientGateLocked && isTb && (
+          <FormSection
+            title="DS-TB Treatment Card (DOH Form 4b)"
+            subtitle="Digitized National TB Control Program treatment card — case finding, diagnosis, regimen, treatment supporter, dose calendar, and adverse events."
+          >
+            <LockedFormContent locked={patientGateLocked}>
+              <TbTreatmentCardForm
+                value={tbData}
+                onChange={setTbData}
+                recordId={isEditingRecord ? recordId : null}
+              />
+            </LockedFormContent>
+          </FormSection>
+        )}
+
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isTb && (
           <FormSection
             title="Consultation Information"
             subtitle="Record consultation findings and observations."
@@ -2327,7 +2368,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && (
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isTb && (
           <>
             <FormSection
               title="Vital Signs"

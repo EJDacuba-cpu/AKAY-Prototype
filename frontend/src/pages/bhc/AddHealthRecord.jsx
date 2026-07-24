@@ -36,6 +36,10 @@ import {
 } from "../../services/healthRecordDraftService";
 import useDraftAutosave from "../../hooks/useDraftAutosave";
 import DraftSaveStatus from "../../components/features/health-records/DraftSaveStatus";
+import TbTreatmentCardForm, {
+  EMPTY_TB_DATA,
+  normalizeTbData,
+} from "../../components/features/health-records/TbTreatmentCardForm";
 import {
   BHC_MEDICINES_UPDATED_EVENT,
   getBhcMedicines,
@@ -101,6 +105,7 @@ const DRAFT_SUPPORTED_RECORD_TYPES = new Set([
   "Maternal",
   "Family Planning",
   "Hypertension / Diabetic Monitoring",
+  "TB DOTS / TB Monitoring",
 ]);
 
 function pickDraftFields(source = {}, keys = []) {
@@ -157,7 +162,6 @@ const RECORD_TYPE_DETAILS = {
     title: "TB DOTS / TB Monitoring",
     description: "For TB screening, treatment monitoring, and follow-up.",
     icon: Stethoscope,
-    comingSoon: true,
   },
 };
 
@@ -1133,6 +1137,7 @@ export default function AddHealthRecord() {
   const [hypertensionDiabeticData, setHypertensionDiabeticData] = useState(
     EMPTY_HYPERTENSION_DIABETIC_DATA,
   );
+  const [tbData, setTbData] = useState(EMPTY_TB_DATA);
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
   const [aog, setAog] = useState("");
   const [followUpRecord, setFollowUpRecord] = useState(null);
@@ -1355,6 +1360,7 @@ export default function AddHealthRecord() {
           "",
       );
       setAog(existingMaternalData.aog || found.aog || "");
+      setTbData(normalizeTbData(found.tbData || found.tb_data));
       const existingFamilyPlanningData =
         found.familyPlanningData || found.family_planning_data || {};
       setFamilyPlanningData({
@@ -1628,6 +1634,7 @@ export default function AddHealthRecord() {
     setImmunizationData(EMPTY_IMMUNIZATION_DATA);
     setFamilyPlanningData(EMPTY_FAMILY_PLANNING_DATA);
     setHypertensionDiabeticData(EMPTY_HYPERTENSION_DIABETIC_DATA);
+    setTbData(EMPTY_TB_DATA);
     setDraftMedicineWarnings([]);
   }
 
@@ -1687,12 +1694,14 @@ export default function AddHealthRecord() {
   const isFamilyPlanning = recordTypeKey === "family planning";
   const isHypertensionDiabetic =
     recordTypeKey === "hypertension / diabetic monitoring";
+  const isTb = recordTypeKey === "tb dots / tb monitoring";
   const isGeneralConsultationFollowUp =
     isFollowUp &&
     !isImmunization &&
     !isMaternal &&
     !isFamilyPlanning &&
-    !isHypertensionDiabetic;
+    !isHypertensionDiabetic &&
+    !isTb;
   const patientGateLocked = !isFollowUp && !selectedPatientId;
   const selectedPatientIsMale = !isFollowUp && isPatientMale(selectedPatient);
   const selectedPatientSexMissing =
@@ -1938,6 +1947,7 @@ export default function AddHealthRecord() {
         "dateOfLastConsultation",
         "treatmentActionTaken",
       ]),
+      tbData,
       referralForm: pickDraftFields(referralForm, [
         "urgencyLevel",
         "dateOfReferral",
@@ -2006,6 +2016,7 @@ export default function AddHealthRecord() {
       ...EMPTY_HYPERTENSION_DIABETIC_DATA,
       ...(payload.hypertensionDiabeticData || {}),
     });
+    setTbData(normalizeTbData(payload.tbData));
     setReferralForm((current) => ({
       ...current,
       ...(payload.referralForm || {}),
@@ -2351,6 +2362,7 @@ export default function AddHealthRecord() {
       setImmunizationData(EMPTY_IMMUNIZATION_DATA);
       setFamilyPlanningData(EMPTY_FAMILY_PLANNING_DATA);
       setHypertensionDiabeticData(EMPTY_HYPERTENSION_DIABETIC_DATA);
+      setTbData(EMPTY_TB_DATA);
     }
 
     setHealthRecordType(nextType);
@@ -2527,6 +2539,17 @@ export default function AddHealthRecord() {
     }
 
     if (isMaternal) return errors;
+
+    if (isTb) {
+      if (!String(tbData.diagnosis.tbCaseNumber || "").trim()) {
+        errors["tbData.diagnosis.tbCaseNumber"] = "TB case number is required.";
+      }
+      if (!String(tbData.phases.intensiveStart || "").trim()) {
+        errors["tbData.phases.intensiveStart"] =
+          "Intensive phase start date is required.";
+      }
+      return errors;
+    }
 
     if (!chiefComplaint.trim()) {
       errors.chiefComplaint = "Chief complaint is required.";
@@ -3279,6 +3302,9 @@ export default function AddHealthRecord() {
           : effectiveHealthRecordType === "Hypertension / Diabetic Monitoring" &&
               !chiefComplaint
             ? "Hypertension / Diabetic Monitoring Visit"
+          : effectiveHealthRecordType === "TB DOTS / TB Monitoring" &&
+              !chiefComplaint
+            ? "TB DOTS / TB Monitoring Visit"
           : chiefComplaint;
 
     const recordMaternalData = {
@@ -3467,6 +3493,8 @@ export default function AddHealthRecord() {
         effectiveHealthRecordType === "Hypertension / Diabetic Monitoring"
           ? recordHypertensionDiabeticData
           : null,
+      tbData:
+        effectiveHealthRecordType === "TB DOTS / TB Monitoring" ? tbData : null,
       monitoringData: {
         hypertensionDiabeticData:
           effectiveHealthRecordType === "Hypertension / Diabetic Monitoring"
@@ -4896,6 +4924,22 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
+        {!patientGateLocked && isTb && (
+          <FormSection
+            title="DS-TB Treatment Card (DOH Form 4b)"
+            subtitle="Digitized National TB Control Program treatment card — case finding, diagnosis, regimen, treatment supporter, dose calendar, and adverse events."
+            delay={3}
+          >
+            <LockedFormContent locked={patientGateLocked}>
+              <TbTreatmentCardForm
+                value={tbData}
+                onChange={setTbData}
+                recordId={isEditingRecord ? recordId : null}
+              />
+            </LockedFormContent>
+          </FormSection>
+        )}
+
         {!patientGateLocked && isHypertensionDiabetic && (
           <>
             <FormSection
@@ -5028,7 +5072,7 @@ export default function AddHealthRecord() {
           </>
         )}
 
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && (
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && !isTb && (
           <FormSection
             title="Vital Signs"
             subtitle="Record the patient's physiological measurements."
@@ -5073,7 +5117,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && (
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && !isTb && (
           <FormSection
             title="Consultation Information"
             subtitle="Record the complaint, assessment findings, diagnosis, and treatment."
@@ -5126,7 +5170,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && (
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && !isTb && (
           <FormSection
             title="Morbidity / Notifiable Disease Record"
             subtitle="Choose whether this visit should appear in the morbidity or notifiable diseases daily log."
@@ -5141,7 +5185,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && (
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && !isTb && (
           <FormSection
             title="Community-Based Surveillance"
             subtitle="Decide whether this visit should be included in the HFMD surveillance list."
@@ -5160,7 +5204,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && (
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && !isTb && (
           <FormSection
             title="Medicines / Supplies Dispensed"
             subtitle="Optional medicines or supplies given from BHC inventory."
@@ -5180,7 +5224,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && (
+        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && !isTb && (
           <>
             {!usesCareDecisionStep && (
               <FormSection

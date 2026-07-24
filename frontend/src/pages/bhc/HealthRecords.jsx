@@ -283,7 +283,6 @@ export default function HealthRecords() {
       <DashboardLayout role="bhc" title="Health Records">
         <ConnectionErrorState
           fullPage
-          title={isConnectionError(loadError) ? "Connection Lost" : "Unable to Load Data"}
           onRetry={() => refetch()}
           retrying={isFetching}
           variant={loadError?.isTimeout ? "timeout" : isConnectionError(loadError) ? "offline" : "error"}

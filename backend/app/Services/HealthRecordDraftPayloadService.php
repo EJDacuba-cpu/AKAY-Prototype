@@ -156,6 +156,106 @@ class HealthRecordDraftPayloadService
             'dateOfLastConsultation' => self::SCALAR,
             'treatmentActionTaken' => self::SCALAR,
         ],
+        'tbData' => [
+            'caseFinding' => [
+                'diagnosingFacility' => self::SCALAR,
+                'ntpFacilityCode' => self::SCALAR,
+                'provinceHuc' => self::SCALAR,
+                'region' => self::SCALAR,
+                'referredBy' => self::SCALAR,
+                'screeningCategory' => self::SCALAR,
+                'dateOfScreening' => self::SCALAR,
+            ],
+            'laboratory' => [
+                'xpert' => [
+                    'collectionDate' => self::SCALAR,
+                    'examDate' => self::SCALAR,
+                    'result' => self::SCALAR,
+                ],
+                'smearOrLamp' => [
+                    'collectionDate' => self::SCALAR,
+                    'examDate' => self::SCALAR,
+                    'result' => self::SCALAR,
+                ],
+                'chestXray' => [
+                    'collectionDate' => self::SCALAR,
+                    'examDate' => self::SCALAR,
+                    'result' => self::SCALAR,
+                ],
+                'tst' => [
+                    'collectionDate' => self::SCALAR,
+                    'examDate' => self::SCALAR,
+                    'result' => self::SCALAR,
+                ],
+                'other' => [
+                    'label' => self::SCALAR,
+                    'collectionDate' => self::SCALAR,
+                    'examDate' => self::SCALAR,
+                    'result' => self::SCALAR,
+                ],
+            ],
+            'diagnosis' => [
+                'diagnosisType' => self::SCALAR,
+                'dateOfDiagnosis' => self::SCALAR,
+                'dateOfNotification' => self::SCALAR,
+                'tbCaseNumber' => self::SCALAR,
+                'attendingPhysician' => self::SCALAR,
+                'referredTo' => self::SCALAR,
+            ],
+            'classification' => [
+                'bacteriologicalStatus' => self::SCALAR,
+                'anatomicalSite' => self::SCALAR,
+                'extrapulmonarySite' => self::SCALAR,
+                'drugResistance' => self::SCALAR,
+                'registrationGroup' => self::SCALAR,
+            ],
+            'regimen' => [
+                'rows' => ['*' => [
+                    'dateStart' => self::SCALAR,
+                    'drug4fdc' => self::SCALAR,
+                    'drug2fdc' => self::SCALAR,
+                    'drugH' => self::SCALAR,
+                    'drugR' => self::SCALAR,
+                    'drugZ' => self::SCALAR,
+                    'drugE' => self::SCALAR,
+                    'strength' => self::SCALAR,
+                    'unit' => self::SCALAR,
+                ]],
+            ],
+            'treatmentSupporter' => [
+                'locationOfTreatment' => self::SCALAR,
+                'supporterName' => self::SCALAR,
+                'supporterDesignation' => self::SCALAR,
+                'supporterType' => self::SCALAR,
+                'contactInfo' => self::SCALAR,
+                'datSupported' => self::SCALAR,
+                'scheduleOfTreatment' => self::SCALAR,
+            ],
+            'phases' => [
+                'intensiveStart' => self::SCALAR,
+                'intensiveEnd' => self::SCALAR,
+                'continuationStart' => self::SCALAR,
+                'continuationEnd' => self::SCALAR,
+            ],
+            'adverseEvents' => ['*' => [
+                'dateOfAe' => self::SCALAR,
+                'specificAe' => self::SCALAR,
+                'dateReportedToFda' => self::SCALAR,
+            ]],
+            'doseCalendar' => [
+                'adherencePercent' => self::SCALAR,
+                'months' => ['*' => [
+                    'monthIndex' => self::SCALAR,
+                    'label' => self::SCALAR,
+                    'days' => ['*' => self::SCALAR],
+                    'monthlyTotal' => self::SCALAR,
+                    'cumulativeDoses' => self::SCALAR,
+                    'monthlyPercent' => self::SCALAR,
+                    'weightKg' => self::SCALAR,
+                    'heightCm' => self::SCALAR,
+                ]],
+            ],
+        ],
         'referralForm' => [
             'urgencyLevel' => self::SCALAR,
             'dateOfReferral' => self::SCALAR,
@@ -283,6 +383,10 @@ class HealthRecordDraftPayloadService
                 'nullable',
                 'date_format:Y-m-d',
             ],
+            'payload.tbData.regimen.rows' => ['nullable', 'array', 'max:10'],
+            'payload.tbData.adverseEvents' => ['nullable', 'array', 'max:30'],
+            'payload.tbData.doseCalendar.months' => ['nullable', 'array', 'max:13'],
+            'payload.tbData.doseCalendar.months.*.days' => ['nullable', 'array', 'max:31'],
         ];
     }
 }

@@ -423,6 +423,68 @@ export function hasSpecializedRecords(records = []) {
   return records.some((record) => Boolean(getSpecializedRecordType(record)));
 }
 
+const TB_REGISTRATION_GROUP_LABELS = {
+  new: "New",
+  relapse: "Relapse",
+  taf: "TAF",
+  talf: "TALF",
+  ptou: "PTOU",
+  unknown_history: "Unknown History",
+};
+
+const TB_ANATOMICAL_SITE_LABELS = {
+  pulmonary: "Pulmonary",
+  extrapulmonary: "Extra-pulmonary",
+};
+
+// Read the DS-TB Treatment Card (tb_data) off a record and derive the display
+// fields used by the TB history table and the TB Program register.
+export function getTbData(record = {}) {
+  const data = record.tbData || record.tb_data || {};
+  const diagnosis = data.diagnosis || {};
+  const classification = data.classification || {};
+  const phases = data.phases || {};
+  const doseCalendar = data.doseCalendar || {};
+
+  const registrationGroupKey = String(
+    classification.registrationGroup || "",
+  ).toLowerCase();
+  const anatomicalSiteKey = String(
+    classification.anatomicalSite || "",
+  ).toLowerCase();
+
+  const phaseLabel = phases.continuationStart
+    ? "Continuation Phase"
+    : phases.intensiveStart
+      ? "Intensive Phase"
+      : "";
+
+  return {
+    raw: data,
+    tbCaseNumber: diagnosis.tbCaseNumber || "",
+    dateOfDiagnosis: diagnosis.dateOfDiagnosis || "",
+    dateOfNotification: diagnosis.dateOfNotification || "",
+    attendingPhysician: diagnosis.attendingPhysician || "",
+    phaseLabel,
+    registrationGroup:
+      TB_REGISTRATION_GROUP_LABELS[registrationGroupKey] ||
+      classification.registrationGroup ||
+      "",
+    isRetreatment: Boolean(registrationGroupKey) && registrationGroupKey !== "new",
+    treatmentType: registrationGroupKey === "new" ? "New" : "Retreatment",
+    anatomicalSite: TB_ANATOMICAL_SITE_LABELS[anatomicalSiteKey] || "",
+    anatomicalSiteShort:
+      anatomicalSiteKey === "pulmonary"
+        ? "P"
+        : anatomicalSiteKey === "extrapulmonary"
+          ? "A"
+          : "",
+    intensiveStart: phases.intensiveStart || "",
+    continuationEnd: phases.continuationEnd || "",
+    adherencePercent: Number(doseCalendar.adherencePercent) || 0,
+  };
+}
+
 export function getImmunizationData(record = {}) {
   return record.immunizationData || record.immunization_data || {};
 }

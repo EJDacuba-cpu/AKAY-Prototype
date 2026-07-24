@@ -49,6 +49,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
     Route::middleware('facility.assigned')->group(function () {
         Route::apiResource('patients', PatientController::class);
         Route::apiResource('health-records', HealthRecordController::class);
+        Route::get('health-records/{healthRecord}/tb-card-pdf', [HealthRecordController::class, 'tbCardPdf']);
         Route::post('health-records/{healthRecord}/dispensed-medicines', [HealthRecordController::class, 'dispenseMedicines']);
         Route::post('/referrals/qr/resolve', [ReferralQrController::class, 'resolve'])
             ->middleware('throttle:referral-qr-resolve');

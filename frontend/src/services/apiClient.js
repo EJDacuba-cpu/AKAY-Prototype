@@ -7,7 +7,7 @@ import {
 
 const TOKEN_KEY = "akay_auth_token";
 const USER_KEY = "akay_auth_user";
-const REQUEST_TIMEOUT_MS = 15000;
+const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_REQUEST_TIMEOUT_MS) || 30000;
 const SESSION_REQUEST_HEADERS = { "X-AKAY-Session": "1" };
 
 let accessToken = null;

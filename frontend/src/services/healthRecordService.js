@@ -1,6 +1,48 @@
-import { apiRequest, unwrapData, unwrapList } from "./apiClient";
+import {
+  apiRequest,
+  getAuthToken,
+  unwrapData,
+  unwrapList,
+} from "./apiClient";
+import { API_BASE_URL } from "../config/environment";
 import { normalizePatient } from "./patientService";
 import { createIdempotencyKey } from "../utils/idempotency";
+
+/**
+ * Download the DS-TB Treatment Card (DOH Form 4b) PDF for a health record.
+ * Streams a binary PDF from the API (auth token attached) and triggers a
+ * browser download. Not routed through apiRequest, which always parses JSON.
+ */
+export async function downloadTbCardPdf(recordId) {
+  const token = getAuthToken();
+  const response = await fetch(
+    `${API_BASE_URL}/health-records/${recordId}/tb-card-pdf`,
+    {
+      headers: {
+        Accept: "application/pdf",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      cache: "no-store",
+      credentials: "omit",
+    },
+  );
+
+  if (!response.ok) {
+    const error = new Error("Unable to generate the TB treatment card PDF.");
+    error.status = response.status;
+    throw error;
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `DS-TB-Treatment-Card-${recordId}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
 
 export const BHC_RECORDS_KEY = "api:bhc_health_records";
 export const RHU_RECORDS_KEY = "api:rhu_health_records";
@@ -314,6 +356,7 @@ function normalizeRecord(record = {}) {
       : "";
   const familyPlanningData =
     record.family_planning_data || record.familyPlanningData || {};
+  const tbData = record.tb_data || record.tbData || {};
   const parentHealthRecordId =
     record.parent_health_record_id ||
     record.parentHealthRecordId ||
@@ -461,6 +504,8 @@ function normalizeRecord(record = {}) {
     other_surveillance_category: otherSurveillanceCategory,
     familyPlanningData,
     family_planning_data: familyPlanningData,
+    tbData,
+    tb_data: tbData,
     needsReferral,
     needs_referral: record.needs_referral,
     systolicBp: vitalSigns.systolicBp || vitalSigns.systolic_bp || record.systolicBp || "",
@@ -862,6 +907,10 @@ function toPayload(record = {}, { partial = false } = {}) {
     monitoring_data: monitoringData,
     family_planning_data:
       recordTypeKey === "family planning" ? familyPlanningData : null,
+    tb_data:
+      recordTypeKey === "tb dots / tb monitoring"
+        ? record.tbData || record.tb_data || null
+        : null,
     needs_referral: needsReferral,
     chief_complaint: record.chiefComplaint || null,
     diagnosis: record.diagnosis || null,
@@ -961,6 +1010,10 @@ function toPayload(record = {}, { partial = false } = {}) {
     delete payload.maternal_data;
     delete payload.immunization_data;
     delete payload.family_planning_data;
+    delete payload.tb_data;
+  }
+  if (!hasAny(record, ["tbData", "tb_data"])) {
+    delete payload.tb_data;
   }
   if (!hasAny(record, [
     "familyPlanningData",

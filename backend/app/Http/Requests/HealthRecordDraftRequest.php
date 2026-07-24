@@ -14,6 +14,7 @@ class HealthRecordDraftRequest extends FormRequest
         'Maternal',
         'Family Planning',
         'Hypertension / Diabetic Monitoring',
+        'TB DOTS / TB Monitoring',
     ];
 
     public function authorize(): bool

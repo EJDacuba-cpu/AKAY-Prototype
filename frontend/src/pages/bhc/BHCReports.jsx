@@ -42,10 +42,12 @@ import {
   formatServiceType,
   formatHypertensionDiabeticClientStatus,
   formatHypertensionDiabeticCondition,
+  getTbData,
   isEpiRecord,
   isFamilyPlanningRecord,
   isMaternalRecord,
   isNcdRecord,
+  isTbRecord,
   normalizeVaccineName,
 } from "../../utils/healthRecordPrograms";
 import { queryKeys } from "../../utils/queryKeys";
@@ -102,6 +104,13 @@ const REPORT_TYPES = [
     slug: "maternal",
     label: "Maternal and Prenatal Care Target Client List",
     description: "Prenatal visits, pregnancy details, and maternal follow-ups.",
+  },
+  {
+    key: "tb",
+    slug: "tb",
+    label: "TB Program Register",
+    description:
+      "DS-TB treatment follow-up register: case numbers, phase, treatment start, and outcome.",
   },
 ];
 
@@ -458,6 +467,8 @@ function SelectedReport(props) {
       return <NcdReportView {...props} />;
     case "maternal":
       return <MaternalReportView {...props} />;
+    case "tb":
+      return <TbRegisterReportView {...props} />;
     default:
       return <ReferralReportView {...props} />;
   }
@@ -486,6 +497,11 @@ function normalizeReportSlug(value) {
     "hypertension-diabetic-monitoring": "ncd",
     "hypertension-and-diabetic-monitoring": "ncd",
     "maternal-prenatal": "maternal",
+    "tb-dots": "tb",
+    "tb-monitoring": "tb",
+    "tb-program": "tb",
+    "tb-program-register": "tb",
+    tuberculosis: "tb",
   };
 
   return aliases[raw] || raw || DEFAULT_REPORT_SLUG;
@@ -602,6 +618,79 @@ function FamilyPlanningReportView({ records, filters, patientMap }) {
         })}
         emptyTitle="No Family Planning records"
         emptyMessage="No Family Planning records match the selected filters."
+      />
+    </>
+  );
+}
+
+function TbRegisterReportView({ records, filters, patientMap }) {
+  const rows = records
+    .filter(isTbRecord)
+    .map((record) => {
+      const normalized = normalizeProgramRecord(record, patientMap);
+      const patient =
+        record.patient && typeof record.patient === "object"
+          ? record.patient
+          : patientMap.get(normalized.patientId) || {};
+      return {
+        ...normalized,
+        tb: getTbData(record),
+        followUpDate: record.followUpDate || record.follow_up_date || "",
+        outcome:
+          record.followUpStatus || record.status || record.patientCondition || "",
+        phone:
+          patient.contactNumber ||
+          patient.contact_number ||
+          record.contactNumber ||
+          record.contact_number ||
+          "",
+      };
+    })
+    .filter(
+      (row) =>
+        matchesDateRange(row.date, filters) &&
+        matchesValue(row.barangay, filters.barangay) &&
+        matchesValue(row.tb.treatmentType, filters.treatmentType) &&
+        matchesAgeRange(row.age, filters.ageRange),
+    );
+
+  const onTreatment = rows.filter((row) => row.tb.intensiveStart).length;
+  const newCases = rows.filter((row) => !row.tb.isRetreatment).length;
+
+  return (
+    <>
+      <SummaryGrid>
+        <SummaryCard label="TB Patients" value={rows.length} icon={<UsersRound size={16} />} />
+        <SummaryCard label="New Cases" value={newCases} tone="emerald" icon={<FileHeart size={16} />} />
+        <SummaryCard label="On Treatment" value={onTreatment} icon={<HeartPulse size={16} />} />
+      </SummaryGrid>
+      <ReportTable
+        columns={[
+          "No.",
+          "Patient",
+          "Age",
+          "P/A",
+          "Registration",
+          "TB Case No.",
+          "Follow-up",
+          "Treatment Started",
+          "Outcome",
+          "Phone No.",
+        ]}
+        rows={rows.map((row, index) => [
+          index + 1,
+          row.patientName,
+          row.age || EMPTY_MARK,
+          row.tb.anatomicalSiteShort || EMPTY_MARK,
+          row.tb.treatmentType,
+          row.tb.tbCaseNumber || EMPTY_MARK,
+          formatDate(row.followUpDate, EMPTY_MARK),
+          formatDate(row.tb.intensiveStart, EMPTY_MARK),
+          row.outcome || EMPTY_MARK,
+          row.phone || EMPTY_MARK,
+        ])}
+        emptyTitle="No TB Program records"
+        emptyMessage="No TB records match the selected filters."
       />
     </>
   );
@@ -1374,6 +1463,13 @@ function getReportFilterFields(type, barangays, facilities) {
         { key: "clientType", label: "Client Type", type: "text", placeholder: "e.g. New Acceptor" },
         { key: "methodUsed", label: "Method Used", type: "text", placeholder: "e.g. Pills" },
         { key: "ageRange", label: "Age Range", type: "select", resetValue: "", placeholder: "All Ages", options: ["15-19", "20-49", "50+"] },
+      ];
+    case "tb":
+      return [
+        dateField,
+        barangay,
+        { key: "treatmentType", label: "Registration", type: "select", resetValue: "", placeholder: "All Registrations", options: ["New", "Retreatment"] },
+        { key: "ageRange", label: "Age Range", type: "select", resetValue: "", placeholder: "All Ages", options: ["0-14", "15-19", "20-49", "50+"] },
       ];
     case "epi":
       return [

@@ -287,7 +287,6 @@ export default function Referrals() {
       <DashboardLayout role="bhc" title="Referrals">
         <ConnectionErrorState
           fullPage
-          title={isConnectionError(loadError) ? "Connection Lost" : "Unable to Load Data"}
           onRetry={() => refetch()}
           retrying={isFetching}
           variant={loadError?.isTimeout ? "timeout" : isConnectionError(loadError) ? "offline" : "error"}

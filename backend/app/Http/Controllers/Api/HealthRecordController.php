@@ -276,6 +276,29 @@ class HealthRecordController extends Controller
         ])]);
     }
 
+    /**
+     * Stream the DS-TB Treatment Card (DOH Form 4b) as a PDF.
+     */
+    public function tbCardPdf(Request $request, HealthRecord $healthRecord)
+    {
+        $this->facilityAccess->authorizeHealthRecord($request->user(), $healthRecord);
+
+        $healthRecord->load('patient');
+
+        abort_unless(is_array($healthRecord->tb_data), 404, 'This record has no TB treatment card.');
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.tb-treatment-card', [
+            'record' => $healthRecord,
+            'patient' => $healthRecord->patient,
+            'tb' => $healthRecord->tb_data,
+        ])->setPaper('legal', 'landscape');
+
+        $caseNumber = $healthRecord->tb_data['diagnosis']['tbCaseNumber'] ?? $healthRecord->id;
+        $filename = 'DS-TB-Treatment-Card-'.preg_replace('/[^A-Za-z0-9_-]/', '', (string) $caseNumber).'.pdf';
+
+        return $pdf->stream($filename);
+    }
+
     public function update(
         HealthRecordRequest $request,
         HealthRecord $healthRecord,

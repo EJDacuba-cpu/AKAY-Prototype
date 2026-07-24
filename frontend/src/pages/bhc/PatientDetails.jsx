@@ -364,7 +364,6 @@ export default function PatientDetails() {
       <DashboardLayout role="bhc" title="Patient Details">
         <ConnectionErrorState
           fullPage
-          title={isConnectionError(loadError) ? "Connection Lost" : "Unable to Load Data"}
           onRetry={retryPatientDetails}
           retrying={retrying}
           variant={loadError?.isTimeout ? "timeout" : isConnectionError(loadError) ? "offline" : "error"}

@@ -183,11 +183,6 @@ export default function PatientsModule() {
       <DashboardLayout role="bhc" title="Patients">
         <ConnectionErrorState
           fullPage
-          title={
-            isConnectionError(queryError)
-              ? "Connection Lost"
-              : "Unable to Load Data"
-          }
           onRetry={() => refetchPatients()}
           retrying={isRefreshing}
           variant={

@@ -97,6 +97,12 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // Reuse the (SSL) connection across requests to avoid renegotiating
+            // one to a remote database on every request. Opt-in, since stale
+            // pooled connections can misbehave; safe to leave off by default.
+            'options' => env('DB_PERSISTENT', false)
+                ? [PDO::ATTR_PERSISTENT => true]
+                : [],
         ],
 
         'sqlsrv' => [

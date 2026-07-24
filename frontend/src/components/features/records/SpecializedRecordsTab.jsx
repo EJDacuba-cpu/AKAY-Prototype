@@ -6,6 +6,7 @@ import {
   getConfirmedBreastfeedingMonths,
   getEpiBreastfeedingMonitoring,
   getHypertensionDiabeticData,
+  getTbData,
   getRecordClassificationText,
   getRecordDateValue,
   getRecordId,
@@ -434,30 +435,39 @@ function NcdHistory({ records }) {
 
 function TbHistory({ records, basePath }) {
   return (
-    <ResponsiveTable minWidth="min-w-[980px]">
+    <ResponsiveTable minWidth="min-w-[1020px]">
       <thead>
         <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
           <TableHead>Visit Date</TableHead>
-          <TableHead>Phase / Category</TableHead>
-          <TableHead>Symptoms</TableHead>
-          <TableHead>Medication / Action</TableHead>
-          <TableHead>Remarks</TableHead>
+          <TableHead>TB Case No.</TableHead>
+          <TableHead>Registration</TableHead>
+          <TableHead>Phase</TableHead>
+          <TableHead>Site</TableHead>
+          <TableHead>Adherence</TableHead>
           <TableHead>Next Follow-up</TableHead>
           <TableHead>Source Visit</TableHead>
         </tr>
       </thead>
       <tbody className="divide-y divide-slate-100 text-sm">
-        {records.map((record) => (
-          <tr key={getRecordId(record)} className="transition-colors hover:bg-slate-50/80">
-            <TableCell>{formatDate(getRecordDateValue(record), EMPTY_MARK)}</TableCell>
-            <TableCell>{getRecordValue(record, ["phase", "category"], getRecordClassificationText(record) || EMPTY_MARK)}</TableCell>
-            <TableCell>{getRecordValue(record, ["symptoms", "chiefComplaint", "chief_complaint"], EMPTY_MARK)}</TableCell>
-            <TableCell>{getActionTaken(record)}</TableCell>
-            <TableCell>{getNotes(record)}</TableCell>
-            <TableCell>{formatDate(getFollowUpDate(record), EMPTY_MARK)}</TableCell>
-            <TableCell><SourceVisitLink record={record} basePath={basePath} /></TableCell>
-          </tr>
-        ))}
+        {records.map((record) => {
+          const tb = getTbData(record);
+          return (
+            <tr key={getRecordId(record)} className="transition-colors hover:bg-slate-50/80">
+              <TableCell>{formatDate(getRecordDateValue(record), EMPTY_MARK)}</TableCell>
+              <TableCell strong>{tb.tbCaseNumber || EMPTY_MARK}</TableCell>
+              <TableCell>{tb.registrationGroup || EMPTY_MARK}</TableCell>
+              <TableCell>
+                {tb.phaseLabel || getRecordClassificationText(record) || EMPTY_MARK}
+              </TableCell>
+              <TableCell>{tb.anatomicalSite || EMPTY_MARK}</TableCell>
+              <TableCell>
+                {tb.raw?.doseCalendar ? `${tb.adherencePercent}%` : EMPTY_MARK}
+              </TableCell>
+              <TableCell>{formatDate(getFollowUpDate(record), EMPTY_MARK)}</TableCell>
+              <TableCell><SourceVisitLink record={record} basePath={basePath} /></TableCell>
+            </tr>
+          );
+        })}
       </tbody>
     </ResponsiveTable>
   );
