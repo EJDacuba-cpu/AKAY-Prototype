@@ -35,14 +35,18 @@ return new class extends Migration
         }
     }
 
+    /**
+     * The EXECUTE revocation in up() is intentionally not reversed.
+     *
+     * Re-granting EXECUTE to the browser-facing grantees here would mean that
+     * rolling back this migration - for a reason as unrelated as dropping the
+     * QR token columns - silently re-opens referral lookup, and therefore full
+     * patient and health-record JSON, to anon and authenticated. Privilege
+     * rollback is a manual, reviewed step; see
+     * docs/database-exposure-containment.md.
+     */
     public function down(): void
     {
-        if (DB::getDriverName() === 'pgsql') {
-            DB::statement(
-                'GRANT EXECUTE ON FUNCTION akay_referral_lookup(text, text, bigint, bigint) TO PUBLIC'
-            );
-        }
-
         Schema::table('referrals', function (Blueprint $table): void {
             $table->dropUnique(['qr_token_hash']);
             $table->dropColumn([
