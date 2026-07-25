@@ -280,7 +280,11 @@ function ReferralHeader({ referral, patient, isUpdating = false }) {
               icon={<Phone size={12} />}
               value={getContact(referral, patient)}
             />
-            <InfoChip value={getPatientClassification(referral, patient)} />
+            <InfoChip
+              icon={<QrCode size={12} />}
+              value={referral.trackingId}
+              mono
+            />
           </div>
         </div>
         
@@ -296,8 +300,7 @@ function ReferralHeader({ referral, patient, isUpdating = false }) {
         </div>
       </div>
 
-      <div className="mt-4 grid gap-x-6 gap-y-3 border-t border-slate-100 pt-4 sm:grid-cols-2 xl:grid-cols-4">
-        <HeaderDetail label="Tracking ID" value={referral.trackingId} mono />
+      <div className="mt-4 grid gap-x-6 gap-y-3 border-t border-slate-100 pt-4 sm:grid-cols-2 lg:grid-cols-3">
         <HeaderDetail
           label="Date / Time of Referral"
           value={`${formatDate(referralDate)} - ${formatTime(referralDate)}`}
@@ -369,11 +372,6 @@ function ClinicalSummaryTab({ referral }) {
             label="Notes / Remarks"
             value={referral.remarks || referral.notes}
             empty="No notes or remarks recorded."
-          />
-          <NarrativeBlock
-            label="Referring Practitioner"
-            value={getReferringPractitioner(referral)}
-            empty="No referring practitioner recorded."
           />
         </div>
       </RecordSection>
@@ -492,13 +490,18 @@ function HeaderDetail({ label, value, mono }) {
   );
 }
 
-function InfoChip({ icon, value }) {
+function InfoChip({ icon, value, mono = false }) {
   const displayValue = formatDisplayValue(value, "Not recorded");
 
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600 ${
+        mono ? "font-mono text-[#0F172A]" : ""
+      }`}
+      title={displayValue}
+    >
       {icon}
-      {displayValue}
+      <span className="max-w-[220px] truncate">{displayValue}</span>
     </span>
   );
 }
@@ -748,17 +751,6 @@ function getContact(referral = {}, patient = null) {
       patient?.contactNumber ||
       patient?.contact,
     "",
-  );
-}
-
-function getPatientClassification(referral = {}, patient = null) {
-  return formatDisplayValue(
-    referral.patientClassification ||
-      referral.classification ||
-      patient?.patientClassification ||
-      patient?.category ||
-      referral.category,
-    "General Consultation",
   );
 }
 

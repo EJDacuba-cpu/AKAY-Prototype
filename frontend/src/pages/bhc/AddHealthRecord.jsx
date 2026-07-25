@@ -1041,7 +1041,6 @@ export default function AddHealthRecord() {
   const [systolicBp, setSystolicBp] = useState("");
   const [diastolicBp, setDiastolicBp] = useState("");
   const [temp, setTemp] = useState("");
-  const [respiratoryRate, setRespiratoryRate] = useState("");
   const [weight, setWeight] = useState("");
   const [height, setHeight] = useState("");
 
@@ -1339,15 +1338,6 @@ export default function AddHealthRecord() {
       setSystolicBp(found.systolicBp || "");
       setDiastolicBp(found.diastolicBp || "");
       setTemp(found.temperature || found.temp || "");
-      setRespiratoryRate(
-        found.respiratoryRate ||
-          found.respiratory_rate ||
-          found.vitalSigns?.respiratoryRate ||
-          found.vitalSigns?.respiratory_rate ||
-          found.vital_signs?.respiratoryRate ||
-          found.vital_signs?.respiratory_rate ||
-          "",
-      );
       setWeight(found.weight || "");
       setHeight(found.height || "");
       setFollowUpStatus(normalizePatientStatus(found.followUpStatus));
@@ -1831,7 +1821,6 @@ export default function AddHealthRecord() {
       systolicBp,
       diastolicBp,
       temp,
-      respiratoryRate,
       weight,
       height,
       followUpStatus,
@@ -2005,7 +1994,6 @@ export default function AddHealthRecord() {
     setSystolicBp(payload.systolicBp || "");
     setDiastolicBp(payload.diastolicBp || "");
     setTemp(payload.temp || "");
-    setRespiratoryRate(payload.respiratoryRate || "");
     setWeight(payload.weight || "");
     setHeight(payload.height || "");
     setFollowUpStatus(payload.followUpStatus || "Routine Monitoring");
@@ -2341,11 +2329,10 @@ export default function AddHealthRecord() {
     return systolicBp || diastolicBp ? `${sys}/${dia}` : "N/A";
   })();
 
-  const concatenatedVitalSigns = `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
-  const consultationVitalSigns = [
-    concatenatedVitalSigns,
-    `Respiratory Rate: ${respiratoryRate || "N/A"} cpm`,
-  ].join(" | ");
+  const consultationVitalSigns =
+    `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | ` +
+    `Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
+
   const maternalTpalScore = [
     maternalData.term || 0,
     maternalData.preterm || 0,
@@ -3447,8 +3434,6 @@ export default function AddHealthRecord() {
       systolicBp: systolicBp || null,
       diastolicBp: diastolicBp || null,
       temperature: temp || null,
-      respiratoryRate: respiratoryRate || null,
-      respiratory_rate: respiratoryRate || null,
       weight: weight || null,
       height: height || null,
       medication:
@@ -4211,12 +4196,6 @@ export default function AddHealthRecord() {
                   placeholder="e.g. 36.5 °C"
                   value={temp}
                   onChange={(event) => setTemp(event.target.value)}
-                />
-                <FieldInput
-                  label="Respiratory Rate"
-                  placeholder="e.g. 18 cpm"
-                  value={respiratoryRate}
-                  onChange={(event) => setRespiratoryRate(event.target.value)}
                 />
                 <FieldInput
                   label="Weight"

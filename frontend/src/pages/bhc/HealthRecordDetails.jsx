@@ -2,10 +2,20 @@ import { Link, useParams, useNavigate, useSearchParams } from "react-router";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Activity,
+  Baby,
+  CalendarClock,
+  ClipboardCheck,
   ClipboardList,
   FilePlus2,
+  FlaskConical,
+  HeartHandshake,
   HeartPulse,
   Printer,
+  Salad,
+  Stethoscope,
+  Syringe,
+  Users,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -17,7 +27,7 @@ import {
   getReferralByTrackingId,
 } from "../../services/referrals";
 import {
-  Accordion,
+  RecordTabs,
   SideCard,
   SoftLoadingArea,
 } from "../../components/common";
@@ -310,14 +320,8 @@ export default function HealthRecordDetails() {
         />
 
         {/* ─── Main Content ─── */}
-        <div
-          className={
-            isImmunizationRecord || isMaternalRecord || isHypertensionDiabeticRecord
-              ? "space-y-5"
-              : "grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"
-          }
-        >
-          {/* ═══ Clinical Record — Accordion Sections ═══ */}
+        <div className="space-y-5">
+          {/* ═══ Clinical Record — Tabs ═══ */}
           <div className="space-y-6">
             {isImmunizationRecord ? (
               <EpiRecordDetails
@@ -356,6 +360,7 @@ export default function HealthRecordDetails() {
               />
             ) : isGeneralConsultationRecord ? (
               <GeneralConsultationRecordDetails
+                record={record}
                 vitalItems={generalVitalItems}
                 chiefComplaint={chiefComplaintValue}
                 diagnosis={diagnosisValue}
@@ -376,7 +381,7 @@ export default function HealthRecordDetails() {
               />
             ) : (
               <GenericRecordDetails
-                generalVitalItems={generalVitalItems}
+                record={record}
                 hasClinicalAssessmentDetails={hasClinicalAssessmentDetails}
                 hasTreatmentDetails={hasTreatmentDetails}
                 chiefComplaintValue={chiefComplaintValue}
@@ -401,17 +406,6 @@ export default function HealthRecordDetails() {
               />
             )}
           </div>
-
-          {/* ═══ Sidebar ═══ */}
-          {!isImmunizationRecord &&
-            !isMaternalRecord &&
-            !isHypertensionDiabeticRecord && (
-            <aside className="space-y-3">
-              <QuickSummaryCard
-                vitalItems={getVitalSignItems(record)}
-              />
-            </aside>
-          )}
 
           {showPatientProfileSidebar && (
           <aside className="space-y-6">
@@ -463,18 +457,6 @@ export default function HealthRecordDetails() {
    LOCAL HELPERS
 ──────────────────────────────────────────── */
 
-function buildPreview(pairs, emptyText = "Not recorded") {
-  const parts = pairs.filter(([, v]) => v).map(([l, v]) => `${l} ${v}`);
-  return parts.length ? parts.slice(0, 3).join(" · ") : emptyText;
-}
-
-function truncatePreview(text, maxLength = 60) {
-  if (!text) return "";
-  const trimmed = String(text).trim();
-  if (trimmed.length <= maxLength) return trimmed;
-  return `${trimmed.slice(0, maxLength).trimEnd()}…`;
-}
-
 function DetailSection({ title, children }) {
   return (
     <section className="py-5 first:pt-0 last:pb-0">
@@ -486,93 +468,6 @@ function DetailSection({ title, children }) {
       </div>
       <div className="space-y-4">{children}</div>
     </section>
-  );
-}
-
-function QuickSummaryCard({ vitalItems }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm xl:sticky xl:top-4">
-      <div className="border-b border-slate-100 px-5 py-4">
-        <h2 className="text-sm font-bold text-[#0F172A]">Quick Summary</h2>
-      </div>
-      <div className="px-5">
-        <SummarySection title="Vital Signs">
-          <VitalSignsGrid items={vitalItems} compact />
-        </SummarySection>
-      </div>
-    </div>
-  );
-}
-
-function SummarySection({ title, children }) {
-  return (
-    <section className="py-4">
-      <h3 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-        {title}
-      </h3>
-      <div className="space-y-2">{children}</div>
-    </section>
-  );
-}
-
-function SummaryRow({ label, value }) {
-  return (
-    <div className="flex items-start justify-between gap-3 py-1">
-      <span className="text-xs font-medium text-slate-500">{label}</span>
-      <span className="max-w-[58%] text-right text-xs font-semibold text-slate-700">
-        {formatDisplayValue(value, "Not recorded")}
-      </span>
-    </div>
-  );
-}
-
-function VitalSignsGrid({ items, compact = false }) {
-  const hasRecordedVitals = items.some((item) => item.value);
-
-  if (!hasRecordedVitals) {
-    if (compact) {
-      return <p className="text-sm text-slate-500">No vital signs recorded.</p>;
-    }
-
-    return (
-      <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/30 px-4 py-5 text-center">
-        <p className="text-xs text-slate-400">
-          No vital signs recorded for this visit.
-        </p>
-      </div>
-    );
-  }
-
-  if (compact) {
-    return (
-      <div className="space-y-2">
-        {items.map((item) => (
-          <SummaryRow
-            key={item.label}
-            label={item.label}
-            value={item.value || "Not recorded"}
-          />
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-      {items.map((item) => (
-        <div
-          key={item.label}
-          className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-3"
-        >
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            {item.label}
-          </p>
-          <p className="mt-1 text-sm font-semibold text-slate-700">
-            {item.value || "Not recorded"}
-          </p>
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -1134,9 +1029,6 @@ function getVitalSigns(record = {}, fallback = "") {
         ? `BP: ${record.systolicBp}/${record.diastolicBp} mmHg`
         : "",
       record?.temp || record?.temperature ? `Temp: ${record.temp || record.temperature} C` : "",
-      record?.respiratoryRate || record?.respiratory_rate
-        ? `Respiratory Rate: ${record.respiratoryRate || record.respiratory_rate} cpm`
-        : "",
       record?.weight ? `Weight: ${record.weight} kg` : "",
       record?.height ? `Height: ${record.height} cm` : "",
     ].filter(Boolean);
@@ -1152,9 +1044,6 @@ function getVitalSigns(record = {}, fallback = "") {
       ? `BP: ${value.systolicBp || value.systolic_bp}/${value.diastolicBp || value.diastolic_bp} mmHg`
       : "",
     value.temperature ? `Temp: ${value.temperature} C` : "",
-    value.respiratoryRate || value.respiratory_rate
-      ? `Respiratory Rate: ${value.respiratoryRate || value.respiratory_rate} cpm`
-      : "",
     value.weight ? `Weight: ${value.weight} kg` : "",
     value.height ? `Height: ${value.height} cm` : "",
   ].filter(Boolean);
@@ -1197,16 +1086,7 @@ function getVitalSignItems(record = {}) {
     vitalObject.temperature ||
     vitalObject.temp ||
     readTextValue([/Temp(?:erature)?:\s*([^|,]+)/i]);
-  const respiratoryRateValue =
-    record?.respiratoryRate ||
-    record?.respiratory_rate ||
-    vitalObject.respiratoryRate ||
-    vitalObject.respiratory_rate ||
-    readTextValue([
-      /Respiratory Rate:\s*([^|,]+)/i,
-      /Resp(?:iratory)?\.?\s*Rate:\s*([^|,]+)/i,
-      /RR:\s*([^|,]+)/i,
-    ]);
+
   const weightValue =
     record?.weight ||
     vitalObject.weight ||
@@ -1221,10 +1101,6 @@ function getVitalSignItems(record = {}) {
     {
       label: "Temperature",
       value: cleanVitalSignValue(temperatureValue),
-    },
-    {
-      label: "Respiratory Rate",
-      value: cleanVitalSignValue(respiratoryRateValue),
     },
     { label: "Weight", value: cleanVitalSignValue(weightValue) },
     { label: "Height", value: cleanVitalSignValue(heightValue) },
@@ -1619,14 +1495,11 @@ function HypertensionDiabeticTabbedRecordDetails({
     record.referral_status ||
     "";
 
-  const sections = [
+  const tabs = [
     {
       id: "monitoring",
-      title: "Monitoring Details",
-      preview: buildPreview([
-        ["BP", data.bp],
-        ["FBS", data.fbs],
-      ]),
+      label: "Monitoring",
+      icon: Activity,
       content: (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <TabbedDetailItem label="BP" value={data.bp} />
@@ -1647,34 +1520,29 @@ function HypertensionDiabeticTabbedRecordDetails({
       ),
     },
     {
-      id: "treatment",
-      title: "Treatment / Action Taken",
-      preview: truncatePreview(data.treatmentActionTaken) || "Not recorded",
-      content: data.treatmentActionTaken ? (
-        <TabbedNarrativeBlock
-          label="Treatment / Action Taken"
-          value={data.treatmentActionTaken}
-        />
-      ) : (
-        <SectionEmptyState text="No treatment or action taken recorded." />
+      id: "management",
+      label: "Management",
+      icon: ClipboardList,
+      content: (
+        <div className="space-y-6">
+          {data.treatmentActionTaken ? (
+            <TabbedNarrativeBlock
+              label="Treatment / Action Taken"
+              value={data.treatmentActionTaken}
+            />
+          ) : (
+            <SectionEmptyState text="No treatment or action taken recorded." />
+          )}
+          <TabbedSubsection title="Medicines Dispensed">
+            <DispensedMedicinesList medicines={dispensedMedicines} />
+          </TabbedSubsection>
+        </div>
       ),
     },
     {
-      id: "medicines",
-      title: "Medicines",
-      preview: dispensedMedicines?.length
-        ? `${dispensedMedicines.length} prescribed`
-        : "None dispensed",
-      content: <DispensedMedicinesList medicines={dispensedMedicines} />,
-    },
-    {
       id: "followup",
-      title: "Follow-up & Referral",
-      preview: needsReferral
-        ? `Referral needed${referralStatus ? ` · ${referralStatus}` : ""}`
-        : followUpDate
-          ? `Follow-up ${formatLongDate(followUpDate, "")}`
-          : "No flags",
+      label: "Follow-up",
+      icon: CalendarClock,
       content: (
         <div className="grid gap-4 md:grid-cols-3">
           <TabbedDetailItem
@@ -1691,11 +1559,17 @@ function HypertensionDiabeticTabbedRecordDetails({
     },
   ];
 
-  return <Accordion sections={sections} defaultOpenIds={["monitoring"]} />;
+  return (
+    <RecordTabs
+      key={record?.id || record?._id}
+      tabs={tabs}
+      defaultTabId="monitoring"
+    />
+  );
 }
 
 function GenericRecordDetails({
-  generalVitalItems,
+  record,
   hasClinicalAssessmentDetails,
   hasTreatmentDetails,
   chiefComplaintValue,
@@ -1718,138 +1592,134 @@ function GenericRecordDetails({
   status,
   monitoringNotesValue,
 }) {
-  const sections = [
+  const tabs = [
     {
-      id: "vitals",
-      title: "Vital Signs",
-      preview: buildPreview(
-        generalVitalItems.map((item) => [item.label, item.value]),
+      id: "record",
+      label: "Record Details",
+      icon: Stethoscope,
+      content: hasClinicalAssessmentDetails ? (
+        <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <PatientDetailItem
+              label="Chief Complaint"
+              value={chiefComplaintValue || "Not recorded"}
+            />
+            <PatientDetailItem
+              label="Diagnosis / Assessment"
+              value={diagnosisValue || "Not recorded"}
+            />
+          </div>
+          {summaryValue && (
+            <NarrativeBox label="Signs & Symptoms" value={summaryValue} />
+          )}
+        </div>
+      ) : (
+        <SectionEmptyState text="No consultation details recorded." />
       ),
-      content: <VitalSignsGrid items={generalVitalItems} />,
-    },
-    {
-      id: "consultation",
-      title: "Consultation Information",
-      preview: truncatePreview(chiefComplaintValue) || "Not recorded",
-      content:
-        hasClinicalAssessmentDetails || hasTreatmentDetails ? (
-          <>
-            <div className="grid gap-4 md:grid-cols-2">
-              <PatientDetailItem
-                label="Chief Complaint"
-                value={chiefComplaintValue || "Not recorded"}
-              />
-              <PatientDetailItem
-                label="Diagnosis / Assessment"
-                value={diagnosisValue || "Not recorded"}
-              />
-              <PatientDetailItem
-                label="Treatment / Action Taken"
-                value={initialActionsValue || "Not recorded"}
-              />
-            </div>
-            {summaryValue && (
-              <NarrativeBox label="Signs & Symptoms" value={summaryValue} />
-            )}
-            {isDistinctRecordedValue(
-              treatmentNotesValue,
-              initialActionsValue,
-            ) && (
-              <NarrativeBox
-                label="Treatment Notes"
-                value={treatmentNotesValue}
-              />
-            )}
-            {isDistinctRecordedValue(
-              medicalNotesValue,
-              initialActionsValue,
-              treatmentNotesValue,
-            ) && (
-              <NarrativeBox label="Medical Notes" value={medicalNotesValue} />
-            )}
-          </>
-        ) : (
-          <SectionEmptyState text="No consultation details recorded." />
-        ),
     },
   ];
 
+  const careContent = [];
+
+  careContent.push(
+    hasTreatmentDetails ? (
+      <div key="treatment" className="space-y-4">
+        <PatientDetailItem
+          label="Treatment / Action Taken"
+          value={initialActionsValue || "Not recorded"}
+        />
+        {isDistinctRecordedValue(treatmentNotesValue, initialActionsValue) && (
+          <NarrativeBox label="Treatment Notes" value={treatmentNotesValue} />
+        )}
+        {isDistinctRecordedValue(
+          medicalNotesValue,
+          initialActionsValue,
+          treatmentNotesValue,
+        ) && <NarrativeBox label="Medical Notes" value={medicalNotesValue} />}
+      </div>
+    ) : (
+      <SectionEmptyState
+        key="treatment"
+        text="No treatment details recorded."
+      />
+    ),
+  );
+
+  careContent.push(
+    <div key="medicines">
+      <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+        Medicines / Supplies Dispensed
+      </p>
+      <DispensedMedicinesList medicines={dispensedMedicines} />
+    </div>,
+  );
+
   if (shouldShowMorbidityReporting) {
-    sections.push({
-      id: "morbidity",
-      title: "Morbidity / Notifiable Disease Record",
-      preview:
-        formatMorbidityReportingStatus(morbidityReportingStatus) ||
-        "No flags",
-      content: (
+    careContent.push(
+      <div key="morbidity">
+        <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+          Morbidity / Notifiable Disease Record
+        </p>
         <div className="grid gap-4 md:grid-cols-2">
           <PatientDetailItem
             label="Reporting Status"
             value={formatMorbidityReportingStatus(morbidityReportingStatus)}
           />
         </div>
-      ),
-    });
+      </div>,
+    );
   }
 
   if (isGeneralConsultationRecord) {
-    sections.push({
-      id: "surveillance",
-      title: "Community-Based Surveillance",
-      preview: hfmdSurveillance
-        ? "HFMD surveillance: Yes"
-        : "HFMD surveillance: No",
-      content: (
+    careContent.push(
+      <div key="surveillance">
+        <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+          Community-Based Surveillance
+        </p>
         <div className="grid gap-4 md:grid-cols-2">
           <PatientDetailItem
             label="HFMD Surveillance"
             value={hfmdSurveillance ? "Yes" : "No"}
           />
         </div>
-      ),
-    });
+      </div>,
+    );
   }
-
-  sections.push({
-    id: "medicines",
-    title: "Medicines / Supplies Dispensed",
-    preview: dispensedMedicines?.length
-      ? `${dispensedMedicines.length} prescribed`
-      : "None dispensed",
-    content: <DispensedMedicinesList medicines={dispensedMedicines} />,
-  });
 
   if (isFamilyPlanningRecord) {
-    sections.push({
-      id: "familyPlanning",
-      title: "Family Planning Details",
-      preview: buildPreview(
-        familyPlanningDetails.map((item) => [item.label, item.value]),
-      ),
-      content: hasFamilyPlanningDetails ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          {familyPlanningDetails.map((item) => (
-            <PatientDetailItem
-              key={item.label}
-              label={item.label}
-              value={item.value}
-            />
-          ))}
-        </div>
-      ) : (
-        <SectionEmptyState text="No family planning details recorded." />
-      ),
-    });
+    careContent.push(
+      <div key="familyPlanning">
+        <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+          Family Planning Details
+        </p>
+        {hasFamilyPlanningDetails ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {familyPlanningDetails.map((item) => (
+              <PatientDetailItem
+                key={item.label}
+                label={item.label}
+                value={item.value}
+              />
+            ))}
+          </div>
+        ) : (
+          <SectionEmptyState text="No family planning details recorded." />
+        )}
+      </div>,
+    );
   }
 
-  sections.push({
+  tabs.push({
+    id: "care",
+    label: "Care",
+    icon: ClipboardList,
+    content: <div className="space-y-6">{careContent}</div>,
+  });
+
+  tabs.push({
     id: "followup",
-    title: "Follow-up & Referral",
-    preview: needsRhuReferral
-      ? "Referral needed"
-      : followUpDateValue
-        ? `Follow-up ${formatLongDate(followUpDateValue, "")}`
-        : "No flags",
+    label: "Follow-up",
+    icon: CalendarClock,
     content: (
       <div>
         <div className="grid gap-4 md:grid-cols-3">
@@ -1878,10 +1748,17 @@ function GenericRecordDetails({
     ),
   });
 
-  return <Accordion sections={sections} defaultOpenIds={["vitals"]} />;
+  return (
+    <RecordTabs
+      key={record?.id || record?._id}
+      tabs={tabs}
+      defaultTabId="record"
+    />
+  );
 }
 
 function GeneralConsultationRecordDetails({
+  record,
   vitalItems = [],
   chiefComplaint,
   diagnosis,
@@ -1911,80 +1788,85 @@ function GeneralConsultationRecordDetails({
       medicalNotes,
   );
 
-  const sections = [
-    {
-      id: "vitals",
-      title: "Vital Signs",
-      preview: buildPreview(vitalItems.map((item) => [item.label, item.value])),
-      content: <VitalSignsGrid items={vitalItems} />,
-    },
+  const tabs = [
     {
       id: "consultation",
-      title: "Consultation Details",
-      preview: truncatePreview(chiefComplaint) || "Not recorded",
-      content: hasConsultationDetails ? (
-        <div className="space-y-4">
-          <TabbedNarrativeBlock label="Chief Complaint" value={chiefComplaint} />
-          <TabbedNarrativeBlock
-            label="Signs & Symptoms / Assessment Findings"
-            value={signsSymptoms}
-          />
-          <TabbedNarrativeBlock label="Diagnosis" value={diagnosis} />
-          <TabbedNarrativeBlock
-            label="Treatment / Action Taken"
-            value={treatmentAction}
-          />
-          {isDistinctRecordedValue(treatmentNotes, treatmentAction) && (
+      label: "Consultation",
+      icon: Stethoscope,
+      content: (
+        <div className="space-y-6">
+          <TabbedSubsection title="Vital Signs">
+            <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-5">
+              {vitalItems.map((item) => (
+                <TabbedDetailItem
+                  key={item.label}
+                  label={item.label}
+                  value={item.value}
+                />
+              ))}
+              <TabbedDetailItem label="Record Status" value={status} />
+            </div>
+          </TabbedSubsection>
+          {hasConsultationDetails ? (
+            <div className="space-y-4">
+              <TabbedNarrativeBlock label="Chief Complaint" value={chiefComplaint} />
+              <TabbedNarrativeBlock
+                label="Signs & Symptoms / Summary of Present Illness"
+                value={signsSymptoms}
+              />
+              <TabbedNarrativeBlock label="Diagnosis / Assessment" value={diagnosis} />
+            </div>
+          ) : (
+            <SectionEmptyState text="No consultation details recorded." />
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "careReporting",
+      label: "Care & Reporting",
+      icon: ClipboardCheck,
+      content: (
+        <div className="space-y-6">
+          <div className="space-y-4">
             <TabbedNarrativeBlock
-              label="Treatment Notes"
-              value={treatmentNotes}
+              label="Treatment / Action Taken"
+              value={treatmentAction}
             />
-          )}
-          {isDistinctRecordedValue(medicalNotes, treatmentAction, treatmentNotes) && (
-            <TabbedNarrativeBlock label="Medical Notes" value={medicalNotes} />
+            {isDistinctRecordedValue(treatmentNotes, treatmentAction) && (
+              <TabbedNarrativeBlock
+                label="Treatment Notes"
+                value={treatmentNotes}
+              />
+            )}
+            {isDistinctRecordedValue(medicalNotes, treatmentAction, treatmentNotes) && (
+              <TabbedNarrativeBlock label="Medical Notes" value={medicalNotes} />
+            )}
+          </div>
+          <TabbedSubsection title="Medicines / Supplies Dispensed">
+            <DispensedMedicinesList medicines={dispensedMedicines} />
+          </TabbedSubsection>
+          {shouldShowReporting && (
+            <TabbedSubsection title="Reporting Decision">
+              <div className="grid gap-4 md:grid-cols-2">
+                <TabbedDetailItem
+                  label="Morbidity / Notifiable Status"
+                  value={formatMorbidityReportingStatus(morbidityReportingStatus)}
+                />
+                <TabbedDetailItem
+                  label="HFMD Surveillance"
+                  value={hfmdSurveillance ? "Yes" : "No"}
+                />
+              </div>
+            </TabbedSubsection>
           )}
         </div>
-      ) : (
-        <SectionEmptyState text="No consultation details recorded." />
       ),
-    },
-    {
-      id: "reporting",
-      title: "Reporting Decision",
-      preview: shouldShowReporting
-        ? formatMorbidityReportingStatus(morbidityReportingStatus) || "No flags"
-        : "Not applicable",
-      content: shouldShowReporting ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          <TabbedDetailItem
-            label="Morbidity / Notifiable Status"
-            value={formatMorbidityReportingStatus(morbidityReportingStatus)}
-          />
-          <TabbedDetailItem
-            label="HFMD Surveillance"
-            value={hfmdSurveillance ? "Yes" : "No"}
-          />
-        </div>
-      ) : (
-        <SectionEmptyState text="No reporting decision recorded." />
-      ),
-    },
-    {
-      id: "medicines",
-      title: "Medicines",
-      preview: dispensedMedicines?.length
-        ? `${dispensedMedicines.length} prescribed`
-        : "None dispensed",
-      content: <DispensedMedicinesList medicines={dispensedMedicines} />,
     },
     {
       id: "followup",
-      title: "Follow-up & Referral",
-      preview: needsReferral
-        ? `Referral needed${referralStatus ? ` · ${referralStatus}` : ""}`
-        : followUpDate
-          ? `Follow-up ${formatLongDate(followUpDate, "")}`
-          : "No flags",
+      label: "Follow-up / Referral",
+      icon: CalendarClock,
       content: (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3">
@@ -2015,7 +1897,13 @@ function GeneralConsultationRecordDetails({
     },
   ];
 
-  return <Accordion sections={sections} defaultOpenIds={["vitals"]} />;
+  return (
+    <RecordTabs
+      key={record?.id || record?._id}
+      tabs={tabs}
+      defaultTabId="consultation"
+    />
+  );
 }
 
 function FamilyPlanningRecordDetails({
@@ -2033,23 +1921,34 @@ function FamilyPlanningRecordDetails({
     record.referralStatus ||
     record.referral_status ||
     "";
-  const hasDetails = details.some((item) => item.value);
   const concern = getDetailValue("Concern / Complaint");
   const findings = getDetailValue("Findings / Notes");
   const advice = getDetailValue("Advice Given");
   const actionTaken = getDetailValue("Action Taken");
+  const remarks = getDetailValue("Remarks / Notes");
+  const nextAppointmentDate = getDetailValue("Next Appointment Date");
+  const clientRecordLabels = [
+    "Client Type",
+    "Method Used / Accepted",
+    "Previous Method",
+    "FP Visit Category",
+    "Source",
+    "Date Registered",
+    "Date of Visit",
+  ];
+  const clientRecordDetails = details.filter((item) =>
+    clientRecordLabels.includes(item.label),
+  );
+  const hasClientRecordDetails = clientRecordDetails.some((item) => item.value);
 
-  const sections = [
+  const tabs = [
     {
-      id: "details",
-      title: "Family Planning Details",
-      preview: buildPreview([
-        ["Client Type", getDetailValue("Client Type")],
-        ["Method", getDetailValue("Method Used / Accepted")],
-      ]),
-      content: hasDetails ? (
+      id: "client",
+      label: "Client Record",
+      icon: Users,
+      content: hasClientRecordDetails ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {details.map((item) => (
+          {clientRecordDetails.map((item) => (
             <TabbedDetailItem
               key={item.label}
               label={item.label}
@@ -2062,39 +1961,38 @@ function FamilyPlanningRecordDetails({
       ),
     },
     {
-      id: "clinical",
-      title: "Clinical Concern",
-      preview: truncatePreview(concern) || "Not recorded",
-      content:
-        concern || findings || advice || actionTaken ? (
-          <div className="space-y-4">
-            <TabbedNarrativeBlock label="Concern / Complaint" value={concern} />
-            <TabbedNarrativeBlock label="Findings / Notes" value={findings} />
-            <TabbedNarrativeBlock label="Advice Given" value={advice} />
-            <TabbedNarrativeBlock label="Action Taken" value={actionTaken} />
-          </div>
-        ) : (
-          <SectionEmptyState text="No clinical concern recorded." />
-        ),
-    },
-    {
-      id: "medicines",
-      title: "Medicines / Supplies",
-      preview: dispensedMedicines?.length
-        ? `${dispensedMedicines.length} prescribed`
-        : "None dispensed",
-      content: <DispensedMedicinesList medicines={dispensedMedicines} />,
+      id: "clinicalCare",
+      label: "Clinical Care",
+      icon: HeartHandshake,
+      content: (
+        <div className="space-y-6">
+          {concern || findings || advice || actionTaken || remarks ? (
+            <div className="space-y-4">
+              <TabbedNarrativeBlock label="Concern / Complaint" value={concern} />
+              <TabbedNarrativeBlock label="Findings / Notes" value={findings} />
+              <TabbedNarrativeBlock label="Advice Given" value={advice} />
+              <TabbedNarrativeBlock label="Action Taken" value={actionTaken} />
+              <TabbedNarrativeBlock label="Remarks" value={remarks} />
+            </div>
+          ) : (
+            <SectionEmptyState text="No clinical concern recorded." />
+          )}
+          <TabbedSubsection title="Medicines / Supplies">
+            <DispensedMedicinesList medicines={dispensedMedicines} />
+          </TabbedSubsection>
+        </div>
+      ),
     },
     {
       id: "followup",
-      title: "Follow-up & Referral",
-      preview: needsReferral
-        ? `Referral needed${referralStatus ? ` · ${referralStatus}` : ""}`
-        : followUpDate
-          ? `Follow-up ${formatLongDate(followUpDate, "")}`
-          : "No flags",
+      label: "Follow-up",
+      icon: CalendarClock,
       content: (
         <div className="grid gap-4 md:grid-cols-3">
+          <TabbedDetailItem
+            label="Next Appointment Date"
+            value={nextAppointmentDate}
+          />
           <TabbedDetailItem
             label="Next Follow-up Date"
             value={formatLongDate(followUpDate, "Not recorded")}
@@ -2109,7 +2007,13 @@ function FamilyPlanningRecordDetails({
     },
   ];
 
-  return <Accordion sections={sections} defaultOpenIds={["details"]} />;
+  return (
+    <RecordTabs
+      key={record?.id || record?._id}
+      tabs={tabs}
+      defaultTabId="client"
+    />
+  );
 }
 
 function MaternalPrenatalRecordDetails({
@@ -2162,9 +2066,8 @@ function MaternalPrenatalRecordDetails({
   const height = formatMeasurement(getVitalField(record, "height"), "cm");
   const bmi = getMaternalValue(maternal, record, ["bmi"], "");
   const vitalItems = getVitalSignItems(record);
-  const temperature = vitalItems.find((item) => item.label === "Temperature")?.value || "";
-  const respiratoryRate =
-    vitalItems.find((item) => item.label === "Respiratory Rate")?.value || "";
+  const temperature =
+    vitalItems.find((item) => item.label === "Temperature")?.value || "";
   const labs = getLaboratoryResultItems(maternal);
   const hasLabResults = labs.some((item) => Boolean(item.value));
   const ultrasoundResult = getUltrasoundValue(maternal, [
@@ -2192,98 +2095,64 @@ function MaternalPrenatalRecordDetails({
   const previousFpMethod = getPreviousFpMethodValue(maternal);
   const hasPreviousFpMethod = Boolean(previousFpMethod);
 
-  const sections = [
+  const tabs = [
     {
-      id: "pregnancy",
-      title: "Pregnancy Details",
-      preview: buildPreview([
-        ["AOG", aog],
-        ["EDC", formatLongDate(edc, "")],
-      ]),
-      content: (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <TabbedDetailItem label="LMP" value={formatLongDate(lmp, EMPTY_VALUE)} />
-          <TabbedDetailItem label="PMP" value={formatLongDate(pmp, EMPTY_VALUE)} />
-          <TabbedDetailItem
-            label="Expected Delivery Date / EDC"
-            value={formatLongDate(edc, EMPTY_VALUE)}
-          />
-          <TabbedDetailItem label="AOG" value={aog} />
-          <TabbedDetailItem label="Gravida" value={getMaternalValue(maternal, record, ["gravida"], "")} />
-          <TabbedDetailItem label="Para" value={getMaternalValue(maternal, record, ["para"], "")} />
-          <TabbedDetailItem label="Term" value={term} />
-          <TabbedDetailItem label="Preterm" value={preterm} />
-          <TabbedDetailItem label="Abortion" value={abortion} />
-          <TabbedDetailItem label="Living" value={living} />
-          <TabbedDetailItem label="OB Score / TPAL" value={tpal} />
-        </div>
-      ),
-    },
-    {
-      id: "vitals",
-      title: "Vital Signs",
-      preview: buildPreview([
-        ["BP", bp],
-        ["Weight", weight],
-      ]),
-      content: (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <TabbedDetailItem label="Blood Pressure" value={bp} />
-          <TabbedDetailItem label="Weight" value={weight} />
-          <TabbedDetailItem label="Height / HGT" value={height} />
-          <TabbedDetailItem label="BMI" value={bmi} />
-          <TabbedDetailItem label="Temperature" value={temperature} />
-          <TabbedDetailItem label="Respiratory Rate" value={respiratoryRate} />
-        </div>
-      ),
-    },
-    {
-      id: "complaint",
-      title: "Complaint & Treatment",
-      preview: truncatePreview(chiefComplaint) || "Not recorded",
-      content: (
-        <div className="space-y-4">
-          <TabbedNarrativeBlock
-            label="Chief Complaint"
-            value={chiefComplaint}
-          />
-          <TabbedNarrativeBlock
-            label="Treatment / Advice Given"
-            value={treatment}
-          />
-          {notesFindings && (
-            <TabbedNarrativeBlock
-              label="Notes / Findings"
-              value={notesFindings}
-            />
-          )}
-        </div>
-      ),
-    },
-    {
-      id: "medicines",
-      title: "Medicines",
-      preview: dispensedMedicines?.length
-        ? `${dispensedMedicines.length} prescribed`
-        : "None dispensed",
-      content: <DispensedMedicinesList medicines={dispensedMedicines} />,
-    },
-    {
-      id: "history",
-      title: "Pregnancy History",
-      preview: previousPregnancyHistory.length
-        ? `${previousPregnancyHistory.length} prior pregnanc${previousPregnancyHistory.length === 1 ? "y" : "ies"}`
-        : "None recorded",
-      content: <PreviousPregnancyHistoryTable rows={previousPregnancyHistory} />,
-    },
-    {
-      id: "riskLabs",
-      title: "Risk / Labs",
-      preview: selectedRiskLabels.length
-        ? `${selectedRiskLabels.length} risk factor${selectedRiskLabels.length === 1 ? "" : "s"} flagged`
-        : "No risk factors flagged",
+      id: "prenatal",
+      label: "Prenatal Record",
+      icon: Baby,
       content: (
         <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <TabbedDetailItem label="LMP" value={formatLongDate(lmp, EMPTY_VALUE)} />
+            <TabbedDetailItem label="PMP" value={formatLongDate(pmp, EMPTY_VALUE)} />
+            <TabbedDetailItem
+              label="Expected Delivery Date / EDC"
+              value={formatLongDate(edc, EMPTY_VALUE)}
+            />
+            <TabbedDetailItem label="AOG" value={aog} />
+            <TabbedDetailItem label="Gravida" value={getMaternalValue(maternal, record, ["gravida"], "")} />
+            <TabbedDetailItem label="Para" value={getMaternalValue(maternal, record, ["para"], "")} />
+            <TabbedDetailItem label="Term" value={term} />
+            <TabbedDetailItem label="Preterm" value={preterm} />
+            <TabbedDetailItem label="Abortion" value={abortion} />
+            <TabbedDetailItem label="Living" value={living} />
+            <TabbedDetailItem label="OB Score / TPAL" value={tpal} />
+          </div>
+          <TabbedSubsection title="Maternal Vital Signs">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <TabbedDetailItem label="Blood Pressure" value={bp} />
+              <TabbedDetailItem label="Weight" value={weight} />
+              <TabbedDetailItem label="Height / HGT" value={height} />
+              <TabbedDetailItem label="BMI" value={bmi} />
+              <TabbedDetailItem label="Temperature" value={temperature} />
+            </div>
+          </TabbedSubsection>
+          <TabbedSubsection title="Complaint">
+            <div className="space-y-4">
+              <TabbedNarrativeBlock
+                label="Chief Complaint"
+                value={chiefComplaint}
+              />
+              {notesFindings && (
+                <TabbedNarrativeBlock
+                  label="Findings / Notes"
+                  value={notesFindings}
+                />
+              )}
+            </div>
+          </TabbedSubsection>
+        </div>
+      ),
+    },
+    {
+      id: "historyTests",
+      label: "History & Tests",
+      icon: FlaskConical,
+      content: (
+        <div className="space-y-6">
+          <TabbedSubsection title="Pregnancy History">
+            <PreviousPregnancyHistoryTable rows={previousPregnancyHistory} />
+          </TabbedSubsection>
           <TabbedSubsection title="Medical History / Risk Codes">
             {selectedRiskLabels.length > 0 ? (
               <div className="flex flex-wrap gap-2">
@@ -2322,20 +2191,32 @@ function MaternalPrenatalRecordDetails({
               <SectionEmptyState text="No laboratory results recorded." />
             )}
           </TabbedSubsection>
-        </div>
-      ),
-    },
-    {
-      id: "tt",
-      title: "TT / Td Recorded",
-      preview:
-        recordedTetanusDoses.length > 0
-          ? `${recordedTetanusDoses.length} dose${recordedTetanusDoses.length === 1 ? "" : "s"} recorded`
-          : "None recorded",
-      content:
-        recordedTetanusDoses.length > 0 ? (
-          <div className="space-y-4">
-            <TabbedSubsection title="Tetanus Toxoid / Td Recorded This Visit">
+          <TabbedSubsection title="Ultrasound">
+            {ultrasoundResult || ultrasoundDate || ultrasoundRemarks ? (
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <TabbedDetailItem
+                    label="Date Done"
+                    value={formatLongDate(ultrasoundDate, EMPTY_VALUE)}
+                  />
+                </div>
+                <NarrativeBox
+                  label="Ultrasound Result / Findings"
+                  value={ultrasoundResult}
+                  emptyText="No ultrasound findings recorded."
+                />
+                <NarrativeBox
+                  label="Remarks"
+                  value={ultrasoundRemarks}
+                  emptyText="No ultrasound remarks recorded."
+                />
+              </div>
+            ) : (
+              <SectionEmptyState text="No ultrasound result recorded for this visit." />
+            )}
+          </TabbedSubsection>
+          <TabbedSubsection title="TT / Td Recorded This Visit">
+            {recordedTetanusDoses.length > 0 ? (
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                 <table className="w-full text-left text-sm">
                   <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-widest text-slate-400">
@@ -2358,54 +2239,26 @@ function MaternalPrenatalRecordDetails({
                   </tbody>
                 </table>
               </div>
-            </TabbedSubsection>
-          </div>
-        ) : (
-          <SectionEmptyState text="No tetanus toxoid / Td dose was recorded for this visit." />
-        ),
+            ) : (
+              <SectionEmptyState text="No tetanus toxoid / Td dose was recorded for this visit." />
+            )}
+          </TabbedSubsection>
+        </div>
+      ),
     },
     {
-      id: "ultrasound",
-      title: "Ultrasound",
-      preview:
-        ultrasoundResult || ultrasoundDate || ultrasoundRemarks
-          ? truncatePreview(ultrasoundResult) ||
-            formatLongDate(ultrasoundDate, "Done")
-          : "Not done",
-      content:
-        ultrasoundResult || ultrasoundDate || ultrasoundRemarks ? (
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <TabbedDetailItem
-                label="Date Done"
-                value={formatLongDate(ultrasoundDate, EMPTY_VALUE)}
-              />
-            </div>
-            <NarrativeBox
-              label="Ultrasound Result / Findings"
-              value={ultrasoundResult}
-              emptyText="No ultrasound findings recorded."
-            />
-            <NarrativeBox
-              label="Remarks"
-              value={ultrasoundRemarks}
-              emptyText="No ultrasound remarks recorded."
-            />
-          </div>
-        ) : (
-          <SectionEmptyState text="No ultrasound result recorded for this visit." />
-        ),
-    },
-    {
-      id: "followup",
-      title: "Follow-up & Referral",
-      preview: needsReferral
-        ? `Referral needed${referralStatus ? ` · ${referralStatus}` : ""}`
-        : followUpDate
-          ? `Follow-up ${formatLongDate(followUpDate, "")}`
-          : "No flags",
+      id: "careFollowup",
+      label: "Care & Follow-up",
+      icon: CalendarClock,
       content: (
-        <div className="space-y-4">
+        <div className="space-y-6">
+          <TabbedNarrativeBlock
+            label="Treatment / Advice Given"
+            value={treatment}
+          />
+          <TabbedSubsection title="Medicines Dispensed">
+            <DispensedMedicinesList medicines={dispensedMedicines} />
+          </TabbedSubsection>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <TabbedDetailItem
               label="Next Follow-up Date"
@@ -2427,7 +2280,13 @@ function MaternalPrenatalRecordDetails({
     },
   ];
 
-  return <Accordion sections={sections} defaultOpenIds={["pregnancy"]} />;
+  return (
+    <RecordTabs
+      key={record?.id || record?._id}
+      tabs={tabs}
+      defaultTabId="prenatal"
+    />
+  );
 }
 
 function TabbedSubsection({ title, children }) {
@@ -2499,14 +2358,11 @@ function EpiRecordDetails({
   const height = visitMonitoringItems.find((item) => item.label === "Height")?.value || "";
   const temperature =
     visitMonitoringItems.find((item) => item.label === "Temperature")?.value || "";
-  const sections = [
+  const tabs = [
     {
-      id: "vaccines",
-      title: "Vaccines Given",
-      preview:
-        vaccineEntries.length > 0
-          ? `${vaccineEntries.length} vaccine${vaccineEntries.length === 1 ? "" : "s"} given`
-          : "None given",
+      id: "immunization",
+      label: "Immunization",
+      icon: Syringe,
       content:
         vaccineEntries.length > 0 ? (
           <EpiVaccinesTable entries={vaccineEntries} record={record} />
@@ -2515,90 +2371,79 @@ function EpiRecordDetails({
         ),
     },
     {
-      id: "monitoring",
-      title: "Visit Monitoring",
-      preview: buildPreview([
-        ["Weight", weight],
-        ["Height", height],
-        ["Temp", temperature],
-      ]),
+      id: "growthFeeding",
+      label: "Growth & Feeding",
+      icon: Salad,
       content: (
-        <div className="grid gap-4 md:grid-cols-3">
-          <TabbedDetailItem label="Weight" value={weight} />
-          <TabbedDetailItem label="Height" value={height} />
-          <TabbedDetailItem label="Temperature" value={temperature} />
+        <div className="space-y-6">
+          <TabbedSubsection title="Visit Monitoring">
+            <div className="grid gap-4 md:grid-cols-3">
+              <TabbedDetailItem label="Weight" value={weight} />
+              <TabbedDetailItem label="Height" value={height} />
+              <TabbedDetailItem label="Temperature" value={temperature} />
+            </div>
+          </TabbedSubsection>
+          <TabbedSubsection title="Breastfeeding Monitoring">
+            {confirmedMonths.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {confirmedMonths.map((month) => (
+                  <span
+                    key={month}
+                    className="rounded-full border border-red-100 bg-red-50 px-3 py-1 text-xs font-semibold text-[#B91C1C]"
+                  >
+                    {month}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <SectionEmptyState text="No breastfeeding monitoring recorded for this visit." />
+            )}
+          </TabbedSubsection>
+          <TabbedSubsection title="Remarks">
+            {remarks ? (
+              <TabbedNarrativeBlock label="Remarks" value={remarks} />
+            ) : (
+              <SectionEmptyState text="No remarks recorded for this visit." />
+            )}
+          </TabbedSubsection>
         </div>
       ),
     },
     {
-      id: "breastfeeding",
-      title: "Breastfeeding Monitoring",
-      preview:
-        confirmedMonths.length > 0
-          ? `${confirmedMonths.length} month${confirmedMonths.length === 1 ? "" : "s"} confirmed`
-          : "None recorded",
-      content:
-        confirmedMonths.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {confirmedMonths.map((month) => (
-              <span
-                key={month}
-                className="rounded-full border border-red-100 bg-red-50 px-3 py-1 text-xs font-semibold text-[#B91C1C]"
-              >
-                {month}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <SectionEmptyState text="No breastfeeding monitoring recorded for this visit." />
-        ),
-    },
-    {
-      id: "remarks",
-      title: "Remarks",
-      preview: truncatePreview(remarks) || "Not recorded",
-      content: remarks ? (
-        <TabbedNarrativeBlock label="Remarks" value={remarks} />
-      ) : (
-        <SectionEmptyState text="No remarks recorded for this visit." />
-      ),
-    },
-    {
-      id: "medicines",
-      title: "Medicines",
-      preview: dispensedMedicines?.length
-        ? `${dispensedMedicines.length} prescribed`
-        : "None dispensed",
-      content: <DispensedMedicinesList medicines={dispensedMedicines} />,
-    },
-    {
-      id: "followup",
-      title: "Follow-up & Referral",
-      preview: needsReferral
-        ? `Referral needed${linkedReferralTarget ? " · Referred" : ""}`
-        : followUpDate
-          ? `Follow-up ${formatLongDate(followUpDate, "")}`
-          : "No flags",
+      id: "careFollowup",
+      label: "Care & Follow-up",
+      icon: CalendarClock,
       content: (
-        <div className="grid gap-4 md:grid-cols-3">
-          <TabbedDetailItem
-            label="Next Follow-up Date"
-            value={formatLongDate(followUpDate, "Not recorded")}
-          />
-          <TabbedDetailItem
-            label="Needs RHU Referral"
-            value={needsReferral ? "Yes" : "No"}
-          />
-          <TabbedDetailItem
-            label="Referral Status"
-            value={linkedReferralTarget ? "Referred" : ""}
-          />
+        <div className="space-y-6">
+          <TabbedSubsection title="Medicines / Supplies Dispensed">
+            <DispensedMedicinesList medicines={dispensedMedicines} />
+          </TabbedSubsection>
+          <div className="grid gap-4 md:grid-cols-3">
+            <TabbedDetailItem
+              label="Next Follow-up Date"
+              value={formatLongDate(followUpDate, "Not recorded")}
+            />
+            <TabbedDetailItem
+              label="Needs RHU Referral"
+              value={needsReferral ? "Yes" : "No"}
+            />
+            <TabbedDetailItem
+              label="Referral Status"
+              value={linkedReferralTarget ? "Referred" : ""}
+            />
+          </div>
         </div>
       ),
     },
   ];
 
-  return <Accordion sections={sections} defaultOpenIds={["vaccines"]} />;
+  return (
+    <RecordTabs
+      key={record?.id || record?._id}
+      tabs={tabs}
+      defaultTabId="immunization"
+    />
+  );
 }
 
 function EpiVaccinesTable({ entries, record }) {
