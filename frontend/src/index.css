@@ -206,6 +206,13 @@ h4 {
   scrollbar-width: none;
 }
 
+/* --- Print Utilities --- */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
+
 /* --- Global Interaction Baseline --- */
 /* Makes all form elements and buttons feel uniformly snappy */
 button,

@@ -486,7 +486,6 @@ export default function AddHealthRecord() {
   const [systolicBp, setSystolicBp] = useState("");
   const [diastolicBp, setDiastolicBp] = useState("");
   const [temp, setTemp] = useState("");
-  const [pulse, setPulse] = useState("");
   const [weight, setWeight] = useState("");
   const [height, setHeight] = useState("");
 
@@ -580,7 +579,6 @@ export default function AddHealthRecord() {
       setSystolicBp(found.systolicBp || "");
       setDiastolicBp(found.diastolicBp || "");
       setTemp(found.temperature || found.temp || "");
-      setPulse(found.pulseRate || found.pulse || "");
       setWeight(found.weight || "");
       setHeight(found.height || "");
       setFollowUpStatus(
@@ -1380,9 +1378,7 @@ export default function AddHealthRecord() {
       const dia = diastolicBp || "N/A";
       return systolicBp || diastolicBp ? `${sys}/${dia}` : "N/A";
     })();
-    const vitalSigns = `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | Pulse: ${
-      pulse || "N/A"
-    } bpm | Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
+    const vitalSigns = `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
     const finalPatientStatus = isFollowUp
       ? normalizePatientStatus(followUpStatus)
       : effectiveFollowUpDate
@@ -1449,7 +1445,6 @@ export default function AddHealthRecord() {
         systolicBp: systolicBp || null,
         diastolicBp: diastolicBp || null,
         temperature: temp || null,
-        pulseRate: pulse || null,
         weight: weight || null,
         height: height || null,
         medication,
@@ -1868,7 +1863,7 @@ export default function AddHealthRecord() {
               icon={<HeartPulse size={14} />}
               delay={4}
             >
-              <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(4,minmax(0,1fr))]">
+              <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(3,minmax(0,1fr))]">
                 <BpInputGroup
                   systolic={systolicBp}
                   diastolic={diastolicBp}
@@ -1880,12 +1875,6 @@ export default function AddHealthRecord() {
                   placeholder="e.g. 36.5 °C"
                   value={temp}
                   onChange={(event) => setTemp(event.target.value)}
-                />
-                <FieldInput
-                  label="Pulse Rate"
-                  placeholder="e.g. 72 bpm"
-                  value={pulse}
-                  onChange={(event) => setPulse(event.target.value)}
                 />
                 <FieldInput
                   label="Weight"
@@ -2379,7 +2368,7 @@ export default function AddHealthRecord() {
               delay={4}
             >
               <LockedFormContent locked={patientGateLocked}>
-          <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(4,minmax(0,1fr))]">
+          <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(3,minmax(0,1fr))]">
             <BpInputGroup
               systolic={systolicBp}
               diastolic={diastolicBp}
@@ -2391,12 +2380,6 @@ export default function AddHealthRecord() {
               placeholder="e.g. 36.5 °C"
               value={temp}
               onChange={(event) => setTemp(event.target.value)}
-            />
-            <FieldInput
-              label="Pulse Rate"
-              placeholder="e.g. 72 bpm"
-              value={pulse}
-              onChange={(event) => setPulse(event.target.value)}
             />
             <FieldInput
               label="Weight"
@@ -2511,6 +2494,17 @@ export default function AddHealthRecord() {
                   : healthRecordsPath,
               ),
           },
+          ...(saveSuccess?.recordId
+            ? [
+                {
+                  label: "Print Record",
+                  onClick: () =>
+                    navigate(
+                      `${healthRecordsPath}/${saveSuccess.recordId}?print=1`,
+                    ),
+                },
+              ]
+            : []),
           {
             label: "Back to Health Records",
             onClick: () => navigate(healthRecordsPath),

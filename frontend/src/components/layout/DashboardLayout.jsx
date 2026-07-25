@@ -286,7 +286,7 @@ export default function DashboardLayout({
       </style>
 
       {!hideSidebar && (
-        <>
+        <div className="no-print">
           <DesktopSidebar
             expanded={sidebarExpanded}
             menuSections={menuSections}
@@ -311,7 +311,7 @@ export default function DashboardLayout({
             onClose={() => setMobileDrawerOpen(false)}
             onLogout={handleLogoutRequest}
           />
-        </>
+        </div>
       )}
 
       <main
@@ -319,7 +319,7 @@ export default function DashboardLayout({
           hideSidebar ? "" : sidebarExpanded ? "md:ml-60" : "md:ml-[72px]"
         }`}
       >
-<header className="relative z-30 shrink-0 border-b border-[#E5E7EB] bg-white/95 backdrop-blur-xl">
+<header className="no-print relative z-30 shrink-0 border-b border-[#E5E7EB] bg-white/95 backdrop-blur-xl">
   <div className="flex h-14 items-center justify-between px-3.5 sm:h-[62px] sm:px-5">
 <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
   {!hideSidebar && (

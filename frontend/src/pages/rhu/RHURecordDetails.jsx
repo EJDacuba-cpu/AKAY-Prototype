@@ -1,10 +1,12 @@
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ClipboardList,
   FilePlus2,
   HeartPulse,
+  Printer,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -74,6 +76,28 @@ export default function RHURecordDetails() {
   const patient = details?.patient || null;
   const loading = isLoading && !details;
   const detailsUpdating = isFetching && !loading && Boolean(details);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const shouldAutoPrint = searchParams.get("print") === "1";
+  const hasAutoPrintedRef = useRef(false);
+
+  useEffect(() => {
+    if (!shouldAutoPrint || !record || hasAutoPrintedRef.current) return;
+    hasAutoPrintedRef.current = true;
+
+    const timer = setTimeout(() => {
+      window.print();
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("print");
+          return next;
+        },
+        { replace: true },
+      );
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [shouldAutoPrint, record, setSearchParams]);
 
   if (loading) {
     return (
@@ -217,6 +241,14 @@ export default function RHURecordDetails() {
                 View Referral
               </Link>
             )}
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
+            >
+              <Printer size={14} />
+              Print
+            </button>
           </>
         }
       />
@@ -422,7 +454,7 @@ function VitalSignsGrid({ items, compact = false }) {
   }
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {items.map((item) => (
         <div
           key={item.label}
@@ -1319,9 +1351,6 @@ function getVitalSigns(record) {
         ? `BP: ${vitalSigns.systolicBp || vitalSigns.systolic_bp}/${vitalSigns.diastolicBp || vitalSigns.diastolic_bp} mmHg`
         : "",
       vitalSigns.temperature ? `Temp: ${vitalSigns.temperature} C` : "",
-      vitalSigns.pulseRate || vitalSigns.pulse_rate
-        ? `Pulse: ${vitalSigns.pulseRate || vitalSigns.pulse_rate} bpm`
-        : "",
       vitalSigns.weight ? `Weight: ${vitalSigns.weight} kg` : "",
       vitalSigns.height ? `Height: ${vitalSigns.height} cm` : "",
     ].filter(Boolean);
@@ -1334,7 +1363,6 @@ function getVitalSigns(record) {
       ? `BP: ${record.systolicBp}/${record.diastolicBp} mmHg`
       : "",
     record?.temp ? `Temp: ${record.temp} C` : "",
-    record?.pulse ? `Pulse: ${record.pulse} bpm` : "",
     record?.weight ? `Weight: ${record.weight} kg` : "",
     record?.height ? `Height: ${record.height} cm` : "",
   ].filter(Boolean);
@@ -1377,14 +1405,6 @@ function getVitalSignItems(record = {}) {
     vitalObject.temperature ||
     vitalObject.temp ||
     readTextValue([/Temp(?:erature)?:\s*([^|,]+)/i]);
-  const pulseValue =
-    record?.pulseRate ||
-    record?.pulse_rate ||
-    record?.pulse ||
-    vitalObject.pulseRate ||
-    vitalObject.pulse_rate ||
-    vitalObject.pulse ||
-    readTextValue([/Pulse:\s*([^|,]+)/i, /HR:\s*([^|,]+)/i]);
   const weightValue =
     record?.weight ||
     vitalObject.weight ||
@@ -1400,7 +1420,6 @@ function getVitalSignItems(record = {}) {
       label: "Temperature",
       value: cleanVitalSignValue(temperatureValue),
     },
-    { label: "Pulse", value: cleanVitalSignValue(pulseValue) },
     { label: "Weight", value: cleanVitalSignValue(weightValue) },
     { label: "Height", value: cleanVitalSignValue(heightValue) },
   ];

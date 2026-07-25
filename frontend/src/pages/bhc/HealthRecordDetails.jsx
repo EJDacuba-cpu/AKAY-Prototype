@@ -1,10 +1,11 @@
-import { Link, useParams, useNavigate } from "react-router";
-import { useEffect, useState } from "react";
+import { Link, useParams, useNavigate, useSearchParams } from "react-router";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ClipboardList,
   FilePlus2,
   HeartPulse,
+  Printer,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -47,6 +48,9 @@ export default function HealthRecordDetails() {
   const [record, setRecord] = useState(null);
   const [patient, setPatient] = useState(null);
   const [linkedReferral, setLinkedReferral] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const shouldAutoPrint = searchParams.get("print") === "1";
+  const hasAutoPrintedRef = useRef(false);
 
 
   const {
@@ -90,6 +94,25 @@ export default function HealthRecordDetails() {
     setPatient(details.patient);
     setLinkedReferral(details.linkedReferral);
   }, [details]);
+
+  useEffect(() => {
+    if (!shouldAutoPrint || !record || hasAutoPrintedRef.current) return;
+    hasAutoPrintedRef.current = true;
+
+    const timer = setTimeout(() => {
+      window.print();
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("print");
+          return next;
+        },
+        { replace: true },
+      );
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [shouldAutoPrint, record, setSearchParams]);
 
   const loading = isLoading && !details;
   const detailsUpdating = isFetching && !loading && Boolean(details);
@@ -274,6 +297,14 @@ export default function HealthRecordDetails() {
                   Create Referral
                 </Link>
               )}
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
+              >
+                <Printer size={14} />
+                Print
+              </button>
             </>
           }
         />
@@ -1103,7 +1134,6 @@ function getVitalSigns(record = {}, fallback = "") {
         ? `BP: ${record.systolicBp}/${record.diastolicBp} mmHg`
         : "",
       record?.temp || record?.temperature ? `Temp: ${record.temp || record.temperature} C` : "",
-      record?.pulse || record?.pulseRate ? `Pulse: ${record.pulse || record.pulseRate} bpm` : "",
       record?.respiratoryRate || record?.respiratory_rate
         ? `Respiratory Rate: ${record.respiratoryRate || record.respiratory_rate} cpm`
         : "",
@@ -1122,7 +1152,6 @@ function getVitalSigns(record = {}, fallback = "") {
       ? `BP: ${value.systolicBp || value.systolic_bp}/${value.diastolicBp || value.diastolic_bp} mmHg`
       : "",
     value.temperature ? `Temp: ${value.temperature} C` : "",
-    value.pulseRate || value.pulse_rate ? `Pulse: ${value.pulseRate || value.pulse_rate} bpm` : "",
     value.respiratoryRate || value.respiratory_rate
       ? `Respiratory Rate: ${value.respiratoryRate || value.respiratory_rate} cpm`
       : "",
@@ -1168,14 +1197,6 @@ function getVitalSignItems(record = {}) {
     vitalObject.temperature ||
     vitalObject.temp ||
     readTextValue([/Temp(?:erature)?:\s*([^|,]+)/i]);
-  const pulseValue =
-    record?.pulseRate ||
-    record?.pulse_rate ||
-    record?.pulse ||
-    vitalObject.pulseRate ||
-    vitalObject.pulse_rate ||
-    vitalObject.pulse ||
-    readTextValue([/Pulse:\s*([^|,]+)/i, /HR:\s*([^|,]+)/i]);
   const respiratoryRateValue =
     record?.respiratoryRate ||
     record?.respiratory_rate ||
@@ -1201,7 +1222,6 @@ function getVitalSignItems(record = {}) {
       label: "Temperature",
       value: cleanVitalSignValue(temperatureValue),
     },
-    { label: "Pulse", value: cleanVitalSignValue(pulseValue) },
     {
       label: "Respiratory Rate",
       value: cleanVitalSignValue(respiratoryRateValue),
@@ -2143,7 +2163,6 @@ function MaternalPrenatalRecordDetails({
   const bmi = getMaternalValue(maternal, record, ["bmi"], "");
   const vitalItems = getVitalSignItems(record);
   const temperature = vitalItems.find((item) => item.label === "Temperature")?.value || "";
-  const pulse = vitalItems.find((item) => item.label === "Pulse")?.value || "";
   const respiratoryRate =
     vitalItems.find((item) => item.label === "Respiratory Rate")?.value || "";
   const labs = getLaboratoryResultItems(maternal);
@@ -2214,7 +2233,6 @@ function MaternalPrenatalRecordDetails({
           <TabbedDetailItem label="Height / HGT" value={height} />
           <TabbedDetailItem label="BMI" value={bmi} />
           <TabbedDetailItem label="Temperature" value={temperature} />
-          <TabbedDetailItem label="Pulse" value={pulse} />
           <TabbedDetailItem label="Respiratory Rate" value={respiratoryRate} />
         </div>
       ),

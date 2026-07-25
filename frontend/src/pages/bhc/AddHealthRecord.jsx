@@ -17,7 +17,11 @@ import {
   X,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ConnectionIssueModal, SuccessModal } from "../../components/common";
+import {
+  ConnectionIssueModal,
+  Drawer,
+  SuccessModal,
+} from "../../components/common";
 import {
   DatePickerField,
   TimePickerField,
@@ -1007,6 +1011,9 @@ export default function AddHealthRecord() {
   );
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const [draftsDrawerOpen, setDraftsDrawerOpen] = useState(false);
+  const searchWrapperRef = useRef(null);
   const dropdownRef = useRef(null);
   const inputRef = useRef(null);
   const classificationRef = useRef(null);
@@ -1034,7 +1041,6 @@ export default function AddHealthRecord() {
   const [systolicBp, setSystolicBp] = useState("");
   const [diastolicBp, setDiastolicBp] = useState("");
   const [temp, setTemp] = useState("");
-  const [pulse, setPulse] = useState("");
   const [respiratoryRate, setRespiratoryRate] = useState("");
   const [weight, setWeight] = useState("");
   const [height, setHeight] = useState("");
@@ -1333,7 +1339,6 @@ export default function AddHealthRecord() {
       setSystolicBp(found.systolicBp || "");
       setDiastolicBp(found.diastolicBp || "");
       setTemp(found.temperature || found.temp || "");
-      setPulse(found.pulseRate || found.pulse || "");
       setRespiratoryRate(
         found.respiratoryRate ||
           found.respiratory_rate ||
@@ -1557,24 +1562,24 @@ export default function AddHealthRecord() {
     "Selected patient";
 
   useEffect(() => {
-    if (!dropdownOpen) return;
+    if (!searchExpanded) return undefined;
 
     function handleClickOutside(event) {
       if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target) &&
-        inputRef.current &&
-        !inputRef.current.contains(event.target)
+        searchWrapperRef.current &&
+        !searchWrapperRef.current.contains(event.target)
       ) {
-        closeDropdown();
+        closeHeaderSearch();
       }
     }
 
     function handleKeyDown(event) {
       if (event.key === "Escape") {
-        closeDropdown();
+        closeHeaderSearch();
         return;
       }
+
+      if (!dropdownOpen) return;
 
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -1600,11 +1605,13 @@ export default function AddHealthRecord() {
         return;
       }
 
-      if (event.key === "Enter") {
-        if (highlightIndex >= 0 && highlightIndex < filteredPatients.length) {
-          event.preventDefault();
-          selectPatient(filteredPatients[highlightIndex].id);
-        }
+      if (
+        event.key === "Enter" &&
+        highlightIndex >= 0 &&
+        highlightIndex < filteredPatients.length
+      ) {
+        event.preventDefault();
+        selectPatient(filteredPatients[highlightIndex].id);
       }
     }
 
@@ -1615,15 +1622,28 @@ export default function AddHealthRecord() {
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [dropdownOpen, filteredPatients, highlightIndex]);
+  }, [
+    searchExpanded,
+    dropdownOpen,
+    filteredPatients,
+    highlightIndex,
+  ]);
 
   useEffect(() => {
     setHighlightIndex(filteredPatients.length > 0 ? 0 : -1);
   }, [searchTerm, filteredPatients.length]);
 
-  function closeDropdown() {
+  function closeHeaderSearch() {
     setDropdownOpen(false);
     setHighlightIndex(-1);
+    setSearchExpanded(false);
+  }
+
+  function openHeaderSearch() {
+    setSearchTerm("");
+    setDropdownOpen(false);
+    setHighlightIndex(-1);
+    setSearchExpanded(true);
   }
 
   function resetClassificationSpecificState() {
@@ -1653,6 +1673,7 @@ export default function AddHealthRecord() {
     setSearchTerm("");
     setDropdownOpen(false);
     setHighlightIndex(-1);
+    setSearchExpanded(false);
   }
 
   function clearSelectedPatient() {
@@ -1810,7 +1831,6 @@ export default function AddHealthRecord() {
       systolicBp,
       diastolicBp,
       temp,
-      pulse,
       respiratoryRate,
       weight,
       height,
@@ -1985,7 +2005,6 @@ export default function AddHealthRecord() {
     setSystolicBp(payload.systolicBp || "");
     setDiastolicBp(payload.diastolicBp || "");
     setTemp(payload.temp || "");
-    setPulse(payload.pulse || "");
     setRespiratoryRate(payload.respiratoryRate || "");
     setWeight(payload.weight || "");
     setHeight(payload.height || "");
@@ -2322,9 +2341,7 @@ export default function AddHealthRecord() {
     return systolicBp || diastolicBp ? `${sys}/${dia}` : "N/A";
   })();
 
-  const concatenatedVitalSigns = `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | Pulse: ${
-    pulse || "N/A"
-  } bpm | Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
+  const concatenatedVitalSigns = `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
   const consultationVitalSigns = [
     concatenatedVitalSigns,
     `Respiratory Rate: ${respiratoryRate || "N/A"} cpm`,
@@ -2342,10 +2359,13 @@ export default function AddHealthRecord() {
     const config = RECORD_TYPE_DETAILS[nextType] || {};
 
     if (patientGateLocked) {
-      setNoticeModal({
-        title: "Patient Required",
-        message: "Please select a patient first before choosing a record type.",
-      });
+      setValidationErrors((current) => ({
+        ...current,
+        selectedPatientId: "Please select a patient first before choosing a record type.",
+      }));
+      setSearchExpanded(true);
+      setDropdownOpen(true);
+      window.requestAnimationFrame(() => inputRef.current?.focus());
       return;
     }
 
@@ -2375,13 +2395,13 @@ export default function AddHealthRecord() {
     closeDateTimePopovers();
 
     if (!selectedPatientId) {
-      setValidationErrorsAndFocus({
+      setValidationErrors((current) => ({
+        ...current,
         selectedPatientId: "Please select a patient first before proceeding.",
-      });
-      setNoticeModal({
-        title: "Patient Required",
-        message: "Please select a patient first before proceeding.",
-      });
+      }));
+      setSearchExpanded(true);
+      setDropdownOpen(true);
+      window.requestAnimationFrame(() => inputRef.current?.focus());
       return;
     }
 
@@ -2584,23 +2604,8 @@ export default function AddHealthRecord() {
     if (!String(referralForm.referringHci || "").trim()) {
       errors.referringHci = "Name of referring HCI is required.";
     }
-    if (!String(referralForm.referringPractitioner || "").trim()) {
-      errors.referringPractitioner = "Referring practitioner is required.";
-    }
     if (!String(referralForm.reasonForReferral || "").trim()) {
       errors.reasonForReferral = "Reason for referral is required.";
-    }
-    if (
-      String(pendingReferralDraft?.formData?.chiefComplaint || "").trim() &&
-      !String(referralForm.chiefComplaint || "").trim()
-    ) {
-      errors.chiefComplaint = "Chief complaint is required for this referral.";
-    }
-    if (
-      String(pendingReferralDraft?.formData?.diagnosis || "").trim() &&
-      !String(referralForm.initialDiagnosis || "").trim()
-    ) {
-      errors.initialDiagnosis = "Initial diagnosis is required for this referral.";
     }
     return errors;
   }
@@ -3442,7 +3447,6 @@ export default function AddHealthRecord() {
       systolicBp: systolicBp || null,
       diastolicBp: diastolicBp || null,
       temperature: temp || null,
-      pulseRate: pulse || null,
       respiratoryRate: respiratoryRate || null,
       respiratory_rate: respiratoryRate || null,
       weight: weight || null,
@@ -3853,7 +3857,7 @@ export default function AddHealthRecord() {
 
       {!isResolvingClinicalMode && (
         <div
-          className="anim-fade-up mb-3 ml-0 mr-auto w-full max-w-7xl"
+          className="anim-fade-up relative z-[300] mb-3 ml-0 mr-auto w-full max-w-7xl overflow-visible"
           style={stagger(0)}
         >
         <button
@@ -3863,7 +3867,7 @@ export default function AddHealthRecord() {
         >
           <ArrowLeft size={16} /> Back
         </button>
-        <div className="flex flex-col gap-3 px-1 py-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="relative z-[310] flex flex-col gap-3 overflow-visible px-1 py-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             {pageStepLabel && (
               <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#B91C1C]">
@@ -3916,6 +3920,81 @@ export default function AddHealthRecord() {
               )}
             </div>
           )}
+          {!setupComplete && !isEditingRecord && !isFollowUpRouteMode && (
+            <div className="relative flex shrink-0 items-center gap-2 sm:justify-end">
+              <div className="relative z-[320] h-10 w-10 shrink-0 overflow-visible">
+                <div
+                  ref={searchWrapperRef}
+                  className={`absolute right-0 top-0 z-[330] overflow-visible transition-[width] duration-300 ease-out ${
+                    searchExpanded
+                      ? "w-[min(24rem,calc(100vw-2rem))] sm:w-96"
+                      : "w-10"
+                  }`}
+                >
+                  {searchExpanded ? (
+                    <PatientSearchDropdown
+                      inputRef={inputRef}
+                      dropdownRef={dropdownRef}
+                      disabled={false}
+                      dropdownOpen={dropdownOpen}
+                      selectedPatientId={selectedPatientId}
+                      searchTerm={searchTerm}
+                      inputValue={patientSearchInputValue}
+                      patients={filteredPatients}
+                      totalPatientCount={patients.length}
+                      matchingPatientCount={matchingPatients.length}
+                      visibleLimit={visiblePatientLimit}
+                      loading={patientsLoading && patients.length === 0}
+                      loadError={patientsLoadError}
+                      isSearching={Boolean(normalizedSearch)}
+                      onSeeAll={() => navigate(`${basePath}/patients`)}
+                      onRetryLoad={() =>
+                        setPatientsReloadKey((key) => key + 1)
+                      }
+                      highlightIndex={highlightIndex}
+                      onSearchChange={handlePatientSearchChange}
+                      onOpen={() => setDropdownOpen(true)}
+                      onClear={clearSelectedPatient}
+                      onSelect={selectPatient}
+                      onHighlight={setHighlightIndex}
+                      error={validationErrors.selectedPatientId}
+                      dropdownAlign="right"
+                      hideLabel
+                    />
+                  ) : (
+                    <HeaderIconButton
+                      icon={Search}
+                      label={
+                        selectedPatient
+                          ? `Change patient: ${
+                              getPatientDisplay(selectedPatient).name
+                            }`
+                          : "Search patient"
+                      }
+                      onClick={openHeaderSearch}
+                      active={Boolean(selectedPatientId)}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {isDraftRouteEligible && (
+                <button
+                  type="button"
+                  onClick={() => setDraftsDrawerOpen(true)}
+                  className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-[#E2E8F0] bg-white px-3.5 text-xs font-semibold text-[#475569] shadow-sm transition hover:border-[#B91C1C]/30 hover:bg-[#FFF7F7] hover:text-[#B91C1C]"
+                >
+                  <FileClock size={14} />
+                  Drafts
+                  {healthRecordDrafts.length > 0 && (
+                    <span className="rounded-full bg-[#B91C1C] px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
+                      {healthRecordDrafts.length}
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
         </div>
         </div>
       )}
@@ -3929,8 +4008,10 @@ export default function AddHealthRecord() {
         </div>
       )}
 
-      {isDraftRouteEligible && !setupComplete && !isResolvingClinicalMode && (
-        <HealthRecordDraftManager
+      {isDraftRouteEligible && (
+        <DraftsDrawer
+          open={draftsDrawerOpen}
+          onClose={() => setDraftsDrawerOpen(false)}
           drafts={healthRecordDrafts}
           loading={draftListLoading}
           error={draftListError}
@@ -3979,34 +4060,6 @@ export default function AddHealthRecord() {
       ) : !isFollowUp && !isEditingRecord && !setupComplete ? (
         <HealthRecordSetupStep
           selectedPatientId={selectedPatientId}
-          selectedPatient={selectedPatient}
-          patientSearchProps={{
-            inputRef,
-            dropdownRef,
-            disabled: false,
-            dropdownOpen,
-            selectedPatientId,
-            searchTerm,
-            inputValue: patientSearchInputValue,
-            patients: filteredPatients,
-            totalPatientCount: patients.length,
-            matchingPatientCount: matchingPatients.length,
-            visibleLimit: visiblePatientLimit,
-            loading: patientsLoading && patients.length === 0,
-            loadError: patientsLoadError,
-            isSearching: Boolean(normalizedSearch),
-            onSeeAll: () => navigate("/bhc/patients"),
-            onRetryLoad: () => setPatientsReloadKey((key) => key + 1),
-            highlightIndex,
-            onSearchChange: handlePatientSearchChange,
-            onOpen: () => {
-              setSearchTerm("");
-              setDropdownOpen(true);
-            },
-            onClear: clearSelectedPatient,
-            onSelect: selectPatient,
-            onHighlight: setHighlightIndex,
-          }}
           classification={healthRecordType}
           onClassificationSelect={handleClassificationSelect}
           errors={validationErrors}
@@ -4146,7 +4199,7 @@ export default function AddHealthRecord() {
               subtitle="Record updated physiological measurements for this follow-up visit."
               delay={4}
             >
-              <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(5,minmax(0,1fr))]">
+              <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(4,minmax(0,1fr))]">
                 <BpInputGroup
                   systolic={systolicBp}
                   diastolic={diastolicBp}
@@ -4158,12 +4211,6 @@ export default function AddHealthRecord() {
                   placeholder="e.g. 36.5 °C"
                   value={temp}
                   onChange={(event) => setTemp(event.target.value)}
-                />
-                <FieldInput
-                  label="Pulse Rate"
-                  placeholder="e.g. 72 bpm"
-                  value={pulse}
-                  onChange={(event) => setPulse(event.target.value)}
                 />
                 <FieldInput
                   label="Respiratory Rate"
@@ -5082,7 +5129,7 @@ export default function AddHealthRecord() {
             delay={3}
           >
             <LockedFormContent locked={patientGateLocked}>
-              <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(4,minmax(0,1fr))]">
+              <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(3,minmax(0,1fr))]">
                 <BpInputGroup
                   systolic={systolicBp}
                   diastolic={diastolicBp}
@@ -5094,12 +5141,6 @@ export default function AddHealthRecord() {
                   placeholder="e.g. 36.5 C"
                   value={temp}
                   onChange={(event) => setTemp(event.target.value)}
-                />
-                <FieldInput
-                  label="Pulse Rate"
-                  placeholder="e.g. 72 bpm"
-                  value={pulse}
-                  onChange={(event) => setPulse(event.target.value)}
                 />
                 <FieldInput
                   label="Weight"
@@ -5340,6 +5381,17 @@ export default function AddHealthRecord() {
                   : healthRecordsPath,
               ),
           },
+          ...(saveSuccess?.recordId
+            ? [
+                {
+                  label: "Print Record",
+                  onClick: () =>
+                    navigate(
+                      `${healthRecordsPath}/${saveSuccess.recordId}?print=1`,
+                    ),
+                },
+              ]
+            : []),
           {
             label: "Add Another Record",
             onClick: () => {
@@ -5418,7 +5470,44 @@ export default function AddHealthRecord() {
 /* ═══════════════════════════════════════════════════════════════
    PATIENT SEARCH DROPDOWN
    ═══════════════════════════════════════════════════════════════ */
-function HealthRecordDraftManager({
+function HeaderIconButton({
+  icon: Icon,
+  label,
+  onClick,
+  active = false,
+  disabled = false,
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className={`group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/15 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+        active
+          ? "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]"
+          : "border-[#E8ECF0] bg-white text-[#64748B] hover:-translate-y-0.5 hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] hover:shadow-md"
+      }`}
+    >
+      <Icon
+        size={17}
+        strokeWidth={2.2}
+        className="transition-transform duration-200 group-hover:scale-105"
+      />
+      {active && (
+        <span
+          className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[#B91C1C]"
+          aria-hidden="true"
+        />
+      )}
+    </button>
+  );
+}
+
+function DraftsDrawer({
+  open,
+  onClose,
   drafts,
   loading,
   error,
@@ -5430,32 +5519,19 @@ function HealthRecordDraftManager({
   onDiscard,
 }) {
   return (
-    <section className="anim-fade-up mb-5 ml-0 mr-auto w-full max-w-7xl overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-sm">
-      <div className="flex flex-col gap-2 border-b border-[#EEF2F6] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B91C1C]">
-            <FileClock size={18} />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-[#1E293B]">Saved Drafts</h2>
-            <p className="text-xs text-[#64748B]">
-              Resume an incomplete record saved securely to AKAY.
-            </p>
-          </div>
-        </div>
-        {!loading && !error && drafts.length > 0 && (
-          <span className="text-xs font-semibold text-[#64748B]">
-            {drafts.length} active {drafts.length === 1 ? "draft" : "drafts"}
-          </span>
-        )}
-      </div>
-
+    <Drawer
+      open={open}
+      onClose={onClose}
+      icon={<FileClock size={18} />}
+      title="Saved Drafts"
+      description="Resume an incomplete record saved securely to AKAY."
+    >
       {loading ? (
         <div className="px-5 py-5" role="status">
           <InlineSpinner label="Loading saved drafts..." />
         </div>
       ) : error ? (
-        <div className="flex flex-col gap-3 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 px-5 py-5">
           <div className="flex items-start gap-2 text-sm text-[#64748B]">
             <AlertCircle size={17} className="mt-0.5 shrink-0" />
             <span>{error}</span>
@@ -5463,7 +5539,7 @@ function HealthRecordDraftManager({
           <button
             type="button"
             onClick={onRetry}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#DDE3E9] bg-white px-3 text-xs font-semibold text-[#475569] transition hover:bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/15"
+            className="inline-flex h-9 items-center justify-center gap-2 self-start rounded-lg border border-[#DDE3E9] bg-white px-3 text-xs font-semibold text-[#475569] transition hover:bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/15"
           >
             <RotateCcw size={14} /> Retry
           </button>
@@ -5479,64 +5555,59 @@ function HealthRecordDraftManager({
             const resumeBusy = resumingId === draft.id;
             const discardBusy = discardingId === draft.id;
             return (
-              <div
-                key={draft.id}
-                className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="truncate text-sm font-semibold text-[#1E293B]">
-                      {draft.patient.label}
-                    </p>
-                    <span className="rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-2 py-0.5 text-[10px] font-bold text-[#64748B]">
+              <div key={draft.id} className="group px-5 py-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-semibold text-[#1E293B]">
+                        {draft.patient.label}
+                      </p>
+                      {activeDraftId === draft.id && (
+                        <span className="text-[10px] font-bold uppercase text-[#B91C1C]">
+                          Current
+                        </span>
+                      )}
+                    </div>
+                    <span className="mt-1 inline-block rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-2 py-0.5 text-[10px] font-bold text-[#64748B]">
                       {draft.classification}
                     </span>
-                    {activeDraftId === draft.id && (
-                      <span className="text-[10px] font-bold uppercase text-[#B91C1C]">
-                        Current
-                      </span>
-                    )}
                   </div>
-                  <p className="mt-1 text-xs text-[#64748B]">
-                    Saved {formatDraftDateTime(draft.lastSavedAt)}
-                    <span className="mx-1.5 text-[#CBD5E1]">&bull;</span>
-                    {formatDraftExpiry(draft.expiresAt)}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onResume(draft.id)}
-                    disabled={Boolean(resumingId || discardingId)}
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-3.5 text-xs font-semibold text-white transition hover:bg-[#991B1B] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/20 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {resumeBusy ? <ButtonSpinner /> : <RotateCcw size={14} />}
-                    {resumeBusy ? "Opening..." : "Resume"}
-                  </button>
                   <button
                     type="button"
                     onClick={() => onDiscard(draft)}
                     disabled={Boolean(resumingId || discardingId)}
                     aria-label={`Discard draft for ${draft.patient.label}`}
                     title="Discard draft"
-                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#DDE3E9] text-[#64748B] transition hover:border-red-200 hover:bg-red-50 hover:text-[#B91C1C] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#94A3B8] opacity-0 transition hover:bg-red-50 hover:text-[#B91C1C] focus:opacity-100 disabled:cursor-not-allowed disabled:opacity-50 group-hover:opacity-100"
                   >
                     {discardBusy ? <ButtonSpinner /> : <Trash2 size={15} />}
                   </button>
                 </div>
+                <p className="mt-2 text-xs text-[#64748B]">
+                  Saved {formatDraftDateTime(draft.lastSavedAt)}
+                  <span className="mx-1.5 text-[#CBD5E1]">&bull;</span>
+                  {formatDraftExpiry(draft.expiresAt)}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onResume(draft.id)}
+                  disabled={Boolean(resumingId || discardingId)}
+                  className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-3.5 text-xs font-semibold text-white transition hover:bg-[#991B1B] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/20 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {resumeBusy ? <ButtonSpinner /> : <RotateCcw size={14} />}
+                  {resumeBusy ? "Opening..." : "Resume"}
+                </button>
               </div>
             );
           })}
         </div>
       )}
-    </section>
+    </Drawer>
   );
 }
 
 function HealthRecordSetupStep({
   selectedPatientId,
-  selectedPatient,
-  patientSearchProps,
   classification,
   onClassificationSelect,
   errors = {},
@@ -5547,33 +5618,11 @@ function HealthRecordSetupStep({
 
   return (
     <section
-      className="anim-fade-up ml-0 mr-auto w-full max-w-7xl"
+      className="anim-fade-up relative z-0 ml-0 mr-auto w-full max-w-7xl"
       style={stagger(1)}
     >
-      <div className=" p-1 ">
+      <div className="p-1">
         <div
-          className={`relative z-30 rounded-xl ${
-            errors.selectedPatientId
-              ? "border border-[#B91C1C] bg-[#FEF2F2]/40 p-3 ring-2 ring-[#B91C1C]/10"
-              : ""
-          }`}
-          data-field="selectedPatientId"
-          tabIndex={errors.selectedPatientId ? -1 : undefined}
-        >
-          <PatientSearchDropdown
-            {...patientSearchProps}
-            selectedPatient={selectedPatient}
-            showSelectedPreview={false}
-          />
-          {errors.selectedPatientId && (
-            <p className="mt-2 text-[11px] font-medium text-[#B91C1C]">
-              {errors.selectedPatientId}
-            </p>
-          )}
-        </div>
-
-        <div
-          className="mt-5"
           data-field="healthRecordType"
           tabIndex={errors.healthRecordType ? -1 : undefined}
         >
@@ -5953,13 +6002,6 @@ function ReferralDetailsStep({
             title="Referral Information"
             description="Referral timestamp and referring BHC details."
           >
-            <ReferralDestinationField
-              destination={destination}
-              isLoading={destinationLoading}
-              error={destinationError || errors.receivingFacility}
-              onRetry={onRetryDestination}
-            />
-
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <DatePickerField
                 label="Date of Referral"
@@ -5977,6 +6019,12 @@ function ReferralDetailsStep({
                 error={errors.timeOfReferral}
                 onChange={(value) => onChange("timeOfReferral", value)}
               />
+              <ReferralDestinationField
+                destination={destination}
+                isLoading={destinationLoading}
+                error={destinationError || errors.receivingFacility}
+                onRetry={onRetryDestination}
+              />
               <FieldInput
                 label="Name of Referring HCI"
                 required
@@ -5985,7 +6033,6 @@ function ReferralDetailsStep({
                 error={errors.referringHci}
                 onChange={(event) => onChange("referringHci", event.target.value)}
                 placeholder="Barangay Health Center"
-                wrapperClassName="xl:col-span-2"
               />
               <FieldSelect
                 label="Urgency"
@@ -6005,86 +6052,21 @@ function ReferralDetailsStep({
                 }
                 placeholder="Select or enter preferred doctor"
               />
-              <FieldInput
-                label="Name and Signature of Referring Practitioner"
-                required
-                name="referringPractitioner"
-                value={form.referringPractitioner}
-                error={errors.referringPractitioner}
-                onChange={(event) =>
-                  onChange("referringPractitioner", event.target.value)
-                }
-                placeholder="Referring practitioner"
-                wrapperClassName="xl:col-span-2"
-              />
             </div>
-          </ReferralFormGroup>
 
-          <ReferralFormGroup
-            title="Clinical Referral Details"
-            description="Clinical information to send to RHU for review."
-          >
-            <div className="space-y-4">
-              <FieldInput
-                label="Chief Complaint"
-                name="chiefComplaint"
-                value={form.chiefComplaint}
-                error={errors.chiefComplaint}
-                onChange={(event) =>
-                  onChange("chiefComplaint", event.target.value)
-                }
-                placeholder="Chief complaint"
-              />
-
-              <FieldTextarea
-                label="Summary of Present Illness and Physical Examination"
-                name="clinicalSummary"
-                value={form.clinicalSummary}
-                onChange={(event) =>
-                  onChange("clinicalSummary", event.target.value)
-                }
-                placeholder="Summarize relevant symptoms, findings, physical examination notes, or observations..."
-                rows={5}
-              />
-
-              <div className="grid gap-4 lg:grid-cols-2">
-                <FieldTextarea
-                  label="Initial Diagnosis"
-                  name="initialDiagnosis"
-                  value={form.initialDiagnosis}
-                  error={errors.initialDiagnosis}
-                  onChange={(event) =>
-                    onChange("initialDiagnosis", event.target.value)
-                  }
-                  placeholder="Initial diagnosis"
-                  rows={3}
-                />
-
-                <FieldTextarea
-                  label="Initial Actions Taken"
-                  name="initialActionsTaken"
-                  value={form.initialActionsTaken}
-                  onChange={(event) =>
-                    onChange("initialActionsTaken", event.target.value)
-                  }
-                  placeholder="Treatment, medication, advice, or action taken before referral"
-                  rows={3}
-                />
-              </div>
-
-              <FieldTextarea
-                label="Reason for Referral"
-                required
-                name="reasonForReferral"
-                value={form.reasonForReferral}
-                error={errors.reasonForReferral}
-                onChange={(event) =>
-                  onChange("reasonForReferral", event.target.value)
-                }
-                placeholder="State the reason or concern requiring RHU review..."
-                rows={3}
-              />
-            </div>
+            <FieldTextarea
+              label="Reason for Referral"
+              required
+              name="reasonForReferral"
+              value={form.reasonForReferral}
+              error={errors.reasonForReferral}
+              onChange={(event) =>
+                onChange("reasonForReferral", event.target.value)
+              }
+              placeholder="State the reason or concern requiring RHU review..."
+              rows={3}
+              wrapperClassName="mt-4"
+            />
           </ReferralFormGroup>
         </div>
 
@@ -6108,17 +6090,12 @@ function ReferralDetailsStep({
 function ReferralDestinationField({ destination, isLoading, error, onRetry }) {
   const receivingRhu = destination?.receivingRuralHealthUnit;
 
-  return (
-    <div className="mb-5" data-field="receivingFacility" tabIndex={-1}>
-      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-[#6B7280]">
-        Receiving Facility
-      </p>
-
-      {isLoading ? (
-        <div className="flex min-h-12 items-center gap-2.5 rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3 text-xs font-medium text-[#64748B]">
-          <InlineSpinner label="Loading assigned RHU..." />
-        </div>
-      ) : error ? (
+  if (error) {
+    return (
+      <div data-field="receivingFacility" tabIndex={-1}>
+        <p className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+          Receiving Facility
+        </p>
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
           <div className="flex items-start gap-2.5">
             <AlertCircle className="mt-0.5 shrink-0 text-amber-600" size={15} />
@@ -6139,17 +6116,33 @@ function ReferralDestinationField({ destination, isLoading, error, onRetry }) {
             </div>
           </div>
         </div>
-      ) : (
-        <div className="rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3">
-          <p className="text-sm font-semibold text-[#1F2937]">
-            {receivingRhu?.name}
-          </p>
-          <p className="mt-1 text-[11px] leading-relaxed text-[#64748B]">
-            Automatically assigned based on the patient&apos;s Barangay Health
-            Center.
-          </p>
-        </div>
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div data-field="receivingFacility" tabIndex={-1}>
+      <p className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+        Receiving Facility
+      </p>
+      <div
+        className="flex h-10 w-full cursor-not-allowed items-center rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3.5 text-sm text-[#1F2937] opacity-60"
+        title={
+          receivingRhu?.name
+            ? "Automatically assigned based on the patient's Barangay Health Center."
+            : undefined
+        }
+      >
+        {isLoading ? (
+          <InlineSpinner label="Loading..." />
+        ) : (
+          <span className="truncate">{receivingRhu?.name || "—"}</span>
+        )}
+      </div>
+      <span className="sr-only">
+        Automatically assigned based on the patient&apos;s Barangay Health
+        Center.
+      </span>
     </div>
   );
 }
@@ -6271,19 +6264,35 @@ function PatientSearchDropdown({
   onClear,
   onSelect,
   onHighlight,
+  error = "",
+  dropdownAlign = "left",
+  hideLabel = false,
 }) {
-  return (
-    <div className="relative z-[9999]">
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-        Search Existing Patient
-      </label>
+  const dropdownPositionClass =
+    dropdownAlign === "right"
+      ? "right-0 left-auto w-[min(24rem,calc(100vw-2rem))]"
+      : "left-0 right-0 w-full";
 
-      <div className="relative" ref={inputRef}>
+  return (
+    <div
+      className="relative z-[70] w-full"
+      data-field="selectedPatientId"
+      tabIndex={error ? -1 : undefined}
+    >
+      {!hideLabel && (
+        <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+          Search Existing Patient
+        </label>
+      )}
+
+      <div className="relative">
+
         <Search
           size={15}
           className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
         />
         <input
+          ref={inputRef}
           type="text"
           placeholder="Search patient name, ID, contact, or barangay..."
           value={inputValue}
@@ -6292,10 +6301,14 @@ function PatientSearchDropdown({
           disabled={disabled}
           readOnly={disabled}
           className={`h-10 w-full rounded-xl border bg-[#FAFBFC] pl-10 pr-10 text-sm outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:bg-[#F3F4F6] disabled:text-[#9CA3AF] ${
-            dropdownOpen
-              ? "border-[#B91C1C] bg-white ring-2 ring-[#B91C1C]/10"
-              : "border-[#E8ECF0]"
+            error
+              ? "border-[#B91C1C] bg-[#FEF2F2]/40 ring-2 ring-[#B91C1C]/10"
+              : dropdownOpen
+                ? "border-[#B91C1C] bg-white ring-2 ring-[#B91C1C]/10"
+                : "border-[#E8ECF0]"
           }`}
+
+          
         />
 
         {selectedPatientId && !disabled && (
@@ -6310,10 +6323,18 @@ function PatientSearchDropdown({
         )}
       </div>
 
+      {error && (
+        <p className="mt-1.5 text-[11px] font-medium text-[#B91C1C]">
+          {error}
+        </p>
+      )}
+
       {dropdownOpen && !disabled && (
         <div
           ref={dropdownRef}
-          className="anim-drop-in absolute left-0 right-0 top-full z-[9999] mt-1.5 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-xl shadow-black/[0.08]"
+          role="listbox"
+          aria-label="Patient search results"
+          className={`anim-drop-in absolute top-full z-[99999] mt-2 max-h-[min(28rem,calc(100vh-9rem))] overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-2xl shadow-slate-900/10 ${dropdownPositionClass}`}
         >
           <div className="flex items-center justify-between border-b border-[#F3F4F6] px-3.5 py-2">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
@@ -6374,24 +6395,27 @@ function PatientSearchDropdown({
             </div>
           ) : (
             <>
-            <div className="max-h-80 overflow-y-auto py-1">
+            <div className="max-h-[min(20rem,calc(100vh-15rem))] divide-y divide-[#F1F5F9] overflow-y-auto overscroll-contain py-1">
               {patients.map((patient, index) => {
                 const display = getPatientDisplay(patient);
-                const isSelected = patient.id === selectedPatientId;
+                const isSelected = String(patient.id) === String(selectedPatientId);
                 const isHighlighted = index === highlightIndex;
 
                 return (
                   <button
                     key={patient.id}
                     type="button"
+                    role="option"
+                    aria-selected={isSelected}
                     onMouseEnter={() => onHighlight(index)}
+                    onFocus={() => onHighlight(index)}
                     onClick={() => onSelect(patient.id)}
-                    className={`flex w-full items-center gap-2.5 px-3.5 py-3 text-left transition-colors duration-100 ${
+                    className={`flex w-full items-center gap-3 px-3.5 py-2.5 text-left outline-none transition-colors duration-100 focus:bg-[#FEF2F2] ${
                       isHighlighted
                         ? "bg-[#FEF2F2]"
                         : isSelected
                           ? "bg-red-50"
-                          : "hover:bg-[#FAFBFC]"
+                          : "bg-white hover:bg-[#FAFBFC]"
                     }`}
                   >
                     <div className="min-w-0 flex-1">
@@ -6411,10 +6435,11 @@ function PatientSearchDropdown({
                           </span>
                         )}
                       </div>
-                      <p className="mt-0.5 truncate text-[10px] text-[#9CA3AF]">
+                      <p className="mt-1 truncate text-[10.5px] text-[#64748B]">
                         {[
                           display.age,
-                          display.contact || display.barangay,
+                          display.barangay,
+                          display.contact,
                         ]
                           .filter(Boolean)
                           .join(" · ")}

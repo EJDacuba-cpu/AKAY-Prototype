@@ -4,6 +4,7 @@ export { default as ActionMenu } from "./tables/ActionMenu";
 export { default as DataTableEmptyState } from "./tables/DataTableEmptyState";
 export { default as ModuleTableCard } from "./tables/ModuleTableCard";
 export { default as ConfirmationModal } from "./modals/ConfirmationModal";
+export { default as Drawer } from "./drawer/Drawer";
 export { default as FormGroup } from "./atoms/FormGroup";
 export { default as FormInput } from "./forms/FormInput";
 export { default as FormSelect } from "./forms/FormSelect";
