@@ -257,6 +257,40 @@ function hasAnyTerm(record, terms) {
   return terms.some((term) => text.includes(term));
 }
 
+export function getRecordParentId(record = {}) {
+  const monitoringData = record.monitoringData || record.monitoring_data || {};
+
+  return (
+    record.parentHealthRecordId ||
+    record.parent_health_record_id ||
+    record.originalHealthRecordId ||
+    record.original_health_record_id ||
+    record.previousRecordId ||
+    record.previous_record_id ||
+    monitoringData.parentHealthRecordId ||
+    monitoringData.parent_health_record_id ||
+    monitoringData.previousRecordId ||
+    ""
+  );
+}
+
+export function isFollowUpVisitRecord(record = {}) {
+  const monitoringData = record.monitoringData || record.monitoring_data || {};
+  const visitType = String(
+    record.visitType || record.visit_type || monitoringData.visitType || "",
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
+
+  return (
+    visitType === "follow up visit" ||
+    visitType === "follow up" ||
+    Boolean(record.isFollowUp || record.is_follow_up) ||
+    Boolean(getRecordParentId(record))
+  );
+}
+
 export function isEpiRecord(record = {}) {
   return hasAnyTerm(record, [
     "immunization",

@@ -1,4 +1,5 @@
 import { ArrowLeft } from "lucide-react";
+import { Link } from "react-router";
 import { RefreshingIndicator, ReferralIndicatorBadge } from "../../common";
 import { formatDisplayValue } from "../../../utils/formatters";
 
@@ -16,6 +17,9 @@ export default function RecordHeaderCard({
   displayDate,
   displayTime,
   practitioner,
+  isFollowUpVisit = false,
+  parentRecordId,
+  parentRecordLink,
 }) {
   return (
     <>
@@ -44,6 +48,12 @@ export default function RecordHeaderCard({
                 />
               )}
 
+              {isFollowUpVisit && (
+                <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700">
+                  Follow-up Visit
+                </span>
+              )}
+
               {isUpdating && (
                 <RefreshingIndicator label="Updating health record details..." />
               )}
@@ -52,6 +62,15 @@ export default function RecordHeaderCard({
             <p className="mt-2 font-mono text-[11px] font-semibold text-slate-600">
               Record #{recordId}
             </p>
+
+            {isFollowUpVisit && parentRecordId && (
+              <Link
+                to={parentRecordLink || `/bhc/health-records/${parentRecordId}`}
+                className="mt-1 inline-block text-[11px] font-semibold text-indigo-600 underline-offset-2 hover:underline"
+              >
+                Follow-up of record #{parentRecordId}
+              </Link>
+            )}
           </div>
 
           {actions && (

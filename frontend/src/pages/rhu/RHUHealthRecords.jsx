@@ -27,7 +27,9 @@ import {
   getRecordDateValue,
   getRecordId,
   getRecordIdLabel,
+  getRecordParentId,
   getServiceTypeLabel,
+  isFollowUpVisitRecord,
 } from "../../utils/healthRecordPrograms";
 import { queryKeys } from "../../utils/queryKeys";
 
@@ -40,25 +42,9 @@ const DEFAULT_FILTERS = {
 };
 
 function normalizeVisitType(record = {}) {
-  const value = String(record.visitType || record.visit_type || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, " ");
-
-  if (
-    value === "follow up visit" ||
-    value === "follow up" ||
-    record.isFollowUp ||
-    record.is_follow_up ||
-    record.parentHealthRecordId ||
-    record.parent_health_record_id ||
-    record.previousRecordId ||
-    record.previous_record_id
-  ) {
-    return "follow_up_visit";
-  }
-
-  return "initial_consultation";
+  return isFollowUpVisitRecord(record)
+    ? "follow_up_visit"
+    : "initial_consultation";
 }
 
 export default function RHUHealthRecords() {
@@ -87,11 +73,7 @@ export default function RHUHealthRecords() {
           id: recordId,
           trackingId: record.trackingId || recordId,
           visitType: normalizeVisitType(record),
-          parentHealthRecordId:
-            record.parentHealthRecordId ||
-            record.parent_health_record_id ||
-            record.previousRecordId ||
-            "",
+          parentHealthRecordId: getRecordParentId(record),
           patientName: formatPatientName(
             record.patientName || record.patient || record,
             "Unnamed Patient",
@@ -368,8 +350,15 @@ function RHUHealthRecordsTable({
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3">
-                  <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
-                    {getServiceTypeLabel(record)}
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
+                      {getServiceTypeLabel(record)}
+                    </span>
+                    {isFollowUpVisitRecord(record) && (
+                      <span className="inline-flex rounded-md border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1D4ED8]">
+                        Follow-up
+                      </span>
+                    )}
                   </span>
                 </td>
 

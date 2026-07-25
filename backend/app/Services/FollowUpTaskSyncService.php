@@ -131,23 +131,41 @@ class FollowUpTaskSyncService
             return;
         }
 
+        $this->upsertTask($record, $dueDate, $user);
+    }
+
+    /**
+     * Create or refresh the task a record schedules, without clobbering state the
+     * task owns. A record only knows the date the clinician typed into the form;
+     * reschedules, no-shows and notes live on the task and must survive a re-sync.
+     */
+    private function upsertTask(
+        HealthRecord $record,
+        string $dueDate,
+        ?User $user
+    ): void {
         $existingTask = FollowUpTask::where('health_record_id', $record->id)->first();
 
         if ($existingTask?->state === FollowUpTask::STATE_FULFILLED) {
             return;
         }
 
-        FollowUpTask::updateOrCreate(
-            ['health_record_id' => $record->id],
-            [
-                'patient_id' => $record->patient_id,
-                'barangay_health_center_id' => $record->barangay_health_center_id,
-                'due_date' => $dueDate,
-                'state' => $existingTask?->state ?? FollowUpTask::STATE_PENDING,
-                'created_by' => $record->created_by,
-                'updated_by' => $user?->id,
-            ]
-        );
+        $attributes = [
+            'patient_id' => $record->patient_id,
+            'barangay_health_center_id' => $record->barangay_health_center_id,
+            'state' => $existingTask?->state ?? FollowUpTask::STATE_PENDING,
+            'created_by' => $record->created_by,
+            'updated_by' => $user?->id,
+        ];
+
+        // A rescheduled task carries a date chosen in the Follow-ups module that the
+        // record never learns about. Re-deriving it from the record would silently
+        // undo the reschedule on the next list load.
+        if ($existingTask === null || $existingTask->rescheduled_at === null) {
+            $attributes['due_date'] = $dueDate;
+        }
+
+        FollowUpTask::updateOrCreate(['health_record_id' => $record->id], $attributes);
     }
 
     public function syncEligibleRecordsForUser(User $user): void
@@ -190,10 +208,8 @@ class FollowUpTaskSyncService
         ?FollowUpTask $lockedTask = null
     ): void
     {
-        FollowUpTask::where('health_record_id', $record->id)
-            ->whereNull('fulfilled_at')
-            ->delete();
-
+        // Both lookups resolve against the parent record, so neither can select the
+        // chain task this record owns.
         $task = $lockedTask
             ?? $this->linkedFollowUpTask($record, $user)
             ?? $this->matchingParentTask($record, $user);
@@ -204,24 +220,11 @@ class FollowUpTaskSyncService
         }
 
         if (! $dueDate) {
+            $this->deleteUnfulfilledTask($record);
             return;
         }
 
-        FollowUpTask::updateOrCreate(
-            ['health_record_id' => $record->id],
-            [
-                'patient_id' => $record->patient_id,
-                'barangay_health_center_id' => $record->barangay_health_center_id,
-                'due_date' => $dueDate,
-                'state' => FollowUpTask::STATE_PENDING,
-                'fulfilled_at' => null,
-                'fulfilled_by_health_record_id' => null,
-                'no_show_at' => null,
-                'rescheduled_at' => null,
-                'created_by' => $record->created_by,
-                'updated_by' => $user?->id,
-            ]
-        );
+        $this->upsertTask($record, $dueDate, $user);
     }
 
     private function deleteUnfulfilledTask(HealthRecord $record): void

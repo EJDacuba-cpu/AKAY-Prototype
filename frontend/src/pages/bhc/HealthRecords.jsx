@@ -17,12 +17,18 @@ import {
   createActiveFilterChips,
   isDateInPreset,
 } from "../../utils/filterUtils";
-import { formatServiceType, getRecordId } from "../../utils/healthRecordPrograms";
+import {
+  formatServiceType,
+  getRecordId,
+  getRecordParentId,
+  isFollowUpVisitRecord,
+} from "../../utils/healthRecordPrograms";
 import { queryKeys } from "../../utils/queryKeys";
 
 const DEFAULT_FILTERS = {
   search: "",
   classification: "",
+  visitType: "",
   dateRange: "all",
   dateFrom: "",
   dateTo: "",
@@ -33,25 +39,9 @@ function sameId(a, b) {
 }
 
 function normalizeVisitType(record = {}) {
-  const value = String(record.visitType || record.visit_type || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, " ");
-
-  if (
-    value === "follow up visit" ||
-    value === "follow up" ||
-    record.isFollowUp ||
-    record.is_follow_up ||
-    record.parentHealthRecordId ||
-    record.parent_health_record_id ||
-    record.previousRecordId ||
-    record.previous_record_id
-  ) {
-    return "follow_up_visit";
-  }
-
-  return "initial_consultation";
+  return isFollowUpVisitRecord(record)
+    ? "follow_up_visit"
+    : "initial_consultation";
 }
 
 function getLinkedReferral(record, recordId, referrals) {
@@ -120,11 +110,7 @@ export default function HealthRecords() {
           patientName: formatPatientName(record.patientName || record.patient || record, "Unnamed Patient"),
           visitType,
           visit_type: visitType,
-          parentHealthRecordId:
-            record.parentHealthRecordId ||
-            record.parent_health_record_id ||
-            record.previousRecordId ||
-            "",
+          parentHealthRecordId: getRecordParentId(record),
           classification:
             record.patientClassification ||
             record.classification ||
@@ -196,6 +182,8 @@ export default function HealthRecords() {
     const matchesClassification =
       !filters.classification ||
       formatServiceType(record.classification, "") === filters.classification;
+    const matchesVisitType =
+      !filters.visitType || record.visitType === filters.visitType;
     const matchesVisitDate = isDateInPreset(record.date, filters.dateRange, {
       from: filters.dateFrom,
       to: filters.dateTo,
@@ -204,6 +192,7 @@ export default function HealthRecords() {
     return (
       matchesSearch &&
       matchesClassification &&
+      matchesVisitType &&
       matchesVisitDate
     );
   });
@@ -242,6 +231,18 @@ export default function HealthRecords() {
         },
         { value: "Family Planning", label: "Family Planning" },
         { value: "TB DOTS / TB Monitoring", label: "TB DOTS / TB Monitoring" },
+      ],
+    },
+    {
+      key: "visitType",
+      label: "Visit Type",
+      value: filters.visitType,
+      resetValue: "",
+      type: "select",
+      placeholder: "All Visit Types",
+      options: [
+        { value: "initial_consultation", label: "Initial Consultation" },
+        { value: "follow_up_visit", label: "Follow-up Visit" },
       ],
     },
   ];

@@ -472,7 +472,7 @@ function FollowUpRow({ task, onRecordVisit, onReschedule }) {
 }
 
 function buildTaskActions(task, handlers) {
-  const originalRecordLink = `/bhc/health-records/${task.healthRecordId}`;
+  const originalRecordLink = `/bhc/health-records/${task.originalHealthRecordId || task.healthRecordId}`;
   const latestRecordId =
     task.latestHealthRecordId || task.fulfilledByHealthRecordId || "";
   const actions = [];

@@ -3281,11 +3281,9 @@ export default function AddHealthRecord() {
 
     const finalChiefComplaint =
       isLinkedFollowUpVisit && !chiefComplaint
-        ? `Follow-up visit: ${
-            followUpRecord?.chiefComplaint ||
-            effectiveLinkedFollowUpTask?.healthRecord?.chiefComplaint ||
-            "Return consultation"
-          }`
+        ? followUpRecord?.chiefComplaint ||
+          effectiveLinkedFollowUpTask?.healthRecord?.chiefComplaint ||
+          "Return consultation"
         : isImmunization && !chiefComplaint
           ? "Vaccination Visit"
           : effectiveHealthRecordType === "Family Planning" && !chiefComplaint

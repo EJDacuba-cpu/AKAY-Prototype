@@ -20,18 +20,27 @@ class FollowUpTaskController extends Controller
 
     public function index(
         Request $request,
-        FollowUpNotificationService $followUpNotifications,
-        FollowUpTaskSyncService $followUpTasks
+        FollowUpNotificationService $followUpNotifications
     )
     {
         abort_unless($request->user()->isBhw() || $request->user()->isAdmin(), 403);
 
-        $followUpTasks->syncEligibleRecordsForUser($request->user());
+        // Tasks are kept in step by HealthRecordController on create and update.
+        // Backfilling legacy records is a one-off job (`php artisan follow-ups:sync`),
+        // not something this read endpoint should do on every request.
         $followUpNotifications->notifyDueForUser($request->user());
 
         $query = $this->facilityAccess
             ->scopeFollowUpTasks(FollowUpTask::query(), $request->user())
-            ->with(['patient', 'healthRecord.patient', 'fulfilledByHealthRecord'])
+            ->with([
+                'patient',
+                // Nested to cover realistic follow-up chain depth so
+                // FollowUpTask::getOriginalHealthRecordIdAttribute() can walk back
+                // to the original consultation without N+1 queries.
+                'healthRecord.patient',
+                'healthRecord.parentRecord.parentRecord.parentRecord.parentRecord',
+                'fulfilledByHealthRecord',
+            ])
             ->latest('due_date');
 
         if ($state = $request->query('state')) {

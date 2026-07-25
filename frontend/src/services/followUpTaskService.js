@@ -47,6 +47,11 @@ export function normalizeFollowUpTask(task = {}) {
     id: task.id ? String(task.id) : "",
     healthRecordId:
       task.health_record_id ? String(task.health_record_id) : task.healthRecordId || "",
+    originalHealthRecordId:
+      task.original_health_record_id
+        ? String(task.original_health_record_id)
+        : task.originalHealthRecordId ||
+          (task.health_record_id ? String(task.health_record_id) : task.healthRecordId || ""),
     patientId: task.patient_id ? String(task.patient_id) : task.patientId || "",
     barangayHealthCenterId:
       task.barangay_health_center_id || task.barangayHealthCenterId || "",

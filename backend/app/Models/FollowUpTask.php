@@ -34,9 +34,34 @@ class FollowUpTask extends Model
         'fulfilled_at' => 'datetime',
     ];
 
+    protected $appends = [
+        'original_health_record_id',
+    ];
+
     public function healthRecord(): BelongsTo
     {
         return $this->belongsTo(HealthRecord::class);
+    }
+
+    /**
+     * A follow-up chain re-keys `health_record_id` to the newest visit each time
+     * another follow-up is scheduled, so `health_record_id` alone does not identify
+     * the original consultation. Walk `parentRecord` (eager-loaded by the caller;
+     * see FollowUpTaskController::index) back to the root.
+     */
+    public function getOriginalHealthRecordIdAttribute(): ?int
+    {
+        $record = $this->healthRecord;
+        $guard = 0;
+
+        while ($record !== null && $record->relationLoaded('parentRecord') && $record->parentRecord !== null) {
+            $record = $record->parentRecord;
+            if (++$guard > 10) {
+                break;
+            }
+        }
+
+        return $record?->id;
     }
 
     public function patient(): BelongsTo

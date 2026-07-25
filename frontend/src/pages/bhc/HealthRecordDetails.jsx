@@ -163,9 +163,10 @@ export default function HealthRecordDetails() {
     record.followUpStatus || record.status || "Consultation",
   );
   const followUpDateValue = getRecordValue(record, ["followUpDate", "follow_up_date"], "");
+  const isFollowUpVisitRecord = getRecordVisitTypeValue(record) === "follow_up_visit";
   const canRecordFollowUpVisit =
-    Boolean(followUpDateValue) &&
-    getRecordVisitTypeValue(record) !== "follow_up_visit";
+    Boolean(followUpDateValue) && !isFollowUpVisitRecord;
+  const parentHealthRecordId = getParentHealthRecordId(record);
   const patientConditionValue = getRecordValue(record, [
     "patientCondition",
     "patient_condition",
@@ -276,6 +277,8 @@ export default function HealthRecordDetails() {
           displayDate={displayDate}
           displayTime={displayTime}
           practitioner={getRecordPractitioner(record)}
+          isFollowUpVisit={isFollowUpVisitRecord}
+          parentRecordId={parentHealthRecordId}
           actions={
             <>
               {canRecordFollowUpVisit && (

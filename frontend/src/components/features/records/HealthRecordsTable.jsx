@@ -15,9 +15,18 @@ import {
   getRecordId,
   getRecordIdLabel,
   getServiceTypeLabel,
+  isFollowUpVisitRecord,
 } from "../../../utils/healthRecordPrograms";
 
 const ITEMS_PER_PAGE = 5;
+
+function FollowUpVisitBadge() {
+  return (
+    <span className="inline-flex shrink-0 rounded-md border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1D4ED8]">
+      Follow-up
+    </span>
+  );
+}
 
 export default function HealthRecordsTable({
   records = [],
@@ -113,7 +122,12 @@ export default function HealthRecordsTable({
                   />
                   <MobileRecordField
                     label="Service Type"
-                    value={getServiceTypeLabel(record)}
+                    value={
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        {getServiceTypeLabel(record)}
+                        {isFollowUpVisitRecord(record) && <FollowUpVisitBadge />}
+                      </span>
+                    }
                   />
                 </div>
 
@@ -197,7 +211,10 @@ export default function HealthRecordsTable({
                       </p>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-[13px] font-semibold text-[#475569]">
-                      {getServiceTypeLabel(record)}
+                      <span className="flex items-center gap-1.5">
+                        {getServiceTypeLabel(record)}
+                        {isFollowUpVisitRecord(record) && <FollowUpVisitBadge />}
+                      </span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-right">
                       <div className="relative flex justify-end">
