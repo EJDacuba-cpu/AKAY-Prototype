@@ -23,6 +23,7 @@ import {
   regenerateReferralQrPayload,
 } from "../../services/referrals";
 import { getPatientById } from "../../services/patientService";
+import { getHealthRecordById } from "../../services/healthRecordService";
 import {
   formatDisplayValue,
   formatFacilityName,
@@ -32,6 +33,13 @@ import {
 } from "../../utils/formatters";
 import ReferralPrintSlip from "../../components/features/referrals/ReferralPrintSlip";
 import ReferralQrCode from "../../components/features/referrals/ReferralQrCode";
+import {
+  getVitalSignItems,
+  getRecordChiefComplaint,
+  getRecordSummary,
+  getRecordDiagnosis,
+  getRecordInitialActions,
+} from "../../components/features/health-records/recordDetailsHelpers";
 import { queryKeys } from "../../utils/queryKeys";
 
 const keyframes = `
@@ -74,14 +82,18 @@ export default function ReferralDetails() {
       const linkedPatient = found?.patientId
         ? await getPatientById(found.patientId)
         : null;
+      const linkedRecord = found?.healthRecordId
+        ? await getHealthRecordById(found.healthRecordId).catch(() => null)
+        : null;
 
-      return { referral: found, patient: linkedPatient };
+      return { referral: found, patient: linkedPatient, healthRecord: linkedRecord };
     },
     enabled: Boolean(trackingId),
   });
 
   const referral = details?.referral || null;
   const patient = details?.patient || null;
+  const healthRecord = details?.healthRecord || null;
   const loading = isLoading && !details;
   const detailsUpdating = isFetching && !loading && Boolean(referral);
   const notFound = !loading && !referral;
@@ -236,7 +248,9 @@ export default function ReferralDetails() {
       </div>
 
       <main className="anim-fade-up min-w-0" style={stagger(4)}>
-        {activeTab === "clinical" && <ClinicalSummaryTab referral={referral} />}
+        {activeTab === "clinical" && (
+          <ClinicalSummaryTab referral={referral} healthRecord={healthRecord} />
+        )}
         {activeTab === "returnSlip" && <ReturnSlipTab referral={referral} />}
       </main>
 
@@ -300,10 +314,14 @@ function ReferralHeader({ referral, patient, isUpdating = false }) {
         </div>
       </div>
 
-      <div className="mt-4 grid gap-x-6 gap-y-3 border-t border-slate-100 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-4 grid gap-x-6 gap-y-3 border-t border-slate-100 pt-4 sm:grid-cols-2 lg:grid-cols-4">
         <HeaderDetail
-          label="Date / Time of Referral"
-          value={`${formatDate(referralDate)} - ${formatTime(referralDate)}`}
+          label="Date of Referral"
+          value={formatDate(referralDate)}
+        />
+        <HeaderDetail
+          label="Time of Referral"
+          value={formatTime(referralDate)}
         />
         <HeaderDetail
           label="Referring HCI"
@@ -325,12 +343,25 @@ function ReferralHeader({ referral, patient, isUpdating = false }) {
           label="Referring Practitioner"
           value={getReferringPractitioner(referral)}
         />
+        <HeaderDetail
+          label="Preferred Doctor"
+          value={formatDisplayValue(referral.preferredDoctor, "RHU to assign")}
+        />
       </div>
     </header>
   );
 }
 
-function ClinicalSummaryTab({ referral }) {
+function ClinicalSummaryTab({ referral, healthRecord }) {
+  const record = healthRecord || {};
+  const vitalItems = getVitalSignItems(record);
+  const chiefComplaint =
+    referral.chiefComplaint || getRecordChiefComplaint(record, "");
+  const signsSymptoms = getRecordSummary(record, "");
+  const diagnosis = referral.initialDiagnosis || getRecordDiagnosis(record, "");
+  const treatmentAction =
+    referral.initialActionsTaken || getRecordInitialActions(record, "");
+
   return (
     <div className="space-y-4">
       <RecordSection
@@ -338,40 +369,41 @@ function ClinicalSummaryTab({ referral }) {
         description="Clinical basis sent by the BHC for RHU assessment."
         icon={<Stethoscope size={14} />}
       >
-        <div className="space-y-4">
+        <div className="space-y-5">
+          <div>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Vital Signs
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {vitalItems.map((item) => (
+                <Detail key={item.label} label={item.label} value={item.value} />
+              ))}
+            </div>
+          </div>
           <NarrativeBlock
-            label="Chief Complaint / Concern"
-            value={referral.chiefComplaint || referral.concern}
+            label="Chief Complaint"
+            value={chiefComplaint}
             empty="No chief complaint recorded."
           />
           <NarrativeBlock
-            label="Clinical Summary"
-            value={
-              referral.clinicalSummary ||
-              referral.summaryOfPresentIllness ||
-              referral.physicalExamination
-            }
-            empty="No clinical summary recorded."
+            label="Signs & Symptoms / Summary of Present Illness"
+            value={signsSymptoms}
+            empty="No signs and symptoms recorded."
           />
           <NarrativeBlock
-            label="Initial Diagnosis / Assessment"
-            value={referral.initialDiagnosis || referral.diagnosis}
-            empty="No initial diagnosis recorded."
+            label="Diagnosis / Assessment"
+            value={diagnosis}
+            empty="No diagnosis recorded."
           />
           <NarrativeBlock
-            label="Initial Actions Taken"
-            value={referral.initialActionsTaken || referral.actionsTaken}
-            empty="No initial actions recorded."
+            label="Treatment / Action Taken"
+            value={treatmentAction}
+            empty="No treatment or action taken recorded."
           />
           <NarrativeBlock
             label="Reason for Referral"
             value={referral.reasonForReferral || referral.referralReason}
             empty="No reason for referral recorded."
-          />
-          <NarrativeBlock
-            label="Notes / Remarks"
-            value={referral.remarks || referral.notes}
-            empty="No notes or remarks recorded."
           />
         </div>
       </RecordSection>

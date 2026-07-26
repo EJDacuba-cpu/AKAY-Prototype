@@ -237,12 +237,22 @@ class FacilityAccessService
                 ) && $this->sameAssignedId(
                     $record->patient->barangay_health_center_id,
                     $user->barangay_health_center_id
-                )) || ($user->isRhuStaff() && $this->sameAssignedId(
-                    $record->rural_health_unit_id,
-                    $user->rural_health_unit_id
-                ) && $this->sameAssignedId(
-                    $record->patient->rural_health_unit_id,
-                    $user->rural_health_unit_id
+                )) || ($user->isRhuStaff() && (
+                    ($this->sameAssignedId(
+                        $record->rural_health_unit_id,
+                        $user->rural_health_unit_id
+                    ) && $this->sameAssignedId(
+                        $record->patient->rural_health_unit_id,
+                        $user->rural_health_unit_id
+                    ))
+                    // BHC-registered patients carry no rural_health_unit_id of their
+                    // own, so a record referred to this RHU is authorized via the
+                    // referrals link instead - same rule scopePatientHealthRecords()
+                    // already uses for the patient's health-record history tab.
+                    || Referral::query()
+                        ->where('health_record_id', $record->id)
+                        ->where('rural_health_unit_id', $user->rural_health_unit_id)
+                        ->exists()
                 )));
 
         abort_unless($allowed, 403, self::DENIED_MESSAGE);

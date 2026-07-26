@@ -195,6 +195,7 @@ class HealthRecordRequest extends FormRequest
             'referral.initial_diagnosis' => ['nullable', 'string'],
             'referral.initial_action_taken' => ['nullable', 'string'],
             'referral.referring_practitioner' => ['nullable', 'string', 'max:255'],
+            'referral.preferred_doctor' => ['nullable', 'string', 'max:255'],
             'referral.referral_datetime' => ['nullable', 'date'],
             'referral.remarks' => ['nullable', 'string'],
         ];

@@ -967,6 +967,10 @@ function toPayload(record = {}, { partial = false } = {}) {
             record.referral.referringPractitioner ||
             record.referral.referring_practitioner ||
             null,
+          preferred_doctor:
+            record.referral.preferredDoctor ||
+            record.referral.preferred_doctor ||
+            null,
           referral_datetime:
             record.referral.referralDateTime ||
             record.referral.referral_datetime ||

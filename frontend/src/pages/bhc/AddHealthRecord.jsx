@@ -641,13 +641,6 @@ function normalizeRecordType(value) {
   return raw;
 }
 
-function formatRecordTypeForDisplay(value = "") {
-  const normalized = normalizeRecordType(value);
-  if (normalized === "Immunization") return "Child Health / EPI";
-  if (normalized === "Maternal") return "Maternal / Prenatal";
-  return normalized || "selected service";
-}
-
 function normalizeHypertensionDiabeticCondition(value = "") {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return "";
@@ -785,17 +778,6 @@ function isActiveFollowUpTask(task = {}) {
   );
 }
 
-function getFollowUpTaskStatusLabel(task = {}) {
-  const state = getFollowUpTaskState(task);
-  const labels = {
-    pending: "Pending",
-    due_today: "Due Today",
-    no_show: "No Show",
-    rescheduled: "Rescheduled",
-  };
-  return labels[state] || "Pending";
-}
-
 function getFollowUpTaskServiceType(task = {}) {
   const source =
     task.healthRecord?.category ||
@@ -807,16 +789,6 @@ function getFollowUpTaskServiceType(task = {}) {
     task.recordType ||
     "";
   return normalizeRecordType(source);
-}
-
-function formatFollowUpTaskDate(value = "") {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value || "not scheduled";
-  return date.toLocaleDateString(undefined, {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 function calculateAgeInYears(birthdate, referenceDate = new Date()) {
@@ -951,17 +923,6 @@ export default function AddHealthRecord() {
   const recordId = searchParams.get("recordId");
   const followUpTaskId =
     searchParams.get("followUpId") || searchParams.get("follow_up_id") || "";
-  const routeFollowUpStatus =
-    searchParams.get("followUpStatus") ||
-    searchParams.get("follow_up_status") ||
-    searchParams.get("status") ||
-    "";
-  const routeFollowUpDate =
-    searchParams.get("followUpDate") ||
-    searchParams.get("follow_up_date") ||
-    searchParams.get("dueDate") ||
-    searchParams.get("scheduledDate") ||
-    "";
   const preselectedPatientId = searchParams.get("patientId") || "";
   const preselectedClassification = normalizeRecordType(
     searchParams.get("serviceType") ||
@@ -1774,34 +1735,6 @@ export default function AddHealthRecord() {
     Boolean(selectedPatientId) &&
     DRAFT_SUPPORTED_RECORD_TYPES.has(normalizedHealthRecordType) &&
     !isFollowUpVisitMode;
-  const linkedFollowUpScheduledDate =
-    effectiveLinkedFollowUpTask?.dueDate ||
-    effectiveLinkedFollowUpTask?.due_date ||
-    routeFollowUpDate ||
-    followUpRecord?.followUpDate ||
-    followUpRecord?.follow_up_date ||
-    followUpRecord?.monitoringData?.followUpDate ||
-    followUpRecord?.monitoring_data?.followUpDate ||
-    followUpRecord?.monitoring_data?.follow_up_date ||
-    followUpDate ||
-    "";
-  const linkedFollowUpServiceType = formatRecordTypeForDisplay(
-    getFollowUpTaskServiceType(effectiveLinkedFollowUpTask || {}) ||
-      normalizedHealthRecordType,
-  );
-  const fallbackLinkedFollowUpState =
-    routeFollowUpStatus ||
-    (normalizePatientStatus(
-      followUpRecord?.followUpStatus || followUpRecord?.status,
-    ) === "Completed"
-      ? "fulfilled"
-      : "pending");
-  const linkedFollowUpStatusLabel = getFollowUpTaskStatusLabel(
-    effectiveLinkedFollowUpTask || {
-      state: fallbackLinkedFollowUpState,
-      dueDate: linkedFollowUpScheduledDate,
-    },
-  );
 
   function handleDispensedMedicinesChange(nextMedicines) {
     setDispensedMedicines(nextMedicines);
@@ -3648,12 +3581,7 @@ export default function AddHealthRecord() {
     const preferredDoctorNote = String(
       referralForm.preferredDoctor || "",
     ).trim();
-    const referralRemarks = [
-      referralForm.clinicalSummary,
-      preferredDoctorNote ? `Preferred Doctor: ${preferredDoctorNote}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+    const referralRemarks = referralForm.clinicalSummary || "";
     const officialPayload = {
       ...pendingReferralDraft.formData,
       referral: {
@@ -3671,6 +3599,7 @@ export default function AddHealthRecord() {
         referringPractitioner:
           referralForm.referringPractitioner ||
           pendingReferralDraft.formData.attendingStaff,
+        preferredDoctor: preferredDoctorNote || null,
         referralDate: referralForm.dateOfReferral,
         referralTime: referralForm.timeOfReferral,
         remarks: referralRemarks || null,
@@ -3863,17 +3792,6 @@ export default function AddHealthRecord() {
             <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-[#6B7280]">
               {pageSubtitle}
             </p>
-            {isFollowUpVisitMode && (
-              <p className="mt-2 inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1.5 text-[11px] font-semibold text-[#64748B]">
-                <span>
-                  Linked to active {linkedFollowUpServiceType} follow-up
-                </span>
-                <span className="text-[#CBD5E1]">&bull;</span>
-                <span>{linkedFollowUpStatusLabel}</span>
-                <span className="text-[#CBD5E1]">&bull;</span>
-                <span>{formatFollowUpTaskDate(linkedFollowUpScheduledDate)}</span>
-              </p>
-            )}
           </div>
           {canSaveCurrentDraft && (
             <div className="flex shrink-0 flex-col items-start gap-1.5 sm:items-end">

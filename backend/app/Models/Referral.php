@@ -43,6 +43,7 @@ class Referral extends Model
         'initial_diagnosis',
         'initial_action_taken',
         'referring_practitioner',
+        'preferred_doctor',
         'referral_datetime',
         'status',
         'remarks',

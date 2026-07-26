@@ -14,6 +14,7 @@ import {
   getRecordDateValue,
   getRecordId,
   getRecordIdLabel,
+  getRecordVisitTypeLabel,
   getServiceTypeLabel,
   isFollowUpVisitRecord,
 } from "../../../utils/healthRecordPrograms";
@@ -122,11 +123,16 @@ export default function HealthRecordsTable({
                   />
                   <MobileRecordField
                     label="Service Type"
+                    value={getServiceTypeLabel(record)}
+                  />
+                  <MobileRecordField
+                    label="Visit Type"
                     value={
-                      <span className="flex flex-wrap items-center gap-1.5">
-                        {getServiceTypeLabel(record)}
-                        {isFollowUpVisitRecord(record) && <FollowUpVisitBadge />}
-                      </span>
+                      isFollowUpVisitRecord(record) ? (
+                        <FollowUpVisitBadge />
+                      ) : (
+                        getRecordVisitTypeLabel(record)
+                      )
                     }
                   />
                 </div>
@@ -158,6 +164,7 @@ export default function HealthRecordsTable({
               <th className="whitespace-nowrap px-4 py-3">Date of Visit</th>
               <th className="whitespace-nowrap px-4 py-3">Patient</th>
               <th className="whitespace-nowrap px-4 py-3">Service Type</th>
+              <th className="whitespace-nowrap px-4 py-3">Visit Type</th>
               <th className="whitespace-nowrap px-4 py-3 text-right">
                 Actions
               </th>
@@ -166,7 +173,7 @@ export default function HealthRecordsTable({
           <tbody className="divide-y divide-[#F8FAFC]">
             {currentRecords.length === 0 ? (
               <DataTableEmptyState
-                colSpan={5}
+                colSpan={6}
                 icon={<FileText size={20} className="text-[#94A3B8]" />}
                 title="No Matching Records"
                 description="Try adjusting your search or filter criteria."
@@ -211,10 +218,14 @@ export default function HealthRecordsTable({
                       </p>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-[13px] font-semibold text-[#475569]">
-                      <span className="flex items-center gap-1.5">
-                        {getServiceTypeLabel(record)}
-                        {isFollowUpVisitRecord(record) && <FollowUpVisitBadge />}
-                      </span>
+                      {getServiceTypeLabel(record)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3.5 text-[13px] font-semibold text-[#475569]">
+                      {isFollowUpVisitRecord(record) ? (
+                        <FollowUpVisitBadge />
+                      ) : (
+                        getRecordVisitTypeLabel(record)
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-right">
                       <div className="relative flex justify-end">

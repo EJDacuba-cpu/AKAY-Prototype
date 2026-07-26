@@ -122,6 +122,7 @@ function normalizeReferral(referral = {}) {
     initialActionsTaken: referral.initial_action_taken || referral.initialActionsTaken || "",
     referringPractitioner:
       referral.referring_practitioner || referral.referringPractitioner || "",
+    preferredDoctor: referral.preferred_doctor || referral.preferredDoctor || "",
     referralDateTime: referral.referral_datetime || referral.referralDateTime || "",
     date: referral.referral_datetime?.slice?.(0, 10) || referral.date || "",
     status: normalizeReferralStatus(referral.status),
@@ -148,6 +149,8 @@ function toPayload(referral = {}) {
     initial_action_taken:
       referral.initialActionsTaken || referral.initialActionTaken || referral.medication || null,
     referring_practitioner: referral.referringPractitioner || null,
+    preferred_doctor:
+      referral.preferredDoctor || referral.preferredRhuDoctorName || null,
     referral_datetime:
       referral.referralDateTime ||
       (referral.referralDate

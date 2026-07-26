@@ -291,6 +291,10 @@ export function isFollowUpVisitRecord(record = {}) {
   );
 }
 
+export function getRecordVisitTypeLabel(record = {}) {
+  return isFollowUpVisitRecord(record) ? "Follow-up Visit" : "Initial Consultation";
+}
+
 export function isEpiRecord(record = {}) {
   return hasAnyTerm(record, [
     "immunization",

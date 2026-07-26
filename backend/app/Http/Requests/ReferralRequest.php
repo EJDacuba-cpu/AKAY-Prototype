@@ -25,6 +25,7 @@ class ReferralRequest extends FormRequest
             'initial_diagnosis' => ['nullable', 'string'],
             'initial_action_taken' => ['nullable', 'string'],
             'referring_practitioner' => ['nullable', 'string', 'max:255'],
+            'preferred_doctor' => ['nullable', 'string', 'max:255'],
             'referral_datetime' => ['nullable', 'date'],
             'remarks' => ['nullable', 'string'],
         ];

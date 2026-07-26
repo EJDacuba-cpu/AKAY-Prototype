@@ -28,6 +28,7 @@ import {
   getRecordId,
   getRecordIdLabel,
   getRecordParentId,
+  getRecordVisitTypeLabel,
   getServiceTypeLabel,
   isFollowUpVisitRecord,
 } from "../../utils/healthRecordPrograms";
@@ -307,6 +308,7 @@ function RHUHealthRecordsTable({
               <th className="whitespace-nowrap px-4 py-3">Date of Visit</th>
               <th className="whitespace-nowrap px-4 py-3">Patient</th>
               <th className="whitespace-nowrap px-4 py-3">Service Type</th>
+              <th className="whitespace-nowrap px-4 py-3">Visit Type</th>
               <th className="whitespace-nowrap px-4 py-3 text-right">
                 Actions
               </th>
@@ -316,7 +318,7 @@ function RHUHealthRecordsTable({
           <tbody className="divide-y divide-[#F3F4F6]">
             {paginatedRecords.length === 0 ? (
               <DataTableEmptyState
-                colSpan={5}
+                colSpan={6}
                 icon={<FileText size={20} className="text-[#94A3B8]" />}
                 title="No Matching Records"
                 description="Try adjusting your search or filter criteria."
@@ -350,16 +352,19 @@ function RHUHealthRecordsTable({
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
-                      {getServiceTypeLabel(record)}
-                    </span>
-                    {isFollowUpVisitRecord(record) && (
-                      <span className="inline-flex rounded-md border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1D4ED8]">
-                        Follow-up
-                      </span>
-                    )}
+                  <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
+                    {getServiceTypeLabel(record)}
                   </span>
+                </td>
+
+                <td className="whitespace-nowrap px-4 py-3 text-[13px] font-semibold text-[#475569]">
+                  {isFollowUpVisitRecord(record) ? (
+                    <span className="inline-flex rounded-md border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1D4ED8]">
+                      Follow-up
+                    </span>
+                  ) : (
+                    getRecordVisitTypeLabel(record)
+                  )}
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3 text-right">

@@ -8,6 +8,7 @@ import {
   FileText,
   MapPin,
   Phone,
+  QrCode,
   Stethoscope,
   User,
   UserCheck,
@@ -26,6 +27,7 @@ import {
   refreshReferralWorkflowData,
   updateReferralByTrackingId,
 } from "../../services/referrals";
+import { getHealthRecordById } from "../../services/healthRecordService";
 import {
   formatDisplayValue,
   formatFacilityName,
@@ -33,6 +35,13 @@ import {
   formatReferralStatus,
   formatUserName,
 } from "../../utils/formatters";
+import {
+  getVitalSignItems,
+  getRecordChiefComplaint,
+  getRecordSummary,
+  getRecordDiagnosis,
+  getRecordInitialActions,
+} from "../../components/features/health-records/recordDetailsHelpers";
 import { queryKeys } from "../../utils/queryKeys";
 
 const keyframes = `
@@ -65,9 +74,13 @@ export default function RHUReferralDetails() {
     queryKey: queryKeys.referralDetails("rhu", trackingId),
     queryFn: async () => {
       const found = await getReferralByRouteParam(trackingId);
+      const linkedRecord = found?.healthRecordId
+        ? await getHealthRecordById(found.healthRecordId).catch(() => null)
+        : null;
       return {
         referral: found,
         patient: getReferralPatientSnapshot(found),
+        healthRecord: linkedRecord,
       };
     },
     enabled: Boolean(trackingId),
@@ -76,6 +89,7 @@ export default function RHUReferralDetails() {
 
   const referral = details?.referral || null;
   const patient = details?.patient || null;
+  const healthRecord = details?.healthRecord || null;
   const loading = isLoading && !details;
   const detailsUpdating = isFetching && !loading && Boolean(referral);
   const unauthorized = error?.status === 403;
@@ -211,7 +225,7 @@ export default function RHUReferralDetails() {
       </div>
 
       <main className="anim-fade-up min-w-0" style={stagger(3)}>
-        <ReferralRecord referral={referral} patient={patient} />
+        <ReferralRecord referral={referral} patient={patient} healthRecord={healthRecord} />
       </main>
       </div>
       <LateArrivalModal
@@ -271,6 +285,11 @@ function ReferralHeader({
               icon={<Phone size={12} />}
               value={getContact(referral, patient)}
             />
+            <InfoChip
+              icon={<QrCode size={12} />}
+              value={referral.trackingId}
+              mono
+            />
           </div>
         </div>
         <ReferralActions
@@ -281,18 +300,17 @@ function ReferralHeader({
         />
       </div>
 
-      <div className="mt-4 grid gap-x-6 gap-y-3 border-t border-slate-100 pt-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid gap-x-6 gap-y-3 border-t border-slate-100 pt-4 sm:grid-cols-2 lg:grid-cols-4">
         <HeaderDetail
-          label="Tracking ID"
-          value={referral.trackingId || referral.id}
-          mono
+          label="Date of Referral"
+          value={formatDate(referralDate)}
         />
         <HeaderDetail
-          label="Date / Time of Referral"
-          value={`${formatDate(referralDate)} - ${formatTime(referralDate)}`}
+          label="Time of Referral"
+          value={formatTime(referralDate)}
         />
         <HeaderDetail
-          label="Name of Referring HCI"
+          label="Referring HCI"
           value={getReferringHci(referral, patient)}
         />
         <HeaderDetail
@@ -310,6 +328,10 @@ function ReferralHeader({
         <HeaderDetail
           label="Referring Practitioner"
           value={getReferringPractitioner(referral)}
+        />
+        <HeaderDetail
+          label="Preferred Doctor"
+          value={formatDisplayValue(referral.preferredDoctor, "RHU to assign")}
         />
       </div>
     </header>
@@ -336,8 +358,16 @@ function HeaderDetail({ label, value, mono }) {
   );
 }
 
-function ReferralRecord({ referral, patient }) {
+function ReferralRecord({ referral, patient, healthRecord }) {
   const referralDate = getReferralDate(referral);
+  const record = healthRecord || {};
+  const vitalItems = getVitalSignItems(record);
+  const chiefComplaint =
+    referral.chiefComplaint || getRecordChiefComplaint(record, "");
+  const signsSymptoms = getRecordSummary(record, "");
+  const diagnosis = referral.initialDiagnosis || getRecordDiagnosis(record, "");
+  const treatmentAction =
+    referral.initialActionsTaken || getRecordInitialActions(record, "");
 
   return (
     <div className="space-y-4">
@@ -401,6 +431,10 @@ function ReferralRecord({ referral, patient }) {
             label="Name and Signature of Referring Practitioner"
             value={getReferringPractitioner(referral)}
           />
+          <Detail
+            label="Preferred Doctor"
+            value={formatDisplayValue(referral.preferredDoctor, "RHU to assign")}
+          />
         </div>
       </RecordSection>
 
@@ -409,30 +443,36 @@ function ReferralRecord({ referral, patient }) {
         description="Clinical basis and reason for this BHC-RHU referral."
         icon={<Stethoscope size={14} />}
       >
-        <div className="space-y-4">
+        <div className="space-y-5">
+          <div>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Vital Signs
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {vitalItems.map((item) => (
+                <Detail key={item.label} label={item.label} value={item.value} />
+              ))}
+            </div>
+          </div>
           <NarrativeBlock
             label="Chief Complaint"
-            value={referral.chiefComplaint || referral.concern}
+            value={chiefComplaint}
             empty="No chief complaint recorded."
           />
           <NarrativeBlock
-            label="Summary of Present Illness and Physical Examination"
-            value={
-              referral.summaryOfPresentIllness ||
-              referral.physicalExamination ||
-              referral.clinicalSummary
-            }
-            empty="No clinical summary recorded."
+            label="Signs & Symptoms / Summary of Present Illness"
+            value={signsSymptoms}
+            empty="No signs and symptoms recorded."
           />
           <NarrativeBlock
-            label="Initial Diagnosis"
-            value={referral.initialDiagnosis || referral.diagnosis}
-            empty="No initial diagnosis recorded."
+            label="Diagnosis / Assessment"
+            value={diagnosis}
+            empty="No diagnosis recorded."
           />
           <NarrativeBlock
-            label="Initial Actions Taken"
-            value={referral.initialActionsTaken || referral.actionsTaken}
-            empty="No initial actions recorded."
+            label="Treatment / Action Taken"
+            value={treatmentAction}
+            empty="No treatment or action taken recorded."
           />
           <NarrativeBlock
             label="Reason for Referral"
