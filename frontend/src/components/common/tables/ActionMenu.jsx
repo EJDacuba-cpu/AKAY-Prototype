@@ -1,4 +1,4 @@
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, MoreVertical } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
@@ -20,12 +20,15 @@ export default function ActionMenu({
   /* 2. BAGONG DEFAULT LABEL */
   editPatientLabel = "Edit Patient",
   actions = [],
+  triggerVariant = "default",
 }) {
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
   const displayTitle = formatDisplayValue(title, "Not recorded");
   const displaySubtitle = subtitle ? formatDisplayValue(subtitle, "") : "";
+  const calendarTrigger = triggerVariant === "calendar";
+  const TriggerIcon = calendarTrigger ? MoreVertical : MoreHorizontal;
 
   const btnRef = useRef(null);
   const menuRef = useRef(null);
@@ -213,13 +216,22 @@ export default function ActionMenu({
         ref={btnRef}
         type="button"
         onClick={() => (open ? closeMenu() : openMenu())}
-        className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-all duration-200 active:scale-[0.92] ${
-          open
-            ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]"
-            : "border-[#E5E7EB] bg-white text-[#94A3B8] hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
-        }`}
+        aria-label="Open actions"
+        className={
+          calendarTrigger
+            ? `inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent bg-transparent transition-colors active:scale-[0.92] ${
+                open
+                  ? "text-[#B91C1C]"
+                  : "text-slate-500 hover:text-[#B91C1C]"
+              }`
+            : `inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-all duration-200 active:scale-[0.92] ${
+                open
+                  ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]"
+                  : "border-[#E5E7EB] bg-white text-[#94A3B8] hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
+              }`
+        }
       >
-        <MoreHorizontal size={15} />
+        <TriggerIcon size={15} />
       </button>
 
       {menu}

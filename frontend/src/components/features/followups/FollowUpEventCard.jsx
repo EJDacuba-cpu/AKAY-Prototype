@@ -49,6 +49,7 @@ export default function FollowUpEventCard({
           title={patientName}
           subtitle={`#${task.healthRecordId}`}
           actions={actions}
+          triggerVariant="calendar"
         />
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { AlertCircle, LoaderCircle, Package, RefreshCw, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   formatMedicineQuantity,
   getMedicineExpiryStatus,
@@ -19,6 +19,15 @@ function toNumber(value) {
 
 function normalizeText(value = "") {
   return String(value || "").trim().toLowerCase();
+}
+
+function hasDraftValues(draft = {}) {
+  return Boolean(
+    draft.category ||
+      draft.medicineId ||
+      draft.quantity ||
+      String(draft.remarks || "").trim(),
+  );
 }
 
 function formatDate(value) {
@@ -76,6 +85,8 @@ export default function DispensedMedicinesSection({
   error = "",
   onRetry,
   serviceHint = "",
+  pendingDraftError = "",
+  onPendingDraftChange,
 }) {
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [validationError, setValidationError] = useState("");
@@ -131,14 +142,19 @@ export default function DispensedMedicinesSection({
     [inventoryById, value],
   );
 
+  useEffect(
+    () => () => onPendingDraftChange?.(false),
+    [onPendingDraftChange],
+  );
+
   function updateDraft(key, nextValue) {
     setValidationError("");
-    setDraft((current) => {
-      if (key === "category") {
-        return { ...current, category: nextValue, medicineId: "" };
-      }
-      return { ...current, [key]: nextValue };
-    });
+    const nextDraft =
+      key === "category"
+        ? { ...draft, category: nextValue, medicineId: "" }
+        : { ...draft, [key]: nextValue };
+    setDraft(nextDraft);
+    onPendingDraftChange?.(hasDraftValues(nextDraft));
   }
 
   function addMedicine() {
@@ -196,6 +212,7 @@ export default function DispensedMedicinesSection({
         : [...value, nextItem],
     );
     setDraft(EMPTY_DRAFT);
+    onPendingDraftChange?.(false);
   }
 
   function removeMedicine(medicineId) {
@@ -271,9 +288,9 @@ export default function DispensedMedicinesSection({
       <div className="rounded-xl border border-[#E8ECF0] bg-white p-4">
         <div>
           <p className="text-xs leading-relaxed text-[#64748B]">
-            Optional medicines or supplies given during this visit. Items listed
-            here will be deducted from BHC inventory only after saving this
-            health record.
+            Select an item and quantity, then click Add Medicine. Only items
+            shown in the list below will be saved and deducted from BHC
+            inventory with this health record.
           </p>
           {serviceHint && (
             <p className="mt-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-medium leading-relaxed text-amber-700">
@@ -399,9 +416,9 @@ export default function DispensedMedicinesSection({
           </button>
         </div>
 
-        {validationError && (
+        {(validationError || pendingDraftError) && (
           <p className="mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-[#B91C1C]">
-            {validationError}
+            {validationError || pendingDraftError}
           </p>
         )}
 

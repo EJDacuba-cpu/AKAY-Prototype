@@ -1053,6 +1053,10 @@ export default function AddHealthRecord() {
   const [bhcMedicineInventoryReloadKey, setBhcMedicineInventoryReloadKey] =
     useState(0);
   const [dispensedMedicines, setDispensedMedicines] = useState([]);
+  const [
+    hasPendingDispensedMedicineDraft,
+    setHasPendingDispensedMedicineDraft,
+  ] = useState(false);
   const [healthRecordDrafts, setHealthRecordDrafts] = useState([]);
   const [draftListLoading, setDraftListLoading] = useState(false);
   const [draftListError, setDraftListError] = useState("");
@@ -1758,6 +1762,18 @@ export default function AddHealthRecord() {
     setDraftMedicineWarnings([]);
   }
 
+  const handlePendingDispensedMedicineChange = useCallback((pending) => {
+    setHasPendingDispensedMedicineDraft(pending);
+    if (!pending) {
+      setValidationErrors((current) => {
+        if (!current.dispensedMedicines) return current;
+        const next = { ...current };
+        delete next.dispensedMedicines;
+        return next;
+      });
+    }
+  }, []);
+
   function buildHealthRecordDraftPayload() {
     return {
       dateOfVisit,
@@ -2456,7 +2472,10 @@ export default function AddHealthRecord() {
     if (!firstField) return false;
 
     window.requestAnimationFrame(() => {
-      const selector = `[name="${firstField}"], [data-field="${firstField}"]`;
+      const selector =
+        firstField === "dispensedMedicines"
+          ? "[data-dispensed-medicines-section]"
+          : `[name="${firstField}"], [data-field="${firstField}"]`;
       const element = document.querySelector(selector);
       element?.scrollIntoView({ behavior: "smooth", block: "center" });
       if (typeof element?.focus === "function") {
@@ -2486,7 +2505,14 @@ export default function AddHealthRecord() {
     if (requiresFollowUp && !String(followUpReason || "").trim()) {
       errors.followUpReason = "Follow-up reason is required.";
     }
+    if (hasPendingDispensedMedicineDraft) {
+      errors.dispensedMedicines =
+        'Click "Add Medicine" before saving so this item is included in the visit.';
+    }
     if (isGeneralConsultationFollowUp) {
+      if (!chiefComplaint.trim()) {
+        errors.chiefComplaint = "Chief complaint is required.";
+      }
       if (!summaryOfPresentIllness.trim()) {
         errors.summaryOfPresentIllness = "Follow-up findings are required.";
       }
@@ -4104,12 +4130,6 @@ export default function AddHealthRecord() {
         className="relative ml-0 mr-auto w-full max-w-7xl"
       >
         <div className="space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
-        {isLinkedFollowUpVisit && (
-          <PreviousConsultationSummary
-            task={effectiveLinkedFollowUpTask}
-            record={followUpRecord || effectiveLinkedFollowUpTask?.healthRecord}
-          />
-        )}
         <FormSection
           title="Visit Overview"
           subtitle="Confirm the visit schedule and attending practitioner."
@@ -4156,7 +4176,7 @@ export default function AddHealthRecord() {
           <>
             <FormSection
               title="Follow-up Assessment"
-              subtitle="Record the patient's condition and findings during this return visit."
+              subtitle="Record the patient's current complaint, condition, and updated clinical findings."
               delay={3}
             >
               <div className="grid gap-4 lg:grid-cols-2">
@@ -4173,9 +4193,16 @@ export default function AddHealthRecord() {
                   <option>Recovered</option>
                 </FieldSelect>
                 <FieldInput
-                  label="Updated Diagnosis"
-                  value={diagnosis}
-                  onChange={(event) => setDiagnosis(event.target.value)}
+                  label="Chief Complaint"
+                  placeholder="e.g. Persistent cough, improving fever"
+                  required
+                  name="chiefComplaint"
+                  error={validationErrors.chiefComplaint}
+                  value={chiefComplaint}
+                  onChange={(event) => {
+                    clearValidationError("chiefComplaint");
+                    setChiefComplaint(event.target.value);
+                  }}
                 />
               </div>
               <div className="mt-4">
@@ -4193,6 +4220,14 @@ export default function AddHealthRecord() {
                   }
                   placeholder="Record the patient's current symptoms, progress, examination findings, or changes since the original visit..."
                   rows={5}
+                />
+              </div>
+              <div className="mt-4">
+                <FieldInput
+                  label="Diagnosis / Assessment"
+                  value={diagnosis}
+                  onChange={(event) => setDiagnosis(event.target.value)}
+                  placeholder="Updated diagnosis or clinical assessment"
                 />
               </div>
             </FormSection>
@@ -4239,7 +4274,7 @@ export default function AddHealthRecord() {
             >
               <div className="grid gap-4 lg:grid-cols-2">
                 <FieldInput
-                  label="Action Taken"
+                  label="Treatment / Action Taken"
                   value={medication}
                   onChange={(event) => setMedication(event.target.value)}
                 />
@@ -4249,6 +4284,32 @@ export default function AddHealthRecord() {
                   onChange={(event) => setConsultationNotes(event.target.value)}
                   placeholder="Write additional instructions, advice, or return visit notes..."
                   rows={3}
+                />
+              </div>
+              <div className="mt-5 border-t border-slate-200 pt-5">
+                <div className="mb-3">
+                  <h3 className="text-sm font-bold text-[#0F172A]">
+                    Medicines / Supplies Dispensed
+                  </h3>
+                  <p className="mt-0.5 text-xs leading-relaxed text-[#64748B]">
+                    Optional medicines or supplies given from BHC inventory
+                    during this follow-up visit.
+                  </p>
+                </div>
+                <DispensedMedicinesSection
+                  inventory={bhcMedicineInventory}
+                  value={dispensedMedicines}
+                  onChange={handleDispensedMedicinesChange}
+                  pendingDraftError={validationErrors.dispensedMedicines}
+                  onPendingDraftChange={
+                    handlePendingDispensedMedicineChange
+                  }
+                  disabled={isEditingRecord}
+                  loading={bhcMedicineInventoryLoading}
+                  error={bhcMedicineInventoryError}
+                  onRetry={() =>
+                    setBhcMedicineInventoryReloadKey((key) => key + 1)
+                  }
                 />
               </div>
             </FormSection>
@@ -5081,6 +5142,8 @@ export default function AddHealthRecord() {
                 inventory={bhcMedicineInventory}
                 value={dispensedMedicines}
                 onChange={handleDispensedMedicinesChange}
+                pendingDraftError={validationErrors.dispensedMedicines}
+                onPendingDraftChange={handlePendingDispensedMedicineChange}
                 disabled={isEditingRecord}
                 loading={bhcMedicineInventoryLoading}
                 error={bhcMedicineInventoryError}
@@ -5256,6 +5319,8 @@ export default function AddHealthRecord() {
                 inventory={bhcMedicineInventory}
                 value={dispensedMedicines}
                 onChange={handleDispensedMedicinesChange}
+                pendingDraftError={validationErrors.dispensedMedicines}
+                onPendingDraftChange={handlePendingDispensedMedicineChange}
                 disabled={isEditingRecord}
                 loading={bhcMedicineInventoryLoading}
                 error={bhcMedicineInventoryError}
@@ -5604,37 +5669,6 @@ function formatFollowUpSchedule(task = {}) {
     ? dateValue
     : new Intl.DateTimeFormat("en-PH", { dateStyle: "long" }).format(parsed);
   return task.dueTime ? `${date}, ${task.dueTime}` : date;
-}
-
-function PreviousConsultationSummary({ task, record }) {
-  const source = record || task?.healthRecord || {};
-  const sourceId = source.id || task?.healthRecordId;
-
-  return (
-    <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4">
-      <div className="flex items-center gap-2">
-        <FileClock size={17} className="text-blue-700" />
-        <h2 className="text-sm font-bold text-blue-950">
-          Previous Consultation · Record #{sourceId || "—"}
-        </h2>
-      </div>
-      <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-        <FollowUpPromptDetail
-          label="Service"
-          value={getFollowUpTaskServiceType(task || { healthRecord: source })}
-        />
-        <FollowUpPromptDetail
-          label="Complaint"
-          value={source.chiefComplaint || source.chief_complaint}
-        />
-        <FollowUpPromptDetail label="Diagnosis" value={source.diagnosis} />
-        <FollowUpPromptDetail
-          label="Treatment"
-          value={source.treatmentNotes || source.medication || source.treatment}
-        />
-      </dl>
-    </div>
-  );
 }
 
 function HeaderIconButton({

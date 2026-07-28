@@ -11,10 +11,12 @@ import {
   Syringe,
   Users,
 } from "lucide-react";
+import { Link } from "react-router";
 
 import { RecordTabs } from "../../common";
 import PatientDetailItem from "../patients/PatientDetailItem";
 import { formatDisplayValue, formatLongDate } from "../../../utils/formatters";
+import { FollowUpEpisodeContent } from "./FollowUpEpisodePanel";
 import {
   formatHypertensionDiabeticClientStatus,
   formatHypertensionDiabeticCondition,
@@ -58,6 +60,8 @@ import {
   getUltrasoundValue,
   getVitalField,
   getBloodPressureValue,
+  formatDisplayTime,
+  getRecordVisitTypeValue,
 } from "./recordDetailsHelpers";
 
 /* ─────────────────────────────────────────────
@@ -79,6 +83,16 @@ export default function HealthRecordClinicalDetails({
     record.followUpStatus || record.status || "Consultation",
   );
   const followUpDateValue = getRecordValue(record, ["followUpDate", "follow_up_date"], "");
+  const followUpTimeValue = getRecordValue(
+    record,
+    ["followUpTime", "follow_up_time"],
+    "",
+  );
+  const followUpReasonValue = getRecordValue(
+    record,
+    ["followUpReason", "follow_up_reason"],
+    "",
+  );
   const patientConditionValue = getRecordValue(record, [
     "patientCondition",
     "patient_condition",
@@ -222,6 +236,8 @@ export default function HealthRecordClinicalDetails({
         hfmdSurveillance={hfmdSurveillance}
         dispensedMedicines={dispensedMedicines}
         followUpDate={followUpDateValue}
+        followUpTime={followUpTimeValue}
+        followUpReason={followUpReasonValue}
         needsReferral={needsRhuReferral}
         linkedReferral={linkedReferral}
         patientCondition={patientConditionValue}
@@ -277,7 +293,7 @@ function DetailSection({ title, children }) {
   );
 }
 
-function DispensedMedicinesList({ medicines }) {
+export function DispensedMedicinesList({ medicines }) {
   if (!medicines.length) {
     return (
       <SectionEmptyState text="No medicines or supplies were dispensed during this visit." />
@@ -753,6 +769,8 @@ function GeneralConsultationRecordDetails({
   hfmdSurveillance,
   dispensedMedicines = [],
   followUpDate,
+  followUpTime,
+  followUpReason,
   needsReferral,
   linkedReferral,
   patientCondition,
@@ -761,6 +779,8 @@ function GeneralConsultationRecordDetails({
 }) {
   const referralStatus =
     linkedReferral?.status || linkedReferral?.referralStatus || "";
+  const isFollowUpVisit =
+    getRecordVisitTypeValue(record) === "follow_up_visit";
   const hasConsultationDetails = Boolean(
     chiefComplaint ||
       diagnosis ||
@@ -773,7 +793,7 @@ function GeneralConsultationRecordDetails({
   const tabs = [
     {
       id: "consultation",
-      label: "Consultation",
+      label: "Clinical Details",
       icon: Stethoscope,
       content: (
         <div className="space-y-6">
@@ -787,13 +807,23 @@ function GeneralConsultationRecordDetails({
                 />
               ))}
               <TabbedDetailItem label="Record Status" value={status} />
+              {isFollowUpVisit && (
+                <TabbedDetailItem
+                  label="Current Condition"
+                  value={patientCondition}
+                />
+              )}
             </div>
           </TabbedSubsection>
           {hasConsultationDetails ? (
             <div className="space-y-4">
               <TabbedNarrativeBlock label="Chief Complaint" value={chiefComplaint} />
               <TabbedNarrativeBlock
-                label="Signs & Symptoms / Summary of Present Illness"
+                label={
+                  isFollowUpVisit
+                    ? "Follow-up Findings / Changes Since Previous Visit"
+                    : "Signs & Symptoms / Summary of Present Illness"
+                }
                 value={signsSymptoms}
               />
               <TabbedNarrativeBlock label="Diagnosis / Assessment" value={diagnosis} />
@@ -806,7 +836,7 @@ function GeneralConsultationRecordDetails({
     },
     {
       id: "careReporting",
-      label: "Care & Reporting",
+      label: "Treatment & Supplies",
       icon: ClipboardCheck,
       content: (
         <div className="space-y-6">
@@ -822,13 +852,16 @@ function GeneralConsultationRecordDetails({
               />
             )}
             {isDistinctRecordedValue(medicalNotes, treatmentAction, treatmentNotes) && (
-              <TabbedNarrativeBlock label="Medical Notes" value={medicalNotes} />
+              <TabbedNarrativeBlock
+                label={isFollowUpVisit ? "Follow-up Notes" : "Medical Notes"}
+                value={medicalNotes}
+              />
             )}
           </div>
           <TabbedSubsection title="Medicines / Supplies Dispensed">
             <DispensedMedicinesList medicines={dispensedMedicines} />
           </TabbedSubsection>
-          {shouldShowReporting && (
+          {!isFollowUpVisit && shouldShowReporting && (
             <TabbedSubsection title="Reporting Decision">
               <div className="grid gap-4 md:grid-cols-2">
                 <TabbedDetailItem
@@ -847,37 +880,100 @@ function GeneralConsultationRecordDetails({
     },
     {
       id: "followup",
-      label: "Follow-up / Referral",
+      label: "Follow-up History",
       icon: CalendarClock,
       content: (
-        <div className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
+        <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2">
             <TabbedDetailItem
               label="Next Follow-up Date"
               value={formatLongDate(followUpDate, "Not recorded")}
             />
             <TabbedDetailItem
-              label="Needs RHU Referral"
-              value={needsReferral ? "Yes" : "No"}
+              label="Next Follow-up Time"
+              value={formatDisplayTime(followUpTime, "Not recorded")}
             />
-            <TabbedDetailItem label="Referral Status" value={referralStatus} />
-            {(patientCondition || status === "Follow-up Required") && (
-              <TabbedDetailItem
-                label="Patient Condition"
-                value={patientCondition}
-              />
-            )}
           </div>
+          <TabbedNarrativeBlock
+            label="Follow-up Reason"
+            value={followUpReason}
+          />
           {monitoringNotes && (
             <TabbedNarrativeBlock
               label="Monitoring Notes"
               value={monitoringNotes}
             />
           )}
+          <div className="border-t border-slate-200 pt-6">
+            <FollowUpEpisodeContent
+              episode={record.followUpEpisode}
+              currentRecord={record}
+              showVisitChain={false}
+            />
+          </div>
         </div>
       ),
     },
   ];
+
+  if (needsReferral || linkedReferral) {
+    const referralTarget =
+      linkedReferral?.trackingId ||
+      linkedReferral?.tracking_id ||
+      linkedReferral?.id ||
+      "";
+
+    tabs.push({
+      id: "referral",
+      label: "Referral",
+      icon: HeartHandshake,
+      content: (
+        <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <TabbedDetailItem
+              label="Referral Required"
+              value={needsReferral ? "Yes" : "No"}
+            />
+            <TabbedDetailItem
+              label="Referral Status"
+              value={referralStatus}
+            />
+            <TabbedDetailItem
+              label="Urgency"
+              value={
+                linkedReferral?.urgencyLevel ||
+                linkedReferral?.urgency_level
+              }
+            />
+            <TabbedDetailItem
+              label="Receiving Facility"
+              value={
+                linkedReferral?.receivingFacility ||
+                linkedReferral?.ruralHealthUnit?.name ||
+                linkedReferral?.rural_health_unit?.name
+              }
+            />
+          </div>
+          <TabbedNarrativeBlock
+            label="Reason for Referral"
+            value={
+              linkedReferral?.reasonForReferral ||
+              linkedReferral?.reason_for_referral
+            }
+          />
+          {referralTarget && (
+            <Link
+              to={`/bhc/referrals/${referralTarget}`}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
+            >
+              <ClipboardList size={14} />
+              View Referral Details
+            </Link>
+          )}
+        </div>
+      ),
+    });
+  }
 
   return (
     <RecordTabs

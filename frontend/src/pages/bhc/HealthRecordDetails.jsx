@@ -188,6 +188,8 @@ export default function HealthRecordDetails() {
   const displayDate = formatLongDate(getRecordDateValue(record), "Not recorded");
   const displayTime = getRecordTime(record);
   const pageTitle = getHealthRecordDetailsTitle(serviceType);
+  const isGeneralConsultationRecord =
+    serviceType === "General Consultation";
 
   return (
     <>
@@ -208,7 +210,9 @@ export default function HealthRecordDetails() {
           displayTime={displayTime}
           practitioner={getRecordPractitioner(record)}
           isFollowUpVisit={isFollowUpVisitRecord}
-          parentRecordId={parentHealthRecordId}
+          parentRecordId={
+            isGeneralConsultationRecord ? null : parentHealthRecordId
+          }
           actions={
             <>
               {canRecordFollowUpVisit && (
@@ -261,7 +265,9 @@ export default function HealthRecordDetails() {
               patient={patient}
               linkedReferral={linkedReferral}
             />
-            <FollowUpEpisodePanel episode={record.followUpEpisode} />
+            {!isGeneralConsultationRecord && (
+              <FollowUpEpisodePanel episode={record.followUpEpisode} />
+            )}
           </div>
 
           {showPatientProfileSidebar && (
