@@ -86,8 +86,10 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
                 ->middleware('throttle:health-record-drafts');
             Route::get('/referral-routing', [ReferralController::class, 'destination']);
             Route::get('/follow-up-tasks', [FollowUpTaskController::class, 'index']);
+            Route::get('/follow-up-tasks/{followUpTask}', [FollowUpTaskController::class, 'show']);
             Route::patch('/follow-up-tasks/{followUpTask}/no-show', [FollowUpTaskController::class, 'markNoShow']);
             Route::patch('/follow-up-tasks/{followUpTask}/reschedule', [FollowUpTaskController::class, 'reschedule']);
+            Route::patch('/follow-up-tasks/{followUpTask}/cancel', [FollowUpTaskController::class, 'cancel']);
             Route::get('/reports/bhw', [ReportController::class, 'bhw']);
         });
     });

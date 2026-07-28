@@ -14,6 +14,11 @@ function normalizeHealthRecord(record = {}) {
     category: record.category || record.patientClassification || "",
     chiefComplaint: record.chief_complaint || record.chiefComplaint || "",
     diagnosis: record.diagnosis || "",
+    treatmentNotes: record.treatment_notes || record.treatmentNotes || "",
+    notes: record.notes || "",
+    visitType: record.visit_type || record.visitType || "",
+    parentHealthRecordId:
+      record.parent_health_record_id || record.parentHealthRecordId || "",
     dateOfVisit:
       record.dateOfVisit ||
       record.date_recorded?.slice?.(0, 10) ||
@@ -60,6 +65,7 @@ export function normalizeFollowUpTask(task = {}) {
     notes: task.notes || "",
     noShowAt: task.no_show_at || task.noShowAt || "",
     rescheduledAt: task.rescheduled_at || task.rescheduledAt || "",
+    cancelledAt: task.cancelled_at || task.cancelledAt || "",
     fulfilledAt: task.fulfilled_at || task.fulfilledAt || "",
     fulfilledByHealthRecordId:
       task.fulfilled_by_health_record_id ||
@@ -83,6 +89,16 @@ export function normalizeFollowUpTask(task = {}) {
       task.contact ||
       task.contactNumber ||
       "",
+    dueTime: task.due_time || task.dueTime || "",
+    reason: task.reason || "",
+    practitioner: task.practitioner
+      ? {
+          id: String(task.practitioner.id),
+          name: task.practitioner.name || "",
+        }
+      : task.practitioner_id || task.practitionerId
+        ? { id: String(task.practitioner_id || task.practitionerId), name: "" }
+        : null,
   };
 }
 
@@ -96,15 +112,43 @@ export async function getFollowUpTasks(params = {}) {
   return unwrapList(response).map(normalizeFollowUpTask);
 }
 
-export async function rescheduleFollowUp(taskId, dueDate, notes = "") {
+export async function getFollowUpTask(taskId) {
+  const response = await apiRequest(`/follow-up-tasks/${taskId}`);
+  return normalizeFollowUpTask(unwrapData(response));
+}
+
+export async function rescheduleFollowUp(
+  taskId,
+  dueDateOrPayload,
+  legacyNotes = "",
+) {
+  const payload =
+    typeof dueDateOrPayload === "object"
+      ? dueDateOrPayload
+      : { dueDate: dueDateOrPayload, notes: legacyNotes };
   const response = await apiRequest(`/follow-up-tasks/${taskId}/reschedule`, {
     method: "PATCH",
-    body: { due_date: dueDate, notes },
+    body: {
+      due_date: payload.dueDate,
+      due_time: payload.dueTime || null,
+      reason: payload.reason || null,
+      notes: payload.notes || "",
+    },
+  });
+  return normalizeFollowUpTask(unwrapData(response));
+}
+
+export async function cancelFollowUp(taskId, notes = "") {
+  const response = await apiRequest(`/follow-up-tasks/${taskId}/cancel`, {
+    method: "PATCH",
+    body: { notes },
   });
   return normalizeFollowUpTask(unwrapData(response));
 }
 
 export default {
   getFollowUpTasks,
+  getFollowUpTask,
   rescheduleFollowUp,
+  cancelFollowUp,
 };

@@ -70,6 +70,11 @@ class HealthRecord extends Model
         return $this->hasOne(FollowUpTask::class);
     }
 
+    public function completedFollowUpTask(): HasOne
+    {
+        return $this->hasOne(FollowUpTask::class, 'fulfilled_by_health_record_id');
+    }
+
     public function childRecords(): HasMany
     {
         return $this->hasMany(self::class, 'parent_health_record_id');

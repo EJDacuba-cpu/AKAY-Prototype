@@ -11,16 +11,27 @@ class FollowUpTask extends Model
     public const STATE_NO_SHOW = 'no_show';
     public const STATE_RESCHEDULED = 'rescheduled';
     public const STATE_FULFILLED = 'fulfilled';
+    public const STATE_CANCELLED = 'cancelled';
+
+    public const ACTIVE_STATES = [
+        self::STATE_PENDING,
+        self::STATE_RESCHEDULED,
+        self::STATE_NO_SHOW,
+    ];
 
     protected $fillable = [
         'health_record_id',
         'patient_id',
         'barangay_health_center_id',
         'due_date',
+        'due_time',
         'state',
         'notes',
+        'reason',
+        'practitioner_id',
         'no_show_at',
         'rescheduled_at',
+        'cancelled_at',
         'fulfilled_at',
         'fulfilled_by_health_record_id',
         'created_by',
@@ -31,6 +42,7 @@ class FollowUpTask extends Model
         'due_date' => 'date',
         'no_show_at' => 'datetime',
         'rescheduled_at' => 'datetime',
+        'cancelled_at' => 'datetime',
         'fulfilled_at' => 'datetime',
     ];
 
@@ -77,5 +89,10 @@ class FollowUpTask extends Model
     public function fulfilledByHealthRecord(): BelongsTo
     {
         return $this->belongsTo(HealthRecord::class, 'fulfilled_by_health_record_id');
+    }
+
+    public function practitioner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'practitioner_id');
     }
 }

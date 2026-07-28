@@ -1,79 +1,65 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, RefreshCcw, X } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight, RefreshCcw, X } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
-  ActionMenu,
   ConnectionErrorState,
-  DataTableEmptyState,
   ModuleToolbar,
-  ModuleTableCard,
   SoftLoadingArea,
-  TablePagination,
 } from "../../components/common";
 import { isConnectionError } from "../../services/apiClient";
 import {
+  cancelFollowUp,
   getFollowUpTasks,
   rescheduleFollowUp,
 } from "../../services/followUpTaskService";
 import { formatDisplayValue } from "../../utils/formatters";
-import {
-  createActiveFilterChips,
-  isDateInPreset,
-} from "../../utils/filterUtils";
-import { formatServiceType } from "../../utils/healthRecordPrograms";
+import { createActiveFilterChips } from "../../utils/filterUtils";
 import { queryKeys } from "../../utils/queryKeys";
+import {
+  StateBadge,
+  formatDate,
+  formatStateLabel,
+  getEffectiveState,
+  getTaskClassification,
+  getTaskNavigationTarget,
+  getTaskServiceTypeLabel,
+} from "../../components/features/followups/followUpStatusStyles.jsx";
+import {
+  addDays,
+  addMonths,
+  addWeeks,
+  formatMonthLabel,
+  formatWeekRangeLabel,
+  getTasksForDay,
+  getWeekDays,
+  getWeekStart,
+  groupTasksByDay,
+} from "../../components/features/followups/followUpCalendarUtils.js";
+import FollowUpWeekCalendar from "../../components/features/followups/FollowUpWeekCalendar";
+import FollowUpDayView from "../../components/features/followups/FollowUpDayView";
+import FollowUpMonthMiniCalendar from "../../components/features/followups/FollowUpMonthMiniCalendar";
+import RecordScheduledFollowUpModal from "../../components/features/followups/RecordScheduledFollowUpModal";
 
 const DEFAULT_FILTERS = {
   search: "",
-  dateRange: "all",
-  dateFrom: "",
-  dateTo: "",
   serviceType: "",
   state: "All Active",
 };
 
-const ITEMS_PER_PAGE = 5;
-
-function getTaskClassification(task) {
-  return (
-    task.healthRecord?.category ||
-      task.healthRecord?.patientClassification ||
-      task.healthRecord?.recordType ||
-      task.healthRecord?.record_type ||
-      task.healthRecord?.healthRecordType ||
-      task.healthRecord?.health_record_type ||
-      task.category ||
-      task.patientClassification ||
-      task.recordType ||
-      ""
-  );
-}
-
-function getTaskServiceTypeLabel(task) {
-  return formatServiceType(getTaskClassification(task), "Unclassified");
-}
-
-function getPatientSubtext(task) {
-  return formatDisplayValue(
-    task.patient?.patientId ||
-      task.patientId ||
-      task.patient?.ageSex ||
-      task.patient?.age ||
-      "",
-    "No patient ID",
-  );
-}
+const VIEW_MODES = ["list", "day", "week", "month"];
 
 export default function FollowUps() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [viewMode, setViewMode] = useState("list");
+  const [currentDate, setCurrentDate] = useState(() => new Date());
   const [modal, setModal] = useState(null);
+  const [scheduleSearchOpen, setScheduleSearchOpen] = useState(false);
   const [routeNotice, setRouteNotice] = useState("");
   const [savingAction, setSavingAction] = useState(false);
 
@@ -109,10 +95,6 @@ export default function FollowUps() {
               task.effectiveState,
             )
           : task.effectiveState === normalizeFilterState(filters.state);
-      const matchesDate = isDateInPreset(task.dueDate, filters.dateRange, {
-        from: filters.dateFrom,
-        to: filters.dateTo,
-      });
       const matchesServiceType =
         !filters.serviceType ||
         getTaskServiceTypeLabel(task) === filters.serviceType;
@@ -121,6 +103,7 @@ export default function FollowUps() {
         task.patientName,
         task.patientId,
         task.healthRecordId,
+        task.reason,
         task.healthRecord?.chiefComplaint,
         getTaskClassification(task),
         getTaskServiceTypeLabel(task),
@@ -132,32 +115,17 @@ export default function FollowUps() {
 
       return (
         matchesFilter &&
-        matchesDate &&
         matchesServiceType &&
         (!searchValue || haystack.includes(searchValue))
       );
     });
   }, [tasks, filters]);
 
-  const totalPages = Math.ceil(filteredTasks.length / ITEMS_PER_PAGE);
-  const paginatedTasks = filteredTasks.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE,
-  );
+  const groupedByDay = useMemo(() => groupTasksByDay(filteredTasks), [filteredTasks]);
   const loading = isLoading && tasks.length === 0;
   const hasLoadError = Boolean(loadError) && !loading;
   const requestedTaskId = searchParams.get("task") || "";
   const requestedOpen = searchParams.get("open") || "";
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filters]);
-
-  useEffect(() => {
-    if (currentPage > totalPages && totalPages > 0) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
 
   useEffect(() => {
     if (!requestedTaskId) {
@@ -176,30 +144,18 @@ export default function FollowUps() {
     }
 
     setRouteNotice("");
-    setModal({
-      type: "details",
-      task: requestedTask,
-      mode: requestedOpen === "due" ? "due" : "no_show",
-    });
+    if (requestedOpen === "reschedule" || requestedOpen === "cancel") {
+      setModal({ type: requestedOpen, task: requestedTask });
+    } else {
+      setModal({
+        type: "details",
+        task: requestedTask,
+        mode: requestedOpen === "due" ? "due" : "no_show",
+      });
+    }
   }, [isLoading, requestedOpen, requestedTaskId, tasks]);
 
   const dropdownFilters = [
-    {
-      key: "dateRange",
-      label: "Follow-up Date",
-      value: filters.dateRange,
-      dateFromValue: filters.dateFrom,
-      dateToValue: filters.dateTo,
-      resetValue: "all",
-      type: "datePresets",
-      presets: [
-        { value: "all", label: "All dates" },
-        { value: "today", label: "Today" },
-        { value: "this_week", label: "This week" },
-        { value: "this_month", label: "This month" },
-        { value: "custom", label: "Custom date" },
-      ],
-    },
     {
       key: "serviceType",
       label: "Service Type",
@@ -245,25 +201,7 @@ export default function FollowUps() {
   }
 
   function removeFilter(key) {
-    const resetValues = {
-      search: "",
-      dateRange: "all",
-      dateFrom: "",
-      dateTo: "",
-      serviceType: "",
-      state: "All Active",
-    };
-    if (key === "dateRange") {
-      setFilters((prev) => ({
-        ...prev,
-        dateRange: "all",
-        dateFrom: "",
-        dateTo: "",
-      }));
-      return;
-    }
-
-    setFilters((prev) => ({ ...prev, [key]: resetValues[key] }));
+    updateFilter(key, DEFAULT_FILTERS[key]);
   }
 
   async function refreshTasks() {
@@ -310,19 +248,72 @@ export default function FollowUps() {
     setModal({ type: "reschedule", task });
   }
 
-  function viewOriginalRecord(task) {
-    navigate(`/bhc/health-records/${task.healthRecordId}`);
+  function handleTaskClick(task) {
+    const targetId = getTaskNavigationTarget(task);
+    if (targetId) navigate(`/bhc/health-records/${targetId}`);
   }
 
-  async function handleReschedule(task, dueDate, notes) {
+  function viewOriginalRecord(task) {
+    const recordId =
+      task.effectiveState === "fulfilled"
+        ? task.fulfilledByHealthRecordId
+        : task.healthRecordId;
+    if (recordId) navigate(`/bhc/health-records/${recordId}`);
+  }
+
+  async function handleReschedule(task, payload) {
     setSavingAction(true);
     try {
-      await rescheduleFollowUp(task.id, dueDate, notes);
+      await rescheduleFollowUp(task.id, payload);
       closeModal();
       await refreshTasks();
     } finally {
       setSavingAction(false);
     }
+  }
+
+  function openCancelModal(task) {
+    setModal({ type: "cancel", task });
+  }
+
+  async function handleCancel(task, notes) {
+    setSavingAction(true);
+    try {
+      await cancelFollowUp(task.id, notes);
+      closeModal();
+      await refreshTasks();
+    } finally {
+      setSavingAction(false);
+    }
+  }
+
+  function goToToday() {
+    setCurrentDate(new Date());
+  }
+
+  function goToPrevious() {
+    setCurrentDate((prev) =>
+      viewMode === "day"
+        ? addDays(prev, -1)
+        : viewMode === "month"
+          ? addMonths(prev, -1)
+          : addWeeks(prev, -1),
+    );
+  }
+
+  function goToNext() {
+    setCurrentDate((prev) =>
+      viewMode === "day"
+        ? addDays(prev, 1)
+        : viewMode === "month"
+          ? addMonths(prev, 1)
+          : addWeeks(prev, 1),
+    );
+  }
+
+  function handleSelectDayFromMonth(date) {
+    setCurrentDate(date);
+    setViewMode("day");
   }
 
   if (hasLoadError) {
@@ -338,15 +329,34 @@ export default function FollowUps() {
     );
   }
 
+  const weekStart = getWeekStart(currentDate);
+  const weekDays = getWeekDays(weekStart);
+  const headerLabel =
+    viewMode === "day"
+      ? formatMonthLabel(currentDate)
+      : viewMode === "month"
+        ? formatMonthLabel(currentDate)
+        : formatWeekRangeLabel(weekStart, weekDays[6]);
+
   return (
     <DashboardLayout role="bhc" title="Follow-ups">
+      <RecordScheduledFollowUpModal
+        open={scheduleSearchOpen}
+        onClose={() => setScheduleSearchOpen(false)}
+        onRecord={(task) => {
+          setScheduleSearchOpen(false);
+          recordFollowUpVisit(task);
+        }}
+      />
       <ActionModal
         modal={modal}
         saving={savingAction}
         onClose={closeModal}
         onRecordVisit={recordFollowUpVisit}
         onReschedule={handleReschedule}
+        onCancel={handleCancel}
         onOpenReschedule={openRescheduleModal}
+        onOpenCancel={openCancelModal}
         onViewOriginal={viewOriginalRecord}
       />
 
@@ -375,171 +385,246 @@ export default function FollowUps() {
             onClearFilters={clearFilters}
             onRemoveFilter={removeFilter}
             filterDescription="Narrow the follow-up tracking list."
+            actions={
+              <button
+                type="button"
+                onClick={() => setScheduleSearchOpen(true)}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
+              >
+                <CalendarClock size={15} />
+                Schedule Follow-up
+              </button>
+            }
           />
         ) : null}
 
-        {loading ? null : (
-        <ModuleTableCard
-          title="Follow-up Tracking"
-          count={filteredTasks.length}
-          subtitle="Scheduled patient follow-ups and return visit tracking."
-          minWidth="min-w-[900px]"
-          refreshing={isFetching && tasks.length > 0}
-          refreshingLabel="Updating follow-ups..."
-          footer={
-            <TablePagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={setCurrentPage}
-            />
-          }
-        >
-          <thead>
-            <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              <th className="whitespace-nowrap px-4 py-3">Patient</th>
-              <th className="whitespace-nowrap px-4 py-3">Service Type</th>
-              <th className="whitespace-nowrap px-4 py-3">Next Follow-up Date</th>
-              <th className="whitespace-nowrap px-4 py-3">Status</th>
-              <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
+        {!loading && (
+          <div className="anim-fade-up rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm shadow-black/[0.02]">
+            <div className="flex flex-col gap-3 border-b border-[#F1F5F9] pb-3 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-sm font-bold text-[#0F172A]">
+                {viewMode === "list" ? "Scheduled Return Visits" : headerLabel}
+              </h2>
 
-          <tbody className="divide-y divide-[#F8FAFC]">
-            {filteredTasks.length > 0 ? (
-              paginatedTasks.map((task) => (
-                <FollowUpRow
-                  key={task.id}
-                  task={task}
-                  onRecordVisit={() => recordFollowUpVisit(task)}
-                  onReschedule={() => openRescheduleModal(task)}
+              <div className="flex flex-wrap items-center gap-2">
+                {viewMode !== "list" && (
+                <div className="flex items-center gap-1 rounded-lg border border-[#E5E7EB] bg-white p-0.5">
+                  <button
+                    type="button"
+                    onClick={goToPrevious}
+                    aria-label="Previous"
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={goToToday}
+                    className="h-7 rounded-md px-2 text-[11px] font-semibold text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
+                  >
+                    Today
+                  </button>
+                  <button
+                    type="button"
+                    onClick={goToNext}
+                    aria-label="Next"
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
+                  >
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+                )}
+
+                <div className="flex items-center gap-0.5 rounded-lg border border-[#E5E7EB] bg-white p-0.5">
+                  {VIEW_MODES.map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setViewMode(mode)}
+                      className={`h-7 rounded-md px-2.5 text-[11px] font-semibold capitalize transition-colors ${
+                        viewMode === mode
+                          ? "bg-red-50 text-[#B91C1C]"
+                          : "text-[#64748B] hover:bg-[#F8FAFC]"
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3">
+              {viewMode === "list" && (
+                <FollowUpList
+                  tasks={filteredTasks}
+                  onView={(task) => setModal({ type: "details", task })}
+                  onRecord={recordFollowUpVisit}
+                  onReschedule={openRescheduleModal}
+                  onCancel={openCancelModal}
+                  onViewRecord={handleTaskClick}
                 />
-              ))
-            ) : (
-              <DataTableEmptyState
-                colSpan={5}
-                icon={<CalendarClock size={20} className="text-[#94A3B8]" />}
-                title="No follow-ups yet."
-                description="Follow-ups appear here when a record needs a return visit."
-              />
-            )}
-          </tbody>
-        </ModuleTableCard>
+              )}
+              {viewMode === "week" && (
+                <FollowUpWeekCalendar
+                  weekStart={weekStart}
+                  groupedByDay={groupedByDay}
+                  onTaskClick={handleTaskClick}
+                  onRecordVisit={recordFollowUpVisit}
+                  onReschedule={openRescheduleModal}
+                  onSlotClick={() => setScheduleSearchOpen(true)}
+                />
+              )}
+
+              {viewMode === "day" && (
+                <FollowUpDayView
+                  date={currentDate}
+                  tasksForDay={getTasksForDay(groupedByDay, currentDate)}
+                  onTaskClick={handleTaskClick}
+                  onRecordVisit={recordFollowUpVisit}
+                  onReschedule={openRescheduleModal}
+                  onSlotClick={() => setScheduleSearchOpen(true)}
+                />
+              )}
+
+              {viewMode === "month" && (
+                <FollowUpMonthMiniCalendar
+                  monthDate={currentDate}
+                  groupedByDay={groupedByDay}
+                  onSelectDay={handleSelectDayFromMonth}
+                />
+              )}
+            </div>
+          </div>
         )}
       </SoftLoadingArea>
     </DashboardLayout>
   );
 }
 
-function FollowUpRow({ task, onRecordVisit, onReschedule }) {
-  const state = task.effectiveState;
-  const actions = buildTaskActions(task, {
-    onRecordVisit,
-    onReschedule,
-  });
+function FollowUpList({
+  tasks,
+  onView,
+  onRecord,
+  onReschedule,
+  onCancel,
+  onViewRecord,
+}) {
+  if (tasks.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-slate-200 px-6 py-12 text-center text-sm text-slate-500">
+        No follow-ups match the current filters.
+      </div>
+    );
+  }
 
   return (
-    <tr className="group transition-colors duration-150 hover:bg-[#FAFBFD]">
-      <td className="px-4 py-3.5">
-        <div className="min-w-0">
-          <p className="truncate text-[13px] font-semibold text-[#111827]">
-            {formatDisplayValue(task.patientName, "Unnamed Patient")}
-          </p>
-          <p className="text-[11px] text-slate-400">{getPatientSubtext(task)}</p>
-        </div>
-      </td>
-
-      <td className="px-4 py-3.5">
-        <ClassificationBadge classification={getTaskServiceTypeLabel(task)} />
-      </td>
-
-      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#64748B]">
-        {formatDate(task.dueDate)}
-      </td>
-
-      <td className="whitespace-nowrap px-4 py-3.5">
-        <StateBadge state={state} />
-      </td>
-
-      <td className="px-4 py-3.5 text-right">
-        <ActionMenu
-          title={formatDisplayValue(task.patientName, "Unnamed Patient")}
-          subtitle={`#${task.healthRecordId}`}
-          actions={actions}
-        />
-      </td>
-    </tr>
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
+        <thead>
+          <tr className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            <th className="px-3 py-3">Patient</th>
+            <th className="px-3 py-3">Linked Record</th>
+            <th className="px-3 py-3">Schedule</th>
+            <th className="px-3 py-3">Service</th>
+            <th className="px-3 py-3">Reason</th>
+            <th className="px-3 py-3">Status</th>
+            <th className="px-3 py-3 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {tasks.map((task) => {
+            const active = ["due_today", "no_show", "upcoming", "rescheduled"].includes(
+              task.effectiveState,
+            );
+            return (
+              <tr key={task.id} className="align-top hover:bg-slate-50/60">
+                <td className="px-3 py-4">
+                  <p className="font-bold text-slate-900">
+                    {formatDisplayValue(task.patientName)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Patient ID {formatDisplayValue(task.patientId)}
+                  </p>
+                </td>
+                <td className="px-3 py-4 font-semibold text-slate-700">
+                  Record #{formatDisplayValue(task.healthRecordId)}
+                </td>
+                <td className="px-3 py-4 text-slate-700">
+                  <p className="font-semibold">{formatDate(task.dueDate)}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {task.dueTime || "Time not recorded"}
+                  </p>
+                </td>
+                <td className="px-3 py-4 text-slate-700">
+                  {getTaskServiceTypeLabel(task)}
+                </td>
+                <td className="max-w-xs px-3 py-4 text-slate-600">
+                  {task.reason || "Not recorded"}
+                </td>
+                <td className="px-3 py-4">
+                  <StateBadge state={task.effectiveState} />
+                </td>
+                <td className="px-3 py-4">
+                  <div className="flex min-w-max justify-end gap-2">
+                    <TableAction onClick={() => onView(task)}>View Details</TableAction>
+                    {active && (
+                      <>
+                        <TableAction primary onClick={() => onRecord(task)}>
+                          Record Visit
+                        </TableAction>
+                        <TableAction onClick={() => onReschedule(task)}>
+                          Reschedule
+                        </TableAction>
+                        <TableAction danger onClick={() => onCancel(task)}>
+                          Cancel
+                        </TableAction>
+                      </>
+                    )}
+                    {task.effectiveState === "fulfilled" && (
+                      <TableAction primary onClick={() => onViewRecord(task)}>
+                        View Health Record
+                      </TableAction>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-function buildTaskActions(task, handlers) {
-  const originalRecordLink = `/bhc/health-records/${task.originalHealthRecordId || task.healthRecordId}`;
-  const latestRecordId =
-    task.latestHealthRecordId || task.fulfilledByHealthRecordId || "";
-  const actions = [];
-
-  if (["fulfilled", "cancelled"].includes(task.effectiveState)) {
-    actions.push({
-      label: "View Records",
-      to: latestRecordId
-        ? `/bhc/health-records/${latestRecordId}`
-        : originalRecordLink,
-    });
-    return actions;
-  }
-
-  if (["due_today", "no_show", "upcoming", "rescheduled"].includes(task.effectiveState)) {
-    actions.push({
-      label: "Add Health Record",
-      onClick: handlers.onRecordVisit,
-    });
-    actions.push({
-      label: "Reschedule",
-      onClick: handlers.onReschedule,
-    });
-  }
-
-  actions.push({ label: "View Original Record", to: originalRecordLink });
-  return actions;
-}
-
-function StateBadge({ state }) {
-  const config = {
-    due_today: ["Due Today", "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]"],
-    upcoming: ["Pending", "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"],
-    no_show: ["No Show", "border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]"],
-    rescheduled: ["Rescheduled", "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]"],
-    fulfilled: ["Completed", "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"],
-    cancelled: ["Cancelled", "border-[#CBD5E1] bg-[#F8FAFC] text-[#64748B]"],
-  }[state] || ["Pending", "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"];
-
+function TableAction({ children, onClick, primary = false, danger = false }) {
   return (
-    <span
-      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${config[1]}`}
-    >
-      {config[0]}
-    </span>
-  );
-}
-
-function ClassificationBadge({ classification }) {
-  const map = {
-    "General Consultation": "bg-slate-100 text-slate-700",
-    "Maternal / Prenatal": "bg-pink-50 text-pink-700",
-    "Child Health / EPI": "bg-emerald-50 text-emerald-700",
-    "Hypertension / Diabetic Monitoring": "bg-blue-50 text-blue-700",
-    "Family Planning": "bg-purple-50 text-purple-700",
-    "TB DOTS / TB Monitoring": "bg-amber-50 text-amber-700",
-  };
-
-  return (
-    <span
-      className={`inline-flex rounded-md px-2.5 py-1 text-[11px] font-semibold ${
-        map[classification] || "bg-slate-100 text-slate-700"
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${
+        primary
+          ? "border-[#B91C1C] bg-[#B91C1C] text-white hover:bg-[#991B1B]"
+          : danger
+            ? "border-red-200 bg-white text-[#B91C1C] hover:bg-red-50"
+            : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
       }`}
     >
-      {classification}
-    </span>
+      {children}
+    </button>
   );
+}
+
+function normalizeFilterState(value) {
+  const map = {
+    "Due Today": "due_today",
+    Pending: "upcoming",
+    "No Show": "no_show",
+    Rescheduled: "rescheduled",
+    Completed: "fulfilled",
+    Cancelled: "cancelled",
+  };
+
+  return map[value] || "all_active";
 }
 
 function ActionModal({
@@ -548,15 +633,21 @@ function ActionModal({
   onClose,
   onRecordVisit,
   onReschedule,
+  onCancel,
   onOpenReschedule,
+  onOpenCancel,
   onViewOriginal,
 }) {
   const [notes, setNotes] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [dueTime, setDueTime] = useState("");
+  const [reason, setReason] = useState("");
 
   useEffect(() => {
     setNotes("");
-    setDueDate("");
+    setDueDate(modal?.task?.dueDate || "");
+    setDueTime(modal?.task?.dueTime || "");
+    setReason(modal?.task?.reason || "");
   }, [modal]);
 
   if (!modal) return null;
@@ -568,10 +659,13 @@ function ActionModal({
         onClose={onClose}
         onRecordVisit={onRecordVisit}
         onOpenReschedule={onOpenReschedule}
+        onOpenCancel={onOpenCancel}
         onViewOriginal={onViewOriginal}
       />
     );
   }
+
+  const cancelling = modal.type === "cancel";
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/35 px-4">
@@ -579,7 +673,7 @@ function ActionModal({
         <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
           <div>
             <h2 className="text-base font-bold text-[#0F172A]">
-              Reschedule Follow-up
+              {cancelling ? "Cancel Follow-up" : "Reschedule Follow-up"}
             </h2>
             <p className="mt-0.5 text-xs text-slate-400">
               {modal.task.patientName || "Selected patient"}
@@ -595,6 +689,13 @@ function ActionModal({
         </div>
 
         <div className="space-y-4 px-5 py-4">
+          {cancelling ? (
+            <p className="text-sm leading-6 text-slate-600">
+              This preserves the schedule in history and removes it from active
+              follow-up lookup.
+            </p>
+          ) : (
+            <>
           <div>
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
               New Follow-up Date
@@ -608,6 +709,31 @@ function ActionModal({
           </div>
           <div>
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Follow-up Time (optional)
+            </label>
+            <input
+              type="time"
+              value={dueTime}
+              onChange={(event) => setDueTime(event.target.value)}
+              className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-[#B91C1C]/40 focus:bg-white"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Follow-up Reason
+            </label>
+            <textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              rows={3}
+              className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-[#B91C1C]/40 focus:bg-white"
+              placeholder="Reason for the return visit"
+            />
+          </div>
+            </>
+          )}
+          <div>
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
               Remarks
             </label>
             <textarea
@@ -615,7 +741,7 @@ function ActionModal({
               onChange={(event) => setNotes(event.target.value)}
               rows={4}
               className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-[#B91C1C]/40 focus:bg-white"
-              placeholder="Reason for rescheduling..."
+              placeholder={cancelling ? "Reason for cancellation..." : "Rescheduling notes..."}
             />
           </div>
         </div>
@@ -630,12 +756,25 @@ function ActionModal({
           </button>
           <button
             type="button"
-            disabled={saving || !dueDate}
-            onClick={() => onReschedule(modal.task, dueDate, notes)}
+            disabled={saving || (!cancelling && (!dueDate || !reason.trim()))}
+            onClick={() =>
+              cancelling
+                ? onCancel(modal.task, notes)
+                : onReschedule(modal.task, {
+                    dueDate,
+                    dueTime,
+                    reason,
+                    notes,
+                  })
+            }
             className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <RefreshCcw size={14} />
-            {saving ? "Saving..." : "Reschedule"}
+            {saving
+              ? "Saving..."
+              : cancelling
+                ? "Cancel Follow-up"
+                : "Reschedule"}
           </button>
         </div>
       </div>
@@ -648,6 +787,7 @@ function FollowUpDetailsModal({
   onClose,
   onRecordVisit,
   onOpenReschedule,
+  onOpenCancel,
   onViewOriginal,
 }) {
   const { task } = modal;
@@ -705,14 +845,18 @@ function FollowUpDetailsModal({
         </div>
 
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 px-5 py-4">
-          <button
-            type="button"
-            onClick={() => onViewOriginal(task)}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-          >
-            View Health Record
-          </button>
-          {task.effectiveState !== "fulfilled" && (
+          {task.effectiveState !== "cancelled" && (
+            <button
+              type="button"
+              onClick={() => onViewOriginal(task)}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              View Health Record
+            </button>
+          )}
+          {["due_today", "no_show", "upcoming", "rescheduled"].includes(
+            task.effectiveState,
+          ) && (
             <>
               <button
                 type="button"
@@ -722,15 +866,20 @@ function FollowUpDetailsModal({
                 <RefreshCcw size={14} />
                 Reschedule
               </button>
-              {["due_today", "no_show", "upcoming", "rescheduled"].includes(task.effectiveState) && (
-                <button
-                  type="button"
-                  onClick={() => onRecordVisit(task)}
-                  className="rounded-xl bg-[#B91C1C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#991B1B]"
-                >
-                  Add Health Record
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => onOpenCancel(task)}
+                className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-[#B91C1C] hover:bg-red-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => onRecordVisit(task)}
+                className="rounded-xl bg-[#B91C1C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#991B1B]"
+              >
+                Record Visit
+              </button>
             </>
           )}
         </div>
@@ -754,62 +903,4 @@ function DetailItem({ label, value, strong = false }) {
       </p>
     </div>
   );
-}
-
-function getEffectiveState(task) {
-  if (task.state === "fulfilled") return "fulfilled";
-  if (task.state === "no_show") return "no_show";
-  if (task.state === "cancelled" || task.state === "canceled") return "cancelled";
-
-  const dueDate = normalizeDate(task.dueDate);
-  const today = normalizeDate(new Date());
-
-  if (!dueDate) return "upcoming";
-  if (dueDate === today) return "due_today";
-  if (dueDate < today) return "no_show";
-  if (task.state === "rescheduled") return "rescheduled";
-  return "upcoming";
-}
-
-function normalizeFilterState(value) {
-  const map = {
-    "Due Today": "due_today",
-    Pending: "upcoming",
-    "No Show": "no_show",
-    Rescheduled: "rescheduled",
-    Completed: "fulfilled",
-    Cancelled: "cancelled",
-  };
-
-  return map[value] || "all_active";
-}
-
-function formatStateLabel(state) {
-  const map = {
-    due_today: "Due Today",
-    upcoming: "Pending",
-    no_show: "No Show",
-    rescheduled: "Rescheduled",
-    fulfilled: "Completed",
-    cancelled: "Cancelled",
-  };
-
-  return map[state] || "Pending";
-}
-
-function normalizeDate(value) {
-  if (!value) return "";
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  return String(value).slice(0, 10);
-}
-
-function formatDate(value) {
-  if (!value) return "Not recorded";
-  const date = new Date(`${normalizeDate(value)}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
 }

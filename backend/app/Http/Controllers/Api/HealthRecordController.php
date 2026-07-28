@@ -12,6 +12,7 @@ use App\Models\Patient;
 use App\Services\AkayCacheService;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
+use App\Services\FollowUpEpisodeService;
 use App\Services\FollowUpTaskSyncService;
 use App\Services\HealthRecordDraftService;
 use App\Services\HealthRecordIdempotencyService;
@@ -102,23 +103,10 @@ class HealthRecordController extends Controller
         $referralData = $data['referral'] ?? null;
         unset($data['referral']);
 
-        if (
-            empty($data['parent_health_record_id'])
-            && ($data['visit_type'] ?? 'initial_consultation') !== 'follow_up_visit'
-            && ($matchingTask = $followUpTasks->findActiveMatchingTask(
-                $patient,
-                $data['category'] ?? null,
-                $request->user()
-            ))
-        ) {
-            $data['parent_health_record_id'] = $matchingTask->health_record_id;
-            $data['visit_type'] = 'follow_up_visit';
-            $data['monitoring_data'] = [
-                ...($data['monitoring_data'] ?? []),
-                'followUpTaskId' => $matchingTask->id,
-                'follow_up_task_id' => $matchingTask->id,
-            ];
+        if ($this->isReferralDisposition($data, $referralData)) {
+            $this->normalizeReferralDisposition($data);
         }
+
         $this->normalizeVisitTypeData($request, $data, true);
         $this->normalizeMaternalSupplements($request, $data);
         $this->normalizeFamilyPlanningData($data);
@@ -246,9 +234,14 @@ class HealthRecordController extends Controller
         return $this->storeResponse($record, false, 201);
     }
 
-    public function show(Request $request, HealthRecord $healthRecord)
+    public function show(
+        Request $request,
+        HealthRecord $healthRecord,
+        FollowUpEpisodeService $episodes
+    )
     {
         $this->facilityAccess->authorizeHealthRecord($request->user(), $healthRecord);
+        $episode = $episodes->forRecord($healthRecord, $request->user());
 
         if (StoredFunction::available() && $request->user()->isAdmin()) {
             $data = StoredFunction::selectJson(
@@ -264,16 +257,20 @@ class HealthRecordController extends Controller
             abort_unless($data, 404);
 
             $data['dispensed_medicines'] = $healthRecord->dispensedMedicines()->latest()->get();
+            $data['follow_up_episode'] = $episode;
 
             return response()->json(['data' => $data]);
         }
 
-        return response()->json(['data' => $healthRecord->load([
+        $data = $healthRecord->load([
             'patient',
             'dispensedMedicines',
             'referrals' => fn ($query) => $this->facilityAccess
                 ->scopeReferrals($query, $request->user()),
-        ])]);
+        ])->toArray();
+        $data['follow_up_episode'] = $episode;
+
+        return response()->json(['data' => $data]);
     }
 
     /**
@@ -411,12 +408,6 @@ class HealthRecordController extends Controller
                 422,
                 'Follow-up visits must be linked to a record for the same patient.'
             );
-            abort_unless(
-                $this->healthRecordStatus($parentRecord) === 'follow up required'
-                    || $this->hasFollowUpDate($parentRecord),
-                422,
-                'Follow-up visits can only be linked to records with a scheduled follow-up date.'
-            );
         }
 
         if ($data['visit_type'] === 'initial_consultation') {
@@ -506,25 +497,28 @@ class HealthRecordController extends Controller
         ];
     }
 
-    private function healthRecordStatus(HealthRecord $record): string
-    {
-        $monitoringData = $record->monitoring_data ?? [];
-        $status = $monitoringData['followUpStatus']
-            ?? $monitoringData['follow_up_status']
-            ?? $monitoringData['status']
-            ?? 'Routine Monitoring';
-
-        return str_replace(['_', '-'], ' ', strtolower(trim($status)));
+    private function isReferralDisposition(
+        array $data,
+        mixed $referralData
+    ): bool {
+        return ($data['needs_referral'] ?? false) === true
+            || is_array($referralData);
     }
 
-    private function hasFollowUpDate(HealthRecord $record): bool
+    private function normalizeReferralDisposition(array &$data): void
     {
-        $monitoringData = $record->monitoring_data ?? [];
-        $date = $monitoringData['followUpDate']
-            ?? $monitoringData['follow_up_date']
-            ?? null;
-
-        return filled($date);
+        $monitoringData = $data['monitoring_data'] ?? [];
+        $data['monitoring_data'] = [
+            ...$monitoringData,
+            'followUpStatus' => 'Needs Referral',
+            'follow_up_status' => 'Needs Referral',
+            'followUpDate' => null,
+            'follow_up_date' => null,
+            'followUpTime' => null,
+            'follow_up_time' => null,
+            'followUpReason' => null,
+            'follow_up_reason' => null,
+        ];
     }
 
     private function replayResponse(

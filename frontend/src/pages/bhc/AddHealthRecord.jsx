@@ -51,7 +51,10 @@ import {
   refreshRhuMedicines,
 } from "../../services/medicineService";
 import { getPatientDetailsListByRole } from "../../services/patientService";
-import { getFollowUpTasks } from "../../services/followUpTaskService";
+import {
+  getFollowUpTask,
+  getFollowUpTasks,
+} from "../../services/followUpTaskService";
 import { getReferralDestination } from "../../services/referrals";
 import { isConnectionError } from "../../services/apiClient";
 import { getCurrentUser } from "../../utils/auth";
@@ -1007,6 +1010,8 @@ export default function AddHealthRecord() {
 
   const [followUpStatus, setFollowUpStatus] = useState("Routine Monitoring");
   const [followUpDate, setFollowUpDate] = useState("");
+  const [followUpTime, setFollowUpTime] = useState("");
+  const [followUpReason, setFollowUpReason] = useState("");
   const [monitoringNotes, setMonitoringNotes] = useState("");
   const [patientCondition, setPatientCondition] = useState("Improving");
   const [careDecisionStep, setCareDecisionStep] = useState(false);
@@ -1119,6 +1124,9 @@ export default function AddHealthRecord() {
   const [epiHistoryError, setEpiHistoryError] = useState("");
   const [routeLinkedFollowUpTask, setRouteLinkedFollowUpTask] = useState(null);
   const [autoLinkedFollowUpTask, setAutoLinkedFollowUpTask] = useState(null);
+  const [activePatientFollowUps, setActivePatientFollowUps] = useState([]);
+  const [dismissedFollowUpPatientId, setDismissedFollowUpPatientId] =
+    useState("");
   const [activeFollowUpLookup, setActiveFollowUpLookup] = useState({
     key: "",
     isChecking: false,
@@ -1176,7 +1184,10 @@ export default function AddHealthRecord() {
       try {
         setPatientsLoading(true);
         setPatientsLoadError("");
-        const parsedPatients = await getPatientDetailsListByRole("bhc");
+        const parsedPatients = await getPatientDetailsListByRole("bhc", {
+          search: searchTerm.trim(),
+          per_page: 50,
+        });
         if (!active) return;
         setPatients(parsedPatients || []);
         setPatientsLoadError("");
@@ -1194,12 +1205,13 @@ export default function AddHealthRecord() {
       }
     }
 
-    loadPatients();
+    const timer = window.setTimeout(loadPatients, searchTerm.trim() ? 250 : 0);
 
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
-  }, [preselectedPatientId, patientsReloadKey]);
+  }, [preselectedPatientId, patientsReloadKey, searchTerm]);
 
   useEffect(() => {
     let active = true;
@@ -1438,11 +1450,8 @@ export default function AddHealthRecord() {
       }
 
       try {
-        const tasks = await getFollowUpTasks();
+        const task = await getFollowUpTask(followUpTaskId);
         if (!active) return;
-        const task = (Array.isArray(tasks) ? tasks : []).find(
-          (item) => String(item.id) === String(followUpTaskId),
-        );
 
         setRouteLinkedFollowUpTask(task || null);
 
@@ -1619,6 +1628,9 @@ export default function AddHealthRecord() {
       setSetupComplete(false);
       setCareDecisionStep(false);
       setNeedsReferral(false);
+      setAutoLinkedFollowUpTask(null);
+      setActivePatientFollowUps([]);
+      setDismissedFollowUpPatientId("");
     }
     setSelectedPatientId(id);
     setSearchTerm("");
@@ -1633,6 +1645,9 @@ export default function AddHealthRecord() {
     setSetupComplete(false);
     setCareDecisionStep(false);
     setNeedsReferral(false);
+    setAutoLinkedFollowUpTask(null);
+    setActivePatientFollowUps([]);
+    setDismissedFollowUpPatientId("");
     setSearchTerm("");
     setDropdownOpen(true);
     requestAnimationFrame(() => inputRef.current?.focus());
@@ -1645,6 +1660,9 @@ export default function AddHealthRecord() {
       setSetupComplete(false);
       setCareDecisionStep(false);
       setNeedsReferral(false);
+      setAutoLinkedFollowUpTask(null);
+      setActivePatientFollowUps([]);
+      setDismissedFollowUpPatientId("");
     }
     setSearchTerm(event.target.value);
     setDropdownOpen(true);
@@ -1655,9 +1673,8 @@ export default function AddHealthRecord() {
     !isFollowUp &&
     !isEditingRecord &&
     !hasRouteFollowUpContext &&
-    selectedPatientId &&
-    normalizedHealthRecordType
-      ? `${selectedPatientId}::${normalizedHealthRecordType}`
+    selectedPatientId
+      ? String(selectedPatientId)
       : "";
   const isResolvingFollowUpMode =
     Boolean(activeFollowUpLookupKey) &&
@@ -1758,6 +1775,8 @@ export default function AddHealthRecord() {
       height,
       followUpStatus,
       followUpDate,
+      followUpTime,
+      followUpReason,
       monitoringNotes,
       patientCondition,
       morbidityReportingStatus,
@@ -1931,6 +1950,8 @@ export default function AddHealthRecord() {
     setHeight(payload.height || "");
     setFollowUpStatus(payload.followUpStatus || "Routine Monitoring");
     setFollowUpDate(payload.followUpDate || "");
+    setFollowUpTime(payload.followUpTime || "");
+    setFollowUpReason(payload.followUpReason || "");
     setMonitoringNotes(payload.monitoringNotes || "");
     setPatientCondition(payload.patientCondition || "Improving");
     setMorbidityReportingStatus(payload.morbidityReportingStatus || "not_included");
@@ -2157,30 +2178,33 @@ export default function AddHealthRecord() {
     async function detectActiveFollowUp() {
       if (!activeFollowUpLookupKey) {
         setAutoLinkedFollowUpTask(null);
+        setActivePatientFollowUps([]);
         setActiveFollowUpLookup({ key: "", isChecking: false });
         return;
       }
 
       setAutoLinkedFollowUpTask(null);
+      setActivePatientFollowUps([]);
       setActiveFollowUpLookup({
         key: activeFollowUpLookupKey,
         isChecking: true,
       });
 
       try {
-        const tasks = await getFollowUpTasks();
+        const tasks = await getFollowUpTasks({
+          patient_id: selectedPatientId,
+          active: 1,
+        });
         if (!active) return;
 
-        const matchingTask = (Array.isArray(tasks) ? tasks : []).find(
-          (task) =>
-            isActiveFollowUpTask(task) &&
-            String(task.patientId) === String(selectedPatientId) &&
-            getFollowUpTaskServiceType(task) === normalizedHealthRecordType,
+        setActivePatientFollowUps(
+          (Array.isArray(tasks) ? tasks : []).filter(isActiveFollowUpTask),
         );
-
-        setAutoLinkedFollowUpTask(matchingTask || null);
       } catch {
-        if (active) setAutoLinkedFollowUpTask(null);
+        if (active) {
+          setAutoLinkedFollowUpTask(null);
+          setActivePatientFollowUps([]);
+        }
       } finally {
         if (active) {
           setActiveFollowUpLookup({
@@ -2198,9 +2222,30 @@ export default function AddHealthRecord() {
     };
   }, [
     activeFollowUpLookupKey,
-    normalizedHealthRecordType,
     selectedPatientId,
   ]);
+
+  function startNewConsultation() {
+    setDismissedFollowUpPatientId(String(selectedPatientId));
+    setAutoLinkedFollowUpTask(null);
+    setHealthRecordType("");
+    setSetupComplete(false);
+    window.requestAnimationFrame(() =>
+      classificationRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      }),
+    );
+  }
+
+  function recordScheduledFollowUp(task) {
+    const serviceType = getFollowUpTaskServiceType(task);
+    setAutoLinkedFollowUpTask(task);
+    setFollowUpRecord(task.healthRecord || null);
+    setHealthRecordType(serviceType);
+    setDismissedFollowUpPatientId(String(selectedPatientId));
+    setSetupComplete(true);
+  }
 
   useEffect(() => {
     let active = true;
@@ -2250,6 +2295,8 @@ export default function AddHealthRecord() {
     if (epiWillComplete) {
       clearValidationError("followUpDate");
       setFollowUpDate("");
+      setFollowUpTime("");
+      setFollowUpReason("");
       setFollowUpStatus("Completed");
       return;
     }
@@ -2357,6 +2404,8 @@ export default function AddHealthRecord() {
   useEffect(() => {
     if (isFollowUp && !showFollowUpMonitoringFields) {
       setFollowUpDate("");
+      setFollowUpTime("");
+      setFollowUpReason("");
       if (!isFollowUp) setPatientCondition("");
     }
   }, [showFollowUpMonitoringFields, isFollowUp]);
@@ -2370,6 +2419,8 @@ export default function AddHealthRecord() {
     }
     if (normalizedStatus !== "Follow-up Required") {
       setFollowUpDate("");
+      setFollowUpTime("");
+      setFollowUpReason("");
       if (!isFollowUp) setPatientCondition("");
     }
   }
@@ -2379,7 +2430,10 @@ export default function AddHealthRecord() {
     setNeedsReferral(nextNeedsReferral);
     if (nextNeedsReferral) {
       clearValidationError("followUpDate");
+      clearValidationError("followUpReason");
       setFollowUpDate("");
+      setFollowUpTime("");
+      setFollowUpReason("");
     }
   }
 
@@ -2420,6 +2474,17 @@ export default function AddHealthRecord() {
     if (!timeOfVisit) errors.timeOfVisit = "Time of visit is required.";
     if (!String(attendingStaff || "").trim()) {
       errors.attendingStaff = "Name of practitioner is required.";
+    }
+    const requiresFollowUp =
+      !needsReferral &&
+      (normalizePatientStatus(followUpStatus) === "Follow-up Required" ||
+        Boolean(followUpDate) ||
+        epiNeedsNextFollowUp);
+    if (requiresFollowUp && !followUpDate) {
+      errors.followUpDate = "Follow-up date is required.";
+    }
+    if (requiresFollowUp && !String(followUpReason || "").trim()) {
+      errors.followUpReason = "Follow-up reason is required.";
     }
     if (isGeneralConsultationFollowUp) {
       if (!summaryOfPresentIllness.trim()) {
@@ -2636,6 +2701,9 @@ export default function AddHealthRecord() {
       clearValidationError("followUpDate");
       setFollowUpStatus("Follow-up Required");
       setFollowUpDate(value);
+      setFollowUpReason((current) =>
+        current.trim() ? current : "Return for the next scheduled vaccine",
+      );
     }
     setImmunizationData((prev) => {
       const entries = getVaccineEntries(prev).map((entry, entryIndex) =>
@@ -2725,6 +2793,15 @@ export default function AddHealthRecord() {
   }
 
   function handleFamilyPlanningChange(field, value) {
+    if (field === "nextAppointmentDate") {
+      clearValidationError("followUpDate");
+      setFollowUpDate(value);
+      if (value) {
+        setFollowUpReason((current) =>
+          current.trim() ? current : "Family planning return visit",
+        );
+      }
+    }
     setFamilyPlanningData((prev) => ({
       ...prev,
       [field]: value,
@@ -3201,6 +3278,12 @@ export default function AddHealthRecord() {
       finalNeedsReferral || immunizationWillComplete
         ? ""
         : followUpDate || immunizationNextScheduleDate || "";
+    const effectiveFollowUpTime =
+      finalNeedsReferral || immunizationWillComplete ? "" : followUpTime;
+    const effectiveFollowUpReason =
+      finalNeedsReferral || immunizationWillComplete
+        ? ""
+        : String(followUpReason || "").trim();
 
     if (
       effectiveHealthRecordType === "Immunization" &&
@@ -3377,6 +3460,8 @@ export default function AddHealthRecord() {
       consultationNotes,
       followUpStatus: finalPatientStatus,
       followUpDate: effectiveFollowUpDate,
+      followUpTime: effectiveFollowUpTime,
+      followUpReason: effectiveFollowUpReason,
       monitoringNotes,
       patientCondition:
         isLinkedFollowUpVisit || effectiveFollowUpDate ? patientCondition : "",
@@ -3702,8 +3787,12 @@ export default function AddHealthRecord() {
   }
 
   const isPrimaryActionLoading = saving;
-  const isResolvingClinicalMode =
-    setupComplete && isResolvingFollowUpMode;
+  const isResolvingClinicalMode = isResolvingFollowUpMode;
+  const showActiveFollowUpPrompt =
+    activePatientFollowUps.length > 0 &&
+    !activeFollowUpLookup.isChecking &&
+    !autoLinkedFollowUpTask &&
+    String(dismissedFollowUpPatientId) !== String(selectedPatientId);
   const primaryActionLabel = saving
     ? "Saving health record..."
     : isFollowUpVisitMode
@@ -3766,6 +3855,13 @@ export default function AddHealthRecord() {
   return (
     <DashboardLayout role={userRole} title={pageTitle}>
       <style>{keyframes}</style>
+      {showActiveFollowUpPrompt && (
+        <ActiveFollowUpPrompt
+          tasks={activePatientFollowUps}
+          onStartNew={startNewConsultation}
+          onRecord={recordScheduledFollowUp}
+        />
+      )}
 
       {!isResolvingClinicalMode && (
         <div
@@ -4008,6 +4104,12 @@ export default function AddHealthRecord() {
         className="relative ml-0 mr-auto w-full max-w-7xl"
       >
         <div className="space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
+        {isLinkedFollowUpVisit && (
+          <PreviousConsultationSummary
+            task={effectiveLinkedFollowUpTask}
+            record={followUpRecord || effectiveLinkedFollowUpTask?.healthRecord}
+          />
+        )}
         <FormSection
           title="Visit Overview"
           subtitle="Confirm the visit schedule and attending practitioner."
@@ -5208,6 +5310,36 @@ export default function AddHealthRecord() {
           </>
         )}
 
+        {!needsReferral && followUpDate && (
+          <FormSection
+            title="Follow-up Schedule Details"
+            subtitle="Add the optional time and the required reason shown to staff when the patient returns."
+            delay={9}
+          >
+            <div className="grid gap-4 lg:grid-cols-2">
+              <TimePickerField
+                label="Follow-up Time"
+                name="followUpTime"
+                value={followUpTime}
+                onChange={setFollowUpTime}
+              />
+              <FieldTextarea
+                label="Follow-up Reason"
+                required
+                name="followUpReason"
+                value={followUpReason}
+                error={validationErrors.followUpReason}
+                onChange={(event) => {
+                  clearValidationError("followUpReason");
+                  setFollowUpReason(event.target.value);
+                }}
+                placeholder="For example: Reassess symptoms and treatment response"
+                rows={3}
+              />
+            </div>
+          </FormSection>
+        )}
+
         <div
           className="anim-fade-up flex flex-col gap-3 pt-1 pb-4 sm:flex-row sm:items-center sm:justify-between"
           style={stagger(7)}
@@ -5365,6 +5497,146 @@ export default function AddHealthRecord() {
 /* ═══════════════════════════════════════════════════════════════
    PATIENT SEARCH DROPDOWN
    ═══════════════════════════════════════════════════════════════ */
+function ActiveFollowUpPrompt({ tasks, onStartNew, onRecord }) {
+  const multiple = tasks.length > 1;
+
+  return (
+    <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm">
+      <section
+        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-red-100 bg-white shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="active-follow-up-title"
+      >
+        <div className="h-1 bg-[#B91C1C]" />
+        <div className="p-5 sm:p-6">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
+              <FileClock size={22} />
+            </div>
+            <div>
+              <h2
+                id="active-follow-up-title"
+                className="text-lg font-bold text-slate-900"
+              >
+                {multiple
+                  ? "Select Follow-up to Record"
+                  : "Active Follow-up Found"}
+              </h2>
+              <p className="mt-1 text-sm text-slate-600">
+                {multiple
+                  ? "This patient has multiple pending follow-ups. Choose the visit being recorded."
+                  : "This patient has a pending follow-up."}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {tasks.map((task) => (
+              <div
+                key={task.id}
+                className="rounded-xl border border-slate-200 bg-slate-50/70 p-4"
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <dl className="grid flex-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                    <FollowUpPromptDetail
+                      label="Service Type"
+                      value={getFollowUpTaskServiceType(task)}
+                    />
+                    <FollowUpPromptDetail
+                      label="Scheduled"
+                      value={formatFollowUpSchedule(task)}
+                    />
+                    <FollowUpPromptDetail
+                      label="Reason"
+                      value={task.reason || "Not recorded"}
+                    />
+                    <FollowUpPromptDetail
+                      label="Linked Health Record"
+                      value={`Record #${task.healthRecordId || "—"}`}
+                    />
+                  </dl>
+                  <button
+                    type="button"
+                    onClick={() => onRecord(task)}
+                    className="shrink-0 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
+                  >
+                    {multiple ? "Continue" : "Record Follow-up Visit"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 flex justify-end">
+            <button
+              type="button"
+              onClick={onStartNew}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Start New Consultation
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function FollowUpPromptDetail({ label, value }) {
+  return (
+    <div>
+      <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+        {label}
+      </dt>
+      <dd className="mt-1 font-semibold text-slate-800">
+        {value || "Not recorded"}
+      </dd>
+    </div>
+  );
+}
+
+function formatFollowUpSchedule(task = {}) {
+  const dateValue = task.dueDate || task.due_date;
+  if (!dateValue) return "Not recorded";
+  const parsed = new Date(`${dateValue}T00:00:00`);
+  const date = Number.isNaN(parsed.getTime())
+    ? dateValue
+    : new Intl.DateTimeFormat("en-PH", { dateStyle: "long" }).format(parsed);
+  return task.dueTime ? `${date}, ${task.dueTime}` : date;
+}
+
+function PreviousConsultationSummary({ task, record }) {
+  const source = record || task?.healthRecord || {};
+  const sourceId = source.id || task?.healthRecordId;
+
+  return (
+    <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4">
+      <div className="flex items-center gap-2">
+        <FileClock size={17} className="text-blue-700" />
+        <h2 className="text-sm font-bold text-blue-950">
+          Previous Consultation · Record #{sourceId || "—"}
+        </h2>
+      </div>
+      <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <FollowUpPromptDetail
+          label="Service"
+          value={getFollowUpTaskServiceType(task || { healthRecord: source })}
+        />
+        <FollowUpPromptDetail
+          label="Complaint"
+          value={source.chiefComplaint || source.chief_complaint}
+        />
+        <FollowUpPromptDetail label="Diagnosis" value={source.diagnosis} />
+        <FollowUpPromptDetail
+          label="Treatment"
+          value={source.treatmentNotes || source.medication || source.treatment}
+        />
+      </dl>
+    </div>
+  );
+}
+
 function HeaderIconButton({
   icon: Icon,
   label,

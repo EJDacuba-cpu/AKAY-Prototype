@@ -333,6 +333,7 @@ class HealthRecordIdempotencyTest extends TestCase
                 'followUpTaskId' => $task?->id,
                 'followUpStatus' => $nextDate ? 'Follow-up Required' : 'Routine Monitoring',
                 'followUpDate' => $nextDate,
+                'followUpReason' => $nextDate ? 'Continue scheduled monitoring.' : null,
             ], fn (mixed $value): bool => $value !== null),
             ...$overrides,
         ]);
@@ -348,6 +349,7 @@ class HealthRecordIdempotencyTest extends TestCase
             'monitoring_data' => [
                 'followUpStatus' => 'Follow-up Required',
                 'followUpDate' => now()->addWeek()->toDateString(),
+                'followUpReason' => 'Continue scheduled monitoring.',
             ],
         ]);
         $task = FollowUpTask::create([

@@ -419,14 +419,18 @@ class FacilityIsolationSecurityTest extends TestCase
             ->assertJsonValidationErrors('monitoring_data.followUpTaskId');
     }
 
-    public function test_follow_up_task_must_match_service_type(): void
+    public function test_explicit_follow_up_task_is_not_inferred_from_service_type(): void
     {
         $payload = $this->followUpPayload($this->patientA, $this->recordA, $this->taskA);
         $payload['category'] = 'Maternal Care';
 
-        $this->postHealthRecord($this->bhwA, $payload)
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors('monitoring_data.followUpTaskId');
+        $response = $this->postHealthRecord($this->bhwA, $payload)
+            ->assertCreated();
+
+        $this->assertSame(
+            $response->json('data.id'),
+            $this->taskA->fresh()->fulfilled_by_health_record_id
+        );
     }
 
     public function test_follow_up_task_cannot_link_to_unrelated_parent_record(): void
@@ -642,6 +646,7 @@ class FacilityIsolationSecurityTest extends TestCase
             'monitoring_data' => [
                 'followUpStatus' => 'Follow Up Required',
                 'followUpDate' => now()->addWeek()->toDateString(),
+                'followUpReason' => 'Continue scheduled monitoring.',
             ],
         ]);
     }

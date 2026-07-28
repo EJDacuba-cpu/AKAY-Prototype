@@ -129,7 +129,12 @@ export default function HealthRecordsTable({
                     label="Visit Type"
                     value={
                       isFollowUpVisitRecord(record) ? (
-                        <FollowUpVisitBadge />
+                        <span className="flex flex-col items-end gap-1">
+                          <FollowUpVisitBadge />
+                          <span className="text-[10px] text-slate-500">
+                            Linked to Record #{record.parentHealthRecordId || "—"}
+                          </span>
+                        </span>
                       ) : (
                         getRecordVisitTypeLabel(record)
                       )
@@ -222,7 +227,12 @@ export default function HealthRecordsTable({
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-[13px] font-semibold text-[#475569]">
                       {isFollowUpVisitRecord(record) ? (
-                        <FollowUpVisitBadge />
+                        <div>
+                          <FollowUpVisitBadge />
+                          <p className="mt-1 text-[10px] font-medium text-slate-500">
+                            Linked to Record #{record.parentHealthRecordId || "—"}
+                          </p>
+                        </div>
                       ) : (
                         getRecordVisitTypeLabel(record)
                       )}

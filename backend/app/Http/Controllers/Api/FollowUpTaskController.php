@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\FollowUpTask;
+use App\Models\Patient;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
 use App\Services\FollowUpNotificationService;
@@ -24,6 +25,16 @@ class FollowUpTaskController extends Controller
     )
     {
         abort_unless($request->user()->isBhw() || $request->user()->isAdmin(), 403);
+        $data = $request->validate([
+            'patient_id' => ['nullable', 'integer', 'exists:patients,id'],
+            'active' => ['nullable', 'boolean'],
+            'state' => ['nullable', Rule::in([
+                ...FollowUpTask::ACTIVE_STATES,
+                FollowUpTask::STATE_FULFILLED,
+                FollowUpTask::STATE_CANCELLED,
+            ])],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
 
         // Tasks are kept in step by HealthRecordController on create and update.
         // Backfilling legacy records is a one-off job (`php artisan follow-ups:sync`),
@@ -40,14 +51,44 @@ class FollowUpTaskController extends Controller
                 'healthRecord.patient',
                 'healthRecord.parentRecord.parentRecord.parentRecord.parentRecord',
                 'fulfilledByHealthRecord',
+                'practitioner',
             ])
-            ->latest('due_date');
+            ->orderBy('due_date')
+            ->orderBy('due_time')
+            ->orderBy('id');
 
-        if ($state = $request->query('state')) {
+        if (! empty($data['patient_id'])) {
+            $patient = Patient::findOrFail($data['patient_id']);
+            $this->facilityAccess->authorizePatient($request->user(), $patient);
+            $query->where('patient_id', $patient->id);
+        }
+
+        if ($request->boolean('active')) {
+            $query
+                ->whereIn('state', FollowUpTask::ACTIVE_STATES)
+                ->whereNull('fulfilled_at')
+                ->whereNull('fulfilled_by_health_record_id');
+        } elseif ($state = $data['state'] ?? null) {
             $query->where('state', $state);
         }
 
-        return response()->json(['data' => $query->paginate($request->integer('per_page', 100))]);
+        if (! empty($data['patient_id']) && $request->boolean('active')) {
+            return response()->json(['data' => $query->get()]);
+        }
+
+        return response()->json([
+            'data' => $query->paginate($data['per_page'] ?? 100),
+        ]);
+    }
+
+    public function show(Request $request, FollowUpTask $followUpTask)
+    {
+        abort_unless($request->user()->isBhw() || $request->user()->isAdmin(), 403);
+        $this->facilityAccess->authorizeFollowUpTask($request->user(), $followUpTask);
+
+        return response()->json([
+            'data' => $followUpTask->load($this->relations()),
+        ]);
     }
 
     public function markNoShow(
@@ -80,7 +121,7 @@ class FollowUpTaskController extends Controller
             return $lockedTask;
         });
 
-        return response()->json(['data' => $followUpTask->fresh()->load(['patient', 'healthRecord.patient', 'fulfilledByHealthRecord'])]);
+        return response()->json(['data' => $followUpTask->fresh()->load(['patient', 'healthRecord.patient', 'fulfilledByHealthRecord', 'practitioner'])]);
     }
 
     public function reschedule(
@@ -92,6 +133,8 @@ class FollowUpTaskController extends Controller
     {
         $data = $request->validate([
             'due_date' => ['required', 'date'],
+            'due_time' => ['nullable', 'date_format:H:i'],
+            'reason' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
             'state' => ['nullable', Rule::in([FollowUpTask::STATE_PENDING, FollowUpTask::STATE_RESCHEDULED])],
         ]);
@@ -106,6 +149,12 @@ class FollowUpTaskController extends Controller
             $lockedTask = $followUpTasks->lockTaskForManagement($followUpTask, $request->user());
             $lockedTask->update([
                 'due_date' => $data['due_date'],
+                'due_time' => array_key_exists('due_time', $data)
+                    ? $data['due_time']
+                    : $lockedTask->due_time,
+                'reason' => filled($data['reason'] ?? null)
+                    ? trim($data['reason'])
+                    : $lockedTask->reason,
                 'state' => $data['state'] ?? FollowUpTask::STATE_RESCHEDULED,
                 'notes' => $data['notes'] ?? $lockedTask->notes,
                 'rescheduled_at' => now(),
@@ -117,7 +166,61 @@ class FollowUpTaskController extends Controller
             return $lockedTask;
         });
 
-        return response()->json(['data' => $followUpTask->fresh()->load(['patient', 'healthRecord.patient', 'fulfilledByHealthRecord'])]);
+        return response()->json(['data' => $followUpTask->fresh()->load(['patient', 'healthRecord.patient', 'fulfilledByHealthRecord', 'practitioner'])]);
     }
 
+    public function cancel(
+        Request $request,
+        FollowUpTask $followUpTask,
+        AuditLogger $auditLogger,
+        FollowUpTaskSyncService $followUpTasks
+    )
+    {
+        $data = $request->validate([
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $followUpTask = DB::transaction(function () use (
+            $request,
+            $followUpTask,
+            $followUpTasks,
+            $data,
+            $auditLogger
+        ): FollowUpTask {
+            $lockedTask = $followUpTasks->lockTaskForManagement(
+                $followUpTask,
+                $request->user()
+            );
+            $lockedTask->update([
+                'state' => FollowUpTask::STATE_CANCELLED,
+                'notes' => $data['notes'] ?? $lockedTask->notes,
+                'cancelled_at' => now(),
+                'no_show_at' => null,
+                'updated_by' => $request->user()->id,
+            ]);
+            $auditLogger->log(
+                $request,
+                'cancelled',
+                'follow_up_tasks',
+                "Cancelled follow-up task {$lockedTask->id}."
+            );
+
+            return $lockedTask;
+        });
+
+        return response()->json([
+            'data' => $followUpTask->fresh()->load($this->relations()),
+        ]);
+    }
+
+    private function relations(): array
+    {
+        return [
+            'patient',
+            'healthRecord.patient',
+            'healthRecord.parentRecord.parentRecord.parentRecord.parentRecord',
+            'fulfilledByHealthRecord',
+            'practitioner',
+        ];
+    }
 }

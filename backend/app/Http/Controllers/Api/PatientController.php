@@ -51,11 +51,18 @@ class PatientController extends Controller
             ]);
 
         if ($search = $request->query('search')) {
-            $query->where(fn ($q) => $q
-                ->where('first_name', 'like', "%{$search}%")
-                ->orWhere('middle_name', 'like', "%{$search}%")
-                ->orWhere('last_name', 'like', "%{$search}%")
-                ->orWhere('philhealth_number', 'like', "%{$search}%"));
+            $query->where(function ($q) use ($search): void {
+                if (ctype_digit((string) $search)) {
+                    $q->orWhereKey((int) $search);
+                }
+
+                $q->orWhere('first_name', 'like', "%{$search}%")
+                    ->orWhere('middle_name', 'like', "%{$search}%")
+                    ->orWhere('last_name', 'like', "%{$search}%")
+                    ->orWhere('philhealth_number', 'like', "%{$search}%")
+                    ->orWhere('contact_number', 'like', "%{$search}%")
+                    ->orWhere('barangay', 'like', "%{$search}%");
+            });
         }
 
         foreach (['patient_category', 'barangay', 'status'] as $filter) {

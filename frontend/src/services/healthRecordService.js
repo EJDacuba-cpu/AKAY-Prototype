@@ -326,6 +326,72 @@ function getHypertensionDiabeticData(record = {}, monitoringData = {}) {
   };
 }
 
+function normalizeEpisodeRecord(record = {}) {
+  if (!record || typeof record !== "object") return null;
+
+  return {
+    ...record,
+    id: record.id ? String(record.id) : "",
+    patientId: record.patient_id ? String(record.patient_id) : record.patientId || "",
+    category: record.category || "",
+    visitType: record.visit_type || record.visitType || "initial_consultation",
+    parentHealthRecordId: record.parent_health_record_id
+      ? String(record.parent_health_record_id)
+      : record.parentHealthRecordId || "",
+    dateRecorded: record.date_recorded || record.dateRecorded || "",
+    chiefComplaint: record.chief_complaint || record.chiefComplaint || "",
+    diagnosis: record.diagnosis || "",
+    treatmentNotes: record.treatment_notes || record.treatmentNotes || "",
+    notes: record.notes || "",
+  };
+}
+
+function normalizeEpisodeTask(task = {}) {
+  if (!task || typeof task !== "object") return null;
+
+  return {
+    ...task,
+    id: task.id ? String(task.id) : "",
+    healthRecordId: task.health_record_id
+      ? String(task.health_record_id)
+      : task.healthRecordId || "",
+    patientId: task.patient_id ? String(task.patient_id) : task.patientId || "",
+    dueDate: task.due_date || task.dueDate || "",
+    dueTime: task.due_time || task.dueTime || "",
+    reason: task.reason || "",
+    state: task.state || "pending",
+    fulfilledAt: task.fulfilled_at || task.fulfilledAt || "",
+    cancelledAt: task.cancelled_at || task.cancelledAt || "",
+    fulfilledByHealthRecordId: task.fulfilled_by_health_record_id
+      ? String(task.fulfilled_by_health_record_id)
+      : task.fulfilledByHealthRecordId || "",
+    healthRecord: normalizeEpisodeRecord(task.health_record || task.healthRecord),
+    fulfilledByHealthRecord: normalizeEpisodeRecord(
+      task.fulfilled_by_health_record || task.fulfilledByHealthRecord,
+    ),
+  };
+}
+
+function normalizeFollowUpEpisode(episode = {}) {
+  const records = Array.isArray(episode.records)
+    ? episode.records.map(normalizeEpisodeRecord).filter(Boolean)
+    : [];
+  const tasks = Array.isArray(episode.tasks)
+    ? episode.tasks.map(normalizeEpisodeTask).filter(Boolean)
+    : [];
+
+  return {
+    originalRecord: normalizeEpisodeRecord(
+      episode.original_record || episode.originalRecord,
+    ),
+    records,
+    tasks,
+    pendingNextFollowUp: normalizeEpisodeTask(
+      episode.pending_next_follow_up || episode.pendingNextFollowUp,
+    ),
+  };
+}
+
 function normalizeRecord(record = {}) {
   const vitalSigns = record.vital_signs || record.vitalSigns || {};
   const patient = record.patient ? normalizePatient(record.patient) : null;
@@ -548,6 +614,18 @@ function normalizeRecord(record = {}) {
       record.followUpDate ||
       record.follow_up_date ||
       "",
+    followUpTime:
+      monitoringData.followUpTime ||
+      monitoringData.follow_up_time ||
+      record.followUpTime ||
+      record.follow_up_time ||
+      "",
+    followUpReason:
+      monitoringData.followUpReason ||
+      monitoringData.follow_up_reason ||
+      record.followUpReason ||
+      record.follow_up_reason ||
+      "",
     monitoringNotes:
       monitoringData.monitoringNotes ||
       monitoringData.monitoring_notes ||
@@ -568,6 +646,9 @@ function normalizeRecord(record = {}) {
       normalizedVisitType === "follow_up_visit",
     createdAt: record.created_at || record.createdAt || "",
     updatedAt: record.updated_at || record.updatedAt || "",
+    followUpEpisode: normalizeFollowUpEpisode(
+      record.follow_up_episode || record.followUpEpisode || {},
+    ),
   };
 }
 
@@ -666,6 +747,10 @@ function toPayload(record = {}, { partial = false } = {}) {
     ...sourceMonitoringData,
     followUpStatus: record.followUpStatus || record.status || null,
     followUpDate: record.followUpDate || null,
+    followUpTime: record.followUpTime || null,
+    follow_up_time: record.followUpTime || null,
+    followUpReason: record.followUpReason || null,
+    follow_up_reason: record.followUpReason || null,
     monitoringNotes: record.monitoringNotes || null,
     patientCondition: record.patientCondition || null,
     attendingStaff: record.attendingStaff || record.nameOfPractitioner || null,
@@ -1055,6 +1140,8 @@ function toPayload(record = {}, { partial = false } = {}) {
       "followUpStatus",
       "status",
       "followUpDate",
+      "followUpTime",
+      "followUpReason",
       "monitoringNotes",
       "patientCondition",
       "attendingStaff",

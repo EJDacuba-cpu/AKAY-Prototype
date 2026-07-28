@@ -15,43 +15,6 @@ class FollowUpTaskSyncService
     {
     }
 
-    public function findActiveMatchingTask(
-        Patient $patient,
-        ?string $category,
-        User $user
-    ): ?FollowUpTask
-    {
-        $this->facilityAccess->authorizePatientModification($user, $patient);
-        $normalizedCategory = $this->normalizeCategory($category);
-        if (! $normalizedCategory || $user->isRhuStaff()) {
-            return null;
-        }
-
-        $query = FollowUpTask::query()
-            ->with('healthRecord')
-            ->where('patient_id', $patient->id)
-            ->whereIn('state', [
-                FollowUpTask::STATE_PENDING,
-                FollowUpTask::STATE_RESCHEDULED,
-                FollowUpTask::STATE_NO_SHOW,
-            ])
-            ->whereNull('fulfilled_at');
-
-        if ($user->isBhw()) {
-            $query->where('barangay_health_center_id', $user->barangay_health_center_id);
-        }
-
-        return $query
-            ->get()
-            ->first(function (FollowUpTask $task) use ($normalizedCategory, $patient): bool {
-                return (int) $task->healthRecord?->patient_id === (int) $patient->id
-                    && (int) $task->healthRecord?->barangay_health_center_id
-                        === (int) $task->barangay_health_center_id
-                    && $this->normalizeCategory($task->healthRecord?->category)
-                        === $normalizedCategory;
-            });
-    }
-
     public function lockTaskForProcessing(
         array $recordData,
         Patient $patient,
@@ -65,21 +28,19 @@ class FollowUpTaskSyncService
         }
 
         $taskId = $this->followUpTaskId($recordData['monitoring_data'] ?? []);
-        if ($taskId !== null && (! filter_var($taskId, FILTER_VALIDATE_INT) || (int) $taskId <= 0)) {
+        if (
+            $taskId === null
+            || ! filter_var($taskId, FILTER_VALIDATE_INT)
+            || (int) $taskId <= 0
+        ) {
             $this->invalidTask();
         }
 
-        $query = FollowUpTask::query()->with('healthRecord');
-        $task = $taskId
-            ? $query->whereKey((int) $taskId)->lockForUpdate()->first()
-            : $query
-                ->where('health_record_id', $recordData['parent_health_record_id'])
-                ->lockForUpdate()
-                ->first();
-
-        if (! $task && $taskId === null) {
-            return null;
-        }
+        $task = FollowUpTask::query()
+            ->with('healthRecord')
+            ->whereKey((int) $taskId)
+            ->lockForUpdate()
+            ->first();
 
         if (! $task) {
             $this->invalidTask();
@@ -123,15 +84,26 @@ class FollowUpTaskSyncService
             return;
         }
 
+        if ($record->needs_referral) {
+            $this->cancelUnfulfilledTask($record, $user);
+            return;
+        }
+
         $status = $this->healthRecordStatus($record);
         $dueDate = $this->followUpDate($record);
 
         if ($status !== 'follow up required' || ! $dueDate) {
-            $this->deleteUnfulfilledTask($record);
+            $this->cancelUnfulfilledTask($record, $user);
             return;
         }
 
-        $this->upsertTask($record, $dueDate, $user);
+        $this->upsertTask(
+            $record,
+            $dueDate,
+            $this->followUpTime($record),
+            $this->followUpReason($record),
+            $user
+        );
     }
 
     /**
@@ -142,11 +114,16 @@ class FollowUpTaskSyncService
     private function upsertTask(
         HealthRecord $record,
         string $dueDate,
+        ?string $dueTime,
+        ?string $reason,
         ?User $user
     ): void {
         $existingTask = FollowUpTask::where('health_record_id', $record->id)->first();
 
-        if ($existingTask?->state === FollowUpTask::STATE_FULFILLED) {
+        if (in_array($existingTask?->state, [
+            FollowUpTask::STATE_FULFILLED,
+            FollowUpTask::STATE_CANCELLED,
+        ], true)) {
             return;
         }
 
@@ -163,6 +140,8 @@ class FollowUpTaskSyncService
         // undo the reschedule on the next list load.
         if ($existingTask === null || $existingTask->rescheduled_at === null) {
             $attributes['due_date'] = $dueDate;
+            $attributes['due_time'] = $dueTime;
+            $attributes['reason'] = $reason;
         }
 
         FollowUpTask::updateOrCreate(['health_record_id' => $record->id], $attributes);
@@ -220,18 +199,33 @@ class FollowUpTaskSyncService
         }
 
         if (! $dueDate) {
-            $this->deleteUnfulfilledTask($record);
+            $this->cancelUnfulfilledTask($record, $user);
             return;
         }
 
-        $this->upsertTask($record, $dueDate, $user);
+        $this->upsertTask(
+            $record,
+            $dueDate,
+            $this->followUpTime($record),
+            $this->followUpReason($record),
+            $user
+        );
     }
 
-    private function deleteUnfulfilledTask(HealthRecord $record): void
+    private function cancelUnfulfilledTask(
+        HealthRecord $record,
+        ?User $user
+    ): void
     {
         FollowUpTask::where('health_record_id', $record->id)
+            ->whereIn('state', FollowUpTask::ACTIVE_STATES)
             ->whereNull('fulfilled_at')
-            ->delete();
+            ->update([
+                'state' => FollowUpTask::STATE_CANCELLED,
+                'cancelled_at' => now(),
+                'updated_by' => $user?->id,
+                'updated_at' => now(),
+            ]);
     }
 
     private function linkedFollowUpTask(
@@ -265,12 +259,7 @@ class FollowUpTaskSyncService
         abort_unless($user, 403, 'A valid facility assignment is required for clinical access.');
         $this->facilityAccess->authorizeFollowUpTask($user, $task);
 
-        $activeStates = [
-            FollowUpTask::STATE_PENDING,
-            FollowUpTask::STATE_RESCHEDULED,
-            FollowUpTask::STATE_NO_SHOW,
-        ];
-        $isActive = in_array($task->state, $activeStates, true)
+        $isActive = in_array($task->state, FollowUpTask::ACTIVE_STATES, true)
             && $task->fulfilled_at === null;
         $isExistingFulfillment = $task->state === FollowUpTask::STATE_FULFILLED
             && $task->fulfilled_at !== null
@@ -283,9 +272,7 @@ class FollowUpTaskSyncService
             && $task->healthRecord !== null
             && (int) $task->healthRecord->patient_id === (int) $record->patient_id
             && (int) $task->healthRecord->barangay_health_center_id
-                === (int) $task->barangay_health_center_id
-            && $this->normalizeCategory($task->healthRecord->category)
-                === $this->normalizeCategory($record->category);
+                === (int) $task->barangay_health_center_id;
 
         if (! $isValid) {
             $this->invalidTask();
@@ -308,11 +295,7 @@ class FollowUpTaskSyncService
             ->where('health_record_id', $record->parent_health_record_id)
             ->where('patient_id', $record->patient_id)
             ->where('barangay_health_center_id', $record->barangay_health_center_id)
-            ->whereIn('state', [
-                FollowUpTask::STATE_PENDING,
-                FollowUpTask::STATE_RESCHEDULED,
-                FollowUpTask::STATE_NO_SHOW,
-            ])
+            ->whereIn('state', FollowUpTask::ACTIVE_STATES)
             ->whereNull('fulfilled_at')
             ->first();
 
@@ -321,13 +304,6 @@ class FollowUpTaskSyncService
         }
 
         $this->facilityAccess->authorizeFollowUpTask($user, $task);
-
-        if (
-            $this->normalizeCategory($task->healthRecord?->category)
-                !== $this->normalizeCategory($record->category)
-        ) {
-            return null;
-        }
 
         return $task;
     }
@@ -366,9 +342,7 @@ class FollowUpTaskSyncService
             && $task->healthRecord !== null
             && (int) $task->healthRecord->patient_id === (int) $patient->id
             && (int) $task->healthRecord->barangay_health_center_id
-                === (int) $task->barangay_health_center_id
-            && $this->normalizeCategory($task->healthRecord->category)
-                === $this->normalizeCategory($recordData['category'] ?? null);
+                === (int) $task->barangay_health_center_id;
 
         if (! $isValid) {
             $this->invalidTask();
@@ -377,11 +351,7 @@ class FollowUpTaskSyncService
 
     private function isProcessable(FollowUpTask $task): bool
     {
-        return in_array($task->state, [
-            FollowUpTask::STATE_PENDING,
-            FollowUpTask::STATE_RESCHEDULED,
-            FollowUpTask::STATE_NO_SHOW,
-        ], true)
+        return in_array($task->state, FollowUpTask::ACTIVE_STATES, true)
             && $task->fulfilled_at === null
             && $task->fulfilled_by_health_record_id === null;
     }
@@ -423,30 +393,6 @@ class FollowUpTaskSyncService
         return str_replace(['_', '-'], ' ', strtolower(trim($status)));
     }
 
-    private function normalizeCategory(?string $category): string
-    {
-        $value = str_replace(['_', '-'], ' ', strtolower(trim((string) $category)));
-
-        if ($value === '') return '';
-        if (str_contains($value, 'immun') || str_contains($value, 'epi') || str_contains($value, 'child health')) {
-            return 'immunization';
-        }
-        if (str_contains($value, 'maternal') || str_contains($value, 'prenatal')) {
-            return 'maternal';
-        }
-        if (str_contains($value, 'family') || str_contains($value, 'planning')) {
-            return 'family planning';
-        }
-        if (str_contains($value, 'hypertension') || str_contains($value, 'diabetic') || str_contains($value, 'diabetes') || str_contains($value, 'ncd')) {
-            return 'hypertension diabetic monitoring';
-        }
-        if (str_contains($value, 'general') || str_contains($value, 'consult')) {
-            return 'general consultation';
-        }
-
-        return $value;
-    }
-
     private function followUpDate(HealthRecord $record): ?string
     {
         $monitoringData = $record->monitoring_data ?? [];
@@ -455,5 +401,25 @@ class FollowUpTaskSyncService
             ?? null;
 
         return $date ?: null;
+    }
+
+    private function followUpTime(HealthRecord $record): ?string
+    {
+        $monitoringData = $record->monitoring_data ?? [];
+        $time = $monitoringData['followUpTime']
+            ?? $monitoringData['follow_up_time']
+            ?? null;
+
+        return $time ?: null;
+    }
+
+    private function followUpReason(HealthRecord $record): ?string
+    {
+        $monitoringData = $record->monitoring_data ?? [];
+        $reason = $monitoringData['followUpReason']
+            ?? $monitoringData['follow_up_reason']
+            ?? null;
+
+        return filled($reason) ? trim((string) $reason) : null;
     }
 }

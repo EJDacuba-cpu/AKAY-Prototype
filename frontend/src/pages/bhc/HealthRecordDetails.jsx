@@ -15,6 +15,7 @@ import { SideCard, SoftLoadingArea } from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 import RecordHeaderCard from "../../components/features/health-records/RecordHeaderCard";
 import HealthRecordClinicalDetails from "../../components/features/health-records/HealthRecordClinicalDetails";
+import FollowUpEpisodePanel from "../../components/features/health-records/FollowUpEpisodePanel";
 
 import {
   formatDisplayValue,
@@ -25,7 +26,6 @@ import { queryKeys } from "../../utils/queryKeys";
 import { getServiceTypeLabel } from "../../utils/healthRecordPrograms";
 import {
   isImmunizationClassification,
-  getRecordValue,
   getRecordVisitTypeValue,
   getParentHealthRecordId,
   getRecordDateValue,
@@ -142,10 +142,10 @@ export default function HealthRecordDetails() {
     );
   }
 
-  const followUpDateValue = getRecordValue(record, ["followUpDate", "follow_up_date"], "");
   const isFollowUpVisitRecord = getRecordVisitTypeValue(record) === "follow_up_visit";
+  const pendingNextFollowUp = record.followUpEpisode?.pendingNextFollowUp;
   const canRecordFollowUpVisit =
-    Boolean(followUpDateValue) && !isFollowUpVisitRecord;
+    Boolean(pendingNextFollowUp);
   const parentHealthRecordId = getParentHealthRecordId(record);
   const showPatientProfileSidebar = false;
   const linkedReferralTarget =
@@ -213,7 +213,7 @@ export default function HealthRecordDetails() {
             <>
               {canRecordFollowUpVisit && (
                 <Link
-                  to={`/bhc/health-records/add?recordId=${record.id || record._id}&mode=follow-up`}
+                  to={`/bhc/health-records/add?recordId=${pendingNextFollowUp.healthRecordId}&followUpId=${pendingNextFollowUp.id}&patientId=${pendingNextFollowUp.patientId}&mode=followup`}
                   title="This action creates a follow-up visit linked to the current health record."
                   aria-label="Record a follow-up visit linked to this health record"
                   className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100"
@@ -261,6 +261,7 @@ export default function HealthRecordDetails() {
               patient={patient}
               linkedReferral={linkedReferral}
             />
+            <FollowUpEpisodePanel episode={record.followUpEpisode} />
           </div>
 
           {showPatientProfileSidebar && (

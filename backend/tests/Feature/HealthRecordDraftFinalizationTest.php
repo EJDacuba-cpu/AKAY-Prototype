@@ -173,7 +173,6 @@ class HealthRecordDraftFinalizationTest extends TestCase
         $ciphertext = HealthRecordDraft::where('public_id', $draftId)
             ->value('encrypted_payload');
         $this->mock(FollowUpTaskSyncService::class, function (MockInterface $mock): void {
-            $mock->shouldReceive('findActiveMatchingTask')->once()->andReturnNull();
             $mock->shouldReceive('lockTaskForProcessing')->once()->andReturnNull();
             $mock->shouldReceive('syncRecord')
                 ->once()

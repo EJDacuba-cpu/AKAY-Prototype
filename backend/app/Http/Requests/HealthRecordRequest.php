@@ -81,6 +81,21 @@ class HealthRecordRequest extends FormRequest
             'maternal_data.td5_date' => ['nullable', 'date'],
             'immunization_data' => ['nullable', 'array'],
             'monitoring_data' => ['nullable', 'array'],
+            'monitoring_data.followUpStatus' => ['nullable', 'string', 'max:100'],
+            'monitoring_data.follow_up_status' => ['nullable', 'string', 'max:100'],
+            'monitoring_data.status' => ['nullable', 'string', 'max:100'],
+            'monitoring_data.followUpDate' => ['nullable', 'date'],
+            'monitoring_data.follow_up_date' => ['nullable', 'date'],
+            'monitoring_data.followUpTime' => ['nullable', 'date_format:H:i'],
+            'monitoring_data.follow_up_time' => ['nullable', 'date_format:H:i'],
+            'monitoring_data.followUpReason' => ['nullable', 'string', 'max:255'],
+            'monitoring_data.follow_up_reason' => ['nullable', 'string', 'max:255'],
+            'monitoring_data.followUpTaskId' => ['nullable', 'integer', 'exists:follow_up_tasks,id'],
+            'monitoring_data.follow_up_task_id' => ['nullable', 'integer', 'exists:follow_up_tasks,id'],
+            'monitoring_data.monitoringNotes' => ['nullable', 'string'],
+            'monitoring_data.monitoring_notes' => ['nullable', 'string'],
+            'monitoring_data.patientCondition' => ['nullable', 'string', 'max:100'],
+            'monitoring_data.patient_condition' => ['nullable', 'string', 'max:100'],
             'family_planning_data' => ['nullable', 'array'],
             'family_planning_data.clientType' => ['nullable', 'string', 'max:100'],
             'family_planning_data.client_type' => ['nullable', 'string', 'max:100'],
@@ -225,6 +240,16 @@ class HealthRecordRequest extends FormRequest
             $date = $monitoringData['followUpDate']
                 ?? $monitoringData['follow_up_date']
                 ?? null;
+            $reason = $monitoringData['followUpReason']
+                ?? $monitoringData['follow_up_reason']
+                ?? null;
+            $taskId = $monitoringData['followUpTaskId']
+                ?? $monitoringData['follow_up_task_id']
+                ?? null;
+            $needsReferral = filter_var(
+                $this->input('needs_referral', false),
+                FILTER_VALIDATE_BOOLEAN
+            ) || is_array($this->input('referral'));
 
             $normalizedStatus = str_replace(
                 ['_', '-'],
@@ -232,10 +257,32 @@ class HealthRecordRequest extends FormRequest
                 strtolower(trim((string) $status))
             );
 
-            if ($normalizedStatus === 'follow up required' && ! $date) {
+            if (! $needsReferral && $normalizedStatus === 'follow up required' && ! $date) {
                 $validator->errors()->add(
                     'monitoring_data.followUpDate',
                     'Follow-up date is required when status is Follow-up Required.'
+                );
+            }
+
+            if (
+                ! $needsReferral
+                && $normalizedStatus === 'follow up required'
+                && blank($reason)
+            ) {
+                $validator->errors()->add(
+                    'monitoring_data.followUpReason',
+                    'Follow-up reason is required when status is Follow-up Required.'
+                );
+            }
+
+            if (
+                $this->isMethod('post')
+                && $this->input('visit_type') === 'follow_up_visit'
+                && blank($taskId)
+            ) {
+                $validator->errors()->add(
+                    'monitoring_data.followUpTaskId',
+                    'The active follow-up task is required for a follow-up visit.'
                 );
             }
 

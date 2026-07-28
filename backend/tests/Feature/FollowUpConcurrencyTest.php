@@ -58,6 +58,7 @@ class FollowUpConcurrencyTest extends TestCase
                 'followUpTaskId' => $task->id,
                 'followUpStatus' => 'Follow-up Required',
                 'followUpDate' => '2026-08-15',
+                'followUpReason' => 'Continue scheduled monitoring.',
             ],
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
@@ -72,7 +73,6 @@ class FollowUpConcurrencyTest extends TestCase
         $winner = $this->postRecord($this->bhw, $payload, (string) Str::uuid())
             ->assertCreated();
         $winnerRecordId = $winner->json('data.id');
-        $nextTaskId = $winner->json('result.next_follow_up_task_id');
         $referralId = $winner->json('result.referral_id');
 
         $loser = $this->postRecord($this->bhw, $payload, (string) Str::uuid())
@@ -86,8 +86,8 @@ class FollowUpConcurrencyTest extends TestCase
         $this->assertDatabaseCount('health_records', 2);
         $this->assertSame(17, $medicine->fresh()->quantity);
         $this->assertDatabaseCount('health_record_medicines', 1);
-        $this->assertSame(1, FollowUpTask::where('health_record_id', $winnerRecordId)->count());
-        $this->assertSame($nextTaskId, FollowUpTask::where('health_record_id', $winnerRecordId)->value('id'));
+        $this->assertSame(0, FollowUpTask::where('health_record_id', $winnerRecordId)->count());
+        $this->assertNull($winner->json('result.next_follow_up_task_id'));
         $this->assertSame(1, Referral::whereKey($referralId)->count());
         $this->assertSame(3, AuditLog::count());
         $this->assertSame(1, AuditLog::where('action', 'medicine_dispensed')->count());
@@ -250,6 +250,7 @@ class FollowUpConcurrencyTest extends TestCase
                 'followUpTaskId' => $task->id,
                 'followUpStatus' => 'Follow-up Required',
                 'followUpDate' => '2026-08-20',
+                'followUpReason' => 'Continue scheduled monitoring.',
             ],
         ]);
 
@@ -274,6 +275,7 @@ class FollowUpConcurrencyTest extends TestCase
                 'followUpTaskId' => $task->id,
                 'followUpStatus' => 'Follow-up Required',
                 'followUpDate' => '2026-08-25',
+                'followUpReason' => 'Continue scheduled monitoring.',
             ],
             'needs_referral' => true,
             'referral' => [
@@ -367,6 +369,7 @@ class FollowUpConcurrencyTest extends TestCase
             'monitoring_data' => [
                 'followUpStatus' => 'Follow-up Required',
                 'followUpDate' => '2026-08-01',
+                'followUpReason' => 'Continue scheduled monitoring.',
             ],
         ]);
         $task = FollowUpTask::create([
