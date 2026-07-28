@@ -115,6 +115,12 @@ export default function FollowUpEpisodePanel({ episode }) {
                       </dl>
 
                       <div className="flex flex-wrap gap-2">
+                        <Link
+                          to={`/bhc/follow-ups/${task.id}`}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                        >
+                          View Follow-up Details
+                        </Link>
                         {active && (
                           <>
                             <Link

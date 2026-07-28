@@ -2,6 +2,7 @@ import ActionMenu from "../../common/tables/ActionMenu";
 import { formatDisplayValue } from "../../../utils/formatters";
 import {
   buildTaskActions,
+  formatStateLabel,
   formatTimeLabel,
   getStateConfig,
   getTaskServiceTypeLabel,
@@ -15,7 +16,8 @@ export default function FollowUpEventCard({
   dense = false,
 }) {
   const config = getStateConfig(task.effectiveState);
-  const timeLabel = formatTimeLabel(task.dueTime) || "Untimed";
+  const timeLabel =
+    formatTimeLabel(task.dueTime) || formatStateLabel(task.effectiveState);
   const patientName = formatDisplayValue(task.patientName, "Unnamed Patient");
   const actions = buildTaskActions(task, {
     onRecordVisit: () => onRecordVisit?.(task),

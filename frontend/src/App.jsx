@@ -34,6 +34,7 @@ import HealthRecords from "./pages/bhc/HealthRecords";
 import AddHealthRecord from "./pages/bhc/AddHealthRecord";
 import AddPatient from "./pages/bhc/AddPatient";
 import FollowUps from "./pages/bhc/FollowUps";
+import FollowUpDetails from "./pages/bhc/FollowUpDetails";
 import Referrals from "./pages/bhc/Referrals";
 import CreateReferral from "./pages/bhc/CreateReferral";
 import ReferralDetails from "./pages/bhc/ReferralDetails";
@@ -495,6 +496,14 @@ export default function App() {
         element={
           <ProtectedPage allowedRole="bhc">
             <FollowUps />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/bhc/follow-ups/:taskId"
+        element={
+          <ProtectedPage allowedRole="bhc">
+            <FollowUpDetails />
           </ProtectedPage>
         }
       />

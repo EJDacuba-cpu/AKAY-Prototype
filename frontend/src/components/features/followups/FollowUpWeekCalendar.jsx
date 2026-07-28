@@ -1,4 +1,3 @@
-import { Plus } from "lucide-react";
 import {
   WEEKDAY_LABELS,
   getTasksForDay,
@@ -14,7 +13,6 @@ export default function FollowUpWeekCalendar({
   onTaskClick,
   onRecordVisit,
   onReschedule,
-  onSlotClick,
 }) {
   const weekDays = getWeekDays(weekStart);
 
@@ -70,27 +68,11 @@ export default function FollowUpWeekCalendar({
                   ))}
 
                   {!hasTasks && (
-                    <button
-                      type="button"
-                      onClick={() => onSlotClick?.(day)}
-                      className="flex w-full items-center justify-center rounded-lg border border-dashed border-transparent py-6 text-[#CBD5E1] transition-colors hover:border-red-200 hover:bg-red-50/30 hover:text-[#B91C1C]"
-                      aria-label="Schedule a follow-up on this day"
-                    >
-                      <Plus size={14} />
-                    </button>
+                    <p className="py-6 text-center text-[10px] font-medium text-[#CBD5E1]">
+                      No scheduled visits
+                    </p>
                   )}
                 </div>
-
-                {hasTasks && (
-                  <button
-                    type="button"
-                    onClick={() => onSlotClick?.(day)}
-                    className="flex items-center justify-center gap-1 border-t border-[#F1F5F9] py-2 text-[10.5px] font-semibold text-[#94A3B8] transition-colors hover:bg-red-50/30 hover:text-[#B91C1C]"
-                  >
-                    <Plus size={11} />
-                    Add
-                  </button>
-                )}
               </div>
             );
           })}
@@ -107,7 +89,6 @@ export default function FollowUpWeekCalendar({
             onTaskClick={onTaskClick}
             onRecordVisit={onRecordVisit}
             onReschedule={onReschedule}
-            onSlotClick={onSlotClick}
           />
         ))}
       </div>

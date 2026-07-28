@@ -62,20 +62,7 @@ export function getEffectiveState(task) {
 }
 
 export function buildTaskActions(task, handlers) {
-  const originalRecordLink = `/bhc/health-records/${task.originalHealthRecordId || task.healthRecordId}`;
-  const latestRecordId =
-    task.latestHealthRecordId || task.fulfilledByHealthRecordId || "";
   const actions = [];
-
-  if (["fulfilled", "cancelled"].includes(task.effectiveState)) {
-    actions.push({
-      label: "View Records",
-      to: latestRecordId
-        ? `/bhc/health-records/${latestRecordId}`
-        : originalRecordLink,
-    });
-    return actions;
-  }
 
   if (["due_today", "no_show", "upcoming", "rescheduled"].includes(task.effectiveState)) {
     actions.push({
@@ -88,21 +75,15 @@ export function buildTaskActions(task, handlers) {
     });
   }
 
-  actions.push({ label: "View Original Record", to: originalRecordLink });
+  actions.push({
+    label: "View Follow-up Details",
+    to: `/bhc/follow-ups/${task.id}`,
+  });
   return actions;
 }
 
-/** The record a calendar event click should navigate to, per the same rules as buildTaskActions. */
 export function getTaskNavigationTarget(task) {
-  const originalRecordId = task.originalHealthRecordId || task.healthRecordId;
-  const latestRecordId =
-    task.latestHealthRecordId || task.fulfilledByHealthRecordId || "";
-
-  if (["fulfilled", "cancelled"].includes(task.effectiveState)) {
-    return latestRecordId || originalRecordId;
-  }
-
-  return originalRecordId;
+  return task.id ? `/bhc/follow-ups/${task.id}` : "";
 }
 
 export function normalizeFilterState(value) {

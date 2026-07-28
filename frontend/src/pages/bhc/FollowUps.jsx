@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, ChevronLeft, ChevronRight, RefreshCcw, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCcw, X } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
@@ -41,7 +41,6 @@ import {
 import FollowUpWeekCalendar from "../../components/features/followups/FollowUpWeekCalendar";
 import FollowUpDayView from "../../components/features/followups/FollowUpDayView";
 import FollowUpMonthMiniCalendar from "../../components/features/followups/FollowUpMonthMiniCalendar";
-import RecordScheduledFollowUpModal from "../../components/features/followups/RecordScheduledFollowUpModal";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -59,7 +58,6 @@ export default function FollowUps() {
   const [viewMode, setViewMode] = useState("list");
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [modal, setModal] = useState(null);
-  const [scheduleSearchOpen, setScheduleSearchOpen] = useState(false);
   const [routeNotice, setRouteNotice] = useState("");
   const [savingAction, setSavingAction] = useState(false);
 
@@ -147,13 +145,9 @@ export default function FollowUps() {
     if (requestedOpen === "reschedule" || requestedOpen === "cancel") {
       setModal({ type: requestedOpen, task: requestedTask });
     } else {
-      setModal({
-        type: "details",
-        task: requestedTask,
-        mode: requestedOpen === "due" ? "due" : "no_show",
-      });
+      navigate(`/bhc/follow-ups/${requestedTask.id}`, { replace: true });
     }
-  }, [isLoading, requestedOpen, requestedTaskId, tasks]);
+  }, [isLoading, navigate, requestedOpen, requestedTaskId, tasks]);
 
   const dropdownFilters = [
     {
@@ -249,15 +243,15 @@ export default function FollowUps() {
   }
 
   function handleTaskClick(task) {
-    const targetId = getTaskNavigationTarget(task);
-    if (targetId) navigate(`/bhc/health-records/${targetId}`);
+    const target = getTaskNavigationTarget(task);
+    if (target) navigate(target);
   }
 
-  function viewOriginalRecord(task) {
+  function viewCompletedHealthRecord(task) {
     const recordId =
-      task.effectiveState === "fulfilled"
-        ? task.fulfilledByHealthRecordId
-        : task.healthRecordId;
+      task.fulfilledByHealthRecordId ||
+      task.latestHealthRecordId ||
+      task.healthRecordId;
     if (recordId) navigate(`/bhc/health-records/${recordId}`);
   }
 
@@ -340,24 +334,12 @@ export default function FollowUps() {
 
   return (
     <DashboardLayout role="bhc" title="Follow-ups">
-      <RecordScheduledFollowUpModal
-        open={scheduleSearchOpen}
-        onClose={() => setScheduleSearchOpen(false)}
-        onRecord={(task) => {
-          setScheduleSearchOpen(false);
-          recordFollowUpVisit(task);
-        }}
-      />
       <ActionModal
         modal={modal}
         saving={savingAction}
         onClose={closeModal}
-        onRecordVisit={recordFollowUpVisit}
         onReschedule={handleReschedule}
         onCancel={handleCancel}
-        onOpenReschedule={openRescheduleModal}
-        onOpenCancel={openCancelModal}
-        onViewOriginal={viewOriginalRecord}
       />
 
       {routeNotice && (
@@ -385,16 +367,6 @@ export default function FollowUps() {
             onClearFilters={clearFilters}
             onRemoveFilter={removeFilter}
             filterDescription="Narrow the follow-up tracking list."
-            actions={
-              <button
-                type="button"
-                onClick={() => setScheduleSearchOpen(true)}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
-              >
-                <CalendarClock size={15} />
-                Schedule Follow-up
-              </button>
-            }
           />
         ) : null}
 
@@ -457,11 +429,11 @@ export default function FollowUps() {
               {viewMode === "list" && (
                 <FollowUpList
                   tasks={filteredTasks}
-                  onView={(task) => setModal({ type: "details", task })}
+                  onView={handleTaskClick}
                   onRecord={recordFollowUpVisit}
                   onReschedule={openRescheduleModal}
                   onCancel={openCancelModal}
-                  onViewRecord={handleTaskClick}
+                  onViewRecord={viewCompletedHealthRecord}
                 />
               )}
               {viewMode === "week" && (
@@ -471,7 +443,6 @@ export default function FollowUps() {
                   onTaskClick={handleTaskClick}
                   onRecordVisit={recordFollowUpVisit}
                   onReschedule={openRescheduleModal}
-                  onSlotClick={() => setScheduleSearchOpen(true)}
                 />
               )}
 
@@ -482,7 +453,6 @@ export default function FollowUps() {
                   onTaskClick={handleTaskClick}
                   onRecordVisit={recordFollowUpVisit}
                   onReschedule={openRescheduleModal}
-                  onSlotClick={() => setScheduleSearchOpen(true)}
                 />
               )}
 
@@ -526,7 +496,6 @@ function FollowUpList({
             <th className="px-3 py-3">Linked Record</th>
             <th className="px-3 py-3">Schedule</th>
             <th className="px-3 py-3">Service</th>
-            <th className="px-3 py-3">Reason</th>
             <th className="px-3 py-3">Status</th>
             <th className="px-3 py-3 text-right">Actions</th>
           </tr>
@@ -557,9 +526,6 @@ function FollowUpList({
                 </td>
                 <td className="px-3 py-4 text-slate-700">
                   {getTaskServiceTypeLabel(task)}
-                </td>
-                <td className="max-w-xs px-3 py-4 text-slate-600">
-                  {task.reason || "Not recorded"}
                 </td>
                 <td className="px-3 py-4">
                   <StateBadge state={task.effectiveState} />
@@ -631,12 +597,8 @@ function ActionModal({
   modal,
   saving,
   onClose,
-  onRecordVisit,
   onReschedule,
   onCancel,
-  onOpenReschedule,
-  onOpenCancel,
-  onViewOriginal,
 }) {
   const [notes, setNotes] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -651,19 +613,6 @@ function ActionModal({
   }, [modal]);
 
   if (!modal) return null;
-
-  if (modal.type === "details") {
-    return (
-      <FollowUpDetailsModal
-        modal={modal}
-        onClose={onClose}
-        onRecordVisit={onRecordVisit}
-        onOpenReschedule={onOpenReschedule}
-        onOpenCancel={onOpenCancel}
-        onViewOriginal={onViewOriginal}
-      />
-    );
-  }
 
   const cancelling = modal.type === "cancel";
 
@@ -778,129 +727,6 @@ function ActionModal({
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function FollowUpDetailsModal({
-  modal,
-  onClose,
-  onRecordVisit,
-  onOpenReschedule,
-  onOpenCancel,
-  onViewOriginal,
-}) {
-  const { task } = modal;
-  const isDueToday = modal.mode === "due";
-  const isNoShow = modal.mode === "no_show";
-
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/35 px-4">
-      <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-        <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-bold text-[#0F172A]">
-                {isDueToday
-                  ? "Follow-up Due Today"
-                  : isNoShow
-                    ? "No-Show Follow-up"
-                    : "Follow-up Details"}
-              </h2>
-              <StateBadge state={task.effectiveState} />
-            </div>
-            <p className="mt-1 text-xs text-slate-500">
-              {isDueToday
-                ? "This patient has a scheduled follow-up today."
-                : isNoShow
-                  ? "This patient missed the scheduled follow-up date."
-                  : "Review this scheduled follow-up."}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1 text-slate-300 hover:bg-slate-50 hover:text-slate-500"
-            aria-label="Close follow-up details"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="grid gap-3 px-5 py-5 sm:grid-cols-2">
-          <DetailItem label="Patient" value={task.patientName} strong />
-          <DetailItem
-            label="Service Type"
-            value={getTaskServiceTypeLabel(task)}
-          />
-          <DetailItem
-            label="Next Follow-up Date"
-            value={formatDate(task.dueDate)}
-          />
-          <DetailItem
-            label="Status"
-            value={formatStateLabel(task.effectiveState)}
-          />
-          <DetailItem label="Contact Number" value={task.contact} />
-        </div>
-
-        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 px-5 py-4">
-          {task.effectiveState !== "cancelled" && (
-            <button
-              type="button"
-              onClick={() => onViewOriginal(task)}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-            >
-              View Health Record
-            </button>
-          )}
-          {["due_today", "no_show", "upcoming", "rescheduled"].includes(
-            task.effectiveState,
-          ) && (
-            <>
-              <button
-                type="button"
-                onClick={() => onOpenReschedule(task)}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-              >
-                <RefreshCcw size={14} />
-                Reschedule
-              </button>
-              <button
-                type="button"
-                onClick={() => onOpenCancel(task)}
-                className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-[#B91C1C] hover:bg-red-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => onRecordVisit(task)}
-                className="rounded-xl bg-[#B91C1C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#991B1B]"
-              >
-                Record Visit
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DetailItem({ label, value, strong = false }) {
-  return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-3.5 py-3">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-        {label}
-      </p>
-      <p
-        className={`mt-1 text-sm ${
-          strong ? "font-bold text-[#0F172A]" : "font-semibold text-slate-700"
-        }`}
-      >
-        {formatDisplayValue(value, "Not recorded")}
-      </p>
     </div>
   );
 }
