@@ -153,7 +153,8 @@ export default function HealthRecords() {
             "",
         };
       })
-        .reverse();
+        .reverse()
+        .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
     },
     retry: false,
   });

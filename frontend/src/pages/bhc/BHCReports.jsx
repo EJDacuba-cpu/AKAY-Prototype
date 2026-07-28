@@ -15,7 +15,6 @@ import {
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
-  ActiveFilterChips,
   CommonFilterPopover,
   PageStateWrapper,
   RefreshingIndicator,
@@ -412,6 +411,9 @@ export default function BHCReports() {
                 subtitle={`Narrow the ${reportLabel.toLowerCase()} report.`}
                 filters={draftFilters}
                 config={reportFields}
+                activeFilters={activeFilters}
+                onRemoveFilter={removeFilter}
+                onClearAll={resetFilters}
                 onChange={setDraftFilters}
                 onApply={applyFilters}
                 onReset={resetFilters}
@@ -419,12 +421,6 @@ export default function BHCReports() {
               />
             </div>
           </div>
-
-          <ActiveFilterChips
-            filters={activeFilters}
-            onRemove={removeFilter}
-            onClearAll={resetFilters}
-          />
 
           {refreshing && (
             <div className="no-print flex justify-end">

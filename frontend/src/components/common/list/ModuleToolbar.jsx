@@ -1,7 +1,6 @@
 import { Link } from "react-router";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import ActiveFilterChips from "../filters/ActiveFilterChips";
 import FilterPopover from "../filters/FilterPopover";
 import { formatDisplayValue } from "../../../utils/formatters";
 
@@ -275,21 +274,14 @@ export default function ModuleToolbar({
           subtitle={filterDescription}
           filters={draft}
           config={filters}
+          activeFilters={activeFilters}
+          onRemoveFilter={onRemoveFilter}
+          onClearAll={clearFilters}
           onChange={setDraft}
           onReset={resetDraft}
           onApply={applyFilters}
           onClose={closeFilters}
         />
-      )}
-
-      {activeFilters.length > 0 && (
-        <div className="mt-3">
-          <ActiveFilterChips
-            filters={activeFilters}
-            onRemove={onRemoveFilter}
-            onClearAll={clearFilters}
-          />
-        </div>
       )}
     </div>
   );

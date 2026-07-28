@@ -1,5 +1,6 @@
 import { RotateCcw, X } from "lucide-react";
 import { DEFAULT_DATE_PRESETS } from "../../../utils/filterUtils";
+import ActiveFilterChips from "./ActiveFilterChips";
 
 function normalizeOption(option) {
   if (typeof option === "string") return { value: option, label: option };
@@ -15,6 +16,9 @@ export default function FilterPopover({
   subtitle = "Narrow the list.",
   filters = {},
   config = [],
+  activeFilters = [],
+  onRemoveFilter,
+  onClearAll,
   onChange,
   onApply,
   onReset,
@@ -53,6 +57,16 @@ export default function FilterPopover({
       </div>
 
       <div className="max-h-[min(68vh,590px)] space-y-4 overflow-y-auto px-4 py-4">
+        {activeFilters.length > 0 && (
+          <div className="space-y-4 border-b border-[#EEF2F6] pb-4">
+            <ActiveFilterChips
+              filters={activeFilters}
+              onRemove={onRemoveFilter}
+              onClearAll={onClearAll}
+            />
+          </div>
+        )}
+
         {config.map((field) => (
           <FilterSection
             key={field.key}
