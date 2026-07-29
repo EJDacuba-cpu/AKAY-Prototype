@@ -11,6 +11,8 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConfirmationModal,
   ListToolbar,
+  ModalButton,
+  ModalShell,
   SoftLoadingArea,
   TablePagination,
 } from "../../components/common";
@@ -450,43 +452,35 @@ function DetailsModal({ request, onClose }) {
   ];
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/35 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-2xl">
-        <div className="flex items-start justify-between border-b border-[#F1F5F9] px-5 py-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <KeyRound size={16} className="text-[#B91C1C]" />
-              <h2 className="text-base font-bold text-[#0F172A]">
-                Password Reset Request
-              </h2>
-            </div>
-            <p className="mt-1 text-xs text-[#64748B]">
-              Request #{request.id}
+    <ModalShell
+      open={Boolean(request)}
+      title="Password Reset Request"
+      subtitle={`Request #${request.id}`}
+      icon={<KeyRound size={14} />}
+      size="md"
+      onClose={onClose}
+      footer={
+        <ModalButton variant="primary" onClick={onClose}>
+          Close
+        </ModalButton>
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        {details.map(([label, value]) => (
+          <div
+            key={label}
+            className="rounded-xl border border-[#F1F5F9] bg-[#FAFBFC] px-3 py-2.5"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+              {label}
+            </p>
+            <p className="mt-1 break-words text-sm font-semibold text-[#0F172A]">
+              {formatDisplayValue(value, "Not recorded")}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-[#94A3B8] hover:bg-[#F8FAFC] hover:text-[#64748B]"
-            aria-label="Close details"
-          >
-            <XCircle size={18} />
-          </button>
-        </div>
-        <div className="grid gap-3 px-5 py-4 sm:grid-cols-2">
-          {details.map(([label, value]) => (
-            <div key={label} className="rounded-xl border border-[#F1F5F9] bg-[#FAFBFC] px-3 py-2.5">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
-                {label}
-              </p>
-              <p className="mt-1 break-words text-sm font-semibold text-[#0F172A]">
-                {formatDisplayValue(value, "Not recorded")}
-              </p>
-            </div>
-          ))}
-        </div>
+        ))}
       </div>
-    </div>
+    </ModalShell>
   );
 }
 

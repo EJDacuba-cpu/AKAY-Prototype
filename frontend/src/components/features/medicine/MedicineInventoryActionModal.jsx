@@ -1,5 +1,9 @@
-import { useEffect, useState } from "react";
-import { LoaderCircle, X } from "lucide-react";
+import { useEffect, useId, useState } from "react";
+import { LoaderCircle, Package, PackagePlus } from "lucide-react";
+import {
+  ModalButton,
+  ModalShell,
+} from "../../common";
 
 const ACTIONS = [
   { value: "adjustment_in", label: "Adjustment In" },
@@ -24,6 +28,7 @@ export default function MedicineInventoryActionModal({
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const formId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -62,36 +67,46 @@ export default function MedicineInventoryActionModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-3 sm:p-4">
-      <button
-        type="button"
-        aria-label="Close inventory action"
-        className="absolute inset-0 bg-black/35"
-        onClick={submitting ? undefined : onClose}
-      />
-      <form
-        onSubmit={handleSubmit}
-        className="relative w-full max-w-lg overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-2xl shadow-black/10"
-      >
-        <div className="flex items-start justify-between border-b border-[#F3F4F6] px-5 py-4">
-          <div>
-            <h2 className="text-sm font-bold text-[#0F172A]">
-              {isRestock ? "Restock Medicine" : "Adjust Stock"}
-            </h2>
-            <p className="mt-1 text-xs text-[#6B7280]">{item.name}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
+    <ModalShell
+      open={Boolean(open && item)}
+      title={isRestock ? "Restock Medicine" : "Adjust Stock"}
+      subtitle={item.name}
+      icon={
+        isRestock ? <PackagePlus size={14} /> : <Package size={14} />
+      }
+      size="lg"
+      onClose={onClose}
+      closeDisabled={submitting}
+      dismissOnBackdrop={!submitting}
+      dismissOnEscape={!submitting}
+      footer={
+        <>
+          <ModalButton onClick={onClose} disabled={submitting}>
+            Cancel
+          </ModalButton>
+          <ModalButton
+            type="submit"
+            form={formId}
+            variant="primary"
+            primary
             disabled={submitting}
-            aria-label="Close"
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[#9CA3AF] transition-colors hover:bg-red-50 hover:text-[#B91C1C] disabled:opacity-50"
+            aria-busy={submitting}
           >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="space-y-4 px-5 py-5">
+            {submitting && <LoaderCircle size={14} className="animate-spin" />}
+            {submitting
+              ? "Saving..."
+              : isRestock
+                ? "Add Stock"
+                : "Apply Adjustment"}
+          </ModalButton>
+        </>
+      }
+    >
+      <form
+        id={formId}
+        onSubmit={handleSubmit}
+      >
+        <div className="space-y-4">
           <div className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3.5 py-3">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
               Current Quantity
@@ -182,32 +197,8 @@ export default function MedicineInventoryActionModal({
             </div>
           )}
         </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-[#F3F4F6] px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="h-9 rounded-lg border border-[#E5E7EB] px-4 text-xs font-semibold text-[#6B7280] transition-colors hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={submitting}
-            aria-busy={submitting}
-            className="flex h-9 min-w-28 items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-xs font-semibold text-white transition-colors hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:bg-[#D1D5DB]"
-          >
-            {submitting && <LoaderCircle size={14} className="animate-spin" />}
-            {submitting
-              ? "Saving..."
-              : isRestock
-                ? "Add Stock"
-                : "Apply Adjustment"}
-          </button>
-        </div>
       </form>
-    </div>
+    </ModalShell>
   );
 }
 

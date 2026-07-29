@@ -17,7 +17,11 @@ import {
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
-import { SoftLoadingArea } from "../../components/common";
+import {
+  ModalButton,
+  ModalShell,
+  SoftLoadingArea,
+} from "../../components/common";
 import {
   createReferral,
   getReferralDestination,
@@ -1045,300 +1049,232 @@ export default function CreateReferral() {
     <DashboardLayout role="bhc" title="Submit Referral">
       <style>{keyframes}</style>
 
-      {activeReferralWarning && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 px-4 py-5 backdrop-blur-sm">
-          <div className="anim-scale-in w-full max-w-xl overflow-hidden rounded-2xl border border-amber-100 bg-white shadow-2xl">
-            <div className="h-1 bg-amber-500" />
-
-            <div className="p-5">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                  <AlertTriangle size={21} />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-slate-800">
-                    Active Referral Already Exists
-                  </h2>
-                  <p className="mt-1 text-sm leading-relaxed text-slate-600">
-                    This patient already has an active BHC-RHU referral. Please
-                    review the existing referral before creating another
-                    referral.
-                  </p>
-                </div>
-              </div>
-
-              {activeReferralTarget && (
-                <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Info
-                      label="Tracking ID"
-                      value={activeReferralWarning.trackingId || "—"}
-                      mono
-                    />
-                    <Info
-                      label="Status"
-                      value={activeReferralWarning.status || "—"}
-                      highlight
-                    />
-                    <Info
-                      label="Referred To"
-                      value={activeReferralDestination}
-                    />
-                    <Info label="Date of Referral" value={activeReferralDate} />
-                  </div>
-                </div>
-              )}
-
-              <div className="mt-5 flex flex-wrap justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setActiveReferralWarning(null)}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                {activeReferralTarget && (
-                  <button
-                    type="button"
-                    onClick={handleViewExistingReferral}
-                    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                  >
-                    View Existing Referral
-                  </button>
-                )}
-              </div>
+      <ModalShell
+        open={Boolean(activeReferralWarning)}
+        title="Active Referral Already Exists"
+        subtitle="Review the active referral before creating another."
+        icon={<AlertTriangle size={14} />}
+        size="lg"
+        onClose={() => setActiveReferralWarning(null)}
+        footer={
+          <>
+            <ModalButton onClick={() => setActiveReferralWarning(null)}>
+              Cancel
+            </ModalButton>
+            {activeReferralTarget && (
+              <ModalButton
+                variant="primary"
+                onClick={handleViewExistingReferral}
+              >
+                View Existing Referral
+              </ModalButton>
+            )}
+          </>
+        }
+      >
+        <p className="leading-5 text-slate-600">
+          This patient already has an active BHC-RHU referral. Please review the
+          existing referral before creating another referral.
+        </p>
+        {activeReferralTarget && (
+          <div className="mt-5 rounded-xl border border-amber-100 bg-amber-50/70 p-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Info
+                label="Tracking ID"
+                value={activeReferralWarning?.trackingId || "—"}
+                mono
+              />
+              <Info
+                label="Status"
+                value={activeReferralWarning?.status || "—"}
+                highlight
+              />
+              <Info label="Referred To" value={activeReferralDestination} />
+              <Info label="Date of Referral" value={activeReferralDate} />
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </ModalShell>
 
-      {submissionErrorNotice && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 px-4 py-5 backdrop-blur-sm">
-          <div className="anim-scale-in w-full max-w-md overflow-hidden rounded-2xl border border-red-100 bg-white shadow-2xl">
-            <div className="h-1 bg-[#B91C1C]" />
-            <div className="p-5">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
-                  <AlertTriangle size={21} />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-slate-800">
-                    Referral failed.
-                  </h2>
-                  <p className="mt-1 text-sm leading-relaxed text-slate-600">
-                    {submissionErrorNotice}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-5 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setSubmissionErrorNotice("")}
-                  className="rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
-                >
-                  OK
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ModalShell
+        open={Boolean(submissionErrorNotice)}
+        title="Referral failed"
+        subtitle="The referral could not be submitted."
+        icon={<AlertTriangle size={14} />}
+        size="sm"
+        onClose={() => setSubmissionErrorNotice("")}
+        footer={
+          <ModalButton
+            variant="primary"
+            onClick={() => setSubmissionErrorNotice("")}
+          >
+            OK
+          </ModalButton>
+        }
+      >
+        <p className="leading-5 text-slate-600">{submissionErrorNotice}</p>
+      </ModalShell>
 
       {/* ─── Confirm Modal ─── */}
-      {showConfirmModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 px-4 py-5 backdrop-blur-sm">
-          <div className="anim-scale-in flex max-h-[82vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="h-1 bg-[#B91C1C]" />
-
-            <div className="border-b border-slate-100 px-5 py-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
-                  <AlertTriangle size={21} />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-slate-800">
-                    Review referral
-                  </h2>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                    Check the key details before sending this referral to the
-                    RHU.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Info label="Patient" value={patient?.name} highlight />
-                <Info
-                  label="Age / Sex"
-                  value={
-                    patient?.ageSex ||
-                    (patient?.age ? `${patient.age} yrs / ${patient.sex}` : "—")
-                  }
-                />
-                <Info
-                  label="Receiving Facility"
-                  value={form.receivingFacility}
-                />
-                <Info label="Urgency" value={form.urgencyLevel} highlight />
-                <Info
-                  label="Preferred RHU Doctor (Optional)"
-                  value={preferredRhuDoctorLabel}
-                />
-                <Info
-                  label="Consultation Record"
-                  value={recordIdDisplay}
-                  mono
-                />
-                <div className="sm:col-span-2">
-                  <Info
-                    label="Reason for Referral"
-                    value={form.reasonForReferral || "Not provided"}
-                  />
-                </div>
-              </div>
-
-              {selectedRhuDoctor?.status === "Unavailable" && (
-                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">
-                    Doctor Availability Notice
-                  </p>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-700">
-                    <span className="font-semibold text-slate-900">
-                      {selectedRhuDoctor.name}
-                    </span>{" "}
-                    is currently unavailable
-                    {selectedRhuDoctor.note
-                      ? ` — ${selectedRhuDoctor.note}`
-                      : " — No note provided."}
-                  </p>
-                  <p className="mt-1.5 text-[11px] font-medium text-slate-500">
-                    RHU may assign another available doctor upon receiving the
-                    patient. Referral submission is still allowed.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 bg-white px-5 py-4">
-              <button
-                type="button"
-                onClick={() => setShowConfirmModal(false)}
-                className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-              >
-                Back to Edit
-              </button>
-              <button
-                type="button"
-                onClick={confirmReferralSubmission}
-                disabled={submitting || !destinationReady}
-                className="flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {submitting ? <ButtonSpinner /> : <Send size={14} />}
-                {submitting
-                  ? "Submitting..."
-                  : draftRecordData
-                    ? "Save Health Record & Submit Referral"
-                    : "Submit Referral"}
-              </button>
-            </div>
+      <ModalShell
+        open={showConfirmModal}
+        title="Review referral"
+        subtitle="Check the key details before sending this referral to the RHU."
+        icon={<AlertTriangle size={14} />}
+        size="lg"
+        onClose={() => setShowConfirmModal(false)}
+        closeDisabled={submitting}
+        footer={
+          <>
+            <ModalButton
+              onClick={() => setShowConfirmModal(false)}
+              disabled={submitting}
+            >
+              Back to Edit
+            </ModalButton>
+            <ModalButton
+              variant="primary"
+              onClick={confirmReferralSubmission}
+              disabled={submitting || !destinationReady}
+            >
+              {submitting ? <ButtonSpinner /> : <Send size={14} />}
+              {submitting
+                ? "Submitting..."
+                : draftRecordData
+                  ? "Save Health Record & Submit Referral"
+                  : "Submit Referral"}
+            </ModalButton>
+          </>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Info label="Patient" value={patient?.name} highlight />
+          <Info
+            label="Age / Sex"
+            value={
+              patient?.ageSex ||
+              (patient?.age ? `${patient.age} yrs / ${patient.sex}` : "—")
+            }
+          />
+          <Info label="Receiving Facility" value={form.receivingFacility} />
+          <Info label="Urgency" value={form.urgencyLevel} highlight />
+          <Info
+            label="Preferred RHU Doctor (Optional)"
+            value={preferredRhuDoctorLabel}
+          />
+          <Info label="Consultation Record" value={recordIdDisplay} mono />
+          <div className="sm:col-span-2">
+            <Info
+              label="Reason for Referral"
+              value={form.reasonForReferral || "Not provided"}
+            />
           </div>
         </div>
-      )}
+
+        {selectedRhuDoctor?.status === "Unavailable" && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+              Doctor Availability Notice
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-700">
+              <span className="font-semibold text-slate-900">
+                {selectedRhuDoctor.name}
+              </span>{" "}
+              is currently unavailable
+              {selectedRhuDoctor.note
+                ? ` — ${selectedRhuDoctor.note}`
+                : " — No note provided."}
+            </p>
+            <p className="mt-1.5 text-[11px] font-medium text-slate-500">
+              RHU may assign another available doctor upon receiving the
+              patient. Referral submission is still allowed.
+            </p>
+          </div>
+        )}
+      </ModalShell>
 
       {/* ─── Unavailable Doctor Notice Modal ─── */}
-      {showUnavailableDoctorModal && unavailableDoctorNotice && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 px-4 py-5 backdrop-blur-sm">
-          <div className="anim-scale-in w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="h-1 bg-amber-500" />
+      <ModalShell
+        open={showUnavailableDoctorModal && Boolean(unavailableDoctorNotice)}
+        title="Doctor Currently Unavailable"
+        subtitle="RHU staff marked this doctor as unavailable."
+        icon={<AlertTriangle size={14} />}
+        size="md"
+        onClose={handleChooseAnotherDoctor}
+        footer={
+          <>
+            <ModalButton onClick={handleChooseAnotherDoctor}>
+              Choose Another Doctor
+            </ModalButton>
+            <ModalButton
+              variant="primary"
+              onClick={handleContinueWithUnavailableDoctor}
+            >
+              Continue Anyway
+            </ModalButton>
+          </>
+        }
+      >
+        <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-bold text-slate-900">
+            {unavailableDoctorNotice?.name}
+          </p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {unavailableDoctorNotice?.role || "General Practitioner"}
+          </p>
 
-            <div className="p-5">
-              <div className="mb-4 flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                  <AlertTriangle size={21} />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-slate-800">
-                    Doctor Currently Unavailable
-                  </h2>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                    RHU staff marked this doctor as unavailable.
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
-                <p className="text-sm font-bold text-slate-900">
-                  {unavailableDoctorNotice.name}
-                </p>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {unavailableDoctorNotice.role || "General Practitioner"}
-                </p>
-
-                <div className="mt-3 rounded-lg bg-white/70 px-3 py-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">
-                    Expected Available At
-                  </p>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-700">
-                    {unavailableDoctorNotice.expectedAvailableAt
-                      ? formatExpectedAvailableAt(
-                          unavailableDoctorNotice.expectedAvailableAt,
-                        )
-                      : "Not specified."}
-                  </p>
-                </div>
-              </div>
-
-              <p className="mt-3 text-xs leading-relaxed text-slate-500">
-                You may choose another doctor, or continue anyway. RHU staff may
-                assign another available doctor after receiving the patient.
-              </p>
-
-              <div className="mt-5 flex flex-wrap justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={handleChooseAnotherDoctor}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                  Choose Another Doctor
-                </button>
-                <button
-                  type="button"
-                  onClick={handleContinueWithUnavailableDoctor}
-                  className="rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
-                >
-                  Continue Anyway
-                </button>
-              </div>
-            </div>
+          <div className="mt-3 rounded-lg bg-white/70 px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">
+              Expected Available At
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-700">
+              {unavailableDoctorNotice?.expectedAvailableAt
+                ? formatExpectedAvailableAt(
+                    unavailableDoctorNotice.expectedAvailableAt,
+                  )
+                : "Not specified."}
+            </p>
           </div>
         </div>
-      )}
+
+        <p className="mt-3 text-xs leading-relaxed text-slate-500">
+          You may choose another doctor, or continue anyway. RHU staff may
+          assign another available doctor after receiving the patient.
+        </p>
+      </ModalShell>
 
       {/* ─── Page Content ─── */}
-      {submitted && submittedReferral && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 px-4 py-5 backdrop-blur-sm print:hidden">
-          <div className="anim-scale-in flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="h-1 bg-emerald-500" />
-
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
-              <div className="text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-                  <CheckCircle2 size={30} strokeWidth={2.4} />
-                </div>
-                <h2 className="mt-4 text-xl font-bold text-slate-900">
-                    Referral sent.
-                </h2>
-                <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">
-                  The consultation has been transmitted to the receiving
-                  facility. Use the tracking ID or QR code for verification and
-                  follow-up.
-                </p>
-              </div>
-
-              <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <ModalShell
+        open={submitted && Boolean(submittedReferral)}
+        title="Referral sent"
+        subtitle="The consultation has been transmitted to the receiving facility."
+        icon={<CheckCircle2 size={14} />}
+        size="lg"
+        onClose={() => navigate("/bhc/referrals")}
+        printHidden
+        footer={
+          <>
+            <ModalButton onClick={() => navigate("/bhc/referrals")}>
+              Go to Referrals
+            </ModalButton>
+            <ModalButton
+              onClick={() =>
+                navigate(`/bhc/referrals/${successTrackingId}`)
+              }
+            >
+              View Details
+            </ModalButton>
+            <ModalButton variant="primary" onClick={() => window.print()}>
+              <Printer size={14} />
+              Print Slip
+            </ModalButton>
+          </>
+        }
+      >
+        <p className="mb-5 leading-5 text-slate-600">
+          Use the tracking ID or QR code for verification and follow-up.
+        </p>
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
                 <div className="bg-[#B91C1C] px-5 py-3">
                   <div className="flex items-center gap-2">
                     <ShieldCheck size={14} className="text-red-100" />
@@ -1392,89 +1328,50 @@ export default function CreateReferral() {
                   <Info label="PhilHealth" value={successPhilHealth} />
                 </div>
               </div>
-            </div>
+      </ModalShell>
 
-            <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 bg-white px-5 py-4">
-              <button
-                type="button"
-                onClick={() => navigate("/bhc/referrals")}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-              >
-                Go to Referrals
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate(`/bhc/referrals/${successTrackingId}`)}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-              >
-                View Details
-              </button>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
-              >
-                <Printer size={14} />
-                Print Slip
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {offlineDraftNotice && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 px-4 py-5 backdrop-blur-sm">
-          <div className="anim-scale-in w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="h-1 bg-amber-500" />
-            <div className="p-5">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                  <AlertTriangle size={21} />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-slate-800">
-                    Submission Not Confirmed
-                  </h2>
-                  <p className="mt-1 text-sm leading-relaxed text-slate-600">
-                    {offlineDraftNotice.message}
-                  </p>
-                  {offlineDraftNotice.errorMessage && (
-                    <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
-                      {offlineDraftNotice.errorMessage}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-5 flex flex-wrap justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setOfflineDraftNotice(null)}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                  Continue Editing
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate("/bhc/referrals")}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                  Back to Referrals
-                </button>
-                <button
-                  type="button"
-                  disabled={retryingDraft}
-                  onClick={() => retryUnconfirmedSubmission()}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {retryingDraft ? <ButtonSpinner /> : <Send size={14} />}
-                  {retryingDraft ? "Retrying..." : "Retry Now"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ModalShell
+        open={Boolean(offlineDraftNotice)}
+        title="Submission Not Confirmed"
+        subtitle="The referral submission needs your attention."
+        icon={<AlertTriangle size={14} />}
+        size="md"
+        onClose={() => setOfflineDraftNotice(null)}
+        closeDisabled={retryingDraft}
+        footer={
+          <>
+            <ModalButton
+              onClick={() => setOfflineDraftNotice(null)}
+              disabled={retryingDraft}
+            >
+              Continue Editing
+            </ModalButton>
+            <ModalButton
+              onClick={() => navigate("/bhc/referrals")}
+              disabled={retryingDraft}
+            >
+              Back to Referrals
+            </ModalButton>
+            <ModalButton
+              variant="primary"
+              disabled={retryingDraft}
+              onClick={() => retryUnconfirmedSubmission()}
+            >
+              {retryingDraft ? <ButtonSpinner /> : <Send size={14} />}
+              {retryingDraft ? "Retrying..." : "Retry Now"}
+            </ModalButton>
+          </>
+        }
+      >
+        <p className="leading-5 text-slate-600">
+          {offlineDraftNotice?.message}
+        </p>
+        {offlineDraftNotice?.errorMessage && (
+          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+            {offlineDraftNotice.errorMessage}
+          </p>
+        )}
+      </ModalShell>
 
       <div className="pb-12">
         {/* Header */}

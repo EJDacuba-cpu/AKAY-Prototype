@@ -1,6 +1,4 @@
-import { useEffect } from "react";
 import {
-  X,
   ExternalLink,
   Trash2,
   FileText,
@@ -12,6 +10,10 @@ import {
   Shield,
   ClipboardList,
 } from "lucide-react";
+import {
+  ModalButton,
+  ModalShell,
+} from "../../common";
 
 const typeConfig = {
   referral: {
@@ -108,14 +110,6 @@ export default function NotificationModal({
   onDelete,
   deleteLabel = "Discard Notification",
 }) {
-  useEffect(() => {
-    function handleEsc(e) {
-      if (e.key === "Escape") onClose();
-    }
-    if (isOpen) document.addEventListener("keydown", handleEsc);
-    return () => document.removeEventListener("keydown", handleEsc);
-  }, [isOpen, onClose]);
-
   if (!isOpen || !notification) return null;
 
   const config = typeConfig[notification.type] || {
@@ -128,47 +122,42 @@ export default function NotificationModal({
   const Icon = config.icon;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-200"
-        onClick={onClose}
-      />
-
-      {/* Clinical Container */}
-      <div
-        className="relative w-full max-w-xl bg-white rounded-xl shadow-2xl shadow-black/10 overflow-hidden border border-gray-200 transition-all duration-200 data-[state=open]:scale-100 data-[state=open]:opacity-100 scale-95 opacity-0"
-        data-state={isOpen ? "open" : "closed"}
-      >
-        {/* Header Strip */}
-        <div
-          className={`flex items-center justify-between border-b-2 ${config.border} ${config.bg} px-6 py-3`}
-        >
-          <div className="flex items-center gap-2.5">
-            <div
-              className={`flex h-7 w-7 items-center justify-center rounded-md bg-white shadow-sm ${config.color}`}
-            >
-              <Icon size={14} strokeWidth={2.5} />
-            </div>
-            <div>
-              <h4 className="text-[10px] font-bold uppercase tracking-[0.1em] text-gray-500">
-                AKAY Notification
-              </h4>
-              <h2 className={`text-sm font-bold tracking-wide ${config.color}`}>
-                {config.label}
-              </h2>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-md bg-white/80 text-gray-500 transition-colors hover:bg-white hover:text-gray-700"
+    <ModalShell
+      open={isOpen}
+      title={config.label}
+      subtitle="AKAY Notification"
+      icon={<Icon size={14} strokeWidth={2.3} />}
+      size="lg"
+      onClose={onClose}
+      footer={
+        <>
+          <ModalButton
+            onClick={() => {
+              onDelete(notification.id);
+              onClose();
+            }}
           >
-            <X size={14} strokeWidth={2.5} />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="p-6 space-y-5">
+            <Trash2 size={12} />
+            {deleteLabel}
+          </ModalButton>
+          <ModalButton onClick={onClose}>Close</ModalButton>
+          {notification.link && (
+            <ModalButton
+              variant="primary"
+              primary
+              onClick={() => {
+                onViewRecord(notification);
+                onClose();
+              }}
+            >
+              <ExternalLink size={12} />
+              {notification.linkLabel || "View Record"}
+            </ModalButton>
+          )}
+        </>
+      }
+    >
+      <div className="space-y-5">
           <div className="space-y-2">
             <h3 className="text-base font-bold text-gray-900 leading-snug">
               {notification.title}
@@ -222,43 +211,7 @@ export default function NotificationModal({
               </div>
             )}
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between border-t border-gray-200 bg-[#FAFAFA] px-6 py-4">
-          <button
-            onClick={() => {
-              onDelete(notification.id);
-              onClose();
-            }}
-            className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-500 transition-all hover:bg-red-50 hover:border-red-200 hover:text-red-600"
-          >
-            <Trash2 size={12} />
-            {deleteLabel}
-          </button>
-
-          <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-600 transition-all hover:bg-gray-100"
-            >
-              Close
-            </button>
-            {notification.link && (
-              <button
-                onClick={() => {
-                  onViewRecord(notification);
-                  onClose();
-                }}
-                className="flex items-center gap-1.5 rounded-md bg-[#B91C1C] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#991B1B]"
-              >
-                <ExternalLink size={12} />
-                {notification.linkLabel || "View Record"}
-              </button>
-            )}
-          </div>
-        </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }

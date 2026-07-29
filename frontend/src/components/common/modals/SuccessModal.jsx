@@ -1,4 +1,5 @@
-import { CheckCircle2, X } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
+import ModalShell, { ModalButton } from "./ModalShell";
 
 export default function SuccessModal({
   open,
@@ -12,186 +13,53 @@ export default function SuccessModal({
 }) {
   if (!open) return null;
   const hasCustomActions = Array.isArray(actions) && actions.length > 0;
+  const orderedActions = hasCustomActions
+    ? [
+        ...actions.filter((action) => action.variant !== "primary"),
+        ...actions.filter((action) => action.variant === "primary"),
+      ]
+    : [];
+
+  const footer = hasCustomActions ? (
+    orderedActions.map((action) => (
+      <ModalButton
+        key={action.label}
+        variant={
+          action.variant === "primary" || action.variant === "destructive"
+            ? action.variant
+            : "secondary"
+        }
+        primary={action.variant === "primary"}
+        disabled={action.disabled}
+        onClick={action.onClick}
+      >
+        {action.icon}
+        {action.label}
+      </ModalButton>
+    ))
+  ) : (
+    <>
+      {secondaryButtonText && onSecondaryAction && (
+        <ModalButton onClick={onSecondaryAction}>
+          {secondaryButtonText}
+        </ModalButton>
+      )}
+      <ModalButton variant="primary" primary onClick={onClose}>
+        {buttonText}
+      </ModalButton>
+    </>
+  );
 
   return (
-    <div
-      className="
-        fixed inset-0 z-[9999]
-        flex items-center justify-center
-        p-4
-
-        anim-overlay
-
-        bg-slate-900/30
-        backdrop-blur-[2px]
-      "
-      onClick={onClose}
+    <ModalShell
+      open={open}
+      title={title}
+      icon={<CheckCircle2 size={14} strokeWidth={2.2} />}
+      size="sm"
+      onClose={onClose}
+      footer={footer}
     >
-      {/* Modal */}
-      <div
-        className="
-          anim-content-in
-
-          relative w-full max-w-sm
-
-          overflow-hidden
-          rounded-xl
-
-          border border-[#E5E7EB]
-          bg-white
-
-          shadow-xl shadow-slate-900/10
-        "
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Close */}
-        <button
-          onClick={onClose}
-          className="
-            absolute right-3 top-3
-
-            flex h-7 w-7
-            items-center justify-center
-
-            rounded-md
-
-            text-slate-300
-
-            transition-all duration-150
-
-            hover:bg-slate-50
-            hover:text-slate-500
-          "
-        >
-          <X size={15} strokeWidth={2} />
-        </button>
-
-        {/* Content */}
-        <div className="px-6 pt-6 pb-6">
-          {/* Icon */}
-          <div
-            className="
-              mb-4 flex h-11 w-11
-              items-center justify-center
-
-              rounded-lg
-
-              border border-emerald-100/50
-              bg-emerald-50
-            "
-          >
-            <CheckCircle2
-              size={20}
-              className="text-emerald-500"
-              strokeWidth={1.8}
-            />
-          </div>
-
-          {/* Title */}
-          <h2
-            className="
-              text-[15px]
-              font-semibold
-              leading-snug
-              text-[#0F172A]
-            "
-          >
-            {title}
-          </h2>
-
-          {/* Description */}
-          <p
-            className="
-              mt-1.5 text-[13px]
-              leading-relaxed
-              text-slate-500
-            "
-          >
-            {description}
-          </p>
-
-          {/* Action */}
-          {hasCustomActions ? (
-            <div className="mt-6 grid gap-2">
-              {actions.map((action) => (
-                <button
-                  key={action.label}
-                  type="button"
-                  onClick={action.onClick}
-                  className={
-                    action.variant === "primary"
-                      ? "press-scale flex h-10 items-center justify-center rounded-lg bg-[#B91C1C] px-4 text-[13px] font-medium text-white transition-all duration-150 hover:bg-[#991B1B] active:bg-[#7F1D1D]"
-                      : "press-scale flex h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-[13px] font-medium text-slate-600 transition-all duration-150 hover:bg-slate-50 active:bg-slate-100"
-                  }
-                >
-                  {action.label}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-6 flex flex-wrap justify-end gap-2">
-              {secondaryButtonText && onSecondaryAction && (
-                <button
-                  type="button"
-                  onClick={onSecondaryAction}
-                  className="
-                    press-scale
-
-                    flex h-9.5
-                    items-center justify-center
-
-                    rounded-lg
-
-                    border border-slate-200
-                    bg-white
-
-                    px-4
-
-                    text-[13px]
-                    font-medium
-                    text-slate-600
-
-                    transition-all duration-150
-
-                    hover:bg-slate-50
-                    active:bg-slate-100
-                  "
-                >
-                  {secondaryButtonText}
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={onClose}
-                className="
-                  press-scale
-
-                  flex h-9.5
-                  items-center justify-center
-
-                  rounded-lg
-
-                  bg-[#B91C1C]
-
-                  px-4
-
-                  text-[13px]
-                  font-medium
-                  text-white
-
-                  transition-all duration-150
-
-                  hover:bg-[#991B1B]
-                  active:bg-[#7F1D1D]
-                "
-              >
-                {buttonText}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+      <p className="text-[13px] leading-5 text-slate-600">{description}</p>
+    </ModalShell>
   );
 }

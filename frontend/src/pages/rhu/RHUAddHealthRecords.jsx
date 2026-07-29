@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { SuccessModal } from "../../components/common";
+import { NoticeModal, SuccessModal } from "../../components/common";
 import {
   DatePickerField,
   TimePickerField,
@@ -2510,50 +2510,25 @@ export default function AddHealthRecord() {
         ]}
       />
 
-      {noticeModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 px-4 py-5 backdrop-blur-sm">
-          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-red-100 bg-white shadow-2xl">
-            <div className="h-1 bg-[#B91C1C]" />
-            <div className="p-5">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
-                  <AlertCircle size={21} />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-slate-800">
-                    {noticeModal.title}
-                  </h2>
-                  <p className="mt-1 text-sm leading-relaxed text-slate-600">
-                    {noticeModal.message}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-5 flex flex-wrap justify-end gap-2">
-                {(noticeModal.actions?.length
-                  ? noticeModal.actions
-                  : [{ label: noticeModal.buttonLabel || "OK", onClick: noticeModal.onClose }]
-                ).map((action) => (
-                  <button
-                    key={action.label}
-                    type="button"
-                    onClick={() => {
-                      setNoticeModal(null);
-                      action.onClick?.();
-                    }}
-                    className={
-                      action.variant === "secondary"
-                        ? "rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-                        : "rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
-                    }
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <NoticeModal
+        open={Boolean(noticeModal)}
+        title={noticeModal?.title || "Notice"}
+        message={noticeModal?.message}
+        buttonText={noticeModal?.buttonLabel || "OK"}
+        actions={
+          noticeModal?.actions?.length
+            ? noticeModal.actions
+            : noticeModal
+              ? [
+                  {
+                    label: noticeModal.buttonLabel || "OK",
+                    onClick: noticeModal.onClose,
+                  },
+                ]
+              : []
+        }
+        onClose={() => setNoticeModal(null)}
+      />
     </DashboardLayout>
   );
 }

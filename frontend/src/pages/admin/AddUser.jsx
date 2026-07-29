@@ -6,7 +6,6 @@
     ArrowRight,
     Building2,
     Check,
-    CheckCircle2,
     ChevronLeft,
     Eye,
     EyeOff,
@@ -26,6 +25,11 @@
   import Select from "../../components/common/atoms/Select";
 
   import DashboardLayout from "../../components/layout/DashboardLayout";
+  import {
+    ModalButton,
+    ModalShell,
+    SuccessModal,
+  } from "../../components/common";
   import {
     createAdminAccount,
     getAdminAccounts,
@@ -807,7 +811,10 @@
 
         {successModal && (
           <SuccessModal
-            modal={successModal}
+            open
+            title={successModal.title}
+            description={successModal.message}
+            buttonText="Back to Account Directory"
             onClose={() => navigate("/admin/users")}
           />
         )}
@@ -993,85 +1000,74 @@ function FormSection({ title, subtitle, icon, aside, children, delay = 0 }) {
     onConfirm,
   }) {
     return (
-      <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/40 px-4 py-6 backdrop-blur-sm">
-        <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-white/70 bg-white shadow-2xl">
-          <div className="border-b border-slate-100 px-5 py-5 sm:px-6">
-            <h2 className="text-base font-bold text-slate-900">
-              Confirm Account Details
-            </h2>
-            <p className="mt-1 text-[12px] leading-relaxed text-slate-500">
-              Review the account profile and facility assignment before saving.
-            </p>
-          </div>
-
-          <div className="p-5 sm:p-6">
-            <div className="grid gap-3 md:grid-cols-2">
-              <SummaryRow
-                label="Name"
-                value={values.fullName}
-                fallback="Pending selection"
-              />
-              <SummaryRow
-                label="Email"
-                value={values.email}
-                fallback="Pending selection"
-              />
-              <SummaryRow
-                label="Role"
-                value={selectedAccountRole?.roleLabel}
-                fallback="Not selected"
-                badge={selectedAccountRole?.accessRole}
-              />
-
-              {isBhcAccount && (
-                <SummaryRow
-                  label="Assigned Barangay Health Center"
-                  value={values.bhcFacility}
-                  fallback="Not selected"
-                />
-              )}
-
-              {isRhuAccount && (
-                <SummaryRow
-                  label="Assigned Rural Health Unit"
-                  value={values.rhuFacility}
-                  fallback="Not selected"
-                />
-              )}
-
-              {isAdminAccount && (
-                <SummaryRow
-                  label="Facility Assignment"
-                  value="No facility assignment"
-                />
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-col-reverse gap-3 border-t border-slate-100 bg-slate-50/70 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={isSubmitting}
-              className="inline-flex h-10 items-center justify-center rounded-lg border border-[#E8ECF0] bg-white px-5 text-[12px] font-semibold text-[#6B7280] transition-colors hover:bg-[#F9FAFB] hover:text-[#0F172A] disabled:cursor-not-allowed disabled:opacity-60"
-            >
+      <ModalShell
+        open
+        title="Confirm Account Details"
+        subtitle="Review the account profile and facility assignment before saving."
+        icon={<ShieldCheck size={14} />}
+        size="lg"
+        onClose={onCancel}
+        closeDisabled={isSubmitting}
+        footer={
+          <>
+            <ModalButton onClick={onCancel} disabled={isSubmitting}>
               Cancel
-            </button>
-
-            <button
-              type="button"
+            </ModalButton>
+            <ModalButton
+              variant="primary"
               onClick={onConfirm}
               disabled={isSubmitting}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-5 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/20 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none"
             >
               {isSubmitting && (
                 <Loader2 size={14} strokeWidth={2.5} className="animate-spin" />
               )}
               {isEditMode ? "Confirm Changes" : "Confirm Create Account"}
-            </button>
-          </div>
+            </ModalButton>
+          </>
+        }
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          <SummaryRow
+            label="Name"
+            value={values.fullName}
+            fallback="Pending selection"
+          />
+          <SummaryRow
+            label="Email"
+            value={values.email}
+            fallback="Pending selection"
+          />
+          <SummaryRow
+            label="Role"
+            value={selectedAccountRole?.roleLabel}
+            fallback="Not selected"
+            badge={selectedAccountRole?.accessRole}
+          />
+
+          {isBhcAccount && (
+            <SummaryRow
+              label="Assigned Barangay Health Center"
+              value={values.bhcFacility}
+              fallback="Not selected"
+            />
+          )}
+
+          {isRhuAccount && (
+            <SummaryRow
+              label="Assigned Rural Health Unit"
+              value={values.rhuFacility}
+              fallback="Not selected"
+            />
+          )}
+
+          {isAdminAccount && (
+            <SummaryRow
+              label="Facility Assignment"
+              value="No facility assignment"
+            />
+          )}
         </div>
-      </div>
+      </ModalShell>
     );
   }
 
@@ -1100,35 +1096,6 @@ function FormSection({ title, subtitle, icon, aside, children, delay = 0 }) {
           >
             {displayValue}
           </span>
-        </div>
-      </div>
-    );
-  }
-
-  function SuccessModal({ modal, onClose }) {
-    return (
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/40 px-4 py-6 backdrop-blur-sm">
-        <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-white/70 bg-white shadow-2xl">
-          <div className="px-6 py-7 text-center">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 ring-8 ring-emerald-50/60">
-              <CheckCircle2 size={30} />
-            </div>
-
-            <h2 className="text-lg font-bold text-slate-900">{modal.title}</h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-500">
-              {modal.message}
-            </p>
-          </div>
-
-          <div className="border-t border-slate-100 bg-slate-50/70 px-6 py-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full rounded-lg bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/20"
-            >
-              Back to Account Directory
-            </button>
-          </div>
         </div>
       </div>
     );

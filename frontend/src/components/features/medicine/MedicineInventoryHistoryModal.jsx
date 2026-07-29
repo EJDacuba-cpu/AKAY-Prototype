@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -8,8 +8,11 @@ import {
   LoaderCircle,
   PackageOpen,
   RefreshCw,
-  X,
 } from "lucide-react";
+import {
+  ModalButton,
+  ModalShell,
+} from "../../common";
 import { getMedicineTransactions } from "../../../services/medicineService";
 import { queryKeys } from "../../../utils/queryKeys";
 
@@ -42,8 +45,6 @@ export default function MedicineInventoryHistoryModal({
   onClose,
 }) {
   const [page, setPage] = useState(1);
-  const closeButtonRef = useRef(null);
-  const previousFocusRef = useRef(null);
   const itemId = item?.id || "";
 
   useEffect(() => {
@@ -53,23 +54,6 @@ export default function MedicineInventoryHistoryModal({
     }
     setPage(1);
   }, [open, itemId]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-
-    previousFocusRef.current = document.activeElement;
-    closeButtonRef.current?.focus();
-
-    function handleKeyDown(event) {
-      if (event.key === "Escape") onClose?.();
-    }
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      previousFocusRef.current?.focus?.();
-    };
-  }, [open, onClose]);
 
   const historyQuery = useQuery({
     queryKey: queryKeys.medicineTransactions(user, itemId, page),
@@ -99,65 +83,65 @@ export default function MedicineInventoryHistoryModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-3 sm:p-5">
-      <button
-        type="button"
-        className="absolute inset-0 bg-slate-950/35 backdrop-blur-[1px]"
-        aria-label="Close inventory history"
-        onClick={onClose}
-      />
-
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="medicine-inventory-history-title"
-        className="relative flex max-h-[calc(100vh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-2xl shadow-slate-950/15 sm:max-h-[calc(100vh-2.5rem)]"
-      >
-        <header className="flex items-start justify-between gap-4 border-b border-[#E5E7EB] px-5 py-4 sm:px-6">
-          <div className="flex min-w-0 items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B91C1C]">
-              <History size={19} aria-hidden="true" />
-            </div>
-            <div className="min-w-0">
-              <h2
-                id="medicine-inventory-history-title"
-                className="truncate text-base font-bold text-[#0F172A]"
-              >
-                Inventory History
-              </h2>
-              <p className="mt-0.5 truncate text-sm font-semibold text-[#374151]">
-                {item.name}
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-medium text-[#64748B]">
-                <span className="rounded-md bg-[#F1F5F9] px-2 py-1">
-                  Current stock: {Number(item.quantity || 0).toLocaleString()} {item.unit || ""}
-                </span>
-                {facilityName && (
-                  <span className="rounded-md border border-[#E2E8F0] px-2 py-1">
-                    {facilityName}
-                  </span>
-                )}
-                {historyQuery.isFetching && !historyQuery.isLoading && (
-                  <span className="inline-flex items-center gap-1.5 text-[#64748B]">
-                    <LoaderCircle size={12} className="animate-spin" />
-                    Updating history...
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <button
-            ref={closeButtonRef}
-            type="button"
-            onClick={onClose}
-            aria-label="Close inventory history"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#94A3B8] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/20"
-          >
-            <X size={17} />
-          </button>
-        </header>
-
+    <ModalShell
+      open={Boolean(open && item)}
+      title="Inventory History"
+      subtitle={item.name}
+      icon={<History size={14} />}
+      size="wide"
+      onClose={onClose}
+      bodyClassName="!p-0"
+      footer={
+        !historyQuery.isLoading &&
+        !historyQuery.isError &&
+        transactions.length > 0 ? (
+          <>
+            <PageButton
+              label="Previous"
+              icon={<ChevronLeft size={14} />}
+              disabled={currentPage <= 1 || historyQuery.isFetching}
+              onClick={() => changePage(currentPage - 1)}
+            />
+            <PageButton
+              label="Next"
+              icon={<ChevronRight size={14} />}
+              iconAfter
+              disabled={currentPage >= totalPages || historyQuery.isFetching}
+              onClick={() => changePage(currentPage + 1)}
+            />
+          </>
+        ) : null
+      }
+      footerLeading={
+        !historyQuery.isLoading &&
+        !historyQuery.isError &&
+        transactions.length > 0 ? (
+          <p>
+            Page <span className="font-bold text-[#B91C1C]">{currentPage}</span>{" "}
+            of <span className="font-bold text-[#0F172A]">{totalPages}</span>
+          </p>
+        ) : null
+      }
+    >
+      <div className="border-b border-[#E5E7EB] px-5 py-3 sm:px-6">
+        <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium text-[#64748B]">
+          <span className="rounded-md bg-[#F1F5F9] px-2 py-1">
+            Current stock: {Number(item.quantity || 0).toLocaleString()}{" "}
+            {item.unit || ""}
+          </span>
+          {facilityName && (
+            <span className="rounded-md border border-[#E2E8F0] px-2 py-1">
+              {facilityName}
+            </span>
+          )}
+          {historyQuery.isFetching && !historyQuery.isLoading && (
+            <span className="inline-flex items-center gap-1.5 text-[#64748B]">
+              <LoaderCircle size={12} className="animate-spin" />
+              Updating history...
+            </span>
+          )}
+        </div>
+      </div>
         <div className="min-h-[360px] flex-1 overflow-auto">
           {historyQuery.isLoading ? (
             <HistorySkeleton />
@@ -200,32 +184,7 @@ export default function MedicineInventoryHistoryModal({
             </table>
           )}
         </div>
-
-        {!historyQuery.isLoading && !historyQuery.isError && transactions.length > 0 && (
-          <footer className="flex flex-col gap-3 border-t border-[#E5E7EB] bg-white px-5 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-            <p className="text-xs font-medium text-[#64748B]">
-              Page <span className="font-bold text-[#B91C1C]">{currentPage}</span> of{" "}
-              <span className="font-bold text-[#0F172A]">{totalPages}</span>
-            </p>
-            <div className="flex items-center gap-2">
-              <PageButton
-                label="Previous"
-                icon={<ChevronLeft size={14} />}
-                disabled={currentPage <= 1 || historyQuery.isFetching}
-                onClick={() => changePage(currentPage - 1)}
-              />
-              <PageButton
-                label="Next"
-                icon={<ChevronRight size={14} />}
-                iconAfter
-                disabled={currentPage >= totalPages || historyQuery.isFetching}
-                onClick={() => changePage(currentPage + 1)}
-              />
-            </div>
-          </footer>
-        )}
-      </section>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -314,16 +273,15 @@ function HistoryError({ loading, onRetry }) {
 
 function PageButton({ label, icon, iconAfter = false, disabled, onClick }) {
   return (
-    <button
-      type="button"
+    <ModalButton
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-3 text-xs font-semibold text-[#475569] transition-colors hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] disabled:cursor-not-allowed disabled:opacity-40"
+      className="h-8 px-3 text-xs"
     >
       {!iconAfter && icon}
       {label}
       {iconAfter && icon}
-    </button>
+    </ModalButton>
   );
 }
 

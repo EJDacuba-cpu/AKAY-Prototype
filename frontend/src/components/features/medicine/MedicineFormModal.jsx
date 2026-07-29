@@ -1,5 +1,9 @@
-import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { useEffect, useId, useState } from "react";
+import { PackagePlus } from "lucide-react";
+import {
+  ModalButton,
+  ModalShell,
+} from "../../common";
 import {
   computeMedicineStatus,
   MEDICINE_CATEGORIES,
@@ -25,6 +29,7 @@ export default function MedicineFormModal({
   onSubmit,
 }) {
   const [form, setForm] = useState(DEFAULT_FORM);
+  const formId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -71,35 +76,35 @@ export default function MedicineFormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-3 sm:p-4">
-      <div className="absolute inset-0 bg-black/35" onClick={onClose} />
-
-      <form
-        onSubmit={handleSubmit}
-        className="relative flex max-h-[calc(100vh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-2xl shadow-black/10"
-      >
-        <div className="flex shrink-0 items-center justify-between border-b border-[#F3F4F6] px-5 py-4">
-          <div>
-            <h2 className="text-sm font-bold text-[#0F172A]">
-              {title || (mode === "edit" ? "Edit Medicine" : "Add Medicine")}
-            </h2>
-            <p className="mt-0.5 text-xs text-[#9CA3AF]">
-              {mode === "edit"
-                ? "Edit item details. Use Restock or Adjust Stock to change quantity."
-                : "Opening balance sets the first ledgered stock quantity."}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[#9CA3AF] transition-colors hover:bg-red-50 hover:text-[#B91C1C]"
+    <ModalShell
+      open={open}
+      title={title || (mode === "edit" ? "Edit Medicine" : "Add Medicine")}
+      subtitle={
+        mode === "edit"
+          ? "Edit item details. Use Restock or Adjust Stock to change quantity."
+          : "Opening balance sets the first ledgered stock quantity."
+      }
+      icon={<PackagePlus size={14} />}
+      size="xl"
+      onClose={onClose}
+      footer={
+        <>
+          <ModalButton onClick={onClose}>Cancel</ModalButton>
+          <ModalButton
+            type="submit"
+            form={formId}
+            variant="primary"
+            primary
           >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="overflow-y-auto px-5 py-4">
+            {mode === "edit" ? "Save Changes" : "Add Medicine"}
+          </ModalButton>
+        </>
+      }
+    >
+      <form
+        id={formId}
+        onSubmit={handleSubmit}
+      >
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Medicine / Supply Name" required className="md:col-span-2">
               <input
@@ -198,25 +203,8 @@ export default function MedicineFormModal({
               />
             </Field>
           </div>
-        </div>
-
-        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-[#F3F4F6] bg-white px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-9 rounded-lg border border-[#E5E7EB] bg-white px-4 text-xs font-semibold text-[#6B7280] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="h-9 rounded-lg bg-[#B91C1C] px-4 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
-          >
-            {mode === "edit" ? "Save Changes" : "Add Medicine"}
-          </button>
-        </div>
       </form>
-    </div>
+    </ModalShell>
   );
 }
 

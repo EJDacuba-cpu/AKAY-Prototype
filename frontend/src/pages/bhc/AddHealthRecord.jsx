@@ -21,6 +21,9 @@ import {
   ConnectionIssueModal,
   Drawer,
   HealthRecordFormSkeleton,
+  ModalButton,
+  ModalShell,
+  NoticeModal,
   SuccessModal,
 } from "../../components/common";
 import {
@@ -5583,50 +5586,26 @@ export default function AddHealthRecord() {
         ]}
       />
 
-      {noticeModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 px-4 py-5 backdrop-blur-sm">
-          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-red-100 bg-white shadow-2xl">
-            <div className="h-1 bg-[#B91C1C]" />
-            <div className="p-5">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
-                  <AlertCircle size={21} />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-slate-800">
-                    {noticeModal.title}
-                  </h2>
-                  <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-slate-600">
-                    {noticeModal.message}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-5 flex flex-wrap justify-end gap-2">
-                {(noticeModal.actions?.length
-                  ? noticeModal.actions
-                  : [{ label: noticeModal.buttonLabel || "OK", onClick: noticeModal.onClose }]
-                ).map((action) => (
-                  <button
-                    key={action.label}
-                    type="button"
-                    onClick={() => {
-                      setNoticeModal(null);
-                      action.onClick?.();
-                    }}
-                    className={
-                      action.variant === "secondary"
-                        ? "rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-                        : "rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
-                    }
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <NoticeModal
+        open={Boolean(noticeModal)}
+        title={noticeModal?.title}
+        message={noticeModal?.message}
+        buttonText={noticeModal?.buttonLabel || "OK"}
+        actions={
+          noticeModal
+            ? noticeModal.actions?.length
+              ? noticeModal.actions
+              : [
+                  {
+                    label: noticeModal.buttonLabel || "OK",
+                    variant: "primary",
+                    onClick: noticeModal.onClose,
+                  },
+                ]
+            : []
+        }
+        onClose={() => setNoticeModal(null)}
+      />
       <ConnectionIssueModal
         open={Boolean(connectionIssue)}
         title={connectionIssue?.title}
@@ -5648,45 +5627,67 @@ export default function AddHealthRecord() {
    ═══════════════════════════════════════════════════════════════ */
 function ActiveFollowUpPrompt({ tasks, onStartNew, onRecord }) {
   const multiple = tasks.length > 1;
+  const [selectedTaskId, setSelectedTaskId] = useState(tasks[0]?.id || "");
+
+  useEffect(() => {
+    setSelectedTaskId(tasks[0]?.id || "");
+  }, [tasks]);
+
+  const selectedTask =
+    tasks.find((task) => String(task.id) === String(selectedTaskId)) ||
+    tasks[0] ||
+    null;
 
   return (
-    <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm">
-      <section
-        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-red-100 bg-white shadow-2xl"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="active-follow-up-title"
-      >
-        <div className="h-1 bg-[#B91C1C]" />
-        <div className="p-5 sm:p-6">
-          <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
-              <FileClock size={22} />
-            </div>
-            <div>
-              <h2
-                id="active-follow-up-title"
-                className="text-lg font-bold text-slate-900"
-              >
-                {multiple
-                  ? "Select Follow-up to Record"
-                  : "Active Follow-up Found"}
-              </h2>
-              <p className="mt-1 text-sm text-slate-600">
-                {multiple
-                  ? "This patient has multiple pending follow-ups. Choose the visit being recorded."
-                  : "This patient has a pending follow-up."}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5 space-y-3">
+    <ModalShell
+      open={tasks.length > 0}
+      title={
+        multiple ? "Select Follow-up to Record" : "Active Follow-up Found"
+      }
+      subtitle={
+        multiple
+          ? "Choose the pending visit being recorded."
+          : "This patient has a pending follow-up."
+      }
+      icon={<FileClock size={14} />}
+      size="xl"
+      onClose={onStartNew}
+      dismissOnBackdrop={false}
+      footer={
+        <>
+          <ModalButton onClick={onStartNew}>
+            Start New Consultation
+          </ModalButton>
+          <ModalButton
+            variant="primary"
+            primary
+            disabled={!selectedTask}
+            onClick={() => selectedTask && onRecord(selectedTask)}
+          >
+            {multiple ? "Continue" : "Record Follow-up Visit"}
+          </ModalButton>
+        </>
+      }
+    >
+      <div className="space-y-3">
             {tasks.map((task) => (
-              <div
+              <label
                 key={task.id}
-                className="rounded-xl border border-slate-200 bg-slate-50/70 p-4"
+                className={`block cursor-pointer rounded-xl border p-4 transition ${
+                  String(selectedTaskId) === String(task.id)
+                    ? "border-[#B91C1C]/40 bg-red-50/50"
+                    : "border-slate-200 bg-slate-50/70 hover:border-slate-300"
+                }`}
               >
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <input
+                    type="radio"
+                    name="activeFollowUpTask"
+                    value={task.id}
+                    checked={String(selectedTaskId) === String(task.id)}
+                    onChange={() => setSelectedTaskId(task.id)}
+                    className="mt-1 h-4 w-4 accent-[#B91C1C]"
+                  />
                   <dl className="grid flex-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                     <FollowUpPromptDetail
                       label="Service Type"
@@ -5701,30 +5702,12 @@ function ActiveFollowUpPrompt({ tasks, onStartNew, onRecord }) {
                       value={`Record #${task.healthRecordId || "—"}`}
                     />
                   </dl>
-                  <button
-                    type="button"
-                    onClick={() => onRecord(task)}
-                    className="shrink-0 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
-                  >
-                    {multiple ? "Continue" : "Record Follow-up Visit"}
-                  </button>
                 </div>
-              </div>
+              </label>
             ))}
           </div>
 
-          <div className="mt-5 flex justify-end">
-            <button
-              type="button"
-              onClick={onStartNew}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Start New Consultation
-            </button>
-          </div>
-        </div>
-      </section>
-    </div>
+    </ModalShell>
   );
 }
 

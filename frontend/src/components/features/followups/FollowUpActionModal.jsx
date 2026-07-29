@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { RefreshCcw, X } from "lucide-react";
+import { RefreshCcw } from "lucide-react";
+import {
+  ModalButton,
+  ModalShell,
+} from "../../common";
 
 export default function FollowUpActionModal({
   modal,
@@ -23,28 +27,42 @@ export default function FollowUpActionModal({
   const cancelling = modal.type === "cancel";
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/35 px-4">
-      <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-        <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
-          <div>
-            <h2 className="text-base font-bold text-[#0F172A]">
-              {cancelling ? "Cancel Follow-up" : "Reschedule Follow-up"}
-            </h2>
-            <p className="mt-0.5 text-xs text-slate-400">
-              {modal.task.patientName || "Selected patient"}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1 text-slate-300 hover:bg-slate-50 hover:text-slate-500"
-            aria-label="Close follow-up action"
+    <ModalShell
+      open={Boolean(modal)}
+      title={cancelling ? "Cancel Follow-up" : "Reschedule Follow-up"}
+      subtitle={modal.task.patientName || "Selected patient"}
+      icon={<RefreshCcw size={14} />}
+      size="md"
+      onClose={onClose}
+      dismissOnBackdrop={false}
+      footer={
+        <>
+          <ModalButton onClick={onClose}>Close</ModalButton>
+          <ModalButton
+            variant="primary"
+            primary
+            disabled={saving || (!cancelling && !dueDate)}
+            onClick={() =>
+              cancelling
+                ? onCancel(modal.task, notes)
+                : onReschedule(modal.task, {
+                    dueDate,
+                    dueTime,
+                    notes,
+                  })
+            }
           >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="space-y-4 px-5 py-4">
+            <RefreshCcw size={14} />
+            {saving
+              ? "Saving..."
+              : cancelling
+                ? "Cancel Follow-up"
+                : "Reschedule"}
+          </ModalButton>
+        </>
+      }
+    >
+      <div className="space-y-4">
           {cancelling ? (
             <p className="text-sm leading-6 text-slate-600">
               This preserves the schedule in history and removes it from active
@@ -92,39 +110,7 @@ export default function FollowUpActionModal({
               }
             />
           </div>
-        </div>
-
-        <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-50"
-          >
-            Close
-          </button>
-          <button
-            type="button"
-            disabled={saving || (!cancelling && !dueDate)}
-            onClick={() =>
-              cancelling
-                ? onCancel(modal.task, notes)
-                : onReschedule(modal.task, {
-                    dueDate,
-                    dueTime,
-                    notes,
-                  })
-            }
-            className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2 text-sm font-semibold text-white hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <RefreshCcw size={14} />
-            {saving
-              ? "Saving..."
-              : cancelling
-                ? "Cancel Follow-up"
-                : "Reschedule"}
-          </button>
-        </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }

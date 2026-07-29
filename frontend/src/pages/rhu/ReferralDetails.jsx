@@ -12,12 +12,13 @@ import {
   Stethoscope,
   User,
   UserCheck,
-  X,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConfirmationModal,
+  ModalButton,
+  ModalShell,
   RefreshingIndicator,
   SoftLoadingArea,
 } from "../../components/common";
@@ -699,27 +700,35 @@ function LateArrivalModal({
   onConfirm,
   loading,
 }) {
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/30 p-4 backdrop-blur-[2px]">
-      <div className="relative w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-900/10">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={loading}
-          aria-label="Close late-arrival confirmation"
-          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-600 disabled:opacity-50"
-        >
-          <X size={16} />
-        </button>
-        <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-amber-100 bg-amber-50 text-amber-600">
-          <AlertTriangle size={20} />
-        </div>
-        <h2 className="mt-4 text-base font-bold text-slate-900">Mark Patient as Arrived?</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-500">
-          This referral was previously marked No-Show. Continue only if the patient has now arrived at the RHU.
-        </p>
+    <ModalShell
+      open={open}
+      title="Mark Patient as Arrived?"
+      subtitle="Confirm this late arrival."
+      icon={<AlertTriangle size={14} />}
+      size="md"
+      onClose={onCancel}
+      closeDisabled={loading}
+      footer={
+        <>
+          <ModalButton onClick={onCancel} disabled={loading}>
+            Cancel
+          </ModalButton>
+          <ModalButton
+            variant="primary"
+            onClick={onConfirm}
+            disabled={loading || !note.trim()}
+          >
+            {loading ? "Saving..." : "Mark as Arrived"}
+          </ModalButton>
+        </>
+      }
+    >
+      <p className="leading-5 text-slate-600">
+        This referral was previously marked No-Show. Continue only if the
+        patient has now arrived at the RHU.
+      </p>
+      <div className="mt-5">
         <label className="mt-5 block text-xs font-semibold text-slate-700" htmlFor="late-arrival-note">
           Late-arrival note <span className="text-[#B91C1C]">*</span>
         </label>
@@ -734,16 +743,8 @@ function LateArrivalModal({
           className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 disabled:bg-slate-50"
           placeholder="Briefly note the patient's late arrival."
         />
-        <div className="mt-6 flex justify-end gap-2.5">
-          <button type="button" onClick={onCancel} disabled={loading} className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">
-            Cancel
-          </button>
-          <button type="button" onClick={onConfirm} disabled={loading || !note.trim()} className="h-10 rounded-lg bg-[#B91C1C] px-4 text-sm font-semibold text-white hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-50">
-            {loading ? "Saving..." : "Mark as Arrived"}
-          </button>
-        </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }
 
