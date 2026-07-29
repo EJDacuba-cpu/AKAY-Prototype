@@ -27,7 +27,6 @@ class FollowUpTask extends Model
         'due_time',
         'state',
         'notes',
-        'reason',
         'practitioner_id',
         'no_show_at',
         'rescheduled_at',

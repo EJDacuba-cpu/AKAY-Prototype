@@ -58,7 +58,7 @@ class FollowUpConcurrencyTest extends TestCase
                 'followUpTaskId' => $task->id,
                 'followUpStatus' => 'Follow-up Required',
                 'followUpDate' => '2026-08-15',
-                'followUpReason' => 'Continue scheduled monitoring.',
+                'followUpTime' => '09:00',
             ],
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
@@ -250,7 +250,7 @@ class FollowUpConcurrencyTest extends TestCase
                 'followUpTaskId' => $task->id,
                 'followUpStatus' => 'Follow-up Required',
                 'followUpDate' => '2026-08-20',
-                'followUpReason' => 'Continue scheduled monitoring.',
+                'followUpTime' => '09:00',
             ],
         ]);
 
@@ -275,7 +275,6 @@ class FollowUpConcurrencyTest extends TestCase
                 'followUpTaskId' => $task->id,
                 'followUpStatus' => 'Follow-up Required',
                 'followUpDate' => '2026-08-25',
-                'followUpReason' => 'Continue scheduled monitoring.',
             ],
             'needs_referral' => true,
             'referral' => [
@@ -369,7 +368,6 @@ class FollowUpConcurrencyTest extends TestCase
             'monitoring_data' => [
                 'followUpStatus' => 'Follow-up Required',
                 'followUpDate' => '2026-08-01',
-                'followUpReason' => 'Continue scheduled monitoring.',
             ],
         ]);
         $task = FollowUpTask::create([

@@ -358,7 +358,6 @@ function normalizeEpisodeTask(task = {}) {
     patientId: task.patient_id ? String(task.patient_id) : task.patientId || "",
     dueDate: task.due_date || task.dueDate || "",
     dueTime: task.due_time || task.dueTime || "",
-    reason: task.reason || "",
     state: task.state || "pending",
     fulfilledAt: task.fulfilled_at || task.fulfilledAt || "",
     cancelledAt: task.cancelled_at || task.cancelledAt || "",
@@ -620,12 +619,6 @@ function normalizeRecord(record = {}) {
       record.followUpTime ||
       record.follow_up_time ||
       "",
-    followUpReason:
-      monitoringData.followUpReason ||
-      monitoringData.follow_up_reason ||
-      record.followUpReason ||
-      record.follow_up_reason ||
-      "",
     monitoringNotes:
       monitoringData.monitoringNotes ||
       monitoringData.monitoring_notes ||
@@ -749,8 +742,6 @@ function toPayload(record = {}, { partial = false } = {}) {
     followUpDate: record.followUpDate || null,
     followUpTime: record.followUpTime || null,
     follow_up_time: record.followUpTime || null,
-    followUpReason: record.followUpReason || null,
-    follow_up_reason: record.followUpReason || null,
     monitoringNotes: record.monitoringNotes || null,
     patientCondition: record.patientCondition || null,
     attendingStaff: record.attendingStaff || record.nameOfPractitioner || null,
@@ -1141,7 +1132,6 @@ function toPayload(record = {}, { partial = false } = {}) {
       "status",
       "followUpDate",
       "followUpTime",
-      "followUpReason",
       "monitoringNotes",
       "patientCondition",
       "attendingStaff",

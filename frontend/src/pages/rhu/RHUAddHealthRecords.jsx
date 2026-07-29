@@ -883,7 +883,7 @@ export default function AddHealthRecord() {
     normalizedPatientStatus === "Completed"
       ? "Write final outcome notes or closing instructions..."
       : showFollowUpMonitoringFields
-        ? "Write the monitoring plan or reason for follow-up..."
+        ? "Write the monitoring plan or return-visit instructions..."
         : "Write monitoring notes if useful...";
 
   function handleClassificationSelect(nextType) {
@@ -3830,4 +3830,3 @@ function isPatientMale(patient = {}) {
 
   return sexText === "m" || /\bmale\b/.test(sexText);
 }
-

@@ -1,7 +1,8 @@
 import { Link } from "react-router";
-import { CalendarClock, FileText } from "lucide-react";
+import { ArrowRight, CalendarClock, FileText } from "lucide-react";
 
 import { formatLongDate } from "../../../utils/formatters";
+import { formatDisplayTime } from "./recordDetailsHelpers";
 
 const ACTIVE_STATES = new Set(["pending", "rescheduled", "no_show"]);
 
@@ -54,12 +55,19 @@ export default function FollowUpEpisodePanel({ episode }) {
 export function FollowUpEpisodeContent({
   episode,
   currentRecord = null,
+  sourceRecordId = null,
   showRecordNavigation = true,
   showVisitChain = true,
   showSchedules = true,
 }) {
   const records = Array.isArray(episode?.records) ? episode.records : [];
-  const tasks = Array.isArray(episode?.tasks) ? episode.tasks : [];
+  const episodeTasks = Array.isArray(episode?.tasks) ? episode.tasks : [];
+  const tasks = sourceRecordId
+    ? episodeTasks.filter(
+        (task) => String(task.healthRecordId) === String(sourceRecordId),
+      )
+    : episodeTasks;
+  const recordScoped = Boolean(sourceRecordId);
   const originalRecord = episode?.originalRecord || records[0] || null;
   const originalRecordId = originalRecord?.id;
   const parentRecordId =
@@ -81,7 +89,9 @@ export function FollowUpEpisodeContent({
   if (!hasVisibleHistory) {
     return (
       <p className="text-sm text-slate-500">
-        No follow-up history has been recorded for this consultation.
+        {sourceRecordId
+          ? "No follow-up is scheduled for this record."
+          : "No follow-up history has been recorded for this consultation."}
       </p>
     );
   }
@@ -177,64 +187,91 @@ export function FollowUpEpisodeContent({
                   className="rounded-xl border border-slate-200 p-4"
                 >
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <dl className="grid flex-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                    <dl
+                      className={`grid flex-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2 ${
+                        recordScoped ? "lg:grid-cols-4" : "lg:grid-cols-3"
+                      }`}
+                    >
                       <EpisodeDetail
-                        label="Source"
+                        label="Source Record"
                         value={`Record #${task.healthRecordId}`}
                       />
-                      <EpisodeDetail
-                        label="Schedule"
-                        value={scheduleLabel(task)}
-                      />
-                      <EpisodeDetail
-                        label="Reason"
-                        value={task.reason || "Not recorded"}
-                      />
+                      {recordScoped ? (
+                        <>
+                          <EpisodeDetail
+                            label="Next Follow-up Visit"
+                            value={formatLongDate(task.dueDate, "Not recorded")}
+                          />
+                          <EpisodeDetail
+                            label="Follow-up Time"
+                            value={formatDisplayTime(
+                              task.dueTime,
+                              "Not recorded",
+                            )}
+                          />
+                        </>
+                      ) : (
+                        <EpisodeDetail
+                          label="Schedule"
+                          value={scheduleLabel(task)}
+                        />
+                      )}
                       <EpisodeDetail
                         label="Status"
                         value={stateLabel(task.state)}
                       />
                     </dl>
 
-                    <div className="flex flex-wrap gap-2">
+                    {recordScoped ? (
                       <Link
                         to={`/bhc/follow-ups/${task.id}`}
-                        className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                        title="View follow-up details"
+                        aria-label={`View details for follow-up #${task.id}`}
+                        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-[#B91C1C]/30 hover:bg-red-50 hover:text-[#B91C1C]"
                       >
-                        View Follow-up Details
+                        <ArrowRight size={17} />
                       </Link>
-                      {active && (
-                        <>
-                          <Link
-                            to={`/bhc/health-records/add?mode=followup&followUpId=${task.id}&patientId=${task.patientId}&recordId=${task.healthRecordId}`}
-                            className="rounded-lg bg-[#B91C1C] px-3 py-2 text-xs font-semibold text-white hover:bg-[#991B1B]"
-                          >
-                            Record Visit
-                          </Link>
-                          <Link
-                            to={`/bhc/follow-ups?task=${task.id}&open=reschedule`}
-                            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                          >
-                            Reschedule
-                          </Link>
-                          <Link
-                            to={`/bhc/follow-ups?task=${task.id}&open=cancel`}
-                            className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-[#B91C1C] hover:bg-red-50"
-                          >
-                            Cancel
-                          </Link>
-                        </>
-                      )}
-                      {task.state === "fulfilled" &&
-                        task.fulfilledByHealthRecordId && (
-                          <Link
-                            to={`/bhc/health-records/${task.fulfilledByHealthRecordId}`}
-                            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                          >
-                            View Health Record
-                          </Link>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        <Link
+                          to={`/bhc/follow-ups/${task.id}`}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                        >
+                          View Details
+                        </Link>
+                        {active && (
+                          <>
+                            <Link
+                              to={`/bhc/health-records/add?mode=followup&followUpId=${task.id}&patientId=${task.patientId}&recordId=${task.healthRecordId}`}
+                              className="rounded-lg bg-[#B91C1C] px-3 py-2 text-xs font-semibold text-white hover:bg-[#991B1B]"
+                            >
+                              Record Visit
+                            </Link>
+                            <Link
+                              to={`/bhc/follow-ups?task=${task.id}&open=reschedule`}
+                              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                            >
+                              Reschedule
+                            </Link>
+                            <Link
+                              to={`/bhc/follow-ups?task=${task.id}&open=cancel`}
+                              className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-[#B91C1C] hover:bg-red-50"
+                            >
+                              Cancel
+                            </Link>
+                          </>
                         )}
-                    </div>
+                        {task.state === "fulfilled" &&
+                          task.fulfilledByHealthRecordId && (
+                            <Link
+                              to={`/bhc/health-records/${task.fulfilledByHealthRecordId}`}
+                              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                            >
+                              View Health Record
+                            </Link>
+                          )}
+                      </div>
+                    )}
                   </div>
                 </article>
               );

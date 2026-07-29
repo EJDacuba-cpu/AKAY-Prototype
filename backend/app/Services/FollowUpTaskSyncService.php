@@ -101,7 +101,6 @@ class FollowUpTaskSyncService
             $record,
             $dueDate,
             $this->followUpTime($record),
-            $this->followUpReason($record),
             $user
         );
     }
@@ -115,7 +114,6 @@ class FollowUpTaskSyncService
         HealthRecord $record,
         string $dueDate,
         ?string $dueTime,
-        ?string $reason,
         ?User $user
     ): void {
         $existingTask = FollowUpTask::where('health_record_id', $record->id)->first();
@@ -141,7 +139,6 @@ class FollowUpTaskSyncService
         if ($existingTask === null || $existingTask->rescheduled_at === null) {
             $attributes['due_date'] = $dueDate;
             $attributes['due_time'] = $dueTime;
-            $attributes['reason'] = $reason;
         }
 
         FollowUpTask::updateOrCreate(['health_record_id' => $record->id], $attributes);
@@ -207,7 +204,6 @@ class FollowUpTaskSyncService
             $record,
             $dueDate,
             $this->followUpTime($record),
-            $this->followUpReason($record),
             $user
         );
     }
@@ -413,13 +409,4 @@ class FollowUpTaskSyncService
         return $time ?: null;
     }
 
-    private function followUpReason(HealthRecord $record): ?string
-    {
-        $monitoringData = $record->monitoring_data ?? [];
-        $reason = $monitoringData['followUpReason']
-            ?? $monitoringData['follow_up_reason']
-            ?? null;
-
-        return filled($reason) ? trim((string) $reason) : null;
-    }
 }

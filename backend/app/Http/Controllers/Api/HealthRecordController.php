@@ -516,8 +516,6 @@ class HealthRecordController extends Controller
             'follow_up_date' => null,
             'followUpTime' => null,
             'follow_up_time' => null,
-            'followUpReason' => null,
-            'follow_up_reason' => null,
         ];
     }
 

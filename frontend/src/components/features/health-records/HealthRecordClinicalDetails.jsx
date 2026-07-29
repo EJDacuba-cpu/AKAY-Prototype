@@ -60,7 +60,6 @@ import {
   getUltrasoundValue,
   getVitalField,
   getBloodPressureValue,
-  formatDisplayTime,
   getRecordVisitTypeValue,
 } from "./recordDetailsHelpers";
 
@@ -83,16 +82,6 @@ export default function HealthRecordClinicalDetails({
     record.followUpStatus || record.status || "Consultation",
   );
   const followUpDateValue = getRecordValue(record, ["followUpDate", "follow_up_date"], "");
-  const followUpTimeValue = getRecordValue(
-    record,
-    ["followUpTime", "follow_up_time"],
-    "",
-  );
-  const followUpReasonValue = getRecordValue(
-    record,
-    ["followUpReason", "follow_up_reason"],
-    "",
-  );
   const patientConditionValue = getRecordValue(record, [
     "patientCondition",
     "patient_condition",
@@ -235,13 +224,9 @@ export default function HealthRecordClinicalDetails({
         morbidityReportingStatus={morbidityReportingStatus}
         hfmdSurveillance={hfmdSurveillance}
         dispensedMedicines={dispensedMedicines}
-        followUpDate={followUpDateValue}
-        followUpTime={followUpTimeValue}
-        followUpReason={followUpReasonValue}
         needsReferral={needsRhuReferral}
         linkedReferral={linkedReferral}
         patientCondition={patientConditionValue}
-        monitoringNotes={monitoringNotesValue}
         status={status}
       />
     );
@@ -768,13 +753,9 @@ function GeneralConsultationRecordDetails({
   morbidityReportingStatus,
   hfmdSurveillance,
   dispensedMedicines = [],
-  followUpDate,
-  followUpTime,
-  followUpReason,
   needsReferral,
   linkedReferral,
   patientCondition,
-  monitoringNotes,
   status,
 }) {
   const referralStatus =
@@ -880,38 +861,16 @@ function GeneralConsultationRecordDetails({
     },
     {
       id: "followup",
-      label: "Follow-up History",
+      label: "Follow-ups for This Record",
       icon: CalendarClock,
       content: (
-        <div className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <TabbedDetailItem
-              label="Next Follow-up Date"
-              value={formatLongDate(followUpDate, "Not recorded")}
-            />
-            <TabbedDetailItem
-              label="Next Follow-up Time"
-              value={formatDisplayTime(followUpTime, "Not recorded")}
-            />
-          </div>
-          <TabbedNarrativeBlock
-            label="Follow-up Reason"
-            value={followUpReason}
-          />
-          {monitoringNotes && (
-            <TabbedNarrativeBlock
-              label="Monitoring Notes"
-              value={monitoringNotes}
-            />
-          )}
-          <div className="border-t border-slate-200 pt-6">
-            <FollowUpEpisodeContent
-              episode={record.followUpEpisode}
-              currentRecord={record}
-              showVisitChain={false}
-            />
-          </div>
-        </div>
+        <FollowUpEpisodeContent
+          episode={record.followUpEpisode}
+          currentRecord={record}
+          sourceRecordId={record.id || record._id}
+          showRecordNavigation={false}
+          showVisitChain={false}
+        />
       ),
     },
   ];

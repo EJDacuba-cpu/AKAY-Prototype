@@ -11,13 +11,11 @@ export default function FollowUpActionModal({
   const [notes, setNotes] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [dueTime, setDueTime] = useState("");
-  const [reason, setReason] = useState("");
 
   useEffect(() => {
     setNotes("");
     setDueDate(modal?.task?.dueDate || "");
     setDueTime(modal?.task?.dueTime || "");
-    setReason(modal?.task?.reason || "");
   }, [modal]);
 
   if (!modal) return null;
@@ -76,18 +74,6 @@ export default function FollowUpActionModal({
                   className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-[#B91C1C]/40 focus:bg-white"
                 />
               </div>
-              <div>
-                <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Follow-up Reason
-                </label>
-                <textarea
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                  rows={3}
-                  className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-[#B91C1C]/40 focus:bg-white"
-                  placeholder="Reason for the return visit"
-                />
-              </div>
             </>
           )}
           <div>
@@ -118,14 +104,13 @@ export default function FollowUpActionModal({
           </button>
           <button
             type="button"
-            disabled={saving || (!cancelling && (!dueDate || !reason.trim()))}
+            disabled={saving || (!cancelling && !dueDate)}
             onClick={() =>
               cancelling
                 ? onCancel(modal.task, notes)
                 : onReschedule(modal.task, {
                     dueDate,
                     dueTime,
-                    reason,
                     notes,
                   })
             }

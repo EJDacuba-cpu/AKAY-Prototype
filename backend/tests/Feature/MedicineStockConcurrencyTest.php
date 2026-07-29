@@ -286,7 +286,7 @@ class MedicineStockConcurrencyTest extends TestCase
                 'followUpTaskId' => $task->id,
                 'followUpStatus' => 'Follow-up Required',
                 'followUpDate' => '2026-09-01',
-                'followUpReason' => 'Continue scheduled monitoring.',
+                'followUpTime' => '09:00',
             ],
         ]), (string) Str::uuid())
             ->assertConflict()

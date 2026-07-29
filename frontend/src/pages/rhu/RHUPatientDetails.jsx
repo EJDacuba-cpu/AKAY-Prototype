@@ -20,7 +20,7 @@ import {
 } from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 import SpecializedRecordsTab from "../../components/features/records/SpecializedRecordsTab";
-import { getRhuHealthRecords } from "../../services/healthRecordService";
+import { getHealthRecordsByPatient } from "../../services/healthRecordService";
 import {
   getPatientByIdForRole,
   getPatientDetailsListByRole,
@@ -37,7 +37,7 @@ import {
   getRecordIdLabel,
   getRecordTimeValue,
   getServiceTypeLabel,
-  hasSpecializedRecords,
+  getSpecializedRecordPrograms,
 } from "../../utils/healthRecordPrograms";
 import { queryKeys } from "../../utils/queryKeys";
 
@@ -103,7 +103,7 @@ export default function RHUPatientDetails() {
     isError: recordsError,
   } = useQuery({
     queryKey: [...queryKeys.healthRecords("rhu"), "patient", patientId],
-    queryFn: getRhuHealthRecords,
+    queryFn: () => getHealthRecordsByPatient(patientId),
     enabled: Boolean(patientId),
   });
 
@@ -130,13 +130,8 @@ export default function RHUPatientDetails() {
     patientData || derivePatientFromSources(patientId, rawRecords, rawReferrals);
   const patientNameForHistory = getPatientName(patient);
   const records = useMemo(
-    () =>
-      ensureArray(rawRecords)
-        .filter((record) =>
-          recordBelongsToPatient(record, patientId, patientNameForHistory),
-        )
-        .sort(sortByDateDesc),
-    [rawRecords, patientId, patientNameForHistory],
+    () => [...ensureArray(rawRecords)].sort(sortByDateDesc),
+    [rawRecords],
   );
   const referrals = useMemo(
     () =>
@@ -154,15 +149,38 @@ export default function RHUPatientDetails() {
     () => (Array.isArray(records) ? records[0] ?? null : null),
     [records],
   );
-  const hasSpecialized = hasSpecializedRecords(records);
+  const specializedRecordPrograms = useMemo(
+    () => getSpecializedRecordPrograms(records),
+    [records],
+  );
+  const specializedProgramKeys = specializedRecordPrograms
+    .map(({ key }) => key)
+    .join("|");
   const tabs = [
     { key: "patient", label: "Patient Information" },
-    { key: "records", label: "Health Records" },
-    ...(hasSpecialized
-      ? [{ key: "specialized", label: "Specialized Records" }]
-      : []),
-    { key: "referrals", label: "Referral History" },
+    { key: "records", label: "Health Records", count: records.length },
+    ...specializedRecordPrograms.map(({ key, label, count }) => ({
+      key: `specialized:${key}`,
+      label,
+      count,
+      program: key,
+    })),
+    {
+      key: "referrals",
+      label: "Referral History",
+      count: referrals.length,
+    },
   ];
+  const activeSpecializedProgram =
+    tabs.find((tab) => tab.key === activeTab)?.program || "";
+
+  useEffect(() => {
+    if (!activeTab.startsWith("specialized:")) return;
+    const programKey = activeTab.slice("specialized:".length);
+    if (!specializedProgramKeys.split("|").includes(programKey)) {
+      setActiveTab("patient");
+    }
+  }, [activeTab, specializedProgramKeys]);
 
   if (loading) {
     return (
@@ -253,13 +271,9 @@ export default function RHUPatientDetails() {
       <div className="mb-6 flex overflow-x-auto border-b border-slate-200">
         {tabs.map((tab) => {
           const count =
-            tab.key === "records"
-              ? ` (${records.length})`
-              : tab.key === "specialized"
-                ? ""
-              : tab.key === "referrals"
-                ? ` (${referrals.length})`
-                : "";
+            tab.count === undefined || tab.count === null
+              ? ""
+              : ` (${tab.count})`;
 
           return (
             <button
@@ -294,8 +308,13 @@ export default function RHUPatientDetails() {
         />
       )}
 
-      {activeTab === "specialized" && hasSpecialized && (
-        <SpecializedRecordsTab records={records} basePath="/rhu" />
+      {activeSpecializedProgram && (
+        <SpecializedRecordsTab
+          records={records}
+          patient={patient}
+          basePath="/rhu"
+          program={activeSpecializedProgram}
+        />
       )}
 
       {activeTab === "referrals" && (
@@ -778,18 +797,6 @@ function getReferralPatientName(referral) {
       .filter(Boolean)
       .join(" ")
   );
-}
-
-function recordBelongsToPatient(record, patientId, patientName) {
-  const recordPatientId =
-    record?.patientId || record?.patientID || record?.patient?.id;
-
-  if (recordPatientId && sameId(recordPatientId, patientId)) return true;
-
-  const recordName = normalizeName(getRecordPatientName(record));
-  const targetName = normalizeName(patientName);
-
-  return Boolean(recordName && targetName && recordName === targetName);
 }
 
 function referralBelongsToPatient(referral, patientId, patientName) {

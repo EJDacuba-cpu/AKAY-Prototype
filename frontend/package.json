@@ -8,6 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "test:env": "node --test config/environment.test.js",
+    "test:patient-tabs": "node --test src/utils/healthRecordPrograms.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

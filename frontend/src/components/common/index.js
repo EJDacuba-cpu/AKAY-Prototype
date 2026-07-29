@@ -46,6 +46,7 @@ export {
   DetailsSkeleton,
   FormSkeleton,
   FollowUpsSkeleton,
+  HealthRecordFormSkeleton,
   HealthRecordsSkeleton,
   MedicineInventorySkeleton,
   ModuleSkeleton,

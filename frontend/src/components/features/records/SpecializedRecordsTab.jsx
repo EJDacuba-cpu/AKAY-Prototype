@@ -12,13 +12,9 @@ import {
   getRecordId,
   getRecordTimeValue,
   getRecordValue,
+  getSpecializedRecordType,
   formatHypertensionDiabeticClientStatus,
   formatHypertensionDiabeticCondition,
-  isEpiRecord,
-  isFamilyPlanningRecord,
-  isMaternalRecord,
-  isNcdRecord,
-  isTbRecord,
 } from "../../../utils/healthRecordPrograms";
 import {
   REQUIRED_EPI_ITEMS,
@@ -35,81 +31,65 @@ export default function SpecializedRecordsTab({
   records = [],
   patient = null,
   basePath = "/bhc",
+  program,
 }) {
-  const ownRecords = records.filter((record) =>
-    isOwnPatientRecord(record, patient),
+  const programRecords = records.filter(
+    (record) =>
+      isOwnPatientRecord(record, patient) &&
+      getSpecializedRecordType(record) === program,
   );
-  const isFemale = isFemalePatient(patient);
-  const epiRecords = ownRecords.filter(isEpiRecord);
-  const maternalRecords = isFemale ? ownRecords.filter(isMaternalRecord) : [];
-  const fpRecords = ownRecords.filter(isFamilyPlanningRecord);
-  const ncdRecords = ownRecords.filter(isNcdRecord);
-  const tbRecords = ownRecords.filter(isTbRecord);
-  const hasAny =
-    epiRecords.length ||
-    maternalRecords.length ||
-    fpRecords.length ||
-    ncdRecords.length ||
-    tbRecords.length;
 
-  if (!hasAny) {
-    return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center text-sm text-slate-400 shadow-sm">
-        <ClipboardList className="mx-auto mb-3 text-slate-300" size={32} />
-        No specialized records recorded for this patient yet.
-      </div>
-    );
-  }
+  if (programRecords.length === 0) return null;
 
   return (
     <div className="space-y-6">
-      {epiRecords.length > 0 && (
+      {program === "epi" && (
         <SpecializedSection
           icon={<Baby size={15} />}
           title="Immunization / EPI History"
           subtitle="Compiled from all Child Health / EPI health record visits."
         >
-          <EpiHistory records={epiRecords} basePath={basePath} />
+          <EpiHistory records={programRecords} basePath={basePath} />
         </SpecializedSection>
       )}
 
-      {maternalRecords.length > 0 && (
+      {program === "maternal" && (
         <SpecializedSection
           icon={<HeartPulse size={15} />}
           title="Prenatal / Maternal History"
           subtitle="Visit-specific prenatal findings, supplements, and next checkups."
         >
-          <MaternalHistory records={maternalRecords} basePath={basePath} />
+          <MaternalHistory records={programRecords} basePath={basePath} />
         </SpecializedSection>
       )}
 
-      {fpRecords.length > 0 && (
+      {program === "familyPlanning" && (
         <SpecializedSection
           icon={<UsersRound size={15} />}
           title="Family Planning History"
           subtitle="Family planning visits, methods, concerns, and appointments."
         >
-          <FamilyPlanningHistory records={fpRecords} basePath={basePath} />
+          <FamilyPlanningHistory records={programRecords} basePath={basePath} />
         </SpecializedSection>
       )}
 
-      {ncdRecords.length > 0 && (
+      {program === "ncd" && (
         <SpecializedSection
           icon={<HeartPulse size={15} />}
           title="Hypertension / Diabetic Monitoring History"
           subtitle="Compiled BP, FBS, HPN/DM status, treatment, and follow-up visits."
         >
-          <NcdHistory records={ncdRecords} />
+          <NcdHistory records={programRecords} />
         </SpecializedSection>
       )}
 
-      {tbRecords.length > 0 && (
+      {program === "tb" && (
         <SpecializedSection
           icon={<ClipboardList size={15} />}
           title="TB DOTS / TB Monitoring History"
           subtitle="Compiled TB-related visits and monitoring notes."
         >
-          <TbHistory records={tbRecords} basePath={basePath} />
+          <TbHistory records={programRecords} basePath={basePath} />
         </SpecializedSection>
       )}
     </div>
@@ -147,13 +127,6 @@ function SpecializedSubsection({ title, subtitle, children }) {
       {children}
     </div>
   );
-}
-
-function isFemalePatient(patient = {}) {
-  const normalized = String(patient?.sex || patient?.gender || "")
-    .trim()
-    .toLowerCase();
-  return normalized === "female" || normalized === "f";
 }
 
 function isOwnPatientRecord(record = {}, patient = {}) {

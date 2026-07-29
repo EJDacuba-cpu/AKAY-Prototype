@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   FilePlus2,
   History,
-  Link2,
   Stethoscope,
   RefreshCcw,
   XCircle,
@@ -31,7 +30,6 @@ import {
   getTaskServiceTypeLabel,
 } from "../../components/features/followups/followUpStatusStyles.jsx";
 import {
-  cancelFollowUp,
   getFollowUpTask,
   rescheduleFollowUp,
 } from "../../services/followUpTaskService";
@@ -101,7 +99,7 @@ export default function FollowUpDetails() {
     isLoading: relatedRecordLoading,
     refetch: refetchRelatedRecord,
   } = useQuery({
-    queryKey: queryKeys.healthRecordDetails("bhc", relatedRecordId),
+    queryKey: queryKeys.healthRecordData("bhc", relatedRecordId),
     queryFn: () => getHealthRecordById(relatedRecordId, "bhc"),
     enabled: Boolean(relatedRecordId),
     retry: false,
@@ -124,6 +122,11 @@ export default function FollowUpDetails() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.healthRecords("bhc"),
       }),
+      relatedRecordId
+        ? queryClient.invalidateQueries({
+            queryKey: queryKeys.healthRecordData("bhc", relatedRecordId),
+          })
+        : Promise.resolve(),
     ]);
   }
 
@@ -159,28 +162,6 @@ export default function FollowUpDetails() {
         requestError?.status === 409
           ? "This follow-up has already changed. The latest details have been loaded."
           : requestError?.message || "Unable to reschedule this follow-up.",
-      );
-      if (requestError?.status === 409) {
-        setModal(null);
-        await refreshTaskData();
-      }
-    } finally {
-      setSavingAction(false);
-    }
-  }
-
-  async function handleCancel(selectedTask, notes) {
-    setSavingAction(true);
-    setActionError("");
-    try {
-      await cancelFollowUp(selectedTask.id, notes);
-      setModal(null);
-      await refreshTaskData();
-    } catch (requestError) {
-      setActionError(
-        requestError?.status === 409
-          ? "This follow-up has already changed. The latest details have been loaded."
-          : requestError?.message || "Unable to cancel this follow-up.",
       );
       if (requestError?.status === 409) {
         setModal(null);
@@ -255,11 +236,6 @@ export default function FollowUpDetails() {
   if (!task) return null;
 
   const active = ACTIVE_STATES.includes(task.effectiveState);
-  const firstFollowUp =
-    String(task.healthRecordId) === String(task.originalHealthRecordId);
-  const sourceRecordLabel = firstFollowUp
-    ? "View Original Record"
-    : "View Previous Follow-up Record";
   const detailTabs = [
     {
       id: "clinical",
@@ -314,7 +290,6 @@ export default function FollowUpDetails() {
         saving={savingAction}
         onClose={() => setModal(null)}
         onReschedule={handleReschedule}
-        onCancel={handleCancel}
       />
 
       <div className="min-h-[520px]">
@@ -348,15 +323,6 @@ export default function FollowUpDetails() {
             </div>
 
             <div className="flex shrink-0 flex-wrap gap-2">
-              {task.healthRecordId && (
-                <Link
-                  to={`/bhc/health-records/${task.healthRecordId}`}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
-                >
-                  <Link2 size={14} />
-                  {sourceRecordLabel}
-                </Link>
-              )}
               {task.effectiveState === "fulfilled" && completedRecordId && (
                 <Link
                   to={`/bhc/health-records/${completedRecordId}`}
@@ -378,14 +344,6 @@ export default function FollowUpDetails() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setModal({ type: "cancel", task })}
-                    className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#B91C1C] shadow-sm transition hover:bg-red-50"
-                  >
-                    <XCircle size={14} />
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
                     onClick={recordFollowUpVisit}
                     className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
                   >
@@ -397,7 +355,7 @@ export default function FollowUpDetails() {
             </div>
           </div>
 
-          <div className="mt-5 grid gap-4 border-t border-slate-200 pt-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          <div className="mt-5 grid gap-4 border-t border-slate-200 pt-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <MetadataItem label="Patient Full Name" value={task.patientName} />
             <MetadataItem
               label="Patient ID"
@@ -419,7 +377,6 @@ export default function FollowUpDetails() {
               label="Practitioner"
               value={task.practitioner?.name}
             />
-            <MetadataItem label="Reason" value={task.reason} />
           </div>
         </header>
 
@@ -502,11 +459,6 @@ function FollowUpClinicalDetails({ task, record, loading, error, onRetry }) {
   const followUpTime = getRecordValue(
     record,
     ["followUpTime", "follow_up_time"],
-    "",
-  );
-  const followUpReason = getRecordValue(
-    record,
-    ["followUpReason", "follow_up_reason"],
     "",
   );
   const monitoringNotes = getRecordValue(
@@ -600,11 +552,6 @@ function FollowUpClinicalDetails({ task, record, loading, error, onRetry }) {
           <DetailItem
             label="Next Follow-up Time"
             value={formatTimeLabel(followUpTime)}
-          />
-          <DetailItem
-            label="Follow-up Reason"
-            value={followUpReason}
-            fullWidth
           />
           <DetailItem
             label="Monitoring / Outcome Notes"

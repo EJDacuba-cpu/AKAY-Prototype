@@ -9,6 +9,15 @@ class HealthRecordRequest extends FormRequest
 {
     protected function prepareForValidation(): void
     {
+        $monitoringData = $this->input('monitoring_data');
+        if (is_array($monitoringData)) {
+            unset(
+                $monitoringData['followUpReason'],
+                $monitoringData['follow_up_reason']
+            );
+            $this->merge(['monitoring_data' => $monitoringData]);
+        }
+
         if ($this->isMethod('post')) {
             $this->merge([
                 'idempotency_key' => $this->header('Idempotency-Key'),
@@ -88,8 +97,6 @@ class HealthRecordRequest extends FormRequest
             'monitoring_data.follow_up_date' => ['nullable', 'date'],
             'monitoring_data.followUpTime' => ['nullable', 'date_format:H:i'],
             'monitoring_data.follow_up_time' => ['nullable', 'date_format:H:i'],
-            'monitoring_data.followUpReason' => ['nullable', 'string', 'max:255'],
-            'monitoring_data.follow_up_reason' => ['nullable', 'string', 'max:255'],
             'monitoring_data.followUpTaskId' => ['nullable', 'integer', 'exists:follow_up_tasks,id'],
             'monitoring_data.follow_up_task_id' => ['nullable', 'integer', 'exists:follow_up_tasks,id'],
             'monitoring_data.monitoringNotes' => ['nullable', 'string'],
@@ -240,8 +247,8 @@ class HealthRecordRequest extends FormRequest
             $date = $monitoringData['followUpDate']
                 ?? $monitoringData['follow_up_date']
                 ?? null;
-            $reason = $monitoringData['followUpReason']
-                ?? $monitoringData['follow_up_reason']
+            $time = $monitoringData['followUpTime']
+                ?? $monitoringData['follow_up_time']
                 ?? null;
             $taskId = $monitoringData['followUpTaskId']
                 ?? $monitoringData['follow_up_task_id']
@@ -266,12 +273,13 @@ class HealthRecordRequest extends FormRequest
 
             if (
                 ! $needsReferral
+                && strcasecmp((string) $this->input('category'), 'General Consultation') === 0
                 && $normalizedStatus === 'follow up required'
-                && blank($reason)
+                && blank($time)
             ) {
                 $validator->errors()->add(
-                    'monitoring_data.followUpReason',
-                    'Follow-up reason is required when status is Follow-up Required.'
+                    'monitoring_data.followUpTime',
+                    'Follow-up time is required for a General Consultation follow-up schedule.'
                 );
             }
 

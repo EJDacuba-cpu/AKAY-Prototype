@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -39,7 +40,7 @@ class FollowUpTaskSchedulingTest extends TestCase
         $this->patient = $this->patient('Scheduling', 'Patient', $this->bhc, $this->bhw);
     }
 
-    public function test_follow_up_required_needs_a_date_and_reason_but_time_is_optional(): void
+    public function test_general_consultation_follow_up_required_needs_a_date_and_time(): void
     {
         $this->postHealthRecord([
             'monitoring_data' => [
@@ -49,34 +50,50 @@ class FollowUpTaskSchedulingTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors([
                 'monitoring_data.followUpDate',
-                'monitoring_data.followUpReason',
             ]);
 
         $this->postHealthRecord([
             'monitoring_data' => [
                 'followUpStatus' => 'Follow-up Required',
                 'followUpDate' => '2026-08-07',
-                'followUpReason' => 'Reassess symptoms.',
+            ],
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'monitoring_data.followUpTime',
+            ]);
+
+        $response = $this->postHealthRecord([
+            'monitoring_data' => [
+                'followUpStatus' => 'Follow-up Required',
+                'followUpDate' => '2026-08-07',
+                'followUpTime' => '11:30',
+                'followUpReason' => 'Deprecated camel-case reason.',
+                'follow_up_reason' => 'Deprecated snake-case reason.',
             ],
         ])->assertCreated();
 
         $this->assertDatabaseHas('follow_up_tasks', [
             'patient_id' => $this->patient->id,
             'due_date' => '2026-08-07 00:00:00',
-            'due_time' => null,
-            'reason' => 'Reassess symptoms.',
+            'due_time' => '11:30',
             'state' => FollowUpTask::STATE_PENDING,
         ]);
+        $monitoringData = HealthRecord::findOrFail(
+            $response->json('data.id')
+        )->monitoring_data;
+        $this->assertArrayNotHasKey('followUpReason', $monitoringData);
+        $this->assertArrayNotHasKey('follow_up_reason', $monitoringData);
+        $this->assertFalse(Schema::hasColumn('follow_up_tasks', 'reason'));
     }
 
-    public function test_initial_health_record_save_creates_one_schedule_with_time_and_reason(): void
+    public function test_initial_health_record_save_creates_one_schedule_with_required_time(): void
     {
         $response = $this->postHealthRecord([
             'monitoring_data' => [
                 'followUpStatus' => 'Follow-up Required',
                 'followUpDate' => '2026-08-07',
                 'followUpTime' => '11:30',
-                'followUpReason' => 'Reassess symptoms and treatment response.',
             ],
         ])->assertCreated();
 
@@ -86,12 +103,42 @@ class FollowUpTaskSchedulingTest extends TestCase
             'patient_id' => $this->patient->id,
             'due_date' => '2026-08-07 00:00:00',
             'due_time' => '11:30',
-            'reason' => 'Reassess symptoms and treatment response.',
         ]);
         $this->assertSame(
             1,
             FollowUpTask::where('health_record_id', $recordId)->count()
         );
+    }
+
+    public function test_follow_up_visit_requires_time_when_scheduling_another_visit(): void
+    {
+        $task = $this->schedule($this->patient, $this->bhw, $this->bhc);
+
+        $payload = [
+            'visit_type' => 'follow_up_visit',
+            'parent_health_record_id' => $task->health_record_id,
+            'monitoring_data' => [
+                'followUpTaskId' => $task->id,
+                'followUpStatus' => 'Follow-up Required',
+                'followUpDate' => '2026-08-14',
+            ],
+        ];
+
+        $this->postHealthRecord($payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'monitoring_data.followUpTime',
+            ]);
+
+        $payload['monitoring_data']['followUpTime'] = '10:30';
+        $response = $this->postHealthRecord($payload)->assertCreated();
+
+        $this->assertDatabaseHas('follow_up_tasks', [
+            'health_record_id' => $response->json('data.id'),
+            'due_date' => '2026-08-14 00:00:00',
+            'due_time' => '10:30',
+            'state' => FollowUpTask::STATE_PENDING,
+        ]);
     }
 
     public function test_referral_disposition_ignores_stale_follow_up_fields(): void
@@ -102,7 +149,6 @@ class FollowUpTaskSchedulingTest extends TestCase
                 'followUpStatus' => 'Follow-up Required',
                 'followUpDate' => '2026-08-07',
                 'followUpTime' => '11:30',
-                'followUpReason' => 'Stale reason.',
             ],
             'referral' => [
                 'reason_for_referral' => 'Requires higher-level assessment.',
@@ -170,21 +216,25 @@ class FollowUpTaskSchedulingTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_reschedule_updates_date_time_reason_and_rejects_terminal_tasks(): void
+    public function test_reschedule_updates_date_time_notes_and_rejects_terminal_tasks(): void
     {
         $task = $this->schedule($this->patient, $this->bhw, $this->bhc);
 
-        $this->actingAs($this->bhw, 'sanctum')
+        $response = $this->actingAs($this->bhw, 'sanctum')
             ->patchJson("/api/follow-up-tasks/{$task->id}/reschedule", [
                 'due_date' => '2026-08-12',
                 'due_time' => '13:45',
-                'reason' => 'Repeat blood pressure and glucose.',
+                'reason' => 'Deprecated reason must be ignored.',
                 'notes' => 'Patient requested an afternoon appointment.',
             ])
             ->assertOk()
             ->assertJsonPath('data.state', FollowUpTask::STATE_RESCHEDULED)
             ->assertJsonPath('data.due_time', '13:45')
-            ->assertJsonPath('data.reason', 'Repeat blood pressure and glucose.');
+            ->assertJsonPath(
+                'data.notes',
+                'Patient requested an afternoon appointment.'
+            );
+        $this->assertArrayNotHasKey('reason', $response->json('data'));
 
         $task->refresh()->update([
             'state' => FollowUpTask::STATE_FULFILLED,
@@ -285,7 +335,6 @@ class FollowUpTaskSchedulingTest extends TestCase
             'barangay_health_center_id' => $bhc->id,
             'due_date' => $dueDate,
             'due_time' => $dueTime,
-            'reason' => 'Scheduled return visit.',
             'state' => FollowUpTask::STATE_PENDING,
             'created_by' => $user->id,
         ]);

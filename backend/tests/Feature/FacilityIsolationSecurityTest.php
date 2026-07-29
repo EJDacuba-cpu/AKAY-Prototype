@@ -646,7 +646,6 @@ class FacilityIsolationSecurityTest extends TestCase
             'monitoring_data' => [
                 'followUpStatus' => 'Follow Up Required',
                 'followUpDate' => now()->addWeek()->toDateString(),
-                'followUpReason' => 'Continue scheduled monitoring.',
             ],
         ]);
     }

@@ -39,7 +39,7 @@ export default function FollowUpEventCard({
         </span>
         {!dense && (
           <span className="block truncate text-[10.5px] opacity-80">
-            {task.reason || getTaskServiceTypeLabel(task)}
+            {getTaskServiceTypeLabel(task)}
           </span>
         )}
       </button>

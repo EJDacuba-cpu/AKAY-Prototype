@@ -567,6 +567,54 @@ export function FormSkeleton({ message = "Loading form..." }) {
   );
 }
 
+export function HealthRecordFormSkeleton({
+  message = "Loading health record...",
+}) {
+  return (
+    <SkeletonRoot message={message} className="space-y-0">
+      <div className={`${cardClass} overflow-hidden`}>
+        <div className="border-b border-slate-200 px-5 py-4 sm:px-6">
+          <SkeletonBlock className="h-4 w-32" />
+        </div>
+
+        <div className="space-y-5 px-5 py-5 sm:px-6">
+          <section>
+            <SkeletonBlock className="h-3 w-36" />
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index}>
+                  <SkeletonBlock className="h-2.5 w-20" />
+                  <SkeletonBlock className="mt-2 h-9 w-full rounded-lg" />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="border-t border-slate-100 pt-5">
+            <SkeletonBlock className="h-3 w-28" />
+            <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+              {Array.from({ length: 2 }).map((_, index) => (
+                <div key={index}>
+                  <SkeletonBlock className="h-2.5 w-20" />
+                  <SkeletonBlock className="mt-2 h-9 w-full rounded-lg" />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="border-t border-slate-100 pt-5">
+            <SkeletonBlock className="h-3 w-32" />
+            <div className="mt-3 space-y-3">
+              <SkeletonBlock className="h-10 w-full rounded-lg" />
+              <SkeletonBlock className="h-10 w-full rounded-lg" />
+            </div>
+          </section>
+        </div>
+      </div>
+    </SkeletonRoot>
+  );
+}
+
 export function ModuleSkeleton({ message = "Loading..." }) {
   return (
     <SkeletonRoot message={message}>

@@ -51,7 +51,6 @@ class FollowUpEpisodeTest extends TestCase
             'barangay_health_center_id' => $bhc->id,
             'due_date' => '2026-07-22',
             'due_time' => '09:30',
-            'reason' => 'Second reassessment.',
             'state' => FollowUpTask::STATE_PENDING,
             'created_by' => $bhw->id,
         ]);
@@ -112,7 +111,6 @@ class FollowUpEpisodeTest extends TestCase
             'patient_id' => $patient->id,
             'barangay_health_center_id' => $bhc->id,
             'due_date' => $dueDate,
-            'reason' => 'Reassess.',
             'state' => FollowUpTask::STATE_FULFILLED,
             'fulfilled_at' => now(),
             'fulfilled_by_health_record_id' => $result->id,

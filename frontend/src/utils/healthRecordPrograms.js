@@ -457,8 +457,37 @@ export function getSpecializedRecordType(record = {}) {
   return "";
 }
 
+export const SPECIALIZED_RECORD_PROGRAMS = Object.freeze([
+  Object.freeze({ key: "epi", label: "Immunization / EPI" }),
+  Object.freeze({ key: "maternal", label: "Prenatal / Maternal" }),
+  Object.freeze({ key: "familyPlanning", label: "Family Planning" }),
+  Object.freeze({ key: "ncd", label: "Hypertension / Diabetic" }),
+  Object.freeze({ key: "tb", label: "TB DOTS" }),
+]);
+
+export function getSpecializedRecordPrograms(records = []) {
+  const groupedRecords = new Map(
+    SPECIALIZED_RECORD_PROGRAMS.map(({ key }) => [key, []]),
+  );
+
+  for (const record of Array.isArray(records) ? records : []) {
+    const programKey = getSpecializedRecordType(record);
+    groupedRecords.get(programKey)?.push(record);
+  }
+
+  return SPECIALIZED_RECORD_PROGRAMS.map(({ key, label }) => {
+    const programRecords = groupedRecords.get(key) || [];
+    return {
+      key,
+      label,
+      count: programRecords.length,
+      records: programRecords,
+    };
+  }).filter(({ count }) => count > 0);
+}
+
 export function hasSpecializedRecords(records = []) {
-  return records.some((record) => Boolean(getSpecializedRecordType(record)));
+  return getSpecializedRecordPrograms(records).length > 0;
 }
 
 const TB_REGISTRATION_GROUP_LABELS = {

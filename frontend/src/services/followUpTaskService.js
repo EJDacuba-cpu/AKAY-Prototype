@@ -90,7 +90,6 @@ export function normalizeFollowUpTask(task = {}) {
       task.contactNumber ||
       "",
     dueTime: task.due_time || task.dueTime || "",
-    reason: task.reason || "",
     practitioner: task.practitioner
       ? {
           id: String(task.practitioner.id),
@@ -131,7 +130,6 @@ export async function rescheduleFollowUp(
     body: {
       due_date: payload.dueDate,
       due_time: payload.dueTime || null,
-      reason: payload.reason || null,
       notes: payload.notes || "",
     },
   });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -41,6 +41,7 @@ import {
 import {
   getRecordIdLabel,
   getServiceTypeLabel,
+  getSpecializedRecordPrograms,
 } from "../../utils/healthRecordPrograms";
 import {
   calculateAgeInMonths,
@@ -68,7 +69,6 @@ const BULAKAN_BARANGAYS = [
 const TAB_LABELS = {
   general: "General",
   records: "Health Records",
-  specialized: "Specialized Records",
   referrals: "Referral History",
 };
 
@@ -152,6 +152,22 @@ export default function PatientDetails() {
     enabled: Boolean(patientId),
     retry: false,
   });
+
+  const specializedRecordPrograms = useMemo(
+    () => getSpecializedRecordPrograms(recordsData),
+    [recordsData],
+  );
+  const specializedProgramKeys = specializedRecordPrograms
+    .map(({ key }) => key)
+    .join("|");
+
+  useEffect(() => {
+    if (!activeTab.startsWith("specialized:")) return;
+    const programKey = activeTab.slice("specialized:".length);
+    if (!specializedProgramKeys.split("|").includes(programKey)) {
+      setActiveTab("general");
+    }
+  }, [activeTab, specializedProgramKeys]);
 
   const overrideMatchesPatient =
     patientOverride &&
@@ -390,10 +406,10 @@ export default function PatientDetails() {
     );
   }
 
-  const records = (Array.isArray(recordsData) ? recordsData : []).sort(
+  const records = [...(Array.isArray(recordsData) ? recordsData : [])].sort(
     sortByDateDesc,
   );
-  const referrals = (Array.isArray(referralsData) ? referralsData : []).sort(
+  const referrals = [...(Array.isArray(referralsData) ? referralsData : [])].sort(
     sortByDateDesc,
   );
   const patientFollowUps = (
@@ -426,6 +442,28 @@ export default function PatientDetails() {
       const search = motherSearch.trim().toLowerCase();
       return !search || getMotherPatientLabel(item).toLowerCase().includes(search);
     });
+  const tabs = [
+    { key: "general", label: TAB_LABELS.general },
+    {
+      key: "records",
+      label: TAB_LABELS.records,
+      count: records.length,
+    },
+    ...specializedRecordPrograms.map(({ key, label, count }) => ({
+      key: `specialized:${key}`,
+      label,
+      count,
+      program: key,
+    })),
+    {
+      key: "referrals",
+      label: TAB_LABELS.referrals,
+      count: referrals.length,
+    },
+  ];
+  const activeSpecializedProgram =
+    tabs.find((tab) => tab.key === activeTab)?.program || "";
+
   return (
     <>
       <DashboardLayout role="bhc" title="Patient Details">
@@ -455,14 +493,7 @@ export default function PatientDetails() {
     className="flex overflow-x-auto"
     aria-label="Patient chart sections"
   >
-    {Object.entries(TAB_LABELS).map(([key, label]) => {
-      const count =
-        key === "records"
-          ? records.length
-          : key === "referrals"
-              ? referrals.length
-              : null;
-
+    {tabs.map(({ key, label, count = null }) => {
       return (
         <button
           key={key}
@@ -517,11 +548,12 @@ export default function PatientDetails() {
                 />
               )}
 
-              {activeTab === "specialized" && (
+              {activeSpecializedProgram && (
                 <SpecializedRecordsTab
                   records={records}
                   patient={patient}
                   basePath="/bhc"
+                  program={activeSpecializedProgram}
                 />
               )}
 

@@ -134,7 +134,6 @@ class FollowUpTaskController extends Controller
         $data = $request->validate([
             'due_date' => ['required', 'date'],
             'due_time' => ['nullable', 'date_format:H:i'],
-            'reason' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
             'state' => ['nullable', Rule::in([FollowUpTask::STATE_PENDING, FollowUpTask::STATE_RESCHEDULED])],
         ]);
@@ -152,9 +151,6 @@ class FollowUpTaskController extends Controller
                 'due_time' => array_key_exists('due_time', $data)
                     ? $data['due_time']
                     : $lockedTask->due_time,
-                'reason' => filled($data['reason'] ?? null)
-                    ? trim($data['reason'])
-                    : $lockedTask->reason,
                 'state' => $data['state'] ?? FollowUpTask::STATE_RESCHEDULED,
                 'notes' => $data['notes'] ?? $lockedTask->notes,
                 'rescheduled_at' => now(),

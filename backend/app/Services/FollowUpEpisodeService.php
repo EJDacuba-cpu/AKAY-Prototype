@@ -153,7 +153,6 @@ class FollowUpEpisodeService
             'patient_id' => $task->patient_id,
             'due_date' => $task->due_date,
             'due_time' => $task->due_time,
-            'reason' => $task->reason,
             'notes' => $task->notes,
             'state' => $task->state,
             'fulfilled_at' => $task->fulfilled_at,

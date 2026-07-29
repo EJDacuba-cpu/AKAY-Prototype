@@ -1,5 +1,5 @@
 import { Link, useParams, useNavigate, useSearchParams } from "react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardList, FilePlus2, HeartPulse, Printer } from "lucide-react";
 
@@ -11,7 +11,11 @@ import {
   getReferralByHealthRecordId,
   getReferralByTrackingId,
 } from "../../services/referrals";
-import { SideCard, SoftLoadingArea } from "../../components/common";
+import {
+  ConnectionErrorState,
+  SideCard,
+  SoftLoadingArea,
+} from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 import RecordHeaderCard from "../../components/features/health-records/RecordHeaderCard";
 import HealthRecordClinicalDetails from "../../components/features/health-records/HealthRecordClinicalDetails";
@@ -38,9 +42,6 @@ export default function HealthRecordDetails() {
   const { recordId } = useParams();
   const navigate = useNavigate();
 
-  const [record, setRecord] = useState(null);
-  const [patient, setPatient] = useState(null);
-  const [linkedReferral, setLinkedReferral] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const shouldAutoPrint = searchParams.get("print") === "1";
   const hasAutoPrintedRef = useRef(false);
@@ -48,8 +49,10 @@ export default function HealthRecordDetails() {
 
   const {
     data: details,
+    error,
     isLoading,
     isFetching,
+    refetch,
   } = useQuery({
     queryKey: queryKeys.healthRecordDetails("bhc", recordId),
     queryFn: async () => {
@@ -72,21 +75,27 @@ export default function HealthRecordDetails() {
       } catch {
         existingReferral = null;
       }
-      const patientData = recordData?.patientId
-        ? await getPatientById(recordData.patientId)
-        : null;
+      let patientData = recordData?.patient || null;
+      if (recordData?.patientId) {
+        try {
+          patientData = await getPatientById(recordData.patientId);
+        } catch {
+          patientData = recordData?.patient || null;
+        }
+      }
 
       return { record: recordData, patient: patientData, linkedReferral: existingReferral };
     },
     enabled: Boolean(recordId),
+    retry: (failureCount, requestError) =>
+      requestError?.status !== 404 && failureCount < 2,
   });
 
-  useEffect(() => {
-    if (!details) return;
-    setRecord(details.record);
-    setPatient(details.patient);
-    setLinkedReferral(details.linkedReferral);
-  }, [details]);
+  // Accept a raw record left by older clients while the corrected composite
+  // details query refreshes, so an existing browser session never flashes 404.
+  const record = details?.record || (details?.id ? details : null);
+  const patient = details?.patient || record?.patient || null;
+  const linkedReferral = details?.linkedReferral || null;
 
   useEffect(() => {
     if (!shouldAutoPrint || !record || hasAutoPrintedRef.current) return;
@@ -107,7 +116,7 @@ export default function HealthRecordDetails() {
     return () => clearTimeout(timer);
   }, [shouldAutoPrint, record, setSearchParams]);
 
-  const loading = isLoading && !details;
+  const loading = isLoading || (!details && isFetching);
   const detailsUpdating = isFetching && !loading && Boolean(details);
 
   if (loading) {
@@ -120,6 +129,19 @@ export default function HealthRecordDetails() {
         >
           <div className="min-h-[520px] rounded-2xl border border-slate-200 bg-white shadow-sm" />
         </SoftLoadingArea>
+      </DashboardLayout>
+    );
+  }
+
+  if (error && error?.status !== 404) {
+    return (
+      <DashboardLayout role="bhc" title="Health Record Details">
+        <ConnectionErrorState
+          fullPage
+          onRetry={() => refetch()}
+          retrying={isFetching}
+          variant={error?.isTimeout ? "timeout" : "error"}
+        />
       </DashboardLayout>
     );
   }
@@ -143,9 +165,6 @@ export default function HealthRecordDetails() {
   }
 
   const isFollowUpVisitRecord = getRecordVisitTypeValue(record) === "follow_up_visit";
-  const pendingNextFollowUp = record.followUpEpisode?.pendingNextFollowUp;
-  const canRecordFollowUpVisit =
-    Boolean(pendingNextFollowUp);
   const parentHealthRecordId = getParentHealthRecordId(record);
   const showPatientProfileSidebar = false;
   const linkedReferralTarget =
@@ -215,17 +234,6 @@ export default function HealthRecordDetails() {
           }
           actions={
             <>
-              {canRecordFollowUpVisit && (
-                <Link
-                  to={`/bhc/health-records/add?recordId=${pendingNextFollowUp.healthRecordId}&followUpId=${pendingNextFollowUp.id}&patientId=${pendingNextFollowUp.patientId}&mode=followup`}
-                  title="This action creates a follow-up visit linked to the current health record."
-                  aria-label="Record a follow-up visit linked to this health record"
-                  className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100"
-                >
-                  <FilePlus2 size={14} />
-                  Record Follow-up Visit
-                </Link>
-              )}
               {hasLinkedReferral && (
                 <Link
                   to={`/bhc/referrals/${linkedReferralTarget}`}

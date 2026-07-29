@@ -20,6 +20,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConnectionIssueModal,
   Drawer,
+  HealthRecordFormSkeleton,
   SuccessModal,
 } from "../../components/common";
 import {
@@ -739,7 +740,15 @@ function normalizePatientStatus(status) {
   if (["follow up", "follow up required", "follow up after 2 days"].includes(compact)) {
     return "Follow-up Required";
   }
-  if (["completed", "complete", "recovered", "closed"].includes(compact)) {
+  if (
+    [
+      "completed",
+      "complete",
+      "recovered",
+      "closed",
+      "no further follow up required",
+    ].includes(compact)
+  ) {
     return "Completed";
   }
   if (["needs referral", "for referral", "referral"].includes(compact)) {
@@ -1011,7 +1020,6 @@ export default function AddHealthRecord() {
   const [followUpStatus, setFollowUpStatus] = useState("Routine Monitoring");
   const [followUpDate, setFollowUpDate] = useState("");
   const [followUpTime, setFollowUpTime] = useState("");
-  const [followUpReason, setFollowUpReason] = useState("");
   const [monitoringNotes, setMonitoringNotes] = useState("");
   const [patientCondition, setPatientCondition] = useState("Improving");
   const [careDecisionStep, setCareDecisionStep] = useState(false);
@@ -1691,28 +1699,43 @@ export default function AddHealthRecord() {
   const isHypertensionDiabetic =
     recordTypeKey === "hypertension / diabetic monitoring";
   const isTb = recordTypeKey === "tb dots / tb monitoring";
+  const effectiveLinkedFollowUpTask =
+    routeLinkedFollowUpTask || (isFollowUp ? null : autoLinkedFollowUpTask);
+  const effectiveFollowUpParentRecordId = isFollowUp
+    ? recordId
+    : effectiveLinkedFollowUpTask?.healthRecordId || "";
+  const effectiveFollowUpTaskId =
+    effectiveLinkedFollowUpTask?.id || followUpTaskId || "";
+  const isFollowUpVisitMode =
+    isFollowUp ||
+    Boolean(effectiveLinkedFollowUpTask) ||
+    Boolean(hasRouteFollowUpContext);
+  const isLinkedFollowUpVisit =
+    isFollowUp || Boolean(effectiveLinkedFollowUpTask);
   const isGeneralConsultationFollowUp =
-    isFollowUp &&
-    !isImmunization &&
-    !isMaternal &&
-    !isFamilyPlanning &&
-    !isHypertensionDiabetic &&
-    !isTb;
-  const patientGateLocked = !isFollowUp && !selectedPatientId;
-  const selectedPatientIsMale = !isFollowUp && isPatientMale(selectedPatient);
+    isFollowUpVisitMode && recordTypeKey === "general consultation";
+  const patientGateLocked = !isFollowUpVisitMode && !selectedPatientId;
+  const selectedPatientIsMale =
+    !isFollowUpVisitMode && isPatientMale(selectedPatient);
   const selectedPatientSexMissing =
-    !isFollowUp && Boolean(selectedPatientId) && !hasPatientSex(selectedPatient);
+    !isFollowUpVisitMode &&
+    Boolean(selectedPatientId) &&
+    !hasPatientSex(selectedPatient);
   const followUpPatientHasMaternalMismatch =
-    isFollowUp &&
+    isFollowUpVisitMode &&
     isMaternal &&
     isPatientMale(selectedPatient || followUpRecord?.patient || followUpRecord);
   const showMaternalPatientWarning =
     isMaternal &&
     (followUpPatientHasMaternalMismatch ||
-      (!isFollowUp && selectedPatientSexMissing));
+      (!isFollowUpVisitMode && selectedPatientSexMissing));
   const normalizedPatientStatus = normalizePatientStatus(followUpStatus);
+  const followUpDecisionValue =
+    normalizedPatientStatus === "Completed"
+      ? "No Further Follow-up Required"
+      : normalizedPatientStatus;
   const showFollowUpMonitoringFields =
-    normalizedPatientStatus === "Follow-up Required";
+    normalizedPatientStatus === "Follow-up Required" && !needsReferral;
   const usesCareDecisionStep = false;
   const immunizationPatientInfo = getImmunizationPatientMode(
     selectedPatient,
@@ -1739,17 +1762,6 @@ export default function AddHealthRecord() {
   const epiWillComplete = isImmunization && epiCompletion.completeAfterSave;
   const epiNeedsNextFollowUp =
     isImmunization && !needsReferral && !epiWillComplete;
-  const effectiveLinkedFollowUpTask =
-    routeLinkedFollowUpTask || (isFollowUp ? null : autoLinkedFollowUpTask);
-  const effectiveFollowUpParentRecordId = isFollowUp
-    ? recordId
-    : effectiveLinkedFollowUpTask?.healthRecordId || "";
-  const effectiveFollowUpTaskId = effectiveLinkedFollowUpTask?.id || followUpTaskId || "";
-  const isFollowUpVisitMode =
-    isFollowUp ||
-    Boolean(effectiveLinkedFollowUpTask) ||
-    Boolean(hasRouteFollowUpContext);
-  const isLinkedFollowUpVisit = isFollowUp || Boolean(effectiveLinkedFollowUpTask);
   const canSaveCurrentDraft =
     isDraftRouteEligible &&
     setupComplete &&
@@ -1792,7 +1804,6 @@ export default function AddHealthRecord() {
       followUpStatus,
       followUpDate,
       followUpTime,
-      followUpReason,
       monitoringNotes,
       patientCondition,
       morbidityReportingStatus,
@@ -1967,7 +1978,6 @@ export default function AddHealthRecord() {
     setFollowUpStatus(payload.followUpStatus || "Routine Monitoring");
     setFollowUpDate(payload.followUpDate || "");
     setFollowUpTime(payload.followUpTime || "");
-    setFollowUpReason(payload.followUpReason || "");
     setMonitoringNotes(payload.monitoringNotes || "");
     setPatientCondition(payload.patientCondition || "Improving");
     setMorbidityReportingStatus(payload.morbidityReportingStatus || "not_included");
@@ -2312,7 +2322,6 @@ export default function AddHealthRecord() {
       clearValidationError("followUpDate");
       setFollowUpDate("");
       setFollowUpTime("");
-      setFollowUpReason("");
       setFollowUpStatus("Completed");
       return;
     }
@@ -2421,7 +2430,6 @@ export default function AddHealthRecord() {
     if (isFollowUp && !showFollowUpMonitoringFields) {
       setFollowUpDate("");
       setFollowUpTime("");
-      setFollowUpReason("");
       if (!isFollowUp) setPatientCondition("");
     }
   }, [showFollowUpMonitoringFields, isFollowUp]);
@@ -2436,8 +2444,18 @@ export default function AddHealthRecord() {
     if (normalizedStatus !== "Follow-up Required") {
       setFollowUpDate("");
       setFollowUpTime("");
-      setFollowUpReason("");
       if (!isFollowUp) setPatientCondition("");
+    }
+  }
+
+  function handleFollowUpDecisionChange(value) {
+    clearValidationError("followUpStatus");
+    setFollowUpStatus(value);
+    if (value !== "Follow-up Required") {
+      clearValidationError("followUpDate");
+      clearValidationError("followUpTime");
+      setFollowUpDate("");
+      setFollowUpTime("");
     }
   }
 
@@ -2446,10 +2464,8 @@ export default function AddHealthRecord() {
     setNeedsReferral(nextNeedsReferral);
     if (nextNeedsReferral) {
       clearValidationError("followUpDate");
-      clearValidationError("followUpReason");
       setFollowUpDate("");
       setFollowUpTime("");
-      setFollowUpReason("");
     }
   }
 
@@ -2502,8 +2518,12 @@ export default function AddHealthRecord() {
     if (requiresFollowUp && !followUpDate) {
       errors.followUpDate = "Follow-up date is required.";
     }
-    if (requiresFollowUp && !String(followUpReason || "").trim()) {
-      errors.followUpReason = "Follow-up reason is required.";
+    if (
+      recordTypeKey === "general consultation" &&
+      requiresFollowUp &&
+      !followUpTime
+    ) {
+      errors.followUpTime = "Follow-up time is required.";
     }
     if (hasPendingDispensedMedicineDraft) {
       errors.dispensedMedicines =
@@ -2727,9 +2747,6 @@ export default function AddHealthRecord() {
       clearValidationError("followUpDate");
       setFollowUpStatus("Follow-up Required");
       setFollowUpDate(value);
-      setFollowUpReason((current) =>
-        current.trim() ? current : "Return for the next scheduled vaccine",
-      );
     }
     setImmunizationData((prev) => {
       const entries = getVaccineEntries(prev).map((entry, entryIndex) =>
@@ -2822,11 +2839,6 @@ export default function AddHealthRecord() {
     if (field === "nextAppointmentDate") {
       clearValidationError("followUpDate");
       setFollowUpDate(value);
-      if (value) {
-        setFollowUpReason((current) =>
-          current.trim() ? current : "Family planning return visit",
-        );
-      }
     }
     setFamilyPlanningData((prev) => ({
       ...prev,
@@ -3006,13 +3018,13 @@ export default function AddHealthRecord() {
           formData,
           "bhc",
         )
-      : isFollowUp
+      : isLinkedFollowUpVisit
         ? await healthRecordService.createFollowUpHealthRecord(
             {
               ...formData,
-              previousRecordId: recordId,
-              parentHealthRecordId: recordId,
-              parent_health_record_id: recordId,
+              previousRecordId: effectiveFollowUpParentRecordId,
+              parentHealthRecordId: effectiveFollowUpParentRecordId,
+              parent_health_record_id: effectiveFollowUpParentRecordId,
               visitType: "follow_up_visit",
               visit_type: "follow_up_visit",
               recordType: "Follow-up",
@@ -3061,8 +3073,27 @@ export default function AddHealthRecord() {
       });
     }
     if (savedId) {
+      queryClient.setQueryData(
+        queryKeys.healthRecordData(userRole, savedId),
+        savedRecord,
+      );
+      queryClient.setQueryData(
+        queryKeys.healthRecordDetails(userRole, savedId),
+        {
+          record: savedRecord,
+          patient:
+            savedRecord?.patient ||
+            selectedPatient ||
+            followUpRecord?.patient ||
+            null,
+          linkedReferral: savedRecord?.referrals?.[0] || null,
+        },
+      );
       queryClient.invalidateQueries({
         queryKey: queryKeys.healthRecordDetails(userRole, savedId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecordData(userRole, savedId),
       });
     }
     await refreshRhuMedicines();
@@ -3162,7 +3193,10 @@ export default function AddHealthRecord() {
     closeDateTimePopovers();
 
     const isReferralContinuation =
-      needsReferral && userRole === "bhc" && !isFollowUp && !isEditingRecord;
+      needsReferral &&
+      userRole === "bhc" &&
+      !isFollowUpVisitMode &&
+      !isEditingRecord;
 
     if (isOrphanFollowUpRequest) {
       setNoticeModal({
@@ -3224,7 +3258,11 @@ export default function AddHealthRecord() {
 
     if (setValidationErrorsAndFocus(clientErrors)) return;
 
-    if (!isFollowUp && effectiveHealthRecordType === "Maternal" && selectedPatientIsMale) {
+    if (
+      !isFollowUpVisitMode &&
+      effectiveHealthRecordType === "Maternal" &&
+      selectedPatientIsMale
+    ) {
       setNoticeModal({
         title: "Invalid Classification",
         message:
@@ -3234,7 +3272,7 @@ export default function AddHealthRecord() {
     }
 
     if (
-      !isFollowUp &&
+      !isFollowUpVisitMode &&
       effectiveHealthRecordType === "Immunization" &&
       immunizationPatientInfo.mode === "adult"
     ) {
@@ -3249,7 +3287,7 @@ export default function AddHealthRecord() {
     }
 
     if (
-      !isFollowUp &&
+      !isFollowUpVisitMode &&
       effectiveHealthRecordType === "Family Planning" &&
       !familyPlanningEligibility.eligible
     ) {
@@ -3292,7 +3330,8 @@ export default function AddHealthRecord() {
     const immunizationNextScheduleDate =
       preparedVaccineEntries.find((entry) => entry.nextScheduleDate)
         ?.nextScheduleDate || "";
-    const finalNeedsReferral = !isFollowUp && Boolean(needsReferral);
+    const finalNeedsReferral =
+      !isFollowUpVisitMode && Boolean(needsReferral);
     const effectiveVisitType = isLinkedFollowUpVisit
       ? "follow_up_visit"
       : visitType;
@@ -3306,10 +3345,6 @@ export default function AddHealthRecord() {
         : followUpDate || immunizationNextScheduleDate || "";
     const effectiveFollowUpTime =
       finalNeedsReferral || immunizationWillComplete ? "" : followUpTime;
-    const effectiveFollowUpReason =
-      finalNeedsReferral || immunizationWillComplete
-        ? ""
-        : String(followUpReason || "").trim();
 
     if (
       effectiveHealthRecordType === "Immunization" &&
@@ -3439,11 +3474,11 @@ export default function AddHealthRecord() {
         ? effectiveFollowUpDate
           ? "Follow-up Required"
           : "Completed"
-        : isFollowUp
+        : recordTypeKey === "general consultation"
           ? normalizePatientStatus(followUpStatus)
-          : effectiveFollowUpDate
-            ? "Follow-up Required"
-            : "Completed";
+        : effectiveFollowUpDate
+          ? "Follow-up Required"
+          : "Completed";
     const morbidityDecision = getMorbidityDecisionFlags(
       morbidityReportingStatus,
     );
@@ -3452,7 +3487,7 @@ export default function AddHealthRecord() {
 
     const formData = {
       patientId: selectedPatientId,
-      patientName: isFollowUp
+      patientName: isFollowUpVisitMode
         ? followUpPatientName
         : getPatientName(selectedPatient),
       category: effectiveHealthRecordType,
@@ -3487,7 +3522,6 @@ export default function AddHealthRecord() {
       followUpStatus: finalPatientStatus,
       followUpDate: effectiveFollowUpDate,
       followUpTime: effectiveFollowUpTime,
-      followUpReason: effectiveFollowUpReason,
       monitoringNotes,
       patientCondition:
         isLinkedFollowUpVisit || effectiveFollowUpDate ? patientCondition : "",
@@ -3536,7 +3570,9 @@ export default function AddHealthRecord() {
             : null,
       },
       createdByRole: userRole,
-      linkedTrackingId: isFollowUp ? followUpRecord?.linkedTrackingId || "" : "",
+      linkedTrackingId: isFollowUpVisitMode
+        ? followUpRecord?.linkedTrackingId || ""
+        : "",
       dispensedMedicines: isEditingRecord ? [] : dispensedMedicines,
     };
 
@@ -3756,6 +3792,9 @@ export default function AddHealthRecord() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.healthRecordDetails(userRole, savedRecordId),
       });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecordData(userRole, savedRecordId),
+      });
 
       setReferralDetailsStep(false);
       setPendingReferralDraft(null);
@@ -3853,7 +3892,7 @@ export default function AddHealthRecord() {
     normalizedPatientStatus === "Completed"
       ? "Write final outcome notes or closing instructions..."
       : showFollowUpMonitoringFields
-        ? "Write the monitoring plan or reason for follow-up..."
+        ? "Write the monitoring plan or return-visit instructions..."
         : "Write monitoring notes if useful...";
 
   function handleStepBack() {
@@ -4065,20 +4104,8 @@ export default function AddHealthRecord() {
       )}
 
       {isResolvingClinicalMode ? (
-        <div
-          className="ml-0 mr-auto w-full max-w-7xl"
-          role="status"
-          aria-live="polite"
-        >
-          <div className="flex min-h-36 items-center justify-center rounded-xl border border-[#E8ECF0] bg-white px-6 py-10 shadow-sm">
-            <div className="flex items-center gap-3 text-sm font-medium text-[#64748B]">
-              <span
-                className="h-4 w-4 animate-spin rounded-full border-2 border-[#E2E8F0] border-t-[#64748B]"
-                aria-hidden="true"
-              />
-              <span>Checking active follow-up...</span>
-            </div>
-          </div>
+        <div className="ml-0 mr-auto w-full max-w-7xl">
+          <HealthRecordFormSkeleton message="Loading health record..." />
         </div>
       ) : !isFollowUp && !isEditingRecord && !setupComplete ? (
         <HealthRecordSetupStep
@@ -4175,7 +4202,7 @@ export default function AddHealthRecord() {
         {isGeneralConsultationFollowUp && (
           <>
             <FormSection
-              title="Follow-up Assessment"
+              title="Clinical Assessment"
               subtitle="Record the patient's current complaint, condition, and updated clinical findings."
               delay={3}
             >
@@ -4237,7 +4264,7 @@ export default function AddHealthRecord() {
               subtitle="Record updated physiological measurements for this follow-up visit."
               delay={4}
             >
-              <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(4,minmax(0,1fr))]">
+              <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(3,minmax(0,1fr))]">
                 <BpInputGroup
                   systolic={systolicBp}
                   diastolic={diastolicBp}
@@ -4315,32 +4342,50 @@ export default function AddHealthRecord() {
             </FormSection>
 
             <FormSection
-              title="Outcome"
-              subtitle="Set the new record status after this follow-up visit."
+              title="FOLLOW-UP DECISION"
+              subtitle="Choose whether another visit is required after this consultation."
               delay={6}
             >
-              <div className="grid gap-4 lg:grid-cols-2">
-                <FieldSelect
-                  label="New Health Record Status"
-                  value={followUpStatus}
-                  onChange={(event) =>
-                    handlePatientStatusChange(event.target.value)
-                  }
-                >
-                  <option>Routine Monitoring</option>
-                  <option>Follow-up Required</option>
-                  <option>Completed</option>
-                </FieldSelect>
-                {showFollowUpMonitoringFields && (
+              <FieldSelect
+                label="Follow-up Decision"
+                name="followUpStatus"
+                value={followUpDecisionValue}
+                error={validationErrors.followUpStatus}
+                onChange={(event) =>
+                  handleFollowUpDecisionChange(event.target.value)
+                }
+              >
+                <option>Follow-up Required</option>
+                <option>Routine Monitoring</option>
+                <option>No Further Follow-up Required</option>
+              </FieldSelect>
+              {showFollowUpMonitoringFields && (
+                <div className="mt-4 grid gap-4 lg:grid-cols-2">
                   <FieldInput
-                    label="Next Follow-up Date"
+                    label="Follow-up Date"
                     type="date"
+                    name="followUpDate"
                     value={followUpDate}
-                    onChange={(event) => setFollowUpDate(event.target.value)}
+                    error={validationErrors.followUpDate}
+                    onChange={(event) => {
+                      clearValidationError("followUpDate");
+                      setFollowUpDate(event.target.value);
+                    }}
                     required
                   />
-                )}
-              </div>
+                  <TimePickerField
+                    label="Follow-up Time"
+                    name="followUpTime"
+                    value={followUpTime}
+                    error={validationErrors.followUpTime}
+                    onChange={(value) => {
+                      clearValidationError("followUpTime");
+                      setFollowUpTime(value);
+                    }}
+                    required
+                  />
+                </div>
+              )}
               <div className="mt-4">
                 <FieldTextarea
                   label={monitoringNotesLabel}
@@ -5182,178 +5227,190 @@ export default function AddHealthRecord() {
           </>
         )}
 
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && !isTb && (
-          <FormSection
-            title="Vital Signs"
-            subtitle="Record the patient's physiological measurements."
-            delay={3}
-          >
-            <LockedFormContent locked={patientGateLocked}>
-              <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(3,minmax(0,1fr))]">
-                <BpInputGroup
-                  systolic={systolicBp}
-                  diastolic={diastolicBp}
-                  onSystolicChange={setSystolicBp}
-                  onDiastolicChange={setDiastolicBp}
-                />
-                <FieldInput
-                  label="Temperature"
-                  placeholder="e.g. 36.5 C"
-                  value={temp}
-                  onChange={(event) => setTemp(event.target.value)}
-                />
-                <FieldInput
-                  label="Weight"
-                  type="number"
-                  placeholder="e.g. 60"
-                  value={weight}
-                  onChange={(event) => setWeight(event.target.value)}
-                />
-                <FieldInput
-                  label="Height"
-                  type="number"
-                  placeholder="e.g. 165"
-                  value={height}
-                  onChange={(event) => setHeight(event.target.value)}
-                />
-              </div>
-            </LockedFormContent>
-          </FormSection>
-        )}
-
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && !isTb && (
-          <FormSection
-            title="Consultation Information"
-            subtitle="Record the complaint, assessment findings, diagnosis, and treatment."
-            delay={4}
-          >
-            <LockedFormContent locked={patientGateLocked}>
-              <div>
-                <FieldInput
-                  label="Chief Complaint"
-                  placeholder="e.g. Fever, vomiting, cough"
-                  required
-                  name="chiefComplaint"
-                  error={validationErrors.chiefComplaint}
-                  value={chiefComplaint}
-                  onChange={(event) => {
-                    clearValidationError("chiefComplaint");
-                    setChiefComplaint(event.target.value);
-                  }}
-                />
-              </div>
-              <div className="mt-4">
-                <FieldTextarea
-                  label="Signs & Symptoms"
-                  required
-                  name="summaryOfPresentIllness"
-                  error={validationErrors.summaryOfPresentIllness}
-                  value={summaryOfPresentIllness}
-                  onChange={(event) => {
-                    clearValidationError("summaryOfPresentIllness");
-                    setSummaryOfPresentIllness(event.target.value);
-                  }}
-                  placeholder="Record symptoms, assessment findings, history, and physical examination findings here..."
-                  rows={5}
-                />
-              </div>
-              <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                <FieldInput
-                  label="Diagnosis / Assessment"
-                  value={diagnosis}
-                  onChange={(event) => setDiagnosis(event.target.value)}
-                  placeholder="Initial diagnosis"
-                />
-                <FieldInput
-                  label="Treatment / Action Taken"
-                  value={medication}
-                  onChange={(event) => setMedication(event.target.value)}
-                />
-              </div>
-            </LockedFormContent>
-          </FormSection>
-        )}
-
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && !isTb && (
-          <FormSection
-            title="Morbidity / Notifiable Disease Record"
-            subtitle="Choose whether this visit should appear in the morbidity or notifiable diseases daily log."
-            delay={5}
-          >
-            <LockedFormContent locked={patientGateLocked}>
-              <MorbidityNotifiableReportingSection
-                value={morbidityReportingStatus}
-                onChange={setMorbidityReportingStatus}
-              />
-            </LockedFormContent>
-          </FormSection>
-        )}
-
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && !isTb && (
-          <FormSection
-            title="Community-Based Surveillance"
-            subtitle="Decide whether this visit should be included in the HFMD surveillance list."
-            delay={6}
-          >
-            <LockedFormContent locked={patientGateLocked}>
-              <YesNoRadioGroup
-                label="Include in HFMD Surveillance List?"
-                name="hfmdSurveillance"
-                value={hfmdSurveillance ? "Yes" : "No"}
-                onChange={(value) =>
-                  setHfmdSurveillance(value === "Yes" || value === true)
-                }
-              />
-            </LockedFormContent>
-          </FormSection>
-        )}
-
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && !isTb && (
-          <FormSection
-            title="Medicines / Supplies Dispensed"
-            subtitle="Optional medicines or supplies given from BHC inventory."
-            delay={7}
-          >
-            <LockedFormContent locked={patientGateLocked}>
-              <DispensedMedicinesSection
-                inventory={bhcMedicineInventory}
-                value={dispensedMedicines}
-                onChange={handleDispensedMedicinesChange}
-                pendingDraftError={validationErrors.dispensedMedicines}
-                onPendingDraftChange={handlePendingDispensedMedicineChange}
-                disabled={isEditingRecord}
-                loading={bhcMedicineInventoryLoading}
-                error={bhcMedicineInventoryError}
-                onRetry={() => setBhcMedicineInventoryReloadKey((key) => key + 1)}
-              />
-            </LockedFormContent>
-          </FormSection>
-        )}
-
-        {!isFollowUp && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && !isTb && (
+        {!isFollowUpVisitMode && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && !isTb && (
           <>
+            <FormSection
+              title="Clinical Assessment"
+              subtitle="Record the patient's complaint, clinical findings, and diagnosis."
+              delay={3}
+            >
+              <LockedFormContent locked={patientGateLocked}>
+                <div>
+                  <FieldInput
+                    label="Chief Complaint"
+                    placeholder="e.g. Fever, vomiting, cough"
+                    required
+                    name="chiefComplaint"
+                    error={validationErrors.chiefComplaint}
+                    value={chiefComplaint}
+                    onChange={(event) => {
+                      clearValidationError("chiefComplaint");
+                      setChiefComplaint(event.target.value);
+                    }}
+                  />
+                </div>
+                <div className="mt-4">
+                  <FieldTextarea
+                    label="Signs & Symptoms"
+                    required
+                    name="summaryOfPresentIllness"
+                    error={validationErrors.summaryOfPresentIllness}
+                    value={summaryOfPresentIllness}
+                    onChange={(event) => {
+                      clearValidationError("summaryOfPresentIllness");
+                      setSummaryOfPresentIllness(event.target.value);
+                    }}
+                    placeholder="Record symptoms, assessment findings, history, and physical examination findings here..."
+                    rows={5}
+                  />
+                </div>
+                <div className="mt-4">
+                  <FieldInput
+                    label="Diagnosis / Assessment"
+                    value={diagnosis}
+                    onChange={(event) => setDiagnosis(event.target.value)}
+                    placeholder="Initial diagnosis or clinical assessment"
+                  />
+                </div>
+              </LockedFormContent>
+            </FormSection>
+
+            <FormSection
+              title="Vital Signs"
+              subtitle="Record the patient's physiological measurements."
+              delay={4}
+            >
+              <LockedFormContent locked={patientGateLocked}>
+                <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(3,minmax(0,1fr))]">
+                  <BpInputGroup
+                    systolic={systolicBp}
+                    diastolic={diastolicBp}
+                    onSystolicChange={setSystolicBp}
+                    onDiastolicChange={setDiastolicBp}
+                  />
+                  <FieldInput
+                    label="Temperature"
+                    placeholder="e.g. 36.5 C"
+                    value={temp}
+                    onChange={(event) => setTemp(event.target.value)}
+                  />
+                  <FieldInput
+                    label="Weight"
+                    type="number"
+                    placeholder="e.g. 60"
+                    value={weight}
+                    onChange={(event) => setWeight(event.target.value)}
+                  />
+                  <FieldInput
+                    label="Height"
+                    type="number"
+                    placeholder="e.g. 165"
+                    value={height}
+                    onChange={(event) => setHeight(event.target.value)}
+                  />
+                </div>
+              </LockedFormContent>
+            </FormSection>
+
+            <FormSection
+              title="Treatment & Actions"
+              subtitle="Document the treatment, advice, and supplies provided during this consultation."
+              delay={5}
+            >
+              <LockedFormContent locked={patientGateLocked}>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <FieldInput
+                    label="Treatment / Action Taken"
+                    value={medication}
+                    onChange={(event) => setMedication(event.target.value)}
+                  />
+                  <FieldTextarea
+                    label="Consultation Notes"
+                    value={consultationNotes}
+                    onChange={(event) => setConsultationNotes(event.target.value)}
+                    placeholder="Write additional instructions, advice, or care notes..."
+                    rows={3}
+                  />
+                </div>
+                <div className="mt-5 border-t border-slate-200 pt-5">
+                  <div className="mb-3">
+                    <h3 className="text-sm font-bold text-[#0F172A]">
+                      Medicines / Supplies Dispensed
+                    </h3>
+                    <p className="mt-0.5 text-xs leading-relaxed text-[#64748B]">
+                      Optional medicines or supplies given from BHC inventory
+                      during this consultation.
+                    </p>
+                  </div>
+                  <DispensedMedicinesSection
+                    inventory={bhcMedicineInventory}
+                    value={dispensedMedicines}
+                    onChange={handleDispensedMedicinesChange}
+                    pendingDraftError={validationErrors.dispensedMedicines}
+                    onPendingDraftChange={handlePendingDispensedMedicineChange}
+                    disabled={isEditingRecord}
+                    loading={bhcMedicineInventoryLoading}
+                    error={bhcMedicineInventoryError}
+                    onRetry={() =>
+                      setBhcMedicineInventoryReloadKey((key) => key + 1)
+                    }
+                  />
+                </div>
+              </LockedFormContent>
+            </FormSection>
+
+            <FormSection
+              title="Morbidity / Notifiable Disease Record"
+              subtitle="Choose whether this visit should appear in the morbidity or notifiable diseases daily log."
+              delay={6}
+            >
+              <LockedFormContent locked={patientGateLocked}>
+                <MorbidityNotifiableReportingSection
+                  value={morbidityReportingStatus}
+                  onChange={setMorbidityReportingStatus}
+                />
+              </LockedFormContent>
+            </FormSection>
+
+            <FormSection
+              title="Community-Based Surveillance"
+              subtitle="Decide whether this visit should be included in the HFMD surveillance list."
+              delay={7}
+            >
+              <LockedFormContent locked={patientGateLocked}>
+                <YesNoRadioGroup
+                  label="Include in HFMD Surveillance List?"
+                  name="hfmdSurveillance"
+                  value={hfmdSurveillance ? "Yes" : "No"}
+                  onChange={(value) =>
+                    setHfmdSurveillance(value === "Yes" || value === true)
+                  }
+                />
+              </LockedFormContent>
+            </FormSection>
+
             {!usesCareDecisionStep && (
               <FormSection
-                title="Follow-up & Referral"
-                subtitle="Schedule a return visit if needed and indicate if RHU referral is required."
+                title="FOLLOW-UP DECISION"
+                subtitle="Choose whether another visit is required or the patient should be referred to the RHU."
                 delay={8}
               >
                 <LockedFormContent locked={patientGateLocked}>
                   <div className="grid gap-4 lg:grid-cols-2">
-                    <div>
-                      <FieldInput
-                        label="Next Follow-up Date"
-                        type="date"
-                        value={followUpDate}
-                        name="followUpDate"
-                        error={validationErrors.followUpDate}
-                        disabled={needsReferral}
-                        onChange={(event) => {
-                          clearValidationError("followUpDate");
-                          setFollowUpDate(event.target.value);
-                        }}
-                      />
-                    </div>
+                    <FieldSelect
+                      label="Follow-up Decision"
+                      name="followUpStatus"
+                      value={followUpDecisionValue}
+                      error={validationErrors.followUpStatus}
+                      disabled={needsReferral}
+                      onChange={(event) =>
+                        handleFollowUpDecisionChange(event.target.value)
+                      }
+                    >
+                      <option>Follow-up Required</option>
+                      <option>Routine Monitoring</option>
+                      <option>No Further Follow-up Required</option>
+                    </FieldSelect>
                     <YesNoRadioGroup
                       label="Needs RHU Referral?"
                       name="needsReferral"
@@ -5361,6 +5418,47 @@ export default function AddHealthRecord() {
                       onChange={handleNeedsReferralChange}
                     />
                   </div>
+
+                  {showFollowUpMonitoringFields && (
+                    <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                      <FieldInput
+                        label="Follow-up Date"
+                        type="date"
+                        name="followUpDate"
+                        value={followUpDate}
+                        error={validationErrors.followUpDate}
+                        onChange={(event) => {
+                          clearValidationError("followUpDate");
+                          setFollowUpDate(event.target.value);
+                        }}
+                        required
+                      />
+                      <TimePickerField
+                        label="Follow-up Time"
+                        name="followUpTime"
+                        value={followUpTime}
+                        error={validationErrors.followUpTime}
+                        onChange={(value) => {
+                          clearValidationError("followUpTime");
+                          setFollowUpTime(value);
+                        }}
+                        required
+                      />
+                    </div>
+                  )}
+
+                  {!needsReferral && (
+                    <div className="mt-4">
+                      <FieldTextarea
+                        label={monitoringNotesLabel}
+                        value={monitoringNotes}
+                        onChange={(event) => setMonitoringNotes(event.target.value)}
+                        placeholder={monitoringNotesPlaceholder}
+                        rows={3}
+                      />
+                    </div>
+                  )}
+
                   {morbidityReportingStatus === "notifiable" && (
                     <p className="mt-3 text-xs leading-relaxed text-[#64748B]">
                       Notifiable or surveillance cases may require RHU
@@ -5371,35 +5469,21 @@ export default function AddHealthRecord() {
                 </LockedFormContent>
               </FormSection>
             )}
-
           </>
         )}
 
-        {!needsReferral && followUpDate && (
+        {recordTypeKey !== "general consultation" && !needsReferral && followUpDate && (
           <FormSection
             title="Follow-up Schedule Details"
-            subtitle="Add the optional time and the required reason shown to staff when the patient returns."
+            subtitle="Add an optional time for the patient's next follow-up visit."
             delay={9}
           >
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="max-w-md">
               <TimePickerField
                 label="Follow-up Time"
                 name="followUpTime"
                 value={followUpTime}
                 onChange={setFollowUpTime}
-              />
-              <FieldTextarea
-                label="Follow-up Reason"
-                required
-                name="followUpReason"
-                value={followUpReason}
-                error={validationErrors.followUpReason}
-                onChange={(event) => {
-                  clearValidationError("followUpReason");
-                  setFollowUpReason(event.target.value);
-                }}
-                placeholder="For example: Reassess symptoms and treatment response"
-                rows={3}
               />
             </div>
           </FormSection>
@@ -5611,10 +5695,6 @@ function ActiveFollowUpPrompt({ tasks, onStartNew, onRecord }) {
                     <FollowUpPromptDetail
                       label="Scheduled"
                       value={formatFollowUpSchedule(task)}
-                    />
-                    <FollowUpPromptDetail
-                      label="Reason"
-                      value={task.reason || "Not recorded"}
                     />
                     <FollowUpPromptDetail
                       label="Linked Health Record"
