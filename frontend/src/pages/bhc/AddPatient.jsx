@@ -1170,11 +1170,11 @@ function handleBirthDateChange(valueOrEvent) {
       {/* Modals */}
       <SuccessModal
         open={modals.success}
-        title={isEditMode ? "Patient profile updated." : "Patient added."}
+        title={isEditMode ? "Patient Profile Updated" : "Patient Added"}
         description={
           isEditMode
-            ? "Patient profile updated successfully."
-            : "The patient was submitted successfully. The patient list will update automatically."
+            ? "The updated details now appear on the patient's profile."
+            : "The patient is now in your registry. You can start their first health record now or later."
         }
         buttonText={isEditMode ? "Back to Patient Details" : "Back to Patient List"}
         onClose={() =>

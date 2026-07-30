@@ -2473,12 +2473,12 @@ export default function AddHealthRecord() {
         title={
           saveSuccess?.isFollowUp
             ? "Follow-up Visit Saved"
-            : "Record saved."
+            : "Health Record Saved"
         }
         description={
           saveSuccess?.isFollowUp
             ? "The follow-up visit has been saved and linked to the original health record."
-            : "The health record has been saved successfully."
+            : "The record has been added to this patient's history. You can print a copy or return to the record list."
         }
         onClose={() => navigate(healthRecordsPath)}
         actions={[

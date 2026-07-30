@@ -160,15 +160,17 @@
             await updateAdminAccount(existingUser.id, payload);
             setConfirmationModalOpen(false);
             setSuccessModal({
-              title: "Changes saved.",
-              message: "The account information has been updated successfully.",
+              title: "Changes Saved",
+              message:
+                "The updated details are now live in the account directory.",
             });
           } else {
             await createAdminAccount(payload);
             setConfirmationModalOpen(false);
             setSuccessModal({
-              title: "User added.",
-              message: "The new account has been created successfully.",
+              title: "User Added",
+              message:
+                "The account is active and now listed in the account directory.",
             });
           }
         } catch (error) {
