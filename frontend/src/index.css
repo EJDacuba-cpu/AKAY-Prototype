@@ -385,3 +385,64 @@ textarea,
 .press-scale:active {
   transform: scale(0.97);
 }
+
+/* Success Badge Animation */
+/* Two beats: the badge scales in, then the checkmark draws just behind it. The
+   sequence is what makes a confirmation read as an event rather than a state. */
+@keyframes successBadgePop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  60% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.anim-success-badge {
+  animation: successBadgePop 0.42s cubic-bezier(0.22, 1, 0.36, 1) 0.06s both;
+}
+
+/* The tick draws itself in just behind the badge, giving the two-beat read.
+   `path:last-of-type` is the tick, never the ring: CheckCircle2 renders the ring
+   as a <circle>, and lucide's Big variant renders ring and tick as two paths —
+   either way the last path is the tick, so the ring is never dashed.
+
+   9 is the tick's own length (`m9 12 2 2 4-4` measures 8.485 units in the 24x24
+   viewBox, rounded up so offset 9 conceals it fully). It has to track the path
+   length: a larger value spends most of the duration with nothing visible, and a
+   smaller one renders the tick as dashes. Re-measure with getTotalLength() if
+   the icon ever changes. */
+@keyframes successCheckDraw {
+  from {
+    stroke-dashoffset: 9;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.anim-success-check path:last-of-type {
+  stroke-dasharray: 9;
+  animation: successCheckDraw 0.32s cubic-bezier(0.65, 0, 0.35, 1) 0.14s both;
+}
+
+/* `both` keeps the hidden state in the keyframes rather than in a base class,
+   so switching the animation off leaves the badge fully visible rather than
+   stuck invisible. The tick needs the media query because
+   `motion-reduce:animate-none` only lands on the element carrying the class and
+   cannot reach the nested path; at offset 0 the dash covers the whole stroke. */
+@media (prefers-reduced-motion: reduce) {
+  .anim-success-badge,
+  .anim-success-check path:last-of-type {
+    animation: none;
+  }
+}

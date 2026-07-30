@@ -5539,14 +5539,14 @@ export default function AddHealthRecord() {
             ? "Follow-up Visit Saved"
             : saveSuccess?.referralSubmitted
               ? "Health Record and Referral Submitted"
-            : "Health Record Saved Successfully"
+            : "Health Record Saved"
         }
         description={
           saveSuccess?.isFollowUp
             ? "The follow-up visit has been saved and linked to the original health record."
             : saveSuccess?.referralSubmitted
               ? "The health record was saved and the referral was linked for RHU review."
-              : "Health record saved successfully."
+              : "The record has been added to this patient's history. You can print it or start another entry."
         }
         onClose={() => navigate(healthRecordsPath)}
         actions={[

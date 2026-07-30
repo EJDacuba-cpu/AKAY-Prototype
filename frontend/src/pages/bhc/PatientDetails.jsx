@@ -592,7 +592,7 @@ export default function PatientDetails() {
       <SuccessModal
         open={openSuccess}
         title="Patient Profile Updated"
-        description="Patient profile updated successfully."
+        description="The changes are now reflected across this patient's records."
         onClose={() => setOpenSuccess(false)}
       />
     </>
