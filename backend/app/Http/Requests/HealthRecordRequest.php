@@ -103,6 +103,8 @@ class HealthRecordRequest extends FormRequest
             'monitoring_data.monitoring_notes' => ['nullable', 'string'],
             'monitoring_data.patientCondition' => ['nullable', 'string', 'max:100'],
             'monitoring_data.patient_condition' => ['nullable', 'string', 'max:100'],
+            'monitoring_data.attendingStaff' => ['nullable', 'string', 'max:150'],
+            'monitoring_data.attending_staff' => ['nullable', 'string', 'max:150'],
             'family_planning_data' => ['nullable', 'array'],
             'family_planning_data.clientType' => ['nullable', 'string', 'max:100'],
             'family_planning_data.client_type' => ['nullable', 'string', 'max:100'],

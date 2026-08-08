@@ -613,7 +613,8 @@ BEGIN
         JOIN pg_catalog.pg_namespace AS ns ON ns.oid = cls.relnamespace
         CROSS JOIN LATERAL aclexplode(
             COALESCE(cls.relacl, acldefault(
-                CASE WHEN cls.relkind = 'S' THEN 's' ELSE 'r' END, cls.relowner
+                (CASE WHEN cls.relkind = 'S' THEN 's' ELSE 'r' END)::"char",
+                cls.relowner
             ))
         ) AS acl
         WHERE ns.nspname = 'public'
@@ -675,7 +676,7 @@ BEGIN
         FROM pg_catalog.pg_proc AS pro
         JOIN pg_catalog.pg_namespace AS ns ON ns.oid = pro.pronamespace
         CROSS JOIN LATERAL aclexplode(
-            COALESCE(pro.proacl, acldefault('f', pro.proowner))
+            COALESCE(pro.proacl, acldefault('f'::"char", pro.proowner))
         ) AS acl
         WHERE ns.nspname = 'public'
           AND pro.proname LIKE 'akay\_%'
@@ -700,7 +701,7 @@ BEGIN
         FROM (
             SELECT rol.oid AS roleoid, t.objtype
             FROM pg_catalog.pg_roles AS rol
-            CROSS JOIN (VALUES ('r'), ('S'), ('f')) AS t(objtype)
+            CROSS JOIN (VALUES ('r'::"char"), ('S'::"char"), ('f'::"char")) AS t(objtype)
             WHERE rol.rolname = 'postgres'
         ) AS owners
         CROSS JOIN LATERAL (
