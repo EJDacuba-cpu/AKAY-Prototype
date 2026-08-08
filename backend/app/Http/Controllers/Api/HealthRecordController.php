@@ -55,7 +55,7 @@ class HealthRecordController extends Controller
 
         $query = $this->facilityAccess
             ->scopeHealthRecords(HealthRecord::query(), $request->user())
-            ->with('patient');
+            ->with(['patient', 'creator:id,name']);
 
         if ($request->query('patient_id')) {
             $query->where('patient_id', $request->query('patient_id'));
@@ -264,6 +264,7 @@ class HealthRecordController extends Controller
 
         $data = $healthRecord->load([
             'patient',
+            'creator:id,name',
             'dispensedMedicines',
             'referrals' => fn ($query) => $this->facilityAccess
                 ->scopeReferrals($query, $request->user()),
@@ -326,7 +327,7 @@ class HealthRecordController extends Controller
             $auditLogger->log($request, 'updated', 'health_records', "Updated health record {$healthRecord->id}.");
         });
 
-        return response()->json(['data' => $healthRecord->fresh()->load(['patient', 'dispensedMedicines'])]);
+        return response()->json(['data' => $healthRecord->fresh()->load(['patient', 'creator:id,name', 'dispensedMedicines'])]);
     }
 
     public function dispenseMedicines(Request $request, HealthRecord $healthRecord)
@@ -553,7 +554,7 @@ class HealthRecordController extends Controller
         $referralId = $record->referrals()->value('id');
 
         return response()->json([
-            'data' => $record->load(['patient', 'dispensedMedicines', 'referrals']),
+            'data' => $record->load(['patient', 'creator:id,name', 'dispensedMedicines', 'referrals']),
             'idempotent_replay' => $replay,
             'result' => [
                 'health_record_id' => $record->id,
