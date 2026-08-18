@@ -49,6 +49,8 @@ class FacilityIsolationSecurityTest extends TestCase
         $this->bhcB = BarangayHealthCenter::create(['name' => 'Security BHC B']);
         $this->rhuA = RuralHealthUnit::create(['name' => 'Security RHU A']);
         $this->rhuB = RuralHealthUnit::create(['name' => 'Security RHU B']);
+        $this->seedAvailableProvider($this->rhuA);
+        $this->seedAvailableProvider($this->rhuB);
         $this->bhcA->update(['rural_health_unit_id' => $this->rhuA->id]);
         $this->bhcB->update(['rural_health_unit_id' => $this->rhuB->id]);
 
@@ -369,7 +371,10 @@ class FacilityIsolationSecurityTest extends TestCase
 
         $this->actingAs($this->bhwA, 'sanctum')
             ->postJson('/api/referrals', $this->referralPayload($this->patientA, $otherRecord))
-            ->assertUnprocessable();
+            ->assertUnprocessable()
+            // Pinned: must fail on the patient/record mismatch, never on the
+            // DOC-14 availability gate.
+            ->assertJsonPath('message', 'Health record must belong to the referred patient.');
     }
 
     public function test_referral_ignores_client_supplied_referring_bhc(): void
@@ -736,6 +741,7 @@ class FacilityIsolationSecurityTest extends TestCase
             'patient_id' => $patient->id,
             'health_record_id' => $record?->id,
             'rural_health_unit_id' => $this->rhuA->id,
+            'urgency_level' => 'Routine',
             'reason_for_referral' => 'Further assessment is needed.',
         ];
     }

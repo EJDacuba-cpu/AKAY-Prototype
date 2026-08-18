@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ReferralRequest;
 use App\Http\Requests\ReferralStatusRequest;
+use App\Http\Requests\RescheduleReferralRequest;
 use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\Referral;
 use App\Services\AkayCacheService;
 use App\Services\FacilityAccessService;
 use App\Services\ReferralCreationService;
+use App\Services\ReferralRescheduleService;
 use App\Services\ReferralRoutingService;
 use App\Services\ReferralWorkflowService;
 use App\Support\StoredFunction;
@@ -178,6 +180,25 @@ class ReferralController extends Controller
             'status_unchanged' => $result['status_unchanged'],
             'status' => $result['status'],
         ]);
+    }
+
+    /**
+     * D-1 FINAL - reschedule a No-Show referral. The status is deliberately
+     * left as No-Show: this records a new intended visit date, it does not
+     * move the referral through the TRK-02 workflow.
+     */
+    public function reschedule(
+        RescheduleReferralRequest $request,
+        Referral $referral,
+        ReferralRescheduleService $reschedules
+    ) {
+        $referral = $reschedules->reschedule(
+            $request,
+            $referral->getKey(),
+            $request->validated()
+        );
+
+        return response()->json(['data' => $referral]);
     }
 
     public function destroy(Request $request, Referral $referral)

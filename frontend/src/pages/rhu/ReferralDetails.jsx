@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  CalendarClock,
   AlertTriangle,
   ArrowLeft,
   ClipboardList,
@@ -26,6 +27,7 @@ import {
   getReferralByRouteParam,
   isReferralWorkflowConflict,
   refreshReferralWorkflowData,
+  rescheduleReferral,
   updateReferralByTrackingId,
 } from "../../services/referrals";
 import { getHealthRecordById } from "../../services/healthRecordService";
@@ -65,6 +67,10 @@ export default function RHUReferralDetails() {
   const [conflict, setConflict] = useState(null);
   const [lateArrivalOpen, setLateArrivalOpen] = useState(false);
   const [lateArrivalNote, setLateArrivalNote] = useState("");
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleReason, setRescheduleReason] = useState("");
+  const [rescheduleError, setRescheduleError] = useState("");
 
   const {
     data: details,
@@ -140,6 +146,43 @@ export default function RHUReferralDetails() {
     }
   }
 
+  /**
+   * D-1 - records a new intended visit date. The referral stays No-Show; this
+   * is not a status change, so it does not go through applyStatus().
+   */
+  async function confirmReschedule() {
+    if (!referral || busy || !rescheduleDate) return;
+
+    setBusy(true);
+    setRescheduleError("");
+
+    try {
+      await rescheduleReferral(referral.id, {
+        rescheduledTo: rescheduleDate,
+        reason: rescheduleReason.trim(),
+      });
+      setRescheduleOpen(false);
+      setRescheduleDate("");
+      setRescheduleReason("");
+      setMessage("New visit date recorded. The referral remains No-Show until the patient arrives.");
+      await refreshReferralWorkflowData(queryClient, trackingId);
+    } catch (error) {
+      if (isReferralWorkflowConflict(error)) {
+        setRescheduleOpen(false);
+        setConflict(error.payload || {});
+        await refreshReferralWorkflowData(queryClient, trackingId);
+        return;
+      }
+      setRescheduleError(
+        error?.errors?.rescheduled_to?.[0] ||
+          error?.message ||
+          "Unable to record the new visit date.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function loadLatestStatus() {
     setConflict(null);
     await refreshReferralWorkflowData(queryClient, trackingId);
@@ -201,6 +244,12 @@ export default function RHUReferralDetails() {
         busy={busy}
         onStatusChange={applyStatus}
         onLateArrival={() => setLateArrivalOpen(true)}
+        onReschedule={() => {
+          setRescheduleError("");
+          setRescheduleDate("");
+          setRescheduleReason("");
+          setRescheduleOpen(true);
+        }}
         isUpdating={detailsUpdating}
       />
 
@@ -229,6 +278,17 @@ export default function RHUReferralDetails() {
         <ReferralRecord referral={referral} patient={patient} healthRecord={healthRecord} />
       </main>
       </div>
+      <RescheduleModal
+        open={rescheduleOpen}
+        date={rescheduleDate}
+        reason={rescheduleReason}
+        error={rescheduleError}
+        onDateChange={setRescheduleDate}
+        onReasonChange={setRescheduleReason}
+        onCancel={() => !busy && setRescheduleOpen(false)}
+        onConfirm={confirmReschedule}
+        loading={busy}
+      />
       <LateArrivalModal
         open={lateArrivalOpen}
         note={lateArrivalNote}
@@ -256,6 +316,7 @@ function ReferralHeader({
   busy,
   onStatusChange,
   onLateArrival,
+  onReschedule,
   isUpdating = false,
 }) {
   const referralDate = getReferralDate(referral);
@@ -298,6 +359,7 @@ function ReferralHeader({
           busy={busy}
           onStatusChange={onStatusChange}
           onLateArrival={onLateArrival}
+          onReschedule={onReschedule}
         />
       </div>
 
@@ -436,6 +498,20 @@ function ReferralRecord({ referral, patient, healthRecord }) {
             label="Preferred Doctor"
             value={formatDisplayValue(referral.preferredDoctor, "RHU to assign")}
           />
+          {referral.rescheduledTo && (
+            <Detail
+              label="Rescheduled Visit"
+              value={`${formatDate(new Date(referral.rescheduledTo))} ${formatTime(
+                new Date(referral.rescheduledTo),
+              )}`}
+            />
+          )}
+          {referral.rescheduledTo && referral.rescheduleReason && (
+            <Detail
+              label="Reschedule Reason"
+              value={referral.rescheduleReason}
+            />
+          )}
         </div>
       </RecordSection>
 
@@ -486,7 +562,13 @@ function ReferralRecord({ referral, patient, healthRecord }) {
   );
 }
 
-function ReferralActions({ referral, busy, onStatusChange, onLateArrival }) {
+function ReferralActions({
+  referral,
+  busy,
+  onStatusChange,
+  onLateArrival,
+  onReschedule,
+}) {
   const status = getOfficialStatus(referral.status);
   const button =
     "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60";
@@ -510,15 +592,28 @@ function ReferralActions({ referral, busy, onStatusChange, onLateArrival }) {
       )}
 
       {status === "No-Show" && (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onLateArrival}
-          className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
-        >
-          <UserCheck size={14} />
-          Receive Patient
-        </button>
+        <>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onLateArrival}
+            className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
+          >
+            <UserCheck size={14} />
+            Receive Patient
+          </button>
+          {/* D-1 - records a new intended visit date. The referral stays
+              No-Show; this is not a status transition. */}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onReschedule}
+            className={`${button} border border-slate-200 bg-white text-slate-700 hover:bg-slate-50`}
+          >
+            <CalendarClock size={14} />
+            Reschedule Visit
+          </button>
+        </>
       )}
 
       {status === "Received" && (
@@ -690,6 +785,87 @@ function getStatusMessage(status, extra = {}) {
   if (status === "Received") return "Patient has been received by RHU.";
   if (status === "No-Show") return "Referral has been marked as No-Show.";
   return `Referral status updated to ${status}.`;
+}
+
+/**
+ * D-1 - a new intended visit date for a No-Show referral.
+ *
+ * DOC-14b: the date is required and must be in the future. Nothing here
+ * pre-fills or suggests a date - the system must not invent one.
+ */
+function RescheduleModal({
+  open,
+  date,
+  reason,
+  error,
+  onDateChange,
+  onReasonChange,
+  onCancel,
+  onConfirm,
+  loading,
+}) {
+  return (
+    <ModalShell
+      open={open}
+      title="Reschedule Visit"
+      subtitle="Record a new intended visit date."
+      icon={<CalendarClock size={14} />}
+      size="md"
+      onClose={onCancel}
+      closeDisabled={loading}
+      footer={
+        <>
+          <ModalButton onClick={onCancel} disabled={loading}>
+            Cancel
+          </ModalButton>
+          <ModalButton
+            variant="primary"
+            onClick={onConfirm}
+            disabled={loading || !date}
+          >
+            {loading ? "Saving..." : "Save New Date"}
+          </ModalButton>
+        </>
+      }
+    >
+      <p className="leading-5 text-slate-600">
+        Record a new intended visit date for this patient. The referral stays
+        marked No-Show until the patient actually arrives.
+      </p>
+      <div className="mt-5">
+        <label
+          className="block text-xs font-semibold text-slate-700"
+          htmlFor="reschedule-date"
+        >
+          New visit date and time <span className="text-[#B91C1C]">*</span>
+        </label>
+        <input
+          id="reschedule-date"
+          type="datetime-local"
+          value={date}
+          onChange={(event) => onDateChange(event.target.value)}
+          className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+        />
+        <label
+          className="mt-4 block text-xs font-semibold text-slate-700"
+          htmlFor="reschedule-reason"
+        >
+          Reason (optional)
+        </label>
+        <textarea
+          id="reschedule-reason"
+          value={reason}
+          onChange={(event) => onReasonChange(event.target.value)}
+          rows={3}
+          maxLength={1000}
+          className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+        />
+        {error && (
+          <p className="mt-2 text-xs font-medium text-[#B91C1C]">{error}</p>
+        )}
+      </div>
+    </ModalShell>
+  );
 }
 
 function LateArrivalModal({

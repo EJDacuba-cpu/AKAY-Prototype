@@ -24,6 +24,13 @@ import {
   isDateInPreset,
 } from "../../utils/filterUtils";
 import { queryKeys } from "../../utils/queryKeys";
+import {
+  ATTENTION_FILTER_ALL,
+  ATTENTION_FILTER_OPTIONS,
+  getAttentionBadgeClass,
+  getReferralAttention,
+  normalizeAttention,
+} from "../../utils/referralAttention";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -31,7 +38,7 @@ const DEFAULT_FILTERS = {
   dateFrom: "",
   dateTo: "",
   status: "All",
-  urgency: "All Urgency",
+  urgency: ATTENTION_FILTER_ALL,
   receivingFacility: "",
 };
 
@@ -45,19 +52,7 @@ function getReferralClassification(referral) {
 }
 
 function getReferralUrgency(referral) {
-  const raw =
-    referral.urgency ||
-    referral.priorityLevel ||
-    referral.priority ||
-    "Non-Urgent";
-
-  const mapLegacyToNew = {
-    High: "Emergency",
-    Medium: "Urgent",
-    Normal: "Non-Urgent",
-  };
-
-  return formatDisplayValue(mapLegacyToNew[raw] || raw, "Non-Urgent");
+  return getReferralAttention(referral);
 }
 
 function getReferralPatientName(referral) {
@@ -159,7 +154,7 @@ export default function Referrals() {
         filters.status,
       );
       const matchesUrgency =
-        filters.urgency === "All Urgency" ||
+        filters.urgency === ATTENTION_FILTER_ALL ||
         getReferralUrgency(referral) === filters.urgency;
       const matchesFacility =
         !filters.receivingFacility ||
@@ -234,9 +229,9 @@ export default function Referrals() {
       key: "urgency",
       label: "Urgency",
       value: filters.urgency,
-      resetValue: "All Urgency",
+      resetValue: ATTENTION_FILTER_ALL,
       type: "select",
-      options: ["All Urgency", "Non-Urgent", "Urgent", "Emergency"],
+      options: ATTENTION_FILTER_OPTIONS,
     },
     {
       key: "receivingFacility",
@@ -266,7 +261,7 @@ export default function Referrals() {
       dateFrom: "",
       dateTo: "",
       status: "All",
-      urgency: "All Urgency",
+      urgency: ATTENTION_FILTER_ALL,
       receivingFacility: "",
     };
     if (key === "dateRange") {
@@ -469,19 +464,15 @@ function ClassificationBadge({ classification }) {
 }
 
 function UrgencyBadge({ urgency }) {
-  const map = {
-    Emergency: "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
-    Urgent: "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    "Non-Urgent": "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
-  };
+  const attention = normalizeAttention(urgency);
 
   return (
     <span
-      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-semibold ${
-        map[urgency] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
-      }`}
+      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-semibold ${getAttentionBadgeClass(
+        attention,
+      )}`}
     >
-      {urgency}
+      {attention}
     </span>
   );
 }

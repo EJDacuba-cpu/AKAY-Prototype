@@ -7,6 +7,7 @@ use App\Models\HealthRecord;
 use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\Referral;
+use App\Models\RhuProvider;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -166,6 +167,83 @@ class FacilityAccessService
             ->whereHas('healthRecord', fn (Builder $records) => $records
                 ->where('barangay_health_center_id', $user->barangay_health_center_id)
                 ->whereColumn('health_records.patient_id', 'follow_up_tasks.patient_id'));
+    }
+
+    /**
+     * DOC-01 / DOC-15 - provider roster visibility.
+     *
+     * RHU staff see their own roster. A BHW sees the roster of the RHU their
+     * BHC is mapped to, read-only, because they must know whether a referral
+     * can be submitted at all (DOC-14). Admin sees every roster but may not
+     * write - USM-05/06 give admin authority over accounts, not clinical
+     * rosters.
+     */
+    public function scopeRhuProviders(Builder|Relation $query, User $user): Builder|Relation
+    {
+        if ($user->isAdmin()) {
+            return $query;
+        }
+
+        $ruralHealthUnitId = $this->resolveVisibleRuralHealthUnitId($user);
+
+        if ($ruralHealthUnitId === null) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->where('rural_health_unit_id', $ruralHealthUnitId);
+    }
+
+    /**
+     * The RHU whose roster this user may see, or null if none.
+     *
+     * For a BHW this is resolved from their BHC's mapping rather than from the
+     * user row: BHWs never carry a rural_health_unit_id of their own.
+     */
+    public function resolveVisibleRuralHealthUnitId(User $user): ?int
+    {
+        if (! $this->hasValidFacilityAssignment($user)) {
+            return null;
+        }
+
+        if ($user->isRhuStaff()) {
+            return (int) $user->rural_health_unit_id;
+        }
+
+        if ($user->isBhw()) {
+            $mappedId = $user->barangayHealthCenter()
+                ->where('status', 'active')
+                ->value('rural_health_unit_id');
+
+            return $mappedId === null ? null : (int) $mappedId;
+        }
+
+        return null;
+    }
+
+    /**
+     * DOC-15 - only the owning RHU may change its own roster. Admin and BHW are
+     * both denied write access here, deliberately and by the same rule.
+     */
+    public function authorizeProviderManagement(User $user, ?RhuProvider $provider = null): void
+    {
+        abort_unless(
+            $user->isRhuStaff() && $this->hasValidFacilityAssignment($user),
+            403,
+            self::DENIED_MESSAGE
+        );
+
+        if ($provider === null) {
+            return;
+        }
+
+        abort_unless(
+            $this->sameAssignedId(
+                $provider->rural_health_unit_id,
+                $user->rural_health_unit_id
+            ),
+            403,
+            self::DENIED_MESSAGE
+        );
     }
 
     public function canAccessPatient(User $user, Patient $patient): bool

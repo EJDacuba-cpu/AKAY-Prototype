@@ -12,6 +12,7 @@ use App\Models\Referral;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Services\ReferralRoutingService;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -32,6 +33,7 @@ class HealthRecordIdempotencyTest extends TestCase
         parent::setUp();
 
         $this->rhu = RuralHealthUnit::create(['name' => 'Idempotency RHU']);
+        $this->seedAvailableProvider($this->rhu);
         $this->bhc = BarangayHealthCenter::create([
             'name' => 'Idempotency BHC',
             'rural_health_unit_id' => $this->rhu->id,
@@ -206,7 +208,7 @@ class HealthRecordIdempotencyTest extends TestCase
             'needs_referral' => true,
             'referral' => [
                 'referral_category' => 'General Consultation',
-                'urgency_level' => 'Urgent',
+                'urgency_level' => 'Priority',
                 'reason_for_referral' => 'Requires RHU assessment.',
             ],
         ]);
@@ -238,11 +240,16 @@ class HealthRecordIdempotencyTest extends TestCase
                 'quantity' => 3,
             ]],
             'referral' => [
+                'urgency_level' => 'Routine',
                 'reason_for_referral' => 'Requires RHU assessment.',
             ],
         ]);
 
-        $this->postRecord($payload, (string) Str::uuid())->assertUnprocessable();
+        $this->postRecord($payload, (string) Str::uuid())
+            ->assertUnprocessable()
+            // Pinned: the late failure under test is the unmapped-RHU routing
+            // failure, not the DOC-14 availability gate.
+            ->assertJsonPath('message', ReferralRoutingService::MISSING_MAPPING_MESSAGE);
 
         $this->assertDatabaseCount('health_records', 1);
         $this->assertDatabaseCount('health_record_medicines', 0);

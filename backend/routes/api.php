@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\ReferralController;
 use App\Http\Controllers\Api\ReferralQrController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\RhuProviderController;
 use App\Http\Controllers\Api\RhuPatientVolumeController;
 use App\Http\Controllers\Api\RuralHealthUnitController;
 use App\Http\Controllers\Api\TrackingController;
@@ -62,12 +63,31 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::apiResource('referrals', ReferralController::class)->except(['store', 'update']);
         Route::post('/referrals', [ReferralController::class, 'store'])->middleware('role:bhw');
         Route::patch('/referrals/{referral}/status', [ReferralController::class, 'updateStatus'])->middleware('role:rhu_staff');
+        // D-1 FINAL - No-Show referrals only. Deliberately NOT a status
+        // transition: the referral stays No-Show and TRK-02 gains no value.
+        Route::post('/referrals/{referral}/reschedule', [ReferralController::class, 'reschedule'])->middleware('role:rhu_staff');
         Route::apiResource('feedback', FeedbackController::class)->only(['index', 'show']);
         Route::post('/feedback', [FeedbackController::class, 'store'])->middleware('role:rhu_staff');
         Route::post('/medicines/{medicine}/restock', [MedicineController::class, 'restock']);
         Route::post('/medicines/{medicine}/adjust', [MedicineController::class, 'adjust']);
         Route::get('/medicines/{medicine}/transactions', [MedicineController::class, 'transactions']);
         Route::apiResource('medicines', MedicineController::class);
+        // DOC-01/DOC-19 - readable by BHW, RHU staff and admin; each sees only
+        // the RHU they are entitled to. Registered before the {rhuProvider}
+        // routes so the literal segment is never captured as a model key.
+        Route::get('/rhu-providers/availability', [RhuProviderController::class, 'availability']);
+
+        // DOC-20/DOC-22 - roster reads for RHU staff and admin, writes for the
+        // owning RHU only (DOC-15: admin is intentionally read-only here).
+        Route::get('/rhu-providers', [RhuProviderController::class, 'index'])
+            ->middleware('role:rhu_staff,admin');
+        Route::post('/rhu-providers', [RhuProviderController::class, 'store'])
+            ->middleware('role:rhu_staff');
+        Route::patch('/rhu-providers/{rhuProvider}', [RhuProviderController::class, 'update'])
+            ->middleware('role:rhu_staff');
+        Route::delete('/rhu-providers/{rhuProvider}', [RhuProviderController::class, 'destroy'])
+            ->middleware('role:rhu_staff');
+
         Route::get('/rhu-patient-volumes', [RhuPatientVolumeController::class, 'index']);
         Route::post('/rhu-patient-volumes', [RhuPatientVolumeController::class, 'store']);
 

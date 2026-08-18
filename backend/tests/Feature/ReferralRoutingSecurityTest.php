@@ -36,6 +36,8 @@ class ReferralRoutingSecurityTest extends TestCase
 
         $this->rhuA = RuralHealthUnit::create(['name' => 'Routing RHU A']);
         $this->rhuB = RuralHealthUnit::create(['name' => 'Routing RHU B']);
+        $this->seedAvailableProvider($this->rhuA);
+        $this->seedAvailableProvider($this->rhuB);
         $this->inactiveRhu = RuralHealthUnit::create([
             'name' => 'Inactive Routing RHU',
             'status' => 'inactive',
@@ -190,6 +192,7 @@ class ReferralRoutingSecurityTest extends TestCase
         $this->actingAs($bhw, 'sanctum')
             ->postJson('/api/referrals', [
                 'patient_id' => $patient->id,
+                'urgency_level' => 'Routine',
                 'reason_for_referral' => 'Needs further assessment.',
             ])
             ->assertUnprocessable()
@@ -217,6 +220,7 @@ class ReferralRoutingSecurityTest extends TestCase
                 'patient_id' => $this->patientB->id,
                 'barangay_health_center_id' => $this->bhcB->id,
                 'rural_health_unit_id' => $this->rhuB->id,
+                'urgency_level' => 'Routine',
                 'reason_for_referral' => 'Attempted cross-facility referral.',
             ])
             ->assertForbidden();
@@ -272,6 +276,7 @@ class ReferralRoutingSecurityTest extends TestCase
         return [
             'patient_id' => $this->patientA->id,
             'health_record_id' => $this->recordA->id,
+            'urgency_level' => 'Routine',
             'reason_for_referral' => 'Further RHU assessment is needed.',
         ];
     }

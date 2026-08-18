@@ -23,6 +23,17 @@ class Referral extends Model
         self::STATUS_COMPLETED,
     ];
 
+    // URG-01..URG-06: attention is a workflow handling hint, never a clinical
+    // or triage classification (URG-04, SFT-01). The retired four-value scheme
+    // (Low/Normal/Urgent/Emergency) is replaced outright, not mapped forward.
+    public const ATTENTION_ROUTINE = 'Routine';
+    public const ATTENTION_PRIORITY = 'Priority';
+
+    public const ATTENTION_LEVELS = [
+        self::ATTENTION_ROUTINE,
+        self::ATTENTION_PRIORITY,
+    ];
+
     protected $fillable = [
         'tracking_id',
         'qr_code_value',
@@ -44,6 +55,14 @@ class Referral extends Model
         'initial_action_taken',
         'referring_practitioner',
         'preferred_doctor',
+        'preferred_provider_id',
+        'preferred_provider_snapshot',
+        'availability_snapshot',
+        'preference_acknowledged_at',
+        'rescheduled_to',
+        'reschedule_reason',
+        'rescheduled_by',
+        'rescheduled_at',
         'referral_datetime',
         'status',
         'remarks',
@@ -51,6 +70,11 @@ class Referral extends Model
 
     protected $casts = [
         'referral_datetime' => 'datetime',
+        'preferred_provider_snapshot' => 'array',
+        'availability_snapshot' => 'array',
+        'preference_acknowledged_at' => 'datetime',
+        'rescheduled_to' => 'datetime',
+        'rescheduled_at' => 'datetime',
         'qr_token_issued_at' => 'datetime',
         'qr_token_last_used_at' => 'datetime',
     ];

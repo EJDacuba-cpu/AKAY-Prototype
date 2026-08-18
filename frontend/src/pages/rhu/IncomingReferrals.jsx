@@ -8,7 +8,6 @@ import {
   Eye,
   QrCode,
   Search,
-  AlertCircle,
   Check,
   MoreVertical,
 } from "lucide-react";
@@ -31,6 +30,14 @@ import {
   formatReferralStatus,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
+import {
+  ATTENTION_FILTER_ALL,
+  ATTENTION_FILTER_OPTIONS,
+  getAttentionBadgeStyle,
+  getReferralAttention,
+  isPriority,
+  normalizeAttention,
+} from "../../utils/referralAttention";
 
 const keyframes = `
   @keyframes fadeUp {
@@ -324,67 +331,26 @@ function StatusBadge({ status, animate = false }) {
 }
 
 function UrgencyBadge({ urgency }) {
-  const displayUrgency = formatDisplayValue(urgency, "Non-Urgent");
-  const map = {
-    Emergency: {
-      bg: "#FEF2F2",
-      text: "#B91C1C",
-      icon: <AlertCircle size={11} />,
-    },
-    Urgent: {
-      bg: "#FFFBEB",
-      text: "#B45309",
-      icon: <Clock size={11} />,
-    },
-    "Non-Urgent": {
-      bg: "#F8FAFC",
-      text: "#475569",
-      icon: <CheckCircle2 size={11} />,
-    },
-    High: {
-      bg: "#FEF2F2",
-      text: "#B91C1C",
-      icon: <AlertCircle size={11} />,
-    },
-    Medium: {
-      bg: "#FFFBEB",
-      text: "#B45309",
-      icon: <Clock size={11} />,
-    },
-    Normal: {
-      bg: "#F8FAFC",
-      text: "#475569",
-      icon: <CheckCircle2 size={11} />,
-    },
-  };
-
-  const s = map[displayUrgency] || map["Non-Urgent"];
+  const attention = normalizeAttention(urgency);
+  const style = getAttentionBadgeStyle(attention);
 
   return (
     <span
       className="inline-flex items-center gap-1 rounded-md border border-slate-100 px-2 py-0.5 text-[10px] font-semibold"
-      style={{ backgroundColor: s.bg, color: s.text }}
+      style={{ backgroundColor: style.bg, color: style.text }}
     >
-      {s.icon}
-      {displayUrgency}
+      {isPriority(attention) ? (
+        <Clock size={11} />
+      ) : (
+        <CheckCircle2 size={11} />
+      )}
+      {attention}
     </span>
   );
 }
 
 function getReferralUrgency(referral) {
-  const raw =
-    referral?.urgency ||
-    referral?.priorityLevel ||
-    referral?.priority ||
-    "Non-Urgent";
-
-  const mapLegacyToNew = {
-    High: "Emergency",
-    Medium: "Urgent",
-    Normal: "Non-Urgent",
-  };
-
-  return formatDisplayValue(mapLegacyToNew[raw] || raw, "Non-Urgent");
+  return getReferralAttention(referral);
 }
 
 function getReferralCategory(referral) {
@@ -576,7 +542,7 @@ export default function IncomingReferrals() {
     search: "",
     status: "All Status",
     category: "All Categories",
-    urgency: "All Urgency",
+    urgency: ATTENTION_FILTER_ALL,
     date: "All Dates",
     referringBhc: "All Referring BHCs",
   });
@@ -612,7 +578,7 @@ export default function IncomingReferrals() {
       search: "",
       status: "All Status",
       category: "All Categories",
-      urgency: "All Urgency",
+      urgency: ATTENTION_FILTER_ALL,
       date: "All Dates",
       referringBhc: "All Referring BHCs",
     });
@@ -628,7 +594,7 @@ export default function IncomingReferrals() {
       key: "category",
       label: filters.category,
     },
-    filters.urgency !== "All Urgency" && {
+    filters.urgency !== ATTENTION_FILTER_ALL && {
       key: "urgency",
       label: filters.urgency,
     },
@@ -642,7 +608,7 @@ export default function IncomingReferrals() {
   function removeFilter(key) {
     if (key === "status") handleFilterChange("status", "All Status");
     if (key === "category") handleFilterChange("category", "All Categories");
-    if (key === "urgency") handleFilterChange("urgency", "All Urgency");
+    if (key === "urgency") handleFilterChange("urgency", ATTENTION_FILTER_ALL);
     if (key === "date") handleFilterChange("date", "All Dates");
     if (key === "referringBhc") {
       handleFilterChange("referringBhc", "All Referring BHCs");
@@ -687,7 +653,7 @@ export default function IncomingReferrals() {
         filters.category === "All Categories" ||
         getReferralCategory(referral) === filters.category;
       const matchUrgency =
-        filters.urgency === "All Urgency" ||
+        filters.urgency === ATTENTION_FILTER_ALL ||
         getReferralUrgency(referral) === filters.urgency;
       const matchDate = matchesDateFilter(referral, filters.date);
       const matchReferringBhc =
@@ -747,7 +713,7 @@ export default function IncomingReferrals() {
       key: "urgency",
       label: "Urgency",
       value: filters.urgency,
-      options: ["All Urgency", "Non-Urgent", "Urgent", "Emergency"],
+      options: ATTENTION_FILTER_OPTIONS,
     },
     {
       key: "date",

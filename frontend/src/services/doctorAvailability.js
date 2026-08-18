@@ -1,182 +1,136 @@
-const STORAGE_KEY = "akay_doctor_availability";
-const UPDATE_EVENT = "akay:doctor-availability-updated";
+import { apiRequest, unwrapData, unwrapList } from "./apiClient";
 
-export const DEFAULT_DOCTOR_AVAILABILITY = {
-  status: "Unavailable",
-  availableDoctorCount: 0,
-  totalDoctorCount: 0,
-  doctors: [],
+/**
+ * RHU provider availability - server-backed (DOC-BACKEND, DOC-19, DOC-20).
+ *
+ * This module previously kept the whole roster in window.localStorage, so a
+ * BHW's browser and an RHU's browser held completely separate data and the
+ * "N of M doctors available" a BHC saw was whatever had been typed in that
+ * same browser profile. The roster is now owned by the RHU on the server
+ * (DOC-15) and read through the API.
+ *
+ * The former synchronous exports (getDoctorAvailability() returning a value)
+ * could not survive that move and were deliberately not preserved: a
+ * server-backed read cannot return data during a React state initialiser.
+ * Consumers use the TanStack Query hooks in hooks/useDoctorAvailability.js,
+ * matching how every other AKAY resource is read.
+ */
+
+export const AVAILABILITY_AVAILABLE = "Available";
+export const AVAILABILITY_UNAVAILABLE = "Unavailable";
+
+export const AVAILABILITY_STATUSES = [
+  AVAILABILITY_AVAILABLE,
+  AVAILABILITY_UNAVAILABLE,
+];
+
+export const EMPTY_AVAILABILITY = {
+  ruralHealthUnitId: null,
+  availableCount: 0,
+  totalCount: 0,
+  status: AVAILABILITY_UNAVAILABLE,
+  canSubmitReferral: false,
   updatedAt: "",
-  updatedBy: "",
+  providers: [],
 };
 
-function emitUpdate(snapshot) {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent(UPDATE_EVENT, {
-      detail: snapshot || getDoctorAvailability(),
-    }),
-  );
+export function normalizeAvailabilityStatus(status) {
+  return status === AVAILABILITY_AVAILABLE
+    ? AVAILABILITY_AVAILABLE
+    : AVAILABILITY_UNAVAILABLE;
 }
 
-function readStoredAvailability() {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+export function normalizeProvider(provider = {}) {
+  return {
+    id: provider.id ? String(provider.id) : "",
+    name: provider.name || "",
+    specialization: provider.specialization || "",
+    availabilityStatus: normalizeAvailabilityStatus(
+      provider.availability_status ?? provider.availabilityStatus,
+    ),
+    remarks: provider.remarks || "",
+    ruralHealthUnitId: provider.rural_health_unit_id
+      ? String(provider.rural_health_unit_id)
+      : "",
+    isActive: provider.is_active ?? provider.isActive ?? true,
+    updatedAt: provider.updated_at || provider.updatedAt || "",
+  };
 }
 
-function writeStoredAvailability(availability) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(availability));
-}
-
-export function normalizeStatus(status) {
-  const value = String(status || "").toLowerCase();
-  if (value.includes("not available") || value.includes("unavailable")) {
-    return "Unavailable";
-  }
-  return "Available";
-}
-
-function normalizeExpectedAvailableAt(value) {
-  return value ? String(value) : "";
-}
-
-function generateDoctorId() {
-  return `doctor-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
-export function normalizeDoctor(doctor = {}, index = 0) {
-  const status = normalizeStatus(
-    doctor.availabilityStatus || doctor.status || "Available",
-  );
-  const expectedAvailableAt =
-    status === "Unavailable"
-      ? normalizeExpectedAvailableAt(
-          doctor.expectedAvailableAt ||
-            doctor.expected_available_at ||
-            doctor.availabilityNote ||
-            doctor.note,
-        )
-      : "";
-  const name =
-    doctor.doctorName ||
-    doctor.fullName ||
-    doctor.name ||
-    `Doctor ${index + 1}`;
-  const designation =
-    doctor.designation ||
-    doctor.doctorType ||
-    doctor.role ||
-    doctor.position ||
-    "General Practitioner";
-  const doctorId = String(doctor.doctorId || doctor.id || generateDoctorId());
+/**
+ * DOC-19 - the aggregate is computed by the server. The counts and
+ * canSubmitReferral are read straight through and never re-derived here: the
+ * DOC-14 rule has exactly one authority, and it is not the browser.
+ */
+export function normalizeAvailability(payload) {
+  if (!payload) return EMPTY_AVAILABILITY;
 
   return {
-    ...doctor,
-    id: doctorId,
-    doctorId,
-    name,
-    doctorName: name,
-    designation,
-    doctorType: designation,
-    role: designation,
-    availabilityStatus: status,
-    status,
-    expectedAvailableAt,
-    expected_available_at: expectedAvailableAt,
-    availabilityNote: expectedAvailableAt,
-    note: expectedAvailableAt,
-    active: doctor.active ?? true,
-    updatedAt: doctor.updatedAt || doctor.updated_at || "",
-    updatedBy: doctor.updatedBy || doctor.updated_by || "",
+    ruralHealthUnitId: payload.rural_health_unit_id
+      ? String(payload.rural_health_unit_id)
+      : null,
+    availableCount: Number(payload.available_count || 0),
+    totalCount: Number(payload.total_count || 0),
+    status: normalizeAvailabilityStatus(payload.status),
+    canSubmitReferral: Boolean(payload.can_submit_referral),
+    updatedAt: payload.updated_at || "",
+    providers: Array.isArray(payload.providers)
+      ? payload.providers.map(normalizeProvider)
+      : [],
   };
 }
 
-export function normalizeDoctorAvailability(value) {
-  const doctors = Array.isArray(value?.doctors)
-    ? value.doctors.map(normalizeDoctor)
-    : [];
-  const activeDoctors = doctors.filter((doctor) => doctor.active !== false);
-  const availableDoctorCount = activeDoctors.filter(
-    (doctor) => doctor.availabilityStatus === "Available",
-  ).length;
-  const totalDoctorCount = activeDoctors.length;
-
-  return {
-    ...DEFAULT_DOCTOR_AVAILABILITY,
-    ...(value || {}),
-    doctors,
-    availableDoctorCount,
-    totalDoctorCount,
-    status:
-      totalDoctorCount === 0
-        ? "Unavailable"
-        : availableDoctorCount > 0
-          ? "Available"
-          : "Unavailable",
-    updatedAt: value?.updatedAt || value?.updated_at || "",
-    updatedBy: value?.updatedBy || value?.updated_by || "",
-  };
+export async function getDoctorAvailability() {
+  const response = await apiRequest("/rhu-providers/availability");
+  return normalizeAvailability(unwrapData(response));
 }
 
-export function getDoctorAvailability() {
-  return normalizeDoctorAvailability(readStoredAvailability());
+export async function getRhuProviders() {
+  const response = await apiRequest("/rhu-providers");
+  return unwrapList(response).map(normalizeProvider);
 }
 
-export function saveDoctorAvailability(availability) {
-  const normalized = normalizeDoctorAvailability({
-    ...availability,
-    updatedAt: availability?.updatedAt || new Date().toISOString(),
-    updatedBy: availability?.updatedBy || "RHU Staff",
+export async function createRhuProvider(provider = {}) {
+  const response = await apiRequest("/rhu-providers", {
+    method: "POST",
+    body: toPayload(provider),
   });
-
-  writeStoredAvailability(normalized);
-  emitUpdate(normalized);
-
-  return normalized;
+  return normalizeProvider(unwrapData(response));
 }
 
-export function createDoctorRecord(doctorData) {
-  const doctorId = doctorData?.doctorId || doctorData?.id || generateDoctorId();
-
-  return normalizeDoctor({
-    ...doctorData,
-    id: doctorId,
-    doctorId,
-    updatedAt: doctorData?.updatedAt || new Date().toISOString(),
-    updatedBy: doctorData?.updatedBy || "RHU Staff",
+export async function updateRhuProvider(providerId, changes = {}) {
+  const response = await apiRequest(`/rhu-providers/${providerId}`, {
+    method: "PATCH",
+    body: toPayload(changes),
   });
+  return normalizeProvider(unwrapData(response));
 }
 
-export function listenDoctorAvailabilityUpdates(callback) {
-  if (typeof window === "undefined") return () => {};
+export async function deactivateRhuProvider(providerId) {
+  await apiRequest(`/rhu-providers/${providerId}`, { method: "DELETE" });
+  return true;
+}
 
-  function handleUpdate(event) {
-    callback(event.detail || getDoctorAvailability());
+function toPayload(provider = {}) {
+  const payload = {};
+
+  if (provider.name !== undefined) payload.name = provider.name;
+  if (provider.specialization !== undefined) {
+    payload.specialization = provider.specialization || null;
   }
+  if (provider.availabilityStatus !== undefined) {
+    payload.availability_status = normalizeAvailabilityStatus(
+      provider.availabilityStatus,
+    );
+  }
+  if (provider.remarks !== undefined) payload.remarks = provider.remarks || null;
 
-  window.addEventListener(UPDATE_EVENT, handleUpdate);
-  window.addEventListener("storage", handleUpdate);
-
-  return () => {
-    window.removeEventListener(UPDATE_EVENT, handleUpdate);
-    window.removeEventListener("storage", handleUpdate);
-  };
+  return payload;
 }
 
 export function formatDoctorAvailabilitySummary(availability) {
-  const normalized = normalizeDoctorAvailability(availability);
-  return `${normalized.availableDoctorCount} of ${normalized.totalDoctorCount} doctors available`;
-}
-
-export function createDoctorAvailabilitySnapshot(availability) {
-  return normalizeDoctorAvailability(availability);
+  const { availableCount, totalCount } = availability || EMPTY_AVAILABILITY;
+  return `${availableCount} of ${totalCount} doctors available`;
 }
 
 export function formatDoctorAvailabilityDate(value) {
@@ -185,23 +139,14 @@ export function formatDoctorAvailabilityDate(value) {
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
 }
 
-export function formatExpectedAvailableAt(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 export default {
   getDoctorAvailability,
-  saveDoctorAvailability,
-  normalizeDoctorAvailability,
-  createDoctorRecord,
-  listenDoctorAvailabilityUpdates,
+  getRhuProviders,
+  createRhuProvider,
+  updateRhuProvider,
+  deactivateRhuProvider,
+  normalizeAvailability,
+  normalizeProvider,
+  formatDoctorAvailabilitySummary,
+  formatDoctorAvailabilityDate,
 };

@@ -28,6 +28,7 @@ class FollowUpTaskSchedulingTest extends TestCase
         parent::setUp();
 
         $rhu = RuralHealthUnit::create(['name' => 'Scheduling RHU']);
+        $this->seedAvailableProvider($rhu);
         $this->bhc = BarangayHealthCenter::create([
             'name' => 'Scheduling BHC',
             'rural_health_unit_id' => $rhu->id,
@@ -151,6 +152,7 @@ class FollowUpTaskSchedulingTest extends TestCase
                 'followUpTime' => '11:30',
             ],
             'referral' => [
+                'urgency_level' => 'Routine',
                 'reason_for_referral' => 'Requires higher-level assessment.',
             ],
         ])->assertCreated();

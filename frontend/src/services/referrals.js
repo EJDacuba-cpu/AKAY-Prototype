@@ -1,7 +1,19 @@
 import { apiRequest, unwrapData, unwrapList } from "./apiClient";
 import { formatReferralStatus } from "../utils/formatters";
+import {
+  getReferralAttention,
+  normalizeAttention,
+} from "../utils/referralAttention";
 import { refreshNotifications } from "./notificationService";
 import { queryKeys } from "../utils/queryKeys";
+// Re-exported so existing call sites keep importing gate helpers from the
+// referral service, while the contract itself stays dependency-free.
+export {
+  isNoProviderAvailableError,
+  isPreferredProviderInvalidError,
+  isPreferredProviderUnavailableError,
+  getAvailableAlternatives,
+} from "../utils/referralGateErrors";
 
 export function normalizeReferralStatus(status) {
   const original = String(status || "").trim();
@@ -114,8 +126,7 @@ function normalizeReferral(referral = {}) {
     ruralHealthUnitId: referral.rural_health_unit_id || rhu.id || "",
     category: referral.referral_category || referral.category || "",
     referralCategory: referral.referral_category || referral.referralCategory || "",
-    urgencyLevel: referral.urgency_level || referral.urgencyLevel || "Normal",
-    priority: referral.urgency_level || referral.priority || "Normal",
+    urgencyLevel: getReferralAttention(referral),
     reasonForReferral: referral.reason_for_referral || referral.reasonForReferral || "",
     chiefComplaint: referral.chief_complaint || referral.chiefComplaint || "",
     initialDiagnosis: referral.initial_diagnosis || referral.initialDiagnosis || "",
@@ -123,6 +134,19 @@ function normalizeReferral(referral = {}) {
     referringPractitioner:
       referral.referring_practitioner || referral.referringPractitioner || "",
     preferredDoctor: referral.preferred_doctor || referral.preferredDoctor || "",
+    preferredProviderId: referral.preferred_provider_id
+      ? String(referral.preferred_provider_id)
+      : "",
+    preferredProviderSnapshot:
+      referral.preferred_provider_snapshot || referral.preferredProviderSnapshot || null,
+    availabilitySnapshot:
+      referral.availability_snapshot || referral.availabilitySnapshot || null,
+    preferenceAcknowledgedAt:
+      referral.preference_acknowledged_at || referral.preferenceAcknowledgedAt || "",
+    rescheduledTo: referral.rescheduled_to || referral.rescheduledTo || "",
+    rescheduleReason:
+      referral.reschedule_reason || referral.rescheduleReason || "",
+    rescheduledAt: referral.rescheduled_at || referral.rescheduledAt || "",
     referralDateTime: referral.referral_datetime || referral.referralDateTime || "",
     date: referral.referral_datetime?.slice?.(0, 10) || referral.date || "",
     status: normalizeReferralStatus(referral.status),
@@ -142,7 +166,7 @@ function toPayload(referral = {}) {
     health_record_id:
       referral.healthRecordId || referral.health_record_id || referral.recordId || null,
     referral_category: referral.referralCategory || referral.category || null,
-    urgency_level: normalizeUrgencyLevel(referral.urgencyLevel || referral.priority),
+    urgency_level: normalizeAttention(referral.urgencyLevel),
     reason_for_referral: referral.reasonForReferral || referral.reason || "",
     chief_complaint: referral.chiefComplaint || null,
     initial_diagnosis: referral.initialDiagnosis || referral.diagnosis || null,
@@ -151,6 +175,11 @@ function toPayload(referral = {}) {
     referring_practitioner: referral.referringPractitioner || null,
     preferred_doctor:
       referral.preferredDoctor || referral.preferredRhuDoctorName || null,
+    // REF-SLIP-05 / REF-SLIP-05c - the preference and the Decision A
+    // acknowledgment. The server owns both rules; these only carry intent.
+    preferred_provider_id: referral.preferredRhuDoctorId || null,
+    acknowledged_unavailable_preference:
+      referral.acknowledgedUnavailablePreference === true,
     referral_datetime:
       referral.referralDateTime ||
       (referral.referralDate
@@ -184,13 +213,6 @@ export async function getReferralDestination() {
   };
 }
 
-function normalizeUrgencyLevel(value) {
-  const normalized = String(value || "").toLowerCase();
-  if (normalized.includes("emergency")) return "Emergency";
-  if (normalized.includes("urgent")) return "Urgent";
-  if (normalized.includes("low")) return "Low";
-  return "Normal";
-}
 
 async function listReferrals(params = {}) {
   const query = new URLSearchParams(
@@ -319,6 +341,24 @@ export async function updateReferralStatus(referralId, status, changes = {}) {
   return normalizeReferral(unwrapData(response));
 }
 
+/**
+ * D-1 FINAL - record a new intended visit date on a No-Show referral.
+ *
+ * The referral deliberately REMAINS No-Show: this is an attribute write, not a
+ * status transition. The server rejects any referral that is not No-Show, and
+ * rejects a missing or past date (DOC-14b - there is no default).
+ */
+export async function rescheduleReferral(referralId, { rescheduledTo, reason } = {}) {
+  const response = await apiRequest(`/referrals/${referralId}/reschedule`, {
+    method: "POST",
+    body: {
+      rescheduled_to: rescheduledTo,
+      reschedule_reason: reason || null,
+    },
+  });
+  return normalizeReferral(unwrapData(response));
+}
+
 export async function updateReferralByTrackingId(trackingId, changes) {
   const referral = await getReferralByTrackingId(trackingId);
   const nextChanges = typeof changes === "function" ? changes(referral) : changes;
@@ -372,6 +412,7 @@ export default {
   getReferralDestination,
   createReferral,
   updateReferralStatus,
+  rescheduleReferral,
   updateReferralByTrackingId,
   submitReturnSlip,
   refreshReferralWorkflowData,

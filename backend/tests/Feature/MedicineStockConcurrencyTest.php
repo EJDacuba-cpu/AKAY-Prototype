@@ -31,6 +31,7 @@ class MedicineStockConcurrencyTest extends TestCase
         parent::setUp();
 
         $this->rhu = RuralHealthUnit::create(['name' => 'Stock Protection RHU']);
+        $this->seedAvailableProvider($this->rhu);
         $this->bhc = BarangayHealthCenter::create([
             'name' => 'Stock Protection BHC',
             'rural_health_unit_id' => $this->rhu->id,
@@ -81,6 +82,7 @@ class MedicineStockConcurrencyTest extends TestCase
                 'quantity' => 4,
             ]],
             'referral' => [
+                'urgency_level' => 'Routine',
                 'reason_for_referral' => 'Requires additional assessment.',
             ],
         ]), (string) Str::uuid())

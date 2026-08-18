@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Referral;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -213,13 +214,15 @@ class HealthRecordRequest extends FormRequest
             'dispensed_medicines.*.remarks' => ['nullable', 'string'],
             'referral' => ['nullable', 'array'],
             'referral.referral_category' => ['nullable', 'string', 'max:100'],
-            'referral.urgency_level' => ['nullable', Rule::in(['Low', 'Normal', 'Urgent', 'Emergency'])],
+            'referral.urgency_level' => ['required_with:referral', Rule::in(Referral::ATTENTION_LEVELS)],
             'referral.reason_for_referral' => ['required_with:referral', 'string'],
             'referral.chief_complaint' => ['nullable', 'string'],
             'referral.initial_diagnosis' => ['nullable', 'string'],
             'referral.initial_action_taken' => ['nullable', 'string'],
             'referral.referring_practitioner' => ['nullable', 'string', 'max:255'],
             'referral.preferred_doctor' => ['nullable', 'string', 'max:255'],
+            'referral.preferred_provider_id' => ['nullable', 'integer', 'exists:rhu_providers,id'],
+            'referral.acknowledged_unavailable_preference' => ['nullable', 'boolean'],
             'referral.referral_datetime' => ['nullable', 'date'],
             'referral.remarks' => ['nullable', 'string'],
         ];

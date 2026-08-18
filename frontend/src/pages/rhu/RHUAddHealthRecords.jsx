@@ -1740,7 +1740,7 @@ export default function AddHealthRecord() {
           followUpDate={followUpDate}
           needsReferral={needsReferral}
           saving={saving}
-          referralLabel="Needs Referral"
+          referralLabel="Needs Onward Referral"
           errors={validationErrors}
           onStatusChange={handlePatientStatusChange}
           onFollowUpDateChange={(value) => {
@@ -2002,7 +2002,8 @@ export default function AddHealthRecord() {
                 }}
               />
               <YesNoRadioGroup
-                label="Needs Referral?"
+                label="Needs Onward Referral?"
+                helperText={NEEDS_ONWARD_REFERRAL_HELPER}
                 name="needsReferral"
                 value={needsReferral ? "Yes" : "No"}
                 onChange={(value) => setNeedsReferral(value === "Yes")}
@@ -2418,7 +2419,8 @@ export default function AddHealthRecord() {
               }}
             />
             <YesNoRadioGroup
-              label="Needs Referral?"
+              label="Needs Onward Referral?"
+              helperText={NEEDS_ONWARD_REFERRAL_HELPER}
               name="needsReferral"
               value={needsReferral ? "Yes" : "No"}
               onChange={(value) => setNeedsReferral(value === "Yes")}
@@ -2839,8 +2841,15 @@ function CareDecisionStep({
 
           {!completed && (
             <div>
-              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
                 {referralLabel}
+              </p>
+              {/* WLK-04 / SFT-03 / REL-03 - this RHU disposition is a clinical
+                  marker only. It records that the patient needs referral
+                  elsewhere and must not be read as creating an AKAY referral,
+                  which this walk-in path never does. */}
+              <p className="mb-2 text-[11px] leading-relaxed text-[#94A3B8]">
+                {"Records that this patient requires referral elsewhere. Does not create an AKAY referral."}
               </p>
               <div className="inline-grid w-full max-w-sm grid-cols-2 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white p-1">
                 {[
@@ -3645,12 +3654,27 @@ function FieldTextarea({ label, required, error, rows = 3, className = "", ...pr
   );
 }
 
-function YesNoRadioGroup({ label, name, value, onChange }) {
+/**
+ * WLK-04 - the RHU walk-in "needs referral" disposition is a clinical marker
+ * only. Its sole backend effect is normalizeReferralDisposition(), which also
+ * suppresses follow-up task creation; it never creates a referrals row. The
+ * helper text exists so staff cannot read it as having sent a referral
+ * (SFT-03, REL-03).
+ */
+const NEEDS_ONWARD_REFERRAL_HELPER =
+  "Records that this patient requires referral elsewhere. Does not create an AKAY referral.";
+
+function YesNoRadioGroup({ label, name, value, onChange, helperText = "" }) {
   return (
     <div data-field={name}>
-      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
         {label}
       </p>
+      {helperText && (
+        <p className="mb-1.5 text-[11px] leading-relaxed text-[#94A3B8]">
+          {helperText}
+        </p>
+      )}
       <div className="flex min-h-10 flex-wrap items-center gap-x-6 gap-y-2">
         {["No", "Yes"].map((option) => (
           <label

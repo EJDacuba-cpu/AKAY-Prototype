@@ -39,12 +39,10 @@ import {
   getMedicineAlerts,
 } from "../../services/dashboardService";
 import {
-  formatExpectedAvailableAt,
   formatDoctorAvailabilityDate,
   formatDoctorAvailabilitySummary,
-  getDoctorAvailability,
-  listenDoctorAvailabilityUpdates,
 } from "../../services/doctorAvailability";
+import { useDoctorAvailability } from "../../hooks/useDoctorAvailability";
 import { getRhuVolumeSnapshot } from "../../services/volumeService";
 import { getCurrentUser } from "../../utils/auth";
 import { queryKeys } from "../../utils/queryKeys";
@@ -92,9 +90,7 @@ const stagger = (index) => ({
 });
 
 export default function BHCDashboard() {
-  const [doctorAvailability, setDoctorAvailability] = useState(() =>
-    getDoctorAvailability(),
-  );
+  const { availability: doctorAvailability } = useDoctorAvailability();
   const [now, setNow] = useState(() => new Date());
   const {
     data,
@@ -129,10 +125,6 @@ export default function BHCDashboard() {
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
 
     return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    return listenDoctorAvailabilityUpdates(setDoctorAvailability);
   }, []);
 
   const uniqueReferrals = useMemo(
@@ -548,8 +540,8 @@ function RHUReadinessCard({ availability, medicineAlerts, loading }) {
       .toLowerCase()
       .includes("unavailable"),
   ).length;
-  const doctors = Array.isArray(availability.doctors)
-    ? availability.doctors.filter((doctor) => doctor.active !== false)
+  const doctors = Array.isArray(availability.providers)
+    ? availability.providers
     : [];
 
   return (
@@ -572,8 +564,8 @@ function RHUReadinessCard({ availability, medicineAlerts, loading }) {
                   {availability.status}
                 </span>
                 <span className="text-[11px] font-bold text-[#64748B]">
-                  {availability.availableDoctorCount} of{" "}
-                  {availability.totalDoctorCount}
+                  {availability.availableCount} of{" "}
+                  {availability.totalCount}
                 </span>
               </div>
               <p className="mt-2 text-xs font-bold text-[#334155]">
@@ -590,26 +582,23 @@ function RHUReadinessCard({ availability, medicineAlerts, loading }) {
             </div>
           ) : (
             doctors.map((doctor) => {
-              const status = doctor.availabilityStatus || doctor.status;
-              const expectedAt =
-                doctor.expectedAvailableAt || doctor.expected_available_at;
-              const unavailable = status === "Unavailable";
+              const unavailable =
+                doctor.availabilityStatus === "Unavailable";
+              // DOC-22: remarks is the only note field on the roster.
+              const remarks = doctor.remarks;
 
               return (
                 <div
-                  key={doctor.doctorId || doctor.id}
+                  key={doctor.id}
                   className="rounded-xl border border-[#F1F5F9] bg-white px-3 py-2.5"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-xs font-bold text-[#0F172A]">
-                        {doctor.doctorName || doctor.name}
+                        {doctor.name}
                       </p>
                       <p className="mt-0.5 truncate text-[10.5px] text-[#64748B]">
-                        {doctor.designation ||
-                          doctor.doctorType ||
-                          doctor.role ||
-                          "General Practitioner"}
+                        {doctor.specialization || "General Practitioner"}
                       </p>
                     </div>
                     <span
@@ -622,9 +611,9 @@ function RHUReadinessCard({ availability, medicineAlerts, loading }) {
                       {unavailable ? "Unavailable" : "Available"}
                     </span>
                   </div>
-                  {unavailable && expectedAt && (
+                  {unavailable && remarks && (
                     <p className="mt-1 text-[10.5px] font-semibold text-[#B45309]">
-                      Unavailable until {formatExpectedAvailableAt(expectedAt)}
+                      {remarks}
                     </p>
                   )}
                 </div>
@@ -656,8 +645,7 @@ function RHUReadinessCard({ availability, medicineAlerts, loading }) {
         </div>
 
         <p className="text-[10px] font-medium text-[#94A3B8]">
-          Updated by {availability.updatedBy || "RHU Staff"} ·{" "}
-          {formatDoctorAvailabilityDate(availability.updatedAt)}
+          Updated {formatDoctorAvailabilityDate(availability.updatedAt)}
         </p>
       </div>
     </SideCard>

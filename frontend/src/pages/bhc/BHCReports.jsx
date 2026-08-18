@@ -29,6 +29,11 @@ import {
   formatPatientName,
 } from "../../utils/formatters";
 import {
+  ATTENTION_FILTER_ALL,
+  ATTENTION_LEVELS,
+  getReferralAttention,
+} from "../../utils/referralAttention";
+import {
   createActiveFilterChips,
   isDateInPreset,
 } from "../../utils/filterUtils";
@@ -515,10 +520,7 @@ function ReferralReportView({ referrals, filters }) {
       matchesDateRange(date, filters) &&
       matchesValue(referral.barangay, filters.barangay) &&
       matchesValue(referral.status, filters.status) &&
-      matchesValue(
-        referral.urgencyLevel || referral.priority,
-        filters.urgency,
-      ) &&
+      matchesValue(getReferralAttention(referral), filters.urgency) &&
       matchesValue(facility, filters.receivingFacility)
     );
   });
@@ -545,7 +547,7 @@ function ReferralReportView({ referrals, filters }) {
           referral.patientName || formatPatientName(referral.patient, "Unnamed Patient"),
           referral.barangay || "Not recorded",
           referral.status || "Pending",
-          referral.urgencyLevel || referral.priority || "Normal",
+          getReferralAttention(referral),
           referral.receivingFacility ||
             referral.destinationFacility ||
             referral.ruralHealthUnit?.name ||
@@ -1449,7 +1451,7 @@ function getReportFilterFields(type, barangays, facilities) {
         dateField,
         barangay,
         status(["Pending", "Received", "Completed", "No Show", "Cancelled"]),
-        { key: "urgency", label: "Urgency", type: "select", resetValue: "", placeholder: "All Urgency", options: ["Non-Urgent", "Normal", "Urgent", "Emergency"] },
+        { key: "urgency", label: "Urgency", type: "select", resetValue: "", placeholder: ATTENTION_FILTER_ALL, options: ATTENTION_LEVELS },
         { key: "receivingFacility", label: "Receiving Facility", type: "select", resetValue: "", placeholder: "All Facilities", options: facilities },
       ];
     case "family_planning":

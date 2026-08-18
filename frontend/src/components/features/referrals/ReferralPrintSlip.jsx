@@ -1,4 +1,5 @@
 import ReferralQrCode from "./ReferralQrCode";
+import { getReferralAttention } from "../../../utils/referralAttention";
 
 export function buildReferralSlipData(referral = {}, patient = null) {
   const referralDate = getReferralDate(referral);
@@ -31,12 +32,7 @@ export function buildReferralSlipData(referral = {}, patient = null) {
       referral.ruralHealthUnit?.name ||
       referral.rural_health_unit?.name ||
       "Rural Health Unit",
-    urgency:
-      referral.urgency ||
-      referral.urgencyLevel ||
-      referral.priorityLevel ||
-      referral.priority ||
-      "Normal",
+    urgency: getReferralAttention(referral),
     dateTimeSent: referralDate ? formatDateTime(referralDate) : "Not recorded",
   };
 }
