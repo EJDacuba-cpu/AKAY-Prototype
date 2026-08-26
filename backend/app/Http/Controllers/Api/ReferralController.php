@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\ReferralSubmissionBlockedException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ReferralRequest;
 use App\Http\Requests\ReferralStatusRequest;
@@ -12,6 +13,7 @@ use App\Models\Referral;
 use App\Services\AkayCacheService;
 use App\Services\FacilityAccessService;
 use App\Services\ReferralCreationService;
+use App\Services\ReferralHoldService;
 use App\Services\ReferralRescheduleService;
 use App\Services\ReferralRoutingService;
 use App\Services\ReferralWorkflowService;
@@ -94,7 +96,9 @@ class ReferralController extends Controller
 
     public function store(
         ReferralRequest $request,
-        ReferralCreationService $referralCreation
+        ReferralCreationService $referralCreation,
+        ReferralRoutingService $referralRouting,
+        ReferralHoldService $referralHolds
     ) {
         $user = $request->user();
         $data = $request->validated();
@@ -119,6 +123,20 @@ class ReferralController extends Controller
             $referral = DB::transaction(
                 fn (): Referral => $referralCreation->create($request, $patient, $data, $record)
             );
+        } catch (ReferralSubmissionBlockedException $exception) {
+            // Recorded only after the transaction above has already rolled
+            // back, in its own fresh transaction - see ReferralHoldService.
+            if ($exception->blockCode === ReferralSubmissionBlockedException::NO_PROVIDER_AVAILABLE) {
+                $route = $referralRouting->resolveForBhw($user);
+
+                $referralHolds->recordBlockedAttempt($user, $patient, $route['bhc']->id, $route['rhu'], [
+                    'health_record_id' => $record?->id,
+                    'urgency_level' => $data['urgency_level'] ?? null,
+                    'preferred_provider_id' => $data['preferred_provider_id'] ?? null,
+                ]);
+            }
+
+            throw $exception;
         } catch (QueryException $exception) {
             if (! empty($data['client_submission_id']) && $this->isClientSubmissionConflict($exception)) {
                 $existingReferral = $this->scope(Referral::query(), $request)

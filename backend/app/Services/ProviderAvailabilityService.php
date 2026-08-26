@@ -44,6 +44,7 @@ class ProviderAvailabilityService
                 'specialization' => $provider->specialization,
                 'availability_status' => $provider->availability_status,
                 'remarks' => $provider->remarks,
+                'expected_available_at' => $provider->expected_available_at,
                 'updated_at' => $provider->updated_at,
             ])->all(),
         ];

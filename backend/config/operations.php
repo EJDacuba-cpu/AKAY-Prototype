@@ -20,6 +20,22 @@ return [
             1,
             (int) env('AKAY_DRAFT_PRUNE_OVERLAP_MINUTES', 120)
         ),
+        'referral_hold_prune_time' => env('AKAY_REFERRAL_HOLD_PRUNE_TIME', '03:15'),
+        'referral_hold_prune_overlap_minutes' => max(
+            1,
+            (int) env('AKAY_REFERRAL_HOLD_PRUNE_OVERLAP_MINUTES', 60)
+        ),
+    ],
+
+    'referral_holds' => [
+        'notify_cooldown_minutes' => max(
+            1,
+            (int) env('AKAY_REFERRAL_HOLD_NOTIFY_COOLDOWN_MINUTES', 15)
+        ),
+        'expire_after_days' => max(
+            1,
+            (int) env('AKAY_REFERRAL_HOLD_EXPIRE_AFTER_DAYS', 14)
+        ),
     ],
 
     'health' => [

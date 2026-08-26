@@ -30,6 +30,9 @@ class RhuProviderRequest extends FormRequest
                 Rule::in(RhuProvider::AVAILABILITY_STATUSES),
             ],
             'remarks' => ['nullable', 'string'],
+            // Display only (see migration doc-comment) - an RHU-supplied
+            // estimate, never read to gate submission or trigger notifications.
+            'expected_available_at' => ['nullable', 'date'],
         ];
     }
 }

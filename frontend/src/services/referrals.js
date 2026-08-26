@@ -186,6 +186,9 @@ function toPayload(referral = {}) {
         ? `${referral.referralDate} ${referral.referralTime || "00:00"}`
         : null),
     remarks: referral.remarks || null,
+    // Set only when this submission resumes a DOC-14 blocked attempt
+    // (referral_holds); resolves that hold server-side on success.
+    resume_hold_id: referral.resumeHoldId || null,
   };
 }
 

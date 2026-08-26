@@ -38,6 +38,7 @@ import {
   updateHealthRecordById,
 } from "../../services/healthRecordService";
 import { getPatients } from "../../services/patientService";
+import { getReferralHoldById } from "../../services/referralHolds";
 import { useDoctorAvailability } from "../../hooks/useDoctorAvailability";
 import { getCurrentUser } from "../../utils/auth";
 import ReferralQrCode from "../../components/features/referrals/ReferralQrCode";
@@ -72,7 +73,12 @@ export default function CreateReferral() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
-  const targetRecordId = searchParams.get("recordId");
+  const resumeHoldParam = searchParams.get("resume_hold");
+  const [resumeHold, setResumeHold] = useState(null);
+  // A hold's health record resumes the form exactly like a direct recordId
+  // link would, once the hold has loaded.
+  const targetRecordId =
+    searchParams.get("recordId") || resumeHold?.healthRecordId || "";
   // Browser-persistent clinical route drafts are intentionally unsupported.
   const draftReferralContext = null;
   const draftRecordData = draftReferralContext?.formData || null;
@@ -194,6 +200,46 @@ export default function CreateReferral() {
   useEffect(() => {
     loadReferralDestination();
   }, [loadReferralDestination]);
+
+  // Resuming a DOC-14 blocked attempt (plan 4.3): the notification link is
+  // /bhc/referrals/create?resume_hold={id}. The hold only carries intent
+  // (health_record_id, urgency_level, preferred_provider_id) - the BHW
+  // reviews and submits normally, same as any other referral.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadResumeHold() {
+      if (!resumeHoldParam) {
+        setResumeHold(null);
+        return;
+      }
+
+      try {
+        const hold = await getReferralHoldById(resumeHoldParam);
+        if (!cancelled) setResumeHold(hold);
+      } catch {
+        if (!cancelled) setResumeHold(null);
+      }
+    }
+
+    loadResumeHold();
+    return () => {
+      cancelled = true;
+    };
+  }, [resumeHoldParam]);
+
+  useEffect(() => {
+    if (!resumeHold) return;
+
+    setForm((previous) => ({
+      ...previous,
+      urgencyLevel: resumeHold.urgencyLevel
+        ? normalizeAttention(resumeHold.urgencyLevel)
+        : previous.urgencyLevel,
+      preferredRhuDoctorId:
+        resumeHold.preferredProviderId || previous.preferredRhuDoctorId,
+    }));
+  }, [resumeHold]);
 
   useEffect(() => {
     if (draftRecordData) {
@@ -496,6 +542,10 @@ export default function CreateReferral() {
       // continue; the server records preference_acknowledged_at from it.
       acknowledgedUnavailablePreference: acknowledgeUnavailable,
 
+      // Set only when this submission resumes a DOC-14 blocked attempt; the
+      // server resolves that referral_holds row on success.
+      resumeHoldId: resumeHold?.id || "",
+
       // BHC may indicate a preferred RHU doctor, but RHU can still reassign.
       preferredRhuDoctorId: selectedRhuDoctor?.id || "",
       preferredRhuDoctorName: selectedRhuDoctor?.name || "RHU to assign",
@@ -615,11 +665,15 @@ export default function CreateReferral() {
 
       // DOC-14 - unconditional block. Deliberately no override affordance:
       // the BHW cannot proceed until the RHU marks a provider available.
+      // The blocked attempt was already recorded server-side by the time
+      // this response reaches the client, so the BHW is notified here
+      // rather than having to resubmit blind.
       if (isNoProviderAvailableError(error)) {
         setShowConfirmModal(false);
         setSubmissionErrorNotice(
           error?.message ||
-            "The receiving Rural Health Unit has no available doctor right now, so this referral cannot be submitted.",
+            "The receiving Rural Health Unit has no available doctor right now. " +
+              "This attempt has been saved — you'll be notified here when a doctor becomes available.",
         );
         return;
       }

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\Referral;
+use App\Models\ReferralHold;
 use App\Models\ReferralUpdate;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -111,6 +112,22 @@ class ReferralCreationService
             'referrals',
             "Submitted referral {$referral->tracking_id}."
         );
+
+        // Scoped to created_by/waiting so a BHW cannot resolve someone
+        // else's hold or double-resolve one. Runs inside the same
+        // transaction as referral creation on purpose - if creation is
+        // rolled back, resolving the hold must roll back with it.
+        if (! empty($data['resume_hold_id'])) {
+            $hold = ReferralHold::query()
+                ->where('id', $data['resume_hold_id'])
+                ->where('created_by', $user->id)
+                ->where('status', ReferralHold::STATUS_WAITING)
+                ->first();
+
+            if ($hold) {
+                app(ReferralHoldService::class)->markResubmitted($hold, $referral->id);
+            }
+        }
 
         return $referral;
     }

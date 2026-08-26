@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PasswordResetRequestController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\ReferralController;
+use App\Http\Controllers\Api\ReferralHoldController;
 use App\Http\Controllers\Api\ReferralQrController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RhuProviderController;
@@ -105,6 +106,8 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
             Route::put('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'update'])
                 ->middleware('throttle:health-record-drafts');
             Route::get('/referral-routing', [ReferralController::class, 'destination']);
+            Route::get('/referral-holds', [ReferralHoldController::class, 'index']);
+            Route::post('/referral-holds/{referralHold}/discard', [ReferralHoldController::class, 'discard']);
             Route::get('/follow-up-tasks', [FollowUpTaskController::class, 'index']);
             Route::get('/follow-up-tasks/{followUpTask}', [FollowUpTaskController::class, 'show']);
             Route::patch('/follow-up-tasks/{followUpTask}/no-show', [FollowUpTaskController::class, 'markNoShow']);

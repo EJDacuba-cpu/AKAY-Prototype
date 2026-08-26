@@ -18,7 +18,19 @@ const EMPTY_FORM = {
   specialization: DEFAULT_DESIGNATION,
   availabilityStatus: "Available",
   remarks: "",
+  expectedAvailableAt: "",
 };
+
+// datetime-local inputs need "YYYY-MM-DDTHH:mm" in local time; the server
+// sends/accepts an ISO timestamp.
+function toDatetimeLocalValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 function formatDateTime(value) {
   if (!value) return "Not updated yet";
@@ -41,6 +53,7 @@ function mapProviderToForm(provider) {
       provider?.availabilityStatus,
     ),
     remarks: provider?.remarks || "",
+    expectedAvailableAt: toDatetimeLocalValue(provider?.expectedAvailableAt),
   };
 }
 
@@ -145,6 +158,7 @@ export default function DoctorSchedule() {
         specialization: form.specialization.trim() || DEFAULT_DESIGNATION,
         availabilityStatus: form.availabilityStatus,
         remarks: form.remarks.trim(),
+        expectedAvailableAt: form.expectedAvailableAt || null,
       });
 
       setMode("update");
@@ -167,6 +181,7 @@ export default function DoctorSchedule() {
         specialization: form.specialization.trim() || DEFAULT_DESIGNATION,
         availabilityStatus: form.availabilityStatus,
         remarks: form.remarks.trim(),
+        expectedAvailableAt: form.expectedAvailableAt || null,
       });
 
       setForm(mapProviderToForm(updated));
@@ -325,6 +340,18 @@ export default function DoctorSchedule() {
                   error={errors.remarks}
                   placeholder="Example: Covering provider, back Monday"
                 />
+
+                {form.availabilityStatus === "Unavailable" && (
+                  <FieldInput
+                    label="Expected Back (Optional Estimate)"
+                    type="datetime-local"
+                    value={form.expectedAvailableAt}
+                    onChange={(event) =>
+                      updateForm("expectedAvailableAt", event.target.value)
+                    }
+                    error={errors.expectedAvailableAt}
+                  />
+                )}
 
                 {errors.form && (
                   <p className="text-[11px] font-medium text-[#B91C1C]">

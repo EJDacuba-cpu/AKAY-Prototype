@@ -48,4 +48,5 @@ export const queryKeys = {
   adminAccounts: () => ["admin-accounts"],
   providers: () => ["rhu-providers"],
   providerAvailability: () => ["rhu-provider-availability"],
+  referralHolds: () => ["referral-holds"],
 };

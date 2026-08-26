@@ -28,6 +28,7 @@ class RhuProvider extends Model
         'specialization',
         'availability_status',
         'remarks',
+        'expected_available_at',
         'is_active',
         'created_by',
         'updated_by',
@@ -35,6 +36,7 @@ class RhuProvider extends Model
 
     protected $casts = [
         'is_active' => 'boolean',
+        'expected_available_at' => 'datetime',
     ];
 
     public function ruralHealthUnit(): BelongsTo
