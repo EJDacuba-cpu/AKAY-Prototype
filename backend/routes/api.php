@@ -43,9 +43,14 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         ->middleware('auth.session-request');
 
     Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::get('/notifications/counts', [NotificationController::class, 'counts']);
+    Route::get('/notifications/trash', [NotificationController::class, 'trashed']);
     Route::patch('/notifications/read-all', [NotificationController::class, 'markAllRead']);
     Route::delete('/notifications', [NotificationController::class, 'clearAll']);
     Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
+    Route::patch('/notifications/{notification}/unread', [NotificationController::class, 'markUnread']);
+    Route::post('/notifications/{notification}/trash', [NotificationController::class, 'trash']);
+    Route::post('/notifications/{notification}/restore', [NotificationController::class, 'restore']);
     Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
 
     Route::middleware('facility.assigned')->group(function () {

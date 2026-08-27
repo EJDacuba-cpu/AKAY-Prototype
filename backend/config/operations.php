@@ -25,6 +25,15 @@ return [
             1,
             (int) env('AKAY_REFERRAL_HOLD_PRUNE_OVERLAP_MINUTES', 60)
         ),
+        'follow_up_no_show_overlap_minutes' => max(
+            1,
+            (int) env('AKAY_FOLLOW_UP_NO_SHOW_OVERLAP_MINUTES', 60)
+        ),
+        'notification_prune_time' => env('AKAY_NOTIFICATION_PRUNE_TIME', '03:45'),
+        'notification_prune_overlap_minutes' => max(
+            1,
+            (int) env('AKAY_NOTIFICATION_PRUNE_OVERLAP_MINUTES', 60)
+        ),
     ],
 
     'referral_holds' => [
@@ -35,6 +44,17 @@ return [
         'expire_after_days' => max(
             1,
             (int) env('AKAY_REFERRAL_HOLD_EXPIRE_AFTER_DAYS', 14)
+        ),
+    ],
+
+    'notifications' => [
+        // Decision D-6: matches health_record_drafts.terminal_retention_days
+        // (the "already dismissed, kept briefly for recovery" window), not
+        // its 30-day expiry_days (which governs a still-active phase this
+        // table has no equivalent of).
+        'cleared_retention_days' => max(
+            1,
+            (int) env('AKAY_NOTIFICATION_CLEARED_RETENTION_DAYS', 7)
         ),
     ],
 
