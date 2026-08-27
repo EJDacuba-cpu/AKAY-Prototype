@@ -46,4 +46,7 @@ export const queryKeys = {
     ...(page === undefined ? [] : [Number(page) || 1]),
   ],
   adminAccounts: () => ["admin-accounts"],
+  providers: () => ["rhu-providers"],
+  providerAvailability: () => ["rhu-provider-availability"],
+  referralHolds: () => ["referral-holds"],
 };

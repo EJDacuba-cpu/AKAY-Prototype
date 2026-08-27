@@ -27,10 +27,7 @@ import {
   refreshReferralWorkflowData,
   submitReturnSlip,
 } from "../../services/referrals";
-import {
-  getDoctorAvailability,
-  listenDoctorAvailabilityUpdates,
-} from "../../services/doctorAvailability";
+import { useRhuProviders } from "../../hooks/useDoctorAvailability";
 import { queryKeys } from "../../utils/queryKeys";
 
 const OUTCOME_OPTIONS = [
@@ -357,17 +354,7 @@ export default function FeedbackReturnSlip() {
     recommendation: "",
     remarks: "",
   });
-  const [doctorAvailability, setDoctorAvailability] = useState(() =>
-    getDoctorAvailability(),
-  );
-
-  useEffect(() => {
-    return listenDoctorAvailabilityUpdates(setDoctorAvailability);
-  }, []);
-
-  const rhuDoctors = Array.isArray(doctorAvailability?.doctors)
-    ? doctorAvailability.doctors
-    : [];
+  const { providers: rhuDoctors } = useRhuProviders();
 
   function handleChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -702,8 +689,8 @@ export default function FeedbackReturnSlip() {
                   <datalist id="rhu-doctor-options">
                     {rhuDoctors.map((doctor) => (
                       <option
-                        key={doctor.doctorId || doctor.id}
-                        value={doctor.doctorName || doctor.name}
+                        key={doctor.id}
+                        value={doctor.name}
                       />
                     ))}
                   </datalist>

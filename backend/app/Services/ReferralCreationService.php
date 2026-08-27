@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\Referral;
+use App\Models\ReferralHold;
 use App\Models\ReferralUpdate;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -16,7 +17,8 @@ class ReferralCreationService
         private readonly ReferralRoutingService $referralRouting,
         private readonly ReferralService $referrals,
         private readonly AuditLogger $auditLogger,
-        private readonly UserNotificationService $notifications
+        private readonly UserNotificationService $notifications,
+        private readonly ReferralSubmissionGate $submissionGate
     ) {
     }
 
@@ -43,8 +45,16 @@ class ReferralCreationService
             );
         }
 
+        // DOC-14 then REF-SLIP-05c. Placed here rather than in the
+        // controllers so both submission paths are covered by one call site,
+        // and so it sits after the client_submission_id replay checks: a retry
+        // of an already-created referral must not be blocked by an availability
+        // change that happened after the original submission.
+        $gate = $this->submissionGate->assertCanSubmit($route['rhu'], $data);
+
         $referral = Referral::create([
             ...$data,
+            ...$gate,
             'patient_id' => $patient->id,
             'health_record_id' => $healthRecord?->id,
             'barangay_health_center_id' => $route['bhc']->id,
@@ -53,7 +63,7 @@ class ReferralCreationService
             'qr_code_value' => $this->referrals->makeLegacyQrPlaceholder(),
             'created_by' => $user->id,
             'status' => Referral::STATUS_PENDING,
-            'urgency_level' => $data['urgency_level'] ?? 'Normal',
+            'urgency_level' => $data['urgency_level'] ?? Referral::ATTENTION_ROUTINE,
             'referral_datetime' => $data['referral_datetime'] ?? now(),
         ]);
 
@@ -102,6 +112,22 @@ class ReferralCreationService
             'referrals',
             "Submitted referral {$referral->tracking_id}."
         );
+
+        // Scoped to created_by/waiting so a BHW cannot resolve someone
+        // else's hold or double-resolve one. Runs inside the same
+        // transaction as referral creation on purpose - if creation is
+        // rolled back, resolving the hold must roll back with it.
+        if (! empty($data['resume_hold_id'])) {
+            $hold = ReferralHold::query()
+                ->where('id', $data['resume_hold_id'])
+                ->where('created_by', $user->id)
+                ->where('status', ReferralHold::STATUS_WAITING)
+                ->first();
+
+            if ($hold) {
+                app(ReferralHoldService::class)->markResubmitted($hold, $referral->id);
+            }
+        }
 
         return $referral;
     }

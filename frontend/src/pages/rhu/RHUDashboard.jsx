@@ -18,11 +18,7 @@ import { PageStateWrapper, RefreshingIndicator } from "../../components/common";
 import PatientVolumeCard from "../../components/features/volume/PatientVolumeCard";
 import { getRhuVolumeSnapshot } from "../../services/volumeService";
 import { getCurrentUser } from "../../utils/auth";
-import {
-  formatExpectedAvailableAt,
-  getDoctorAvailability,
-  listenDoctorAvailabilityUpdates,
-} from "../../services/doctorAvailability";
+import { useRhuProviders } from "../../hooks/useDoctorAvailability";
 import { getReferrals } from "../../services/referrals";
 import { getHealthRecords } from "../../services/healthRecordService";
 import { loadMedicineAvailability } from "../../services/medicineService";
@@ -594,17 +590,7 @@ function SectionCard({
 
 /* ─── Sidebar Cards ─── */
 function DoctorScheduleCard({ delay = 0 }) {
-  const [doctorAvailability, setDoctorAvailability] = useState(() =>
-    getDoctorAvailability(),
-  );
-
-  useEffect(() => {
-    return listenDoctorAvailabilityUpdates(setDoctorAvailability);
-  }, []);
-
-  const doctors = Array.isArray(doctorAvailability.doctors)
-    ? doctorAvailability.doctors.filter((doctor) => doctor.active !== false)
-    : [];
+  const { providers: doctors } = useRhuProviders();
 
   return (
     <section
@@ -634,7 +620,7 @@ function DoctorScheduleCard({ delay = 0 }) {
         ) : (
           doctors.map((doctor) => (
             <div
-              key={doctor.doctorId || doctor.id}
+              key={doctor.id}
               className="rounded-xl border border-[#F3F4F6] bg-[#FAFBFC] p-4 transition-all duration-200 hover:border-[#FECACA] hover:bg-white hover:shadow-sm"
             >
               <div className="flex items-start gap-3">
@@ -644,32 +630,22 @@ function DoctorScheduleCard({ delay = 0 }) {
 
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-bold text-[#0F172A]">
-                    {doctor.doctorName || doctor.name}
+                    {doctor.name}
                   </p>
 
                   <p className="mt-1 text-[11px] text-[#6B7280]">
-                    {doctor.designation ||
-                      doctor.doctorType ||
-                      doctor.role ||
-                      "General Practitioner"}
+                    {doctor.specialization || "General Practitioner"}
                   </p>
 
-                  {(doctor.expectedAvailableAt ||
-                    doctor.expected_available_at ||
-                    doctor.availabilityNote) && (
+                  {doctor.remarks && (
                     <p className="mt-1 text-[10px] text-[#9CA3AF]">
-                      Unavailable until{" "}
-                      {formatExpectedAvailableAt(
-                        doctor.expectedAvailableAt ||
-                          doctor.expected_available_at ||
-                          doctor.availabilityNote,
-                      )}
+                      {doctor.remarks}
                     </p>
                   )}
 
                   <div className="mt-2">
                     <DoctorBadge
-                      status={doctor.availabilityStatus || doctor.status}
+                      status={doctor.availabilityStatus}
                     />
                   </div>
                 </div>

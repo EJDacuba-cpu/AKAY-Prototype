@@ -644,9 +644,10 @@ function ClassBadge({ value }) {
     Immunization: "bg-emerald-100 text-emerald-700",
     "Senior Citizen": "bg-violet-100 text-violet-700",
     "General Consultation": "bg-slate-100 text-slate-700",
-    Emergency: "bg-red-100 text-red-700",
-    Urgent: "bg-amber-100 text-amber-700",
-    "Non-Urgent": "bg-slate-100 text-slate-600",
+    // Attention levels (URG-01..URG-06). Priority is amber, never red:
+    // red is reserved for clinical/destructive states across AKAY.
+    Priority: "bg-amber-100 text-amber-700",
+    Routine: "bg-slate-100 text-slate-600",
   };
 
   return (

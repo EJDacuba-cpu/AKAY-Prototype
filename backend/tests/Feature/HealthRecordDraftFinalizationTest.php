@@ -52,6 +52,8 @@ class HealthRecordDraftFinalizationTest extends TestCase
 
         $this->rhuA = RuralHealthUnit::create(['name' => 'Finalization RHU A']);
         $this->rhuB = RuralHealthUnit::create(['name' => 'Finalization RHU B']);
+        $this->seedAvailableProvider($this->rhuA);
+        $this->seedAvailableProvider($this->rhuB);
         $this->bhcA = BarangayHealthCenter::create([
             'name' => 'Finalization BHC A',
             'rural_health_unit_id' => $this->rhuA->id,
@@ -152,7 +154,7 @@ class HealthRecordDraftFinalizationTest extends TestCase
             'needs_referral' => true,
             'referral' => [
                 'reason_for_referral' => 'Requires RHU assessment.',
-                'urgency_level' => 'Normal',
+                'urgency_level' => 'Routine',
             ],
         ];
 

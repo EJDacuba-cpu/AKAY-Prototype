@@ -117,25 +117,17 @@ function getNotificationEntity(notification = {}) {
   );
 }
 
-function getNotificationSearchText(notification = {}) {
-  return [
-    notification.title,
-    notification.message,
-    notification.description,
-    notification.type,
-    getCategoryLabel(getNotificationCategory(notification)),
-    getNotificationEntity(notification),
-  ]
-    .map(normalizeText)
-    .join(" ");
-}
-
 export default function NotificationsPage() {
   const {
     notifications,
+    trashedNotifications,
+    trashLoading,
+    notificationCounts,
     notificationsError,
     notificationsLoading,
     notificationSoundEnabled,
+    hasMoreNotifications,
+    loadMoreNotifications,
     markAsRead,
     markSelectedAsRead,
     markSelectedAsUnread,
@@ -144,6 +136,7 @@ export default function NotificationsPage() {
     moveNotificationsToTrash,
     restoreNotificationsFromTrash,
     refreshNotifications,
+    refreshTrash,
   } = useNotifications();
   const navigate = useNavigate();
   const [activeFilter, setActiveFilter] = useState("inbox");
@@ -153,51 +146,53 @@ export default function NotificationsPage() {
   const [actionMessage, setActionMessage] = useState("");
   const [actionError, setActionError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const activeNotifications = useMemo(
-    () => notifications.filter((notification) => !notification.isTrashed),
-    [notifications],
-  );
-  const trashNotifications = useMemo(
-    () => notifications.filter((notification) => notification.isTrashed),
-    [notifications],
-  );
-  const counts = useMemo(
-    () => ({
-      inbox: activeNotifications.length,
-      unread: activeNotifications.filter((notification) => !notification.isRead)
-        .length,
-      followups: activeNotifications.filter(
-        (notification) => getNotificationCategory(notification) === "followups",
-      ).length,
-      referrals: activeNotifications.filter(
-        (notification) => getNotificationCategory(notification) === "referrals",
-      ).length,
-      medicine: activeNotifications.filter(
-        (notification) => getNotificationCategory(notification) === "medicine",
-      ).length,
-      system: activeNotifications.filter(
-        (notification) => getNotificationCategory(notification) === "system",
-      ).length,
-      trash: trashNotifications.length,
-    }),
-    [activeNotifications, trashNotifications],
-  );
+  // Decision D-4: true, database-backed counts instead of a client useMemo
+  // over whatever page happens to be loaded.
+  const counts = notificationCounts || {
+    inbox: 0,
+    unread: 0,
+    followups: 0,
+    referrals: 0,
+    medicine: 0,
+    system: 0,
+    trash: 0,
+  };
+
+  // Decision D-5: Trash is now its own server-backed fetch, not a client
+  // filter over the Inbox array (which never contains trashed rows).
+  useEffect(() => {
+    if (activeFilter === "trash") {
+      void refreshTrash({ search: searchTerm });
+    }
+  }, [activeFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Decision D-8: search runs server-side (so it reaches beyond whatever
+  // page is currently cached), debounced so it doesn't fire on every
+  // keystroke.
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      if (activeFilter === "trash") {
+        void refreshTrash({ search: searchTerm });
+      } else {
+        void refreshNotifications({ force: true, maxAgeMs: 0, search: searchTerm });
+      }
+    }, 300);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm]);
 
   const filteredNotifications = useMemo(() => {
-    const source =
-      activeFilter === "trash" ? trashNotifications : activeNotifications;
-    const byFilter = source.filter((notification) => {
-      if (activeFilter === "inbox" || activeFilter === "trash") return true;
-      if (activeFilter === "unread") return !notification.isRead;
-      return getNotificationCategory(notification) === activeFilter;
-    });
-    const query = searchTerm.trim().toLowerCase();
-    if (!query) return byFilter;
-    return byFilter.filter((notification) =>
-      getNotificationSearchText(notification).includes(query),
+    const source = activeFilter === "trash" ? trashedNotifications : notifications;
+    if (activeFilter === "inbox" || activeFilter === "trash") return source;
+    if (activeFilter === "unread") {
+      return source.filter((notification) => !notification.isRead);
+    }
+    return source.filter(
+      (notification) => getNotificationCategory(notification) === activeFilter,
     );
-  }, [activeFilter, activeNotifications, searchTerm, trashNotifications]);
+  }, [activeFilter, notifications, trashedNotifications]);
 
   const visibleIds = useMemo(
     () => filteredNotifications.map((notification) => String(notification.id)),
@@ -207,10 +202,12 @@ export default function NotificationsPage() {
   const allVisibleSelected =
     visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
   const currentFilter = FILTERS.find((filter) => filter.key === activeFilter);
+  const isViewingTrash = activeFilter === "trash";
+  const viewLoading = isViewingTrash ? trashLoading : notificationsLoading;
   const showInitialLoading =
-    notificationsLoading && notifications.length === 0 && !notificationsError;
+    viewLoading && filteredNotifications.length === 0 && !notificationsError;
   const showRefreshing =
-    notificationsLoading && notifications.length > 0 && !notificationsError;
+    viewLoading && filteredNotifications.length > 0 && !notificationsError;
 
   useEffect(() => {
     setSelectedIds((prev) => prev.filter((id) => visibleIds.includes(id)));
@@ -266,7 +263,18 @@ export default function NotificationsPage() {
   }
 
   function handleRefresh() {
-    void refreshNotifications({ force: true, maxAgeMs: 0 });
+    void refreshNotifications({ force: true, maxAgeMs: 0, search: searchTerm });
+  }
+
+  // Decision D-2: the escape hatch for D-1's 50-row cap - nothing becomes
+  // permanently invisible, it just takes one more click to reach.
+  async function handleLoadMore() {
+    setLoadingMore(true);
+    try {
+      await loadMoreNotifications();
+    } finally {
+      setLoadingMore(false);
+    }
   }
 
   async function handleNotificationSoundToggle() {
@@ -542,11 +550,15 @@ export default function NotificationsPage() {
                   <>
                     <button
                       type="button"
-                      onClick={handleRefresh}
-                      disabled={notificationsLoading}
+                      onClick={
+                        isViewingTrash
+                          ? () => refreshTrash({ search: searchTerm })
+                          : handleRefresh
+                      }
+                      disabled={viewLoading}
                       className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C] disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {notificationsLoading ? (
+                      {viewLoading ? (
                         <LoaderCircle size={14} className="animate-spin" />
                       ) : (
                         <RefreshCw size={14} />
@@ -586,24 +598,39 @@ export default function NotificationsPage() {
           {showInitialLoading ? (
             <NotificationInboxSkeleton />
           ) : notificationsError ? (
-            <NotificationErrorState onRetry={handleRefresh} loading={notificationsLoading} />
+            <NotificationErrorState onRetry={handleRefresh} loading={viewLoading} />
           ) : filteredNotifications.length === 0 ? (
             <NotificationEmptyState
               title={currentFilter?.empty || "No notifications."}
               searchTerm={searchTerm}
             />
           ) : (
-            <div className="divide-y divide-slate-100">
-              {filteredNotifications.map((notification) => (
-                <NotificationRow
-                  key={notification.id}
-                  notification={notification}
-                  selected={selectedIds.includes(String(notification.id))}
-                  onToggleSelect={() => toggleNotificationSelection(notification.id)}
-                  onOpen={() => handleViewNotification(notification)}
-                />
-              ))}
-            </div>
+            <>
+              <div className="divide-y divide-slate-100">
+                {filteredNotifications.map((notification) => (
+                  <NotificationRow
+                    key={notification.id}
+                    notification={notification}
+                    selected={selectedIds.includes(String(notification.id))}
+                    onToggleSelect={() => toggleNotificationSelection(notification.id)}
+                    onOpen={() => handleViewNotification(notification)}
+                  />
+                ))}
+              </div>
+              {!isViewingTrash && hasMoreNotifications && (
+                <div className="flex justify-center border-t border-slate-100 px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {loadingMore && <LoaderCircle size={14} className="animate-spin" />}
+                    Show more
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </section>
       </div>

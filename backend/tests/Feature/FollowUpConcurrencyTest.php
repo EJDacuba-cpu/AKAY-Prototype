@@ -11,6 +11,7 @@ use App\Models\Patient;
 use App\Models\Referral;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Services\ReferralRoutingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -30,6 +31,7 @@ class FollowUpConcurrencyTest extends TestCase
         parent::setUp();
 
         $this->rhu = RuralHealthUnit::create(['name' => 'Concurrency RHU']);
+        $this->seedAvailableProvider($this->rhu);
         $this->bhc = BarangayHealthCenter::create([
             'name' => 'Concurrency BHC',
             'rural_health_unit_id' => $this->rhu->id,
@@ -66,6 +68,7 @@ class FollowUpConcurrencyTest extends TestCase
             ]],
             'needs_referral' => true,
             'referral' => [
+                'urgency_level' => 'Routine',
                 'reason_for_referral' => 'Concurrent processing test.',
             ],
         ]);
@@ -278,12 +281,16 @@ class FollowUpConcurrencyTest extends TestCase
             ],
             'needs_referral' => true,
             'referral' => [
+                'urgency_level' => 'Routine',
                 'reason_for_referral' => 'Referral rollback test.',
             ],
         ]);
 
         $this->postRecord($this->bhw, $payload, (string) Str::uuid())
-            ->assertUnprocessable();
+            ->assertUnprocessable()
+            // Pinned: the rollback under test is the unmapped-RHU routing
+            // failure, not the DOC-14 availability gate.
+            ->assertJsonPath('message', ReferralRoutingService::MISSING_MAPPING_MESSAGE);
 
         $this->assertSame(FollowUpTask::STATE_PENDING, $task->fresh()->state);
         $this->assertNull($task->fresh()->fulfilled_at);

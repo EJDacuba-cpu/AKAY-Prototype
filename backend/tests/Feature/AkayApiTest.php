@@ -407,6 +407,7 @@ class AkayApiTest extends TestCase
     {
         $bhc = BarangayHealthCenter::create(['name' => 'Pitpitan BHC']);
         $rhu = RuralHealthUnit::create(['name' => 'Bulakan RHU']);
+        $this->seedAvailableProvider($rhu);
         $bhc->update(['rural_health_unit_id' => $rhu->id]);
         $bhw = User::create([
             'name' => 'BHW',
@@ -435,6 +436,7 @@ class AkayApiTest extends TestCase
             ->postJson('/api/referrals', [
                 'patient_id' => $patient->id,
                 'rural_health_unit_id' => $rhu->id,
+                'urgency_level' => 'Routine',
                 'reason_for_referral' => 'Needs RHU assessment.',
             ])
             ->assertCreated()
@@ -450,6 +452,7 @@ class AkayApiTest extends TestCase
     public function test_notification_read_and_clear_actions_are_persisted_and_scoped_to_user(): void
     {
         $rhu = RuralHealthUnit::create(['name' => 'Bulakan RHU']);
+        $this->seedAvailableProvider($rhu);
         $rhuStaff = User::create([
             'name' => 'RHU Staff',
             'email' => 'notifications-rhu@example.test',
@@ -537,6 +540,7 @@ class AkayApiTest extends TestCase
     {
         $bhc = BarangayHealthCenter::create(['name' => 'Pitpitan BHC']);
         $rhu = RuralHealthUnit::create(['name' => 'Bulakan RHU']);
+        $this->seedAvailableProvider($rhu);
         $bhc->update(['rural_health_unit_id' => $rhu->id]);
         $bhw = User::create([
             'name' => 'BHW',
@@ -565,6 +569,7 @@ class AkayApiTest extends TestCase
             'client_submission_id' => 'offline-draft-123',
             'patient_id' => $patient->id,
             'rural_health_unit_id' => $rhu->id,
+            'urgency_level' => 'Routine',
             'reason_for_referral' => 'Retry this same draft safely.',
         ];
 
@@ -594,6 +599,7 @@ class AkayApiTest extends TestCase
     {
         $bhc = BarangayHealthCenter::create(['name' => 'Pitpitan BHC']);
         $rhu = RuralHealthUnit::create(['name' => 'Bulakan RHU']);
+        $this->seedAvailableProvider($rhu);
         $rhuStaff = User::create([
             'name' => 'RHU Staff',
             'email' => 'received-rhu@example.test',

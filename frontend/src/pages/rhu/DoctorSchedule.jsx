@@ -1,121 +1,93 @@
 import { useEffect, useMemo, useState } from "react";
-import { Clock, Plus, Save, Stethoscope } from "lucide-react";
+import { Clock, Plus, Save, Stethoscope, UserMinus } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
-  createDoctorRecord,
-  formatExpectedAvailableAt,
-  getDoctorAvailability,
-  listenDoctorAvailabilityUpdates,
-  normalizeStatus,
-  saveDoctorAvailability,
+  AVAILABILITY_STATUSES,
+  normalizeAvailabilityStatus,
 } from "../../services/doctorAvailability";
-import { getCurrentUser } from "../../utils/auth";
+import {
+  useProviderMutations,
+  useRhuProviders,
+} from "../../hooks/useDoctorAvailability";
 
-const STATUS_OPTIONS = ["Available", "Unavailable"];
 const DEFAULT_DESIGNATION = "General Practitioner";
 
 const EMPTY_FORM = {
-  doctorName: "",
-  designation: DEFAULT_DESIGNATION,
+  name: "",
+  specialization: DEFAULT_DESIGNATION,
   availabilityStatus: "Available",
+  remarks: "",
   expectedAvailableAt: "",
 };
 
-function getDoctorId(doctor) {
-  return doctor?.doctorId || doctor?.id || "";
-}
+// datetime-local inputs need "YYYY-MM-DDTHH:mm" in local time; the server
+// sends/accepts an ISO timestamp.
+function toDatetimeLocalValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
 
-function getDoctorName(doctor) {
-  return doctor?.doctorName || doctor?.name || "";
-}
-
-function getDesignation(doctor) {
-  return (
-    doctor?.designation ||
-    doctor?.doctorType ||
-    doctor?.role ||
-    DEFAULT_DESIGNATION
-  );
-}
-
-function getDoctorStatus(doctor) {
-  return normalizeStatus(doctor?.availabilityStatus || doctor?.status);
-}
-
-function getExpectedAvailableAt(doctor) {
-  return doctor?.expectedAvailableAt || doctor?.expected_available_at || "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function formatDateTime(value) {
   if (!value) return "Not updated yet";
-
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
 
   return date.toLocaleString([], {
     month: "short",
     day: "numeric",
-    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
 }
 
-function getUpdaterName() {
-  const user = getCurrentUser();
-  return user?.name || user?.fullName || "RHU Staff";
-}
-
-function mapDoctorToForm(doctor) {
+function mapProviderToForm(provider) {
   return {
-    doctorName: getDoctorName(doctor),
-    designation: getDesignation(doctor),
-    availabilityStatus: getDoctorStatus(doctor),
-    expectedAvailableAt: getExpectedAvailableAt(doctor),
+    name: provider?.name || "",
+    specialization: provider?.specialization || DEFAULT_DESIGNATION,
+    availabilityStatus: normalizeAvailabilityStatus(
+      provider?.availabilityStatus,
+    ),
+    remarks: provider?.remarks || "",
+    expectedAvailableAt: toDatetimeLocalValue(provider?.expectedAvailableAt),
   };
 }
 
+/**
+ * DOC-20 - the RHU manages its own roster. The list is scoped server-side by
+ * FacilityAccessService (DOC-15), so this page no longer filters by facility
+ * in the browser: an RHU simply cannot receive another RHU's providers.
+ */
 export default function DoctorSchedule() {
-  const currentUser = getCurrentUser();
-  const assignedRhuId = String(
-    currentUser?.ruralHealthUnitId ||
-      currentUser?.rural_health_unit_id ||
-      currentUser?.rhuId ||
-      "",
-  );
-  const [availability, setAvailability] = useState(getDoctorAvailability);
+  const { providers, isLoading, error } = useRhuProviders();
+  const { create, update, deactivate } = useProviderMutations();
+
   const [mode, setMode] = useState("add");
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [savedNotice, setSavedNotice] = useState("");
 
-  useEffect(() => {
-    return listenDoctorAvailabilityUpdates(setAvailability);
-  }, []);
-
   const doctors = useMemo(
-    () =>
-      (availability.doctors || []).filter((doctor) => {
-        const doctorRhuId = String(
-          doctor.ruralHealthUnitId ||
-            doctor.rural_health_unit_id ||
-            doctor.rhuId ||
-            doctor.rhu_id ||
-            "",
-        );
-
-        return (
-          doctor.active !== false &&
-          Boolean(assignedRhuId) &&
-          doctorRhuId === assignedRhuId
-        );
-      }),
-    [assignedRhuId, availability.doctors],
+    () => (Array.isArray(providers) ? providers : []),
+    [providers],
   );
   const selectedDoctor =
-    doctors.find((doctor) => getDoctorId(doctor) === selectedDoctorId) || null;
+    doctors.find((doctor) => doctor.id === selectedDoctorId) || null;
+  const saving = create.isPending || update.isPending || deactivate.isPending;
+
+  // A provider deactivated in another tab must not stay selected here.
+  useEffect(() => {
+    if (selectedDoctorId && !selectedDoctor && !isLoading) {
+      setSelectedDoctorId("");
+      setMode("add");
+      setForm(EMPTY_FORM);
+    }
+  }, [selectedDoctorId, selectedDoctor, isLoading]);
 
   function showSavedNotice(message) {
     setSavedNotice(message);
@@ -124,14 +96,7 @@ export default function DoctorSchedule() {
 
   function updateForm(field, value) {
     setErrors((prev) => ({ ...prev, [field]: "" }));
-    setForm((prev) => ({
-      ...prev,
-      [field]: value,
-      expectedAvailableAt:
-        field === "availabilityStatus" && value === "Available"
-          ? ""
-          : prev.expectedAvailableAt,
-    }));
+    setForm((prev) => ({ ...prev, [field]: value }));
   }
 
   function startAddMode() {
@@ -143,114 +108,105 @@ export default function DoctorSchedule() {
 
   function selectDoctor(doctor) {
     setMode("update");
-    setSelectedDoctorId(getDoctorId(doctor));
-    setForm(mapDoctorToForm(doctor));
+    setSelectedDoctorId(doctor.id);
+    setForm(mapProviderToForm(doctor));
     setErrors({});
   }
 
   function validateForm() {
     const nextErrors = {};
-    const status = normalizeStatus(form.availabilityStatus);
 
-    if (mode === "add" && !form.doctorName.trim()) {
-      nextErrors.doctorName = "Doctor name is required.";
+    if (mode === "add" && !form.name.trim()) {
+      nextErrors.name = "Doctor name is required.";
     }
 
+    // The server holds the authoritative uniqueness rule (one active provider
+    // per name per RHU); this check only avoids a pointless round trip.
     if (
       mode === "add" &&
       doctors.some(
         (doctor) =>
-          getDoctorName(doctor).trim().toLowerCase() ===
-          form.doctorName.trim().toLowerCase(),
+          doctor.name.trim().toLowerCase() === form.name.trim().toLowerCase(),
       )
     ) {
-      nextErrors.doctorName = "A doctor with this name already exists.";
+      nextErrors.name = "A doctor with this name already exists.";
     }
 
-    if (!status) {
+    if (!AVAILABILITY_STATUSES.includes(form.availabilityStatus)) {
       nextErrors.availabilityStatus = "Availability status is required.";
-    }
-
-    if (status === "Unavailable" && !form.expectedAvailableAt) {
-      nextErrors.expectedAvailableAt =
-        "Expected available at is required when unavailable.";
     }
 
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   }
 
-  function saveDoctor(event) {
-    event.preventDefault();
-    if (!validateForm()) return;
-
-    const now = new Date().toISOString();
-    const updatedBy = getUpdaterName();
-    const status = normalizeStatus(form.availabilityStatus);
-    const nextDoctor = createDoctorRecord({
-      doctorName: form.doctorName.trim(),
-      designation: form.designation.trim() || DEFAULT_DESIGNATION,
-      availabilityStatus: status,
-      expectedAvailableAt:
-        status === "Unavailable" ? form.expectedAvailableAt : "",
-      ruralHealthUnitId: assignedRhuId,
-      rural_health_unit_id: assignedRhuId,
-      updatedAt: now,
-      updatedBy,
-    });
-    const nextAvailability = saveDoctorAvailability({
-      ...availability,
-      doctors: [...(availability.doctors || []), nextDoctor],
-      updatedAt: now,
-      updatedBy,
-    });
-
-    setAvailability(nextAvailability);
-    setMode("update");
-    setSelectedDoctorId(getDoctorId(nextDoctor));
-    setForm(mapDoctorToForm(nextDoctor));
-    showSavedNotice("Doctor record saved.");
+  function handleMutationError(error) {
+    const message =
+      error?.payload?.errors?.name?.[0] ||
+      error?.message ||
+      "The provider could not be saved. Please try again.";
+    setErrors((prev) => ({ ...prev, form: message }));
   }
 
-  function saveAvailability(event) {
+  async function saveDoctor(event) {
     event.preventDefault();
-    if (!selectedDoctor || !validateForm()) return;
+    if (!validateForm() || saving) return;
 
-    const now = new Date().toISOString();
-    const updatedBy = getUpdaterName();
-    const status = normalizeStatus(form.availabilityStatus);
-    const nextDoctors = availability.doctors.map((doctor) => {
-      if (getDoctorId(doctor) !== selectedDoctorId) return doctor;
+    try {
+      const created = await create.mutateAsync({
+        name: form.name.trim(),
+        specialization: form.specialization.trim() || DEFAULT_DESIGNATION,
+        availabilityStatus: form.availabilityStatus,
+        remarks: form.remarks.trim(),
+        expectedAvailableAt: form.expectedAvailableAt || null,
+      });
 
-      return {
-        ...doctor,
-        designation: form.designation.trim() || DEFAULT_DESIGNATION,
-        doctorType: form.designation.trim() || DEFAULT_DESIGNATION,
-        role: form.designation.trim() || DEFAULT_DESIGNATION,
-        availabilityStatus: status,
-        status,
-        expectedAvailableAt:
-          status === "Unavailable" ? form.expectedAvailableAt : "",
-        expected_available_at:
-          status === "Unavailable" ? form.expectedAvailableAt : "",
-        availabilityNote:
-          status === "Unavailable" ? form.expectedAvailableAt : "",
-        note: status === "Unavailable" ? form.expectedAvailableAt : "",
-        ruralHealthUnitId: assignedRhuId,
-        rural_health_unit_id: assignedRhuId,
-        updatedAt: now,
-        updatedBy,
-      };
-    });
-    const nextAvailability = saveDoctorAvailability({
-      ...availability,
-      doctors: nextDoctors,
-      updatedAt: now,
-      updatedBy,
-    });
+      setMode("update");
+      setSelectedDoctorId(created.id);
+      setForm(mapProviderToForm(created));
+      setErrors({});
+      showSavedNotice("Doctor record saved.");
+    } catch (error) {
+      handleMutationError(error);
+    }
+  }
 
-    setAvailability(nextAvailability);
-    showSavedNotice("Availability saved.");
+  async function saveAvailability(event) {
+    event.preventDefault();
+    if (!selectedDoctor || !validateForm() || saving) return;
+
+    try {
+      const updated = await update.mutateAsync({
+        id: selectedDoctor.id,
+        specialization: form.specialization.trim() || DEFAULT_DESIGNATION,
+        availabilityStatus: form.availabilityStatus,
+        remarks: form.remarks.trim(),
+        expectedAvailableAt: form.expectedAvailableAt || null,
+      });
+
+      setForm(mapProviderToForm(updated));
+      setErrors({});
+      showSavedNotice("Availability saved.");
+    } catch (error) {
+      handleMutationError(error);
+    }
+  }
+
+  async function deactivateDoctor() {
+    if (!selectedDoctor || saving) return;
+
+    const confirmed = window.confirm(
+      `Remove ${selectedDoctor.name} from the roster?\n\nPast referrals keep the details recorded at submission time.`,
+    );
+    if (!confirmed) return;
+
+    try {
+      await deactivate.mutateAsync(selectedDoctor.id);
+      startAddMode();
+      showSavedNotice("Doctor removed from the roster.");
+    } catch (error) {
+      handleMutationError(error);
+    }
   }
 
   return (
@@ -274,7 +230,15 @@ export default function DoctorSchedule() {
                 </p>
               </div>
 
-              {doctors.length === 0 ? (
+              {isLoading ? (
+                <div className="px-6 py-20 text-center text-[12px] text-[#94A3B8]">
+                  Loading roster...
+                </div>
+              ) : error ? (
+                <div className="px-6 py-20 text-center text-[12px] text-[#B91C1C]">
+                  The provider roster could not be loaded. Please retry.
+                </div>
+              ) : doctors.length === 0 ? (
                 <div className="px-6 py-20 text-center">
                   <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9] text-[#94A3B8]">
                     <Stethoscope size={20} />
@@ -290,9 +254,9 @@ export default function DoctorSchedule() {
                 <div className="grid gap-3 p-4 md:grid-cols-2">
                   {doctors.map((doctor) => (
                     <DoctorAvailabilityCard
-                      key={getDoctorId(doctor)}
+                      key={doctor.id}
                       doctor={doctor}
-                      isSelected={getDoctorId(doctor) === selectedDoctorId}
+                      isSelected={doctor.id === selectedDoctorId}
                       onSelect={() => selectDoctor(doctor)}
                     />
                   ))}
@@ -330,11 +294,9 @@ export default function DoctorSchedule() {
                   <FieldInput
                     label="Doctor Name"
                     required
-                    value={form.doctorName}
-                    onChange={(event) =>
-                      updateForm("doctorName", event.target.value)
-                    }
-                    error={errors.doctorName}
+                    value={form.name}
+                    onChange={(event) => updateForm("name", event.target.value)}
+                    error={errors.name}
                     placeholder="Example: Dr. Maria Santos"
                   />
                 ) : (
@@ -343,16 +305,16 @@ export default function DoctorSchedule() {
                       Selected Doctor
                     </p>
                     <p className="mt-1 truncate text-sm font-bold text-[#0F172A]">
-                      {getDoctorName(selectedDoctor)}
+                      {selectedDoctor?.name || ""}
                     </p>
                   </div>
                 )}
 
                 <FieldInput
-                  label="Designation / Role"
-                  value={form.designation}
+                  label="Specialization"
+                  value={form.specialization}
                   onChange={(event) =>
-                    updateForm("designation", event.target.value)
+                    updateForm("specialization", event.target.value)
                   }
                   placeholder={DEFAULT_DESIGNATION}
                 />
@@ -366,16 +328,23 @@ export default function DoctorSchedule() {
                   }
                   error={errors.availabilityStatus}
                 >
-                  {STATUS_OPTIONS.map((status) => (
+                  {AVAILABILITY_STATUSES.map((status) => (
                     <option key={status}>{status}</option>
                   ))}
                 </FieldSelect>
 
+                <FieldInput
+                  label="Remarks"
+                  value={form.remarks}
+                  onChange={(event) => updateForm("remarks", event.target.value)}
+                  error={errors.remarks}
+                  placeholder="Example: Covering provider, back Monday"
+                />
+
                 {form.availabilityStatus === "Unavailable" && (
                   <FieldInput
-                    label="Expected Available At"
+                    label="Expected Back (Optional Estimate)"
                     type="datetime-local"
-                    required
                     value={form.expectedAvailableAt}
                     onChange={(event) =>
                       updateForm("expectedAvailableAt", event.target.value)
@@ -384,14 +353,36 @@ export default function DoctorSchedule() {
                   />
                 )}
 
+                {errors.form && (
+                  <p className="text-[11px] font-medium text-[#B91C1C]">
+                    {errors.form}
+                  </p>
+                )}
+
                 <button
                   type="submit"
-                  disabled={mode === "update" && !selectedDoctor}
+                  disabled={saving || (mode === "update" && !selectedDoctor)}
                   className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#B91C1C] text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]"
                 >
                   <Save size={13} />
-                  {mode === "add" ? "Save Doctor" : "Save Availability"}
+                  {saving
+                    ? "Saving..."
+                    : mode === "add"
+                      ? "Save Doctor"
+                      : "Save Availability"}
                 </button>
+
+                {mode === "update" && selectedDoctor && (
+                  <button
+                    type="button"
+                    onClick={deactivateDoctor}
+                    disabled={saving}
+                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[#E5E7EB] bg-white text-xs font-semibold text-[#64748B] transition hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <UserMinus size={13} />
+                    Remove from roster
+                  </button>
+                )}
               </form>
             </section>
           </aside>
@@ -402,9 +393,8 @@ export default function DoctorSchedule() {
 }
 
 function DoctorAvailabilityCard({ doctor, isSelected, onSelect }) {
-  const status = getDoctorStatus(doctor);
+  const status = normalizeAvailabilityStatus(doctor.availabilityStatus);
   const isAvailable = status === "Available";
-  const expectedAvailableAt = getExpectedAvailableAt(doctor);
 
   return (
     <button
@@ -419,13 +409,13 @@ function DoctorAvailabilityCard({ doctor, isSelected, onSelect }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-bold text-[#0F172A]">
-            {getDoctorName(doctor)}
+            {doctor.name}
           </p>
           <p className="mt-1 text-xs font-medium text-[#64748B]">
-            {getDesignation(doctor)}
+            {doctor.specialization || DEFAULT_DESIGNATION}
           </p>
         </div>
-        <StatusBadge status={status} expectedAvailableAt={expectedAvailableAt} />
+        <StatusBadge status={status} remarks={doctor.remarks} />
       </div>
 
       <div className="mt-4 space-y-1.5 border-t border-[#F1F5F9] pt-3">
@@ -433,14 +423,9 @@ function DoctorAvailabilityCard({ doctor, isSelected, onSelect }) {
           <Clock size={11} />
           Updated {formatDateTime(doctor.updatedAt)}
         </p>
-        {doctor.updatedBy && (
-          <p className="truncate text-[10.5px] font-medium text-[#94A3B8]">
-            Updated by {doctor.updatedBy}
-          </p>
-        )}
-        {!isAvailable && expectedAvailableAt && (
+        {!isAvailable && doctor.remarks && (
           <p className="text-[11px] font-semibold text-[#B45309]">
-            Unavailable until {formatExpectedAvailableAt(expectedAvailableAt)}
+            {doctor.remarks}
           </p>
         )}
       </div>
@@ -448,7 +433,7 @@ function DoctorAvailabilityCard({ doctor, isSelected, onSelect }) {
   );
 }
 
-function StatusBadge({ status, expectedAvailableAt }) {
+function StatusBadge({ status, remarks }) {
   const isAvailable = status === "Available";
 
   return (
@@ -458,11 +443,7 @@ function StatusBadge({ status, expectedAvailableAt }) {
           ? "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"
           : "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]"
       }`}
-      title={
-        !isAvailable && expectedAvailableAt
-          ? `Unavailable until ${formatExpectedAvailableAt(expectedAvailableAt)}`
-          : status
-      }
+      title={!isAvailable && remarks ? remarks : status}
     >
       {status}
     </span>

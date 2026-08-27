@@ -17,14 +17,17 @@ class UserNotification extends Model
         'type',
         'entity_type',
         'entity_id',
+        'dedup_key',
         'is_read',
         'cleared_at',
+        'trashed_at',
         'related_referral_id',
     ];
 
     protected $casts = [
         'is_read' => 'boolean',
         'cleared_at' => 'datetime',
+        'trashed_at' => 'datetime',
     ];
 
     public function user(): BelongsTo

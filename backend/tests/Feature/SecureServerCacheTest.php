@@ -45,6 +45,8 @@ class SecureServerCacheTest extends TestCase
 
         $this->rhuA = RuralHealthUnit::create(['name' => 'Cache RHU A', 'status' => 'active']);
         $this->rhuB = RuralHealthUnit::create(['name' => 'Cache RHU B', 'status' => 'active']);
+        $this->seedAvailableProvider($this->rhuA);
+        $this->seedAvailableProvider($this->rhuB);
         $this->bhcA = BarangayHealthCenter::create([
             'name' => 'Cache BHC A',
             'status' => 'active',
@@ -289,6 +291,7 @@ class SecureServerCacheTest extends TestCase
         $this->actingAs($this->bhwA, 'sanctum')
             ->postJson('/api/referrals', [
                 'patient_id' => $patient->id,
+                'urgency_level' => 'Routine',
                 'reason_for_referral' => 'Cache aggregate invalidation test.',
             ])
             ->assertCreated();
@@ -357,6 +360,7 @@ class SecureServerCacheTest extends TestCase
         $referralId = $this->actingAs($this->bhwA, 'sanctum')
             ->postJson('/api/referrals', [
                 'patient_id' => $patient->id,
+                'urgency_level' => 'Routine',
                 'reason_for_referral' => 'Referral lifecycle cache test.',
             ])
             ->assertCreated()
@@ -396,6 +400,7 @@ class SecureServerCacheTest extends TestCase
         $noShowId = $this->actingAs($this->bhwA, 'sanctum')
             ->postJson('/api/referrals', [
                 'patient_id' => $patient->id,
+                'urgency_level' => 'Routine',
                 'reason_for_referral' => 'Overdue cache invalidation test.',
                 'referral_datetime' => now()->subDay()->toISOString(),
             ])

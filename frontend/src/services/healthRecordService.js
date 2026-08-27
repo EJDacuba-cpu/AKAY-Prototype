@@ -7,6 +7,7 @@ import {
 import { API_BASE_URL } from "../config/environment";
 import { normalizePatient } from "./patientService";
 import { createIdempotencyKey } from "../utils/idempotency";
+import { normalizeAttention } from "../utils/referralAttention";
 
 /**
  * Download the DS-TB Treatment Card (DOH Form 4b) PDF for a health record.
@@ -1018,10 +1019,9 @@ function toPayload(record = {}, { partial = false } = {}) {
             record.referral.referral_category ||
             record.referral.category ||
             null,
-          urgency_level:
-            record.referral.urgencyLevel ||
-            record.referral.urgency_level ||
-            "Normal",
+          urgency_level: normalizeAttention(
+            record.referral.urgencyLevel ?? record.referral.urgency_level,
+          ),
           reason_for_referral:
             record.referral.reasonForReferral ||
             record.referral.reason_for_referral ||
@@ -1047,6 +1047,12 @@ function toPayload(record = {}, { partial = false } = {}) {
             record.referral.preferredDoctor ||
             record.referral.preferred_doctor ||
             null,
+          preferred_provider_id:
+            record.referral.preferredProviderId ||
+            record.referral.preferred_provider_id ||
+            null,
+          acknowledged_unavailable_preference:
+            record.referral.acknowledgedUnavailablePreference === true,
           referral_datetime:
             record.referral.referralDateTime ||
             record.referral.referral_datetime ||

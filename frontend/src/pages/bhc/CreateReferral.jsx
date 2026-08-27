@@ -23,6 +23,9 @@ import {
   SoftLoadingArea,
 } from "../../components/common";
 import {
+  isNoProviderAvailableError,
+  isPreferredProviderInvalidError,
+  isPreferredProviderUnavailableError,
   createReferral,
   getReferralDestination,
   getReferralByHealthRecordId,
@@ -35,17 +38,18 @@ import {
   updateHealthRecordById,
 } from "../../services/healthRecordService";
 import { getPatients } from "../../services/patientService";
-import {
-  createDoctorAvailabilitySnapshot,
-  formatExpectedAvailableAt,
-  getDoctorAvailability,
-  listenDoctorAvailabilityUpdates,
-  normalizeStatus,
-} from "../../services/doctorAvailability";
+import { getReferralHoldById } from "../../services/referralHolds";
+import { useDoctorAvailability } from "../../hooks/useDoctorAvailability";
 import { getCurrentUser } from "../../utils/auth";
 import ReferralQrCode from "../../components/features/referrals/ReferralQrCode";
+import RhuProviderSelect from "../../components/features/referrals/RhuProviderSelect";
 import ReferralPrintSlip from "../../components/features/referrals/ReferralPrintSlip";
 import { queryKeys } from "../../utils/queryKeys";
+import {
+  ATTENTION_OPTIONS,
+  DEFAULT_ATTENTION,
+  normalizeAttention,
+} from "../../utils/referralAttention";
 import {
   createClientSubmissionId,
   createIdempotencyKey,
@@ -69,7 +73,12 @@ export default function CreateReferral() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
-  const targetRecordId = searchParams.get("recordId");
+  const resumeHoldParam = searchParams.get("resume_hold");
+  const [resumeHold, setResumeHold] = useState(null);
+  // A hold's health record resumes the form exactly like a direct recordId
+  // link would, once the hold has loaded.
+  const targetRecordId =
+    searchParams.get("recordId") || resumeHold?.healthRecordId || "";
   // Browser-persistent clinical route drafts are intentionally unsupported.
   const draftReferralContext = null;
   const draftRecordData = draftReferralContext?.formData || null;
@@ -99,7 +108,7 @@ export default function CreateReferral() {
     receivingFacility: "",
     preferredVisitDate: "",
     preferredVisitTime: "",
-    urgencyLevel: "Non-Urgent",
+    urgencyLevel: DEFAULT_ATTENTION,
     preferredRhuDoctorId: "",
     philHealthNumber: "",
     philHealthCategory: "",
@@ -123,9 +132,7 @@ export default function CreateReferral() {
   const [offlineDraftNotice, setOfflineDraftNotice] = useState(null);
   const [retryingDraft, setRetryingDraft] = useState(false);
   const officialHealthRecordSubmissionRef = useRef(null);
-  const [rhuDoctorAvailability, setRhuDoctorAvailability] = useState(() =>
-    getDoctorAvailability(),
-  );
+  const { availability: rhuDoctorAvailability } = useDoctorAvailability();
 
   useEffect(() => {
     function clearInMemorySubmissionState() {
@@ -167,10 +174,6 @@ export default function CreateReferral() {
     loadReferralContext();
   }, []);
 
-  useEffect(() => {
-    return listenDoctorAvailabilityUpdates(setRhuDoctorAvailability);
-  }, []);
-
   const loadReferralDestination = useCallback(async () => {
     setDestinationLoading(true);
     setDestinationError("");
@@ -197,6 +200,46 @@ export default function CreateReferral() {
   useEffect(() => {
     loadReferralDestination();
   }, [loadReferralDestination]);
+
+  // Resuming a DOC-14 blocked attempt (plan 4.3): the notification link is
+  // /bhc/referrals/create?resume_hold={id}. The hold only carries intent
+  // (health_record_id, urgency_level, preferred_provider_id) - the BHW
+  // reviews and submits normally, same as any other referral.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadResumeHold() {
+      if (!resumeHoldParam) {
+        setResumeHold(null);
+        return;
+      }
+
+      try {
+        const hold = await getReferralHoldById(resumeHoldParam);
+        if (!cancelled) setResumeHold(hold);
+      } catch {
+        if (!cancelled) setResumeHold(null);
+      }
+    }
+
+    loadResumeHold();
+    return () => {
+      cancelled = true;
+    };
+  }, [resumeHoldParam]);
+
+  useEffect(() => {
+    if (!resumeHold) return;
+
+    setForm((previous) => ({
+      ...previous,
+      urgencyLevel: resumeHold.urgencyLevel
+        ? normalizeAttention(resumeHold.urgencyLevel)
+        : previous.urgencyLevel,
+      preferredRhuDoctorId:
+        resumeHold.preferredProviderId || previous.preferredRhuDoctorId,
+    }));
+  }, [resumeHold]);
 
   useEffect(() => {
     if (draftRecordData) {
@@ -288,59 +331,32 @@ export default function CreateReferral() {
   const receivingRhu = referralDestination?.receivingRuralHealthUnit || null;
   const destinationReady = Boolean(receivingRhu?.id && receivingRhu?.name);
 
-  const rhuDoctors = useMemo(() => {
-    const rawDoctors = Array.isArray(rhuDoctorAvailability?.doctors)
-      ? rhuDoctorAvailability.doctors
-      : [];
+  // The roster arrives already scoped to this BHC's mapped receiving RHU
+  // (DOC-01, DOC-15), so no browser-side facility filtering is applied.
+  const rhuDoctors = useMemo(
+    () =>
+      (rhuDoctorAvailability.providers || []).map((doctor) => ({
+        id: doctor.id,
+        name: doctor.name,
+        role: doctor.specialization || "General Practitioner",
+        status: doctor.availabilityStatus,
+        note: doctor.remarks || "",
+        updatedAt: doctor.updatedAt || null,
+      })),
+    [rhuDoctorAvailability],
+  );
 
-    return rawDoctors
-      .filter((doctor) => {
-        const doctorRhuId =
-          doctor.ruralHealthUnitId ||
-          doctor.rural_health_unit_id ||
-          doctor.rhuId ||
-          doctor.rhu_id;
-
-        return Boolean(
-          doctorRhuId &&
-            receivingRhu?.id &&
-            String(doctorRhuId) === String(receivingRhu.id),
-        );
-      })
-      .map((doctor, index) => ({
-        id:
-          doctor.doctorId ||
-          doctor.id ||
-          `DOC-${String(index + 1).padStart(3, "0")}`,
-        name: doctor.doctorName || doctor.name || `Doctor ${index + 1}`,
-        role:
-          doctor.designation ||
-          doctor.doctorType ||
-          doctor.role ||
-          "General Practitioner",
-        status: normalizeStatus(doctor.availabilityStatus || doctor.status),
-        expectedAvailableAt:
-          doctor.expectedAvailableAt ||
-          doctor.expected_available_at ||
-          doctor.availabilityNote ||
-          doctor.note ||
-          "",
-        note:
-          doctor.expectedAvailableAt ||
-          doctor.expected_available_at ||
-          doctor.availabilityNote ||
-          doctor.note ||
-          "",
-        updatedAt: doctor.updatedAt || rhuDoctorAvailability?.updatedAt || null,
-      }));
-  }, [receivingRhu, rhuDoctorAvailability]);
-
-  const totalDoctorCount = rhuDoctors.length;
-  const availableDoctorCount = rhuDoctors.filter(
-    (doctor) => doctor.status === "Available",
-  ).length;
-  const doctorAvailabilityStatus =
-    availableDoctorCount > 0 ? "Available" : "Unavailable";
+  // DOC-19 counts are computed by the server and read straight through; the
+  // browser must never re-derive the DOC-14 rule.
+  const totalDoctorCount = rhuDoctorAvailability.totalCount;
+  const availableDoctorCount = rhuDoctorAvailability.availableCount;
+  const doctorAvailabilityStatus = rhuDoctorAvailability.status;
+  // DOC-14, server-computed. The client never re-derives this rule - it only
+  // mirrors it so the BHW is not invited to fill a form that cannot be sent.
+  // The authoritative check still runs again at write time.
+  const canSubmitReferral = rhuDoctorAvailability.canSubmitReferral;
+  const noProviderMessage =
+    "The receiving Rural Health Unit has no available doctor right now. This referral cannot be submitted until the RHU marks a doctor available.";
   const doctorAvailabilitySummary = `${availableDoctorCount} of ${totalDoctorCount} doctors available`;
   const selectedRhuDoctor = rhuDoctors.find(
     (doctor) => doctor.id === form.preferredRhuDoctorId,
@@ -374,6 +390,10 @@ export default function CreateReferral() {
 
   function handleContinueWithUnavailableDoctor() {
     setShowUnavailableDoctorModal(false);
+    // Resubmit carrying the acknowledgment. The server re-checks DOC-14 again
+    // on this attempt, so continuing past the warning still cannot bypass the
+    // hard block if the last available provider went away in between.
+    void confirmReferralSubmission({ acknowledgeUnavailable: true });
   }
 
   async function findExistingReferralForRecord() {
@@ -411,6 +431,11 @@ export default function CreateReferral() {
       return;
     }
 
+    if (!canSubmitReferral) {
+      setSubmissionErrorNotice(noProviderMessage);
+      return;
+    }
+
     setCheckingSubmission(true);
     try {
       const existingReferral = await findExistingReferralForRecord();
@@ -441,7 +466,7 @@ export default function CreateReferral() {
     navigate(`/bhc/referrals/${referralTarget}`);
   }
 
-  async function confirmReferralSubmission() {
+  async function confirmReferralSubmission({ acknowledgeUnavailable = false } = {}) {
     if (submitting) return;
 
     if (!destinationReady) {
@@ -469,9 +494,7 @@ export default function CreateReferral() {
     let sourceRecord = shouldCreateDraftRecord ? draftRecordData : record;
     let sourceRecordId = sourceRecord?.id || sourceRecord?._id || "";
 
-    const availabilitySnapshot = createDoctorAvailabilitySnapshot(
-      rhuDoctorAvailability,
-    );
+    const availabilitySnapshot = rhuDoctorAvailability;
     const clientSubmissionId = createClientSubmissionId();
 
     referralPayload = {
@@ -501,13 +524,8 @@ export default function CreateReferral() {
       category: referralClassification,
       classification: referralClassification,
 
-      // Urgency is chosen by BHC staff.
-      urgency: form.urgencyLevel,
-      urgencyLevel: form.urgencyLevel,
-
-      // Backward compatibility for older RHU pages that still read priority.
-      priorityLevel: form.urgencyLevel,
-      priority: form.urgencyLevel,
+      // Attention level is chosen by BHC staff (URG-01..URG-06).
+      urgencyLevel: normalizeAttention(form.urgencyLevel),
 
       // RHU doctor availability is advisory only and comes from RHU.
       doctorAvailability: doctorAvailabilityStatus,
@@ -517,17 +535,22 @@ export default function CreateReferral() {
       availableDoctorCount,
       totalDoctorCount,
       doctorAvailabilityUpdatedAt: rhuDoctorAvailability?.updatedAt || null,
-      doctorAvailabilityUpdatedBy:
-        rhuDoctorAvailability?.updatedBy || "RHU Staff",
       doctorAvailabilitySnapshot: availabilitySnapshot,
+
+      // REF-SLIP-05b - the preference is advisory; the RHU still assigns.
+      // REF-SLIP-05c - set only after the BHW saw the warning and chose to
+      // continue; the server records preference_acknowledged_at from it.
+      acknowledgedUnavailablePreference: acknowledgeUnavailable,
+
+      // Set only when this submission resumes a DOC-14 blocked attempt; the
+      // server resolves that referral_holds row on success.
+      resumeHoldId: resumeHold?.id || "",
 
       // BHC may indicate a preferred RHU doctor, but RHU can still reassign.
       preferredRhuDoctorId: selectedRhuDoctor?.id || "",
       preferredRhuDoctorName: selectedRhuDoctor?.name || "RHU to assign",
       preferredRhuDoctorRole:
-        selectedRhuDoctor?.role ||
-        rhuDoctorAvailability?.doctorType ||
-        "General Practitioner",
+        selectedRhuDoctor?.role || "General Practitioner",
       preferredRhuDoctorStatus: selectedRhuDoctor?.status || "",
       preferredRhuDoctorNote: selectedRhuDoctor?.note || "",
 
@@ -564,8 +587,7 @@ export default function CreateReferral() {
         needs_referral: true,
         referral: {
           referralCategory: referralPayload.referralCategory,
-          urgencyLevel:
-            form.urgencyLevel === "Urgent" ? "Urgent" : "Normal",
+          urgencyLevel: normalizeAttention(form.urgencyLevel),
           reasonForReferral: referralPayload.reasonForReferral,
           chiefComplaint: referralPayload.chiefComplaint,
           initialDiagnosis: referralPayload.diagnosis,
@@ -638,6 +660,45 @@ export default function CreateReferral() {
             "The server did not confirm this referral. Your form remains available in this tab. Keep this page open, check recent patient records, and retry when the connection is stable.",
           errorMessage: "",
         });
+        return;
+      }
+
+      // DOC-14 - unconditional block. Deliberately no override affordance:
+      // the BHW cannot proceed until the RHU marks a provider available.
+      // The blocked attempt was already recorded server-side by the time
+      // this response reaches the client, so the BHW is notified here
+      // rather than having to resubmit blind.
+      if (isNoProviderAvailableError(error)) {
+        setShowConfirmModal(false);
+        setSubmissionErrorNotice(
+          error?.message ||
+            "The receiving Rural Health Unit has no available doctor right now. " +
+              "This attempt has been saved — you'll be notified here when a doctor becomes available.",
+        );
+        return;
+      }
+
+      // REF-SLIP-05c (Decision A) - warn, then let the BHW continue or reselect.
+      if (isPreferredProviderUnavailableError(error)) {
+        setShowConfirmModal(false);
+        setUnavailableDoctorNotice({
+          id: error.payload?.provider?.id,
+          name: error.payload?.provider?.name,
+          role: error.payload?.provider?.specialization,
+          note: error.payload?.provider?.remarks,
+          alternatives: error.payload?.available_alternatives || [],
+        });
+        setShowUnavailableDoctorModal(true);
+        return;
+      }
+
+      if (isPreferredProviderInvalidError(error)) {
+        setShowConfirmModal(false);
+        setForm((prev) => ({ ...prev, preferredRhuDoctorId: "" }));
+        setSubmissionErrorNotice(
+          error?.message ||
+            "The selected doctor is no longer available at the receiving RHU. Please choose another.",
+        );
         return;
       }
 
@@ -802,11 +863,11 @@ export default function CreateReferral() {
         referral.referredFacility ||
         sourcePayload.receivingFacility ||
         form.receivingFacility,
-      urgencyLevel:
-        referral.urgencyLevel ||
-        referral.urgency ||
-        sourcePayload.urgencyLevel ||
-        form.urgencyLevel,
+      urgencyLevel: normalizeAttention(
+        referral.urgencyLevel ??
+          sourcePayload.urgencyLevel ??
+          form.urgencyLevel,
+      ),
       referralDateTime:
         referral.referralDateTime ||
         sourcePayload.referralDateTime ||
@@ -1134,8 +1195,8 @@ export default function CreateReferral() {
             </ModalButton>
             <ModalButton
               variant="primary"
-              onClick={confirmReferralSubmission}
-              disabled={submitting || !destinationReady}
+              onClick={() => confirmReferralSubmission()}
+              disabled={submitting || !destinationReady || !canSubmitReferral}
             >
               {submitting ? <ButtonSpinner /> : <Send size={14} />}
               {submitting
@@ -1228,10 +1289,8 @@ export default function CreateReferral() {
               Expected Available At
             </p>
             <p className="mt-1 text-xs leading-relaxed text-slate-700">
-              {unavailableDoctorNotice?.expectedAvailableAt
-                ? formatExpectedAvailableAt(
-                    unavailableDoctorNotice.expectedAvailableAt,
-                  )
+              {unavailableDoctorNotice?.note
+                ? unavailableDoctorNotice.note
                 : "Not specified."}
             </p>
           </div>
@@ -1448,13 +1507,25 @@ export default function CreateReferral() {
                 onRetry={loadReferralDestination}
               />
 
-              <RhuDoctorPreferenceSelect
-                doctors={rhuDoctors}
-                selectedDoctorId={form.preferredRhuDoctorId}
-                selectedDoctor={selectedRhuDoctor}
+              <RhuProviderSelect
+                providers={rhuDoctors}
+                selectedProviderId={form.preferredRhuDoctorId}
                 onChange={handleDoctorPreferenceChange}
               />
             </div>
+
+            {/* DOC-14 / USB-02 - state the block plainly and up front rather
+                than letting the BHW complete a form that cannot be sent. */}
+            {!canSubmitReferral && (
+              <div className="mt-3 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#B91C1C]">
+                  Referral submission unavailable
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-700">
+                  {noProviderMessage}
+                </p>
+              </div>
+            )}
 
             <SectionDivider label="Urgency Level" />
             <div className="pt-3 pb-1">
@@ -1463,23 +1534,7 @@ export default function CreateReferral() {
                 name="urgencyLevel"
                 value={form.urgencyLevel}
                 onChange={handleChange}
-                options={[
-                  {
-                    value: "Non-Urgent",
-                    title: "Non-Urgent",
-                    description: "Routine referral; patient is stable.",
-                  },
-                  {
-                    value: "Urgent",
-                    title: "Urgent",
-                    description: "Needs timely RHU assessment.",
-                  },
-                  {
-                    value: "Emergency",
-                    title: "Emergency",
-                    description: "Requires immediate RHU attention.",
-                  },
-                ]}
+                options={ATTENTION_OPTIONS}
               />
             </div>
           </FormDocument>
@@ -1901,54 +1956,6 @@ function FieldTextarea({
         rows={5}
         className="w-full resize-none rounded-lg border border-[#E5E7EB] bg-white px-3.5 py-3 text-sm leading-relaxed text-[#1F2937] outline-none transition-all placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
       />
-    </div>
-  );
-}
-
-function RhuDoctorPreferenceSelect({
-  doctors,
-  selectedDoctorId,
-  selectedDoctor,
-  onChange,
-}) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-        Preferred RHU Doctor (Optional)
-      </label>
-
-      <select
-        name="preferredRhuDoctorId"
-        value={selectedDoctorId}
-        onChange={onChange}
-        className={`h-11 w-full rounded-xl border bg-white px-4 text-sm text-slate-800 outline-none transition-all focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
-          selectedDoctor?.status === "Unavailable"
-            ? "border-amber-300"
-            : "border-slate-200"
-        }`}
-      >
-        <option value="">RHU to assign</option>
-        {doctors.map((doctor) => {
-          const unavailable = doctor.status === "Unavailable";
-          const doctorStatusLabel =
-            unavailable && doctor.expectedAvailableAt
-              ? `Unavailable until ${formatExpectedAvailableAt(
-                  doctor.expectedAvailableAt,
-                )}`
-              : doctor.status;
-
-          return (
-            <option key={doctor.id} value={doctor.id} disabled={unavailable}>
-              {doctor.name} - {doctorStatusLabel}
-            </option>
-          );
-        })}
-      </select>
-
-      <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">
-        Advisory only. RHU may assign the final attending doctor upon receiving
-        the patient.
-      </p>
     </div>
   );
 }

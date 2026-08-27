@@ -37,6 +37,7 @@ import {
   formatReferralStatus,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
+import { getReferralAttention } from "../../utils/referralAttention";
 
 const keyframes = `
 @keyframes fadeUp {
@@ -930,7 +931,11 @@ function getVerificationErrorMessage(error = {}, source = "manual") {
     return "The scanned code is not a valid AKAY referral QR code.";
   }
   if (error?.payload?.code === "QR_LOOKUP_FAILED" || source === "camera") {
-    return "This QR code is invalid, expired, revoked, or not assigned to your facility.";
+    // QRS-10 FINAL - QR validity is enforced by REVOCATION only. No expiry or
+    // TTL exists, and none is keyed to the referral date, No-Show status, or a
+    // reschedule. Claiming "expired" described a control the system does not
+    // have and never will.
+    return "This QR code is invalid, revoked, or not assigned to your facility.";
   }
   if (error?.payload?.code === "TRACKING_LOOKUP_FAILED") {
     return "This tracking ID is invalid, unavailable, or not assigned to your facility.";
@@ -1013,18 +1018,7 @@ function getReferralCategory(referral = {}) {
 }
 
 function getUrgency(referral = {}) {
-  const urgency =
-    referral.urgency ||
-    referral.urgencyLevel ||
-    referral.priorityLevel ||
-    referral.priority;
-
-  if (!urgency) return "Non-Urgent";
-  if (String(urgency).toLowerCase().includes("emergency")) return "Emergency";
-  if (String(urgency).toLowerCase().includes("urgent")) return "Urgent";
-  if (String(urgency).toLowerCase().includes("high")) return "Emergency";
-  if (String(urgency).toLowerCase().includes("medium")) return "Urgent";
-  return "Non-Urgent";
+  return getReferralAttention(referral);
 }
 
 function formatReferralDateTime(referral = {}) {

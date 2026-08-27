@@ -1,7 +1,10 @@
 <?php
 
 use App\Services\DeploymentReadinessService;
+use App\Services\FollowUpNotificationService;
 use App\Services\HealthRecordDraftPruner;
+use App\Services\NotificationPruner;
+use App\Services\ReferralHoldPruner;
 use App\Services\ReferralNoShowService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -42,6 +45,30 @@ Artisan::command('health-record-drafts:prune {--dry-run : Count eligible drafts 
     $this->info("Expired: {$result['expired']}; pruned: {$result['pruned']}.");
 })->purpose('Expire and prune health-record drafts without exposing clinical payloads');
 
+Artisan::command('referral-holds:prune {--dry-run : Count eligible holds without changing them}', function (ReferralHoldPruner $pruner) {
+    $count = $pruner->prune((bool) $this->option('dry-run'));
+
+    $this->info($this->option('dry-run')
+        ? "{$count} waiting referral hold(s) would be expired."
+        : "{$count} waiting referral hold(s) expired.");
+})->purpose('Expire referral holds nobody acted on');
+
+Artisan::command('follow-ups:mark-no-show {--dry-run : Count eligible follow-ups without changing them}', function (FollowUpNotificationService $followUps) {
+    $result = $followUps->sweep((bool) $this->option('dry-run'));
+
+    $this->info($this->option('dry-run')
+        ? "{$result['transitioned']} overdue follow-up(s) would be marked No-Show; {$result['notified']} notification(s) would be sent."
+        : "{$result['transitioned']} overdue follow-up(s) marked No-Show; {$result['notified']} notification(s) sent.");
+})->purpose('Transition overdue follow-ups to No-Show and notify BHWs, off the read path');
+
+Artisan::command('notifications:prune {--dry-run : Count eligible notifications without deleting them}', function (NotificationPruner $pruner) {
+    $count = $pruner->prune((bool) $this->option('dry-run'));
+
+    $this->info($this->option('dry-run')
+        ? "{$count} cleared/trashed notification(s) would be pruned."
+        : "{$count} cleared/trashed notification(s) pruned.");
+})->purpose('Permanently delete cleared or trashed notifications past their retention window');
+
 Schedule::command('referrals:mark-no-show')
     ->hourly()
     ->timezone(config('app.timezone'))
@@ -58,3 +85,18 @@ Schedule::command('health-record-drafts:prune')
     ->dailyAt(config('operations.scheduler.draft_prune_time'))
     ->timezone(config('app.timezone'))
     ->withoutOverlapping(config('operations.scheduler.draft_prune_overlap_minutes'));
+
+Schedule::command('referral-holds:prune')
+    ->dailyAt(config('operations.scheduler.referral_hold_prune_time'))
+    ->timezone(config('app.timezone'))
+    ->withoutOverlapping(config('operations.scheduler.referral_hold_prune_overlap_minutes'));
+
+Schedule::command('follow-ups:mark-no-show')
+    ->hourly()
+    ->timezone(config('app.timezone'))
+    ->withoutOverlapping(config('operations.scheduler.follow_up_no_show_overlap_minutes'));
+
+Schedule::command('notifications:prune')
+    ->dailyAt(config('operations.scheduler.notification_prune_time'))
+    ->timezone(config('app.timezone'))
+    ->withoutOverlapping(config('operations.scheduler.notification_prune_overlap_minutes'));

@@ -48,6 +48,8 @@ class ReferralStatusStateMachineTest extends TestCase
 
         $this->rhuA = RuralHealthUnit::create(['name' => 'Workflow RHU A', 'status' => 'active']);
         $this->rhuB = RuralHealthUnit::create(['name' => 'Workflow RHU B', 'status' => 'active']);
+        $this->seedAvailableProvider($this->rhuA);
+        $this->seedAvailableProvider($this->rhuB);
         $this->bhcA = BarangayHealthCenter::create([
             'name' => 'Workflow BHC A',
             'status' => 'active',
@@ -75,6 +77,7 @@ class ReferralStatusStateMachineTest extends TestCase
         $response = $this->actingAs($this->bhwA, 'sanctum')
             ->postJson('/api/referrals', [
                 'patient_id' => $this->patientA->id,
+                'urgency_level' => 'Routine',
                 'reason_for_referral' => 'Further RHU assessment.',
                 'status' => Referral::STATUS_COMPLETED,
             ])

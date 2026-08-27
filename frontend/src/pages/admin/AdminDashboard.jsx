@@ -21,10 +21,7 @@ import {
 import { Link } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { PageStateWrapper, RefreshingIndicator } from "../../components/common";
-import {
-  getDoctorAvailability,
-  listenDoctorAvailabilityUpdates,
-} from "../../services/doctorAvailability";
+import { useRhuProviders } from "../../hooks/useDoctorAvailability";
 import {
   loadAdminAccounts,
 } from "../../services/adminAccountsService";
@@ -36,9 +33,7 @@ import { queryKeys } from "../../utils/queryKeys";
 
 export default function AdminDashboard() {
   const [now, setNow] = useState(() => new Date());
-  const [doctorAvailability, setDoctorAvailability] = useState(() =>
-    getDoctorAvailability(),
-  );
+  const { providers: rhuProviders } = useRhuProviders();
   const {
     data: dashboardData = { accounts: [], auditLogs: [], medicineItems: [] },
     isLoading,
@@ -67,10 +62,6 @@ export default function AdminDashboard() {
   const medicineItems = dashboardData.medicineItems;
   const hasDashboardData =
     accounts.length > 0 || auditLogs.length > 0 || medicineItems.length > 0;
-
-  useEffect(() => {
-    return listenDoctorAvailabilityUpdates(setDoctorAvailability);
-  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
@@ -387,27 +378,24 @@ const recentActivities = auditLogs.slice(0, 4).map((log, index) => ({
             </div>
 
             <div className="space-y-3">
-              {doctorAvailability.doctors.length === 0 ? (
+              {rhuProviders.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-[#E8ECF0] bg-[#F8FAFC] p-4 text-xs text-[#9CA3AF]">
                   No doctor records encoded yet.
                 </div>
-              ) : doctorAvailability.doctors.map((doctor) => (
+              ) : rhuProviders.map((doctor) => (
                 <div
-                  key={doctor.doctorId || doctor.id}
+                  key={doctor.id}
                   className="rounded-lg border border-[#E8ECF0] bg-[#F8FAFC] p-4"
                 >
                   <p className="text-sm font-semibold text-[#0F172A]">
-                    {formatUserName(
-                      doctor.doctorName || doctor.name || doctor,
-                      "Doctor",
-                    )}
+                    {formatUserName(doctor.name, "Doctor")}
                   </p>
                   <p className="mt-1 text-xs text-[#6B7280]">
-                    {formatDisplayValue(doctor.doctorType || doctor.role, "RHU Doctor")}
+                    {formatDisplayValue(doctor.specialization, "RHU Doctor")}
                   </p>
                   <div className="mt-3">
                     <DoctorStatusBadge
-                      status={doctor.availabilityStatus || doctor.status}
+                      status={doctor.availabilityStatus}
                     />
                   </div>
                 </div>

@@ -13,15 +13,24 @@ import {
   clearNotificationsForUser,
   deleteNotifications as deleteStoredNotifications,
   deleteNotification as deleteStoredNotification,
+  getNotificationCounts,
   getNotificationLoadError,
   getNotificationsForUser,
+  getTrashedNotifications,
+  hasMoreNotifications as hasMoreStoredNotifications,
+  loadMoreNotifications as loadMoreStoredNotifications,
   markAllNotificationsAsRead,
   markNotificationsAsRead,
   markNotificationAsRead,
+  markNotificationsAsUnread,
   normalizeFacilityId,
   normalizeRole,
+  refreshNotificationCounts,
   refreshNotifications as fetchNotifications,
+  refreshTrashedNotifications,
+  restoreNotifications as restoreStoredNotifications,
   subscribeToNotifications,
+  trashNotifications as trashStoredNotifications,
 } from "../services/notificationService";
 import {
   getNotificationSoundEnabled,
@@ -33,17 +42,6 @@ import {
 import { SENSITIVE_SESSION_CLEARED_EVENT } from "../utils/sessionPrivacy";
 
 const NotificationContext = createContext(null);
-function applyNotificationTrashState(notifications = [], trashMap = {}) {
-  return notifications.map((notification) => {
-    const id = String(notification.id);
-    const trashedAt = trashMap[id] || "";
-    return {
-      ...notification,
-      isTrashed: Boolean(trashedAt),
-      trashedAt,
-    };
-  });
-}
 
 function getNotificationUserContext() {
   const user = getCurrentUser() || {};
@@ -59,17 +57,24 @@ export function NotificationProvider({ children }) {
   const location = useLocation();
   const [userContext, setUserContext] = useState(getNotificationUserContext);
   const [notifications, setNotifications] = useState(() =>
-    applyNotificationTrashState(
-      getNotificationsForUser(
-        userContext.role,
-        userContext.facilityId,
-        userContext.userId,
-      ),
-      {},
+    getNotificationsForUser(
+      userContext.role,
+      userContext.facilityId,
+      userContext.userId,
     ),
   );
-  const [notificationTrashMap, setNotificationTrashMap] = useState({});
+  // Decision D-5 (N10) - trashed_at is now server-truthful. Notifications
+  // returned by refreshNotifications() never carry it (the backend excludes
+  // them from the Inbox query), so no client-side re-application is needed
+  // for that list. Trash gets its own cache, fetched on demand.
+  const [trashedNotifications, setTrashedNotifications] = useState(() =>
+    getTrashedNotifications(),
+  );
+  const [notificationCounts, setNotificationCounts] = useState(() =>
+    getNotificationCounts(),
+  );
   const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [trashLoading, setTrashLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState(() =>
     getNotificationLoadError(),
   );
@@ -89,12 +94,8 @@ export function NotificationProvider({ children }) {
 
   const applyNotificationsWithAlertCheck = useCallback(
     (nextNotifications = [], { allowSound = false } = {}) => {
-      const nextWithTrashState = applyNotificationTrashState(
-        nextNotifications,
-        notificationTrashMap,
-      );
       const nextIds = new Set(
-        nextWithTrashState
+        nextNotifications
           .map((notification) => String(notification.id || ""))
           .filter(Boolean),
       );
@@ -103,7 +104,7 @@ export function NotificationProvider({ children }) {
         knownNotificationIdsRef.current = nextIds;
         hasPrimedNotificationSoundRef.current = true;
       } else {
-        const newNotifications = nextWithTrashState.filter((notification) => {
+        const newNotifications = nextNotifications.filter((notification) => {
           const id = String(notification.id || "");
           return id && !knownNotificationIdsRef.current.has(id);
         });
@@ -119,9 +120,9 @@ export function NotificationProvider({ children }) {
         }
       }
 
-      setNotifications(nextWithTrashState);
+      setNotifications(nextNotifications);
     },
-    [notificationTrashMap],
+    [],
   );
 
   const syncNotificationsFromCache = useCallback((eventDetail = {}) => {
@@ -135,11 +136,13 @@ export function NotificationProvider({ children }) {
       ),
       { allowSound: eventDetail.soundEligible === true },
     );
+    setTrashedNotifications(getTrashedNotifications());
+    setNotificationCounts(getNotificationCounts());
     setNotificationsError(getNotificationLoadError());
   }, [applyNotificationsWithAlertCheck]);
 
   const refreshNotifications = useCallback(
-    ({ force = false, maxAgeMs = 60_000, soundEligible = false } = {}) => {
+    ({ force = false, maxAgeMs = 60_000, soundEligible = false, search = "" } = {}) => {
       if (pendingFetchRef.current) return pendingFetchRef.current;
 
       const nextContext = getNotificationUserContext();
@@ -152,6 +155,7 @@ export function NotificationProvider({ children }) {
         maxAgeMs,
         soundEligible,
         identity: nextContext,
+        search,
       })
         .then((nextNotifications) => {
           if (isMountedRef.current) {
@@ -172,6 +176,38 @@ export function NotificationProvider({ children }) {
     [applyNotificationsWithAlertCheck],
   );
 
+  /** Decision D-2 - fetches the next page and appends it, the escape hatch for D-1's cap. */
+  const loadMoreNotifications = useCallback(async () => {
+    const next = await loadMoreStoredNotifications();
+    if (isMountedRef.current) setNotifications(next);
+    return next;
+  }, []);
+
+  const hasMoreNotifications = hasMoreStoredNotifications();
+
+  /** Decision D-4 - the database-backed replacement for NotificationsPage.jsx's client useMemo counts. */
+  const refreshCounts = useCallback(async () => {
+    const nextContext = getNotificationUserContext();
+    const counts = await refreshNotificationCounts(nextContext);
+    if (isMountedRef.current) setNotificationCounts(counts);
+    return counts;
+  }, []);
+
+  /** Decision D-5 - the Trash tab's real, server-backed fetch. */
+  const refreshTrash = useCallback(
+    async ({ search = "" } = {}) => {
+      setTrashLoading(true);
+      try {
+        const next = await refreshTrashedNotifications({ search });
+        if (isMountedRef.current) setTrashedNotifications(next);
+        return next;
+      } finally {
+        if (isMountedRef.current) setTrashLoading(false);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -185,7 +221,8 @@ export function NotificationProvider({ children }) {
       knownNotificationIdsRef.current = new Set();
       hasPrimedNotificationSoundRef.current = false;
       setNotifications([]);
-      setNotificationTrashMap({});
+      setTrashedNotifications([]);
+      setNotificationCounts(null);
       setNotificationsLoading(false);
       setNotificationsError(null);
       setSelectedNotif(null);
@@ -206,73 +243,86 @@ export function NotificationProvider({ children }) {
   useEffect(() => {
     if (getCurrentUser()) {
       void refreshNotifications();
+      void refreshCounts();
     }
-  }, [location.pathname, refreshNotifications]);
+  }, [location.pathname, refreshNotifications, refreshCounts]);
 
   useEffect(() => {
     return subscribeToNotifications(syncNotificationsFromCache);
   }, [syncNotificationsFromCache]);
 
   const unreadCount = useMemo(
-    () =>
-      notifications.filter(
-        (notification) => !notification.isRead && !notification.isTrashed,
-      ).length,
+    () => notifications.filter((notification) => !notification.isRead).length,
     [notifications],
   );
 
   const getLatestNotifications = useCallback(
-    () => notifications.filter((notification) => !notification.isTrashed).slice(0, 5),
+    () => notifications.slice(0, 5),
     [notifications],
   );
 
-  const moveNotificationsToTrash = useCallback((ids = []) => {
-    const normalizedIds = ids.map(String);
-    const now = new Date().toISOString();
-    setNotificationTrashMap((prev) => {
-      const next = { ...prev };
-      normalizedIds.forEach((id) => {
-        next[id] = next[id] || now;
-      });
+  /** Decision D-5 (N10) - now a real API call (via trashStoredNotifications), not just local state. */
+  const moveNotificationsToTrash = useCallback(
+    async (ids = []) => {
+      const normalizedIds = ids.map(String);
+      setNotifications((prev) =>
+        prev.filter((notification) => !normalizedIds.includes(String(notification.id))),
+      );
+      const next = await trashStoredNotifications(normalizedIds);
+      if (isMountedRef.current) {
+        setNotifications(next);
+        setTrashedNotifications(getTrashedNotifications());
+        setNotificationCounts(getNotificationCounts());
+      }
       return next;
-    });
-    setNotifications((prev) =>
-      prev.map((notification) =>
-        normalizedIds.includes(String(notification.id))
-          ? { ...notification, isTrashed: true, trashedAt: now }
-          : notification,
-      ),
-    );
-  }, []);
+    },
+    [],
+  );
 
-  const restoreNotificationsFromTrash = useCallback((ids = []) => {
-    const normalizedIds = ids.map(String);
-    setNotificationTrashMap((prev) => {
-      const next = { ...prev };
-      normalizedIds.forEach((id) => {
-        delete next[id];
-      });
+  const restoreNotificationsFromTrash = useCallback(
+    async (ids = []) => {
+      const normalizedIds = ids.map(String);
+      setTrashedNotifications((prev) =>
+        prev.filter((notification) => !normalizedIds.includes(String(notification.id))),
+      );
+      const next = await restoreStoredNotifications(normalizedIds);
+      if (isMountedRef.current) {
+        setTrashedNotifications(next);
+        setNotifications(getNotificationsForUser(
+          userContext.role,
+          userContext.facilityId,
+          userContext.userId,
+        ));
+        setNotificationCounts(getNotificationCounts());
+      }
       return next;
-    });
-    setNotifications((prev) =>
-      prev.map((notification) =>
-        normalizedIds.includes(String(notification.id))
-          ? { ...notification, isTrashed: false, trashedAt: "" }
-          : notification,
-      ),
-    );
-  }, []);
+    },
+    [userContext.facilityId, userContext.role, userContext.userId],
+  );
 
-  const markSelectedAsUnread = useCallback((ids = []) => {
-    const normalizedIds = ids.map(String);
-    setNotifications((prev) =>
-      prev.map((notification) =>
-        normalizedIds.includes(String(notification.id))
-          ? { ...notification, isRead: false, read: false }
-          : notification,
-      ),
-    );
-  }, []);
+  /** Decision D-7 (N11) - now a real API call, so it survives the next refetch instead of reverting. */
+  const markSelectedAsUnread = useCallback(
+    async (ids = []) => {
+      const normalizedIds = ids.map(String);
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          normalizedIds.includes(String(notification.id))
+            ? { ...notification, isRead: false, read: false }
+            : notification,
+        ),
+      );
+      return markNotificationsAsUnread(normalizedIds)
+        .then((nextNotifications) => {
+          if (isMountedRef.current) setNotifications(nextNotifications);
+          return nextNotifications;
+        })
+        .catch(() => {
+          void refreshNotifications({ force: true, maxAgeMs: 0 });
+          throw new Error("Unable to mark selected notifications as unread.");
+        });
+    },
+    [refreshNotifications],
+  );
 
   const setNotificationSoundEnabled = useCallback(async (enabled) => {
     const nextEnabled = Boolean(enabled);
@@ -295,11 +345,7 @@ export function NotificationProvider({ children }) {
       );
       return markNotificationAsRead(id)
         .then((nextNotifications) => {
-          if (isMountedRef.current) {
-            setNotifications(
-              applyNotificationTrashState(nextNotifications, notificationTrashMap),
-            );
-          }
+          if (isMountedRef.current) setNotifications(nextNotifications);
           return nextNotifications;
         })
         .catch(() => {
@@ -307,7 +353,7 @@ export function NotificationProvider({ children }) {
           throw new Error("Unable to mark notification as read.");
         });
     },
-    [notificationTrashMap, refreshNotifications],
+    [refreshNotifications],
   );
 
   const markSelectedAsRead = useCallback(
@@ -322,11 +368,7 @@ export function NotificationProvider({ children }) {
       );
       return markNotificationsAsRead(normalizedIds)
         .then((nextNotifications) => {
-          if (isMountedRef.current) {
-            setNotifications(
-              applyNotificationTrashState(nextNotifications, notificationTrashMap),
-            );
-          }
+          if (isMountedRef.current) setNotifications(nextNotifications);
           return nextNotifications;
         })
         .catch(() => {
@@ -334,7 +376,7 @@ export function NotificationProvider({ children }) {
           throw new Error("Unable to mark selected notifications as read.");
         });
     },
-    [notificationTrashMap, refreshNotifications],
+    [refreshNotifications],
   );
 
   const markAllAsRead = useCallback(async () => {
@@ -347,23 +389,14 @@ export function NotificationProvider({ children }) {
     );
     return markAllNotificationsAsRead(userContext.role, userContext.facilityId)
       .then((nextNotifications) => {
-        if (isMountedRef.current) {
-          setNotifications(
-            applyNotificationTrashState(nextNotifications, notificationTrashMap),
-          );
-        }
+        if (isMountedRef.current) setNotifications(nextNotifications);
         return nextNotifications;
       })
       .catch(() => {
         void refreshNotifications({ force: true, maxAgeMs: 0 });
         throw new Error("Unable to mark all notifications as read.");
       });
-  }, [
-    notificationTrashMap,
-    refreshNotifications,
-    userContext.facilityId,
-    userContext.role,
-  ]);
+  }, [refreshNotifications, userContext.facilityId, userContext.role]);
 
   const deleteNotification = useCallback(
     async (id) => {
@@ -424,12 +457,19 @@ export function NotificationProvider({ children }) {
   const value = useMemo(
     () => ({
       notifications,
+      trashedNotifications,
+      trashLoading,
+      notificationCounts,
       notificationsLoading,
       notificationsError,
       notificationSoundEnabled,
       unreadCount,
+      hasMoreNotifications,
       getLatestNotifications,
       refreshNotifications,
+      loadMoreNotifications,
+      refreshCounts,
+      refreshTrash,
       markAsRead,
       markSelectedAsRead,
       markSelectedAsUnread,
@@ -448,19 +488,26 @@ export function NotificationProvider({ children }) {
       deleteNotification,
       deleteSelected,
       getLatestNotifications,
+      hasMoreNotifications,
+      loadMoreNotifications,
       markAllAsRead,
       markAsRead,
       markSelectedAsRead,
       markSelectedAsUnread,
       moveNotificationsToTrash,
+      notificationCounts,
       notificationSoundEnabled,
       notifications,
       notificationsError,
       notificationsLoading,
+      refreshCounts,
       refreshNotifications,
+      refreshTrash,
       restoreNotificationsFromTrash,
       selectedNotif,
       setNotificationSoundEnabled,
+      trashLoading,
+      trashedNotifications,
       unreadCount,
     ],
   );

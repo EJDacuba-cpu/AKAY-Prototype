@@ -7,7 +7,6 @@ use App\Models\FollowUpTask;
 use App\Models\Patient;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
-use App\Services\FollowUpNotificationService;
 use App\Services\FollowUpTaskSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,10 +18,7 @@ class FollowUpTaskController extends Controller
     {
     }
 
-    public function index(
-        Request $request,
-        FollowUpNotificationService $followUpNotifications
-    )
+    public function index(Request $request)
     {
         abort_unless($request->user()->isBhw() || $request->user()->isAdmin(), 403);
         $data = $request->validate([
@@ -36,10 +32,11 @@ class FollowUpTaskController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
-        // Tasks are kept in step by HealthRecordController on create and update.
-        // Backfilling legacy records is a one-off job (`php artisan follow-ups:sync`),
-        // not something this read endpoint should do on every request.
-        $followUpNotifications->notifyDueForUser($request->user());
+        // Decision A1 - the No-Show transition and its notification used to
+        // run here as a side effect of this GET request
+        // (FollowUpNotificationService::notifyDueForUser()). It now runs
+        // only from the follow-ups:mark-no-show scheduled command, off this
+        // read path entirely - see FollowUpNotificationService::sweep().
 
         $query = $this->facilityAccess
             ->scopeFollowUpTasks(FollowUpTask::query(), $request->user())
