@@ -8,6 +8,7 @@ use App\Models\RhuProvider;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
 use App\Services\ProviderAvailabilityService;
+use App\Services\ReferralHoldService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -124,6 +125,10 @@ class RhuProviderController extends Controller
             // is the change that can block referral submission under DOC-14.
             $statusChanged = array_key_exists('availability_status', $data)
                 && $data['availability_status'] !== $previousStatus;
+
+            if ($statusChanged && $provider->availability_status === RhuProvider::STATUS_AVAILABLE) {
+                app(ReferralHoldService::class)->notifyWaitingHolds($provider->ruralHealthUnit);
+            }
 
             $auditLogger->log(
                 $request,

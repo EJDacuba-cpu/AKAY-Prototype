@@ -49,6 +49,10 @@ export function normalizeProvider(provider = {}) {
       provider.availability_status ?? provider.availabilityStatus,
     ),
     remarks: provider.remarks || "",
+    // Display only - an RHU-supplied estimate, never used to derive
+    // availabilityStatus or canSubmitReferral (see DoctorSchedule.jsx).
+    expectedAvailableAt:
+      provider.expected_available_at || provider.expectedAvailableAt || "",
     ruralHealthUnitId: provider.rural_health_unit_id
       ? String(provider.rural_health_unit_id)
       : "",
@@ -124,6 +128,9 @@ function toPayload(provider = {}) {
     );
   }
   if (provider.remarks !== undefined) payload.remarks = provider.remarks || null;
+  if (provider.expectedAvailableAt !== undefined) {
+    payload.expected_available_at = provider.expectedAvailableAt || null;
+  }
 
   return payload;
 }

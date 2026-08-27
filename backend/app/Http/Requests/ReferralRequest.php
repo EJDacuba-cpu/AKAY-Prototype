@@ -35,6 +35,10 @@ class ReferralRequest extends FormRequest
             'acknowledged_unavailable_preference' => ['nullable', 'boolean'],
             'referral_datetime' => ['nullable', 'date'],
             'remarks' => ['nullable', 'string'],
+            // Set when this submission resumes a DOC-14 blocked attempt
+            // (referral_holds). Ownership and waiting-status are re-checked
+            // server-side before the hold is resolved.
+            'resume_hold_id' => ['nullable', 'integer', 'exists:referral_holds,id'],
         ];
     }
 }

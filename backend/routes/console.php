@@ -2,6 +2,7 @@
 
 use App\Services\DeploymentReadinessService;
 use App\Services\HealthRecordDraftPruner;
+use App\Services\ReferralHoldPruner;
 use App\Services\ReferralNoShowService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -42,6 +43,14 @@ Artisan::command('health-record-drafts:prune {--dry-run : Count eligible drafts 
     $this->info("Expired: {$result['expired']}; pruned: {$result['pruned']}.");
 })->purpose('Expire and prune health-record drafts without exposing clinical payloads');
 
+Artisan::command('referral-holds:prune {--dry-run : Count eligible holds without changing them}', function (ReferralHoldPruner $pruner) {
+    $count = $pruner->prune((bool) $this->option('dry-run'));
+
+    $this->info($this->option('dry-run')
+        ? "{$count} waiting referral hold(s) would be expired."
+        : "{$count} waiting referral hold(s) expired.");
+})->purpose('Expire referral holds nobody acted on');
+
 Schedule::command('referrals:mark-no-show')
     ->hourly()
     ->timezone(config('app.timezone'))
@@ -58,3 +67,8 @@ Schedule::command('health-record-drafts:prune')
     ->dailyAt(config('operations.scheduler.draft_prune_time'))
     ->timezone(config('app.timezone'))
     ->withoutOverlapping(config('operations.scheduler.draft_prune_overlap_minutes'));
+
+Schedule::command('referral-holds:prune')
+    ->dailyAt(config('operations.scheduler.referral_hold_prune_time'))
+    ->timezone(config('app.timezone'))
+    ->withoutOverlapping(config('operations.scheduler.referral_hold_prune_overlap_minutes'));
