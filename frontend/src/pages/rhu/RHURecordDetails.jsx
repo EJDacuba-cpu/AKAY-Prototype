@@ -23,6 +23,7 @@ import {
   getPatientsByRole,
 } from "../../services/patients";
 import { queryKeys } from "../../utils/queryKeys";
+import { getBmiDisplayValue } from "../../components/features/health-records/recordDetailsHelpers";
 import {
   formatDisplayValue,
   formatLongDate,
@@ -1414,14 +1415,21 @@ function getVitalSignItems(record = {}) {
     vitalObject.height ||
     readTextValue([/Height:\s*([^|,]+)/i]);
 
+  const cleanWeight = cleanVitalSignValue(weightValue);
+  const cleanHeight = cleanVitalSignValue(heightValue);
+
   return [
     { label: "BP", value: cleanVitalSignValue(bpValue) },
     {
       label: "Temperature",
       value: cleanVitalSignValue(temperatureValue),
     },
-    { label: "Weight", value: cleanVitalSignValue(weightValue) },
-    { label: "Height", value: cleanVitalSignValue(heightValue) },
+    { label: "Weight", value: cleanWeight },
+    { label: "Height", value: cleanHeight },
+    {
+      label: "BMI",
+      value: getBmiDisplayValue(record, cleanWeight, cleanHeight),
+    },
   ];
 }
 

@@ -42,6 +42,19 @@ import {
   formatUserName,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
+import {
+  FP_CLIENT_TYPE_OPTIONS,
+  FP_SOURCE_OPTIONS,
+  PREVIOUS_FP_METHOD_OPTIONS,
+} from "../../utils/familyPlanning";
+import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
+import NextActionSection from "../../components/features/health-records/NextActionSection";
+import {
+  NEXT_ACTION_NONE,
+  deriveNextAction,
+  getNextActionPatch,
+  isLegacyFollowUpStatus,
+} from "../../utils/nextAction";
 import { createIdempotencyKey } from "../../utils/idempotency";
 import { SENSITIVE_SESSION_CLEARED_EVENT } from "../../utils/sessionPrivacy";
 
@@ -110,15 +123,6 @@ const RECORD_TYPE_DETAILS = {
   },
 };
 
-const FAMILY_PLANNING_CLIENT_TYPES = [
-  "New Acceptor",
-  "Current User",
-  "Returning User",
-  "Changing Method",
-  "Discontinued / Dropout",
-  "For Counseling",
-];
-
 const FAMILY_PLANNING_METHODS = [
   "DMPA / Injectable",
   "Pills",
@@ -132,18 +136,6 @@ const FAMILY_PLANNING_METHODS = [
   "Other",
 ];
 
-const FAMILY_PLANNING_PREVIOUS_METHODS = [
-  "None",
-  "Pills",
-  "Injectable",
-  "Condom",
-  "Implant",
-  "IUD",
-  "LAM",
-  "Natural Method",
-  "Other",
-];
-
 const FAMILY_PLANNING_VISIT_TYPES = [
   "Counseling",
   "Initial Visit",
@@ -154,8 +146,6 @@ const FAMILY_PLANNING_VISIT_TYPES = [
   "Referral",
   "Other",
 ];
-
-const FAMILY_PLANNING_SOURCES = ["Public", "Private", "Other"];
 
 const EMPTY_FAMILY_PLANNING_DATA = {
   clientType: "",
@@ -872,6 +862,11 @@ export default function AddHealthRecord() {
   const showFollowUpMonitoringFields =
     normalizePatientStatus(followUpStatus) === "Follow-up Required";
   const normalizedPatientStatus = normalizePatientStatus(followUpStatus);
+  const nextAction = deriveNextAction({ needsReferral, followUpStatus });
+  // See the BHC page: a legacy "Routine Monitoring" record shows as No Follow-up
+  // but is not rewritten until a card is picked.
+  const showsLegacyFollowUpStatus =
+    nextAction === NEXT_ACTION_NONE && isLegacyFollowUpStatus(followUpStatus);
   const usesCareDecisionStep = false;
   const monitoringNotesLabel =
     normalizedPatientStatus === "Completed"
@@ -1084,6 +1079,20 @@ export default function AddHealthRecord() {
         ? { concern: "", findings: "", adviceGiven: "" }
         : {}),
     }));
+  }
+
+  function handleNextActionChange(action) {
+    clearValidationError("followUpStatus");
+    const patch = getNextActionPatch(action);
+
+    setNeedsReferral(patch.needsReferral);
+    setFollowUpStatus(patch.followUpStatus);
+
+    if (patch.clearFollowUpSchedule) {
+      clearValidationError("followUpDate");
+      setFollowUpDate("");
+      if (!isFollowUp) setPatientCondition("");
+    }
   }
 
   function handlePatientStatusChange(value) {
@@ -1645,6 +1654,45 @@ export default function AddHealthRecord() {
           ? "Complete the clinical details for this visit."
           : "Search patient and choose the record type before recording a visit.";
 
+  /**
+   * One Next Action step for every program on this page, replacing the two
+   * duplicated "Follow-up & Referral" blocks.
+   *
+   * The RHU page records an onward-referral FLAG only - it has no referral form
+   * and creates no AKAY referral - so the referral narrative fields are hidden
+   * and the card keeps the original helper wording. It also has no followUpTime
+   * state, so the time input is suppressed rather than bound to nothing.
+   */
+  const nextActionSection = (
+    <NextActionSection
+      action={nextAction}
+      followUpDate={followUpDate}
+      monitoringNotes={monitoringNotes}
+      monitoringNotesLabel={monitoringNotesLabel}
+      monitoringNotesPlaceholder={monitoringNotesPlaceholder}
+      errors={validationErrors}
+      disabled={patientGateLocked}
+      showReferralFields={false}
+      showFollowUpTime={false}
+      referralTitle="Onward Referral"
+      referralBody={NEEDS_ONWARD_REFERRAL_HELPER}
+      legacyStatusNote={
+        showsLegacyFollowUpStatus ? (
+          <p className="mt-2 text-[11px] leading-relaxed text-[#64748B]">
+            This record is currently saved as &ldquo;Routine Monitoring&rdquo;.
+            It stays that way unless you choose an option above.
+          </p>
+        ) : null
+      }
+      onActionChange={handleNextActionChange}
+      onFollowUpDateChange={(value) => {
+        clearValidationError("followUpDate");
+        setFollowUpDate(value);
+      }}
+      onMonitoringNotesChange={setMonitoringNotes}
+    />
+  );
+
   function handleStepBack() {
     closeDateTimePopovers();
     if (careDecisionStep && usesCareDecisionStep) {
@@ -1954,61 +2002,80 @@ export default function AddHealthRecord() {
           </>
         )}
 
+        {/* ImmunizationVisitFields renders its own titled sections. */}
         {!patientGateLocked && isImmunization && (
-          <FormSection
-            title="Child Immunization Details"
-            subtitle="Select the vaccines given during this visit."
-            icon={<Syringe size={14} />}
-            delay={2}
-          >
+          <div className="anim-fade-up" style={stagger(2)}>
             <ImmunizationVisitFields
-              ageInfo={immunizationPatientInfo}
+              vaccineOptions={CHILD_VACCINE_OPTIONS}
               entries={immunizationVaccineEntries}
-              dateOfVisit={dateOfVisit}
               temperature={temp}
               weight={weight}
               height={height}
               breastfeedingMonitoring={immunizationData.breastfeedingMonitoring}
-            consultationNotes={consultationNotes}
-            errors={validationErrors}
-            onTemperatureChange={setTemp}
-            onWeightChange={setWeight}
-            onHeightChange={setHeight}
+              breastfeedingMonths={BREASTFEEDING_MONTHS}
+              consultationNotes={consultationNotes}
+              errors={validationErrors}
+              onTemperatureChange={setTemp}
+              onWeightChange={setWeight}
+              onHeightChange={setHeight}
               onBreastfeedingChange={handleBreastfeedingChange}
-              onEntryChange={handleVaccineEntryChange}
               onToggleVaccine={handleVaccineToggle}
               onNotesChange={setConsultationNotes}
+              ageWarning={
+                immunizationPatientInfo.mode === "unknown" ? (
+                  <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
+                    <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                    <p className="text-xs leading-relaxed">
+                      Patient age is not available. Please verify the
+                      patient&apos;s birthdate before recording immunization
+                      details.
+                    </p>
+                  </div>
+                ) : null
+              }
+              emptySelectionHint={
+                <p className="mt-4 rounded-xl border border-dashed border-[#E5E7EB] bg-white px-4 py-3 text-xs text-[#64748B]">
+                  Select at least one vaccine given during this visit, or enter
+                  remarks below if no vaccine was given.
+                </p>
+              }
+              otherVaccineSlot={immunizationVaccineEntries.map((entry, index) =>
+                entry.vaccineName === "Other" ? (
+                  <div key="other-vaccine-name" className="mt-4 max-w-md">
+                    <FieldInput
+                      label="Other Vaccine Name"
+                      required
+                      name={`vaccineEntries.${index}.customVaccineName`}
+                      error={
+                        validationErrors[
+                          `vaccineEntries.${index}.customVaccineName`
+                        ]
+                      }
+                      value={entry.customVaccineName || ""}
+                      onChange={(event) =>
+                        handleVaccineEntryChange(
+                          index,
+                          "customVaccineName",
+                          event.target.value,
+                        )
+                      }
+                      placeholder="Enter vaccine name"
+                    />
+                  </div>
+                ) : null,
+              )}
             />
-          </FormSection>
+          </div>
         )}
 
         {!patientGateLocked && !usesCareDecisionStep && isImmunization && (
           <FormSection
-            title="Follow-up & Referral"
-            subtitle="Schedule a return visit if needed and indicate if referral is required."
+            title="Next Action"
+            subtitle="Choose what should happen after this visit."
             icon={<HeartPulse size={14} />}
             delay={3}
           >
-            <div className="grid gap-4 lg:grid-cols-2">
-              <FieldInput
-                label="Next Follow-up Date"
-                type="date"
-                value={followUpDate}
-                name="followUpDate"
-                error={validationErrors.followUpDate}
-                onChange={(event) => {
-                  clearValidationError("followUpDate");
-                  setFollowUpDate(event.target.value);
-                }}
-              />
-              <YesNoRadioGroup
-                label="Needs Onward Referral?"
-                helperText={NEEDS_ONWARD_REFERRAL_HELPER}
-                name="needsReferral"
-                value={needsReferral ? "Yes" : "No"}
-                onChange={(value) => setNeedsReferral(value === "Yes")}
-              />
-            </div>
+            {nextActionSection}
           </FormSection>
         )}
 
@@ -2138,7 +2205,7 @@ export default function AddHealthRecord() {
                   }
                 >
                   <option value="">Select client type</option>
-                  {FAMILY_PLANNING_CLIENT_TYPES.map((option) => (
+                  {FP_CLIENT_TYPE_OPTIONS.map((option) => (
                     <option key={option}>{option}</option>
                   ))}
                 </FieldSelect>
@@ -2165,7 +2232,7 @@ export default function AddHealthRecord() {
                   }
                 >
                   <option value="">Select previous method</option>
-                  {FAMILY_PLANNING_PREVIOUS_METHODS.map((option) => (
+                  {PREVIOUS_FP_METHOD_OPTIONS.map((option) => (
                     <option key={option}>{option}</option>
                   ))}
                 </FieldSelect>
@@ -2189,7 +2256,7 @@ export default function AddHealthRecord() {
                   }
                 >
                   <option value="">Select source</option>
-                  {FAMILY_PLANNING_SOURCES.map((option) => (
+                  {FP_SOURCE_OPTIONS.map((option) => (
                     <option key={option}>{option}</option>
                   ))}
                 </FieldSelect>
@@ -2400,33 +2467,14 @@ export default function AddHealthRecord() {
 
             {!usesCareDecisionStep && (
             <FormSection
-              title="Follow-up & Referral"
-              subtitle="Schedule a return visit if needed and indicate if referral is required."
+              title="Next Action"
+              subtitle="Choose what should happen after this visit."
               icon={<HeartPulse size={14} />}
               delay={5}
             >
-          <LockedFormContent locked={patientGateLocked}>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <FieldInput
-              label="Next Follow-up Date"
-              type="date"
-              value={followUpDate}
-              name="followUpDate"
-              error={validationErrors.followUpDate}
-              onChange={(event) => {
-                clearValidationError("followUpDate");
-                setFollowUpDate(event.target.value);
-              }}
-            />
-            <YesNoRadioGroup
-              label="Needs Onward Referral?"
-              helperText={NEEDS_ONWARD_REFERRAL_HELPER}
-              name="needsReferral"
-              value={needsReferral ? "Yes" : "No"}
-              onChange={(value) => setNeedsReferral(value === "Yes")}
-            />
-          </div>
-          </LockedFormContent>
+              <LockedFormContent locked={patientGateLocked}>
+                {nextActionSection}
+              </LockedFormContent>
             </FormSection>
             )}
           </>
@@ -3315,276 +3363,6 @@ function MaternalClassificationWarning() {
   );
 }
 
-function ImmunizationVisitFields({
-  ageInfo,
-  entries,
-  dateOfVisit,
-  temperature,
-  weight,
-  height,
-  breastfeedingMonitoring = {},
-  consultationNotes,
-  errors = {},
-  onTemperatureChange,
-  onWeightChange,
-  onHeightChange,
-  onBreastfeedingChange,
-  onEntryChange,
-  onToggleVaccine,
-  onNotesChange,
-}) {
-  const showAgeWarning = ageInfo.mode === "unknown";
-  const selectedVaccines = new Set(entries.map((entry) => entry.vaccineName));
-
-  return (
-    <div className="space-y-5">
-      {showAgeWarning && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
-          <AlertCircle size={16} className="mt-0.5 shrink-0" />
-          <p className="text-xs leading-relaxed">
-            Patient age is not available. Please verify the patient's
-            birthdate before recording immunization details.
-          </p>
-        </div>
-      )}
-
-      <ClinicalFieldGroup title="Vaccines Given This Visit">
-        {errors.vaccineEntries && (
-          <p
-            className="mb-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-[#B91C1C]"
-            data-field="vaccineEntries"
-            tabIndex={-1}
-          >
-            {errors.vaccineEntries}
-          </p>
-        )}
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {CHILD_VACCINE_OPTIONS.map((vaccineName) => {
-            const checked = selectedVaccines.has(vaccineName);
-            return (
-              <button
-                key={vaccineName}
-                type="button"
-                onClick={() => onToggleVaccine(vaccineName, !checked)}
-                aria-pressed={checked}
-                className={`flex min-h-[46px] items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition ${
-                  checked
-                    ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#991B1B] ring-1 ring-[#B91C1C]/10"
-                    : "border-[#E8ECF0] bg-white text-[#475569] hover:border-[#FECACA] hover:bg-red-50/30"
-                }`}
-              >
-                <span
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
-                    checked ? "bg-[#B91C1C] text-white" : "bg-[#F1F5F9] text-transparent"
-                  }`}
-                >
-                  <Check size={12} strokeWidth={3} />
-                </span>
-                <span>{vaccineName}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {entries.length === 0 && (
-          <p className="mt-4 rounded-xl border border-dashed border-[#E5E7EB] bg-white px-4 py-3 text-xs text-[#64748B]">
-            Select at least one vaccine given during this visit, or enter
-            remarks below if no vaccine was given.
-          </p>
-        )}
-        {entries.map((entry, index) =>
-          entry.vaccineName === "Other" ? (
-            <div key="other-vaccine-name" className="mt-4 max-w-md">
-              <FieldInput
-                label="Other Vaccine Name"
-                required
-                name={`vaccineEntries.${index}.customVaccineName`}
-                error={errors[`vaccineEntries.${index}.customVaccineName`]}
-                value={entry.customVaccineName || ""}
-                onChange={(event) =>
-                  onEntryChange(index, "customVaccineName", event.target.value)
-                }
-                placeholder="Enter vaccine name"
-              />
-            </div>
-          ) : null,
-        )}
-        {entries.some((entry) => entry.__legacyDetailsVisible === "showLegacyDetails") && (
-          <div className="mt-4 space-y-3">
-            {entries.map((entry, index) => (
-              <div
-                key={entry.vaccineName || `vaccine-entry-${index}`}
-                className="rounded-xl border border-[#E8ECF0] bg-white p-4"
-              >
-                <p className="mb-3 text-xs font-bold text-[#1F2937]">
-                  {entry.vaccineName}
-                </p>
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {entry.vaccineName === "Other" && (
-                    <FieldInput
-                      label="Specify Vaccine"
-                      required
-                      name={`vaccineEntries.${index}.customVaccineName`}
-                      error={
-                        errors[`vaccineEntries.${index}.customVaccineName`]
-                      }
-                      value={entry.customVaccineName || ""}
-                      onChange={(event) =>
-                        onEntryChange(index, "customVaccineName", event.target.value)
-                      }
-                      placeholder="Enter vaccine name"
-                    />
-                  )}
-                  <FieldInput
-                    label="Dose"
-                    required
-                    name={`vaccineEntries.${index}.dose`}
-                    error={errors[`vaccineEntries.${index}.dose`]}
-                    value={entry.dose}
-                    onChange={(event) =>
-                      onEntryChange(index, "dose", event.target.value)
-                    }
-                    placeholder="e.g. 1st dose, 2nd dose, booster"
-                  />
-                  <FieldInput
-                    label="Date Given"
-                    type="date"
-                    required
-                    name={`vaccineEntries.${index}.dateGiven`}
-                    error={errors[`vaccineEntries.${index}.dateGiven`]}
-                    value={entry.dateGiven || dateOfVisit}
-                    onChange={(event) =>
-                      onEntryChange(index, "dateGiven", event.target.value)
-                    }
-                  />
-                  <FieldInput
-                    label="Weight"
-                    type="number"
-                    step="0.01"
-                    value={entry.weight || ""}
-                    onChange={(event) =>
-                      onEntryChange(index, "weight", event.target.value)
-                    }
-                    placeholder="kg"
-                  />
-                  <FieldInput
-                    label="Height"
-                    type="number"
-                    step="0.01"
-                    value={entry.height || ""}
-                    onChange={(event) =>
-                      onEntryChange(index, "height", event.target.value)
-                    }
-                    placeholder="cm"
-                  />
-                  <FieldInput
-                    label="Temperature"
-                    type="number"
-                    step="0.1"
-                    value={entry.temperature || ""}
-                    onChange={(event) =>
-                      onEntryChange(index, "temperature", event.target.value)
-                    }
-                    placeholder="°C"
-                  />
-                  <FieldInput
-                    label="Next Schedule Date"
-                    type="date"
-                    value={entry.nextScheduleDate}
-                    onChange={(event) =>
-                      onEntryChange(index, "nextScheduleDate", event.target.value)
-                    }
-                  />
-                  <FieldInput
-                    label="Remarks"
-                    value={entry.remarks}
-                    onChange={(event) =>
-                      onEntryChange(index, "remarks", event.target.value)
-                    }
-                    placeholder="Optional remarks"
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </ClinicalFieldGroup>
-
-      <ClinicalFieldGroup title="Basic Monitoring">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <FieldInput
-            label="Weight"
-            type="number"
-            step="0.01"
-            value={weight}
-            onChange={(event) => onWeightChange(event.target.value)}
-            placeholder="kg"
-          />
-          <FieldInput
-            label="Height"
-            type="number"
-            step="0.01"
-            value={height}
-            onChange={(event) => onHeightChange(event.target.value)}
-            placeholder="cm"
-          />
-          <FieldInput
-            label="Temperature"
-            type="number"
-            step="0.1"
-            value={temperature}
-            onChange={(event) => onTemperatureChange(event.target.value)}
-            placeholder="C"
-          />
-        </div>
-      </ClinicalFieldGroup>
-
-      <ClinicalFieldGroup title="Exclusive Breastfeeding Monitoring">
-        <p className="mb-3 text-xs leading-relaxed text-[#64748B]">
-          Select the months where exclusive breastfeeding was confirmed.
-        </p>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {BREASTFEEDING_MONTHS.map((month) => {
-            const checked =
-              breastfeedingMonitoring?.[month.key] === true ||
-              breastfeedingMonitoring?.[month.key] === "yes";
-
-            return (
-              <button
-                key={month.key}
-                type="button"
-                onClick={() => onBreastfeedingChange(month.key, !checked)}
-                aria-pressed={checked}
-                className={`flex min-h-[42px] items-center gap-2.5 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition ${
-                  checked
-                    ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#991B1B] ring-1 ring-[#B91C1C]/10"
-                    : "border-[#E8ECF0] bg-white text-[#475569] hover:border-[#FECACA] hover:bg-red-50/30"
-                }`}
-              >
-                <span
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
-                    checked ? "bg-[#B91C1C] text-white" : "bg-[#F1F5F9] text-transparent"
-                  }`}
-                >
-                  <Check size={12} strokeWidth={3} />
-                </span>
-                <span>{month.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </ClinicalFieldGroup>
-
-      <FieldTextarea
-        label="Clinical Notes / Remarks"
-        value={consultationNotes}
-        onChange={(event) => onNotesChange(event.target.value)}
-        placeholder="Write immunization notes, guardian remarks, or post-vaccination observations..."
-        rows={3}
-      />
-    </div>
-  );
-}
 function FieldInput({ label, required, error, className = "", ...props }) {
   const inputClass = error
     ? "border-[#B91C1C] bg-white ring-2 ring-[#B91C1C]/10"

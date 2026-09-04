@@ -39,6 +39,11 @@ class HealthRecord extends Model
         'idempotency_hash',
     ];
 
+    protected $appends = [
+        'outcome',
+        'outcome_sub_label',
+    ];
+
     protected $casts = [
         'date_recorded' => 'datetime',
         'vital_signs' => 'array',
@@ -88,5 +93,105 @@ class HealthRecord extends Model
     public function referrals(): HasMany
     {
         return $this->hasMany(Referral::class);
+    }
+
+    /**
+     * DOC-14 holds recorded against this record - a referral the BHW tried to
+     * send while the receiving RHU had no available provider. The referral row
+     * itself was never created, so this is the only trace of the attempt.
+     */
+    public function referralHolds(): HasMany
+    {
+        return $this->hasMany(ReferralHold::class);
+    }
+
+    /**
+     * Deliberately a second relation over the same foreign key as referrals().
+     *
+     * show() eager loads `referrals` through FacilityAccessService's scope, so
+     * that relation holds only the referrals the *viewer* may see. Deriving the
+     * outcome from it would make the same record read "Referred" for one role
+     * and "Routine" for another. This relation is never scoped.
+     */
+    public function outcomeReferrals(): HasMany
+    {
+        return $this->hasMany(Referral::class, 'health_record_id');
+    }
+
+    /**
+     * Relations the derived outcome reads. Callers listing records MUST eager
+     * load these; the accessors fall back to a query per record otherwise.
+     */
+    public const OUTCOME_RELATIONS = [
+        'outcomeReferrals:id,health_record_id,status',
+        'followUpTask:id,health_record_id,state,due_date',
+        'referralHolds:id,health_record_id,status',
+    ];
+
+    /**
+     * Resolved disposition for the records list badge.
+     *
+     * Precedence is Referred > Follow-up > Routine and is deliberately derived
+     * rather than stored: a referral can be accepted and a follow-up task can be
+     * fulfilled or cancelled long after the record row is written, so any column
+     * holding this would be stale the moment the workflow moved on.
+     */
+    public function getOutcomeAttribute(): string
+    {
+        if ($this->hasReferralDisposition()) {
+            return 'Referred';
+        }
+
+        if ($this->hasActiveFollowUp()) {
+            return 'Follow-up';
+        }
+
+        return 'Routine';
+    }
+
+    /**
+     * Secondary line under the badge. Only DOC-14 has one today: the referral
+     * never reached the RHU because no provider was available.
+     */
+    public function getOutcomeSubLabelAttribute(): ?string
+    {
+        if (! $this->hasReferralDisposition()) {
+            return null;
+        }
+
+        $holds = $this->relationLoaded('referralHolds')
+            ? $this->getRelation('referralHolds')
+            : $this->referralHolds()->get();
+
+        foreach ($holds as $hold) {
+            if ($hold->status === ReferralHold::STATUS_WAITING) {
+                return 'Awaiting Provider';
+            }
+        }
+
+        return null;
+    }
+
+    private function hasReferralDisposition(): bool
+    {
+        if ($this->needs_referral) {
+            return true;
+        }
+
+        $referrals = $this->relationLoaded('outcomeReferrals')
+            ? $this->getRelation('outcomeReferrals')
+            : $this->outcomeReferrals()->get();
+
+        return $referrals->isNotEmpty();
+    }
+
+    private function hasActiveFollowUp(): bool
+    {
+        $task = $this->relationLoaded('followUpTask')
+            ? $this->getRelation('followUpTask')
+            : $this->followUpTask()->first();
+
+        return $task !== null
+            && in_array($task->state, FollowUpTask::ACTIVE_STATES, true);
     }
 }

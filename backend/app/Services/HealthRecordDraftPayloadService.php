@@ -38,6 +38,11 @@ class HealthRecordDraftPayloadService
         'expectedDeliveryDate' => self::SCALAR,
         'aog' => self::SCALAR,
         'maternalData' => [
+            // Unknown keys are rejected by sanitizeNode() - which also runs when
+            // a draft is READ back - so a field added to the prenatal form must
+            // be listed here or draft autosave starts failing for that record
+            // type. The OB score is stored as its components (term, preterm,
+            // abortion, living, gravida, para), not as a formatted string.
             'lmp' => self::SCALAR,
             'pmp' => self::SCALAR,
             'cycleDuration' => self::SCALAR,
@@ -61,6 +66,10 @@ class HealthRecordDraftPayloadService
                 'ageRisk' => self::SCALAR,
                 'heightRisk' => self::SCALAR,
                 'grandMultipara' => self::SCALAR,
+                // Risk Code D and Risk Code E parents. The keys below each of
+                // them are their sub-conditions and predate this grouping.
+                'previousPregnancyComplications' => self::SCALAR,
+                'medicalConditions' => self::SCALAR,
                 'previousCs' => self::SCALAR,
                 'recurrentMiscarriageOrStillbirth' => self::SCALAR,
                 'postpartumHemorrhage' => self::SCALAR,
@@ -148,6 +157,9 @@ class HealthRecordDraftPayloadService
             'concern' => self::SCALAR,
             'findings' => self::SCALAR,
             'adviceGiven' => self::SCALAR,
+            // Free-text list of what was handed to the client. Separate from
+            // dispensed_medicines, which is the inventory-linked deduction.
+            'medicinesSupplies' => self::SCALAR,
         ],
         'hypertensionDiabeticData' => [
             'bp' => self::SCALAR,

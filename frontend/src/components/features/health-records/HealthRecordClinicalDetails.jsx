@@ -51,6 +51,7 @@ import {
   isDistinctRecordedValue,
   getRecordInitialActions,
   getVitalSignItems,
+  getBmiDisplayValue,
   getMaternalValue,
   getPreviousPregnancyHistory,
   getSelectedMaternalRiskLabels,
@@ -1101,7 +1102,11 @@ function MaternalPrenatalRecordDetails({
   const bp = getBloodPressureValue(record);
   const weight = formatMeasurement(getVitalField(record, "weight"), "kg");
   const height = formatMeasurement(getVitalField(record, "height"), "cm");
-  const bmi = getMaternalValue(maternal, record, ["bmi"], "");
+  // The prenatal form lets a BMI be typed in; when it was left blank fall back
+  // to the value derived from this visit's weight and height.
+  const bmi =
+    getMaternalValue(maternal, record, ["bmi"], "") ||
+    getBmiDisplayValue(record, weight, height);
   const vitalItems = getVitalSignItems(record);
   const temperature =
     vitalItems.find((item) => item.label === "Temperature")?.value || "";

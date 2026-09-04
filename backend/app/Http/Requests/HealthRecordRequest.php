@@ -133,6 +133,8 @@ class HealthRecordRequest extends FormRequest
             'family_planning_data.findings' => ['nullable', 'string'],
             'family_planning_data.adviceGiven' => ['nullable', 'string'],
             'family_planning_data.advice_given' => ['nullable', 'string'],
+            'family_planning_data.medicinesSupplies' => ['nullable', 'string'],
+            'family_planning_data.medicines_supplies' => ['nullable', 'string'],
             'tb_data' => ['nullable', 'array'],
             'tb_data.caseFinding' => ['nullable', 'array'],
             'tb_data.caseFinding.diagnosingFacility' => ['nullable', 'string', 'max:255'],

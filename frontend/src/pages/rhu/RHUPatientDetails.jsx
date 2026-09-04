@@ -20,6 +20,12 @@ import {
 } from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 import SpecializedRecordsTab from "../../components/features/records/SpecializedRecordsTab";
+import {
+  calculateBmi,
+  formatBmi,
+  getBmiCategory,
+  getLatestBmiRecord,
+} from "../../utils/bmi";
 import { getHealthRecordsByPatient } from "../../services/healthRecordService";
 import {
   getPatientByIdForRole,
@@ -153,6 +159,8 @@ export default function RHUPatientDetails() {
     () => getSpecializedRecordPrograms(records),
     [records],
   );
+  // Newest visit that measured both weight and height; BMI comes from it.
+  const latestBmiRecord = useMemo(() => getLatestBmiRecord(records), [records]);
   const specializedProgramKeys = specializedRecordPrograms
     .map(({ key }) => key)
     .join("|");
@@ -294,7 +302,10 @@ export default function RHUPatientDetails() {
       </div>
 
       {activeTab === "patient" && (
-        <PatientInformationTab patient={patient} />
+        <PatientInformationTab
+          patient={patient}
+          latestBmiRecord={latestBmiRecord}
+        />
       )}
 
       {activeTab === "records" && (
@@ -332,7 +343,14 @@ export default function RHUPatientDetails() {
   );
 }
 
-function PatientInformationTab({ patient }) {
+function PatientInformationTab({ patient, latestBmiRecord = null }) {
+  const latestBmi = latestBmiRecord
+    ? calculateBmi(latestBmiRecord.weight, latestBmiRecord.height)
+    : null;
+  // WHO adult cut-offs only; child BMI is read against percentile charts.
+  const latestBmiCategory =
+    Number.parseFloat(patient?.age) < 18 ? "" : getBmiCategory(latestBmi);
+
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div>
@@ -375,6 +393,40 @@ function PatientInformationTab({ patient }) {
                 />
               </div>
             </div>
+
+            {latestBmiRecord && (
+              <div>
+                <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0F172A]">
+                  Latest Measurements
+                </h3>
+                <div className="grid gap-x-8 gap-y-1 md:grid-cols-2">
+                  <PatientDetailItem
+                    label="Weight"
+                    value={
+                      latestBmiRecord.weight
+                        ? `${latestBmiRecord.weight} kg`
+                        : ""
+                    }
+                  />
+                  <PatientDetailItem
+                    label="Height"
+                    value={
+                      latestBmiRecord.height
+                        ? `${latestBmiRecord.height} cm`
+                        : ""
+                    }
+                  />
+                  <PatientDetailItem
+                    label="BMI"
+                    value={
+                      latestBmiCategory
+                        ? `${formatBmi(latestBmi)} (${latestBmiCategory})`
+                        : formatBmi(latestBmi)
+                    }
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </SideCard>
       </div>

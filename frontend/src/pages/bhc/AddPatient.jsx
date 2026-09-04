@@ -305,6 +305,15 @@ export function PatientRegistrationPage({
   const isEpiTargetAge =
     hasBirthDate && ageInMonths !== "" && Number(ageInMonths) <= 12;
   const showGeneralProfileFields = !isEpiTargetAge;
+  /**
+   * "Husband Information" is only meaningful for a married patient who has a
+   * husband. A married male patient has a wife, so the section is hidden and
+   * the two fields are cleared rather than submitted with stale values.
+   */
+  const showHusbandInformation =
+    showGeneralProfileFields &&
+    form.civilStatus === "Married" &&
+    form.sex !== "Male";
   const currentDate = new Date();
   const todayIso = [
     currentDate.getFullYear(),
@@ -377,7 +386,10 @@ export function PatientRegistrationPage({
     setForm((prev) => ({
       ...prev,
       [name]: value,
-      ...(name === "civilStatus" && value !== "Married"
+      // Either input can make the husband fields inapplicable: leaving
+      // Married, or switching the patient's sex to Male.
+      ...((name === "civilStatus" && value !== "Married") ||
+      (name === "sex" && value === "Male")
         ? { spouseName: "", spouseOccupation: "" }
         : {}),
       ...(name === "philHealthStatus" && value !== "With PhilHealth"
@@ -600,14 +612,10 @@ function handleBirthDateChange(valueOrEvent) {
       nhtsStatus: isEpiTargetAge ? null : form.nhtsStatus || null,
       purokArea: form.purokArea || null,
       familySerialNumber: form.familySerialNumber || null,
-      spouseName:
-        showGeneralProfileFields && form.civilStatus === "Married"
-          ? form.spouseName || null
-          : null,
-      spouseOccupation:
-        showGeneralProfileFields && form.civilStatus === "Married"
-          ? form.spouseOccupation || null
-          : null,
+      spouseName: showHusbandInformation ? form.spouseName || null : null,
+      spouseOccupation: showHusbandInformation
+        ? form.spouseOccupation || null
+        : null,
       id: isEditMode ? editPatientId : Date.now().toString(),
       name: formatFullName(form.firstName, form.middleName, form.lastName),
       ageSex: `${form.age || calculateAge(form.birthDate)} / ${form.sex}`,
@@ -865,7 +873,7 @@ function handleBirthDateChange(valueOrEvent) {
             </section>
           )}
 
-          {showGeneralProfileFields && form.civilStatus === "Married" && (
+          {showHusbandInformation && (
             <section
               className="anim-fade-up w-full min-w-0 space-y-4 py-6"
               style={stagger(2)}

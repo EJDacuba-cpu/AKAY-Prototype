@@ -4,6 +4,7 @@ import {
   formatUserName,
 } from "../../../utils/formatters";
 import { formatServiceType } from "../../../utils/healthRecordPrograms";
+import { calculateBmi, formatBmi, getBmiCategory } from "../../../utils/bmi";
 
 /* ─────────────────────────────────────────────
    Shared health-record detail helpers
@@ -637,15 +638,41 @@ export function getVitalSignItems(record = {}) {
     vitalObject.height ||
     readTextValue([/Height:\s*([^|,]+)/i]);
 
+  const cleanWeight = cleanVitalSignValue(weightValue);
+  const cleanHeight = cleanVitalSignValue(heightValue);
+
   return [
     { label: "BP", value: cleanVitalSignValue(bpValue) },
     {
       label: "Temperature",
       value: cleanVitalSignValue(temperatureValue),
     },
-    { label: "Weight", value: cleanVitalSignValue(weightValue) },
-    { label: "Height", value: cleanVitalSignValue(heightValue) },
+    { label: "Weight", value: cleanWeight },
+    { label: "Height", value: cleanHeight },
+    { label: "BMI", value: getBmiDisplayValue(record, cleanWeight, cleanHeight) },
   ];
+}
+
+/**
+ * BMI for display, derived from the weight and height on the record itself.
+ *
+ * Never stored: recomputing keeps it consistent with the two measurements it
+ * came from. The category uses WHO adult cut-offs, so it is left off for
+ * patients under 18 - child BMI is read against age-and-sex percentile charts
+ * and an adult label there would mislead. Values may still carry their units
+ * ("60 kg"), which parseFloat inside calculateBmi handles.
+ */
+export function getBmiDisplayValue(record = {}, weightValue, heightValue) {
+  const bmi = calculateBmi(weightValue, heightValue);
+  if (bmi === null) return "";
+
+  const age = Number.parseFloat(
+    record?.patient?.age ?? record?.patientAge ?? record?.age ?? "",
+  );
+  const category =
+    Number.isFinite(age) && age < 18 ? "" : getBmiCategory(bmi);
+
+  return category ? `${formatBmi(bmi)} (${category})` : formatBmi(bmi);
 }
 
 export function cleanVitalSignValue(value) {

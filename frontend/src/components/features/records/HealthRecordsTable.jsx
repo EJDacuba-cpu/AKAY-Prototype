@@ -14,12 +14,42 @@ import {
   getRecordDateValue,
   getRecordId,
   getRecordIdLabel,
+  getRecordOutcome,
+  getRecordOutcomeStyle,
+  getRecordOutcomeSubLabel,
   getRecordVisitTypeLabel,
   getServiceTypeLabel,
   isFollowUpVisitRecord,
 } from "../../../utils/healthRecordPrograms";
 
 const ITEMS_PER_PAGE = 5;
+
+/**
+ * Resolved disposition for a record. Renders nothing when the API did not send
+ * an outcome - an older cached payload, or a caller that built rows by hand -
+ * rather than guessing a value the server owns.
+ */
+function OutcomeBadge({ record }) {
+  const outcome = getRecordOutcome(record);
+  if (!outcome) return <span className="text-[#94A3B8]">-</span>;
+
+  const subLabel = getRecordOutcomeSubLabel(record);
+
+  return (
+    <div>
+      <span
+        className={`inline-flex rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${getRecordOutcomeStyle(outcome)}`}
+      >
+        {outcome}
+      </span>
+      {subLabel && (
+        <p className="mt-1 text-[10px] font-semibold text-[#94A3B8]">
+          {subLabel}
+        </p>
+      )}
+    </div>
+  );
+}
 
 function FollowUpVisitBadge() {
   return (
@@ -122,8 +152,19 @@ export default function HealthRecordsTable({
                     )}
                   />
                   <MobileRecordField
-                    label="Service Type"
+                    label="Chief Complaint"
+                    value={formatDisplayValue(
+                      record.chiefComplaint,
+                      "Not recorded",
+                    )}
+                  />
+                  <MobileRecordField
+                    label="Program"
                     value={getServiceTypeLabel(record)}
+                  />
+                  <MobileRecordField
+                    label="Outcome"
+                    value={<OutcomeBadge record={record} />}
                   />
                   <MobileRecordField
                     label="Visit Type"
@@ -162,14 +203,16 @@ export default function HealthRecordsTable({
       </div>
 
       <div className="hidden min-h-[280px] w-full flex-1 overflow-x-auto overflow-y-visible px-1 pb-2 md:block">
-        <table className="w-full min-w-[760px] border-separate border-spacing-0 text-left">
+        <table className="w-full min-w-[1020px] border-separate border-spacing-0 text-left">
           <thead>
             <tr className="bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
               <th className="whitespace-nowrap px-4 py-3">Record ID</th>
-              <th className="whitespace-nowrap px-4 py-3">Date of Visit</th>
               <th className="whitespace-nowrap px-4 py-3">Patient</th>
-              <th className="whitespace-nowrap px-4 py-3">Service Type</th>
+              <th className="whitespace-nowrap px-4 py-3">Chief Complaint</th>
+              <th className="whitespace-nowrap px-4 py-3">Program</th>
+              <th className="whitespace-nowrap px-4 py-3">Date of Visit</th>
               <th className="whitespace-nowrap px-4 py-3">Visit Type</th>
+              <th className="whitespace-nowrap px-4 py-3">Outcome</th>
               <th className="whitespace-nowrap px-4 py-3 text-right">
                 Actions
               </th>
@@ -178,7 +221,7 @@ export default function HealthRecordsTable({
           <tbody className="divide-y divide-[#F8FAFC]">
             {currentRecords.length === 0 ? (
               <DataTableEmptyState
-                colSpan={6}
+                colSpan={8}
                 icon={<FileText size={20} className="text-[#94A3B8]" />}
                 title="No Matching Records"
                 description="Try adjusting your search or filter criteria."
@@ -208,12 +251,6 @@ export default function HealthRecordsTable({
                     <td className="whitespace-nowrap px-4 py-3.5 font-mono text-xs font-bold text-[#B91C1C]">
                       {getRecordIdLabel(record)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3.5 text-[13px] font-semibold text-[#475569]">
-                      {formatDate(
-                        getRecordDateValue(record),
-                        "Not recorded",
-                      )}
-                    </td>
                     <td className="whitespace-nowrap px-4 py-3.5">
                       <p className="text-[13px] font-semibold text-[#111827]">
                         {patientName}
@@ -222,8 +259,17 @@ export default function HealthRecordsTable({
                         Patient ID #{patientId}
                       </p>
                     </td>
+                    <td className="max-w-[220px] truncate px-4 py-3.5 text-[13px] font-semibold text-[#475569]">
+                      {formatDisplayValue(record.chiefComplaint, "Not recorded")}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-[13px] font-semibold text-[#475569]">
                       {getServiceTypeLabel(record)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3.5 text-[13px] font-semibold text-[#475569]">
+                      {formatDate(
+                        getRecordDateValue(record),
+                        "Not recorded",
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-[13px] font-semibold text-[#475569]">
                       {isFollowUpVisitRecord(record) ? (
@@ -236,6 +282,9 @@ export default function HealthRecordsTable({
                       ) : (
                         getRecordVisitTypeLabel(record)
                       )}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3.5">
+                      <OutcomeBadge record={record} />
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-right">
                       <div className="relative flex justify-end">

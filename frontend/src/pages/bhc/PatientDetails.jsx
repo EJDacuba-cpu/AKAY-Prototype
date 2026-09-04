@@ -23,6 +23,12 @@ import {
   SuccessModal,
 } from "../../components/common";
 import SpecializedRecordsTab from "../../components/features/records/SpecializedRecordsTab";
+import {
+  calculateBmi,
+  formatBmi,
+  getBmiCategory,
+  getLatestBmiRecord,
+} from "../../utils/bmi";
 import { isConnectionError } from "../../services/apiClient";
 import { getFollowUpTasks } from "../../services/followUpTaskService";
 import {
@@ -39,6 +45,7 @@ import {
   formatPatientName,
 } from "../../utils/formatters";
 import {
+  getRecordDateValue,
   getRecordIdLabel,
   getServiceTypeLabel,
   getSpecializedRecordPrograms,
@@ -428,6 +435,8 @@ export default function PatientDetails() {
     patientFollowUps
       .filter((task) => isActiveFollowUpState(task.effectiveState))
       .sort((a, b) => getDateTimeValue(a) - getDateTimeValue(b))[0] || null;
+  // BMI is shown from the newest visit that measured both weight and height.
+  const latestBmiRecord = getLatestBmiRecord(records);
   const visibleRecords = showAllRecords ? records : records.slice(0, 5);
   const visibleReferrals = showAllReferrals
     ? referrals
@@ -486,6 +495,7 @@ export default function PatientDetails() {
               patient={patient}
               patientId={patientId}
               activeFollowUp={activePatientFollowUp}
+              latestBmiRecord={latestBmiRecord}
             />
 
 <section className="min-w-0">
@@ -599,7 +609,12 @@ export default function PatientDetails() {
   );
 }
 
-function QuickPatientProfile({ patient, patientId, activeFollowUp }) {
+function QuickPatientProfile({
+  patient,
+  patientId,
+  activeFollowUp,
+  latestBmiRecord = null,
+}) {
   const patientName = formatPatientName(patient, "Unnamed Patient");
   const ageSex = [
     getPatientValue(patient, ["age"], ""),
@@ -659,7 +674,52 @@ function QuickPatientProfile({ patient, patientId, activeFollowUp }) {
           value={getPatientValue(patient, ["municipality", "city"])}
         />
       </dl>
+
+      {latestBmiRecord && (
+        <QuickMeasurements record={latestBmiRecord} patient={patient} />
+      )}
     </aside>
+  );
+}
+
+/**
+ * Weight, height and derived BMI in the profile card, from the most recent
+ * visit that measured both. Sits alongside the demographics because it is the
+ * same kind of at-a-glance fact, and unlike the General tab section it stays
+ * visible while the user is on the Health Records or Referrals tabs.
+ */
+function QuickMeasurements({ record, patient }) {
+  const bmi = calculateBmi(record.weight, record.height);
+  const age = Number.parseFloat(getPatientValue(patient, ["age"], ""));
+  // WHO adult cut-offs only - child BMI is read against percentile charts.
+  const category = Number.isFinite(age) && age < 18 ? "" : getBmiCategory(bmi);
+  const measuredOn = formatLongDate(getRecordDateValue(record), "");
+
+  return (
+    <div className="mt-4 border-t border-slate-100 pt-3">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+        Latest Measurements
+      </p>
+      <dl className="mt-1 divide-y divide-slate-100">
+        <QuickDetail
+          label="Weight"
+          value={record.weight ? `${record.weight} kg` : ""}
+        />
+        <QuickDetail
+          label="Height"
+          value={record.height ? `${record.height} cm` : ""}
+        />
+        <QuickDetail
+          label="BMI"
+          value={category ? `${formatBmi(bmi)} (${category})` : formatBmi(bmi)}
+        />
+      </dl>
+      {measuredOn && (
+        <p className="mt-2 text-[10px] leading-relaxed text-slate-400">
+          Recorded {measuredOn}
+        </p>
+      )}
+    </div>
   );
 }
 

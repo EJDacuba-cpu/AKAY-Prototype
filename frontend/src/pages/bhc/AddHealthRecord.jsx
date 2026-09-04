@@ -3,33 +3,31 @@ import { useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
-  ArrowLeft,
   Check,
+  ClipboardList,
   FileClock,
   HeartPulse,
   RotateCcw,
   Save,
   Search,
+  ShieldCheck,
   Stethoscope,
   Syringe,
   Trash2,
   User,
+  Users,
   X,
+  Zap,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConnectionIssueModal,
   Drawer,
   HealthRecordFormSkeleton,
-  ModalButton,
-  ModalShell,
   NoticeModal,
   SuccessModal,
 } from "../../components/common";
-import {
-  DatePickerField,
-  TimePickerField,
-} from "../../components/common/forms/DatePickerField";
+import { DatePickerField } from "../../components/common/forms/DatePickerField";
 import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
 import InlineSpinner from "../../components/common/loading/InlineSpinner";
 import DispensedMedicinesSection from "../../components/features/medicine/DispensedMedicinesSection";
@@ -44,18 +42,39 @@ import {
 } from "../../services/healthRecordDraftService";
 import useDraftAutosave from "../../hooks/useDraftAutosave";
 import { useDoctorAvailability } from "../../hooks/useDoctorAvailability";
-import RhuProviderSelect from "../../components/features/referrals/RhuProviderSelect";
 import {
   isNoProviderAvailableError,
   isPreferredProviderInvalidError,
   isPreferredProviderUnavailableError,
 } from "../../services/referrals";
 import {
-  ATTENTION_LEVELS,
   DEFAULT_ATTENTION,
   normalizeAttention,
 } from "../../utils/referralAttention";
+import { formatDisplayTime } from "../../utils/healthRecordPrograms";
+import {
+  FP_CLIENT_TYPE_OPTIONS,
+  FP_SOURCE_OPTIONS,
+  PREVIOUS_FP_METHOD_OPTIONS,
+} from "../../utils/familyPlanning";
+import { calculateBmi, formatBmi, getBmiCategory } from "../../utils/bmi";
 import DraftSaveStatus from "../../components/features/health-records/DraftSaveStatus";
+import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
+import { ClinicalSection } from "../../components/features/health-records/fields/ClinicalFields";
+import NextActionSection from "../../components/features/health-records/NextActionSection";
+import {
+  ConsultationSetupStep,
+  FollowUpConfirmStep,
+  FollowUpSelectStep,
+  NextActionStep,
+  ProgramSelectStep,
+} from "../../components/features/health-records/wizard/HealthRecordWizardSteps";
+import {
+  NEXT_ACTION_NONE,
+  deriveNextAction,
+  getNextActionPatch,
+  isLegacyFollowUpStatus,
+} from "../../utils/nextAction";
 import TbTreatmentCardForm, {
   EMPTY_TB_DATA,
   normalizeTbData,
@@ -71,12 +90,10 @@ import {
   getFollowUpTask,
   getFollowUpTasks,
 } from "../../services/followUpTaskService";
-import { getReferralDestination } from "../../services/referrals";
 import { isConnectionError } from "../../services/apiClient";
 import { getCurrentUser } from "../../utils/auth";
 import {
   compileEpiHistory,
-  formatEpiDate,
   getEpiCode,
   getEpiCompletionState,
 } from "../../utils/epiTracking";
@@ -111,6 +128,13 @@ const keyframes = `
   .anim-drop-in    { animation: dropIn 0.18s cubic-bezier(0.22,1,0.36,1) both; }
 `;
 const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
+
+const WIZARD_SETUP = "setup";
+const WIZARD_PROGRAM = "program";
+const WIZARD_FU_SELECT = "fuSelect";
+const WIZARD_FU_CONFIRM = "fuConfirm";
+const WIZARD_FORM = "form";
+const WIZARD_NEXT = "next";
 
 const RECORD_TYPE_OPTIONS = [
   "General Consultation",
@@ -154,37 +178,41 @@ function formatDraftExpiry(value) {
   }).format(date)}`;
 }
 
+/**
+ * Display copy for the Select Program step. The KEYS are the stored
+ * classification values (RECORD_TYPE_OPTIONS) and must not change - only the
+ * titles and descriptions shown to the user live here.
+ */
 const RECORD_TYPE_DETAILS = {
   "General Consultation": {
     title: "General Consultation",
-    description:
-      "For check-ups, symptoms, diagnosis, morbidity, and notifiable cases.",
-    icon: Stethoscope,
+    description: "Common illnesses, checkups, and general complaints.",
+    icon: ClipboardList,
+  },
+  Immunization: {
+    title: "Extended Program For Immunization",
+    description: "For vaccines, child care, EPI entries, and growth monitoring.",
+    icon: ShieldCheck,
   },
   Maternal: {
-    title: "Maternal / Prenatal",
+    title: "Prenatal Care",
     description: "For prenatal, pregnancy, postpartum, and maternal monitoring.",
     icon: HeartPulse,
   },
-  Immunization: {
-    title: "Child Health / EPI",
-    description: "For vaccines, child care, EPI entries, and growth monitoring.",
-    icon: Syringe,
-  },
-  "Hypertension / Diabetic Monitoring": {
-    title: "Hypertension / Diabetic Monitoring",
-    description: "For HPN, DM, BP/FBS monitoring, medicines, and follow-up.",
-    icon: User,
-  },
   "Family Planning": {
     title: "Family Planning",
-    description: "For counseling, method provision, follow-up, and FP service visits.",
-    icon: Stethoscope,
+    description: "Contraceptive counselling and reproductive health.",
+    icon: Users,
+  },
+  "Hypertension / Diabetic Monitoring": {
+    title: "Hypertension / Diabetic",
+    description: "Monitoring and management of chronic NCDs.",
+    icon: Zap,
   },
   "TB DOTS / TB Monitoring": {
-    title: "TB DOTS / TB Monitoring",
-    description: "For TB screening, treatment monitoring, and follow-up.",
-    icon: Stethoscope,
+    title: "TB DOTS",
+    description: "Directly observed treatment for tuberculosis.",
+    icon: Syringe,
   },
 };
 
@@ -304,53 +332,6 @@ function getMorbidityDecisionFlags(status) {
   };
 }
 
-const FAMILY_PLANNING_CLIENT_TYPES = [
-  "New Acceptor",
-  "Current User",
-  "Returning User",
-  "Changing Method",
-  "Discontinued / Dropout",
-  "For Counseling",
-];
-
-const FAMILY_PLANNING_METHODS = [
-  "DMPA / Injectable",
-  "Pills",
-  "Condom",
-  "Implant",
-  "IUD",
-  "LAM",
-  "Natural Family Planning",
-  "BTL",
-  "NSV",
-  "Other",
-];
-
-const FAMILY_PLANNING_PREVIOUS_METHODS = [
-  "None",
-  "Pills",
-  "Injectable",
-  "Condom",
-  "Implant",
-  "IUD",
-  "LAM",
-  "Natural Method",
-  "Other",
-];
-
-const FAMILY_PLANNING_VISIT_TYPES = [
-  "Counseling",
-  "Initial Visit",
-  "Follow-up",
-  "Method Provided",
-  "Changing Method",
-  "Side-effect Concern",
-  "Referral",
-  "Other",
-];
-
-const FAMILY_PLANNING_SOURCES = ["Public", "Private", "Other"];
-
 const EMPTY_FAMILY_PLANNING_DATA = {
   clientType: "",
   methodUsed: "",
@@ -366,6 +347,7 @@ const EMPTY_FAMILY_PLANNING_DATA = {
   concern: "",
   findings: "",
   adviceGiven: "",
+  medicinesSupplies: "",
 };
 
 const EMPTY_HYPERTENSION_DIABETIC_DATA = {
@@ -407,6 +389,11 @@ const EMPTY_MATERNAL_DATA = {
     ageRisk: false,
     heightRisk: false,
     grandMultipara: false,
+    // Risk Code D / Risk Code E parents. The condition keys that follow are
+    // their children and predate this grouping, so existing records keep
+    // rendering unchanged.
+    previousPregnancyComplications: false,
+    medicalConditions: false,
     previousCs: false,
     recurrentMiscarriageOrStillbirth: false,
     postpartumHemorrhage: false,
@@ -441,53 +428,99 @@ const EMPTY_MATERNAL_DATA = {
   },
 };
 
-const PREGNANCY_RISK_OPTIONS = [
-  {
-    key: "ageRisk",
-    label: "Age less than 18 or greater than 35",
-  },
-  {
-    key: "heightRisk",
-    label: "Height less than 145 cm",
-  },
+/**
+ * Prenatal risk codes, as they appear on the DOH prenatal record.
+ *
+ * Risk Code D and Risk Code E are parents whose children are only recorded -
+ * and only shown - when the parent applies. Unchecking a parent clears its
+ * children so a hidden sub-condition can never be submitted.
+ */
+const PREGNANCY_RISK_CODES = [
+  { key: "ageRisk", label: "Risk Code A: Age < 18 or > 35" },
+  { key: "heightRisk", label: "Risk Code B: Height < 145 cm" },
   {
     key: "grandMultipara",
-    label: "Grand multipara / fourth baby or more",
+    label: "Risk Code C: Grand multipara / 4+ pregnancies",
   },
   {
-    key: "previousCs",
-    label: "Previous C/S",
-  },
-  {
-    key: "recurrentMiscarriageOrStillbirth",
-    label: "3 consecutive miscarriage or stillbirth",
-  },
-  {
-    key: "postpartumHemorrhage",
-    label: "Post-partum hemorrhage",
+    key: "previousPregnancyComplications",
+    label: "Risk Code D: Previous Pregnancy Complications",
+    children: [
+      { key: "previousCs", label: "Previous C/S" },
+      {
+        key: "recurrentMiscarriageOrStillbirth",
+        label: "3 consecutive miscarriages or stillbirth",
+      },
+      { key: "postpartumHemorrhage", label: "Post-partum hemorrhage (PPH)" },
+    ],
   },
 ];
 
-const MEDICAL_HISTORY_OPTIONS = [
-  { key: "tuberculosis", label: "Tuberculosis" },
-  { key: "heartDisease", label: "Heart Disease" },
-  { key: "diabetes", label: "Diabetes" },
-  { key: "bronchialAsthma", label: "Bronchial Asthma" },
-  { key: "goiter", label: "Goiter" },
+const MEDICAL_CONDITION_CODES = [
+  {
+    key: "medicalConditions",
+    label: "Risk Code E (Medical Conditions)",
+    children: [
+      { key: "tuberculosis", label: "Tuberculosis" },
+      { key: "heartDisease", label: "Heart Disease" },
+      { key: "diabetes", label: "Diabetes" },
+      { key: "bronchialAsthma", label: "Bronchial Asthma" },
+      { key: "goiter", label: "Goiter" },
+    ],
+  },
+];
+
+const OTHER_IMPORTANT_INFORMATION = [
   { key: "hypertensive", label: "Hypertensive" },
-  { key: "alcoholUser", label: "Alcohol user" },
+  { key: "alcoholUser", label: "Alcohol User" },
   { key: "smoker", label: "Smoker" },
 ];
 
-const LABORATORY_RESULT_FIELDS = [
-  { key: "hemoglobin", label: "Hemoglobin" },
-  { key: "cbc", label: "CBC" },
-  { key: "hbsag", label: "HBsAg" },
-  { key: "bloodType", label: "Blood Type" },
-  { key: "hiv", label: "HIV" },
-  { key: "syphilis", label: "Syphilis" },
-  { key: "urinalysis", label: "Urinalysis" },
+/**
+ * OB score components, recorded as separate counts rather than one string.
+ *
+ * These bind to the maternalData fields the record already stored, so the
+ * `tpal` value sent with the record ("term-preterm-abortion-living") keeps
+ * being derived from them and no new payload key is introduced.
+ */
+const OB_SCORE_TPAL_FIELDS = [
+  { key: "term", short: "T", label: "T (Term Pregnancies)", placeholder: "0" },
+  {
+    key: "preterm",
+    short: "P",
+    label: "P (Preterm Pregnancies)",
+    placeholder: "0",
+  },
+  {
+    key: "abortion",
+    short: "A",
+    label: "A (Abortions / Miscarriages)",
+    placeholder: "0",
+  },
+  { key: "living", short: "L", label: "L (Living Children)", placeholder: "0" },
 ];
+
+const OB_SCORE_GP_FIELDS = [
+  {
+    key: "gravida",
+    short: "G",
+    label: "G (Gravida - Total Pregnancies)",
+    placeholder: "1",
+  },
+  {
+    key: "para",
+    short: "P",
+    label: "P (Para - Viable Births)",
+    placeholder: "1",
+  },
+];
+
+/** "T1 P0 A0 L1" / "G2 P1" - the shorthand a clinician reads back. */
+function formatObScore(fields, values = {}) {
+  return fields
+    .map((field) => `${field.short}${values[field.key] || 0}`)
+    .join(" ");
+}
 
 const TETANUS_TOXOID_FIELDS = [
   { key: "tt1", label: "TT1 Date" },
@@ -893,6 +926,18 @@ function getAdultImmunizationMessage(age) {
   return `Immunization records are intended for child vaccination schedule entries. This patient is recorded as ${ageText} years old. Please choose another classification.`;
 }
 
+function getMaternalEligibility(patient) {
+  if (patient && isPatientMale(patient)) {
+    return {
+      eligible: false,
+      message:
+        "Prenatal Care records are for pregnant clients. This patient is recorded as male.",
+    };
+  }
+
+  return { eligible: true, message: "" };
+}
+
 function getFamilyPlanningEligibility(patient, referenceDate) {
   if (!patient) return { eligible: true };
 
@@ -994,15 +1039,25 @@ export default function AddHealthRecord() {
   const [validationErrors, setValidationErrors] = useState({});
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
-  const [setupComplete, setSetupComplete] = useState(
-    Boolean(recordId) || Boolean(preselectedPatientId && preselectedClassification),
+  // The wizard is a single ordered phase rather than a set of booleans so that
+  // "which screen am I on" has exactly one answer. Editing an existing record
+  // and the route-driven follow-up entry both open straight on the form.
+  const [wizardPhase, setWizardPhase] = useState(() =>
+    Boolean(recordId) || Boolean(preselectedPatientId && preselectedClassification)
+      ? WIZARD_FORM
+      : WIZARD_SETUP,
   );
+  const [consultationType, setConsultationType] = useState(null);
+  const [selectedFollowUpTaskId, setSelectedFollowUpTaskId] = useState("");
+  // Kept as a derived value: everything downstream (drafts, medicine warnings,
+  // the header search) only ever asked "are we past the setup screens".
+  const setupComplete =
+    wizardPhase === WIZARD_FORM || wizardPhase === WIZARD_NEXT;
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [draftsDrawerOpen, setDraftsDrawerOpen] = useState(false);
   const searchWrapperRef = useRef(null);
-  const dropdownRef = useRef(null);
   const inputRef = useRef(null);
   const classificationRef = useRef(null);
 
@@ -1039,15 +1094,11 @@ export default function AddHealthRecord() {
   const [patientCondition, setPatientCondition] = useState("Improving");
   const [careDecisionStep, setCareDecisionStep] = useState(false);
   const [needsReferral, setNeedsReferral] = useState(false);
-  const [referralDetailsStep, setReferralDetailsStep] = useState(false);
   // Same server-backed source the BHC dashboard and CreateReferral use.
   const { availability: rhuDoctorAvailability } = useDoctorAvailability();
-  const [pendingReferralDraft, setPendingReferralDraft] = useState(null);
-  const [referralValidationErrors, setReferralValidationErrors] = useState({});
-  const [referralDestination, setReferralDestination] = useState(null);
-  const [referralDestinationLoading, setReferralDestinationLoading] =
-    useState(false);
-  const [referralDestinationError, setReferralDestinationError] = useState("");
+  // The last referral submission, kept in a ref so the Decision A retry can
+  // resubmit the exact same payload without re-deriving it from form state.
+  const lastReferralAttemptRef = useRef(null);
   const [referralForm, setReferralForm] = useState({
     receivingFacility: "",
     urgencyLevel: DEFAULT_ATTENTION,
@@ -1116,7 +1167,6 @@ export default function AddHealthRecord() {
     function clearInMemorySubmissionState() {
       officialSubmissionRef.current = null;
       setLastFailedSubmit(null);
-      setPendingReferralDraft(null);
       setConnectionIssue(null);
       setHealthRecordDrafts([]);
       setActiveDraft(null);
@@ -1154,8 +1204,6 @@ export default function AddHealthRecord() {
   const [routeLinkedFollowUpTask, setRouteLinkedFollowUpTask] = useState(null);
   const [autoLinkedFollowUpTask, setAutoLinkedFollowUpTask] = useState(null);
   const [activePatientFollowUps, setActivePatientFollowUps] = useState([]);
-  const [dismissedFollowUpPatientId, setDismissedFollowUpPatientId] =
-    useState("");
   const [activeFollowUpLookup, setActiveFollowUpLookup] = useState({
     key: "",
     isChecking: false,
@@ -1173,41 +1221,9 @@ export default function AddHealthRecord() {
     [rhuDoctorAvailability],
   );
   // DOC-14 is computed by the server; the client only mirrors it.
-  const canSubmitReferral = rhuDoctorAvailability.canSubmitReferral;
   const noProviderMessage =
     "The receiving Rural Health Unit has no available doctor right now. This referral cannot be submitted until the RHU marks a doctor available.";
 
-  const loadReferralDestination = useCallback(async () => {
-    setReferralDestinationLoading(true);
-    setReferralDestinationError("");
-
-    try {
-      const destination = await getReferralDestination();
-      setReferralDestination(destination);
-      setReferralForm((previous) => ({
-        ...previous,
-        receivingFacility: destination.receivingRuralHealthUnit.name,
-      }));
-    } catch (error) {
-      setReferralDestination(null);
-      setReferralForm((previous) => ({
-        ...previous,
-        receivingFacility: "",
-      }));
-      setReferralDestinationError(
-        error?.message ||
-          "Unable to load the receiving Rural Health Unit. Please try again.",
-      );
-    } finally {
-      setReferralDestinationLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (referralDetailsStep) {
-      loadReferralDestination();
-    }
-  }, [loadReferralDestination, referralDetailsStep]);
 
   useEffect(() => {
     if (!isOrphanFollowUpRequest) return undefined;
@@ -1510,7 +1526,9 @@ export default function AddHealthRecord() {
         if (task.healthRecord) {
           setFollowUpRecord(task.healthRecord);
         }
-        setSetupComplete(true);
+        setConsultationType("followup");
+        setSelectedFollowUpTaskId(String(task.id));
+        setWizardPhase(WIZARD_FORM);
       } catch {
         if (active) setRouteLinkedFollowUpTask(null);
       }
@@ -1552,11 +1570,6 @@ export default function AddHealthRecord() {
   const visiblePatientLimit = normalizedSearch ? 8 : 6;
   const filteredPatients = matchingPatients.slice(0, visiblePatientLimit);
 
-  const selectedPatientLabel = selectedPatient
-    ? getPatientSearchLabel(selectedPatient)
-    : "";
-  const patientSearchInputValue =
-    dropdownOpen || !selectedPatientId ? searchTerm : selectedPatientLabel;
   const visitType = isFollowUp ? "follow_up_visit" : "initial_consultation";
   const followUpPatientName =
     getPatientName(selectedPatient) ||
@@ -1644,12 +1657,6 @@ export default function AddHealthRecord() {
     setSearchExpanded(false);
   }
 
-  function openHeaderSearch() {
-    setSearchTerm("");
-    setDropdownOpen(false);
-    setHighlightIndex(-1);
-    setSearchExpanded(true);
-  }
 
   function resetClassificationSpecificState() {
     setHealthRecordType("");
@@ -1670,12 +1677,13 @@ export default function AddHealthRecord() {
     clearValidationError("selectedPatientId");
     if (id !== selectedPatientId) {
       resetClassificationSpecificState();
-      setSetupComplete(false);
+      setWizardPhase(WIZARD_SETUP);
+      setConsultationType(null);
+      setSelectedFollowUpTaskId("");
       setCareDecisionStep(false);
       setNeedsReferral(false);
       setAutoLinkedFollowUpTask(null);
       setActivePatientFollowUps([]);
-      setDismissedFollowUpPatientId("");
     }
     setSelectedPatientId(id);
     setSearchTerm("");
@@ -1684,34 +1692,7 @@ export default function AddHealthRecord() {
     setSearchExpanded(false);
   }
 
-  function clearSelectedPatient() {
-    setSelectedPatientId("");
-    resetClassificationSpecificState();
-    setSetupComplete(false);
-    setCareDecisionStep(false);
-    setNeedsReferral(false);
-    setAutoLinkedFollowUpTask(null);
-    setActivePatientFollowUps([]);
-    setDismissedFollowUpPatientId("");
-    setSearchTerm("");
-    setDropdownOpen(true);
-    requestAnimationFrame(() => inputRef.current?.focus());
-  }
 
-  function handlePatientSearchChange(event) {
-    if (selectedPatientId) {
-      setSelectedPatientId("");
-      resetClassificationSpecificState();
-      setSetupComplete(false);
-      setCareDecisionStep(false);
-      setNeedsReferral(false);
-      setAutoLinkedFollowUpTask(null);
-      setActivePatientFollowUps([]);
-      setDismissedFollowUpPatientId("");
-    }
-    setSearchTerm(event.target.value);
-    setDropdownOpen(true);
-  }
 
   const normalizedHealthRecordType = normalizeRecordType(healthRecordType);
   const activeFollowUpLookupKey =
@@ -1763,12 +1744,15 @@ export default function AddHealthRecord() {
     (followUpPatientHasMaternalMismatch ||
       (!isFollowUpVisitMode && selectedPatientSexMissing));
   const normalizedPatientStatus = normalizePatientStatus(followUpStatus);
-  const followUpDecisionValue =
-    normalizedPatientStatus === "Completed"
-      ? "No Further Follow-up Required"
-      : normalizedPatientStatus;
   const showFollowUpMonitoringFields =
     normalizedPatientStatus === "Follow-up Required" && !needsReferral;
+  const nextAction = deriveNextAction({ needsReferral, followUpStatus });
+  // A record saved before the Next Action step existed can hold "Routine
+  // Monitoring", which no card represents. It displays as No Follow-up, but the
+  // stored status is left alone until the user actually picks a card - see
+  // handleNextActionChange.
+  const showsLegacyFollowUpStatus =
+    nextAction === NEXT_ACTION_NONE && isLegacyFollowUpStatus(followUpStatus);
   const usesCareDecisionStep = false;
   const immunizationPatientInfo = getImmunizationPatientMode(
     selectedPatient,
@@ -1843,7 +1827,6 @@ export default function AddHealthRecord() {
       hfmdSurveillance,
       needsReferral,
       careDecisionStep,
-      referralDetailsStep,
       expectedDeliveryDate,
       aog,
       maternalData: {
@@ -1962,6 +1945,7 @@ export default function AddHealthRecord() {
         "concern",
         "findings",
         "adviceGiven",
+        "medicinesSupplies",
       ]),
       hypertensionDiabeticData: pickDraftFields(hypertensionDiabeticData, [
         "bp",
@@ -2017,7 +2001,6 @@ export default function AddHealthRecord() {
     setHfmdSurveillance(Boolean(payload.hfmdSurveillance));
     setNeedsReferral(Boolean(payload.needsReferral));
     setCareDecisionStep(Boolean(payload.careDecisionStep));
-    setReferralDetailsStep(Boolean(payload.referralDetailsStep));
     setExpectedDeliveryDate(payload.expectedDeliveryDate || "");
     setAog(payload.aog || "");
     setMaternalData(mergeMaternalData(payload.maternalData));
@@ -2064,9 +2047,8 @@ export default function AddHealthRecord() {
     setDraftMedicineWarnings(Array.from(new Set(warnings)));
     setActiveDraft({ id: draft.id, version: draft.version });
     setDraftSavedAt(draft.lastSavedAt);
-    setSetupComplete(true);
+    setWizardPhase(WIZARD_FORM);
     setValidationErrors({});
-    setReferralValidationErrors({});
   }
 
   const handleDraftAutosaved = useCallback((saved) => {
@@ -2084,7 +2066,7 @@ export default function AddHealthRecord() {
     ? buildHealthRecordDraftPayload()
     : null;
   // Entering the referral/care-decision sub-steps flushes an immediate save.
-  const draftAutosaveSectionKey = `${normalizedHealthRecordType}|${referralDetailsStep}|${careDecisionStep}|${needsReferral}`;
+  const draftAutosaveSectionKey = `${normalizedHealthRecordType}|${wizardPhase}|${needsReferral}`;
   const draftIdentity = useMemo(
     () =>
       activeDraft
@@ -2284,26 +2266,15 @@ export default function AddHealthRecord() {
     selectedPatientId,
   ]);
 
-  function startNewConsultation() {
-    setDismissedFollowUpPatientId(String(selectedPatientId));
-    setAutoLinkedFollowUpTask(null);
-    setHealthRecordType("");
-    setSetupComplete(false);
-    window.requestAnimationFrame(() =>
-      classificationRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      }),
-    );
-  }
 
   function recordScheduledFollowUp(task) {
     const serviceType = getFollowUpTaskServiceType(task);
     setAutoLinkedFollowUpTask(task);
     setFollowUpRecord(task.healthRecord || null);
     setHealthRecordType(serviceType);
-    setDismissedFollowUpPatientId(String(selectedPatientId));
-    setSetupComplete(true);
+    setSelectedFollowUpTaskId(String(task.id));
+    setConsultationType("followup");
+    setWizardPhase(WIZARD_FORM);
   }
 
   useEffect(() => {
@@ -2371,12 +2342,11 @@ export default function AddHealthRecord() {
     `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | ` +
     `Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
 
-  const maternalTpalScore = [
-    maternalData.term || 0,
-    maternalData.preterm || 0,
-    maternalData.abortion || 0,
-    maternalData.living || 0,
-  ].join("-");
+  const maternalTpalPreview = formatObScore(OB_SCORE_TPAL_FIELDS, maternalData);
+  const maternalGravidaParaPreview = formatObScore(
+    OB_SCORE_GP_FIELDS,
+    maternalData,
+  );
 
   function handleClassificationSelect(nextType) {
     clearValidationError("healthRecordType");
@@ -2402,6 +2372,19 @@ export default function AddHealthRecord() {
       return;
     }
 
+    // The card is rendered disabled for a male patient; this is the guard for
+    // every other path into the classification (drafts, route params, edit).
+    if (normalizedNextType === "Maternal") {
+      const maternalEligibility = getMaternalEligibility(selectedPatient);
+      if (!maternalEligibility.eligible) {
+        setNoticeModal({
+          title: "Prenatal Care Unavailable",
+          message: `${maternalEligibility.message} Please choose another program.`,
+        });
+        return;
+      }
+    }
+
     if (normalizedNextType !== normalizedHealthRecordType) {
       setMaternalData(EMPTY_MATERNAL_DATA);
       setDispensedMedicines([]);
@@ -2416,35 +2399,6 @@ export default function AddHealthRecord() {
     setHealthRecordType(nextType);
   }
 
-  function handleProceedFromSetup() {
-    closeDateTimePopovers();
-
-    if (!selectedPatientId) {
-      setValidationErrors((current) => ({
-        ...current,
-        selectedPatientId: "Please select a patient first before proceeding.",
-      }));
-      setSearchExpanded(true);
-      setDropdownOpen(true);
-      window.requestAnimationFrame(() => inputRef.current?.focus());
-      return;
-    }
-
-    if (!normalizedHealthRecordType) {
-      setValidationErrorsAndFocus({
-        healthRecordType: "Please choose a record type before proceeding.",
-      });
-      setNoticeModal({
-        title: "Service Type Required",
-        message: "Please choose a record type before proceeding.",
-      });
-      return;
-    }
-
-    setSetupComplete(true);
-    setCareDecisionStep(false);
-    setDropdownOpen(false);
-  }
 
   useEffect(() => {
     if (isMaternal) {
@@ -2481,24 +2435,24 @@ export default function AddHealthRecord() {
     }
   }
 
-  function handleFollowUpDecisionChange(value) {
+  /**
+   * Apply one Next Action card. This is the ONLY path that rewrites
+   * followUpStatus from this step, which is what lets a legacy
+   * "Routine Monitoring" record survive being viewed here untouched.
+   */
+  function handleNextActionChange(action) {
     clearValidationError("followUpStatus");
-    setFollowUpStatus(value);
-    if (value !== "Follow-up Required") {
+    const patch = getNextActionPatch(action);
+
+    setNeedsReferral(patch.needsReferral);
+    setFollowUpStatus(patch.followUpStatus);
+
+    if (patch.clearFollowUpSchedule) {
       clearValidationError("followUpDate");
       clearValidationError("followUpTime");
       setFollowUpDate("");
       setFollowUpTime("");
-    }
-  }
-
-  function handleNeedsReferralChange(value) {
-    const nextNeedsReferral = value === "Yes" || value === true;
-    setNeedsReferral(nextNeedsReferral);
-    if (nextNeedsReferral) {
-      clearValidationError("followUpDate");
-      setFollowUpDate("");
-      setFollowUpTime("");
+      if (!isFollowUp) setPatientCondition("");
     }
   }
 
@@ -2538,11 +2492,6 @@ export default function AddHealthRecord() {
   function getClinicalValidationErrors() {
     const errors = {};
 
-    if (!dateOfVisit) errors.dateOfVisit = "Date of visit is required.";
-    if (!timeOfVisit) errors.timeOfVisit = "Time of visit is required.";
-    if (!String(attendingStaff || "").trim()) {
-      errors.attendingStaff = "Name of practitioner is required.";
-    }
     const requiresFollowUp =
       !needsReferral &&
       (normalizePatientStatus(followUpStatus) === "Follow-up Required" ||
@@ -2598,15 +2547,6 @@ export default function AddHealthRecord() {
     }
 
     if (isFamilyPlanning) {
-      const hasConcern =
-        familyPlanningData.hasClinicalConcern === "Yes" ||
-        familyPlanningData.fpVisitType === "Side-effect Concern";
-
-      if (hasConcern && !String(familyPlanningData.concern || "").trim()) {
-        errors.familyPlanningConcern =
-          "Concern or side-effect notes are required when clinical concern is marked Yes.";
-      }
-
       return errors;
     }
 
@@ -2649,59 +2589,10 @@ export default function AddHealthRecord() {
     return errors;
   }
 
-  function getReferralValidationErrors() {
-    const errors = {};
-    if (
-      referralDestinationLoading ||
-      !referralDestination?.receivingRuralHealthUnit?.id
-    ) {
-      errors.receivingFacility =
-        referralDestinationError ||
-        "A receiving Rural Health Unit must be configured before this referral can be submitted.";
-    }
-    if (!String(referralForm.dateOfReferral || "").trim()) {
-      errors.dateOfReferral = "Date of referral is required.";
-    }
-    if (!String(referralForm.timeOfReferral || "").trim()) {
-      errors.timeOfReferral = "Time of referral is required.";
-    }
-    if (!String(referralForm.referringHci || "").trim()) {
-      errors.referringHci = "Name of referring HCI is required.";
-    }
-    if (!String(referralForm.reasonForReferral || "").trim()) {
-      errors.reasonForReferral = "Reason for referral is required.";
-    }
-    return errors;
-  }
 
-  function setReferralErrorsAndFocus(errors) {
-    const nextErrors = Object.fromEntries(
-      Object.entries(errors).filter(([, value]) => Boolean(value)),
-    );
-    setReferralValidationErrors(nextErrors);
-
-    const firstField = Object.keys(nextErrors)[0];
-    if (!firstField) return false;
-
-    window.requestAnimationFrame(() => {
-      const selector = `[name="${firstField}"], [data-field="${firstField}"]`;
-      const element = document.querySelector(selector);
-      element?.scrollIntoView({ behavior: "smooth", block: "center" });
-      if (typeof element?.focus === "function") {
-        element.focus({ preventScroll: true });
-      }
-    });
-
-    return true;
-  }
 
   function handleReferralFormChange(field, value) {
-    setReferralValidationErrors((prev) => {
-      if (!prev[field]) return prev;
-      const next = { ...prev };
-      delete next[field];
-      return next;
-    });
+    clearValidationError(field);
     setReferralForm((prev) => ({ ...prev, [field]: value }));
   }
 
@@ -2773,26 +2664,6 @@ export default function AddHealthRecord() {
     }));
   }
 
-  function handleVaccineEntryChange(index, field, value) {
-    clearValidationError(`vaccineEntries.${index}.${field}`);
-    clearValidationError("vaccineEntries");
-    if (field === "nextScheduleDate" && value) {
-      clearValidationError("followUpDate");
-      setFollowUpStatus("Follow-up Required");
-      setFollowUpDate(value);
-    }
-    setImmunizationData((prev) => {
-      const entries = getVaccineEntries(prev).map((entry, entryIndex) =>
-        entryIndex === index ? { ...entry, [field]: value } : entry,
-      );
-      return {
-        ...prev,
-        vaccineEntries: entries,
-        vaccinesGiven: entries,
-      };
-    });
-  }
-
   function handleVaccineToggle(vaccineName, checked) {
     const vaccineCode = getEpiCode(vaccineName);
     if (vaccineCode && epiCompletion.alreadyGivenCodes.has(vaccineCode)) return;
@@ -2823,6 +2694,30 @@ export default function AddHealthRecord() {
     setMaternalData((prev) => ({ ...prev, [field]: value }));
   }
 
+  /**
+   * Toggle one risk-code checkbox.
+   *
+   * Unchecking a parent (Risk Code D or E) also clears its children, so a
+   * sub-condition can never stay set while hidden and be submitted with the
+   * record.
+   */
+  function handleRiskAssessmentChange(key, checked, childKeys = []) {
+    setMaternalData((previous) => {
+      const riskAssessment = {
+        ...(previous.riskAssessment || {}),
+        [key]: checked,
+      };
+
+      if (!checked) {
+        childKeys.forEach((childKey) => {
+          riskAssessment[childKey] = false;
+        });
+      }
+
+      return { ...previous, riskAssessment };
+    });
+  }
+
   function handleNestedMaternalChange(group, field, value) {
     clearValidationError(`${group}.${field}`);
     setMaternalData((prev) => ({
@@ -2834,39 +2729,8 @@ export default function AddHealthRecord() {
     }));
   }
 
-  function addPregnancyHistoryRow() {
-    setMaternalData((prev) => ({
-      ...prev,
-      previousPregnancyHistory: [
-        ...(prev.previousPregnancyHistory || []),
-        {
-          pregnancyNo: `G${(prev.previousPregnancyHistory || []).length + 1}`,
-          placeOfDelivery: "",
-          year: "",
-          notes: "",
-        },
-      ],
-    }));
-  }
 
-  function updatePregnancyHistoryRow(index, field, value) {
-    setMaternalData((prev) => ({
-      ...prev,
-      previousPregnancyHistory: (prev.previousPregnancyHistory || []).map(
-        (entry, entryIndex) =>
-          entryIndex === index ? { ...entry, [field]: value } : entry,
-      ),
-    }));
-  }
 
-  function removePregnancyHistoryRow(index) {
-    setMaternalData((prev) => ({
-      ...prev,
-      previousPregnancyHistory: (prev.previousPregnancyHistory || []).filter(
-        (_, entryIndex) => entryIndex !== index,
-      ),
-    }));
-  }
 
   function handleFamilyPlanningChange(field, value) {
     if (field === "nextAppointmentDate") {
@@ -2876,9 +2740,6 @@ export default function AddHealthRecord() {
     setFamilyPlanningData((prev) => ({
       ...prev,
       [field]: value,
-      ...(field === "fpVisitType" && value === "Side-effect Concern"
-        ? { hasClinicalConcern: "Yes" }
-        : {}),
       ...(field === "hasClinicalConcern" && value !== "Yes"
         ? { concern: "", findings: "", adviceGiven: "" }
         : {}),
@@ -3476,6 +3337,8 @@ export default function AddHealthRecord() {
       concern: familyPlanningData.concern || "",
       findings: familyPlanningData.findings || "",
       advice_given: familyPlanningData.adviceGiven || "",
+      medicinesSupplies: familyPlanningData.medicinesSupplies || "",
+      medicines_supplies: familyPlanningData.medicinesSupplies || "",
     };
 
     const recordHypertensionDiabeticData = {
@@ -3533,8 +3396,8 @@ export default function AddHealthRecord() {
       previousRecordId: linkedParentRecordId || "",
       followUpTaskId: effectiveFollowUpTaskId || null,
       follow_up_task_id: effectiveFollowUpTaskId || null,
-      dateOfVisit,
-      timeOfVisit,
+      dateOfVisit: dateOfVisit || toDateInputValue(),
+      timeOfVisit: timeOfVisit || toTimeInputValue(),
       chiefComplaint: finalChiefComplaint,
       summaryOfPresentIllness,
       diagnosis,
@@ -3550,7 +3413,7 @@ export default function AddHealthRecord() {
           : effectiveHealthRecordType === "Hypertension / Diabetic Monitoring"
             ? recordHypertensionDiabeticData.treatmentActionTaken || medication
           : medication,
-      attendingStaff,
+      attendingStaff: attendingStaff || currentUserName,
       consultationNotes,
       followUpStatus: finalPatientStatus,
       followUpDate: effectiveFollowUpDate,
@@ -3610,15 +3473,8 @@ export default function AddHealthRecord() {
     };
 
     if (isReferralContinuation) {
-      setPendingReferralDraft({
-        formData,
-        savedHealthRecordId: "",
-        savedRecord: null,
-      });
       setReferralForm((prev) => ({
         ...prev,
-        receivingFacility:
-          referralDestination?.receivingRuralHealthUnit?.name || "",
         urgencyLevel: normalizeAttention(prev.urgencyLevel),
         dateOfReferral: prev.dateOfReferral || dateOfVisit || toDateInputValue(),
         timeOfReferral: prev.timeOfReferral || timeOfVisit || toTimeInputValue(),
@@ -3648,10 +3504,35 @@ export default function AddHealthRecord() {
           prev.clinicalSummary ||
           [summaryOfPresentIllness, consultationNotes].filter(Boolean).join("\n\n"),
       }));
-      setReferralDetailsStep(true);
-      window.requestAnimationFrame(() =>
-        window.scrollTo({ top: 0, behavior: "smooth" }),
-      );
+      // The approved flow saves the referral straight from Next Action, so the
+      // logistics that used to be collected on a dedicated step are defaulted
+      // above (facility is assigned server-side from the patient's BHC,
+      // urgency falls back to the default, no doctor is preferred).
+      //
+      // The DOC-14 no-provider gate is NOT bypassed by this: it is enforced by
+      // ReferralSubmissionGate inside the same server transaction, so a blocked
+      // submission still fails closed and is reported through the gate error
+      // handling in submitHealthRecordWithReferral.
+      await submitHealthRecordWithReferral({
+        formData,
+        referralOverrides: {
+          chiefComplaint: referralForm.chiefComplaint || finalChiefComplaint,
+          initialDiagnosis: referralForm.initialDiagnosis || diagnosis,
+          initialActionsTaken:
+            referralForm.initialActionsTaken || medication,
+          reasonForReferral:
+            referralForm.reasonForReferral ||
+            diagnosis ||
+            finalChiefComplaint ||
+            "RHU referral requested",
+          referringPractitioner: attendingStaff || currentUserName,
+          dateOfReferral: dateOfVisit || toDateInputValue(),
+          timeOfReferral: timeOfVisit || toTimeInputValue(),
+          clinicalSummary: [summaryOfPresentIllness, consultationNotes]
+            .filter(Boolean)
+            .join("\n\n"),
+        },
+      });
       return;
     }
 
@@ -3739,18 +3620,26 @@ export default function AddHealthRecord() {
     }
   }
 
-  async function handleSubmitReferralDetails(
-    event,
-    { acknowledgeUnavailable = false } = {},
-  ) {
-    event?.preventDefault();
+  /**
+   * Save the health record and its referral in one submission.
+   *
+   * Takes the record payload explicitly rather than reading pendingReferralDraft,
+   * because Next Action now saves in the same tick it builds the payload and
+   * would otherwise race React state. The last attempt is remembered so the
+   * REF-SLIP-05c "Continue Anyway" retry can resubmit it unchanged.
+   */
+  async function submitHealthRecordWithReferral({
+    formData,
+    referralOverrides = {},
+    acknowledgeUnavailable = false,
+  } = {}) {
     closeDateTimePopovers();
 
-    const referralErrors = getReferralValidationErrors();
-    if (setReferralErrorsAndFocus(referralErrors)) return;
+    const attempt = formData
+      ? { formData, referralOverrides }
+      : lastReferralAttemptRef.current;
 
-    if (!pendingReferralDraft?.formData) {
-      setReferralDetailsStep(false);
+    if (!attempt?.formData) {
       setNoticeModal({
         title: "Health Record Draft Missing",
         message:
@@ -3759,36 +3648,42 @@ export default function AddHealthRecord() {
       return;
     }
 
-    const referralUrgency = normalizeAttention(referralForm.urgencyLevel);
+    lastReferralAttemptRef.current = attempt;
+    const referral = { ...referralForm, ...attempt.referralOverrides };
+
+    if (!String(referral.reasonForReferral || "").trim()) {
+      setValidationErrorsAndFocus({
+        reasonForReferral: "Reason for referral is required.",
+      });
+      return;
+    }
+
+    const referralUrgency = normalizeAttention(referral.urgencyLevel);
     const preferredProvider = rhuProviders.find(
-      (provider) =>
-        String(provider.id) === String(referralForm.preferredRhuDoctorId),
+      (provider) => String(provider.id) === String(referral.preferredRhuDoctorId),
     );
-    const referralRemarks = referralForm.clinicalSummary || "";
+    const referralRemarks = referral.clinicalSummary || "";
     const officialPayload = {
-      ...pendingReferralDraft.formData,
+      ...attempt.formData,
       referral: {
-        referralCategory: pendingReferralDraft.formData.category,
+        referralCategory: attempt.formData.category,
         urgencyLevel: referralUrgency,
-        reasonForReferral: referralForm.reasonForReferral,
+        reasonForReferral: referral.reasonForReferral,
         chiefComplaint:
-          referralForm.chiefComplaint ||
-          pendingReferralDraft.formData.chiefComplaint,
+          referral.chiefComplaint || attempt.formData.chiefComplaint,
         initialDiagnosis:
-          referralForm.initialDiagnosis || pendingReferralDraft.formData.diagnosis,
+          referral.initialDiagnosis || attempt.formData.diagnosis,
         initialActionsTaken:
-          referralForm.initialActionsTaken ||
-          pendingReferralDraft.formData.medication,
+          referral.initialActionsTaken || attempt.formData.medication,
         referringPractitioner:
-          referralForm.referringPractitioner ||
-          pendingReferralDraft.formData.attendingStaff,
+          referral.referringPractitioner || attempt.formData.attendingStaff,
         preferredDoctor: preferredProvider?.name || null,
         // REF-SLIP-05 / REF-SLIP-05c - the preference and, on a retry past the
         // Decision A warning, the acknowledgment the server records.
         preferredProviderId: preferredProvider?.id || null,
         acknowledgedUnavailablePreference: acknowledgeUnavailable,
-        referralDate: referralForm.dateOfReferral,
-        referralTime: referralForm.timeOfReferral,
+        referralDate: referral.dateOfReferral,
+        referralTime: referral.timeOfReferral,
         remarks: referralRemarks || null,
       },
     };
@@ -3836,8 +3731,7 @@ export default function AddHealthRecord() {
         queryKey: queryKeys.healthRecordData(userRole, savedRecordId),
       });
 
-      setReferralDetailsStep(false);
-      setPendingReferralDraft(null);
+      lastReferralAttemptRef.current = null;
       setCareDecisionStep(false);
       setLastFailedSubmit(null);
       clearOfficialSubmission();
@@ -3847,7 +3741,7 @@ export default function AddHealthRecord() {
         status: normalizePatientStatus(
           savedRecord?.followUpStatus ||
             savedRecord?.status ||
-            pendingReferralDraft.formData.followUpStatus,
+            attempt.formData.followUpStatus,
         ),
         needsReferral: true,
         referralSubmitted: true,
@@ -3892,7 +3786,7 @@ export default function AddHealthRecord() {
                 setNoticeModal(null);
                 // Resubmit with the acknowledgment. DOC-14 is re-checked on
                 // this attempt too, so continuing cannot bypass the hard block.
-                void handleSubmitReferralDetails(null, {
+                void submitHealthRecordWithReferral({
                   acknowledgeUnavailable: true,
                 });
               },
@@ -3948,36 +3842,30 @@ export default function AddHealthRecord() {
   }
 
   const isPrimaryActionLoading = saving;
-  const isResolvingClinicalMode = isResolvingFollowUpMode;
-  const showActiveFollowUpPrompt =
-    activePatientFollowUps.length > 0 &&
-    !activeFollowUpLookup.isChecking &&
-    !autoLinkedFollowUpTask &&
-    String(dismissedFollowUpPatientId) !== String(selectedPatientId);
-  const primaryActionLabel = saving
-    ? "Saving health record..."
-    : isFollowUpVisitMode
-      ? "Save Follow-up Visit"
-      : needsReferral && userRole === "bhc" && !isEditingRecord
-        ? "Continue to Referral Details"
-      : "Save Health Record";
-  const pageStepLabel = null;
+  // Only blank the page for the skeleton once we are on the record itself.
+  // On the setup step the same lookup is expected and is surfaced inline as
+  // "Checking for active follow-ups..." on the Follow-up Visit card, so
+  // choosing a patient must not replace the wizard with a loading state.
+  const isResolvingClinicalMode = isResolvingFollowUpMode && setupComplete;
+  /**
+   * Heading on the record form card: the program being recorded.
+   *
+   * The visit date and time it replaced are still captured - they default to
+   * now and are shown on the wizard steps before this one - but the form no
+   * longer offers them as editable fields.
+   */
+  const formHeaderTitle = isFollowUpVisitMode
+    ? "Follow-up Visit"
+    : RECORD_TYPE_DETAILS[normalizedHealthRecordType]?.title ||
+      normalizedHealthRecordType ||
+      "New Consultation";
   const pageTitle = isResolvingClinicalMode
     ? "Health Record"
     : isFollowUpVisitMode
       ? "Follow-up Visit"
       : isEditingRecord
         ? "Edit Health Record"
-        : referralDetailsStep
-          ? "Referral Details"
         : "Add Health Record";
-  const pageSubtitle = isFollowUpVisitMode
-    ? "Record the patient's return visit and update the follow-up schedule if needed."
-    : isEditingRecord
-      ? "Correct or update details in this existing health record."
-      : referralDetailsStep
-        ? "Complete the referral details before submitting this health record and referral."
-      : "Complete the clinical details for this visit.";
   const monitoringNotesLabel =
     normalizedPatientStatus === "Completed"
       ? "Outcome Notes"
@@ -3991,22 +3879,236 @@ export default function AddHealthRecord() {
         ? "Write the monitoring plan or return-visit instructions..."
         : "Write monitoring notes if useful...";
 
+  const wizardVisitDate = dateOfVisit
+    ? new Date(`${dateOfVisit}T00:00:00`).toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "Not set";
+  const wizardVisitTime = formatDisplayTime(timeOfVisit, "Not set");
+
+  /**
+   * Leave the clinical form for the Next Action step.
+   *
+   * Validates the clinical fields only. The follow-up date/time rules are
+   * skipped here because the disposition they depend on has not been chosen
+   * yet - handleSave re-runs the full set before saving.
+   */
+  function handleContinueToNextAction(event) {
+    event?.preventDefault();
+    closeDateTimePopovers();
+
+    const clinicalErrors = { ...getClinicalValidationErrors() };
+    delete clinicalErrors.followUpDate;
+    delete clinicalErrors.followUpTime;
+    delete clinicalErrors.followUpStatus;
+
+    if (setValidationErrorsAndFocus(clinicalErrors)) return;
+
+    goToWizardPhase(WIZARD_NEXT);
+    window.requestAnimationFrame(() =>
+      window.scrollTo({ top: 0, behavior: "smooth" }),
+    );
+  }
+
+  // ---- Wizard view models -------------------------------------------------
+  // Built here so the step components stay presentational and never reach for
+  // this page's patient/record helpers.
+  const wizardPatientRows = (
+    normalizedSearch ? matchingPatients : patients
+  )
+    .slice(0, normalizedSearch ? 20 : 12)
+    .map((patient) => {
+      const display = getPatientDisplay(patient);
+      return {
+        id: patient.id,
+        name: display.name,
+        meta: [display.id && `ID ${display.id}`, display.age]
+          .filter(Boolean)
+          .join(" · "),
+      };
+    });
+
+  const wizardPrograms = RECORD_TYPE_OPTIONS.map((option) => {
+    const eligibility =
+      option === "Maternal"
+        ? getMaternalEligibility(selectedPatient)
+        : { eligible: true, message: "" };
+
+    return {
+      key: option,
+      title: RECORD_TYPE_DETAILS[option]?.title || option,
+      description: RECORD_TYPE_DETAILS[option]?.description || "",
+      icon: RECORD_TYPE_DETAILS[option]?.icon || Stethoscope,
+      disabled: !eligibility.eligible,
+      disabledReason: eligibility.message,
+    };
+  });
+
+  const wizardFollowUpRows = activePatientFollowUps.map((task) => ({
+    id: task.id,
+    label: `FU-${task.id}`,
+    fromRecord: `#${task.healthRecordId || task.originalHealthRecordId || "—"}`,
+    serviceType:
+      getFollowUpTaskServiceType(task) || "Not recorded",
+    dueLabel: formatFollowUpSchedule(task),
+  }));
+
+  const selectedFollowUpTask =
+    activePatientFollowUps.find(
+      (task) => String(task.id) === String(selectedFollowUpTaskId),
+    ) || null;
+
+  const wizardConfirmFields = selectedFollowUpTask
+    ? [
+        { label: "Follow-up ID", value: `FU-${selectedFollowUpTask.id}` },
+        {
+          label: "Next Follow-up Date",
+          value: formatFollowUpSchedule(selectedFollowUpTask),
+        },
+        {
+          label: "From Record",
+          value: `#${selectedFollowUpTask.healthRecordId || "—"}`,
+        },
+        {
+          label: "Service Type",
+          value: getFollowUpTaskServiceType(selectedFollowUpTask),
+        },
+        { label: "Patient", value: getPatientName(selectedPatient) },
+        {
+          label: "Chief Complaint",
+          value:
+            selectedFollowUpTask.healthRecord?.chiefComplaint ||
+            selectedFollowUpTask.healthRecord?.chief_complaint ||
+            "",
+        },
+      ]
+    : [];
+
+  // A patient with no active task cannot record a follow-up visit: the server
+  // rejects visit_type=follow_up_visit without a task id.
+  const followUpUnavailableReason = activeFollowUpLookup.isChecking
+    ? "Checking for active follow-ups..."
+    : activePatientFollowUps.length === 0
+      ? "This patient has no active follow-ups."
+      : "";
+
+  function handleConsultationTypeChange(type) {
+    clearValidationError("consultationType");
+    setConsultationType(type);
+    if (type === "new") {
+      setSelectedFollowUpTaskId("");
+      setAutoLinkedFollowUpTask(null);
+    }
+  }
+
+  function handleSetupNext() {
+    if (!selectedPatientId || !consultationType) return;
+    goToWizardPhase(
+      consultationType === "followup" ? WIZARD_FU_SELECT : WIZARD_PROGRAM,
+    );
+  }
+
+  function handleProgramSelect(option) {
+    handleClassificationSelect(option);
+    goToWizardPhase(WIZARD_FORM);
+  }
+
+  function handleFollowUpConfirm() {
+    if (!selectedFollowUpTask) return;
+    recordScheduledFollowUp(selectedFollowUpTask);
+  }
+
+  /**
+   * One Next Action step, rendered by every program that used to carry its own
+   * "Follow-up & Referral" block. Built once here so the programs cannot drift
+   * apart again the way the five previous copies did.
+   */
+  const nextActionSection = (
+    <NextActionSection
+      action={nextAction}
+      followUpDate={followUpDate}
+      followUpTime={followUpTime}
+      monitoringNotes={monitoringNotes}
+      monitoringNotesLabel={monitoringNotesLabel}
+      monitoringNotesPlaceholder={monitoringNotesPlaceholder}
+      referralForm={referralForm}
+      errors={validationErrors}
+      disabled={patientGateLocked}
+      // The server only requires a follow-up time for General Consultation
+      // (HealthRecordRequest::withValidator). Marking it required everywhere
+      // would block saves the API would have accepted.
+      requireFollowUpTime={recordTypeKey === "general consultation"}
+      requireFollowUpDate={!epiWillComplete}
+      scheduleNotice={
+        epiWillComplete ? (
+          <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold leading-relaxed text-emerald-700">
+            No next follow-up date is needed because the EPI record will be
+            complete after saving.
+          </div>
+        ) : null
+      }
+      legacyStatusNote={
+        showsLegacyFollowUpStatus ? (
+          <p className="mt-2 text-[11px] leading-relaxed text-[#64748B]">
+            This record is currently saved as &ldquo;Routine Monitoring&rdquo;.
+            It stays that way unless you choose an option above.
+          </p>
+        ) : null
+      }
+      onActionChange={handleNextActionChange}
+      onFollowUpDateChange={(value) => {
+        clearValidationError("followUpDate");
+        setFollowUpDate(value);
+      }}
+      onFollowUpTimeChange={(value) => {
+        clearValidationError("followUpTime");
+        setFollowUpTime(value);
+      }}
+      onMonitoringNotesChange={setMonitoringNotes}
+      onReferralFieldChange={handleReferralFormChange}
+    />
+  );
+
+  /**
+   * Walk one screen back through the wizard.
+   *
+   * Editing an existing record and the route-driven follow-up entry both open
+   * on the form with no wizard behind them, so Back leaves the page instead of
+   * stepping into setup screens that were never shown.
+   */
+  function goToWizardPhase(phase) {
+    closeDateTimePopovers();
+    setDropdownOpen(false);
+    setWizardPhase(phase);
+  }
+
   function handleStepBack() {
     closeDateTimePopovers();
-    if (referralDetailsStep) {
-      setReferralDetailsStep(false);
+
+    if (wizardPhase === WIZARD_NEXT) {
+      goToWizardPhase(WIZARD_FORM);
       return;
     }
 
-    if (careDecisionStep && usesCareDecisionStep) {
-      setCareDecisionStep(false);
+    if (wizardPhase === WIZARD_FORM && !isFollowUpVisitMode && !isEditingRecord) {
+      goToWizardPhase(
+        consultationType === "followup" ? WIZARD_FU_CONFIRM : WIZARD_PROGRAM,
+      );
       return;
     }
 
-    if (setupComplete && !isFollowUpVisitMode && !isEditingRecord) {
-      setSetupComplete(false);
-      setCareDecisionStep(false);
-      setDropdownOpen(false);
+    if (wizardPhase === WIZARD_FU_CONFIRM) {
+      goToWizardPhase(WIZARD_FU_SELECT);
+      return;
+    }
+
+    if (
+      wizardPhase === WIZARD_PROGRAM ||
+      wizardPhase === WIZARD_FU_SELECT
+    ) {
+      goToWizardPhase(WIZARD_SETUP);
       return;
     }
 
@@ -4016,146 +4118,6 @@ export default function AddHealthRecord() {
   return (
     <DashboardLayout role={userRole} title={pageTitle}>
       <style>{keyframes}</style>
-      {showActiveFollowUpPrompt && (
-        <ActiveFollowUpPrompt
-          tasks={activePatientFollowUps}
-          onStartNew={startNewConsultation}
-          onRecord={recordScheduledFollowUp}
-        />
-      )}
-
-      {!isResolvingClinicalMode && (
-        <div
-          className="anim-fade-up relative z-[300] mb-3 ml-0 mr-auto w-full max-w-7xl overflow-visible"
-          style={stagger(0)}
-        >
-        <button
-          type="button"
-          onClick={handleStepBack}
-          className="mb-2 inline-flex items-center gap-2 text-[13px] font-semibold text-[#B91C1C] transition-all duration-200 hover:gap-2.5 hover:text-[#991B1B]"
-        >
-          <ArrowLeft size={16} /> Back
-        </button>
-        <div className="relative z-[310] flex flex-col gap-3 overflow-visible px-1 py-2 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            {pageStepLabel && (
-              <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#B91C1C]">
-                {pageStepLabel}
-              </p>
-            )}
-            <h1 className="text-lg font-bold tracking-tight text-[#1A1A1A]">
-              {pageTitle}
-            </h1>
-            <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-[#6B7280]">
-              {pageSubtitle}
-            </p>
-          </div>
-          {canSaveCurrentDraft && (
-            <div className="flex shrink-0 flex-col items-start gap-1.5 sm:items-end">
-              <button
-                type="button"
-                onClick={handleManualSaveDraft}
-                disabled={draftAutosaveStatus === "saving" || saving}
-                aria-busy={draftAutosaveStatus === "saving"}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[#DDE3E9] bg-white px-4 text-sm font-semibold text-[#475569] shadow-sm transition hover:border-[#B91C1C]/30 hover:bg-[#FFF7F7] hover:text-[#B91C1C] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/15 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {draftAutosaveStatus === "saving" ? (
-                  <ButtonSpinner />
-                ) : (
-                  <FileClock size={16} />
-                )}
-                {draftAutosaveStatus === "saving"
-                  ? "Saving draft..."
-                  : activeDraft
-                    ? "Update Draft"
-                    : "Save Draft"}
-              </button>
-              {draftAutosaveStatus !== "offline" && (
-                <DraftSaveStatus
-                  status={draftAutosaveStatus}
-                  lastSavedAt={draftAutosave.lastSavedAt}
-                />
-              )}
-            </div>
-          )}
-          {!setupComplete && !isEditingRecord && !isFollowUpRouteMode && (
-            <div className="relative flex shrink-0 items-center gap-2 sm:justify-end">
-              <div className="relative z-[320] h-10 w-10 shrink-0 overflow-visible">
-                <div
-                  ref={searchWrapperRef}
-                  className={`absolute right-0 top-0 z-[330] overflow-visible transition-[width] duration-300 ease-out ${
-                    searchExpanded
-                      ? "w-[min(24rem,calc(100vw-2rem))] sm:w-96"
-                      : "w-10"
-                  }`}
-                >
-                  {searchExpanded ? (
-                    <PatientSearchDropdown
-                      inputRef={inputRef}
-                      dropdownRef={dropdownRef}
-                      disabled={false}
-                      dropdownOpen={dropdownOpen}
-                      selectedPatientId={selectedPatientId}
-                      searchTerm={searchTerm}
-                      inputValue={patientSearchInputValue}
-                      patients={filteredPatients}
-                      totalPatientCount={patients.length}
-                      matchingPatientCount={matchingPatients.length}
-                      visibleLimit={visiblePatientLimit}
-                      loading={patientsLoading && patients.length === 0}
-                      loadError={patientsLoadError}
-                      isSearching={Boolean(normalizedSearch)}
-                      onSeeAll={() => navigate(`${basePath}/patients`)}
-                      onRetryLoad={() =>
-                        setPatientsReloadKey((key) => key + 1)
-                      }
-                      highlightIndex={highlightIndex}
-                      onSearchChange={handlePatientSearchChange}
-                      onOpen={() => setDropdownOpen(true)}
-                      onClear={clearSelectedPatient}
-                      onSelect={selectPatient}
-                      onHighlight={setHighlightIndex}
-                      error={validationErrors.selectedPatientId}
-                      dropdownAlign="right"
-                      hideLabel
-                    />
-                  ) : (
-                    <HeaderIconButton
-                      icon={Search}
-                      label={
-                        selectedPatient
-                          ? `Change patient: ${
-                              getPatientDisplay(selectedPatient).name
-                            }`
-                          : "Search patient"
-                      }
-                      onClick={openHeaderSearch}
-                      active={Boolean(selectedPatientId)}
-                    />
-                  )}
-                </div>
-              </div>
-
-              {isDraftRouteEligible && (
-                <button
-                  type="button"
-                  onClick={() => setDraftsDrawerOpen(true)}
-                  className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-[#E2E8F0] bg-white px-3.5 text-xs font-semibold text-[#475569] shadow-sm transition hover:border-[#B91C1C]/30 hover:bg-[#FFF7F7] hover:text-[#B91C1C]"
-                >
-                  <FileClock size={14} />
-                  Drafts
-                  {healthRecordDrafts.length > 0 && (
-                    <span className="rounded-full bg-[#B91C1C] px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
-                      {healthRecordDrafts.length}
-                    </span>
-                  )}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-        </div>
-      )}
 
       {canSaveCurrentDraft && draftAutosaveStatus === "offline" && (
         <div className="anim-fade-up mb-4 ml-0 mr-auto w-full max-w-7xl">
@@ -4203,32 +4165,73 @@ export default function AddHealthRecord() {
         <div className="ml-0 mr-auto w-full max-w-7xl">
           <HealthRecordFormSkeleton message="Loading health record..." />
         </div>
-      ) : !isFollowUp && !isEditingRecord && !setupComplete ? (
-        <HealthRecordSetupStep
+      ) : wizardPhase === WIZARD_SETUP ? (
+        <ConsultationSetupStep
+          visitDate={wizardVisitDate}
+          visitTime={wizardVisitTime}
+          patients={wizardPatientRows}
           selectedPatientId={selectedPatientId}
-          classification={healthRecordType}
-          onClassificationSelect={handleClassificationSelect}
-          errors={validationErrors}
-          onProceed={handleProceedFromSetup}
+          onSelectPatient={selectPatient}
+          consultationType={consultationType}
+          onConsultationTypeChange={handleConsultationTypeChange}
+          searchOpen={searchExpanded}
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          onToggleSearch={() => setSearchExpanded((open) => !open)}
+          draftCount={healthRecordDrafts.length}
+          onOpenDrafts={() => setDraftsDrawerOpen(true)}
+          showDrafts={isDraftRouteEligible}
+          patientsLoading={patientsLoading && patients.length === 0}
+          patientsLoadError={patientsLoadError}
+          onRetryLoadPatients={() => setPatientsReloadKey((key) => key + 1)}
+          followUpUnavailableReason={
+            selectedPatientId ? followUpUnavailableReason : ""
+          }
+          error={validationErrors.consultationType}
+          onBack={handleStepBack}
+          onNext={handleSetupNext}
         />
+      ) : wizardPhase === WIZARD_PROGRAM ? (
+        <ProgramSelectStep
+          programs={wizardPrograms}
+          selected={healthRecordType}
+          onSelect={handleProgramSelect}
+          error={validationErrors.healthRecordType}
+          onBack={handleStepBack}
+        />
+      ) : wizardPhase === WIZARD_FU_SELECT ? (
+        <FollowUpSelectStep
+          visitDate={wizardVisitDate}
+          visitTime={wizardVisitTime}
+          tasks={wizardFollowUpRows}
+          selectedTaskId={selectedFollowUpTaskId}
+          onSelect={(taskId) => setSelectedFollowUpTaskId(String(taskId))}
+          loading={activeFollowUpLookup.isChecking}
+          onBack={handleStepBack}
+          onNext={() => goToWizardPhase(WIZARD_FU_CONFIRM)}
+        />
+      ) : wizardPhase === WIZARD_FU_CONFIRM ? (
+        <FollowUpConfirmStep
+          visitDate={wizardVisitDate}
+          visitTime={wizardVisitTime}
+          fields={wizardConfirmFields}
+          onBack={handleStepBack}
+          onContinue={handleFollowUpConfirm}
+        />
+      ) : wizardPhase === WIZARD_NEXT ? (
+        <NextActionStep
+          visitDate={wizardVisitDate}
+          visitTime={wizardVisitTime}
+          saving={saving}
+          saveLabel={saving ? "Saving health record..." : "Save Record"}
+          onBack={handleStepBack}
+          onSave={handleSave}
+        >
+          {nextActionSection}
+        </NextActionStep>
       ) : (
       <>
-      {referralDetailsStep ? (
-      <ReferralDetailsStep
-        form={referralForm}
-        errors={referralValidationErrors}
-        saving={saving}
-        destination={referralDestination}
-        destinationLoading={referralDestinationLoading}
-        destinationError={referralDestinationError}
-        providers={rhuProviders}
-        canSubmitReferral={canSubmitReferral}
-        noProviderMessage={noProviderMessage}
-        onChange={handleReferralFormChange}
-        onRetryDestination={loadReferralDestination}
-        onSubmit={handleSubmitReferralDetails}
-      />
-      ) : careDecisionStep && usesCareDecisionStep ? (
+      {careDecisionStep && usesCareDecisionStep ? (
         <CareDecisionStep
           patientName={getPatientName(selectedPatient)}
           patientMeta={getPatientDisplay(selectedPatient).age}
@@ -4251,52 +4254,26 @@ export default function AddHealthRecord() {
         />
       ) : (
       <form
-        onSubmit={handleSave}
+        onSubmit={handleContinueToNextAction}
         noValidate
         className="relative ml-0 mr-auto w-full max-w-7xl"
       >
         <div className="space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
-        <FormSection
-          title="Visit Overview"
-          subtitle="Confirm the visit schedule and attending practitioner."
-          delay={2}
-        >
-          <LockedFormContent locked={patientGateLocked}>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <DatePickerField
-              label="Date of Visit"
-              required
-              name="dateOfVisit"
-              error={validationErrors.dateOfVisit}
-              value={dateOfVisit}
-              onChange={(value) => {
-                clearValidationError("dateOfVisit");
-                setDateOfVisit(value);
-              }}
-            />
-            <TimePickerField
-              label="Time of Visit"
-              required
-              name="timeOfVisit"
-              error={validationErrors.timeOfVisit}
-              value={timeOfVisit}
-              onChange={(value) => {
-                clearValidationError("timeOfVisit");
-                setTimeOfVisit(value);
-              }}
-            />
-            <FieldInput
-              label="Name of Practitioner"
-              required
-              name="attendingStaff"
-              value={attendingStaff}
-              error={validationErrors.attendingStaff}
-              readOnly
-            />
-          </div>
-          {showMaternalPatientWarning && <MaternalClassificationWarning />}
-          </LockedFormContent>
-        </FormSection>
+        {/* The form opens on the program it is recording. Visit date, time and
+            practitioner are no longer edited here - see formHeaderTitle. */}
+        <div className="anim-fade-up pb-5" style={stagger(2)}>
+          <h2 className="text-lg font-bold tracking-tight text-[#0F172A]">
+            {formHeaderTitle}
+          </h2>
+          <p className="mt-1 text-[13px] leading-relaxed text-[#64748B]">
+            Complete the form below for this visit.
+          </p>
+          {showMaternalPatientWarning && (
+            <div className="mt-4">
+              <MaternalClassificationWarning />
+            </div>
+          )}
+        </div>
 
         {isGeneralConsultationFollowUp && (
           <>
@@ -4440,418 +4417,179 @@ export default function AddHealthRecord() {
               </div>
             </FormSection>
 
-            <FormSection
-              title="FOLLOW-UP DECISION"
-              subtitle="Choose whether another visit is required after this consultation."
-              delay={6}
-            >
-              <FieldSelect
-                label="Follow-up Decision"
-                name="followUpStatus"
-                value={followUpDecisionValue}
-                error={validationErrors.followUpStatus}
-                onChange={(event) =>
-                  handleFollowUpDecisionChange(event.target.value)
-                }
-              >
-                <option>Follow-up Required</option>
-                <option>Routine Monitoring</option>
-                <option>No Further Follow-up Required</option>
-              </FieldSelect>
-              {showFollowUpMonitoringFields && (
-                <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                  <FieldInput
-                    label="Follow-up Date"
-                    type="date"
-                    name="followUpDate"
-                    value={followUpDate}
-                    error={validationErrors.followUpDate}
-                    onChange={(event) => {
-                      clearValidationError("followUpDate");
-                      setFollowUpDate(event.target.value);
-                    }}
-                    required
-                  />
-                  <TimePickerField
-                    label="Follow-up Time"
-                    name="followUpTime"
-                    value={followUpTime}
-                    error={validationErrors.followUpTime}
-                    onChange={(value) => {
-                      clearValidationError("followUpTime");
-                      setFollowUpTime(value);
-                    }}
-                    required
-                  />
-                </div>
-              )}
-              <div className="mt-4">
-                <FieldTextarea
-                  label={monitoringNotesLabel}
-                  value={monitoringNotes}
-                  onChange={(event) => setMonitoringNotes(event.target.value)}
-                  placeholder={monitoringNotesPlaceholder}
-                  rows={3}
-                />
-              </div>
-            </FormSection>
           </>
         )}
 
+        {/* ImmunizationVisitFields renders its own titled sections, so it is
+            placed directly in the card rather than inside a FormSection. */}
         {!patientGateLocked && isImmunization && (
-          <FormSection
-            title="EPI Vaccines Given"
-            subtitle="Select the EPI vaccines given during this visit."
-            delay={2}
-          >
-
-          <ImmunizationVisitFields
-            entries={immunizationVaccineEntries}
-            epiHistoryByCode={epiHistoryByCode}
-            epiCompletion={epiCompletion}
-            epiHistoryLoading={epiHistoryLoading}
-            epiHistoryError={epiHistoryError}
-            dateOfVisit={dateOfVisit}
-            temperature={temp}
-            weight={weight}
-            height={height}
-            breastfeedingMonitoring={immunizationData.breastfeedingMonitoring}
-            consultationNotes={consultationNotes}
-            errors={validationErrors}
-            onTemperatureChange={setTemp}
-            onWeightChange={setWeight}
-            onHeightChange={setHeight}
+          <div className="anim-fade-up" style={stagger(2)}>
+            <ImmunizationVisitFields
+              vaccineOptions={CHILD_VACCINE_OPTIONS}
+              entries={immunizationVaccineEntries}
+              epiHistoryByCode={epiHistoryByCode}
+              epiCompletion={epiCompletion}
+              epiHistoryLoading={epiHistoryLoading}
+              epiHistoryError={epiHistoryError}
+              temperature={temp}
+              weight={weight}
+              height={height}
+              breastfeedingMonitoring={immunizationData.breastfeedingMonitoring}
+              breastfeedingMonths={BREASTFEEDING_MONTHS}
+              consultationNotes={consultationNotes}
+              errors={validationErrors}
+              onTemperatureChange={setTemp}
+              onWeightChange={setWeight}
+              onHeightChange={setHeight}
               onBreastfeedingChange={handleBreastfeedingChange}
-              onEntryChange={handleVaccineEntryChange}
               onToggleVaccine={handleVaccineToggle}
               onNotesChange={setConsultationNotes}
-              renderAfterVaccines={
-                !usesCareDecisionStep ? (
-                  <div className="rounded-2xl border border-amber-100 bg-amber-50/40 p-4">
-                    <div className="mb-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-medium leading-relaxed text-amber-800">
-                      If vaccines were given during this visit, add the
-                      corresponding vaccine item below to deduct stock from BHC
-                      inventory.
-                    </div>
-                    <div className="mb-3">
-                      <h3 className="text-sm font-bold text-[#0F172A]">
-                        Medicines / Supplies Dispensed
-                      </h3>
-                      <p className="mt-0.5 text-xs leading-relaxed text-[#64748B]">
-                        Optional inventory deduction for vaccines, medicines, or
-                        supplies given during this EPI visit.
-                      </p>
-                    </div>
-                    <DispensedMedicinesSection
-                      inventory={bhcMedicineInventory}
-                      value={dispensedMedicines}
-                      onChange={handleDispensedMedicinesChange}
-                      disabled={isEditingRecord}
-                      loading={bhcMedicineInventoryLoading}
-                      error={bhcMedicineInventoryError}
-                      onRetry={() =>
-                        setBhcMedicineInventoryReloadKey((key) => key + 1)
-                      }
-                    />
-                  </div>
-                ) : null
+              medicinesSlot={
+                <ClinicalSection
+                  title="Medicines / Supplies Dispensed"
+                  subtitle="Optional medicines or supplies given from BHC inventory during this visit."
+                >
+                  <DispensedMedicinesSection
+                    inventory={bhcMedicineInventory}
+                    value={dispensedMedicines}
+                    onChange={handleDispensedMedicinesChange}
+                    disabled={isEditingRecord}
+                    loading={bhcMedicineInventoryLoading}
+                    error={bhcMedicineInventoryError}
+                    onRetry={() =>
+                      setBhcMedicineInventoryReloadKey((key) => key + 1)
+                    }
+                  />
+                </ClinicalSection>
               }
             />
-          </FormSection>
+          </div>
         )}
 
-        {!patientGateLocked && !usesCareDecisionStep && isImmunization && (
-          <FormSection
-            title="Follow-up & Referral"
-            subtitle="Schedule a return visit if needed and indicate if RHU referral is required."
-            delay={4}
-          >
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div>
-                {epiWillComplete ? (
-                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold leading-relaxed text-emerald-700">
-                    No next follow-up date is needed because the EPI record will
-                    be complete after saving.
-                  </div>
-                ) : (
-                  <>
-                    <FieldInput
-                      label="Next Follow-up Date"
-                      type="date"
-                      value={followUpDate}
-                      name="followUpDate"
-                      error={validationErrors.followUpDate}
-                      disabled={needsReferral}
-                      required={epiNeedsNextFollowUp}
-                      onChange={(event) => {
-                        clearValidationError("followUpDate");
-                        setFollowUpDate(event.target.value);
-                      }}
-                    />
-                    {epiNeedsNextFollowUp && (
-                      <p className="mt-2 text-xs leading-relaxed text-[#64748B]">
-                        Next follow-up date is required because there are still
-                        remaining EPI vaccines/services.
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-              <YesNoRadioGroup
-                label="Needs RHU Referral?"
-                name="needsReferral"
-                value={needsReferral ? "Yes" : "No"}
-                onChange={handleNeedsReferralChange}
-              />
-            </div>
-          </FormSection>
-        )}
 
         {!patientGateLocked && isMaternal && !selectedPatientIsMale && (
           <>
             {showMaternalPatientWarning && <MaternalClassificationWarning />}
 
             <FormSection
-              title="Pregnancy Details"
-              subtitle="Record pregnancy dating, OB score, and key measurements from the prenatal record."
+              title="Patient Information"
+              subtitle="Record the client's pregnancy dating, OB score, and measurements for this visit."
               delay={3}
-              accent="pink"
             >
-              <div className="space-y-5">
-                <ClinicalFieldGroup title="Pregnancy Dating" accent="pink">
-                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-                    <FieldInput
-                      label="LMP"
-                      type="date"
+              <LockedFormContent locked={patientGateLocked}>
+                {/* 12-column grid. LMP / EDC / BP take thirds, the two OB
+                    score groups take halves so their inline number inputs stay
+                    legible, and WT / BMI / HT take quarters. */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-12">
+                  <div className="sm:col-span-4">
+                    <DatePickerField
+                      label="LMP (Last Menstrual Period)"
                       value={maternalData.lmp}
-                      onChange={(event) =>
-                        handleMaternalChange("lmp", event.target.value)
-                      }
-                    />
-                    <FieldInput
-                      label="PMP"
-                      type="date"
-                      value={maternalData.pmp}
-                      onChange={(event) =>
-                        handleMaternalChange("pmp", event.target.value)
-                      }
-                    />
-                    <FieldInput
-                      label="Cycle Duration"
-                      type="number"
-                      placeholder="e.g. 28"
-                      value={maternalData.cycleDuration}
-                      onChange={(event) =>
-                        handleMaternalChange("cycleDuration", event.target.value)
-                      }
-                    />
-                    <FieldInput
-                      label="EDC / Expected Delivery Date"
-                      value={expectedDeliveryDate || "Calculating..."}
-                      readOnly
-                    />
-                    <FieldInput
-                      label="AOG"
-                      value={aog || "Calculating..."}
-                      readOnly
+                      onChange={(value) => handleMaternalChange("lmp", value)}
                     />
                   </div>
-                </ClinicalFieldGroup>
-
-                <ClinicalFieldGroup title="OB Score / TPAL" accent="pink">
-                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-7">
-                    <FieldInput
-                      label="Gravida"
-                      type="number"
-                      value={maternalData.gravida}
-                      onChange={(event) =>
-                        handleMaternalChange("gravida", event.target.value)
-                      }
-                    />
-                    <FieldInput
-                      label="Para"
-                      type="number"
-                      value={maternalData.para}
-                      onChange={(event) =>
-                        handleMaternalChange("para", event.target.value)
-                      }
-                    />
-                    <FieldInput
-                      label="Term"
-                      type="number"
-                      value={maternalData.term}
-                      onChange={(event) =>
-                        handleMaternalChange("term", event.target.value)
-                      }
-                    />
-                    <FieldInput
-                      label="Preterm"
-                      type="number"
-                      value={maternalData.preterm}
-                      onChange={(event) =>
-                        handleMaternalChange("preterm", event.target.value)
-                      }
-                    />
-                    <FieldInput
-                      label="Abortion"
-                      type="number"
-                      value={maternalData.abortion}
-                      onChange={(event) =>
-                        handleMaternalChange("abortion", event.target.value)
-                      }
-                    />
-                    <FieldInput
-                      label="Living"
-                      type="number"
-                      value={maternalData.living}
-                      onChange={(event) =>
-                        handleMaternalChange("living", event.target.value)
-                      }
-                    />
-                    <FieldInput
-                      label="TPAL Score"
-                      value={maternalTpalScore}
-                      readOnly
+                  <div className="sm:col-span-4">
+                    <DatePickerField
+                      label="EDC (Expected Date of Confinement)"
+                      value={expectedDeliveryDate}
+                      onChange={setExpectedDeliveryDate}
                     />
                   </div>
-                </ClinicalFieldGroup>
-
-                <ClinicalFieldGroup title="Measurements" accent="pink">
-                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="sm:col-span-4">
                     <BpInputGroup
                       systolic={systolicBp}
                       diastolic={diastolicBp}
                       onSystolicChange={setSystolicBp}
                       onDiastolicChange={setDiastolicBp}
                     />
-                    <FieldInput
-                      label="Weight"
-                      type="number"
-                      placeholder="e.g. 60"
-                      value={weight}
-                      onChange={(event) => setWeight(event.target.value)}
-                    />
-                    <FieldInput
-                      label="Height / HGT"
-                      type="number"
-                      placeholder="e.g. 158 cm"
-                      value={height}
-                      onChange={(event) => setHeight(event.target.value)}
-                    />
-                    <FieldInput
-                      label="BMI"
-                      value={maternalData.bmi}
-                      onChange={(event) =>
-                        handleMaternalChange("bmi", event.target.value)
-                      }
-                      readOnly={Boolean(weight && height)}
+                  </div>
+
+                  <div className="sm:col-span-6">
+                    <ScoreInputGroup
+                      label="OB Score (TPAL)"
+                      columnsClassName="grid-cols-4"
+                      fields={OB_SCORE_TPAL_FIELDS}
+                      values={maternalData}
+                      onChange={handleMaternalChange}
+                      preview={maternalTpalPreview}
                     />
                   </div>
-                </ClinicalFieldGroup>
-              </div>
+                  <div className="sm:col-span-6">
+                    <ScoreInputGroup
+                      label="G/P (Gravida/Para)"
+                      columnsClassName="grid-cols-2"
+                      fields={OB_SCORE_GP_FIELDS}
+                      values={maternalData}
+                      onChange={handleMaternalChange}
+                      preview={maternalGravidaParaPreview}
+                    />
+                  </div>
+
+                  <FieldInput
+                    label="WT (Weight)"
+                    type="number"
+                    placeholder="kg"
+                    value={weight}
+                    onChange={(event) => setWeight(event.target.value)}
+                    wrapperClassName="sm:col-span-3"
+                  />
+                  <FieldInput
+                    label="BMI"
+                    value={maternalData.bmi}
+                    onChange={(event) =>
+                      handleMaternalChange("bmi", event.target.value)
+                    }
+                    wrapperClassName="sm:col-span-3"
+                  />
+                  <FieldInput
+                    label="HT (Height)"
+                    type="number"
+                    placeholder="cm"
+                    value={height}
+                    onChange={(event) => setHeight(event.target.value)}
+                    wrapperClassName="sm:col-span-3"
+                  />
+                </div>
+              </LockedFormContent>
             </FormSection>
-
-            <FormSection
-              title="Previous Pregnancy / Delivery History"
-              subtitle="Record previous pregnancy and delivery history from the prenatal record."
-              delay={4}
-              accent="pink"
-            >
-              <PregnancyHistoryTable
-                entries={maternalData.previousPregnancyHistory || []}
-                onAdd={addPregnancyHistoryRow}
-                onChange={updatePregnancyHistoryRow}
-                onRemove={removePregnancyHistoryRow}
-              />
-            </FormSection>
-
-<FormSection
-  title="Chief Complaint & Treatment"
-  subtitle="Record the current complaint, treatment, and any medicine or supply actually given."
-  delay={5}
-  accent="pink"
->
-  <div className="grid gap-4 lg:grid-cols-3">
-    <FieldInput
-      label="Chief Complaint"
-      placeholder="e.g. Routine prenatal check-up"
-      name="chiefComplaint"
-      error={validationErrors.chiefComplaint}
-      value={chiefComplaint}
-      onChange={(event) => {
-        clearValidationError("chiefComplaint");
-        setChiefComplaint(event.target.value);
-      }}
-      wrapperClassName="lg:col-span-3"
-    />
-
-    <FieldTextarea
-      label="Treatment / Advice Given"
-      value={maternalData.treatment}
-      onChange={(event) => {
-        handleMaternalChange("treatment", event.target.value);
-        setMedication(event.target.value);
-      }}
-      rows={3}
-      wrapperClassName="lg:col-span-3"
-    />
-  </div>
-
-  <div className="mt-6 border-t border-[#E8ECF0] pt-5">
-    <h3 className="text-sm font-bold text-pink-800">
-      Medicines / Supplies Dispensed
-    </h3>
-    <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
-      Optional: record medicines or supplies actually released from BHC inventory during this visit.
-    </p>
-
-    <div className="mt-4">
-      <DispensedMedicinesSection
-        inventory={bhcMedicineInventory}
-        value={dispensedMedicines}
-        onChange={handleDispensedMedicinesChange}
-        disabled={isEditingRecord}
-        loading={bhcMedicineInventoryLoading}
-        error={bhcMedicineInventoryError}
-        onRetry={() => setBhcMedicineInventoryReloadKey((key) => key + 1)}
-      />
-    </div>
-  </div>
-</FormSection>
 
             <FormSection
               title="Medical History / Risk Codes"
               subtitle="Mark pregnancy risk codes and medical conditions from the prenatal record."
-              delay={6}
-              accent="pink"
+              delay={4}
             >
-              <div className="grid gap-5 lg:grid-cols-2">
-                <CheckboxGroup
-                  title="Pregnancy Risk Codes"
-                  options={PREGNANCY_RISK_OPTIONS}
-                  values={maternalData.riskAssessment}
-                  onChange={(key, value) =>
-                    handleNestedMaternalChange("riskAssessment", key, value)
-                  }
-                />
-                <CheckboxGroup
-                  title="Medical Conditions"
-                  options={MEDICAL_HISTORY_OPTIONS}
-                  values={maternalData.riskAssessment}
-                  onChange={(key, value) =>
-                    handleNestedMaternalChange("riskAssessment", key, value)
-                  }
-                />
-              </div>
+              <LockedFormContent locked={patientGateLocked}>
+                <div className="grid gap-8 lg:grid-cols-2">
+                  <div className="space-y-6">
+                    <RiskCodeChecklist
+                      eyebrow="Pregnancy Risk Codes"
+                      options={PREGNANCY_RISK_CODES}
+                      values={maternalData.riskAssessment}
+                      onChange={handleRiskAssessmentChange}
+                    />
+                    <RiskCodeChecklist
+                      eyebrow="Other Important Information"
+                      options={OTHER_IMPORTANT_INFORMATION}
+                      values={maternalData.riskAssessment}
+                      onChange={handleRiskAssessmentChange}
+                    />
+                  </div>
+                  <RiskCodeChecklist
+                    eyebrow="Medical Conditions"
+                    options={MEDICAL_CONDITION_CODES}
+                    values={maternalData.riskAssessment}
+                    onChange={handleRiskAssessmentChange}
+                  />
+                </div>
+              </LockedFormContent>
             </FormSection>
 
             <FormSection
-              title="Previous FP Method Used"
-              subtitle="Record the patient's previous family planning method, if any."
-              delay={7}
-              accent="pink"
+              title="Additional Health Information"
+              subtitle="Record any family planning method used before this pregnancy."
+              delay={5}
             >
-              <div className="grid gap-4 lg:grid-cols-2">
+              <LockedFormContent locked={patientGateLocked}>
                 <FieldSelect
                   label="Previous FP Method Used"
                   value={maternalData.previousFpMethodUsed}
@@ -4862,139 +4600,123 @@ export default function AddHealthRecord() {
                     )
                   }
                 >
-                  <option value="">Select method</option>
-                  {FAMILY_PLANNING_PREVIOUS_METHODS.map((method) => (
+                  <option value="">Select FP Method Used...</option>
+                  {PREVIOUS_FP_METHOD_OPTIONS.map((method) => (
                     <option key={method} value={method}>
                       {method}
                     </option>
                   ))}
                 </FieldSelect>
                 {maternalData.previousFpMethodUsed === "Other" && (
-                  <FieldInput
-                    label="Specify FP Method"
-                    value={maternalData.previousFpMethodOther}
-                    onChange={(event) =>
-                      handleMaternalChange(
-                        "previousFpMethodOther",
-                        event.target.value,
-                      )
-                    }
-                  />
+                  <div className="mt-4">
+                    <FieldInput
+                      label="Specify FP Method"
+                      value={maternalData.previousFpMethodOther}
+                      onChange={(event) =>
+                        handleMaternalChange(
+                          "previousFpMethodOther",
+                          event.target.value,
+                        )
+                      }
+                    />
+                  </div>
                 )}
-              </div>
+              </LockedFormContent>
             </FormSection>
 
             <FormSection
-              title="Laboratory Results"
-              subtitle="Optional laboratory results recorded for this prenatal visit."
-              delay={8}
-              accent="pink"
+              title="Tetanus Toxoid (TT) Status"
+              subtitle="Record TT1-TT5 dates given."
+              delay={6}
             >
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {LABORATORY_RESULT_FIELDS.map((field) => (
-                  <FieldInput
-                    key={field.key}
-                    label={field.label}
-                    value={maternalData.laboratoryResults?.[field.key] || ""}
-                    onChange={(event) =>
-                      handleNestedMaternalChange(
-                        "laboratoryResults",
-                        field.key,
-                        event.target.value,
-                      )
-                    }
-                  />
-                ))}
-              </div>
-            </FormSection>
-
-            <FormSection
-              title="Tetanus Toxoid Status"
-              subtitle="Record tetanus toxoid dates if available."
-              delay={9}
-              accent="pink"
-            >
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-                {TETANUS_TOXOID_FIELDS.map((field) => (
-                  <FieldInput
-                    key={field.key}
-                    label={field.label}
-                    type="date"
-                    value={maternalData.tetanusToxoidStatus?.[field.key] || ""}
-                    onChange={(event) =>
-                      handleNestedMaternalChange(
-                        "tetanusToxoidStatus",
-                        field.key,
-                        event.target.value,
-                      )
-                    }
-                  />
-                ))}
-              </div>
+              <LockedFormContent locked={patientGateLocked}>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {TETANUS_TOXOID_FIELDS.map((field) => (
+                    <DatePickerField
+                      key={field.key}
+                      label={field.label}
+                      value={maternalData.tetanusToxoidStatus?.[field.key] || ""}
+                      onChange={(value) =>
+                        handleNestedMaternalChange(
+                          "tetanusToxoidStatus",
+                          field.key,
+                          value,
+                        )
+                      }
+                    />
+                  ))}
+                </div>
+              </LockedFormContent>
             </FormSection>
 
             <FormSection
               title="Ultrasound Result"
-              subtitle="Optional ultrasound result for this prenatal visit."
-              delay={10}
-              accent="pink"
+              subtitle="Enter the latest ultrasound result and date."
+              delay={7}
             >
-              <div className="grid gap-4 lg:grid-cols-[1.5fr_0.75fr]">
-                <FieldTextarea
-                  label="Ultrasound Result"
-                  value={maternalData.ultrasound?.result || ""}
-                  onChange={(event) =>
-                    handleNestedMaternalChange(
-                      "ultrasound",
-                      "result",
-                      event.target.value,
-                    )
-                  }
-                  rows={3}
-                />
-                <FieldInput
-                  label="Date Done"
-                  type="date"
-                  value={maternalData.ultrasound?.dateDone || ""}
-                  onChange={(event) =>
-                    handleNestedMaternalChange(
-                      "ultrasound",
-                      "dateDone",
-                      event.target.value,
-                    )
-                  }
-                />
-              </div>
+              <LockedFormContent locked={patientGateLocked}>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FieldInput
+                    label="Ultrasound Result"
+                    value={maternalData.ultrasound?.result || ""}
+                    onChange={(event) =>
+                      handleNestedMaternalChange(
+                        "ultrasound",
+                        "result",
+                        event.target.value,
+                      )
+                    }
+                  />
+                  <DatePickerField
+                    label="Date of Ultrasound"
+                    value={maternalData.ultrasound?.dateDone || ""}
+                    onChange={(value) =>
+                      handleNestedMaternalChange("ultrasound", "dateDone", value)
+                    }
+                  />
+                </div>
+              </LockedFormContent>
             </FormSection>
 
             <FormSection
-              title="Follow-up & Referral"
-              subtitle="Schedule a return visit if needed and indicate if RHU referral is required."
-              delay={12}
-              accent="pink"
+              title="Treatment/Action Taken"
+              subtitle="Document treatment given for this visit."
+              delay={8}
             >
-              <div className="grid gap-4 lg:grid-cols-2">
-                <div>
-                  <FieldInput
-                    label="Next Follow-up Date"
-                    type="date"
-                    value={followUpDate}
-                    name="followUpDate"
-                    error={validationErrors.followUpDate}
-                    disabled={needsReferral}
-                    onChange={(event) => {
-                      clearValidationError("followUpDate");
-                      setFollowUpDate(event.target.value);
-                    }}
-                  />
-                </div>
-                <YesNoRadioGroup
-                  label="Needs RHU Referral?"
-                  name="needsReferral"
-                  value={needsReferral ? "Yes" : "No"}
-                  onChange={handleNeedsReferralChange}
+              <LockedFormContent locked={patientGateLocked}>
+                <FieldTextarea
+                  label="Treatment/Action Taken"
+                  value={maternalData.treatment}
+                  onChange={(event) => {
+                    handleMaternalChange("treatment", event.target.value);
+                    setMedication(event.target.value);
+                  }}
+                  placeholder="Enter treatment or action taken..."
+                  rows={3}
                 />
-              </div>
+              </LockedFormContent>
+            </FormSection>
+
+            <FormSection
+              title="Medicines / Supplies Dispensed"
+              subtitle="Optional medicines or supplies given from BHC inventory during this visit."
+              delay={9}
+            >
+              <LockedFormContent locked={patientGateLocked}>
+                <DispensedMedicinesSection
+                  inventory={bhcMedicineInventory}
+                  value={dispensedMedicines}
+                  onChange={handleDispensedMedicinesChange}
+                  pendingDraftError={validationErrors.dispensedMedicines}
+                  onPendingDraftChange={handlePendingDispensedMedicineChange}
+                  disabled={isEditingRecord}
+                  loading={bhcMedicineInventoryLoading}
+                  error={bhcMedicineInventoryError}
+                  onRetry={() =>
+                    setBhcMedicineInventoryReloadKey((key) => key + 1)
+                  }
+                />
+              </LockedFormContent>
             </FormSection>
           </>
         )}
@@ -5002,59 +4724,21 @@ export default function AddHealthRecord() {
         {!patientGateLocked && isFamilyPlanning && (
           <FormSection
             title="Family Planning Details"
-            subtitle="Record the family planning service type, method, source, schedule, and action taken."
+            subtitle="Record client type, method, and visit details."
             delay={3}
           >
             <LockedFormContent locked={patientGateLocked}>
-              <div className="grid gap-4 lg:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <FieldSelect
-                  label="Client Type"
+                  label="Type of Client"
+                  required
                   value={familyPlanningData.clientType}
                   onChange={(event) =>
                     handleFamilyPlanningChange("clientType", event.target.value)
                   }
                 >
-                  <option value="">Select client type</option>
-                  {FAMILY_PLANNING_CLIENT_TYPES.map((option) => (
-                    <option key={option}>{option}</option>
-                  ))}
-                </FieldSelect>
-                <FieldSelect
-                  label="Method Used / Accepted"
-                  value={familyPlanningData.methodUsed}
-                  onChange={(event) =>
-                    handleFamilyPlanningChange("methodUsed", event.target.value)
-                  }
-                >
-                  <option value="">Select method</option>
-                  {FAMILY_PLANNING_METHODS.map((option) => (
-                    <option key={option}>{option}</option>
-                  ))}
-                </FieldSelect>
-                <FieldSelect
-                  label="Previous Method"
-                  value={familyPlanningData.previousMethod}
-                  onChange={(event) =>
-                    handleFamilyPlanningChange(
-                      "previousMethod",
-                      event.target.value,
-                    )
-                  }
-                >
-                  <option value="">Select previous method</option>
-                  {FAMILY_PLANNING_PREVIOUS_METHODS.map((option) => (
-                    <option key={option}>{option}</option>
-                  ))}
-                </FieldSelect>
-                <FieldSelect
-                  label="FP Visit Type"
-                  value={familyPlanningData.fpVisitType}
-                  onChange={(event) =>
-                    handleFamilyPlanningChange("fpVisitType", event.target.value)
-                  }
-                >
-                  <option value="">Select visit type</option>
-                  {FAMILY_PLANNING_VISIT_TYPES.map((option) => (
+                  <option value="">Select type of client...</option>
+                  {FP_CLIENT_TYPE_OPTIONS.map((option) => (
                     <option key={option}>{option}</option>
                   ))}
                 </FieldSelect>
@@ -5065,95 +4749,53 @@ export default function AddHealthRecord() {
                     handleFamilyPlanningChange("source", event.target.value)
                   }
                 >
-                  <option value="">Select source</option>
-                  {FAMILY_PLANNING_SOURCES.map((option) => (
+                  <option value="">Select source...</option>
+                  {FP_SOURCE_OPTIONS.map((option) => (
                     <option key={option}>{option}</option>
                   ))}
                 </FieldSelect>
-                <DatePickerField
-                  label="Date Registered / Date of Visit"
-                  value={familyPlanningData.dateRegistered || dateOfVisit}
-                  onChange={(value) => {
-                    handleFamilyPlanningChange("dateRegistered", value);
-                    handleFamilyPlanningChange("dateOfVisit", value);
-                  }}
-                />
-                <DatePickerField
-                  label="Next Appointment Date"
-                  value={familyPlanningData.nextAppointmentDate}
-                  onChange={(value) =>
-                    handleFamilyPlanningChange("nextAppointmentDate", value)
-                  }
-                />
-              </div>
-              <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                <FieldTextarea
-                  label="Remarks"
-                  value={familyPlanningData.remarks}
+
+                <FieldSelect
+                  label="Previous Method"
+                  value={familyPlanningData.previousMethod}
                   onChange={(event) =>
-                    handleFamilyPlanningChange("remarks", event.target.value)
+                    handleFamilyPlanningChange(
+                      "previousMethod",
+                      event.target.value,
+                    )
                   }
-                  placeholder="Brief administrative notes for this family planning visit..."
-                  rows={3}
-                />
-                <FieldTextarea
-                  label="Action Taken"
-                  value={familyPlanningData.actionTaken}
+                >
+                  <option value="">Select previous method...</option>
+                  {PREVIOUS_FP_METHOD_OPTIONS.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </FieldSelect>
+
+                <FieldInput
+                  label="Method Used / Accepted"
+                  required
+                  placeholder="e.g. DMPA / Injectable, Pills..."
+                  value={familyPlanningData.methodUsed}
                   onChange={(event) =>
-                    handleFamilyPlanningChange("actionTaken", event.target.value)
-                  }
-                  placeholder="Record counseling, method provision, advice, or next action..."
-                  rows={3}
-                />
-              </div>
-              <div className="mt-4">
-                <YesNoRadioGroup
-                  label="Has complaint, side-effect, or clinical concern?"
-                  name="familyPlanningConcernToggle"
-                  value={familyPlanningData.hasClinicalConcern}
-                  onChange={(value) =>
-                    handleFamilyPlanningChange("hasClinicalConcern", value)
+                    handleFamilyPlanningChange("methodUsed", event.target.value)
                   }
                 />
-              </div>
-              {(familyPlanningData.hasClinicalConcern === "Yes" ||
-                familyPlanningData.fpVisitType === "Side-effect Concern") && (
-                <div className="mt-5 rounded-xl border border-amber-100 bg-amber-50/30 p-4">
-                  <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-amber-700">
-                    Clinical Concern / Side-effect Notes
-                  </p>
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <FieldInput
-                      label="Concern / Complaint"
-                      name="familyPlanningConcern"
-                      error={validationErrors.familyPlanningConcern}
-                      value={familyPlanningData.concern}
-                      onChange={(event) => {
-                        clearValidationError("familyPlanningConcern");
-                        handleFamilyPlanningChange("concern", event.target.value);
-                      }}
-                      required
-                    />
-                    <FieldInput
-                      label="Advice Given"
-                      value={familyPlanningData.adviceGiven}
-                      onChange={(event) =>
-                        handleFamilyPlanningChange("adviceGiven", event.target.value)
-                      }
-                    />
-                    <div className="lg:col-span-2">
-                      <FieldTextarea
-                        label="Findings / Notes"
-                        value={familyPlanningData.findings}
-                        onChange={(event) =>
-                          handleFamilyPlanningChange("findings", event.target.value)
-                        }
-                        rows={3}
-                      />
-                    </div>
-                  </div>
+
+                <div className="sm:col-span-2">
+                  <FieldTextarea
+                    label="Treatment/Action Taken"
+                    value={familyPlanningData.actionTaken}
+                    onChange={(event) =>
+                      handleFamilyPlanningChange(
+                        "actionTaken",
+                        event.target.value,
+                      )
+                    }
+                    placeholder="Enter treatment or action taken..."
+                    rows={3}
+                  />
                 </div>
-              )}
+              </div>
             </LockedFormContent>
           </FormSection>
         )}
@@ -5161,18 +4803,23 @@ export default function AddHealthRecord() {
         {!patientGateLocked && isFamilyPlanning && (
           <FormSection
             title="Medicines / Supplies Dispensed"
-            subtitle="Optional medicines, supplies, or FP commodities given from BHC inventory."
+            subtitle="Record medicines or supplies given to the client."
             delay={4}
           >
-            <DispensedMedicinesSection
-              inventory={bhcMedicineInventory}
-              value={dispensedMedicines}
-              onChange={handleDispensedMedicinesChange}
-              disabled={isEditingRecord}
-              loading={bhcMedicineInventoryLoading}
-              error={bhcMedicineInventoryError}
-              onRetry={() => setBhcMedicineInventoryReloadKey((key) => key + 1)}
-            />
+            <LockedFormContent locked={patientGateLocked}>
+              <FieldTextarea
+                label="Medicines / Supplies"
+                value={familyPlanningData.medicinesSupplies}
+                onChange={(event) =>
+                  handleFamilyPlanningChange(
+                    "medicinesSupplies",
+                    event.target.value,
+                  )
+                }
+                placeholder="List items dispensed..."
+                rows={3}
+              />
+            </LockedFormContent>
           </FormSection>
         )}
 
@@ -5295,34 +4942,6 @@ export default function AddHealthRecord() {
               />
             </FormSection>
 
-            <FormSection
-              title="Follow-up & Referral"
-              subtitle="Schedule a return visit if needed and indicate if RHU referral is required."
-              delay={6}
-            >
-              <div className="grid gap-4 lg:grid-cols-2">
-                <div>
-                  <FieldInput
-                    label="Next Follow-up Date"
-                    type="date"
-                    value={followUpDate}
-                    name="followUpDate"
-                    error={validationErrors.followUpDate}
-                    disabled={needsReferral}
-                    onChange={(event) => {
-                      clearValidationError("followUpDate");
-                      setFollowUpDate(event.target.value);
-                    }}
-                  />
-                </div>
-                <YesNoRadioGroup
-                  label="Needs RHU Referral?"
-                  name="needsReferral"
-                  value={needsReferral ? "Yes" : "No"}
-                  onChange={handleNeedsReferralChange}
-                />
-              </div>
-            </FormSection>
           </>
         )}
 
@@ -5360,15 +4979,16 @@ export default function AddHealthRecord() {
                       setSummaryOfPresentIllness(event.target.value);
                     }}
                     placeholder="Record symptoms, assessment findings, history, and physical examination findings here..."
-                    rows={5}
+                    rows={3}
                   />
                 </div>
                 <div className="mt-4">
-                  <FieldInput
+                  <FieldTextarea
                     label="Diagnosis / Assessment"
                     value={diagnosis}
                     onChange={(event) => setDiagnosis(event.target.value)}
                     placeholder="Initial diagnosis or clinical assessment"
+                    rows={3}
                   />
                 </div>
               </LockedFormContent>
@@ -5376,11 +4996,11 @@ export default function AddHealthRecord() {
 
             <FormSection
               title="Vital Signs"
-              subtitle="Record the patient's physiological measurements."
+              subtitle="Record the patient's vital signs for this visit."
               delay={4}
             >
               <LockedFormContent locked={patientGateLocked}>
-                <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(3,minmax(0,1fr))]">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <BpInputGroup
                     systolic={systolicBp}
                     diastolic={diastolicBp}
@@ -5389,236 +5009,157 @@ export default function AddHealthRecord() {
                   />
                   <FieldInput
                     label="Temperature"
-                    placeholder="e.g. 36.5 C"
+                    placeholder="e.g. 36.8&#176;C"
                     value={temp}
                     onChange={(event) => setTemp(event.target.value)}
                   />
                   <FieldInput
                     label="Weight"
                     type="number"
-                    placeholder="e.g. 60"
+                    placeholder="kg"
                     value={weight}
                     onChange={(event) => setWeight(event.target.value)}
                   />
                   <FieldInput
                     label="Height"
                     type="number"
-                    placeholder="e.g. 165"
+                    placeholder="cm"
                     value={height}
                     onChange={(event) => setHeight(event.target.value)}
                   />
+                  <BmiOutputField weight={weight} height={height} />
                 </div>
               </LockedFormContent>
             </FormSection>
 
             <FormSection
-              title="Treatment & Actions"
-              subtitle="Document the treatment, advice, and supplies provided during this consultation."
+              title="Treatment/Action Taken"
+              subtitle="Document treatment given for this visit."
               delay={5}
             >
               <LockedFormContent locked={patientGateLocked}>
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <FieldInput
-                    label="Treatment / Action Taken"
-                    value={medication}
-                    onChange={(event) => setMedication(event.target.value)}
-                  />
-                  <FieldTextarea
-                    label="Consultation Notes"
-                    value={consultationNotes}
-                    onChange={(event) => setConsultationNotes(event.target.value)}
-                    placeholder="Write additional instructions, advice, or care notes..."
-                    rows={3}
-                  />
-                </div>
-                <div className="mt-5 border-t border-slate-200 pt-5">
-                  <div className="mb-3">
-                    <h3 className="text-sm font-bold text-[#0F172A]">
-                      Medicines / Supplies Dispensed
-                    </h3>
-                    <p className="mt-0.5 text-xs leading-relaxed text-[#64748B]">
-                      Optional medicines or supplies given from BHC inventory
-                      during this consultation.
-                    </p>
-                  </div>
-                  <DispensedMedicinesSection
-                    inventory={bhcMedicineInventory}
-                    value={dispensedMedicines}
-                    onChange={handleDispensedMedicinesChange}
-                    pendingDraftError={validationErrors.dispensedMedicines}
-                    onPendingDraftChange={handlePendingDispensedMedicineChange}
-                    disabled={isEditingRecord}
-                    loading={bhcMedicineInventoryLoading}
-                    error={bhcMedicineInventoryError}
-                    onRetry={() =>
-                      setBhcMedicineInventoryReloadKey((key) => key + 1)
-                    }
-                  />
-                </div>
-              </LockedFormContent>
-            </FormSection>
-
-            <FormSection
-              title="Morbidity / Notifiable Disease Record"
-              subtitle="Choose whether this visit should appear in the morbidity or notifiable diseases daily log."
-              delay={6}
-            >
-              <LockedFormContent locked={patientGateLocked}>
-                <MorbidityNotifiableReportingSection
-                  value={morbidityReportingStatus}
-                  onChange={setMorbidityReportingStatus}
+                <FieldTextarea
+                  label="Treatment/Action Taken"
+                  value={medication}
+                  onChange={(event) => setMedication(event.target.value)}
+                  placeholder="Medications, procedures, advice given..."
+                  rows={3}
                 />
               </LockedFormContent>
             </FormSection>
 
             <FormSection
-              title="Community-Based Surveillance"
-              subtitle="Decide whether this visit should be included in the HFMD surveillance list."
-              delay={7}
+              title="Medicines / Supplies Dispensed"
+              subtitle="Optional medicines or supplies given from BHC inventory during this consultation."
+              delay={6}
             >
               <LockedFormContent locked={patientGateLocked}>
-                <YesNoRadioGroup
-                  label="Include in HFMD Surveillance List?"
-                  name="hfmdSurveillance"
-                  value={hfmdSurveillance ? "Yes" : "No"}
-                  onChange={(value) =>
-                    setHfmdSurveillance(value === "Yes" || value === true)
+                <DispensedMedicinesSection
+                  inventory={bhcMedicineInventory}
+                  value={dispensedMedicines}
+                  onChange={handleDispensedMedicinesChange}
+                  pendingDraftError={validationErrors.dispensedMedicines}
+                  onPendingDraftChange={handlePendingDispensedMedicineChange}
+                  disabled={isEditingRecord}
+                  loading={bhcMedicineInventoryLoading}
+                  error={bhcMedicineInventoryError}
+                  onRetry={() =>
+                    setBhcMedicineInventoryReloadKey((key) => key + 1)
                   }
                 />
               </LockedFormContent>
             </FormSection>
 
-            {!usesCareDecisionStep && (
-              <FormSection
-                title="FOLLOW-UP DECISION"
-                subtitle="Choose whether another visit is required or the patient should be referred to the RHU."
-                delay={8}
-              >
-                <LockedFormContent locked={patientGateLocked}>
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <FieldSelect
-                      label="Follow-up Decision"
-                      name="followUpStatus"
-                      value={followUpDecisionValue}
-                      error={validationErrors.followUpStatus}
-                      disabled={needsReferral}
-                      onChange={(event) =>
-                        handleFollowUpDecisionChange(event.target.value)
-                      }
-                    >
-                      <option>Follow-up Required</option>
-                      <option>Routine Monitoring</option>
-                      <option>No Further Follow-up Required</option>
-                    </FieldSelect>
-                    <YesNoRadioGroup
-                      label="Needs RHU Referral?"
-                      name="needsReferral"
-                      value={needsReferral ? "Yes" : "No"}
-                      onChange={handleNeedsReferralChange}
+            {/* Two reporting decisions, side by side. They are one row rather
+                than two stacked FormSections because each is a single short
+                control and they are decided together. */}
+            <div
+              className="anim-fade-up grid gap-8 border-t border-[#F1F5F9] pt-5 pb-1 lg:grid-cols-2"
+              style={stagger(7)}
+            >
+              <div>
+                <h2 className="text-sm font-bold text-[#1A1A1A]">
+                  Morbidity / Notifiable Disease Record
+                </h2>
+                <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
+                  Choose whether this visit should appear in the morbidity or
+                  notifiable diseases daily log.
+                </p>
+                <div className="mt-4">
+                  <LockedFormContent locked={patientGateLocked}>
+                    <MorbidityNotifiableReportingSection
+                      value={morbidityReportingStatus}
+                      onChange={setMorbidityReportingStatus}
                     />
-                  </div>
+                  </LockedFormContent>
+                </div>
+              </div>
 
-                  {showFollowUpMonitoringFields && (
-                    <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                      <FieldInput
-                        label="Follow-up Date"
-                        type="date"
-                        name="followUpDate"
-                        value={followUpDate}
-                        error={validationErrors.followUpDate}
-                        onChange={(event) => {
-                          clearValidationError("followUpDate");
-                          setFollowUpDate(event.target.value);
-                        }}
-                        required
-                      />
-                      <TimePickerField
-                        label="Follow-up Time"
-                        name="followUpTime"
-                        value={followUpTime}
-                        error={validationErrors.followUpTime}
-                        onChange={(value) => {
-                          clearValidationError("followUpTime");
-                          setFollowUpTime(value);
-                        }}
-                        required
-                      />
-                    </div>
-                  )}
+              <div>
+                <h2 className="text-sm font-bold text-[#1A1A1A]">
+                  Community-Based Surveillance
+                </h2>
+                <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
+                  Decide whether this visit should be included in the HFMD
+                  surveillance list.
+                </p>
+                <div className="mt-4">
+                  <LockedFormContent locked={patientGateLocked}>
+                    <YesNoRadioGroup
+                      label="Include in HFMD Surveillance List?"
+                      name="hfmdSurveillance"
+                      value={hfmdSurveillance ? "Yes" : "No"}
+                      onChange={(value) =>
+                        setHfmdSurveillance(value === "Yes" || value === true)
+                      }
+                    />
+                  </LockedFormContent>
+                </div>
+              </div>
+            </div>
 
-                  {!needsReferral && (
-                    <div className="mt-4">
-                      <FieldTextarea
-                        label={monitoringNotesLabel}
-                        value={monitoringNotes}
-                        onChange={(event) => setMonitoringNotes(event.target.value)}
-                        placeholder={monitoringNotesPlaceholder}
-                        rows={3}
-                      />
-                    </div>
-                  )}
-
-                  {morbidityReportingStatus === "notifiable" && (
-                    <p className="mt-3 text-xs leading-relaxed text-[#64748B]">
-                      Notifiable or surveillance cases may require RHU
-                      coordination and follow-up depending on health center
-                      protocol.
-                    </p>
-                  )}
-                </LockedFormContent>
-              </FormSection>
-            )}
           </>
         )}
 
-        {recordTypeKey !== "general consultation" && !needsReferral && followUpDate && (
-          <FormSection
-            title="Follow-up Schedule Details"
-            subtitle="Add an optional time for the patient's next follow-up visit."
-            delay={9}
-          >
-            <div className="max-w-md">
-              <TimePickerField
-                label="Follow-up Time"
-                name="followUpTime"
-                value={followUpTime}
-                onChange={setFollowUpTime}
-              />
-            </div>
-          </FormSection>
-        )}
 
         <div
           className="anim-fade-up flex flex-col gap-3 pt-1 pb-4 sm:flex-row sm:items-center sm:justify-between"
           style={stagger(7)}
         >
           <div>
-            {!usesCareDecisionStep && (
-              <button
-                type="button"
-                onClick={() => navigate(healthRecordsPath)}
-                className="rounded-xl border border-[#E8ECF0] bg-white px-5 py-2.5 text-sm font-semibold text-[#6B7280] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#D1D5DB] hover:shadow-md active:scale-[0.97]"
-              >
-                Cancel
-              </button>
-            )}
-          </div>
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
             <button
               type="button"
-              onClick={handleSave}
-              disabled={isPrimaryActionLoading}
-              className="group flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
+              onClick={handleStepBack}
+              className="rounded-xl border border-[#E5E7EB] bg-white px-5 py-2.5 text-[12.5px] font-semibold text-[#475569] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
             >
-              {isPrimaryActionLoading ? (
-                <ButtonSpinner />
-              ) : (
-                <Save
-                  size={15}
-                  className="transition-transform duration-300 group-hover:scale-110"
-                />
-              )}
-              {primaryActionLabel}
+              Back
+            </button>
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
+            {canSaveCurrentDraft && (
+              <button
+                type="button"
+                onClick={handleManualSaveDraft}
+                disabled={draftAutosaveStatus === "saving" || saving}
+                aria-busy={draftAutosaveStatus === "saving"}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-5 py-2.5 text-[12.5px] font-semibold text-[#475569] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {draftAutosaveStatus === "saving" ? <ButtonSpinner /> : null}
+                {draftAutosaveStatus === "saving"
+                  ? "Saving draft..."
+                  : activeDraft
+                    ? "Update Draft"
+                    : "Save as Draft"}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleContinueToNextAction}
+              disabled={isPrimaryActionLoading}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-[12.5px] font-bold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isPrimaryActionLoading ? <ButtonSpinner /> : null}
+              Next
             </button>
           </div>
         </div>
@@ -5671,10 +5212,10 @@ export default function AddHealthRecord() {
             label: "Add Another Record",
             onClick: () => {
               setSaveSuccess(null);
-              setReferralDetailsStep(false);
-              setPendingReferralDraft(null);
-              setReferralValidationErrors({});
-              setSetupComplete(false);
+              lastReferralAttemptRef.current = null;
+              setWizardPhase(WIZARD_SETUP);
+              setConsultationType(null);
+              setSelectedFollowUpTaskId("");
               setHealthRecordType("");
               setSelectedPatientId("");
             },
@@ -5721,104 +5262,7 @@ export default function AddHealthRecord() {
 /* ═══════════════════════════════════════════════════════════════
    PATIENT SEARCH DROPDOWN
    ═══════════════════════════════════════════════════════════════ */
-function ActiveFollowUpPrompt({ tasks, onStartNew, onRecord }) {
-  const multiple = tasks.length > 1;
-  const [selectedTaskId, setSelectedTaskId] = useState(tasks[0]?.id || "");
 
-  useEffect(() => {
-    setSelectedTaskId(tasks[0]?.id || "");
-  }, [tasks]);
-
-  const selectedTask =
-    tasks.find((task) => String(task.id) === String(selectedTaskId)) ||
-    tasks[0] ||
-    null;
-
-  return (
-    <ModalShell
-      open={tasks.length > 0}
-      title={
-        multiple ? "Select Follow-up to Record" : "Active Follow-up Found"
-      }
-      subtitle={
-        multiple
-          ? "Choose the pending visit being recorded."
-          : "This patient has a pending follow-up."
-      }
-      icon={<FileClock size={14} />}
-      size="xl"
-      onClose={onStartNew}
-      dismissOnBackdrop={false}
-      footer={
-        <>
-          <ModalButton onClick={onStartNew}>
-            Start New Consultation
-          </ModalButton>
-          <ModalButton
-            variant="primary"
-            primary
-            disabled={!selectedTask}
-            onClick={() => selectedTask && onRecord(selectedTask)}
-          >
-            {multiple ? "Continue" : "Record Follow-up Visit"}
-          </ModalButton>
-        </>
-      }
-    >
-      <div className="space-y-3">
-            {tasks.map((task) => (
-              <label
-                key={task.id}
-                className={`block cursor-pointer rounded-xl border p-4 transition ${
-                  String(selectedTaskId) === String(task.id)
-                    ? "border-[#B91C1C]/40 bg-red-50/50"
-                    : "border-slate-200 bg-slate-50/70 hover:border-slate-300"
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <input
-                    type="radio"
-                    name="activeFollowUpTask"
-                    value={task.id}
-                    checked={String(selectedTaskId) === String(task.id)}
-                    onChange={() => setSelectedTaskId(task.id)}
-                    className="mt-1 h-4 w-4 accent-[#B91C1C]"
-                  />
-                  <dl className="grid flex-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-                    <FollowUpPromptDetail
-                      label="Service Type"
-                      value={getFollowUpTaskServiceType(task)}
-                    />
-                    <FollowUpPromptDetail
-                      label="Scheduled"
-                      value={formatFollowUpSchedule(task)}
-                    />
-                    <FollowUpPromptDetail
-                      label="Linked Health Record"
-                      value={`Record #${task.healthRecordId || "—"}`}
-                    />
-                  </dl>
-                </div>
-              </label>
-            ))}
-          </div>
-
-    </ModalShell>
-  );
-}
-
-function FollowUpPromptDetail({ label, value }) {
-  return (
-    <div>
-      <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-        {label}
-      </dt>
-      <dd className="mt-1 font-semibold text-slate-800">
-        {value || "Not recorded"}
-      </dd>
-    </div>
-  );
-}
 
 function formatFollowUpSchedule(task = {}) {
   const dateValue = task.dueDate || task.due_date;
@@ -5830,40 +5274,6 @@ function formatFollowUpSchedule(task = {}) {
   return task.dueTime ? `${date}, ${task.dueTime}` : date;
 }
 
-function HeaderIconButton({
-  icon: Icon,
-  label,
-  onClick,
-  active = false,
-  disabled = false,
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      title={label}
-      className={`group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/15 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
-        active
-          ? "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]"
-          : "border-[#E8ECF0] bg-white text-[#64748B] hover:-translate-y-0.5 hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] hover:shadow-md"
-      }`}
-    >
-      <Icon
-        size={17}
-        strokeWidth={2.2}
-        className="transition-transform duration-200 group-hover:scale-105"
-      />
-      {active && (
-        <span
-          className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[#B91C1C]"
-          aria-hidden="true"
-        />
-      )}
-    </button>
-  );
-}
 
 function DraftsDrawer({
   open,
@@ -5966,159 +5376,8 @@ function DraftsDrawer({
   );
 }
 
-function HealthRecordSetupStep({
-  selectedPatientId,
-  classification,
-  onClassificationSelect,
-  errors = {},
-  onProceed,
-}) {
-  const normalizedClassification = normalizeRecordType(classification);
-  const canProceed = Boolean(selectedPatientId && normalizedClassification);
 
-  return (
-    <section
-      className="anim-fade-up relative z-0 ml-0 mr-auto w-full max-w-7xl"
-      style={stagger(1)}
-    >
-      <div className="p-1">
-        <div
-          data-field="healthRecordType"
-          tabIndex={errors.healthRecordType ? -1 : undefined}
-        >
-          <p className="text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
-            Select Service Type
-          </p>
-          <p className="mt-0.5 text-xs text-[#64748B]">
-            Choose the health service to record for this patient.
-          </p>
 
-          <div className="mt-3">
-            <ServiceCardGroup
-              options={RECORD_TYPE_OPTIONS}
-              normalizedClassification={normalizedClassification}
-              onClassificationSelect={onClassificationSelect}
-              cardGridClass="sm:grid-cols-2 xl:grid-cols-3"
-            />
-          </div>
-
-          {errors.healthRecordType && (
-            <p className="mt-2 text-[11px] font-medium text-[#B91C1C]">
-              {errors.healthRecordType}
-            </p>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-medium text-[#94A3B8]">
-              {canProceed
-                ? "Ready to continue to the selected record form."
-                : "Select a patient and record type to continue."}
-            </p>
-          </div>
-          <div className="flex flex-col-reverse gap-2 sm:flex-row">
-            <button
-              type="button"
-              onClick={onProceed}
-              className="rounded-xl bg-[#B91C1C] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
-            >
-              Proceed
-            </button>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ServiceCardGroup({
-  title,
-  helper,
-  options,
-  normalizedClassification,
-  onClassificationSelect,
-  cardGridClass = "sm:grid-cols-2 xl:grid-cols-3",
-}) {
-  return (
-    <div>
-      {title && (
-        <div className="mb-2 flex flex-col gap-0.5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h3 className="text-xs font-bold text-[#0F172A]">{title}</h3>
-            {helper && (
-              <p className="text-[11px] leading-relaxed text-[#94A3B8]">
-                {helper}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-      <div className={`grid gap-3 ${cardGridClass}`}>
-        {options.map((option) => (
-          <ClassificationCard
-            key={option}
-            option={option}
-            selected={normalizedClassification === option}
-            onSelect={() => onClassificationSelect(option)}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ClassificationCard({ option, selected, onSelect }) {
-  const config = RECORD_TYPE_DETAILS[option] || {};
-  const Icon = config.icon || Stethoscope;
-  const comingSoon = Boolean(config.comingSoon);
-
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={selected}
-      aria-disabled={comingSoon}
-      className={`group flex min-h-[124px] rounded-xl border p-3.5 text-left shadow-sm transition-all duration-200 ${
-        selected
-          ? "border-[#FCA5A5] bg-[#FEF2F2] shadow-[#B91C1C]/10 ring-2 ring-[#B91C1C]/10"
-          : comingSoon
-            ? "border-[#E8ECF0] bg-[#FAFBFC] opacity-85 hover:border-[#E2E8F0]"
-            : "border-[#E8ECF0] bg-white hover:-translate-y-0.5 hover:border-[#FECACA] hover:shadow-md"
-      }`}
-    >
-      <span
-        className={`mr-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
-          selected
-            ? "bg-[#B91C1C] text-white"
-            : "bg-[#F8FAFC] text-[#64748B] group-hover:bg-red-50 group-hover:text-[#B91C1C]"
-        }`}
-      >
-        <Icon size={16} />
-      </span>
-      <span className="flex min-w-0 flex-1 items-start justify-between gap-3">
-        <span className="min-w-0">
-          <span className="block text-sm font-bold text-[#0F172A]">
-            {config.title || option}
-          </span>
-          <span className="mt-1 block text-[11.5px] leading-relaxed text-[#64748B]">
-            {config.description}
-          </span>
-        </span>
-        {selected && (
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B91C1C] text-white">
-            <Check size={12} strokeWidth={3} />
-          </span>
-        )}
-        {comingSoon && (
-          <span className="shrink-0 rounded-full border border-[#E2E8F0] bg-white px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#64748B]">
-            Coming soon
-          </span>
-        )}
-      </span>
-    </button>
-  );
-}
 
 
 function CareDecisionStep({
@@ -6304,226 +5563,8 @@ function SummaryItem({ label, value }) {
   );
 }
 
-function ReferralFormGroup({ title, description, children }) {
-  return (
-    <section>
-      <div className="mb-4">
-        <h3 className="text-sm font-bold text-[#1F2937]">{title}</h3>
-        {description && (
-          <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
-            {description}
-          </p>
-        )}
-      </div>
-      {children}
-    </section>
-  );
-}
 
-function ReferralDetailsStep({
-  form,
-  errors = {},
-  saving,
-  destination,
-  destinationLoading,
-  destinationError,
-  providers = [],
-  canSubmitReferral = true,
-  noProviderMessage = "",
-  onChange,
-  onRetryDestination,
-  onSubmit,
-}) {
-  const destinationReady = Boolean(
-    destination?.receivingRuralHealthUnit?.id,
-  );
 
-  return (
-    <form
-      onSubmit={onSubmit}
-      noValidate
-      className="relative ml-0 mr-auto w-full max-w-7xl"
-    >
-      <div className="space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-50 text-[#B91C1C]">
-            <Stethoscope size={17} />
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-[#1A1A1A]">
-              Referral Details
-            </h2>
-            <p className="mt-0.5 text-sm leading-relaxed text-[#6B7280]">
-              Complete the referral form before submitting this health record
-              and referral.
-            </p>
-          </div>
-        </div>
-
-        <div className="space-y-7">
-          <ReferralFormGroup
-            title="Referral Information"
-            description="Referral timestamp and referring BHC details."
-          >
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <DatePickerField
-                label="Date of Referral"
-                required
-                name="dateOfReferral"
-                value={form.dateOfReferral}
-                error={errors.dateOfReferral}
-                onChange={(value) => onChange("dateOfReferral", value)}
-              />
-              <TimePickerField
-                label="Time of Referral"
-                required
-                name="timeOfReferral"
-                value={form.timeOfReferral}
-                error={errors.timeOfReferral}
-                onChange={(value) => onChange("timeOfReferral", value)}
-              />
-              <ReferralDestinationField
-                destination={destination}
-                isLoading={destinationLoading}
-                error={destinationError || errors.receivingFacility}
-                onRetry={onRetryDestination}
-              />
-              <FieldInput
-                label="Name of Referring HCI"
-                required
-                name="referringHci"
-                value={form.referringHci}
-                error={errors.referringHci}
-                onChange={(event) => onChange("referringHci", event.target.value)}
-                placeholder="Barangay Health Center"
-              />
-              <FieldSelect
-                label="Urgency"
-                name="urgencyLevel"
-                value={form.urgencyLevel}
-                onChange={(event) => onChange("urgencyLevel", event.target.value)}
-              >
-                {ATTENTION_LEVELS.map((level) => (
-                  <option key={level}>{level}</option>
-                ))}
-              </FieldSelect>
-              <RhuProviderSelect
-                label="Preferred Doctor (Optional)"
-                providers={providers}
-                selectedProviderId={form.preferredRhuDoctorId}
-                onChange={(event) =>
-                  onChange("preferredRhuDoctorId", event.target.value)
-                }
-              />
-            </div>
-
-            {/* DOC-14 / USB-02 - surface the block before the BHW fills the
-                form, rather than only on submit. */}
-            {!canSubmitReferral && (
-              <div className="mt-4 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#B91C1C]">
-                  Referral submission unavailable
-                </p>
-                <p className="mt-1 text-xs leading-relaxed text-slate-700">
-                  {noProviderMessage}
-                </p>
-              </div>
-            )}
-
-            <FieldTextarea
-              label="Reason for Referral"
-              required
-              name="reasonForReferral"
-              value={form.reasonForReferral}
-              error={errors.reasonForReferral}
-              onChange={(event) =>
-                onChange("reasonForReferral", event.target.value)
-              }
-              placeholder="State the reason or concern requiring RHU review..."
-              rows={3}
-              wrapperClassName="mt-4"
-            />
-          </ReferralFormGroup>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-end gap-3 pt-1">
-          <button
-            type="submit"
-            disabled={
-              saving || destinationLoading || !destinationReady || !canSubmitReferral
-            }
-            className="group flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
-          >
-            {saving ? <ButtonSpinner /> : <Save size={15} />}
-            {saving
-              ? "Saving health record..."
-              : "Save Health Record & Submit Referral"}
-          </button>
-        </div>
-      </div>
-    </form>
-  );
-}
-
-function ReferralDestinationField({ destination, isLoading, error, onRetry }) {
-  const receivingRhu = destination?.receivingRuralHealthUnit;
-
-  if (error) {
-    return (
-      <div data-field="receivingFacility" tabIndex={-1}>
-        <p className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-          Receiving Facility
-        </p>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <div className="flex items-start gap-2.5">
-            <AlertCircle className="mt-0.5 shrink-0 text-amber-600" size={15} />
-            <div>
-              <p className="text-xs font-semibold text-amber-900">
-                Receiving RHU unavailable
-              </p>
-              <p className="mt-1 text-[11px] leading-relaxed text-amber-800">
-                {error}
-              </p>
-              <button
-                type="button"
-                onClick={onRetry}
-                className="mt-2 text-[11px] font-bold text-[#991B1B] hover:text-[#7F1D1D]"
-              >
-                Retry
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div data-field="receivingFacility" tabIndex={-1}>
-      <p className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-        Receiving Facility
-      </p>
-      <div
-        className="flex h-10 w-full cursor-not-allowed items-center rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3.5 text-sm text-[#1F2937] opacity-60"
-        title={
-          receivingRhu?.name
-            ? "Automatically assigned based on the patient's Barangay Health Center."
-            : undefined
-        }
-      >
-        {isLoading ? (
-          <InlineSpinner label="Loading..." />
-        ) : (
-          <span className="truncate">{receivingRhu?.name || "—"}</span>
-        )}
-      </div>
-      <span className="sr-only">
-        Automatically assigned based on the patient&apos;s Barangay Health
-        Center.
-      </span>
-    </div>
-  );
-}
 
 
 // eslint-disable-next-line no-unused-vars
@@ -6860,7 +5901,7 @@ function PatientSearchDropdown({
 function FormSection({ title, subtitle, children, delay = 0, accent }) {
   return (
     <div
-      className="anim-fade-up space-y-4 pb-6"
+      className="anim-fade-up space-y-4 border-t border-[#F1F5F9] pt-5 pb-1"
       style={stagger(delay)}
     >
       <div>
@@ -6897,121 +5938,8 @@ function LockedFormContent({ locked, children }) {
   );
 }
 
-function ClinicalFieldGroup({ title, children, accent }) {
-  const titleClass = accent === "pink" ? "text-pink-700" : "text-[#B91C1C]";
 
-  return (
-    <div className="border-t border-[#E8ECF0] pt-4">
-      <p className={`mb-3 text-[10px] font-bold uppercase tracking-widest ${titleClass}`}>
-        {title}
-      </p>
-      {children}
-    </div>
-  );
-}
 
-function CheckboxGroup({ title, options, values = {}, onChange }) {
-  return (
-    <div className="border-t border-[#E8ECF0] pt-4">
-      <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-pink-700">
-        {title}
-      </p>
-      <div className="grid gap-2">
-        {options.map((option) => (
-          <label
-            key={option.key}
-            className="flex cursor-pointer items-start gap-2.5 py-1 text-sm font-medium text-[#475569]"
-          >
-            <input
-              type="checkbox"
-              checked={Boolean(values?.[option.key])}
-              onChange={(event) => onChange(option.key, event.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-[#D1D5DB] accent-[#B91C1C]"
-            />
-            <span>{option.label}</span>
-          </label>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function PregnancyHistoryTable({ entries, onAdd, onChange, onRemove }) {
-  return (
-    <div className="space-y-3">
-      <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
-        <div className="hidden grid-cols-[0.75fr_1.5fr_0.75fr_1.5fr_44px] gap-3 border-b border-[#EEF2F6] bg-[#F8FAFC] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#64748B] md:grid">
-          <span>Pregnancy No.</span>
-          <span>Place of Delivery</span>
-          <span>Year</span>
-          <span>Notes</span>
-          <span />
-        </div>
-
-        {entries.length === 0 ? (
-          <div className="px-4 py-6 text-center text-sm text-[#64748B]">
-            No previous pregnancy history added.
-          </div>
-        ) : (
-          <div className="divide-y divide-[#EEF2F6]">
-            {entries.map((entry, index) => (
-              <div
-                key={`${entry.pregnancyNo || "pregnancy"}-${index}`}
-                className="grid gap-3 px-3 py-3 md:grid-cols-[0.75fr_1.5fr_0.75fr_1.5fr_44px] md:items-start"
-              >
-                <FieldInput
-                  label="Pregnancy No."
-                  value={entry.pregnancyNo || ""}
-                  onChange={(event) =>
-                    onChange(index, "pregnancyNo", event.target.value)
-                  }
-                />
-                <FieldInput
-                  label="Place of Delivery"
-                  value={entry.placeOfDelivery || ""}
-                  onChange={(event) =>
-                    onChange(index, "placeOfDelivery", event.target.value)
-                  }
-                />
-                <FieldInput
-                  label="Year"
-                  inputMode="numeric"
-                  value={entry.year || ""}
-                  onChange={(event) =>
-                    onChange(index, "year", event.target.value)
-                  }
-                />
-                <FieldInput
-                  label="Notes"
-                  value={entry.notes || ""}
-                  onChange={(event) =>
-                    onChange(index, "notes", event.target.value)
-                  }
-                />
-                <button
-                  type="button"
-                  onClick={() => onRemove(index)}
-                  className="mt-5 flex h-10 w-10 items-center justify-center rounded-lg border border-[#E8ECF0] text-[#94A3B8] transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C] md:mt-[22px]"
-                  aria-label="Remove pregnancy history row"
-                >
-                  <X size={15} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <button
-        type="button"
-        onClick={onAdd}
-        className="inline-flex h-9 items-center justify-center rounded-lg border border-red-100 bg-red-50 px-3 text-xs font-semibold text-[#B91C1C] transition hover:bg-red-100"
-      >
-        + Add Pregnancy History
-      </button>
-    </div>
-  );
-}
 
 function MaternalClassificationWarning() {
   return (
@@ -7129,275 +6057,6 @@ function RadioChoiceGroup({
   );
 }
 
-function ImmunizationVisitFields({
-  entries,
-  epiHistoryByCode,
-  epiCompletion,
-  epiHistoryLoading = false,
-  epiHistoryError = "",
-  dateOfVisit,
-  temperature,
-  weight,
-  height,
-  breastfeedingMonitoring = {},
-  consultationNotes,
-  errors = {},
-  renderAfterVaccines = null,
-  onTemperatureChange,
-  onWeightChange,
-  onHeightChange,
-  onBreastfeedingChange,
-  onEntryChange,
-  onToggleVaccine,
-  onNotesChange,
-}) {
-  const selectedVaccines = new Set(entries.map((entry) => entry.vaccineName));
-  const historyByCode = epiHistoryByCode || new Map();
-  const completion =
-    epiCompletion || getEpiCompletionState(historyByCode, entries);
-
-  return (
-    <div className="space-y-5">
-      <ClinicalFieldGroup title="Vaccines Given This Visit">
-        {errors.vaccineEntries && (
-          <p
-            className="mb-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-[#B91C1C]"
-            data-field="vaccineEntries"
-            tabIndex={-1}
-          >
-            {errors.vaccineEntries}
-          </p>
-        )}
-        {epiHistoryLoading && (
-          <p className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-[#64748B]">
-            Checking previous EPI history...
-          </p>
-        )}
-        {epiHistoryError && (
-          <p className="mb-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
-            {epiHistoryError}
-          </p>
-        )}
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-      {CHILD_VACCINE_OPTIONS.map((vaccineName) => {
-        const code = getEpiCode(vaccineName);
-        const lockedEntry = historyByCode.get(code);
-        const locked = Boolean(lockedEntry);
-        const checked = locked || selectedVaccines.has(vaccineName);
-        const givenDate = formatEpiDate(lockedEntry?.dateGiven);
-
-        return (
-            <label
-              key={vaccineName}
-              className={`flex items-start gap-2 rounded-lg px-2 py-1.5 text-sm font-medium ${
-                locked
-                  ? "cursor-not-allowed bg-slate-50 text-[#94A3B8]"
-                  : "cursor-pointer text-[#475569]"
-              }`}
-            >
-            <input
-              type="checkbox"
-              checked={checked}
-              disabled={locked}
-              onChange={(event) =>
-                onToggleVaccine(vaccineName, event.target.checked)
-              }
-              className="mt-0.5 h-4 w-4 rounded border-[#D1D5DB] accent-[#B91C1C] disabled:cursor-not-allowed"
-            />
-
-            <span>
-              <span>{vaccineName}</span>
-              {locked && (
-                <span className="block text-[11px] font-medium text-[#64748B]">
-                  Already given{givenDate ? ` on ${givenDate}` : ""}
-                </span>
-              )}
-            </span>
-          </label>
-        );
-      })}
-        </div>
-
-        <div className="mt-4 rounded-xl border border-[#E8ECF0] bg-[#F8FAFC] px-4 py-3">
-          {completion.completeAfterSave ? (
-            <p className="text-xs font-semibold leading-relaxed text-emerald-700">
-              All required EPI vaccines/services will be completed after saving.
-              No next follow-up date is needed.
-            </p>
-          ) : (
-            <div className="space-y-1">
-              <p className="text-xs font-semibold leading-relaxed text-[#0F172A]">
-                Remaining after this visit:{" "}
-                <span className="text-[#B91C1C]">
-                  {completion.remainingItems.map((item) => item.label).join(", ")}
-                </span>
-              </p>
-              <p className="text-xs leading-relaxed text-[#64748B]">
-                Next follow-up date is required because there are still
-                remaining EPI vaccines/services.
-              </p>
-            </div>
-          )}
-        </div>
-
-        {entries.some((entry) => entry.__legacyDetailsVisible === "showLegacyDetails") && (
-          <div className="mt-4 space-y-3">
-            {entries.map((entry, index) => (
-              <div
-                key={entry.vaccineName || `vaccine-entry-${index}`}
-                className="rounded-xl border border-[#E8ECF0] bg-white p-4"
-              >
-                <p className="mb-3 text-xs font-bold text-[#1F2937]">
-                  {entry.vaccineName}
-                </p>
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <FieldInput
-                    label="Dose"
-                    required
-                    name={`vaccineEntries.${index}.dose`}
-                    error={errors[`vaccineEntries.${index}.dose`]}
-                    value={entry.dose}
-                    onChange={(event) =>
-                      onEntryChange(index, "dose", event.target.value)
-                    }
-                    placeholder="e.g. 1st dose, 2nd dose, booster"
-                  />
-                  <FieldInput
-                    label="Date Given"
-                    type="date"
-                    required
-                    name={`vaccineEntries.${index}.dateGiven`}
-                    error={errors[`vaccineEntries.${index}.dateGiven`]}
-                    value={entry.dateGiven || dateOfVisit}
-                    onChange={(event) =>
-                      onEntryChange(index, "dateGiven", event.target.value)
-                    }
-                  />
-                  <FieldInput
-                    label="Weight"
-                    type="number"
-                    step="0.01"
-                    value={entry.weight || ""}
-                    onChange={(event) =>
-                      onEntryChange(index, "weight", event.target.value)
-                    }
-                    placeholder="kg"
-                  />
-                  <FieldInput
-                    label="Height"
-                    type="number"
-                    step="0.01"
-                    value={entry.height || ""}
-                    onChange={(event) =>
-                      onEntryChange(index, "height", event.target.value)
-                    }
-                    placeholder="cm"
-                  />
-                  <FieldInput
-                    label="Temperature"
-                    type="number"
-                    step="0.1"
-                    value={entry.temperature || ""}
-                    onChange={(event) =>
-                      onEntryChange(index, "temperature", event.target.value)
-                    }
-                    placeholder="°C"
-                  />
-                  <FieldInput
-                    label="Next Schedule Date"
-                    type="date"
-                    value={entry.nextScheduleDate}
-                    onChange={(event) =>
-                      onEntryChange(index, "nextScheduleDate", event.target.value)
-                    }
-                  />
-                  <FieldInput
-                    label="Remarks"
-                    value={entry.remarks}
-                    onChange={(event) =>
-                      onEntryChange(index, "remarks", event.target.value)
-                    }
-                    placeholder="Optional remarks"
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </ClinicalFieldGroup>
-
-      {renderAfterVaccines}
-
-      <ClinicalFieldGroup title="Basic Monitoring">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <FieldInput
-            label="Weight"
-            type="number"
-            step="0.01"
-            value={weight}
-            onChange={(event) => onWeightChange(event.target.value)}
-            placeholder="kg"
-          />
-          <FieldInput
-            label="Height"
-            type="number"
-            step="0.01"
-            value={height}
-            onChange={(event) => onHeightChange(event.target.value)}
-            placeholder="cm"
-          />
-          <FieldInput
-            label="Temperature"
-            type="number"
-            step="0.1"
-            value={temperature}
-            onChange={(event) => onTemperatureChange(event.target.value)}
-            placeholder="C"
-          />
-        </div>
-      </ClinicalFieldGroup>
-
-      <ClinicalFieldGroup title="Exclusive Breastfeeding Monitoring">
-        <p className="mb-3 text-xs leading-relaxed text-[#64748B]">
-          Select the months where exclusive breastfeeding was confirmed.
-        </p>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {BREASTFEEDING_MONTHS.map((month) => {
-          const checked =
-            breastfeedingMonitoring?.[month.key] === true ||
-            breastfeedingMonitoring?.[month.key] === "yes";
-
-          return (
-              <label
-                key={month.key}
-                className="flex cursor-pointer items-center gap-2 py-1 text-sm font-medium text-[#475569]"
-              >
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={(event) =>
-                  onBreastfeedingChange(month.key, event.target.checked)
-                }
-                className="h-4 w-4 rounded border-[#D1D5DB] accent-[#B91C1C]"
-              />
-
-              <span>{month.label}</span>
-            </label>
-          );
-        })}
-        </div>
-      </ClinicalFieldGroup>
-
-      <FieldTextarea
-        label="Remarks"
-        value={consultationNotes}
-        onChange={(event) => onNotesChange(event.target.value)}
-        placeholder="Write immunization notes, guardian remarks, or post-vaccination observations..."
-        rows={3}
-      />
-    </div>
-  );
-}
 function FieldInput({
   label,
   required,
@@ -7564,6 +6223,159 @@ function BpInputGroup({
   );
 }
 
+/**
+ * Read-only BMI derived from the weight and height already captured in Vital
+ * Signs. It is display-only and never submitted: the record stores the two
+ * measurements, so a stored BMI could only ever disagree with them.
+ */
+/**
+ * A risk-code checklist column.
+ *
+ * An option with `children` renders them indented beneath it and only while the
+ * parent is checked, matching the prenatal record where the sub-conditions
+ * qualify the code rather than standing on their own.
+ */
+/**
+ * A row of small number inputs that together make up one clinical score, with
+ * the assembled shorthand shown beneath so the clinician can read back what
+ * they entered without re-parsing the boxes.
+ */
+function ScoreInputGroup({
+  label,
+  fields,
+  values = {},
+  onChange,
+  preview,
+  columnsClassName = "grid-cols-4",
+}) {
+  return (
+    <div>
+      <p className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+        {label}
+      </p>
+      <div className={`grid gap-3 ${columnsClassName}`}>
+        {fields.map((field) => (
+          <div key={field.key}>
+            <label
+              className="mb-1 block text-[9px] font-semibold uppercase leading-tight tracking-wider text-[#9CA3AF]"
+              htmlFor={`ob-score-${field.key}`}
+            >
+              {field.label}
+            </label>
+            <input
+              id={`ob-score-${field.key}`}
+              type="number"
+              min="0"
+              inputMode="numeric"
+              placeholder={field.placeholder}
+              value={values[field.key] ?? ""}
+              onChange={(event) => onChange(field.key, event.target.value)}
+              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-center text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </div>
+        ))}
+      </div>
+      <p className="mt-1.5 text-[11px] text-[#94A3B8]">
+        Format: <span className="font-bold text-[#B91C1C]">{preview}</span>
+      </p>
+    </div>
+  );
+}
+
+function RiskCodeChecklist({ eyebrow, options, values = {}, onChange }) {
+  return (
+    <div>
+      <p className="mb-3 text-[10.5px] font-bold uppercase tracking-[0.08em] text-[#B91C1C]">
+        {eyebrow}
+      </p>
+      <div className="flex flex-col gap-3">
+        {options.map((option) => {
+          const childKeys = (option.children || []).map((child) => child.key);
+          const checked = Boolean(values[option.key]);
+
+          return (
+            <div key={option.key}>
+              <label className="flex cursor-pointer items-center gap-2.5 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(event) =>
+                    onChange(option.key, event.target.checked, childKeys)
+                  }
+                  className="h-4 w-4 shrink-0 rounded border-[#D1D5DB] accent-[#B91C1C]"
+                />
+                <span
+                  className={
+                    checked ? "font-semibold text-[#B91C1C]" : "text-[#475569]"
+                  }
+                >
+                  {option.label}
+                </span>
+              </label>
+
+              {checked && childKeys.length > 0 && (
+                <div className="mt-3 flex flex-col gap-3 pl-7">
+                  {option.children.map((child) => {
+                    const childChecked = Boolean(values[child.key]);
+
+                    return (
+                      <label
+                        key={child.key}
+                        className="flex cursor-pointer items-center gap-2.5 text-sm font-medium"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={childChecked}
+                          onChange={(event) =>
+                            onChange(child.key, event.target.checked)
+                          }
+                          className="h-4 w-4 shrink-0 rounded border-[#D1D5DB] accent-[#B91C1C]"
+                        />
+                        <span
+                          className={
+                            childChecked
+                              ? "font-semibold text-[#B91C1C]"
+                              : "text-[#475569]"
+                          }
+                        >
+                          {child.label}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function BmiOutputField({ weight, height }) {
+  const bmi = calculateBmi(weight, height);
+  const category = getBmiCategory(bmi);
+
+  return (
+    <div>
+      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+        BMI
+      </label>
+      <div className="flex h-10 w-full items-center justify-between rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3.5">
+        <span className="text-sm font-bold text-[#0F172A]">
+          {bmi === null ? "—" : formatBmi(bmi)}
+        </span>
+        {category && (
+          <span className="text-[11px] font-bold uppercase text-[#B91C1C]">
+            {category}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════════════
    IMMUNIZATION SUB-COMPONENTS
    ═══════════════════════════════════════════════════════════════ */
@@ -7671,10 +6483,6 @@ function getPatientDisplay(patient = {}) {
   return { name, age, cls, contact, barangay, id };
 }
 
-function getPatientSearchLabel(patient = {}) {
-  const display = getPatientDisplay(patient);
-  return [display.name, display.age, display.cls].filter(Boolean).join(" · ");
-}
 
 function getPatientSearchText(patient = {}) {
   const display = getPatientDisplay(patient);

@@ -642,3 +642,32 @@ export function getConfirmedBreastfeedingMonths(data = {}) {
     .filter(([key]) => data[key] === true || data[key] === "yes")
     .map(([, label]) => label);
 }
+
+/**
+ * Badge styling for the records-list Outcome column.
+ *
+ * The value itself is resolved server-side (HealthRecord::getOutcomeAttribute
+ * and the matching SQL in akay_health_record_json) because it depends on the
+ * referral and follow-up task rows, which change after the record is written.
+ * The client only picks colours for it.
+ */
+export const RECORD_OUTCOMES = Object.freeze(["Referred", "Follow-up", "Routine"]);
+
+const OUTCOME_STYLES = Object.freeze({
+  Referred: "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]",
+  "Follow-up": "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
+  Routine: "border-[#E5E7EB] bg-[#F8FAFC] text-[#475569]",
+});
+
+export function getRecordOutcome(record = {}) {
+  const value = String(record.outcome || "").trim();
+  return RECORD_OUTCOMES.includes(value) ? value : "";
+}
+
+export function getRecordOutcomeSubLabel(record = {}) {
+  return String(record.outcomeSubLabel || record.outcome_sub_label || "").trim();
+}
+
+export function getRecordOutcomeStyle(outcome = "") {
+  return OUTCOME_STYLES[outcome] || OUTCOME_STYLES.Routine;
+}

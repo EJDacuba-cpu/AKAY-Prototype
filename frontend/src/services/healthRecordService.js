@@ -466,6 +466,12 @@ function normalizeRecord(record = {}) {
     parent_health_record_id: parentHealthRecordId || null,
     category: record.category || "",
     patientClassification: record.category || record.patientClassification || "",
+    // Resolved server-side from needs_referral, the linked referral, and the
+    // follow-up task state - see HealthRecord::getOutcomeAttribute(). Not stored
+    // on the record, so it must not be cached or written back on save.
+    outcome: record.outcome || "",
+    outcomeSubLabel:
+      record.outcome_sub_label || record.outcomeSubLabel || "",
     chiefComplaint: record.chief_complaint || record.chiefComplaint || "",
     diagnosis: record.diagnosis || "",
     treatmentNotes: record.treatment_notes || record.treatmentNotes || "",
