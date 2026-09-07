@@ -46,8 +46,11 @@ import {
   FP_CLIENT_TYPE_OPTIONS,
   FP_SOURCE_OPTIONS,
   PREVIOUS_FP_METHOD_OPTIONS,
+  getApplicableFpMethods,
+  getFpMethodRestriction,
 } from "../../utils/familyPlanning";
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
+import { RadioChoiceGroup } from "../../components/features/health-records/fields/ClinicalFields";
 import NextActionSection from "../../components/features/health-records/NextActionSection";
 import {
   NEXT_ACTION_NONE,
@@ -122,19 +125,6 @@ const RECORD_TYPE_DETAILS = {
     icon: Stethoscope,
   },
 };
-
-const FAMILY_PLANNING_METHODS = [
-  "DMPA / Injectable",
-  "Pills",
-  "Condom",
-  "Implant",
-  "IUD",
-  "LAM",
-  "Natural Family Planning",
-  "BTL",
-  "NSV",
-  "Other",
-];
 
 const FAMILY_PLANNING_VISIT_TYPES = [
   "Counseling",
@@ -357,16 +347,15 @@ function getAdultImmunizationMessage(age) {
   return `Immunization records are intended for child vaccination schedule entries. This patient is recorded as ${ageText} years old. Please choose another classification.`;
 }
 
+/**
+ * Whether Family Planning may be selected for this patient at all.
+ *
+ * Sex is deliberately NOT considered here. Condom and NSV are male methods, so
+ * blocking the whole classification for a male patient made them unreachable.
+ * The sex rule lives on the method instead - see getFpMethodRestriction.
+ */
 function getFamilyPlanningEligibility(patient, referenceDate) {
   if (!patient) return { eligible: true };
-
-  if (isPatientMale(patient)) {
-    return {
-      eligible: false,
-      message:
-        "Family Planning records are for female reproductive health clients. Please choose another classification.",
-    };
-  }
 
   const age = getPatientAgeInYears(patient, referenceDate);
   if (age !== null && age < 10) {
@@ -849,6 +838,16 @@ export default function AddHealthRecord() {
     isFollowUp && !isImmunization && !isMaternal && !isFamilyPlanning && !isTb;
   const patientGateLocked = !isFollowUp && !selectedPatientId;
   const selectedPatientIsMale = !isFollowUp && isPatientMale(selectedPatient);
+  // Sex restricts the METHOD, not the classification: Condom and NSV are valid
+  // for a male client, the female-only methods are not.
+  const applicableFamilyPlanningMethods = getApplicableFpMethods(
+    PREVIOUS_FP_METHOD_OPTIONS,
+    { isMale: selectedPatientIsMale },
+  );
+  const familyPlanningMethodRestriction = getFpMethodRestriction({
+    method: familyPlanningData.methodUsed,
+    isMale: selectedPatientIsMale,
+  });
   const selectedPatientSexMissing =
     !isFollowUp && Boolean(selectedPatientId) && !hasPatientSex(selectedPatient);
   const followUpPatientHasMaternalMismatch =
@@ -1184,6 +1183,10 @@ export default function AddHealthRecord() {
       if (hasConcern && !String(familyPlanningData.concern || "").trim()) {
         errors.familyPlanningConcern =
           "Concern or side-effect notes are required when clinical concern is marked Yes.";
+      }
+
+      if (familyPlanningMethodRestriction) {
+        errors.familyPlanningMethodUsed = familyPlanningMethodRestriction;
       }
 
       return errors;
@@ -2211,15 +2214,28 @@ export default function AddHealthRecord() {
                 </FieldSelect>
                 <FieldSelect
                   label="Method Used / Accepted"
+                  name="familyPlanningMethodUsed"
+                  error={validationErrors.familyPlanningMethodUsed}
                   value={familyPlanningData.methodUsed}
                   onChange={(event) =>
                     handleFamilyPlanningChange("methodUsed", event.target.value)
                   }
                 >
-                  <option value="">Select method</option>
-                  {FAMILY_PLANNING_METHODS.map((option) => (
+                  <option value="">Select method used / accepted...</option>
+                  {applicableFamilyPlanningMethods.map((option) => (
                     <option key={option}>{option}</option>
                   ))}
+                  {/* A record saved before this restriction, or one edited for a
+                      patient whose sex was corrected, keeps its stored method
+                      visible instead of silently resetting to blank. */}
+                  {familyPlanningData.methodUsed &&
+                    !applicableFamilyPlanningMethods.includes(
+                      familyPlanningData.methodUsed,
+                    ) && (
+                      <option key={familyPlanningData.methodUsed}>
+                        {familyPlanningData.methodUsed}
+                      </option>
+                    )}
                 </FieldSelect>
                 <FieldSelect
                   label="Previous Method"
@@ -2248,18 +2264,16 @@ export default function AddHealthRecord() {
                     <option key={option}>{option}</option>
                   ))}
                 </FieldSelect>
-                <FieldSelect
+                <RadioChoiceGroup
                   label="Source"
+                  name="familyPlanningSource"
+                  inline
                   value={familyPlanningData.source}
-                  onChange={(event) =>
-                    handleFamilyPlanningChange("source", event.target.value)
+                  options={FP_SOURCE_OPTIONS}
+                  onChange={(value) =>
+                    handleFamilyPlanningChange("source", value)
                   }
-                >
-                  <option value="">Select source</option>
-                  {FP_SOURCE_OPTIONS.map((option) => (
-                    <option key={option}>{option}</option>
-                  ))}
-                </FieldSelect>
+                />
                 <DatePickerField
                   label="Date Registered / Date of Visit"
                   value={familyPlanningData.dateRegistered || dateOfVisit}

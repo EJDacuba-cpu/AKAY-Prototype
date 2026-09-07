@@ -109,6 +109,72 @@ export function FieldEyebrow({ children }) {
   );
 }
 
+/**
+ * A single-choice radio group.
+ *
+ * `options` accepts plain strings or `{ value, label }` objects, because some
+ * option lists are reference data stored verbatim (FP_SOURCE_OPTIONS) while
+ * others carry a short code separate from their label.
+ */
+export function RadioChoiceGroup({
+  label,
+  name,
+  value,
+  options = [],
+  onChange,
+  helperText,
+  error,
+  required = false,
+  inline = false,
+}) {
+  const choices = options.map((option) =>
+    typeof option === "string" ? { value: option, label: option } : option,
+  );
+
+  return (
+    <div data-field={name} tabIndex={error ? -1 : undefined}>
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+        {label}
+        {required && <span className="ml-1 text-[#B91C1C]">*</span>}
+      </p>
+      <div className={inline ? "flex flex-wrap items-center gap-x-6 gap-y-2" : "grid gap-2"}>
+        {choices.map((option) => (
+          <label
+            key={option.value}
+            className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#475569]"
+          >
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={value === option.value}
+              onChange={() => onChange(option.value)}
+              className="h-4 w-4 accent-[#B91C1C]"
+            />
+            <span
+              className={
+                value === option.value
+                  ? "font-semibold text-[#B91C1C]"
+                  : "text-[#475569]"
+              }
+            >
+              {option.label}
+            </span>
+          </label>
+        ))}
+      </div>
+      {helperText && (
+        <p className="mt-2 text-xs leading-relaxed text-[#64748B]">
+          {helperText}
+        </p>
+      )}
+      {error && (
+        <p className="mt-2 text-[11px] font-medium text-[#B91C1C]">{error}</p>
+      )}
+    </div>
+  );
+}
+
 export function ClinicalFieldGroup({ title, subtitle, children, accent }) {
   const titleClass = accent === "pink" ? "text-pink-700" : "text-[#B91C1C]";
 

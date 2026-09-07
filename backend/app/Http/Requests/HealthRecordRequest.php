@@ -245,6 +245,21 @@ class HealthRecordRequest extends FormRequest
 
     public function withValidator($validator): void
     {
+        // Laravel excludes array keys that have no rule of their own whenever a
+        // field is validated as `array` AND carries nested `field.*` rules
+        // (Validator::$excludeUnvalidatedArrayKeys, on by default). Every
+        // clinical column here is a free-form JSON blob whose shape the client
+        // owns, so that default silently discarded whole sub-objects on save -
+        // monitoring_data.hypertensionDiabeticData is how it was found, but
+        // maternal_data, family_planning_data, tb_data and referral were all
+        // losing every key that had no explicit rule.
+        //
+        // The nested rules stay and still validate the keys they name; this
+        // only stops the unnamed siblings from being thrown away. The columns
+        // are JSON and the model's $fillable still bounds what can be written,
+        // so nothing new becomes mass-assignable.
+        $validator->excludeUnvalidatedArrayKeys = false;
+
         $validator->after(function ($validator): void {
             $monitoringData = $this->input('monitoring_data', []);
             $status = $monitoringData['followUpStatus']

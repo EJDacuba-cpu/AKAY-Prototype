@@ -56,11 +56,16 @@ import {
   FP_CLIENT_TYPE_OPTIONS,
   FP_SOURCE_OPTIONS,
   PREVIOUS_FP_METHOD_OPTIONS,
+  getApplicableFpMethods,
+  getFpMethodRestriction,
 } from "../../utils/familyPlanning";
 import { calculateBmi, formatBmi, getBmiCategory } from "../../utils/bmi";
 import DraftSaveStatus from "../../components/features/health-records/DraftSaveStatus";
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
-import { ClinicalSection } from "../../components/features/health-records/fields/ClinicalFields";
+import {
+  ClinicalSection,
+  RadioChoiceGroup,
+} from "../../components/features/health-records/fields/ClinicalFields";
 import NextActionSection from "../../components/features/health-records/NextActionSection";
 import {
   ConsultationSetupStep,
@@ -363,11 +368,6 @@ const HYPERTENSION_DIABETIC_CONDITION_OPTIONS = [
   { value: "hpn", label: "HPN" },
   { value: "dm", label: "DM" },
   { value: "both", label: "BOTH" },
-];
-
-const HYPERTENSION_DIABETIC_CLIENT_STATUS_OPTIONS = [
-  { value: "new", label: "New" },
-  { value: "old", label: "Old" },
 ];
 
 const EMPTY_MATERNAL_DATA = {
@@ -938,16 +938,15 @@ function getMaternalEligibility(patient) {
   return { eligible: true, message: "" };
 }
 
+/**
+ * Whether Family Planning may be selected for this patient at all.
+ *
+ * Sex is deliberately NOT considered here. Condom and NSV are male methods, so
+ * blocking the whole classification for a male patient made them unreachable.
+ * The sex rule lives on the method instead - see getFpMethodRestriction.
+ */
 function getFamilyPlanningEligibility(patient, referenceDate) {
   if (!patient) return { eligible: true };
-
-  if (isPatientMale(patient)) {
-    return {
-      eligible: false,
-      message:
-        "Family Planning records are for female reproductive health clients. Please choose another classification.",
-    };
-  }
 
   const age = getPatientAgeInYears(patient, referenceDate);
   if (age !== null && age < 10) {
@@ -1369,8 +1368,17 @@ export default function AddHealthRecord() {
         ),
       );
       setHfmdSurveillance(getHfmdSurveillanceValue(found));
-      setSystolicBp(found.systolicBp || "");
-      setDiastolicBp(found.diastolicBp || "");
+      // Older Hypertension/Diabetic records stored the reading only as a
+      // "120/80" string, with no systolic/diastolic vital signs to load from.
+      const [legacySystolic = "", legacyDiastolic = ""] = String(
+        found.hypertensionDiabeticData?.bp ||
+          found.hypertension_diabetic_data?.bp ||
+          "",
+      )
+        .split("/")
+        .map((part) => part.replace(/[^\d.]/g, "").trim());
+      setSystolicBp(found.systolicBp || legacySystolic);
+      setDiastolicBp(found.diastolicBp || legacyDiastolic);
       setTemp(found.temperature || found.temp || "");
       setWeight(found.weight || "");
       setHeight(found.height || "");
@@ -1760,6 +1768,16 @@ export default function AddHealthRecord() {
     followUpRecord,
     followUpRecord?.patient,
   );
+  // Sex restricts the METHOD, not the classification: a male client can be
+  // recorded under Condom or NSV, but not under a female-only method.
+  const applicableFamilyPlanningMethods = getApplicableFpMethods(
+    PREVIOUS_FP_METHOD_OPTIONS,
+    { isMale: selectedPatientIsMale },
+  );
+  const familyPlanningMethodRestriction = getFpMethodRestriction({
+    method: familyPlanningData.methodUsed,
+    isMale: selectedPatientIsMale,
+  });
   const familyPlanningEligibility = getFamilyPlanningEligibility(
     selectedPatient,
     dateOfVisit,
@@ -2547,20 +2565,27 @@ export default function AddHealthRecord() {
     }
 
     if (isFamilyPlanning) {
+      if (!String(familyPlanningData.methodUsed || "").trim()) {
+        errors.familyPlanningMethodUsed = "Method used / accepted is required.";
+      } else if (familyPlanningMethodRestriction) {
+        errors.familyPlanningMethodUsed = familyPlanningMethodRestriction;
+      }
       return errors;
     }
 
     if (isHypertensionDiabetic) {
-      if (!String(hypertensionDiabeticData.bp || "").trim()) {
-        errors["hypertensionDiabeticData.bp"] = "Blood pressure is required.";
+      // The reading is entered as two numbers now, so require both rather than
+      // the composed string - which is derived from them at save time.
+      if (
+        !String(systolicBp || "").trim() ||
+        !String(diastolicBp || "").trim()
+      ) {
+        errors["hypertensionDiabeticData.bp"] =
+          "Systolic and diastolic blood pressure are required.";
       }
       if (!String(hypertensionDiabeticData.conditionType || "").trim()) {
         errors["hypertensionDiabeticData.conditionType"] =
           "Condition type is required.";
-      }
-      if (!String(hypertensionDiabeticData.clientStatus || "").trim()) {
-        errors["hypertensionDiabeticData.clientStatus"] =
-          "Client status is required.";
       }
       return errors;
     }
@@ -3341,8 +3366,13 @@ export default function AddHealthRecord() {
       medicines_supplies: familyPlanningData.medicinesSupplies || "",
     };
 
+    // The pair is authoritative; a legacy record that only stored the composed
+    // string keeps it when no parts were entered.
+    const composedBloodPressure =
+      systolicBp && diastolicBp ? `${systolicBp}/${diastolicBp}` : "";
     const recordHypertensionDiabeticData = {
       ...hypertensionDiabeticData,
+      bp: composedBloodPressure || hypertensionDiabeticData.bp || "",
       conditionType: normalizeHypertensionDiabeticCondition(
         hypertensionDiabeticData.conditionType,
       ),
@@ -4742,18 +4772,16 @@ export default function AddHealthRecord() {
                     <option key={option}>{option}</option>
                   ))}
                 </FieldSelect>
-                <FieldSelect
+                <RadioChoiceGroup
                   label="Source"
+                  name="familyPlanningSource"
+                  inline
                   value={familyPlanningData.source}
-                  onChange={(event) =>
-                    handleFamilyPlanningChange("source", event.target.value)
+                  options={FP_SOURCE_OPTIONS}
+                  onChange={(value) =>
+                    handleFamilyPlanningChange("source", value)
                   }
-                >
-                  <option value="">Select source...</option>
-                  {FP_SOURCE_OPTIONS.map((option) => (
-                    <option key={option}>{option}</option>
-                  ))}
-                </FieldSelect>
+                />
 
                 <FieldSelect
                   label="Previous Method"
@@ -4771,15 +4799,41 @@ export default function AddHealthRecord() {
                   ))}
                 </FieldSelect>
 
-                <FieldInput
+                <FieldSelect
                   label="Method Used / Accepted"
                   required
-                  placeholder="e.g. DMPA / Injectable, Pills..."
+                  name="familyPlanningMethodUsed"
+                  error={validationErrors.familyPlanningMethodUsed}
                   value={familyPlanningData.methodUsed}
-                  onChange={(event) =>
-                    handleFamilyPlanningChange("methodUsed", event.target.value)
-                  }
-                />
+                  onChange={(event) => {
+                    clearValidationError("familyPlanningMethodUsed");
+                    handleFamilyPlanningChange(
+                      "methodUsed",
+                      event.target.value,
+                    );
+                  }}
+                >
+                  <option value="">Select method used / accepted...</option>
+                  {applicableFamilyPlanningMethods.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                  {/* A stored method that the current filter excludes stays
+                      selectable so editing a record does not blank it. */}
+                  {familyPlanningData.methodUsed &&
+                    !applicableFamilyPlanningMethods.includes(
+                      familyPlanningData.methodUsed,
+                    ) && (
+                      <option key={familyPlanningData.methodUsed}>
+                        {familyPlanningData.methodUsed}
+                      </option>
+                    )}
+                </FieldSelect>
+                {selectedPatientIsMale && (
+                  <p className="text-[11px] leading-relaxed text-[#64748B] sm:col-span-2">
+                    This patient is recorded as male, so only male-applicable
+                    methods are listed.
+                  </p>
+                )}
 
                 <div className="sm:col-span-2">
                   <FieldTextarea
@@ -4847,16 +4901,20 @@ export default function AddHealthRecord() {
               delay={3}
             >
               <div className="grid gap-4 lg:grid-cols-2">
-                <FieldInput
-                  label="Blood Pressure (BP)"
+                <BpInputGroup
                   required
                   name="hypertensionDiabeticData.bp"
                   error={validationErrors["hypertensionDiabeticData.bp"]}
-                  value={hypertensionDiabeticData.bp}
-                  onChange={(event) =>
-                    handleHypertensionDiabeticChange("bp", event.target.value)
-                  }
-                  placeholder="e.g. 120/80 mmHg"
+                  systolic={systolicBp}
+                  diastolic={diastolicBp}
+                  onSystolicChange={(value) => {
+                    clearValidationError("hypertensionDiabeticData.bp");
+                    setSystolicBp(value);
+                  }}
+                  onDiastolicChange={(value) => {
+                    clearValidationError("hypertensionDiabeticData.bp");
+                    setDiastolicBp(value);
+                  }}
                 />
                 <FieldInput
                   label="Fasting Blood Sugar (FBS)"
@@ -4877,29 +4935,6 @@ export default function AddHealthRecord() {
                   onChange={(value) =>
                     handleHypertensionDiabeticChange("conditionType", value)
                   }
-                />
-                <RadioChoiceGroup
-                  label="Client Status"
-                  name="hypertensionDiabeticData.clientStatus"
-                  required
-                  value={hypertensionDiabeticData.clientStatus}
-                  error={validationErrors["hypertensionDiabeticData.clientStatus"]}
-                  options={HYPERTENSION_DIABETIC_CLIENT_STATUS_OPTIONS}
-                  onChange={(value) =>
-                    handleHypertensionDiabeticChange("clientStatus", value)
-                  }
-                />
-                <FieldInput
-                  label="Date of Last Consultation"
-                  type="date"
-                  value={hypertensionDiabeticData.dateOfLastConsultation}
-                  onChange={(event) =>
-                    handleHypertensionDiabeticChange(
-                      "dateOfLastConsultation",
-                      event.target.value,
-                    )
-                  }
-                  wrapperClassName="lg:col-span-2"
                 />
               </div>
             </FormSection>
@@ -6005,58 +6040,6 @@ function MorbidityNotifiableReportingSection({ value, onChange }) {
   );
 }
 
-function RadioChoiceGroup({
-  label,
-  name,
-  value,
-  options = [],
-  onChange,
-  helperText,
-  error,
-  required = false,
-}) {
-  return (
-    <div data-field={name} tabIndex={error ? -1 : undefined}>
-      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-        {label}
-        {required && <span className="ml-1 text-[#B91C1C]">*</span>}
-      </p>
-      <div className="grid gap-2">
-        {options.map((option) => (
-          <label
-            key={option.value}
-            className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#475569]"
-          >
-            <input
-              type="radio"
-              name={name}
-              value={option.value}
-              checked={value === option.value}
-              onChange={() => onChange(option.value)}
-              className="h-4 w-4 accent-[#B91C1C]"
-            />
-            <span
-              className={
-                value === option.value
-                  ? "font-semibold text-[#B91C1C]"
-                  : "text-[#475569]"
-              }
-            >
-              {option.label}
-            </span>
-          </label>
-        ))}
-      </div>
-      {helperText && (
-        <p className="mt-2 text-xs leading-relaxed text-[#64748B]">
-          {helperText}
-        </p>
-      )}
-      {error && <p className="mt-2 text-[11px] font-medium text-[#B91C1C]">{error}</p>}
-    </div>
-  );
-}
-
 function FieldInput({
   label,
   required,
@@ -6193,11 +6176,14 @@ function BpInputGroup({
   diastolic,
   onSystolicChange,
   onDiastolicChange,
+  required = false,
+  error = "",
+  name,
 }) {
   return (
-    <div>
+    <div data-field={name} tabIndex={error ? -1 : undefined}>
       <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-        Blood Pressure (mmHg)
+        Blood Pressure (mmHg) {required && <span className="text-red-500">*</span>}
       </label>
       <div className="flex items-center gap-0">
         <input
@@ -6218,7 +6204,11 @@ function BpInputGroup({
           className="h-10 w-full rounded-r-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
       </div>
-      <p className="mt-1 text-[9px] text-[#BFBFBF]">Systolic / Diastolic</p>
+      {error ? (
+        <p className="mt-1 text-[11px] font-medium text-[#B91C1C]">{error}</p>
+      ) : (
+        <p className="mt-1 text-[9px] text-[#BFBFBF]">Systolic / Diastolic</p>
+      )}
     </div>
   );
 }

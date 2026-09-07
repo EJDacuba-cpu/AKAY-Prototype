@@ -1,5 +1,4 @@
 import {
-  Activity,
   Baby,
   CalendarClock,
   ClipboardCheck,
@@ -9,7 +8,6 @@ import {
   Salad,
   Stethoscope,
   Syringe,
-  Users,
 } from "lucide-react";
 import { Link } from "react-router";
 
@@ -18,7 +16,6 @@ import PatientDetailItem from "../patients/PatientDetailItem";
 import { formatDisplayValue, formatLongDate } from "../../../utils/formatters";
 import { FollowUpEpisodeContent } from "./FollowUpEpisodePanel";
 import {
-  formatHypertensionDiabeticClientStatus,
   formatHypertensionDiabeticCondition,
   getHypertensionDiabeticData,
   getServiceTypeLabel,
@@ -372,6 +369,20 @@ function HypertensionDiabeticRecordDetails(props) {
   );
 }
 
+/**
+ * One naming scheme for every record-details layout.
+ *
+ * Each program used to label these tabs differently - Monitoring/Management,
+ * Record Details/Care, Client Record/Clinical Care - which made the same three
+ * tabs read as different features depending on which record you opened. The
+ * tab ids are left alone: they are internal state keys, not labels.
+ */
+const RECORD_DETAIL_TABS = {
+  clinical: { label: "Clinical Details", icon: Stethoscope },
+  treatment: { label: "Treatment & Supplies", icon: ClipboardCheck },
+  followUp: { label: "Follow-ups for This Record", icon: CalendarClock },
+};
+
 function HypertensionDiabeticLegacyDetails({
   record,
   patientName,
@@ -416,14 +427,6 @@ function HypertensionDiabeticLegacyDetails({
           <PatientDetailItem
             label="Condition Type"
             value={formatHypertensionDiabeticCondition(data.conditionType) || "—"}
-          />
-          <PatientDetailItem
-            label="Client Status"
-            value={formatHypertensionDiabeticClientStatus(data.clientStatus) || "—"}
-          />
-          <PatientDetailItem
-            label="Date of Last Consultation"
-            value={formatLongDate(data.dateOfLastConsultation, "—")}
           />
         </div>
       </DetailSection>
@@ -482,8 +485,7 @@ function HypertensionDiabeticTabbedRecordDetails({
   const tabs = [
     {
       id: "monitoring",
-      label: "Monitoring",
-      icon: Activity,
+      ...RECORD_DETAIL_TABS.clinical,
       content: (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <TabbedDetailItem label="BP" value={data.bp} />
@@ -492,21 +494,12 @@ function HypertensionDiabeticTabbedRecordDetails({
             label="Condition Type"
             value={formatHypertensionDiabeticCondition(data.conditionType)}
           />
-          <TabbedDetailItem
-            label="Client Status"
-            value={formatHypertensionDiabeticClientStatus(data.clientStatus)}
-          />
-          <TabbedDetailItem
-            label="Date of Last Consultation"
-            value={formatLongDate(data.dateOfLastConsultation, "Not recorded")}
-          />
         </div>
       ),
     },
     {
       id: "management",
-      label: "Management",
-      icon: ClipboardList,
+      ...RECORD_DETAIL_TABS.treatment,
       content: (
         <div className="space-y-6">
           {data.treatmentActionTaken ? (
@@ -525,8 +518,7 @@ function HypertensionDiabeticTabbedRecordDetails({
     },
     {
       id: "followup",
-      label: "Follow-up",
-      icon: CalendarClock,
+      ...RECORD_DETAIL_TABS.followUp,
       content: (
         <div className="grid gap-4 md:grid-cols-3">
           <TabbedDetailItem
@@ -579,8 +571,7 @@ function GenericRecordDetails({
   const tabs = [
     {
       id: "record",
-      label: "Record Details",
-      icon: Stethoscope,
+      ...RECORD_DETAIL_TABS.clinical,
       content: hasClinicalAssessmentDetails ? (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
@@ -695,15 +686,13 @@ function GenericRecordDetails({
 
   tabs.push({
     id: "care",
-    label: "Care",
-    icon: ClipboardList,
+    ...RECORD_DETAIL_TABS.treatment,
     content: <div className="space-y-6">{careContent}</div>,
   });
 
   tabs.push({
     id: "followup",
-    label: "Follow-up",
-    icon: CalendarClock,
+    ...RECORD_DETAIL_TABS.followUp,
     content: (
       <div>
         <div className="grid gap-4 md:grid-cols-3">
@@ -775,8 +764,7 @@ function GeneralConsultationRecordDetails({
   const tabs = [
     {
       id: "consultation",
-      label: "Clinical Details",
-      icon: Stethoscope,
+      ...RECORD_DETAIL_TABS.clinical,
       content: (
         <div className="space-y-6">
           <TabbedSubsection title="Vital Signs">
@@ -818,8 +806,7 @@ function GeneralConsultationRecordDetails({
     },
     {
       id: "careReporting",
-      label: "Treatment & Supplies",
-      icon: ClipboardCheck,
+      ...RECORD_DETAIL_TABS.treatment,
       content: (
         <div className="space-y-6">
           <div className="space-y-4">
@@ -833,12 +820,21 @@ function GeneralConsultationRecordDetails({
                 value={treatmentNotes}
               />
             )}
-            {isDistinctRecordedValue(medicalNotes, treatmentAction, treatmentNotes) && (
-              <TabbedNarrativeBlock
-                label={isFollowUpVisit ? "Follow-up Notes" : "Medical Notes"}
-                value={medicalNotes}
-              />
-            )}
+            {/* Follow-up visits still carry their own notes here. The plain
+                "Medical Notes" block is gone: on a normal consultation it only
+                repeated the Signs & Symptoms already shown under Clinical
+                Details. */}
+            {isFollowUpVisit &&
+              isDistinctRecordedValue(
+                medicalNotes,
+                treatmentAction,
+                treatmentNotes,
+              ) && (
+                <TabbedNarrativeBlock
+                  label="Follow-up Notes"
+                  value={medicalNotes}
+                />
+              )}
           </div>
           <TabbedSubsection title="Medicines / Supplies Dispensed">
             <DispensedMedicinesList medicines={dispensedMedicines} />
@@ -862,8 +858,7 @@ function GeneralConsultationRecordDetails({
     },
     {
       id: "followup",
-      label: "Follow-ups for This Record",
-      icon: CalendarClock,
+      ...RECORD_DETAIL_TABS.followUp,
       content: (
         <FollowUpEpisodeContent
           episode={record.followUpEpisode}
@@ -982,8 +977,7 @@ function FamilyPlanningRecordDetails({
   const tabs = [
     {
       id: "client",
-      label: "Client Record",
-      icon: Users,
+      ...RECORD_DETAIL_TABS.clinical,
       content: hasClientRecordDetails ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {clientRecordDetails.map((item) => (
@@ -1000,8 +994,7 @@ function FamilyPlanningRecordDetails({
     },
     {
       id: "clinicalCare",
-      label: "Clinical Care",
-      icon: HeartHandshake,
+      ...RECORD_DETAIL_TABS.treatment,
       content: (
         <div className="space-y-6">
           {concern || findings || advice || actionTaken || remarks ? (
@@ -1023,8 +1016,7 @@ function FamilyPlanningRecordDetails({
     },
     {
       id: "followup",
-      label: "Follow-up",
-      icon: CalendarClock,
+      ...RECORD_DETAIL_TABS.followUp,
       content: (
         <div className="grid gap-4 md:grid-cols-3">
           <TabbedDetailItem
