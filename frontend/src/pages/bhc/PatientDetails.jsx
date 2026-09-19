@@ -82,6 +82,7 @@ const BULAKAN_BARANGAYS = [
 
 const TAB_LABELS = {
   overview: "Overview",
+  information: "Patient Information",
   records: "Health Records",
   referrals: "Referrals & Follow-ups",
 };
@@ -304,9 +305,9 @@ export default function PatientDetails() {
   }
 
   function handleStartGeneralEdit() {
-    // Registration details are edited in place on Overview: they have no tab of
-    // their own in the chart, and the identity card they belong to is here.
-    setActiveTab("overview");
+    // Registration fields are owned by Patient Information, so the identity
+    // card's Edit opens them there rather than editing a second copy here.
+    setActiveTab("information");
     setForm(createPatientForm(patient));
     setFieldErrors({});
     setOpenConfirm(false);
@@ -522,6 +523,7 @@ export default function PatientDetails() {
     .map((area) => area.label);
   const tabs = [
     { key: "overview", label: TAB_LABELS.overview },
+    { key: "information", label: TAB_LABELS.information },
     { key: "medical", label: BACKGROUND_SECTIONS.medical.label },
     { key: "family", label: BACKGROUND_SECTIONS.family.label },
     { key: "social", label: BACKGROUND_SECTIONS.social.label },
@@ -611,7 +613,8 @@ export default function PatientDetails() {
             <div className="pt-5">
 
               {/* The identity card belongs to Overview alone - the other tabs
-                  open straight onto their own full-detail content. */}
+                  open straight onto their own full-detail content. Its Edit
+                  hands off to Patient Information rather than editing here. */}
               {activeTab === "overview" && (
                 <>
                   <h1 className="text-lg font-bold text-[#0F172A]">
@@ -621,7 +624,7 @@ export default function PatientDetails() {
                     <PatientIdentityCard
                       patient={patient}
                       patientId={patientId}
-                      onEdit={isEditing ? null : handleStartGeneralEdit}
+                      onEdit={handleStartGeneralEdit}
                       followUpBadge={
                         activePatientFollowUp ? (
                           <FollowUpStateBadge
@@ -636,7 +639,7 @@ export default function PatientDetails() {
                 </>
               )}
 
-              {activeTab === "overview" && !isEditing && (
+              {activeTab === "overview" && (
                 <div className="mt-4">
                   <PatientOverviewTab
                     patient={patient}
@@ -658,55 +661,26 @@ export default function PatientDetails() {
                 </div>
               )}
 
-              {/* Registration details have no tab in the chart, so Overview
-                  keeps them: collapsed while reading, and opened in full when
-                  the identity card's Edit is used. */}
-              {activeTab === "overview" &&
-                (isEditing ? (
-                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <GeneralPatientTab
-                      patient={patient}
-                      form={form}
-                      isEditing
-                      onChange={handleChange}
-                      fieldErrors={fieldErrors}
-                      saving={saving}
-                      motherSearch={motherSearch}
-                      motherPatientOptions={motherPatientOptions}
-                      onMotherSearchChange={setMotherSearch}
-                      onMotherPatientChange={handleMotherPatientChange}
-                      onEdit={handleStartGeneralEdit}
-                      onCancel={handleCancelGeneralEdit}
-                      onSave={handleRequestInlineSave}
-                    />
-                  </div>
-                ) : (
-                  <details className="mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
-                    <summary className="cursor-pointer list-none px-5 py-3.5 text-[13px] font-bold text-[#0F172A] marker:hidden">
-                      Registration Details
-                      <span className="ml-2 font-normal text-slate-400">
-                        Contact, PhilHealth, household and birth information
-                      </span>
-                    </summary>
-                    <div className="border-t border-slate-100 px-5 py-5">
-                      <GeneralPatientTab
-                        patient={patient}
-                        form={form}
-                        isEditing={false}
-                        onChange={handleChange}
-                        fieldErrors={fieldErrors}
-                        saving={saving}
-                        motherSearch={motherSearch}
-                        motherPatientOptions={motherPatientOptions}
-                        onMotherSearchChange={setMotherSearch}
-                        onMotherPatientChange={handleMotherPatientChange}
-                        onEdit={handleStartGeneralEdit}
-                        onCancel={handleCancelGeneralEdit}
-                        onSave={handleRequestInlineSave}
-                      />
-                    </div>
-                  </details>
-                ))}
+              {/* Patient Information owns every registration/admin field, and
+                  is the only place they are edited - Overview shows the
+                  identity summary but never a second copy of this form. */}
+              {activeTab === "information" && (
+                <GeneralPatientTab
+                  patient={patient}
+                  form={form}
+                  isEditing={isEditing}
+                  onChange={handleChange}
+                  fieldErrors={fieldErrors}
+                  saving={saving}
+                  motherSearch={motherSearch}
+                  motherPatientOptions={motherPatientOptions}
+                  onMotherSearchChange={setMotherSearch}
+                  onMotherPatientChange={handleMotherPatientChange}
+                  onEdit={handleStartGeneralEdit}
+                  onCancel={handleCancelGeneralEdit}
+                  onSave={handleRequestInlineSave}
+                />
+              )}
 
               {["medical", "family", "social"].includes(activeTab) && (
                 <PatientBackgroundTab
@@ -911,7 +885,7 @@ function GeneralPatientTab({
           <EditField label="First Name" name="firstName" value={form.firstName} onChange={onChange} error={fieldErrors.firstName} required />
           <EditField label="Middle Name" name="middleName" value={form.middleName} onChange={onChange} />
           <EditField label="Last Name" name="lastName" value={form.lastName} onChange={onChange} error={fieldErrors.lastName} required />
-          <EditField label="Date of Birth" name="birthDate" type="date" value={form.birthDate} onChange={onChange} error={fieldErrors.birthDate} required />
+          <EditField label="Birthday" name="birthDate" type="date" value={form.birthDate} onChange={onChange} error={fieldErrors.birthDate} required />
           <EditField label="Age" name="age" value={form.age} readOnly />
           <EditSelect label="Sex" name="sex" value={form.sex} onChange={onChange} error={fieldErrors.sex} required>
             <option value="">Select sex</option>
@@ -1019,11 +993,12 @@ function GeneralPatientTab({
           <button
             type="button"
             onClick={onEdit}
-            aria-label="Edit profile"
-            title="Edit profile"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
+            aria-label="Edit patient information"
+            title="Edit patient information"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
           >
-            <Pencil size={14} />
+            <Pencil size={12} />
+            Edit Details
           </button>
         }
       >
@@ -1031,7 +1006,7 @@ function GeneralPatientTab({
         <DetailItem label="Middle Name" value={getPatientValue(patient, ["middleName", "middle_name"])} />
         <DetailItem label="Last Name" value={getPatientValue(patient, ["lastName", "last_name"])} />
         <DetailItem
-          label="Date of Birth"
+          label="Birthday"
           value={formatLongDate(
             getPatientValue(patient, ["birthDate", "birthdate", "dateOfBirth", "date_of_birth"]),
             "Not recorded",
@@ -1285,7 +1260,7 @@ function HealthRecordsTab({
     <div className="relative overflow-hidden rounded-xl border border-slate-200">
       <TabHeader
         title="Health Record History"
-        subtitle="Complete chronological visit history for this patient."
+        subtitle="Every consultation saved for this patient. The global Health Records module lists these across all patients."
         action={
           isFetching && records.length > 0 ? (
             <RefreshingIndicator label="Updating health records..." />
@@ -1313,14 +1288,15 @@ function HealthRecordsTab({
       ) : (
         <>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px] text-left">
+            <table className="w-full min-w-[820px] text-left">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                   <th className="px-5 py-3">Record ID</th>
-                  <th className="px-4 py-3">Date of Visit</th>
-                  <th className="px-4 py-3">Service Type</th>
+                  <th className="px-4 py-3">Visit Date</th>
+                  <th className="px-4 py-3">Chief Complaint</th>
+                  <th className="px-4 py-3">Program / Service</th>
                   <th className="px-4 py-3">Visit Type</th>
-                  <th className="px-4 py-3">Outcome</th>
+                  <th className="px-4 py-3">Outcome / Next Step</th>
                   <th className="px-4 py-3 text-right">Action</th>
                 </tr>
               </thead>
@@ -1334,6 +1310,12 @@ function HealthRecordsTab({
                       </td>
                       <td className="whitespace-nowrap px-4 py-4 font-medium text-slate-700">
                         {getHealthRecordDate(record)}
+                      </td>
+                      <td className="px-4 py-4 text-xs font-semibold text-[#0F172A]">
+                        {formatDisplayValue(
+                          record.chiefComplaint,
+                          "No complaint recorded",
+                        )}
                       </td>
                       <td className="px-4 py-4 text-xs font-semibold text-[#0F172A]">
                         {getServiceTypeLabel(record)}
