@@ -1,3 +1,5 @@
+import TbTreatmentCardForm, { normalizeTbData } from "./TbTreatmentCardForm";
+import { getConsultationPrograms, PROGRAM_CLASSIFICATIONS } from "../../../utils/consultationPrograms";
 import {
   Baby,
   CalendarClock,
@@ -75,6 +77,16 @@ export default function HealthRecordClinicalDetails({
   linkedReferral = null,
 }) {
   if (!record) return null;
+
+  const programs = getConsultationPrograms(record);
+  const categories = [...new Set(programs.map(key => PROGRAM_CLASSIFICATIONS[key]))];
+  if (categories.length > 1) {
+    return <div className="space-y-6">{categories.map(category => {
+      const selected = programs.filter(key => PROGRAM_CLASSIFICATIONS[key] === category);
+      const programRecord = { ...record, category, recordType: category, classification: category, patientClassification: category, selectedPrograms: selected };
+      return <section key={category}><h2 className="mb-3 text-sm font-semibold text-slate-900">{selected.join(" / ")}</h2><HealthRecordClinicalDetails record={programRecord} patient={patient} linkedReferral={linkedReferral} /></section>;
+    })}</div>;
+  }
 
   const status = normalizeHealthRecordStatus(
     record.followUpStatus || record.status || "Consultation",
@@ -155,6 +167,10 @@ export default function HealthRecordClinicalDetails({
     record.referralTrackingId ||
     record.referral_tracking_id ||
     "";
+
+  if (programs.includes("TB")) {
+    return <TbTreatmentCardForm value={normalizeTbData(record.tbData || record.tb_data)} readOnly recordId={record.id} />;
+  }
 
   if (isImmunizationRecord) {
     return (

@@ -14,6 +14,8 @@ import { calculateBmi, formatBmi, getBmiCategory } from "../../../utils/bmi";
 ──────────────────────────────────────────── */
 
 export function isImmunizationClassification(record = {}, patient = {}) {
+  const selected = record.selectedPrograms ?? record.monitoringData?.selectedPrograms ?? record.monitoring_data?.selectedPrograms;
+  if (Array.isArray(selected)) return selected.includes("EPI");
   return [
     record.classification,
     record.category,

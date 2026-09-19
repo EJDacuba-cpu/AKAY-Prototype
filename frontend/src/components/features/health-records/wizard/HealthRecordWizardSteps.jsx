@@ -24,11 +24,12 @@ export function WizardCard({
   visitDate,
   visitTime,
   showVisitOverview = true,
+  unboxed = false,
   children,
 }) {
   return (
     <section className="anim-fade-up ml-0 mr-auto w-full max-w-6xl">
-      <div className="rounded-2xl border border-[#E8ECF0] bg-white px-6 py-6 shadow-sm sm:px-7">
+      <div className={unboxed ? "" : "rounded-xl border border-[#E8ECF0] bg-white px-5 py-5 shadow-sm sm:px-6"}>
         <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="text-lg font-bold tracking-tight text-[#0F172A]">
@@ -109,6 +110,7 @@ function WizardFooter({
 }
 
 function PatientPanel({
+  selectedPatient,
   patients,
   selectedPatientId,
   onSelectPatient,
@@ -124,7 +126,7 @@ function PatientPanel({
   onRetryLoad,
 }) {
   return (
-    <div className="w-full flex-none rounded-2xl border border-[#E8ECF0] bg-white p-4 lg:w-[290px]">
+    <div className="w-full flex-none rounded-2xl border border-[#E8ECF0] bg-white p-4 lg:w-[260px] lg:min-h-[430px]">
       <div className="mb-4 flex items-center justify-end gap-2">
         {searchOpen ? (
           <div className="flex h-9 flex-1 items-center gap-2 rounded-lg border border-[#FECACA] bg-white px-2.5">
@@ -150,9 +152,9 @@ function PatientPanel({
             type="button"
             onClick={onToggleSearch}
             aria-label="Search patients"
-            className="flex h-9 w-9 flex-none items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
+            className="flex h-9 min-w-0 flex-1 gap-2 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
           >
-            <Search size={16} />
+            <Search size={14} /><span className="truncate text-[11px]">Search by name or Patient ID</span>
           </button>
         )}
         {showDrafts && (
@@ -172,6 +174,15 @@ function PatientPanel({
         )}
       </div>
 
+      {selectedPatient && !searchOpen ? (
+        <div className="space-y-4 text-xs">
+          <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
+            <div><p className="font-semibold text-slate-900">{selectedPatient.name}</p><p className="mt-1 text-slate-400">Patient #{selectedPatient.id}</p></div>
+            <button type="button" onClick={onToggleSearch} className="rounded border border-slate-200 px-2 py-1 text-[10px]">Change</button>
+          </div>
+          <dl className="space-y-3">{selectedPatient.fields.map(({label,value}) => <div key={label}><dt className="text-[9px] uppercase tracking-wider text-slate-400">{label}</dt><dd className="mt-1 text-slate-900">{value || "Not recorded"}</dd></div>)}</dl>
+        </div>
+      ) : <>
       <p className="mb-2 text-[10.5px] font-bold uppercase tracking-[0.08em] text-[#94A3B8]">
         Recent Patients
       </p>
@@ -230,6 +241,7 @@ function PatientPanel({
           })}
         </div>
       )}
+      </>}
     </div>
   );
 }
@@ -255,6 +267,7 @@ const CONSULTATION_TYPES = [
  * choice depends on that patient having an active follow-up task.
  */
 export function ConsultationSetupStep({
+  selectedPatient,
   visitDate,
   visitTime,
   patients,
@@ -281,6 +294,7 @@ export function ConsultationSetupStep({
 
   return (
     <WizardCard
+      unboxed
       title="New Health Record"
       subtitle="Set the patient and visit type to begin."
       visitDate={visitDate}
@@ -288,6 +302,7 @@ export function ConsultationSetupStep({
     >
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
         <PatientPanel
+          selectedPatient={selectedPatient}
           patients={patients}
           selectedPatientId={selectedPatientId}
           onSelectPatient={onSelectPatient}
@@ -370,79 +385,43 @@ export function ConsultationSetupStep({
   );
 }
 
-/**
- * Step 2 - choose the program for a new consultation.
- *
- * Selecting a card advances immediately; there is no Next button, matching the
- * approved flow. The card list is supplied by the page so the stored
- * classification value stays owned by the page's RECORD_TYPE_OPTIONS.
- */
-export function ProgramSelectStep({ programs, selected, onSelect, onBack, error }) {
+/** Current visit fields and program selection reuse the page's clinical state. */
+export function ConsultationClinicalStep({ programs, selected = [], primary, onSelect, onPrimaryChange, mode, onModeChange, onBack, onNext, error, children }) {
   return (
-    <WizardCard
-      title="Select Program"
-      subtitle="Choose the health program or service for this consultation."
-      showVisitOverview={false}
-    >
-      <div
-        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
-        data-field="healthRecordType"
-        tabIndex={error ? -1 : undefined}
-      >
-        {programs.map((program) => {
-          const Icon = program.icon;
-          const isSelected = selected === program.key;
-          const isDisabled = Boolean(program.disabled);
-
-          return (
-            <button
-              key={program.key}
-              type="button"
-              onClick={() => onSelect(program.key)}
-              disabled={isDisabled}
-              aria-pressed={isSelected}
-              title={isDisabled ? program.disabledReason : undefined}
-              className={`relative flex min-h-[150px] flex-col gap-3 rounded-xl p-5 text-left transition ${
-                isDisabled
-                  ? "cursor-not-allowed bg-[#F8FAFC] opacity-60"
-                  : isSelected
-                    ? "bg-[#FEF2F2] shadow-sm"
-                    : "bg-white hover:bg-[#F8FAFC] hover:shadow-sm"
-              }`}
-            >
-              <span className="flex h-11 w-11 flex-none items-center justify-center rounded-lg border border-[#E5E7EB] bg-white">
-                <Icon size={21} className="text-[#B91C1C]" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span
-                  className={`block text-[14.5px] font-bold ${
-                    isSelected ? "text-[#B91C1C]" : "text-[#0F172A]"
-                  }`}
-                >
-                  {program.title}
-                </span>
-                <span className="mt-1 block text-[12px] leading-relaxed text-[#64748B]">
-                  {isDisabled ? program.disabledReason : program.description}
-                </span>
-              </span>
-              {isSelected && !isDisabled && (
-                <Check
-                  size={20}
-                  strokeWidth={2.4}
-                  className="absolute right-4 top-4 text-[#B91C1C]"
-                />
-              )}
-            </button>
-          );
-        })}
+    <section className="max-w-5xl rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      {children}
+      <div className="mt-6 border-t border-slate-100 pt-5" data-field="healthRecordType">
+        <h3 className="text-sm font-semibold text-slate-900">Consultation Type<span className="text-red-700">*</span></h3>
+        <p className="mb-3 text-xs text-slate-500">General consultation, or connected to a health program?</p>
+        <div className="grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+          {[["general", "General Consultation"], ["program", "With Health Program"]].map(([key, label]) => (
+            <button key={key} type="button" aria-pressed={mode === key} onClick={() => onModeChange(key)} className={"rounded-md px-2 py-2.5 text-xs transition " + (mode === key ? "bg-[#B91C1C] text-white" : "text-slate-600 hover:bg-white")}>{label}</button>
+          ))}
+        </div>
+        {mode === "program" && <>
+          <p className="mb-3 mt-4 text-xs text-slate-500">Select one or more health programs related to today's consultation.</p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {programs.map(program => {
+              const Icon = program.icon;
+              const active = selected.includes(program.key);
+              return <div key={program.key} className={"relative rounded-xl border " + (active ? "border-red-600 bg-red-50" : "border-slate-200 bg-white")}>
+                <button type="button" disabled={program.disabled} title={program.disabledReason} aria-pressed={active} onClick={() => onSelect(program.key)} className="flex h-full min-h-[112px] w-full flex-col items-start p-3 text-left disabled:cursor-not-allowed disabled:opacity-40">
+                  <span className="mb-2 rounded-md border border-slate-200 bg-white p-1.5"><Icon size={15} className="text-red-700" /></span>
+                  <span className="text-xs font-semibold text-slate-900">{program.title}</span>
+                  <span className="mt-1 text-[11px] text-slate-500">{program.description}</span>
+                  {program.disabled && <span className="mt-2 text-[10px] italic">Not applicable to this patient</span>}
+                  {active && <Check size={14} className="absolute bottom-3 right-3 text-red-700" />}
+                </button>
+                {active && <button type="button" onClick={() => onPrimaryChange(program.key)} aria-label={"Make " + program.title + " primary"} className="absolute right-2 top-2 rounded border border-red-200 bg-white px-1.5 py-0.5 text-[9px] text-red-700">{primary === program.key ? "PRIMARY" : "Make primary"}</button>}
+              </div>;
+            })}
+          </div>
+          {selected.length > 0 && <p className="mt-3 text-xs text-slate-500">Selected: {selected.join(", ")} · Primary: {primary}</p>}
+        </>}
+        {error && <p role="alert" className="mt-3 text-xs text-red-700">{error}</p>}
       </div>
-
-      {error && (
-        <p className="mt-3 text-[11px] font-medium text-[#B91C1C]">{error}</p>
-      )}
-
-      <WizardFooter onBack={onBack} />
-    </WizardCard>
+      <WizardFooter onBack={onBack} onNext={onNext} nextDisabled={!mode || (mode === "program" && !selected.length)} />
+    </section>
   );
 }
 
@@ -636,3 +615,4 @@ export function NextActionStep({
     </WizardCard>
   );
 }
+

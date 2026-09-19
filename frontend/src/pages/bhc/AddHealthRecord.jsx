@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   Check,
@@ -60,6 +60,8 @@ import {
   getFpMethodRestriction,
 } from "../../utils/familyPlanning";
 import { calculateBmi, formatBmi, getBmiCategory } from "../../utils/bmi";
+import PatientSummaryDrawer from "../../components/features/health-records/PatientSummaryDrawer";
+import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "../../utils/consultationPrograms";
 import DraftSaveStatus from "../../components/features/health-records/DraftSaveStatus";
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
 import {
@@ -72,7 +74,7 @@ import {
   FollowUpConfirmStep,
   FollowUpSelectStep,
   NextActionStep,
-  ProgramSelectStep,
+  ConsultationClinicalStep,
 } from "../../components/features/health-records/wizard/HealthRecordWizardSteps";
 import {
   NEXT_ACTION_NONE,
@@ -90,7 +92,7 @@ import {
   loadMedicineAvailability,
   refreshRhuMedicines,
 } from "../../services/medicineService";
-import { getPatientDetailsListByRole } from "../../services/patientService";
+import { getBhcPatientById, getPatientDetailsListByRole } from "../../services/patientService";
 import {
   getFollowUpTask,
   getFollowUpTasks,
@@ -141,14 +143,6 @@ const WIZARD_FU_CONFIRM = "fuConfirm";
 const WIZARD_FORM = "form";
 const WIZARD_NEXT = "next";
 
-const RECORD_TYPE_OPTIONS = [
-  "General Consultation",
-  "Immunization",
-  "Maternal",
-  "Family Planning",
-  "Hypertension / Diabetic Monitoring",
-  "TB DOTS / TB Monitoring",
-];
 const HEALTH_RECORD_CONNECTION_LOST_MESSAGE =
   "The server did not confirm this submission. Your form remains available in this tab. Keep this page open, check the patient's recent records, and retry when the connection is stable.";
 const DRAFT_SUPPORTED_RECORD_TYPES = new Set([
@@ -185,7 +179,7 @@ function formatDraftExpiry(value) {
 
 /**
  * Display copy for the Select Program step. The KEYS are the stored
- * classification values (RECORD_TYPE_OPTIONS) and must not change - only the
+ * classification values and must not change - only the
  * titles and descriptions shown to the user live here.
  */
 const RECORD_TYPE_DETAILS = {
@@ -1071,17 +1065,22 @@ export default function AddHealthRecord() {
       : WIZARD_SETUP,
   );
   const [consultationType, setConsultationType] = useState(null);
+  const [consultationMode, setConsultationMode] = useState(null);
+  const [selectedPrograms, setSelectedPrograms] = useState([]);
+  const [primaryProgram, setPrimaryProgram] = useState("");
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const requestedDraftId = searchParams.get("draftId");
+  const resumedRouteDraft = useRef("");
   const [selectedFollowUpTaskId, setSelectedFollowUpTaskId] = useState("");
   // Kept as a derived value: everything downstream (drafts, medicine warnings,
   // the header search) only ever asked "are we past the setup screens".
   const setupComplete =
-    wizardPhase === WIZARD_FORM || wizardPhase === WIZARD_NEXT;
+    wizardPhase === WIZARD_PROGRAM || wizardPhase === WIZARD_FORM || wizardPhase === WIZARD_NEXT;
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [draftsDrawerOpen, setDraftsDrawerOpen] = useState(false);
   const searchWrapperRef = useRef(null);
-  const inputRef = useRef(null);
   const classificationRef = useRef(null);
 
   const [dateOfVisit, setDateOfVisit] = useState(
@@ -1375,6 +1374,9 @@ export default function AddHealthRecord() {
         found.timeOfVisit ||
           new Date().toTimeString().split(" ")[0].slice(0, 5),
       );
+      setSelectedPrograms(getConsultationPrograms(found));
+      setPrimaryProgram(getPrimaryProgram(found));
+      setConsultationMode(getConsultationPrograms(found).length ? "program" : "general");
       setChiefComplaint(found.chiefComplaint || "");
       setSummaryOfPresentIllness(found.summaryOfPresentIllness || "");
       setDiagnosis(found.diagnosis || "");
@@ -1580,8 +1582,13 @@ export default function AddHealthRecord() {
   const selectedPatientFromList = patients.find(
     (patient) => String(patient.id) === String(selectedPatientId),
   );
+  const { data: selectedPatientDetails } = useQuery({
+    queryKey: ["consultation-selected-patient", selectedPatientId],
+    queryFn: () => getBhcPatientById(selectedPatientId),
+    enabled: Boolean(selectedPatientId && !selectedPatientFromList),
+  });
   const selectedPatient =
-    selectedPatientFromList ||
+    selectedPatientFromList || selectedPatientDetails ||
     (routeLinkedFollowUpTask?.patient &&
     String(routeLinkedFollowUpTask.patientId) === String(selectedPatientId)
       ? routeLinkedFollowUpTask.patient
@@ -1712,6 +1719,9 @@ export default function AddHealthRecord() {
   function selectPatient(id) {
     clearValidationError("selectedPatientId");
     if (id !== selectedPatientId) {
+      setSelectedPrograms([]);
+      setPrimaryProgram("");
+      setConsultationMode(null);
       resetClassificationSpecificState();
       setWizardPhase(WIZARD_SETUP);
       setConsultationType(null);
@@ -1743,12 +1753,12 @@ export default function AddHealthRecord() {
     (activeFollowUpLookup.isChecking ||
       activeFollowUpLookup.key !== activeFollowUpLookupKey);
   const recordTypeKey = normalizedHealthRecordType.toLowerCase();
-  const isImmunization = recordTypeKey === "immunization";
-  const isMaternal = recordTypeKey === "maternal";
-  const isFamilyPlanning = recordTypeKey === "family planning";
+  const isImmunization = recordTypeKey === "immunization" || selectedPrograms.includes("EPI");
+  const isMaternal = recordTypeKey === "maternal" || selectedPrograms.includes("Maternal");
+  const isFamilyPlanning = recordTypeKey === "family planning" || selectedPrograms.includes("Family Planning");
   const isHypertensionDiabetic =
-    recordTypeKey === "hypertension / diabetic monitoring";
-  const isTb = recordTypeKey === "tb dots / tb monitoring";
+    recordTypeKey === "hypertension / diabetic monitoring" || selectedPrograms.includes("Hypertension") || selectedPrograms.includes("Diabetes");
+  const isTb = recordTypeKey === "tb dots / tb monitoring" || selectedPrograms.includes("TB");
   const effectiveLinkedFollowUpTask =
     routeLinkedFollowUpTask || (isFollowUp ? null : autoLinkedFollowUpTask);
   const effectiveFollowUpParentRecordId = isFollowUp
@@ -1851,6 +1861,10 @@ export default function AddHealthRecord() {
 
   function buildHealthRecordDraftPayload() {
     return {
+      selectedPrograms,
+      primaryProgram,
+      consultationMode,
+      wizardPhase,
       dateOfVisit,
       timeOfVisit,
       chiefComplaint,
@@ -2031,6 +2045,10 @@ export default function AddHealthRecord() {
     const payload = draft.payload || {};
     setSelectedPatientId(draft.patient.id);
     setHealthRecordType(normalizeRecordType(draft.classification));
+    setSelectedPrograms(getConsultationPrograms({ ...payload, classification: draft.classification }));
+    setPrimaryProgram(getPrimaryProgram({ ...payload, classification: draft.classification }));
+    setConsultationMode(payload.consultationMode || (draft.classification === "General Consultation" ? "general" : "program"));
+    setConsultationType("new");
     setDateOfVisit(payload.dateOfVisit || toDateInputValue());
     setTimeOfVisit(payload.timeOfVisit || toTimeInputValue());
     setChiefComplaint(payload.chiefComplaint || "");
@@ -2101,7 +2119,8 @@ export default function AddHealthRecord() {
     setDraftMedicineWarnings(Array.from(new Set(warnings)));
     setActiveDraft({ id: draft.id, version: draft.version });
     setDraftSavedAt(draft.lastSavedAt);
-    setWizardPhase(WIZARD_FORM);
+    setWizardPhase(payload.wizardPhase === WIZARD_PROGRAM ? WIZARD_PROGRAM : WIZARD_FORM);
+    setDraftsDrawerOpen(false);
     setValidationErrors({});
   }
 
@@ -2213,6 +2232,14 @@ export default function AddHealthRecord() {
     return () =>
       window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [draftHasPendingChanges]);
+
+  useEffect(() => {
+    if (!requestedDraftId || !isDraftRouteEligible || resumedRouteDraft.current === requestedDraftId) return;
+    resumedRouteDraft.current = requestedDraftId;
+    void handleResumeDraft(requestedDraftId);
+    // A route draft is restored once; autosave changes must not replay it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedDraftId, isDraftRouteEligible]);
 
   async function handleResumeDraft(draftId) {
     if (!draftId || draftResumingId) return;
@@ -2403,58 +2430,6 @@ export default function AddHealthRecord() {
     maternalData,
   );
 
-  function handleClassificationSelect(nextType) {
-    clearValidationError("healthRecordType");
-    const normalizedNextType = normalizeRecordType(nextType);
-    const config = RECORD_TYPE_DETAILS[nextType] || {};
-
-    if (patientGateLocked) {
-      setValidationErrors((current) => ({
-        ...current,
-        selectedPatientId: "Please select a patient first before choosing a record type.",
-      }));
-      setSearchExpanded(true);
-      setDropdownOpen(true);
-      window.requestAnimationFrame(() => inputRef.current?.focus());
-      return;
-    }
-
-    if (config.comingSoon) {
-      setNoticeModal({
-        title: "Form Not Available",
-        message: "TB DOTS / TB Monitoring form is not yet available.",
-      });
-      return;
-    }
-
-    // The card is rendered disabled for a male patient; this is the guard for
-    // every other path into the classification (drafts, route params, edit).
-    if (normalizedNextType === "Maternal") {
-      const maternalEligibility = getMaternalEligibility(selectedPatient);
-      if (!maternalEligibility.eligible) {
-        setNoticeModal({
-          title: "Prenatal Care Unavailable",
-          message: `${maternalEligibility.message} Please choose another program.`,
-        });
-        return;
-      }
-    }
-
-    if (normalizedNextType !== normalizedHealthRecordType) {
-      setMaternalData(EMPTY_MATERNAL_DATA);
-      setDispensedMedicines([]);
-      setExpectedDeliveryDate("");
-      setAog("");
-      setImmunizationData(EMPTY_IMMUNIZATION_DATA);
-      setFamilyPlanningData(EMPTY_FAMILY_PLANNING_DATA);
-      setHypertensionDiabeticData(EMPTY_HYPERTENSION_DIABETIC_DATA);
-      setTbData(EMPTY_TB_DATA);
-    }
-
-    setHealthRecordType(nextType);
-  }
-
-
   useEffect(() => {
     if (isMaternal) {
       setFollowUpStatus("Routine Monitoring");
@@ -2598,7 +2573,6 @@ export default function AddHealthRecord() {
           "Next follow-up date is required because there are still remaining EPI vaccines/services.";
       }
 
-      return errors;
     }
 
     if (isFamilyPlanning) {
@@ -2607,7 +2581,6 @@ export default function AddHealthRecord() {
       } else if (familyPlanningMethodRestriction) {
         errors.familyPlanningMethodUsed = familyPlanningMethodRestriction;
       }
-      return errors;
     }
 
     if (isHypertensionDiabetic) {
@@ -2624,10 +2597,8 @@ export default function AddHealthRecord() {
         errors["hypertensionDiabeticData.conditionType"] =
           "Condition type is required.";
       }
-      return errors;
     }
 
-    if (isMaternal) return errors;
 
     if (isTb) {
       if (!String(tbData.diagnosis.tbCaseNumber || "").trim()) {
@@ -2637,13 +2608,12 @@ export default function AddHealthRecord() {
         errors["tbData.phases.intensiveStart"] =
           "Intensive phase start date is required.";
       }
-      return errors;
     }
 
-    if (!chiefComplaint.trim()) {
+    if (!isImmunization && !isFamilyPlanning && !isHypertensionDiabetic && !isMaternal && !isTb && !chiefComplaint.trim()) {
       errors.chiefComplaint = "Chief complaint is required.";
     }
-    if (!summaryOfPresentIllness.trim()) {
+    if (!isImmunization && !isFamilyPlanning && !isHypertensionDiabetic && !isMaternal && !isTb && !summaryOfPresentIllness.trim()) {
       errors.summaryOfPresentIllness =
         "Summary of present illness is required.";
     }
@@ -3145,7 +3115,7 @@ export default function AddHealthRecord() {
   }
 
   async function handleSave(event) {
-    event.preventDefault();
+    event?.preventDefault();
     closeDateTimePopovers();
 
     const isReferralContinuation =
@@ -3484,7 +3454,7 @@ export default function AddHealthRecord() {
       medication:
         effectiveHealthRecordType === "Maternal"
           ? recordMaternalData.treatment || medication
-          : effectiveHealthRecordType === "Hypertension / Diabetic Monitoring"
+          : isHypertensionDiabetic
             ? recordHypertensionDiabeticData.treatmentActionTaken || medication
           : medication,
       attendingStaff: attendingStaff || currentUserName,
@@ -3524,18 +3494,20 @@ export default function AddHealthRecord() {
       aog,
       immunizationData: preparedImmunizationData,
       familyPlanningData:
-        effectiveHealthRecordType === "Family Planning"
+        isFamilyPlanning
           ? recordFamilyPlanningData
           : null,
       hypertensionDiabeticData:
-        effectiveHealthRecordType === "Hypertension / Diabetic Monitoring"
+        isHypertensionDiabetic
           ? recordHypertensionDiabeticData
           : null,
       tbData:
-        effectiveHealthRecordType === "TB DOTS / TB Monitoring" ? tbData : null,
+        isTb ? tbData : null,
+      ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
       monitoringData: {
+        ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
         hypertensionDiabeticData:
-          effectiveHealthRecordType === "Hypertension / Diabetic Monitoring"
+          isHypertensionDiabetic
             ? recordHypertensionDiabeticData
             : null,
       },
@@ -3939,7 +3911,7 @@ export default function AddHealthRecord() {
       ? "Follow-up Visit"
       : isEditingRecord
         ? "Edit Health Record"
-        : "Add Health Record";
+        : wizardPhase === WIZARD_SETUP ? "New Health Record" : "New Consultation";
   const monitoringNotesLabel =
     normalizedPatientStatus === "Completed"
       ? "Outcome Notes"
@@ -4004,20 +3976,13 @@ export default function AddHealthRecord() {
       };
     });
 
-  const wizardPrograms = RECORD_TYPE_OPTIONS.map((option) => {
-    const eligibility =
-      option === "Maternal"
-        ? getMaternalEligibility(selectedPatient)
-        : { eligible: true, message: "" };
-
-    return {
-      key: option,
-      title: RECORD_TYPE_DETAILS[option]?.title || option,
-      description: RECORD_TYPE_DETAILS[option]?.description || "",
-      icon: RECORD_TYPE_DETAILS[option]?.icon || Stethoscope,
-      disabled: !eligibility.eligible,
-      disabledReason: eligibility.message,
-    };
+  const wizardPrograms = Object.entries(PROGRAM_CLASSIFICATIONS).map(([key, classification]) => {
+    const eligibility = key === "Maternal" ? getMaternalEligibility(selectedPatient)
+      : key === "Family Planning" ? familyPlanningEligibility
+      : key === "EPI" && immunizationPatientInfo.mode === "adult" ? { eligible: false, message: getAdultImmunizationMessage(immunizationPatientInfo.age) }
+      : { eligible: true, message: "" };
+    return { key, title: key, description: key === "Hypertension" ? "Monitoring and management of high blood pressure." : key === "Diabetes" ? "Monitoring and management of diabetes." : key === "EPI" ? "Immunization and child vaccination services." : RECORD_TYPE_DETAILS[classification]?.description,
+      icon: RECORD_TYPE_DETAILS[classification]?.icon || Stethoscope, disabled: !eligibility.eligible, disabledReason: eligibility.message };
   });
 
   const wizardFollowUpRows = activePatientFollowUps.map((task) => ({
@@ -4079,13 +4044,38 @@ export default function AddHealthRecord() {
 
   function handleSetupNext() {
     if (!selectedPatientId || !consultationType) return;
+    if (consultationType === "new" && !healthRecordType) setHealthRecordType("General Consultation");
     goToWizardPhase(
       consultationType === "followup" ? WIZARD_FU_SELECT : WIZARD_PROGRAM,
     );
   }
 
   function handleProgramSelect(option) {
-    handleClassificationSelect(option);
+    if (wizardPrograms.find(program => program.key === option)?.disabled) return;
+    const next = toggleConsultationProgram(selectedPrograms, primaryProgram, option);
+    setSelectedPrograms(next.selectedPrograms);
+    setPrimaryProgram(next.primaryProgram);
+    setHealthRecordType(PROGRAM_CLASSIFICATIONS[next.primaryProgram] || "General Consultation");
+    if (next.selectedPrograms.includes("Hypertension") || next.selectedPrograms.includes("Diabetes")) {
+      setHypertensionDiabeticData(current => ({ ...current, conditionType: next.selectedPrograms.includes("Hypertension") && next.selectedPrograms.includes("Diabetes") ? "both" : next.selectedPrograms.includes("Diabetes") ? "dm" : "hpn" }));
+    }
+  }
+
+  function handleConsultationMode(mode) {
+    setConsultationMode(mode);
+    if (mode === "general") {
+      setSelectedPrograms([]);
+      setPrimaryProgram("");
+      setHealthRecordType("General Consultation");
+    }
+  }
+
+  function handleCurrentVisitNext() {
+    if (!chiefComplaint.trim()) {
+      setValidationErrorsAndFocus({ chiefComplaint: "Chief complaint is required." });
+      return;
+    }
+    if (!consultationMode || (consultationMode === "program" && !selectedPrograms.length)) return;
     goToWizardPhase(WIZARD_FORM);
   }
 
@@ -4192,6 +4182,10 @@ export default function AddHealthRecord() {
   return (
     <DashboardLayout role={userRole} title={pageTitle}>
       <style>{keyframes}</style>
+      {selectedPatientId && wizardPhase !== WIZARD_SETUP && <>
+        <button type="button" onClick={() => setSummaryOpen(true)} className="fixed bottom-4 right-4 z-[90] inline-flex items-center gap-2 rounded-full bg-[#B91C1C] px-4 py-3 text-xs font-semibold text-white shadow-lg"><Users size={15} />Patient Summary</button>
+        <PatientSummaryDrawer key={selectedPatientId} patientId={selectedPatientId} open={summaryOpen} onClose={() => setSummaryOpen(false)} basePath={basePath} />
+      </>}
 
       {canSaveCurrentDraft && draftAutosaveStatus === "offline" && (
         <div className="anim-fade-up mb-4 ml-0 mr-auto w-full max-w-7xl">
@@ -4243,9 +4237,16 @@ export default function AddHealthRecord() {
         <ConsultationSetupStep
           visitDate={wizardVisitDate}
           visitTime={wizardVisitTime}
+          selectedPatient={selectedPatient ? { id: selectedPatientId, name: getPatientName(selectedPatient), fields: [
+            { label: "Age", value: getPatientDisplay(selectedPatient).age },
+            { label: "Sex", value: selectedPatient.sex },
+            { label: "Date of Birth", value: selectedPatient.birthDate },
+            { label: "Barangay / Address", value: [selectedPatient.address, selectedPatient.barangay, selectedPatient.municipality].filter(Boolean).join(", ") },
+            { label: "Contact Number", value: selectedPatient.contactNumber },
+          ] } : null}
           patients={wizardPatientRows}
           selectedPatientId={selectedPatientId}
-          onSelectPatient={selectPatient}
+          onSelectPatient={(id) => { selectPatient(id); setSearchExpanded(false); }}
           consultationType={consultationType}
           onConsultationTypeChange={handleConsultationTypeChange}
           searchOpen={searchExpanded}
@@ -4266,13 +4267,30 @@ export default function AddHealthRecord() {
           onNext={handleSetupNext}
         />
       ) : wizardPhase === WIZARD_PROGRAM ? (
-        <ProgramSelectStep
-          programs={wizardPrograms}
-          selected={healthRecordType}
-          onSelect={handleProgramSelect}
-          error={validationErrors.healthRecordType}
-          onBack={handleStepBack}
-        />
+        <ConsultationClinicalStep
+          programs={wizardPrograms} selected={selectedPrograms} primary={primaryProgram}
+          onSelect={handleProgramSelect} mode={consultationMode} onModeChange={handleConsultationMode}
+          onPrimaryChange={(key) => { setPrimaryProgram(key); setHealthRecordType(PROGRAM_CLASSIFICATIONS[key]); }}
+          error={validationErrors.healthRecordType} onBack={handleStepBack} onNext={handleCurrentVisitNext}
+        >
+          <FormSection title="Current Visit" subtitle="Record the details specific to today's consultation.">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FieldTextarea label="Chief Complaint" required name="chiefComplaint" error={validationErrors.chiefComplaint} value={chiefComplaint} onChange={event => { clearValidationError("chiefComplaint"); setChiefComplaint(event.target.value); }} placeholder="Describe the patient's chief complaint..." rows={3} />
+              <FieldTextarea label="History of Present Illness" value={summaryOfPresentIllness} onChange={event => setSummaryOfPresentIllness(event.target.value)} placeholder="Onset, duration, and details of the current concern..." rows={3} />
+            </div>
+          </FormSection>
+          <FormSection title="Vital Signs" subtitle="Record the patient's vital signs for this visit.">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <BpInputGroup systolic={systolicBp} diastolic={diastolicBp} onSystolicChange={setSystolicBp} onDiastolicChange={setDiastolicBp} />
+              <FieldInput label="Pulse Rate" type="number" value={pulse} onChange={event => setPulse(event.target.value)} placeholder="bpm" />
+              <FieldInput label="Temperature" value={temp} onChange={event => setTemp(event.target.value)} placeholder="°C" />
+              <FieldInput label="SpO2" type="number" value={spo2} onChange={event => setSpo2(event.target.value)} placeholder="%" />
+              <FieldInput label="Weight" type="number" value={weight} onChange={event => setWeight(event.target.value)} placeholder="kg" />
+              <FieldInput label="Height" type="number" value={height} onChange={event => setHeight(event.target.value)} placeholder="cm" />
+              <BmiOutputField weight={weight} height={height} />
+            </div>
+          </FormSection>
+        </ConsultationClinicalStep>
       ) : wizardPhase === WIZARD_FU_SELECT ? (
         <FollowUpSelectStep
           visitDate={wizardVisitDate}
@@ -4330,7 +4348,7 @@ export default function AddHealthRecord() {
       <form
         onSubmit={handleContinueToNextAction}
         noValidate
-        className="relative ml-0 mr-auto w-full max-w-7xl"
+        className="relative ml-0 mr-auto w-full max-w-5xl pb-16"
       >
         <div className="space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
         {/* The form opens on the program it is recording. Visit date, time and
@@ -4564,7 +4582,7 @@ export default function AddHealthRecord() {
             {showMaternalPatientWarning && <MaternalClassificationWarning />}
 
             <FormSection
-              title="Patient Information"
+              title="Personal / Obstetric Information"
               subtitle="Record the client's pregnancy dating, OB score, and measurements for this visit."
               delay={3}
             >

@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Referral;
+use App\Services\ConsultationPrograms;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -35,6 +36,7 @@ class HealthRecordRequest extends FormRequest
     public function rules(): array
     {
         return [
+            ...ConsultationPrograms::rules("monitoring_data"),
             'idempotency_key' => $this->isMethod('post')
                 ? ['bail', 'required', 'uuid', 'max:64']
                 : ['prohibited'],
@@ -287,6 +289,13 @@ class HealthRecordRequest extends FormRequest
 
         $validator->after(function ($validator): void {
             $monitoringData = $this->input('monitoring_data', []);
+            ConsultationPrograms::validateSelection(
+                $validator,
+                $this->input('monitoring_data.selectedPrograms'),
+                $this->input('monitoring_data.primaryProgram'),
+                'monitoring_data',
+                $this->input('category', $this->route('health_record')?->category)
+            );
             $status = $monitoringData['followUpStatus']
                 ?? $monitoringData['follow_up_status']
                 ?? $monitoringData['status']

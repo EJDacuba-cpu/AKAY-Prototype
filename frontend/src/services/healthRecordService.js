@@ -4,6 +4,7 @@ import {
   unwrapData,
   unwrapList,
 } from "./apiClient";
+import { getConsultationPrograms } from "../utils/consultationPrograms";
 import { API_BASE_URL } from "../config/environment";
 import { normalizePatient } from "./patientService";
 import { createIdempotencyKey } from "../utils/idempotency";
@@ -671,7 +672,8 @@ function isMaternalCategory(value = "") {
 function toPayload(record = {}, { partial = false } = {}) {
   const category = record.category || record.recordType || record.patientClassification || null;
   const recordTypeKey = String(category || "").toLowerCase();
-  const isMaternalRecord = isMaternalCategory(recordTypeKey);
+  const programs = getConsultationPrograms(record);
+  const isMaternalRecord = isMaternalCategory(recordTypeKey) || programs.includes("Maternal");
   const parentHealthRecordId =
     record.parentHealthRecordId ||
     record.parent_health_record_id ||
@@ -985,14 +987,14 @@ function toPayload(record = {}, { partial = false } = {}) {
     category,
     maternal_data: isMaternalRecord ? maternalData : null,
     immunization_data:
-      recordTypeKey === "immunization"
+      (recordTypeKey === "immunization" || programs.includes("EPI"))
         ? record.immunizationData || record.immunization_data || {}
         : null,
     monitoring_data: monitoringData,
     family_planning_data:
-      recordTypeKey === "family planning" ? familyPlanningData : null,
+      (recordTypeKey === "family planning" || programs.includes("Family Planning")) ? familyPlanningData : null,
     tb_data:
-      recordTypeKey === "tb dots / tb monitoring"
+      (recordTypeKey === "tb dots / tb monitoring" || programs.includes("TB"))
         ? record.tbData || record.tb_data || null
         : null,
     needs_referral: needsReferral,

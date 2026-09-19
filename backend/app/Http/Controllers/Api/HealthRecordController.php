@@ -459,7 +459,8 @@ class HealthRecordController extends Controller
         $category = $data['category'] ?? $record?->category;
         $categoryKey = strtolower(trim((string) $category));
 
-        if ($categoryKey !== 'family planning') {
+        $programs = $data['monitoring_data']['selectedPrograms'] ?? $record?->monitoring_data['selectedPrograms'] ?? [];
+        if ($categoryKey !== 'family planning' && ! in_array('Family Planning', $programs, true)) {
             if (array_key_exists('category', $data) || $record === null) {
                 $data['family_planning_data'] = null;
             }

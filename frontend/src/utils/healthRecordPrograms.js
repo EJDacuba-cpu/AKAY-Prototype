@@ -1,3 +1,5 @@
+import { getConsultationPrograms } from "./consultationPrograms.js";
+
 export const EPI_VACCINE_ROWS = [
   "Newborn Screening",
   "CPAB",
@@ -298,6 +300,8 @@ export function getRecordVisitTypeLabel(record = {}) {
 }
 
 export function isEpiRecord(record = {}) {
+  const explicit = record.selectedPrograms ?? record.monitoringData?.selectedPrograms ?? record.monitoring_data?.selectedPrograms;
+  if (Array.isArray(explicit)) return ["EPI"].some(key => explicit.includes(key));
   return hasAnyTerm(record, [
     "immunization",
     "epi",
@@ -308,6 +312,8 @@ export function isEpiRecord(record = {}) {
 }
 
 export function isMaternalRecord(record = {}) {
+  const explicit = record.selectedPrograms ?? record.monitoringData?.selectedPrograms ?? record.monitoring_data?.selectedPrograms;
+  if (Array.isArray(explicit)) return ["Maternal"].some(key => explicit.includes(key));
   return hasAnyTerm(record, [
     "maternal",
     "prenatal",
@@ -317,10 +323,14 @@ export function isMaternalRecord(record = {}) {
 }
 
 export function isFamilyPlanningRecord(record = {}) {
+  const explicit = record.selectedPrograms ?? record.monitoringData?.selectedPrograms ?? record.monitoring_data?.selectedPrograms;
+  if (Array.isArray(explicit)) return ["Family Planning"].some(key => explicit.includes(key));
   return hasAnyTerm(record, ["family planning", "fp"]);
 }
 
 export function isNcdRecord(record = {}) {
+  const explicit = record.selectedPrograms ?? record.monitoringData?.selectedPrograms ?? record.monitoring_data?.selectedPrograms;
+  if (Array.isArray(explicit)) return ["Hypertension","Diabetes"].some(key => explicit.includes(key));
   return hasAnyTerm(record, [
     "ncd",
     "hypertension",
@@ -447,6 +457,8 @@ function formatBpFromParts(record = {}) {
 }
 
 export function isTbRecord(record = {}) {
+  const explicit = record.selectedPrograms ?? record.monitoringData?.selectedPrograms ?? record.monitoring_data?.selectedPrograms;
+  if (Array.isArray(explicit)) return ["TB"].some(key => explicit.includes(key));
   return hasAnyTerm(record, ["tb", "tuberculosis", "dots"]);
 }
 
@@ -473,8 +485,9 @@ export function getSpecializedRecordPrograms(records = []) {
   );
 
   for (const record of Array.isArray(records) ? records : []) {
-    const programKey = getSpecializedRecordType(record);
-    groupedRecords.get(programKey)?.push(record);
+    const selected = getConsultationPrograms(record);
+    const keys = selected.length ? [...new Set(selected.map(key => ({ EPI: "epi", Maternal: "maternal", "Family Planning": "familyPlanning", Hypertension: "ncd", Diabetes: "ncd", TB: "tb" })[key]))] : [getSpecializedRecordType(record)];
+    keys.forEach(key => groupedRecords.get(key)?.push(record));
   }
 
   return SPECIALIZED_RECORD_PROGRAMS.map(({ key, label }) => {

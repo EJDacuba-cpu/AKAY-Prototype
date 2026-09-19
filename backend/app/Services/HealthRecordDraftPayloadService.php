@@ -10,6 +10,10 @@ class HealthRecordDraftPayloadService
     private const SCALAR = true;
 
     private const SCHEMA = [
+        'selectedPrograms' => ['*' => self::SCALAR],
+        'primaryProgram' => self::SCALAR,
+        'consultationMode' => self::SCALAR,
+        'wizardPhase' => self::SCALAR,
         'dateOfVisit' => self::SCALAR,
         'timeOfVisit' => self::SCALAR,
         'chiefComplaint' => self::SCALAR,
@@ -312,7 +316,11 @@ class HealthRecordDraftPayloadService
     {
         $sanitized = $this->sanitizeNode($payload, self::SCHEMA, 'payload');
 
-        Validator::make(['payload' => $sanitized], $this->rules())->validate();
+        $validator = Validator::make(['payload' => $sanitized], $this->rules());
+        $validator->after(function ($validator) use ($sanitized): void {
+            ConsultationPrograms::validateSelection($validator, $sanitized['selectedPrograms'] ?? null, $sanitized['primaryProgram'] ?? null, 'payload');
+        });
+        $validator->validate();
 
         $encoded = json_encode(
             $sanitized,
@@ -391,6 +399,9 @@ class HealthRecordDraftPayloadService
     private function rules(): array
     {
         return [
+            ...ConsultationPrograms::rules('payload'),
+            'payload.consultationMode' => ['nullable', 'in:general,program'],
+            'payload.wizardPhase' => ['nullable', 'in:program,form,next'],
             'payload.dateOfVisit' => ['nullable', 'date_format:Y-m-d'],
             'payload.timeOfVisit' => ['nullable', 'date_format:H:i'],
             'payload.followUpDate' => ['nullable', 'date_format:Y-m-d'],

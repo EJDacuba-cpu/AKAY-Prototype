@@ -1,7 +1,7 @@
 // Extensions are explicit so this module can be exercised directly by
 // `node --test`, which does not resolve extensionless specifiers.
 import { calculateAge, getPatientSex } from "./patientUtils.js";
-import { getSpecializedRecordType } from "./healthRecordPrograms.js";
+import { getSpecializedRecordPrograms } from "./healthRecordPrograms.js";
 
 /**
  * Which program areas a patient's chart should expose, and why.
@@ -92,9 +92,8 @@ export const WOMENS_HEALTH_PROGRAMS = Object.freeze([
 export const PEDIATRIC_PROGRAMS = Object.freeze(["epi"]);
 
 function countProgramRecords(records, programKeys) {
-  return (Array.isArray(records) ? records : []).filter((record) =>
-    programKeys.includes(getSpecializedRecordType(record)),
-  ).length;
+  const matching = getSpecializedRecordPrograms(records).filter(program => programKeys.includes(program.key));
+  return new Set(matching.flatMap(program => program.records)).size;
 }
 
 /**

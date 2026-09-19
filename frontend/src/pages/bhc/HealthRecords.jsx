@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
+import { useNavigate } from "react-router";
+import ModalShell, { ModalButton } from "../../components/common/modals/ModalShell";
+import { listHealthRecordDrafts, discardHealthRecordDraft } from "../../services/healthRecordDraftService";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
@@ -69,6 +72,39 @@ function getLinkedReferral(record, recordId, referrals) {
 }
 
 export default function HealthRecords() {
+  const navigate = useNavigate();
+  const [unfinishedDraft, setUnfinishedDraft] = useState(null);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draftError, setDraftError] = useState("");
+
+  async function startRecord() {
+    if (draftBusy) return;
+    setDraftBusy(true);
+    setDraftError("");
+    try {
+      const drafts = await listHealthRecordDrafts();
+      const latest = [...drafts].sort((a, b) => new Date(b.lastSavedAt) - new Date(a.lastSavedAt))[0];
+      if (latest) setUnfinishedDraft(latest);
+      else navigate("/bhc/health-records/add");
+    } catch {
+      setDraftError("Unable to check unfinished consultations. Please try Add Health Record again.");
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
+  async function discardAndStart() {
+    setDraftBusy(true);
+    setDraftError("");
+    try {
+      await discardHealthRecordDraft(unfinishedDraft.id);
+      navigate("/bhc/health-records/add");
+    } catch {
+      setDraftError("Unable to discard this draft. Please try again.");
+    } finally {
+      setDraftBusy(false);
+    }
+  }
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -313,8 +349,9 @@ export default function HealthRecords() {
             onClearFilters={clearFilters}
             onRemoveFilter={removeFilter}
             filterDescription="Narrow the health records list."
-            primaryActionTo="/bhc/health-records/add"
-            primaryActionLabel="Add Health Record"
+            onPrimaryAction={startRecord}
+            disabled={draftBusy}
+            primaryActionLabel={draftBusy ? "Checking drafts..." : "Add Health Record"}
             primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
           />
         ) : null}
@@ -328,6 +365,22 @@ export default function HealthRecords() {
           />
         )}
       </SoftLoadingArea>
+      {draftError && !unfinishedDraft && <p role="alert" className="mt-3 text-sm text-red-700">{draftError}</p>}
+      <ModalShell open={Boolean(unfinishedDraft)} title="Unfinished Consultation" size="sm"
+        onClose={() => { setUnfinishedDraft(null); setDraftError(""); }} closeDisabled={draftBusy}
+        footer={<>
+          <ModalButton disabled={draftBusy} onClick={() => { setUnfinishedDraft(null); setDraftError(""); }}>Cancel</ModalButton>
+          <ModalButton disabled={draftBusy} onClick={discardAndStart}>Discard &amp; Start New</ModalButton>
+          <ModalButton variant="primary" primary disabled={draftBusy} onClick={() => navigate(`/bhc/health-records/add?draftId=${encodeURIComponent(unfinishedDraft.id)}`)}>Continue Draft</ModalButton>
+        </>}>
+        <div className="space-y-2 text-[13px] text-slate-600">
+          <p>You have an unfinished consultation:</p>
+          <p className="font-semibold text-slate-900">{unfinishedDraft?.patient.label} · #{unfinishedDraft?.patient.id}</p>
+          <p className="text-xs text-slate-400">Last edited: {unfinishedDraft?.lastSavedAt ? new Date(unfinishedDraft.lastSavedAt).toLocaleString("en-PH") : "Not recorded"}</p>
+          <p>Would you like to continue this draft or discard it and start a new health record?</p>
+          {draftError && <p role="alert" className="text-red-700">{draftError}</p>}
+        </div>
+      </ModalShell>
     </DashboardLayout>
   );
 }

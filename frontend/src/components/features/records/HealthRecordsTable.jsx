@@ -1,4 +1,6 @@
-import { FileText } from "lucide-react";
+import { Link } from "react-router";
+import { getConsultationPrograms } from "../../../utils/consultationPrograms";
+import { FileText, ChevronRight } from "lucide-react";
 
 import TablePagination from "../../common/pagination/TablePagination";
 import ActionMenu from "../../common/tables/ActionMenu";
@@ -50,7 +52,7 @@ export default function HealthRecordsTable({
 
   return (
     <div
-      className="anim-fade-up relative z-0 flex min-h-[420px] flex-col overflow-visible rounded-xl border border-[#E5E7EB] bg-white shadow-sm shadow-black/[0.02]"
+      className="anim-fade-up relative z-0 flex flex-col overflow-visible rounded-xl border border-[#E5E7EB] bg-white shadow-sm shadow-black/[0.02]"
       style={stagger(delay)}
     >
       <div className="flex items-start justify-between gap-3 border-b border-[#F1F5F9] px-4 py-3">
@@ -131,7 +133,7 @@ export default function HealthRecordsTable({
                   />
                   <MobileRecordField
                     label="Program"
-                    value={getServiceTypeLabel(record)}
+                    value={(getConsultationPrograms(record).join(", ") || getServiceTypeLabel(record))}
                   />
                   <MobileRecordField
                     label="Outcome"
@@ -174,7 +176,7 @@ export default function HealthRecordsTable({
       </div>
 
       <div className="hidden min-h-[280px] w-full flex-1 overflow-x-auto overflow-y-visible px-1 pb-2 md:block">
-        <table className="w-full min-w-[1020px] border-separate border-spacing-0 text-left">
+        <table className="w-full min-w-[850px] border-separate border-spacing-0 text-left">
           <thead>
             <tr className="bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
               <th className="whitespace-nowrap px-4 py-3">Record ID</th>
@@ -182,7 +184,6 @@ export default function HealthRecordsTable({
               <th className="whitespace-nowrap px-4 py-3">Chief Complaint</th>
               <th className="whitespace-nowrap px-4 py-3">Program</th>
               <th className="whitespace-nowrap px-4 py-3">Date of Visit</th>
-              <th className="whitespace-nowrap px-4 py-3">Visit Type</th>
               <th className="whitespace-nowrap px-4 py-3">Outcome</th>
               <th className="whitespace-nowrap px-4 py-3 text-right">
                 Actions
@@ -192,7 +193,7 @@ export default function HealthRecordsTable({
           <tbody className="divide-y divide-[#F8FAFC]">
             {currentRecords.length === 0 ? (
               <DataTableEmptyState
-                colSpan={8}
+                colSpan={7}
                 icon={<FileText size={20} className="text-[#94A3B8]" />}
                 title="No Matching Records"
                 description="Try adjusting your search or filter criteria."
@@ -211,8 +212,6 @@ export default function HealthRecordsTable({
                     record.patient?.id,
                   "Not linked",
                 );
-                const referralTarget =
-                  record.linkedReferralTrackingId || record.linkedReferralId;
 
                 return (
                   <tr
@@ -234,7 +233,7 @@ export default function HealthRecordsTable({
                       {formatDisplayValue(record.chiefComplaint, "Not recorded")}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-[13px] font-semibold text-[#475569]">
-                      {getServiceTypeLabel(record)}
+                      {(getConsultationPrograms(record).join(", ") || getServiceTypeLabel(record))}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-[13px] font-semibold text-[#475569]">
                       {formatDate(
@@ -242,34 +241,12 @@ export default function HealthRecordsTable({
                         "Not recorded",
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3.5 text-[13px] font-semibold text-[#475569]">
-                      {isFollowUpVisitRecord(record) ? (
-                        <div>
-                          <FollowUpVisitBadge />
-                          <p className="mt-1 text-[10px] font-medium text-slate-500">
-                            Linked to Record #{record.parentHealthRecordId || "—"}
-                          </p>
-                        </div>
-                      ) : (
-                        getRecordVisitTypeLabel(record)
-                      )}
-                    </td>
                     <td className="whitespace-nowrap px-4 py-3.5">
                       <RecordOutcomeBadge record={record} />
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-right">
                       <div className="relative flex justify-end">
-                        <ActionMenu
-                          title={patientName}
-                          subtitle={`#${recordId}`}
-                          viewLink={`/bhc/health-records/${recordId}`}
-                          referralLink={
-                            referralTarget
-                              ? `/bhc/referrals/${referralTarget}`
-                              : undefined
-                          }
-                          referralLabel="View Referral"
-                        />
+                        <Link to={`/bhc/health-records/${recordId}`} aria-label={`View details for record #${recordId}`} className="inline-flex rounded-lg border border-slate-200 p-2 text-slate-500 hover:border-red-200 hover:text-red-700"><ChevronRight size={15} /></Link>
                       </div>
                     </td>
                   </tr>
