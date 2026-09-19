@@ -66,8 +66,15 @@ class UserSessionRevocationService
                 throw new PersistentSessionException;
             }
 
+            // The app timezone is not optional here. Carbon 3 returns UTC from a
+            // bare createFromTimestamp(), while every stored datetime is written
+            // and re-read as a naive string in config('app.timezone'). Under a
+            // non-UTC timezone the reconstructed start would land one UTC offset
+            // early, so the rotated refresh token inherited a deadline that had
+            // already passed - the session died on its first rotation.
             $absoluteStartedAt = CarbonImmutable::createFromTimestamp(
-                (int) explode(':', (string) $token->name, 3)[1]
+                (int) explode(':', (string) $token->name, 3)[1],
+                config('app.timezone')
             );
 
             $expired = $token->expires_at?->isPast() !== false
