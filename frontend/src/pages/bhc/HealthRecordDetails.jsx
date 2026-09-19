@@ -17,6 +17,11 @@ import {
   SoftLoadingArea,
 } from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
+import {
+  NEXT_ACTION_REFERRAL,
+  NEXT_ACTION_SCHEDULE,
+  deriveNextAction,
+} from "../../utils/nextAction";
 import RecordHeaderCard from "../../components/features/health-records/RecordHeaderCard";
 import HealthRecordClinicalDetails from "../../components/features/health-records/HealthRecordClinicalDetails";
 import FollowUpEpisodePanel from "../../components/features/health-records/FollowUpEpisodePanel";
@@ -180,6 +185,25 @@ export default function HealthRecordDetails() {
     record.needs_referral === true ||
     record.needsReferral === true ||
     record.needsReferral === "yes";
+  // What the Next Action step resolved to, read back through the same
+  // derivation the form uses - a view over needsReferral + followUpStatus,
+  // never a fourth stored field.
+  const nextAction = deriveNextAction({
+    needsReferral: needsRhuReferral,
+    followUpStatus: record.followUpStatus || record.follow_up_status,
+  });
+  const scheduledFollowUpDate =
+    record.followUpDate || record.follow_up_date || "";
+  const nextActionLabel =
+    nextAction === NEXT_ACTION_REFERRAL
+      ? "Referral"
+      : nextAction === NEXT_ACTION_SCHEDULE
+        ? `Follow-up${
+            scheduledFollowUpDate
+              ? ` - ${formatLongDate(scheduledFollowUpDate, "")}`
+              : ""
+          }`
+        : "No follow-up";
   const isImmunizationRecord = isImmunizationClassification(record, patient);
   const patientId =
     patient?.id ||
@@ -232,6 +256,8 @@ export default function HealthRecordDetails() {
           parentRecordId={
             isGeneralConsultationRecord ? null : parentHealthRecordId
           }
+          outcomeRecord={record}
+          nextActionLabel={nextActionLabel}
           actions={
             <>
               {hasLinkedReferral && (

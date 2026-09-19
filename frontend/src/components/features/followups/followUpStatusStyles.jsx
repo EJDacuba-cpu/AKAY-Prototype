@@ -38,6 +38,15 @@ export const STATE_CONFIG = {
     event: "border-l-[#94A3B8] bg-[#F8FAFC] text-[#64748B]",
     dot: "bg-[#94A3B8]",
   },
+  // Calendar-only: a task a reschedule has since superseded, shown on its
+  // original due date (Part A.4.4 - "resolved", not "missed", since it was
+  // acted on in time, just moved rather than fulfilled in place).
+  superseded: {
+    label: "Rescheduled",
+    badge: "border-[#E2E8F0] bg-[#F8FAFC] text-[#94A3B8]",
+    event: "border-l-[#CBD5E1] bg-[#F8FAFC] text-[#94A3B8] opacity-75",
+    dot: "bg-[#CBD5E1]",
+  },
 };
 
 const DEFAULT_STATE = "upcoming";
@@ -59,6 +68,22 @@ export function getEffectiveState(task) {
   if (dueDate < today) return "no_show";
   if (task.state === "rescheduled") return "rescheduled";
   return "upcoming";
+}
+
+export function isTaskSuperseded(task) {
+  return Boolean(task.rescheduledToId);
+}
+
+/**
+ * Calendar-only variant of getEffectiveState. The List view never sees a
+ * superseded row (the server excludes them), so getEffectiveState has no
+ * concept of one - but the Calendar deliberately keeps them visible on
+ * their original due date (Part A.4.4), and they must read as "resolved"
+ * there rather than as an active, actionable Rescheduled card.
+ */
+export function getCalendarEffectiveState(task) {
+  if (isTaskSuperseded(task)) return "superseded";
+  return getEffectiveState(task);
 }
 
 export function buildTaskActions(task, handlers) {
@@ -84,6 +109,28 @@ export function buildTaskActions(task, handlers) {
 
 export function getTaskNavigationTarget(task) {
   return task.id ? `/bhc/follow-ups/${task.id}` : "";
+}
+
+/**
+ * The query contract Add Health Record reads when a visit is recorded
+ * against an existing follow-up. Shared by every surface that offers
+ * "Record Visit" (the Follow-ups list/calendar and the Patient Profile) so
+ * the two cannot drift apart - AddHealthRecord only opens straight on the
+ * form when mode, followUpId and serviceType all arrive together.
+ */
+export function buildRecordFollowUpVisitPath(task, basePath = "/bhc") {
+  const params = new URLSearchParams({
+    mode: "followup",
+    followUpId: task.id,
+    patientId: task.patientId,
+    serviceType: getTaskClassification(task) || getTaskServiceTypeLabel(task),
+    followUpStatus: formatStateLabel(task.effectiveState || getEffectiveState(task)),
+    followUpDate: task.dueDate || "",
+  });
+
+  if (task.healthRecordId) params.set("recordId", task.healthRecordId);
+
+  return `${basePath}/health-records/add?${params.toString()}`;
 }
 
 export function normalizeFilterState(value) {

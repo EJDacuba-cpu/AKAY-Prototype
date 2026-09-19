@@ -584,6 +584,8 @@ function normalizeRecord(record = {}) {
     diastolicBp: vitalSigns.diastolicBp || vitalSigns.diastolic_bp || record.diastolicBp || "",
     temperature: vitalSigns.temperature || record.temperature || record.temp || "",
     temp: vitalSigns.temperature || record.temperature || record.temp || "",
+    pulse: vitalSigns.pulse || record.pulse || "",
+    spo2: vitalSigns.spo2 || record.spo2 || "",
     respiratoryRate:
       vitalSigns.respiratoryRate ||
       vitalSigns.respiratory_rate ||
@@ -972,6 +974,8 @@ function toPayload(record = {}, { partial = false } = {}) {
       systolicBp: record.systolicBp || null,
       diastolicBp: record.diastolicBp || null,
       temperature: record.temperature || record.temp || null,
+      pulse: record.pulse || null,
+      spo2: record.spo2 || null,
       respiratoryRate: record.respiratoryRate || record.respiratory_rate || null,
       weight: record.weight || null,
       height: record.height || null,

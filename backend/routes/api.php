@@ -114,6 +114,9 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
             Route::get('/referral-holds', [ReferralHoldController::class, 'index']);
             Route::post('/referral-holds/{referralHold}/discard', [ReferralHoldController::class, 'discard']);
             Route::get('/follow-up-tasks', [FollowUpTaskController::class, 'index']);
+            // Must be registered before the {followUpTask} route below, or
+            // Laravel's implicit model binding tries to resolve "calendar" as an id.
+            Route::get('/follow-up-tasks/calendar', [FollowUpTaskController::class, 'calendar']);
             Route::get('/follow-up-tasks/{followUpTask}', [FollowUpTaskController::class, 'show']);
             Route::patch('/follow-up-tasks/{followUpTask}/no-show', [FollowUpTaskController::class, 'markNoShow']);
             Route::patch('/follow-up-tasks/{followUpTask}/reschedule', [FollowUpTaskController::class, 'reschedule']);

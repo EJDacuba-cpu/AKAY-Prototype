@@ -422,6 +422,15 @@ const EMPTY_MATERNAL_DATA = {
     tt4: "",
     tt5: "",
   },
+  // TT and Td are two distinct, separate 5-dose schedules, not a
+  // rename/replacement of one another - both are tracked independently.
+  tetanusDiphtheriaStatus: {
+    td1: "",
+    td2: "",
+    td3: "",
+    td4: "",
+    td5: "",
+  },
   ultrasound: {
     result: "",
     dateDone: "",
@@ -530,6 +539,14 @@ const TETANUS_TOXOID_FIELDS = [
   { key: "tt5", label: "TT5 Date" },
 ];
 
+const TETANUS_DIPHTHERIA_FIELDS = [
+  { key: "td1", label: "Td1 Date" },
+  { key: "td2", label: "Td2 Date" },
+  { key: "td3", label: "Td3 Date" },
+  { key: "td4", label: "Td4 Date" },
+  { key: "td5", label: "Td5 Date" },
+];
+
 function toDateInputValue(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
     2,
@@ -591,6 +608,11 @@ function mergeMaternalData(data = {}, fallback = {}) {
       ...(source.tetanus_toxoid_status || {}),
       ...(source.tetanusToxoidStatus || {}),
     },
+    tetanusDiphtheriaStatus: {
+      ...EMPTY_MATERNAL_DATA.tetanusDiphtheriaStatus,
+      ...(source.tetanus_diphtheria_status || {}),
+      ...(source.tetanusDiphtheriaStatus || {}),
+    },
     ultrasound: {
       ...EMPTY_MATERNAL_DATA.ultrasound,
       ...(source.ultrasound || {}),
@@ -630,6 +652,7 @@ const EMPTY_IMMUNIZATION_DATA = {
 const ADULT_IMMUNIZATION_MIN_AGE_YEARS = 18;
 const CHILD_VACCINE_OPTIONS = [
   "Newborn Screening",
+  "CPAB",
   "BCG",
   "HEPA B",
   "OPV 1",
@@ -645,6 +668,7 @@ const CHILD_VACCINE_OPTIONS = [
   "IPV 2",
   "MCV 1",
   "MCV 2",
+  "HPV",
 ];
 const BREASTFEEDING_MONTHS = [
   { key: "month1", label: "1 Month" },
@@ -1083,6 +1107,8 @@ export default function AddHealthRecord() {
   const [systolicBp, setSystolicBp] = useState("");
   const [diastolicBp, setDiastolicBp] = useState("");
   const [temp, setTemp] = useState("");
+  const [pulse, setPulse] = useState("");
+  const [spo2, setSpo2] = useState("");
   const [weight, setWeight] = useState("");
   const [height, setHeight] = useState("");
 
@@ -1380,6 +1406,8 @@ export default function AddHealthRecord() {
       setSystolicBp(found.systolicBp || legacySystolic);
       setDiastolicBp(found.diastolicBp || legacyDiastolic);
       setTemp(found.temperature || found.temp || "");
+      setPulse(found.pulse || "");
+      setSpo2(found.spo2 || "");
       setWeight(found.weight || "");
       setHeight(found.height || "");
       setFollowUpStatus(normalizePatientStatus(found.followUpStatus));
@@ -1834,6 +1862,8 @@ export default function AddHealthRecord() {
       systolicBp,
       diastolicBp,
       temp,
+      pulse,
+      spo2,
       weight,
       height,
       followUpStatus,
@@ -1903,6 +1933,10 @@ export default function AddHealthRecord() {
         tetanusToxoidStatus: pickDraftFields(
           maternalData.tetanusToxoidStatus,
           ["tt1", "tt2", "tt3", "tt4", "tt5"],
+        ),
+        tetanusDiphtheriaStatus: pickDraftFields(
+          maternalData.tetanusDiphtheriaStatus,
+          ["td1", "td2", "td3", "td4", "td5"],
         ),
         ultrasound: pickDraftFields(maternalData.ultrasound, [
           "result",
@@ -2008,6 +2042,8 @@ export default function AddHealthRecord() {
     setSystolicBp(payload.systolicBp || "");
     setDiastolicBp(payload.diastolicBp || "");
     setTemp(payload.temp || "");
+    setPulse(payload.pulse || "");
+    setSpo2(payload.spo2 || "");
     setWeight(payload.weight || "");
     setHeight(payload.height || "");
     setFollowUpStatus(payload.followUpStatus || "Routine Monitoring");
@@ -2358,6 +2394,7 @@ export default function AddHealthRecord() {
 
   const consultationVitalSigns =
     `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | ` +
+    `PR: ${pulse || "N/A"} bpm | SpO2: ${spo2 || "N/A"}% | ` +
     `Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
 
   const maternalTpalPreview = formatObScore(OB_SCORE_TPAL_FIELDS, maternalData);
@@ -3329,6 +3366,11 @@ export default function AddHealthRecord() {
         ...(maternalData.tetanus_toxoid_status || {}),
         ...(maternalData.tetanusToxoidStatus || {}),
       },
+      tetanusDiphtheriaStatus: {
+        ...EMPTY_MATERNAL_DATA.tetanusDiphtheriaStatus,
+        ...(maternalData.tetanus_diphtheria_status || {}),
+        ...(maternalData.tetanusDiphtheriaStatus || {}),
+      },
       ultrasound: {
         ...EMPTY_MATERNAL_DATA.ultrasound,
         ...(maternalData.ultrasound || {}),
@@ -3435,6 +3477,8 @@ export default function AddHealthRecord() {
       systolicBp: systolicBp || null,
       diastolicBp: diastolicBp || null,
       temperature: temp || null,
+      pulse: pulse || null,
+      spo2: spo2 || null,
       weight: weight || null,
       height: height || null,
       medication:
@@ -4370,7 +4414,7 @@ export default function AddHealthRecord() {
               subtitle="Record updated physiological measurements for this follow-up visit."
               delay={4}
             >
-              <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(3,minmax(0,1fr))]">
+              <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(5,minmax(0,1fr))]">
                 <BpInputGroup
                   systolic={systolicBp}
                   diastolic={diastolicBp}
@@ -4382,6 +4426,20 @@ export default function AddHealthRecord() {
                   placeholder="e.g. 36.5 °C"
                   value={temp}
                   onChange={(event) => setTemp(event.target.value)}
+                />
+                <FieldInput
+                  label="Pulse Rate"
+                  type="number"
+                  placeholder="e.g. 78 bpm"
+                  value={pulse}
+                  onChange={(event) => setPulse(event.target.value)}
+                />
+                <FieldInput
+                  label="SpO2"
+                  type="number"
+                  placeholder="e.g. 98%"
+                  value={spo2}
+                  onChange={(event) => setSpo2(event.target.value)}
                 />
                 <FieldInput
                   label="Weight"
@@ -4462,6 +4520,8 @@ export default function AddHealthRecord() {
               epiHistoryLoading={epiHistoryLoading}
               epiHistoryError={epiHistoryError}
               temperature={temp}
+              pulse={pulse}
+              spo2={spo2}
               weight={weight}
               height={height}
               breastfeedingMonitoring={immunizationData.breastfeedingMonitoring}
@@ -4469,6 +4529,8 @@ export default function AddHealthRecord() {
               consultationNotes={consultationNotes}
               errors={validationErrors}
               onTemperatureChange={setTemp}
+              onPulseChange={setPulse}
+              onSpo2Change={setSpo2}
               onWeightChange={setWeight}
               onHeightChange={setHeight}
               onBreastfeedingChange={handleBreastfeedingChange}
@@ -4533,6 +4595,22 @@ export default function AddHealthRecord() {
                       onDiastolicChange={setDiastolicBp}
                     />
                   </div>
+                  <FieldInput
+                    label="Pulse Rate"
+                    type="number"
+                    placeholder="e.g. 78 bpm"
+                    value={pulse}
+                    onChange={(event) => setPulse(event.target.value)}
+                    wrapperClassName="sm:col-span-4"
+                  />
+                  <FieldInput
+                    label="SpO2"
+                    type="number"
+                    placeholder="e.g. 98%"
+                    value={spo2}
+                    onChange={(event) => setSpo2(event.target.value)}
+                    wrapperClassName="sm:col-span-4"
+                  />
 
                   <div className="sm:col-span-6">
                     <ScoreInputGroup
@@ -4680,9 +4758,36 @@ export default function AddHealthRecord() {
             </FormSection>
 
             <FormSection
+              title="Tetanus-Diphtheria (Td) Status"
+              subtitle="Record Td1-Td5 dates given. A separate 5-dose schedule from TT, tracked independently."
+              delay={7}
+            >
+              <LockedFormContent locked={patientGateLocked}>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {TETANUS_DIPHTHERIA_FIELDS.map((field) => (
+                    <DatePickerField
+                      key={field.key}
+                      label={field.label}
+                      value={
+                        maternalData.tetanusDiphtheriaStatus?.[field.key] || ""
+                      }
+                      onChange={(value) =>
+                        handleNestedMaternalChange(
+                          "tetanusDiphtheriaStatus",
+                          field.key,
+                          value,
+                        )
+                      }
+                    />
+                  ))}
+                </div>
+              </LockedFormContent>
+            </FormSection>
+
+            <FormSection
               title="Ultrasound Result"
               subtitle="Enter the latest ultrasound result and date."
-              delay={7}
+              delay={8}
             >
               <LockedFormContent locked={patientGateLocked}>
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -4711,7 +4816,7 @@ export default function AddHealthRecord() {
             <FormSection
               title="Treatment/Action Taken"
               subtitle="Document treatment given for this visit."
-              delay={8}
+              delay={9}
             >
               <LockedFormContent locked={patientGateLocked}>
                 <FieldTextarea
@@ -4730,7 +4835,7 @@ export default function AddHealthRecord() {
             <FormSection
               title="Medicines / Supplies Dispensed"
               subtitle="Optional medicines or supplies given from BHC inventory during this visit."
-              delay={9}
+              delay={10}
             >
               <LockedFormContent locked={patientGateLocked}>
                 <DispensedMedicinesSection
@@ -4924,6 +5029,20 @@ export default function AddHealthRecord() {
                   }
                   placeholder="e.g. 95 mg/dL"
                 />
+                <FieldInput
+                  label="Pulse Rate"
+                  type="number"
+                  placeholder="e.g. 78 bpm"
+                  value={pulse}
+                  onChange={(event) => setPulse(event.target.value)}
+                />
+                <FieldInput
+                  label="SpO2"
+                  type="number"
+                  placeholder="e.g. 98%"
+                  value={spo2}
+                  onChange={(event) => setSpo2(event.target.value)}
+                />
                 <RadioChoiceGroup
                   label="Condition Type"
                   name="hypertensionDiabeticData.conditionType"
@@ -5047,6 +5166,20 @@ export default function AddHealthRecord() {
                     placeholder="e.g. 36.8&#176;C"
                     value={temp}
                     onChange={(event) => setTemp(event.target.value)}
+                  />
+                  <FieldInput
+                    label="Pulse Rate"
+                    type="number"
+                    placeholder="e.g. 78 bpm"
+                    value={pulse}
+                    onChange={(event) => setPulse(event.target.value)}
+                  />
+                  <FieldInput
+                    label="SpO2"
+                    type="number"
+                    placeholder="e.g. 98%"
+                    value={spo2}
+                    onChange={(event) => setSpo2(event.target.value)}
                   />
                   <FieldInput
                     label="Weight"

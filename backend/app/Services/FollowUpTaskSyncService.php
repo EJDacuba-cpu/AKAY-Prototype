@@ -116,7 +116,12 @@ class FollowUpTaskSyncService
         ?string $dueTime,
         ?User $user
     ): void {
-        $existingTask = FollowUpTask::where('health_record_id', $record->id)->first();
+        // Once a reschedule has run, health_record_id alone no longer
+        // identifies a single row - the superseded row and its replacement
+        // both carry it. rescheduled_to_id IS NULL is what "current" means.
+        $existingTask = FollowUpTask::where('health_record_id', $record->id)
+            ->whereNull('rescheduled_to_id')
+            ->first();
 
         if (in_array($existingTask?->state, [
             FollowUpTask::STATE_FULFILLED,
@@ -141,7 +146,10 @@ class FollowUpTaskSyncService
             $attributes['due_time'] = $dueTime;
         }
 
-        FollowUpTask::updateOrCreate(['health_record_id' => $record->id], $attributes);
+        FollowUpTask::updateOrCreate(
+            ['health_record_id' => $record->id, 'rescheduled_to_id' => null],
+            $attributes
+        );
     }
 
     public function syncEligibleRecordsForUser(User $user): void
@@ -349,7 +357,11 @@ class FollowUpTaskSyncService
     {
         return in_array($task->state, FollowUpTask::ACTIVE_STATES, true)
             && $task->fulfilled_at === null
-            && $task->fulfilled_by_health_record_id === null;
+            && $task->fulfilled_by_health_record_id === null
+            // A row a reschedule has since superseded is history, not
+            // something still actionable, even though its state
+            // ('rescheduled') is itself one of the active states.
+            && $task->rescheduled_to_id === null;
     }
 
     private function followUpTaskId(array $monitoringData): mixed

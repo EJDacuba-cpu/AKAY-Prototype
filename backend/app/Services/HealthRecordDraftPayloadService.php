@@ -22,6 +22,7 @@ class HealthRecordDraftPayloadService
         'diastolicBp' => self::SCALAR,
         'temp' => self::SCALAR,
         'pulse' => self::SCALAR,
+        'spo2' => self::SCALAR,
         'respiratoryRate' => self::SCALAR,
         'weight' => self::SCALAR,
         'height' => self::SCALAR,
@@ -97,6 +98,15 @@ class HealthRecordDraftPayloadService
                 'tt3' => self::SCALAR,
                 'tt4' => self::SCALAR,
                 'tt5' => self::SCALAR,
+            ],
+            // Td (Tetanus-Diphtheria) is a separate 5-dose schedule from TT,
+            // tracked independently - not a rename/replacement of it.
+            'tetanusDiphtheriaStatus' => [
+                'td1' => self::SCALAR,
+                'td2' => self::SCALAR,
+                'td3' => self::SCALAR,
+                'td4' => self::SCALAR,
+                'td5' => self::SCALAR,
             ],
             'ultrasound' => [
                 'result' => self::SCALAR,
@@ -221,6 +231,17 @@ class HealthRecordDraftPayloadService
                 'extrapulmonarySite' => self::SCALAR,
                 'drugResistance' => self::SCALAR,
                 'registrationGroup' => self::SCALAR,
+            ],
+            // Form 8 - used by both BHC and RHU, not iClinicSys-territory
+            // general history (Forms Finalization Checklist 3.3).
+            'comorbidities' => [
+                'hivStatus' => self::SCALAR,
+                'hivTestDate' => self::SCALAR,
+                'artStatus' => self::SCALAR,
+                'artStartDate' => self::SCALAR,
+                'cptStatus' => self::SCALAR,
+                'cptStartDate' => self::SCALAR,
+                'otherComorbidities' => self::SCALAR,
             ],
             'regimen' => [
                 'rows' => ['*' => [

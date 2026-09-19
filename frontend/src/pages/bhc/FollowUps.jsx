@@ -13,6 +13,7 @@ import { isConnectionError } from "../../services/apiClient";
 import {
   cancelFollowUp,
   getFollowUpTasks,
+  getFollowUpTasksCalendar,
   rescheduleFollowUp,
 } from "../../services/followUpTaskService";
 import { formatDisplayValue } from "../../utils/formatters";
@@ -20,12 +21,14 @@ import { createActiveFilterChips } from "../../utils/filterUtils";
 import { queryKeys } from "../../utils/queryKeys";
 import {
   StateBadge,
+  buildRecordFollowUpVisitPath,
   formatDate,
-  formatStateLabel,
+  getCalendarEffectiveState,
   getEffectiveState,
   getTaskClassification,
   getTaskNavigationTarget,
   getTaskServiceTypeLabel,
+  normalizeFilterState,
 } from "../../components/features/followups/followUpStatusStyles.jsx";
 import {
   addDays,
@@ -33,10 +36,12 @@ import {
   addWeeks,
   formatMonthLabel,
   formatWeekRangeLabel,
+  getMonthGridDays,
   getTasksForDay,
   getWeekDays,
   getWeekStart,
   groupTasksByDay,
+  toDateInputValue,
 } from "../../components/features/followups/followUpCalendarUtils.js";
 import FollowUpWeekCalendar from "../../components/features/followups/FollowUpWeekCalendar";
 import FollowUpDayView from "../../components/features/followups/FollowUpDayView";
@@ -119,7 +124,90 @@ export default function FollowUps() {
     });
   }, [tasks, filters]);
 
-  const groupedByDay = useMemo(() => groupTasksByDay(filteredTasks), [filteredTasks]);
+  const weekStart = useMemo(() => getWeekStart(currentDate), [currentDate]);
+  const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
+
+  // Part A.4/B.3: the Calendar (week/day/month) needs the full history for
+  // its visible range - including rows the List view excludes because a
+  // reschedule superseded them - so it fetches from the dedicated
+  // /follow-up-tasks/calendar endpoint rather than reusing the active-only
+  // `tasks` list above. Range covers the full month grid (42 cells) for
+  // month view so leading/trailing days from adjacent months load too.
+  const calendarRange = useMemo(() => {
+    if (viewMode === "day") {
+      const day = toDateInputValue(currentDate);
+      return { start: day, end: day };
+    }
+    if (viewMode === "month") {
+      const gridDays = getMonthGridDays(currentDate);
+      return {
+        start: toDateInputValue(gridDays[0]),
+        end: toDateInputValue(gridDays[gridDays.length - 1]),
+      };
+    }
+    return {
+      start: toDateInputValue(weekStart),
+      end: toDateInputValue(weekDays[6]),
+    };
+  }, [viewMode, currentDate, weekStart, weekDays]);
+
+  const { data: calendarTasksData = [] } = useQuery({
+    queryKey: queryKeys.followUpTasksCalendar(
+      "bhc",
+      calendarRange.start,
+      calendarRange.end,
+    ),
+    queryFn: () => getFollowUpTasksCalendar(calendarRange),
+    enabled: viewMode !== "list",
+    staleTime: 30_000,
+    retry: false,
+  });
+
+  const filteredCalendarTasks = useMemo(() => {
+    const searchValue = filters.search.trim().toLowerCase();
+    const tasksWithState = (
+      Array.isArray(calendarTasksData) ? calendarTasksData : []
+    ).map((task) => ({
+      ...task,
+      effectiveState: getCalendarEffectiveState(task),
+    }));
+
+    return tasksWithState.filter((task) => {
+      // Unlike the List view, the Calendar's default ("All Active") must not
+      // hide fulfilled/cancelled/superseded entries - Part A.4.4 requires
+      // nothing to be hidden until the BHW explicitly narrows by status.
+      const matchesFilter =
+        filters.state === "All Active" ||
+        task.effectiveState === normalizeFilterState(filters.state);
+      const matchesServiceType =
+        !filters.serviceType ||
+        getTaskServiceTypeLabel(task) === filters.serviceType;
+
+      const haystack = [
+        task.patientName,
+        task.patientId,
+        task.healthRecordId,
+        task.healthRecord?.chiefComplaint,
+        getTaskClassification(task),
+        getTaskServiceTypeLabel(task),
+        task.contact,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return (
+        matchesFilter &&
+        matchesServiceType &&
+        (!searchValue || haystack.includes(searchValue))
+      );
+    });
+  }, [calendarTasksData, filters]);
+
+  const groupedByDay = useMemo(
+    () => groupTasksByDay(filteredCalendarTasks),
+    [filteredCalendarTasks],
+  );
   const loading = isLoading && tasks.length === 0;
   const hasLoadError = Boolean(loadError) && !loading;
   const requestedTaskId = searchParams.get("task") || "";
@@ -203,6 +291,9 @@ export default function FollowUps() {
       queryKey: queryKeys.followUpTasks("bhc"),
     });
     await queryClient.invalidateQueries({
+      queryKey: ["follow-up-tasks-calendar", "bhc"],
+    });
+    await queryClient.invalidateQueries({
       queryKey: queryKeys.healthRecords("bhc"),
     });
   }
@@ -222,20 +313,7 @@ export default function FollowUps() {
   }
 
   function recordFollowUpVisit(task) {
-    const params = new URLSearchParams({
-      mode: "followup",
-      followUpId: task.id,
-      patientId: task.patientId,
-      serviceType: getTaskClassification(task) || getTaskServiceTypeLabel(task),
-      followUpStatus: formatStateLabel(task.effectiveState),
-      followUpDate: task.dueDate || "",
-    });
-
-    if (task.healthRecordId) {
-      params.set("recordId", task.healthRecordId);
-    }
-
-    navigate(`/bhc/health-records/add?${params.toString()}`);
+    navigate(buildRecordFollowUpVisitPath(task));
   }
 
   function openRescheduleModal(task) {
@@ -323,8 +401,6 @@ export default function FollowUps() {
     );
   }
 
-  const weekStart = getWeekStart(currentDate);
-  const weekDays = getWeekDays(weekStart);
   const headerLabel =
     viewMode === "day"
       ? formatMonthLabel(currentDate)
@@ -578,17 +654,4 @@ function TableAction({ children, onClick, primary = false, danger = false }) {
       {children}
     </button>
   );
-}
-
-function normalizeFilterState(value) {
-  const map = {
-    "Due Today": "due_today",
-    Pending: "upcoming",
-    "No Show": "no_show",
-    Rescheduled: "rescheduled",
-    Completed: "fulfilled",
-    Cancelled: "cancelled",
-  };
-
-  return map[value] || "all_active";
 }

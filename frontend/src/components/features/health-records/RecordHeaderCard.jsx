@@ -2,6 +2,7 @@ import { ArrowLeft } from "lucide-react";
 import { Link } from "react-router";
 import { RefreshingIndicator, ReferralIndicatorBadge } from "../../common";
 import { formatDisplayValue } from "../../../utils/formatters";
+import RecordOutcomeBadge from "../records/RecordOutcomeBadge";
 
 export default function RecordHeaderCard({
   title,
@@ -20,6 +21,11 @@ export default function RecordHeaderCard({
   isFollowUpVisit = false,
   parentRecordId,
   parentRecordLink,
+  // The record itself, when the resolved Outcome should be shown beside the
+  // title. Passing the record rather than a label keeps the badge reading the
+  // server's value instead of one this component derived.
+  outcomeRecord = null,
+  nextActionLabel = "",
 }) {
   return (
     <>
@@ -53,6 +59,8 @@ export default function RecordHeaderCard({
                   Follow-up Visit
                 </span>
               )}
+
+              {outcomeRecord && <RecordOutcomeBadge record={outcomeRecord} />}
 
               {isUpdating && (
                 <RefreshingIndicator label="Updating health record details..." />
@@ -105,6 +113,10 @@ export default function RecordHeaderCard({
             label="Name of Practitioner"
             value={practitioner}
           />
+
+          {nextActionLabel && (
+            <MetadataItem label="Next Action" value={nextActionLabel} />
+          )}
         </div>
       </header>
 

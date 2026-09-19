@@ -9,6 +9,9 @@ import {
 
 export const REQUIRED_EPI_ITEMS = [
   { code: "NEWBORN_SCREENING", label: "Newborn Screening" },
+  // Children Protected At Birth (Form 10) - confirmed missing per the Forms
+  // Finalization Checklist.
+  { code: "CPAB", label: "CPAB" },
   { code: "BCG", label: "BCG" },
   { code: "HEPA_B", label: "HEPA B" },
   { code: "OPV_1", label: "OPV 1" },
@@ -24,6 +27,9 @@ export const REQUIRED_EPI_ITEMS = [
   { code: "IPV_2", label: "IPV 2" },
   { code: "MCV_1", label: "MCV 1" },
   { code: "MCV_2", label: "MCV 2" },
+  // Confirmed missing from the structured vaccine checklist and from
+  // EPI_CHILD_VACCINE_COLUMNS (Forms Finalization Checklist).
+  { code: "HPV", label: "HPV" },
 ];
 
 const LABEL_TO_CODE = new Map(

@@ -22,11 +22,10 @@ import { FollowUpEpisodeContent } from "../../components/features/health-records
 import { DispensedMedicinesList } from "../../components/features/health-records/HealthRecordClinicalDetails";
 import {
   StateBadge,
+  buildRecordFollowUpVisitPath,
   formatDate,
-  formatStateLabel,
   formatTimeLabel,
   getEffectiveState,
-  getTaskClassification,
   getTaskServiceTypeLabel,
 } from "../../components/features/followups/followUpStatusStyles.jsx";
 import {
@@ -132,31 +131,23 @@ export default function FollowUpDetails() {
 
   function recordFollowUpVisit() {
     if (!task) return;
-
-    const params = new URLSearchParams({
-      mode: "followup",
-      followUpId: task.id,
-      patientId: task.patientId,
-      serviceType:
-        getTaskClassification(task) || getTaskServiceTypeLabel(task),
-      followUpStatus: formatStateLabel(task.effectiveState),
-      followUpDate: task.dueDate || "",
-    });
-
-    if (task.healthRecordId) {
-      params.set("recordId", task.healthRecordId);
-    }
-
-    navigate(`/bhc/health-records/add?${params.toString()}`);
+    navigate(buildRecordFollowUpVisitPath(task));
   }
 
   async function handleReschedule(selectedTask, payload) {
     setSavingAction(true);
     setActionError("");
     try {
-      await rescheduleFollowUp(selectedTask.id, payload);
+      // A reschedule now supersedes this task with a new row rather than
+      // moving this one's date, so the page must follow the caller onto the
+      // replacement - refetching this id would leave them on the superseded
+      // entry, which no longer accepts any action.
+      const replacement = await rescheduleFollowUp(selectedTask.id, payload);
       setModal(null);
       await refreshTaskData();
+      if (replacement?.id && String(replacement.id) !== String(selectedTask.id)) {
+        navigate(`/bhc/follow-ups/${replacement.id}`, { replace: true });
+      }
     } catch (requestError) {
       setActionError(
         requestError?.status === 409
@@ -235,7 +226,11 @@ export default function FollowUpDetails() {
 
   if (!task) return null;
 
-  const active = ACTIVE_STATES.includes(task.effectiveState);
+  // A task a later reschedule superseded is history: the server refuses every
+  // action on it (FollowUpTaskSyncService::isProcessable), so the page must
+  // not offer them either - it points at the replacement instead.
+  const isSuperseded = Boolean(task.rescheduledToId);
+  const active = !isSuperseded && ACTIVE_STATES.includes(task.effectiveState);
   const detailTabs = [
     {
       id: "clinical",
@@ -320,6 +315,17 @@ export default function FollowUpDetails() {
               <p className="mt-1 text-[11px] font-semibold text-slate-500">
                 Linked to record #{formatDisplayValue(task.healthRecordId)}
               </p>
+              {isSuperseded && (
+                <p className="mt-2 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600">
+                  Rescheduled - this entry was replaced.
+                  <Link
+                    to={`/bhc/follow-ups/${task.rescheduledToId}`}
+                    className="font-bold text-[#B91C1C] underline-offset-2 hover:underline"
+                  >
+                    View current follow-up #{task.rescheduledToId}
+                  </Link>
+                </p>
+              )}
             </div>
 
             <div className="flex shrink-0 flex-wrap gap-2">

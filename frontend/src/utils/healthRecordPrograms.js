@@ -1,5 +1,6 @@
 export const EPI_VACCINE_ROWS = [
   "Newborn Screening",
+  "CPAB",
   "BCG",
   "HEPA B",
   "OPV 1",
@@ -15,6 +16,7 @@ export const EPI_VACCINE_ROWS = [
   "IPV 2",
   "MCV 1",
   "MCV 2",
+  "HPV",
 ];
 
 const LEGACY_EPI_FIELD_MAP = {

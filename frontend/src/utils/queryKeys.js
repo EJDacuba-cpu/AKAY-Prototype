@@ -19,6 +19,12 @@ export const queryKeys = {
   ],
   referrals: (role = "bhc") => ["referrals", role],
   followUpTasks: (role = "bhc") => ["follow-up-tasks", role],
+  followUpTasksCalendar: (role = "bhc", start, end) => [
+    "follow-up-tasks-calendar",
+    role,
+    start,
+    end,
+  ],
   followUpTaskDetails: (role = "bhc", taskId) => [
     "follow-up-task-details",
     role,

@@ -135,6 +135,7 @@ const EPI_FLAT_VACCINE_COLUMNS = [
   "IPV 2",
   "MCV 1",
   "MCV 2",
+  "HPV",
 ];
 const EPI_CHILD_VACCINE_COLUMNS = [
   "BCG",
@@ -2156,6 +2157,10 @@ function collectMaternalTdDoses(records) {
       normalizeObject(maternal.tt_status),
       normalizeObject(maternal.tdStatus),
       normalizeObject(maternal.td_status),
+      // Td1-Td5 - the separate 5-dose schedule added alongside TT1-TT5
+      // (Forms Finalization Checklist 3.4).
+      normalizeObject(maternal.tetanusDiphtheriaStatus),
+      normalizeObject(maternal.tetanus_diphtheria_status),
       normalizeObject(record.tetanusToxoidStatus),
       normalizeObject(record.tetanus_toxoid_status),
       maternal,

@@ -72,6 +72,16 @@ export function normalizeFollowUpTask(task = {}) {
       task.fulfilledByHealthRecordId ||
       fulfilledByHealthRecord.id ||
       "",
+    // Set once this task has been superseded by a reschedule - it's no
+    // longer the current/active row for its health record. Only the
+    // /follow-up-tasks/calendar endpoint still returns rows like this; the
+    // List endpoint (getFollowUpTasks) excludes them server-side.
+    rescheduledToId:
+      task.rescheduled_to_id != null
+        ? String(task.rescheduled_to_id)
+        : task.rescheduledToId
+          ? String(task.rescheduledToId)
+          : "",
     latestHealthRecordId:
       task.latest_health_record_id ||
       task.latestHealthRecordId ||
@@ -111,6 +121,20 @@ export async function getFollowUpTasks(params = {}) {
   return unwrapList(response).map(normalizeFollowUpTask);
 }
 
+/**
+ * Part A.4/B.3: the Calendar is a full history for a date range, including
+ * rows the List view (getFollowUpTasks) excludes because they've been
+ * superseded by a reschedule. The backend groups by due_date for the
+ * month-grid response shape; flattened back into one array here so callers
+ * can reuse the existing groupTasksByDay client-side grouping/sorting.
+ */
+export async function getFollowUpTasksCalendar({ start, end } = {}) {
+  const query = new URLSearchParams({ start, end });
+  const response = await apiRequest(`/follow-up-tasks/calendar?${query}`);
+  const byDay = unwrapData(response) || {};
+  return Object.values(byDay).flat().map(normalizeFollowUpTask);
+}
+
 export async function getFollowUpTask(taskId) {
   const response = await apiRequest(`/follow-up-tasks/${taskId}`);
   return normalizeFollowUpTask(unwrapData(response));
@@ -146,6 +170,7 @@ export async function cancelFollowUp(taskId, notes = "") {
 
 export default {
   getFollowUpTasks,
+  getFollowUpTasksCalendar,
   getFollowUpTask,
   rescheduleFollowUp,
   cancelFollowUp,

@@ -182,7 +182,25 @@ class HealthRecord extends Model
             ? $this->getRelation('outcomeReferrals')
             : $this->outcomeReferrals()->get();
 
-        return $referrals->isNotEmpty();
+        if ($referrals->isNotEmpty()) {
+            return true;
+        }
+
+        // Decision 3: a referral blocked at submission (DOC-14) never created a
+        // referrals row - the only trace of the attempt is a waiting hold. That
+        // still counts as "Referred" (rendered with the Awaiting Provider
+        // sub-label below), not "Follow-up"/"Routine".
+        $holds = $this->relationLoaded('referralHolds')
+            ? $this->getRelation('referralHolds')
+            : $this->referralHolds()->get();
+
+        foreach ($holds as $hold) {
+            if ($hold->status === ReferralHold::STATUS_WAITING) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function hasActiveFollowUp(): bool

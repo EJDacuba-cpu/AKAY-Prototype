@@ -74,6 +74,8 @@ export default function ImmunizationVisitFields({
   epiHistoryLoading = false,
   epiHistoryError = "",
   temperature,
+  pulse,
+  spo2,
   weight,
   height,
   breastfeedingMonitoring = {},
@@ -85,6 +87,8 @@ export default function ImmunizationVisitFields({
   medicinesSlot = null,
   emptySelectionHint = null,
   onTemperatureChange,
+  onPulseChange,
+  onSpo2Change,
   onWeightChange,
   onHeightChange,
   onBreastfeedingChange,
@@ -125,7 +129,7 @@ export default function ImmunizationVisitFields({
 
       <ClinicalSection
         title="Basic Monitoring"
-        subtitle="Record the child's weight, height, and temperature."
+        subtitle="Record the child's weight, height, temperature, pulse rate, and SpO2."
       >
         <div className="grid gap-4 sm:grid-cols-3">
           <FieldInput
@@ -152,6 +156,24 @@ export default function ImmunizationVisitFields({
             onChange={(event) => onTemperatureChange(event.target.value)}
             placeholder="&#176;C"
           />
+          {onPulseChange && (
+            <FieldInput
+              label="Pulse Rate (bpm)"
+              type="number"
+              value={pulse}
+              onChange={(event) => onPulseChange(event.target.value)}
+              placeholder="e.g. 120"
+            />
+          )}
+          {onSpo2Change && (
+            <FieldInput
+              label="SpO2 (%)"
+              type="number"
+              value={spo2}
+              onChange={(event) => onSpo2Change(event.target.value)}
+              placeholder="e.g. 98"
+            />
+          )}
         </div>
       </ClinicalSection>
 

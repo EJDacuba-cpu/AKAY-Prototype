@@ -65,6 +65,27 @@ export const TB_LOCATION_OF_TREATMENT_OPTIONS = [
   { value: "home_based", label: "Home-based" },
 ];
 
+// Form 8 clinical data, not iClinicSys-territory general history - see
+// Forms Finalization Checklist 3.3.
+export const TB_HIV_STATUS_OPTIONS = [
+  { value: "reactive", label: "Reactive / PLHIV" },
+  { value: "non_reactive", label: "Non-reactive" },
+  { value: "not_done", label: "Not Done" },
+  { value: "unknown", label: "Unknown" },
+];
+
+export const TB_ART_STATUS_OPTIONS = [
+  { value: "on_art", label: "On ART" },
+  { value: "not_on_art", label: "Not on ART" },
+  { value: "not_applicable", label: "Not Applicable" },
+];
+
+export const TB_CPT_STATUS_OPTIONS = [
+  { value: "on_cpt", label: "On CPT" },
+  { value: "not_on_cpt", label: "Not on CPT" },
+  { value: "not_applicable", label: "Not Applicable" },
+];
+
 const LAB_TESTS = [
   { key: "xpert", label: "Xpert MTB/RIF (± Ultra)" },
   { key: "smearOrLamp", label: "Smear Microscopy / TB LAMP" },
@@ -129,6 +150,17 @@ export const EMPTY_TB_DATA = {
     drugResistance: "",
     registrationGroup: "",
   },
+  // Form 8 - used by both BHC and RHU, not iClinicSys-territory general
+  // history, so it stays in scope here (Forms Finalization Checklist 3.3).
+  comorbidities: {
+    hivStatus: "",
+    hivTestDate: "",
+    artStatus: "",
+    artStartDate: "",
+    cptStatus: "",
+    cptStartDate: "",
+    otherComorbidities: "",
+  },
   regimen: { rows: [createEmptyRegimenRow()] },
   treatmentSupporter: {
     locationOfTreatment: "",
@@ -180,6 +212,10 @@ export function normalizeTbData(source) {
     classification: mergeGroup(
       EMPTY_TB_DATA.classification,
       data.classification,
+    ),
+    comorbidities: mergeGroup(
+      EMPTY_TB_DATA.comorbidities,
+      data.comorbidities,
     ),
     regimen: {
       rows: rawRows.length
@@ -561,6 +597,54 @@ export default function TbTreatmentCardForm({
             }
             options={TB_REGISTRATION_GROUP_OPTIONS}
           />
+        </div>
+      </SectionCard>
+
+      {/* HIV/PLHIV, ART & CPT, Comorbidity Screening (DOH Form 8) */}
+      <SectionCard title="HIV/PLHIV, ART & CPT, Comorbidity Screening">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <SelectField
+            label="HIV Test Result"
+            value={data.comorbidities.hivStatus}
+            onChange={(v) => setGroupField("comorbidities", "hivStatus", v)}
+            options={TB_HIV_STATUS_OPTIONS}
+          />
+          <DatePickerField
+            label="Date of HIV Test"
+            value={data.comorbidities.hivTestDate}
+            onChange={(v) => setGroupField("comorbidities", "hivTestDate", v)}
+          />
+          <SelectField
+            label="ART Status"
+            value={data.comorbidities.artStatus}
+            onChange={(v) => setGroupField("comorbidities", "artStatus", v)}
+            options={TB_ART_STATUS_OPTIONS}
+          />
+          <DatePickerField
+            label="ART Start Date"
+            value={data.comorbidities.artStartDate}
+            onChange={(v) => setGroupField("comorbidities", "artStartDate", v)}
+          />
+          <SelectField
+            label="CPT Status"
+            value={data.comorbidities.cptStatus}
+            onChange={(v) => setGroupField("comorbidities", "cptStatus", v)}
+            options={TB_CPT_STATUS_OPTIONS}
+          />
+          <DatePickerField
+            label="CPT Start Date"
+            value={data.comorbidities.cptStartDate}
+            onChange={(v) => setGroupField("comorbidities", "cptStartDate", v)}
+          />
+          <div className="sm:col-span-2 lg:col-span-3">
+            <TextField
+              label="Other Comorbidities"
+              value={data.comorbidities.otherComorbidities}
+              onChange={(v) =>
+                setGroupField("comorbidities", "otherComorbidities", v)
+              }
+            />
+          </div>
         </div>
       </SectionCard>
 

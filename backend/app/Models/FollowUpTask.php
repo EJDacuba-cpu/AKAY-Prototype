@@ -33,6 +33,7 @@ class FollowUpTask extends Model
         'cancelled_at',
         'fulfilled_at',
         'fulfilled_by_health_record_id',
+        'rescheduled_to_id',
         'created_by',
         'updated_by',
     ];
@@ -93,5 +94,20 @@ class FollowUpTask extends Model
     public function practitioner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'practitioner_id');
+    }
+
+    /**
+     * The task this one was superseded by, when a reschedule created a new
+     * row instead of moving this row's due_date. Null means this row is
+     * still the current/active one for its health_record_id.
+     */
+    public function rescheduledTo(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'rescheduled_to_id');
+    }
+
+    public function isSuperseded(): bool
+    {
+        return $this->rescheduled_to_id !== null;
     }
 }

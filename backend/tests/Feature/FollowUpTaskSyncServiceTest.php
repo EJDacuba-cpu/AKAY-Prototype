@@ -68,23 +68,33 @@ class FollowUpTaskSyncServiceTest extends TestCase
             ],
         ]);
         $this->sync->syncRecord($record, $this->bhw);
-        $task = FollowUpTask::where('health_record_id', $record->id)->firstOrFail();
+        $originalTask = FollowUpTask::where('health_record_id', $record->id)->firstOrFail();
 
-        $this->actingAs($this->bhw, 'sanctum')
-            ->patchJson("/api/follow-up-tasks/{$task->id}/reschedule", [
+        $response = $this->actingAs($this->bhw, 'sanctum')
+            ->patchJson("/api/follow-up-tasks/{$originalTask->id}/reschedule", [
                 'due_date' => '2026-08-10',
                 'notes' => 'Patient asked to move the visit.',
             ])
             ->assertOk();
+        $newTaskId = $response->json('data.id');
 
-        $rescheduled = $task->fresh();
-        $this->assertSame('2026-08-10', $rescheduled->due_date->toDateString());
-        $this->assertSame(FollowUpTask::STATE_RESCHEDULED, $rescheduled->state);
+        // Part A.5 Principle 4: the original task's due date never moves -
+        // the reschedule created a new row instead.
+        $supersededTask = $originalTask->fresh();
+        $this->assertSame('2026-08-01', $supersededTask->due_date->toDateString());
+        $this->assertSame(FollowUpTask::STATE_RESCHEDULED, $supersededTask->state);
+        $this->assertSame($newTaskId, $supersededTask->rescheduled_to_id);
+
+        $newTask = FollowUpTask::find($newTaskId);
+        $this->assertSame('2026-08-10', $newTask->due_date->toDateString());
+        $this->assertSame(FollowUpTask::STATE_RESCHEDULED, $newTask->state);
+        $this->assertNull($newTask->rescheduled_to_id);
+        $this->assertSame('Patient asked to move the visit.', $newTask->notes);
 
         // Simulate the record-driven re-sync that used to run on every list load.
         $this->sync->syncRecord($record->fresh(), $this->bhw);
 
-        $afterSync = $task->fresh();
+        $afterSync = $newTask->fresh();
         $this->assertSame(
             '2026-08-10',
             $afterSync->due_date->toDateString(),
@@ -92,6 +102,15 @@ class FollowUpTaskSyncServiceTest extends TestCase
         );
         $this->assertSame(FollowUpTask::STATE_RESCHEDULED, $afterSync->state);
         $this->assertSame('Patient asked to move the visit.', $afterSync->notes);
+
+        // The re-sync must not resurrect the superseded row as a second
+        // "current" task for the same health record.
+        $this->assertSame(
+            1,
+            FollowUpTask::where('health_record_id', $record->id)
+                ->whereNull('rescheduled_to_id')
+                ->count()
+        );
     }
 
     public function test_resyncing_a_chained_follow_up_visit_preserves_the_next_tasks_identity(): void

@@ -4,6 +4,7 @@ import TablePagination from "../../common/pagination/TablePagination";
 import ActionMenu from "../../common/tables/ActionMenu";
 import DataTableEmptyState from "../../common/tables/DataTableEmptyState";
 import RefreshingIndicator from "../../common/loading/RefreshingIndicator";
+import RecordOutcomeBadge from "./RecordOutcomeBadge";
 import { stagger } from "../../../utils/animation";
 import {
   formatDate,
@@ -14,42 +15,12 @@ import {
   getRecordDateValue,
   getRecordId,
   getRecordIdLabel,
-  getRecordOutcome,
-  getRecordOutcomeStyle,
-  getRecordOutcomeSubLabel,
   getRecordVisitTypeLabel,
   getServiceTypeLabel,
   isFollowUpVisitRecord,
 } from "../../../utils/healthRecordPrograms";
 
 const ITEMS_PER_PAGE = 5;
-
-/**
- * Resolved disposition for a record. Renders nothing when the API did not send
- * an outcome - an older cached payload, or a caller that built rows by hand -
- * rather than guessing a value the server owns.
- */
-function OutcomeBadge({ record }) {
-  const outcome = getRecordOutcome(record);
-  if (!outcome) return <span className="text-[#94A3B8]">-</span>;
-
-  const subLabel = getRecordOutcomeSubLabel(record);
-
-  return (
-    <div>
-      <span
-        className={`inline-flex rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${getRecordOutcomeStyle(outcome)}`}
-      >
-        {outcome}
-      </span>
-      {subLabel && (
-        <p className="mt-1 text-[10px] font-semibold text-[#94A3B8]">
-          {subLabel}
-        </p>
-      )}
-    </div>
-  );
-}
 
 function FollowUpVisitBadge() {
   return (
@@ -164,7 +135,7 @@ export default function HealthRecordsTable({
                   />
                   <MobileRecordField
                     label="Outcome"
-                    value={<OutcomeBadge record={record} />}
+                    value={<RecordOutcomeBadge record={record} align="end" />}
                   />
                   <MobileRecordField
                     label="Visit Type"
@@ -284,7 +255,7 @@ export default function HealthRecordsTable({
                       )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5">
-                      <OutcomeBadge record={record} />
+                      <RecordOutcomeBadge record={record} />
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-right">
                       <div className="relative flex justify-end">
