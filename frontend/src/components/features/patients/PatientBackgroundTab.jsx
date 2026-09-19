@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Pencil, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 
-import { formatDisplayValue, formatLongDate } from "../../../utils/formatters";
+import { formatLongDate } from "../../../utils/formatters";
 import { EMPTY_MEDICAL_BACKGROUND } from "../../../services/patientService";
 
 const DISEASE_STATUS_OPTIONS = ["Active", "Controlled", "Resolved"];
@@ -16,19 +16,19 @@ export const BACKGROUND_SECTIONS = {
   medical: {
     key: "medical",
     label: "Past Medical History",
-    title: "Past Medical History",
+    title: "Current Past Medical History",
     subtitle: "Longitudinal medical background for this patient.",
   },
   family: {
     key: "family",
     label: "Family History",
-    title: "Family History",
+    title: "Current Family History",
     subtitle: "Illnesses recorded among immediate family members.",
   },
   social: {
     key: "social",
     label: "Personal & Social History",
-    title: "Personal & Social History",
+    title: "Current Personal & Social History",
     subtitle: "Diet, lifestyle, and social history.",
   },
 };
@@ -105,6 +105,45 @@ function TextInput({ value, onChange, placeholder }) {
   );
 }
 
+/**
+ * The dated log below the editable card.
+ *
+ * Backed by medical_background.updatedAt[section], which stores ONE date per
+ * section - when it was last edited. That is the only history the schema
+ * keeps, so this renders the single stamp it has rather than implying a
+ * per-change revision trail the backend does not record.
+ */
+function BackgroundUpdateLog({ config, lastUpdated }) {
+  return (
+    <section className="mt-5">
+      <h3 className="text-[13px] font-bold text-[#0F172A]">
+        {config.label} Records
+      </h3>
+      <p className="mt-0.5 text-[11px] text-slate-500">
+        A dated log of changes to this patient&apos;s medical background over
+        time.
+      </p>
+
+      <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        {lastUpdated ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <span className="text-[12.5px] font-semibold text-[#0F172A]">
+              {config.label} updated
+            </span>
+            <span className="text-[11px] font-semibold text-slate-500">
+              {formatLongDate(lastUpdated, "")}
+            </span>
+          </div>
+        ) : (
+          <p className="px-4 py-6 text-center text-[12px] text-slate-400">
+            No recorded updates yet.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default function PatientBackgroundTab({
   section,
   background,
@@ -112,19 +151,25 @@ export default function PatientBackgroundTab({
   onSave,
 }) {
   const config = BACKGROUND_SECTIONS[section];
-  const [isEditing, setIsEditing] = useState(false);
+  // The fields are editable at rest; "dirty" is what brings up Save Changes,
+  // so a BHW types straight into the chart instead of hunting for an Edit
+  // toggle first. It also guards the reset below: a background refetch that
+  // lands mid-edit must not overwrite what the user is typing.
+  const [dirty, setDirty] = useState(false);
   const [draft, setDraft] = useState(() => cloneBackground(background));
   const [newDisease, setNewDisease] = useState("");
 
   useEffect(() => {
-    if (!isEditing) setDraft(cloneBackground(background));
-  }, [background, isEditing]);
+    if (!dirty) setDraft(cloneBackground(background));
+  }, [background, dirty]);
 
   useEffect(() => {
-    setIsEditing(false);
+    setDirty(false);
+    setNewDisease("");
   }, [section]);
 
   function setField(field, value) {
+    setDirty(true);
     setDraft((current) => {
       if (!field.group) return { ...current, [field.key]: value };
       return {
@@ -139,6 +184,7 @@ export default function PatientBackgroundTab({
     if (!name) return;
     const today = new Date().toISOString().slice(0, 10);
 
+    setDirty(true);
     setDraft((current) => {
       if (
         current.currentDiseases.some(
@@ -165,6 +211,7 @@ export default function PatientBackgroundTab({
   }
 
   function updateDisease(index, key, value) {
+    setDirty(true);
     setDraft((current) => ({
       ...current,
       currentDiseases: current.currentDiseases.map((disease, position) =>
@@ -174,6 +221,7 @@ export default function PatientBackgroundTab({
   }
 
   function removeDisease(index) {
+    setDirty(true);
     setDraft((current) => ({
       ...current,
       currentDiseases: current.currentDiseases.filter(
@@ -185,7 +233,7 @@ export default function PatientBackgroundTab({
   function cancel() {
     setDraft(cloneBackground(background));
     setNewDisease("");
-    setIsEditing(false);
+    setDirty(false);
   }
 
   async function save() {
@@ -201,32 +249,34 @@ export default function PatientBackgroundTab({
 
     const saved = await onSave?.(stamped);
     if (saved !== false) {
-      setIsEditing(false);
+      setDirty(false);
       setNewDisease("");
     }
   }
 
   const fields = TEXT_FIELDS[section] || [];
-  const diseases = isEditing
-    ? draft.currentDiseases
-    : background?.currentDiseases || [];
+  const diseases = draft.currentDiseases;
   const lastUpdated = background?.updatedAt?.[section] || "";
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
-        <div>
-          <h3 className="text-[13px] font-bold text-[#0F172A]">{config.title}</h3>
-          <p className="mt-0.5 text-[11px] text-slate-500">{config.subtitle}</p>
-          <p className="mt-1 text-[10.5px] font-semibold text-slate-400">
-            {lastUpdated
-              ? `Last updated ${formatLongDate(lastUpdated, "")}`
-              : "Not yet recorded"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {isEditing ? (
-            <>
+    <div>
+      <div className="overflow-hidden rounded-xl border border-slate-200">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
+          <div>
+            <h3 className="text-[13px] font-bold text-[#0F172A]">
+              {config.title}
+            </h3>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              {config.subtitle}
+            </p>
+            <p className="mt-1 text-[10.5px] font-semibold text-slate-400">
+              {lastUpdated
+                ? `Last updated ${formatLongDate(lastUpdated, "")}`
+                : "Not yet recorded"}
+            </p>
+          </div>
+          {dirty && (
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={cancel}
@@ -243,37 +293,18 @@ export default function PatientBackgroundTab({
               >
                 {saving ? "Saving..." : "Save Changes"}
               </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setIsEditing(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-            >
-              <Pencil size={12} />
-              Edit
-            </button>
+            </div>
           )}
-        </div>
-      </header>
+        </header>
 
-      <div className="bg-white">
-        {section === "medical" && (
-          <div className="border-b border-slate-100 px-4 py-3">
-            <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
-              Current Diseases
-            </p>
-
-            {diseases.length === 0 && !isEditing && (
-              <p className="mt-2 text-[12px] text-slate-400">None reported</p>
-            )}
-
-            <div className="mt-2 space-y-2">
-              {diseases.map((disease, index) =>
-                isEditing ? (
+        <div className="bg-white">
+          {section === "medical" && (
+            <Row label="Current Diseases">
+              <div className="space-y-2 sm:text-left">
+                {diseases.map((disease, index) => (
                   <div
                     key={`${disease.name}-${index}`}
-                    className="rounded-lg border border-slate-200 p-3"
+                    className="rounded-lg border border-slate-200 p-3 text-left"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-[12.5px] font-bold text-[#0F172A]">
@@ -338,79 +369,48 @@ export default function PatientBackgroundTab({
                       </label>
                     </div>
                   </div>
-                ) : (
-                  <div
-                    key={`${disease.name}-${index}`}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2"
+                ))}
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newDisease}
+                    placeholder="Add other disease..."
+                    onChange={(event) => setNewDisease(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addDisease();
+                      }
+                    }}
+                    className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-[12.5px] outline-none transition focus:border-[#B91C1C]"
+                  />
+                  <button
+                    type="button"
+                    onClick={addDisease}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
                   >
-                    <span className="text-[12.5px] font-bold text-[#0F172A]">
-                      {disease.name}
-                      {disease.status && (
-                        <span className="ml-2 rounded-md border border-[#FECACA] bg-[#FEF2F2] px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-[#B91C1C]">
-                          {disease.status}
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-[10.5px] text-slate-400">
-                      First recorded{" "}
-                      {formatLongDate(disease.firstRecorded, "not recorded")}
-                      {disease.lastConfirmed
-                        ? ` · Last confirmed ${formatLongDate(disease.lastConfirmed, "")}`
-                        : ""}
-                      {disease.source ? ` · ${disease.source}` : ""}
-                    </span>
-                  </div>
-                ),
-              )}
-            </div>
-
-            {isEditing && (
-              <div className="mt-2 flex gap-2">
-                <input
-                  type="text"
-                  value={newDisease}
-                  placeholder="Add a disease..."
-                  onChange={(event) => setNewDisease(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addDisease();
-                    }
-                  }}
-                  className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-[12.5px] outline-none transition focus:border-[#B91C1C]"
-                />
-                <button
-                  type="button"
-                  onClick={addDisease}
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-                >
-                  <Plus size={13} />
-                  Add
-                </button>
+                    <Plus size={13} />
+                    Add
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
-        )}
+            </Row>
+          )}
 
-        {fields.map((field) => (
-          <Row key={field.key} label={field.label}>
-            {isEditing ? (
+          {fields.map((field) => (
+            <Row key={field.key} label={field.label}>
               <TextInput
                 value={readValue(draft, field)}
-                placeholder={field.placeholder}
+                placeholder={field.placeholder || "Not yet recorded"}
                 onChange={(value) => setField(field, value)}
               />
-            ) : (
-              <span className="text-[12.5px] font-semibold text-slate-700">
-                {formatDisplayValue(
-                  readValue(background, field),
-                  "Not yet recorded",
-                )}
-              </span>
-            )}
-          </Row>
-        ))}
+            </Row>
+          ))}
+        </div>
       </div>
+
+      <BackgroundUpdateLog config={config} lastUpdated={lastUpdated} />
     </div>
   );
 }

@@ -29,14 +29,10 @@ import PatientBackgroundTab, {
   BACKGROUND_SECTIONS,
 } from "../../components/features/patients/PatientBackgroundTab";
 import PatientProgramTab from "../../components/features/patients/PatientProgramTab";
+import PatientIdentityCard from "../../components/features/patients/PatientIdentityCard";
 import { getConditionalProgramTabs } from "../../utils/programApplicability";
 import { buildRecordFollowUpVisitPath } from "../../components/features/followups/followUpStatusStyles.jsx";
-import {
-  calculateBmi,
-  formatBmi,
-  getBmiCategory,
-  getLatestBmiRecord,
-} from "../../utils/bmi";
+import { getLatestBmiRecord } from "../../utils/bmi";
 import { isConnectionError } from "../../services/apiClient";
 import { getFollowUpTasks } from "../../services/followUpTaskService";
 import {
@@ -54,7 +50,6 @@ import {
   formatPatientName,
 } from "../../utils/formatters";
 import {
-  getRecordDateValue,
   getRecordIdLabel,
   getRecordVisitTypeLabel,
   getServiceTypeLabel,
@@ -87,7 +82,6 @@ const BULAKAN_BARANGAYS = [
 
 const TAB_LABELS = {
   overview: "Overview",
-  general: "General",
   records: "Health Records",
   referrals: "Referrals & Follow-ups",
 };
@@ -310,7 +304,9 @@ export default function PatientDetails() {
   }
 
   function handleStartGeneralEdit() {
-    setActiveTab("general");
+    // Registration details are edited in place on Overview: they have no tab of
+    // their own in the chart, and the identity card they belong to is here.
+    setActiveTab("overview");
     setForm(createPatientForm(patient));
     setFieldErrors({});
     setOpenConfirm(false);
@@ -518,9 +514,14 @@ export default function PatientDetails() {
   const claimedPrograms = new Set(
     conditionalProgramTabs.flatMap((area) => area.programs),
   );
+  // "Active" here means the patient is still eligible for new services in the
+  // area, not merely that old records exist - a history-only area has no open
+  // program to name in Care Status.
+  const activeProgramLabels = conditionalProgramTabs
+    .filter((area) => area.applicable)
+    .map((area) => area.label);
   const tabs = [
     { key: "overview", label: TAB_LABELS.overview },
-    { key: "general", label: TAB_LABELS.general },
     { key: "medical", label: BACKGROUND_SECTIONS.medical.label },
     { key: "family", label: BACKGROUND_SECTIONS.family.label },
     { key: "social", label: BACKGROUND_SECTIONS.social.label },
@@ -579,59 +580,133 @@ export default function PatientDetails() {
             </div>
           </div>
 
-          <div className="grid min-w-0 gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
-            <QuickPatientProfile
-              patient={patient}
-              patientId={patientId}
-              activeFollowUp={activePatientFollowUp}
-              latestBmiRecord={latestBmiRecord}
-            />
+          <section className="min-w-0">
+            {/* One row always: the chart can carry nine or more sections once
+                the conditional program areas appear, so it scrolls sideways
+                rather than wrapping into a second row that would push the
+                content down. */}
+            <nav
+              className="flex flex-nowrap gap-6 overflow-x-auto border-b border-slate-200"
+              aria-label="Patient chart sections"
+            >
+              {tabs.map(({ key, label, count = null }) => {
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => handleTabChange(key)}
+                    className={`shrink-0 whitespace-nowrap border-b-2 pb-3 text-xs font-semibold transition ${
+                      activeTab === key
+                        ? "border-[#B91C1C] text-[#B91C1C]"
+                        : "border-transparent text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    {label}
+                    {count !== null && ` (${count})`}
+                  </button>
+                );
+              })}
+            </nav>
 
-<section className="min-w-0">
-  {/* One row always: the chart can carry nine or more sections once the
-      conditional program areas appear, so it scrolls sideways rather than
-      wrapping into a second row that would push the content down. */}
-  <nav
-    className="flex flex-nowrap overflow-x-auto"
-    aria-label="Patient chart sections"
-  >
-    {tabs.map(({ key, label, count = null }) => {
-      return (
-        <button
-          key={key}
-          type="button"
-          onClick={() => handleTabChange(key)}
-          className={`shrink-0 whitespace-nowrap rounded-t-xl border border-b-0 px-4 py-3 text-xs font-semibold transition ${
-            activeTab === key
-              ? "border-slate-200 bg-white text-[#B91C1C]"
-              : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-white hover:text-slate-800"
-          }`}
-        >
-          {label}
-          {count !== null && ` (${count})`}
-        </button>
-      );
-    })}
-  </nav>
+            <div className="pt-5">
 
-  <div className="rounded-b-2xl rounded-tr-2xl border border-slate-200 bg-white p-5 shadow-sm">
-
+              {/* The identity card belongs to Overview alone - the other tabs
+                  open straight onto their own full-detail content. */}
               {activeTab === "overview" && (
-                <PatientOverviewTab
-                  patient={patient}
-                  records={records}
-                  referrals={referrals}
-                  activeFollowUp={activePatientFollowUp}
-                  basePath="/bhc"
-                  onViewRecord={(recordId) =>
-                    navigate(`/bhc/health-records/${recordId}`)
-                  }
-                  onViewReferral={(trackingId) =>
-                    navigate(`/bhc/referrals/${trackingId}`)
-                  }
-                  onViewAllRecords={() => handleTabChange("records")}
-                />
+                <>
+                  <h1 className="text-lg font-bold text-[#0F172A]">
+                    Patient Profile
+                  </h1>
+                  <div className="mt-3">
+                    <PatientIdentityCard
+                      patient={patient}
+                      patientId={patientId}
+                      onEdit={isEditing ? null : handleStartGeneralEdit}
+                      followUpBadge={
+                        activePatientFollowUp ? (
+                          <FollowUpStateBadge
+                            state={activePatientFollowUp.effectiveState}
+                            date={activePatientFollowUp.dueDate}
+                            context="profile"
+                          />
+                        ) : null
+                      }
+                    />
+                  </div>
+                </>
               )}
+
+              {activeTab === "overview" && !isEditing && (
+                <div className="mt-4">
+                  <PatientOverviewTab
+                    patient={patient}
+                    records={records}
+                    referrals={referrals}
+                    activeFollowUp={activePatientFollowUp}
+                    activePrograms={activeProgramLabels}
+                    latestBmiRecord={latestBmiRecord}
+                    basePath="/bhc"
+                    onViewRecord={(recordId) =>
+                      navigate(`/bhc/health-records/${recordId}`)
+                    }
+                    onViewReferral={(trackingId) =>
+                      navigate(`/bhc/referrals/${trackingId}`)
+                    }
+                    onViewAllRecords={() => handleTabChange("records")}
+                    onOpenTab={handleTabChange}
+                  />
+                </div>
+              )}
+
+              {/* Registration details have no tab in the chart, so Overview
+                  keeps them: collapsed while reading, and opened in full when
+                  the identity card's Edit is used. */}
+              {activeTab === "overview" &&
+                (isEditing ? (
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <GeneralPatientTab
+                      patient={patient}
+                      form={form}
+                      isEditing
+                      onChange={handleChange}
+                      fieldErrors={fieldErrors}
+                      saving={saving}
+                      motherSearch={motherSearch}
+                      motherPatientOptions={motherPatientOptions}
+                      onMotherSearchChange={setMotherSearch}
+                      onMotherPatientChange={handleMotherPatientChange}
+                      onEdit={handleStartGeneralEdit}
+                      onCancel={handleCancelGeneralEdit}
+                      onSave={handleRequestInlineSave}
+                    />
+                  </div>
+                ) : (
+                  <details className="mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <summary className="cursor-pointer list-none px-5 py-3.5 text-[13px] font-bold text-[#0F172A] marker:hidden">
+                      Registration Details
+                      <span className="ml-2 font-normal text-slate-400">
+                        Contact, PhilHealth, household and birth information
+                      </span>
+                    </summary>
+                    <div className="border-t border-slate-100 px-5 py-5">
+                      <GeneralPatientTab
+                        patient={patient}
+                        form={form}
+                        isEditing={false}
+                        onChange={handleChange}
+                        fieldErrors={fieldErrors}
+                        saving={saving}
+                        motherSearch={motherSearch}
+                        motherPatientOptions={motherPatientOptions}
+                        onMotherSearchChange={setMotherSearch}
+                        onMotherPatientChange={handleMotherPatientChange}
+                        onEdit={handleStartGeneralEdit}
+                        onCancel={handleCancelGeneralEdit}
+                        onSave={handleRequestInlineSave}
+                      />
+                    </div>
+                  </details>
+                ))}
 
               {["medical", "family", "social"].includes(activeTab) && (
                 <PatientBackgroundTab
@@ -639,24 +714,6 @@ export default function PatientDetails() {
                   background={patient.medicalBackground}
                   saving={savingBackground}
                   onSave={handleBackgroundSave}
-                />
-              )}
-
-              {activeTab === "general" && (
-                <GeneralPatientTab
-                  patient={patient}
-                  form={form}
-                  isEditing={isEditing}
-                  onChange={handleChange}
-                  fieldErrors={fieldErrors}
-                  saving={saving}
-                  motherSearch={motherSearch}
-                  motherPatientOptions={motherPatientOptions}
-                  onMotherSearchChange={setMotherSearch}
-                  onMotherPatientChange={handleMotherPatientChange}
-                  onEdit={handleStartGeneralEdit}
-                  onCancel={handleCancelGeneralEdit}
-                  onSave={handleRequestInlineSave}
                 />
               )}
 
@@ -715,9 +772,8 @@ export default function PatientDetails() {
                   }
                 />
               )}
-          </div>
-        </section>
-          </div>
+            </div>
+          </section>
         </div>
       </DashboardLayout>
 
@@ -770,134 +826,6 @@ function PatientConsultationActions({ patientId, activeFollowUp }) {
         New Consultation
       </Link>
     </>
-  );
-}
-
-function QuickPatientProfile({
-  patient,
-  patientId,
-  activeFollowUp,
-  latestBmiRecord = null,
-}) {
-  const patientName = formatPatientName(patient, "Unnamed Patient");
-  const ageSex = [
-    getPatientValue(patient, ["age"], ""),
-    getPatientValue(patient, ["sex"], ""),
-  ]
-    .filter(hasDisplayValue)
-    .map((value, index) => (index === 0 ? `${value} yrs` : value))
-    .join(" / ");
-
-  return (
-    <aside className="min-w-0 self-start rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="text-center">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          Patient Profile
-        </p>
-        <h1 className="mt-3 break-words text-lg font-bold text-[#0F172A]">
-          {patientName}
-        </h1>
-        <span className="mt-2 inline-flex rounded-md border border-red-100 bg-red-50 px-2 py-1 font-mono text-[10px] font-bold text-[#B91C1C]">
-          ID #{patient.patientId || patientId}
-        </span>
-        {activeFollowUp && (
-          <div className="mt-2 flex justify-center">
-            <FollowUpStateBadge
-              state={activeFollowUp.effectiveState}
-              date={activeFollowUp.dueDate}
-              context="profile"
-            />
-          </div>
-        )}
-      </div>
-      <dl className="mt-5 divide-y divide-slate-100 border-t border-slate-100 pt-3">
-        <QuickDetail label="Age / Sex" value={ageSex} />
-        <QuickDetail
-          label="Date of Birth"
-          value={formatLongDate(
-            getPatientValue(patient, [
-              "birthDate",
-              "birthdate",
-              "dateOfBirth",
-              "date_of_birth",
-            ]),
-            "Not recorded",
-          )}
-        />
-        <QuickDetail
-          label="Contact Number"
-          value={getPatientValue(patient, [
-            "contact",
-            "contactNumber",
-            "contact_number",
-          ])}
-        />
-        <QuickDetail label="Barangay" value={patient.barangay} />
-        <QuickDetail
-          label="Municipality"
-          value={getPatientValue(patient, ["municipality", "city"])}
-        />
-      </dl>
-
-      {latestBmiRecord && (
-        <QuickMeasurements record={latestBmiRecord} patient={patient} />
-      )}
-    </aside>
-  );
-}
-
-/**
- * Weight, height and derived BMI in the profile card, from the most recent
- * visit that measured both. Sits alongside the demographics because it is the
- * same kind of at-a-glance fact, and unlike the General tab section it stays
- * visible while the user is on the Health Records or Referrals tabs.
- */
-function QuickMeasurements({ record, patient }) {
-  const bmi = calculateBmi(record.weight, record.height);
-  const age = Number.parseFloat(getPatientValue(patient, ["age"], ""));
-  // WHO adult cut-offs only - child BMI is read against percentile charts.
-  const category = Number.isFinite(age) && age < 18 ? "" : getBmiCategory(bmi);
-  const measuredOn = formatLongDate(getRecordDateValue(record), "");
-
-  return (
-    <div className="mt-4 border-t border-slate-100 pt-3">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-        Latest Measurements
-      </p>
-      <dl className="mt-1 divide-y divide-slate-100">
-        <QuickDetail
-          label="Weight"
-          value={record.weight ? `${record.weight} kg` : ""}
-        />
-        <QuickDetail
-          label="Height"
-          value={record.height ? `${record.height} cm` : ""}
-        />
-        <QuickDetail
-          label="BMI"
-          value={category ? `${formatBmi(bmi)} (${category})` : formatBmi(bmi)}
-        />
-      </dl>
-      {measuredOn && (
-        <p className="mt-2 text-[10px] leading-relaxed text-slate-400">
-          Recorded {measuredOn}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function QuickDetail({ label, value }) {
-  return (
-    <div className="flex items-start justify-between gap-4 py-2">
-      <dt className="shrink-0 text-xs font-medium text-slate-500">
-        {label}
-      </dt>
-
-      <dd className="max-w-[58%] break-words text-right text-xs font-semibold text-[#0F172A]">
-        {formatDisplayValue(value, "Not recorded")}
-      </dd>
-    </div>
   );
 }
 

@@ -49,7 +49,13 @@ class Patient extends Model
     ];
 
     protected $casts = [
-        'birthdate' => 'date',
+        // Serialized as a plain calendar date, not an instant. Under
+        // APP_TIMEZONE=Asia/Manila the default 'date' cast emits local midnight
+        // as "...T16:00:00Z", which every client that reads the date part off
+        // the front of the string resolves to the PREVIOUS day - so a birthday
+        // displayed one day early, and written back one day early on the next
+        // profile save. A birthdate is a calendar date; it has no instant.
+        'birthdate' => 'date:Y-m-d',
         'birth_time' => 'datetime:H:i',
         'birth_weight' => 'decimal:2',
         'birth_height' => 'decimal:2',

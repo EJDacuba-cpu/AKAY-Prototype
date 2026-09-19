@@ -1,12 +1,15 @@
 import { Link } from "react-router";
 import {
+  Activity,
   CalendarClock,
   ChevronRight,
   ClipboardList,
   FileText,
   HeartPulse,
   Pill,
+  Ruler,
   Stethoscope,
+  Users,
 } from "lucide-react";
 
 import {
@@ -19,6 +22,7 @@ import {
   getServiceTypeLabel,
   isFollowUpVisitRecord,
 } from "../../../utils/healthRecordPrograms";
+import { calculateBmi, formatBmi, getBmiCategory } from "../../../utils/bmi";
 import RecordOutcomeBadge from "../records/RecordOutcomeBadge";
 
 const RECENT_VISIT_LIMIT = 3;
@@ -48,6 +52,26 @@ function EmptyLine({ children }) {
   );
 }
 
+/**
+ * Opens the tab that owns the full detail for a preview card. The previews
+ * here are read-only summaries on purpose: editing and the complete field set
+ * live on the section's own tab, so the chart has exactly one place to change
+ * each value.
+ */
+function FullDetailAction({ onClick, label = "View Full History" }) {
+  if (!onClick) return null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1 text-[11px] font-bold text-[#B91C1C] transition hover:text-[#991B1B]"
+    >
+      {label}
+      <ChevronRight size={13} />
+    </button>
+  );
+}
+
 function SummaryRow({ label, value }) {
   return (
     <div className="flex items-start justify-between gap-3 border-b border-slate-50 py-1.5 last:border-b-0">
@@ -74,14 +98,19 @@ export default function PatientOverviewTab({
   records = [],
   referrals = [],
   activeFollowUp = null,
+  activePrograms = [],
+  latestBmiRecord = null,
   basePath = "/bhc",
   onViewRecord,
   onViewReferral,
   onViewAllRecords,
+  onOpenTab,
 }) {
   const recentVisits = records.slice(0, RECENT_VISIT_LIMIT);
   const latestReferral = referrals[0] || null;
   const background = patient?.medicalBackground || {};
+  const familyHistory = background.familyHistory || {};
+  const personalSocial = background.personalSocial || {};
   const currentDiseases = Array.isArray(background.currentDiseases)
     ? background.currentDiseases
     : [];
@@ -197,6 +226,16 @@ export default function PatientOverviewTab({
             {careStatus.detail}
           </p>
         </div>
+        <div className="mt-3">
+          <SummaryRow
+            label="Active Program"
+            value={
+              activePrograms.length
+                ? activePrograms.join(", ")
+                : "No Active Program"
+            }
+          />
+        </div>
         {activeFollowUp && (
           <Link
             to={`${basePath}/follow-ups/${activeFollowUp.id}`}
@@ -262,8 +301,9 @@ export default function PatientOverviewTab({
       </OverviewCard>
 
       <OverviewCard
-        title="Patient Background"
+        title="Past Medical History"
         icon={<HeartPulse size={14} className="text-[#B91C1C]" />}
+        action={<FullDetailAction onClick={() => onOpenTab?.("medical")} />}
       >
         <div>
           <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
@@ -287,18 +327,72 @@ export default function PatientOverviewTab({
           <div className="mt-3">
             <SummaryRow
               label="Allergies"
-              value={formatDisplayValue(background.allergies, "None reported")}
+              value={formatDisplayValue(background.allergies, "Not yet recorded")}
             />
             <SummaryRow
-              label="Occupation"
-              value={formatDisplayValue(patient?.occupation, "Not recorded")}
+              label="Hospitalizations"
+              value={formatDisplayValue(
+                background.hospitalizations,
+                "Not yet recorded",
+              )}
             />
             <SummaryRow
-              label="Civil Status"
-              value={formatDisplayValue(patient?.civilStatus, "Not recorded")}
+              label="Surgeries"
+              value={formatDisplayValue(background.surgeries, "Not yet recorded")}
             />
           </div>
         </div>
+      </OverviewCard>
+
+      <OverviewCard
+        title="Family History"
+        icon={<Users size={14} className="text-[#B91C1C]" />}
+        action={<FullDetailAction onClick={() => onOpenTab?.("family")} />}
+      >
+        <SummaryRow
+          label="Similar Illness"
+          value={formatDisplayValue(
+            familyHistory.similarIllness,
+            "Not yet recorded",
+          )}
+        />
+        <SummaryRow
+          label="Chronic Illness"
+          value={formatDisplayValue(
+            familyHistory.chronicIllness,
+            "Not yet recorded",
+          )}
+        />
+        <SummaryRow
+          label="Hereditary Illness"
+          value={formatDisplayValue(
+            familyHistory.hereditaryIllness,
+            "Not yet recorded",
+          )}
+        />
+      </OverviewCard>
+
+      <OverviewCard
+        title="Personal & Social"
+        icon={<Activity size={14} className="text-[#B91C1C]" />}
+        action={<FullDetailAction onClick={() => onOpenTab?.("social")} />}
+      >
+        <SummaryRow
+          label="Occupation"
+          value={formatDisplayValue(patient?.occupation, "Not recorded")}
+        />
+        <SummaryRow
+          label="Dietary History"
+          value={formatDisplayValue(personalSocial.diet, "Not yet recorded")}
+        />
+        <SummaryRow
+          label="Smoking"
+          value={formatDisplayValue(personalSocial.smoking, "Not yet recorded")}
+        />
+        <SummaryRow
+          label="Alcohol"
+          value={formatDisplayValue(personalSocial.alcohol, "Not yet recorded")}
+        />
       </OverviewCard>
 
       <OverviewCard
@@ -347,6 +441,61 @@ export default function PatientOverviewTab({
         />
         <SummaryRow label="Referrals" value={String(referrals.length)} />
       </OverviewCard>
+
+      <LatestMeasurementsCard record={latestBmiRecord} patient={patient} />
     </div>
+  );
+}
+
+/**
+ * Weight, height and derived BMI from the most recent visit that measured
+ * both. An Overview summary rather than a chart-wide fixture: the same
+ * at-a-glance read as the visit counts beside it.
+ */
+function LatestMeasurementsCard({ record, patient }) {
+  const bmi = record ? calculateBmi(record.weight, record.height) : null;
+  const age = Number.parseFloat(patient?.age);
+  // WHO adult cut-offs only - child BMI is read against percentile charts.
+  const category = Number.isFinite(age) && age < 18 ? "" : getBmiCategory(bmi);
+  const measuredOn = record ? formatLongDate(getRecordDateValue(record), "") : "";
+
+  return (
+    <OverviewCard
+      title="Latest Measurements"
+      icon={<Ruler size={14} className="text-[#B91C1C]" />}
+    >
+      {!record ? (
+        <EmptyLine>No weight or height measured yet.</EmptyLine>
+      ) : (
+        <>
+          <SummaryRow
+            label="Weight"
+            value={formatDisplayValue(
+              record.weight ? `${record.weight} kg` : "",
+              "Not recorded",
+            )}
+          />
+          <SummaryRow
+            label="Height"
+            value={formatDisplayValue(
+              record.height ? `${record.height} cm` : "",
+              "Not recorded",
+            )}
+          />
+          <SummaryRow
+            label="BMI"
+            value={formatDisplayValue(
+              category ? `${formatBmi(bmi)} (${category})` : formatBmi(bmi),
+              "Not recorded",
+            )}
+          />
+          {measuredOn && (
+            <p className="mt-2 text-[10.5px] text-slate-400">
+              Recorded {measuredOn}
+            </p>
+          )}
+        </>
+      )}
+    </OverviewCard>
   );
 }

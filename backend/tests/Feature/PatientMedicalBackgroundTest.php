@@ -175,4 +175,41 @@ class PatientMedicalBackgroundTest extends TestCase
         $this->assertSame('Farmer', $fresh->occupation);
         $this->assertSame('Dust', $fresh->medical_background['allergies']);
     }
+
+    /**
+     * The profile's Birthday field, and the value an edit writes back.
+     *
+     * A birthdate is a calendar date, not an instant. Serialized as an instant
+     * it leaves the API as local midnight in UTC ("...T16:00:00Z" under
+     * APP_TIMEZONE=Asia/Manila), which every client that reads the date off the
+     * front of the string resolves to the PREVIOUS day - so the chart shows the
+     * birthday a day early and the next profile save persists it a day early.
+     * Pinned in a non-UTC timezone, since UTC hides the defect.
+     */
+    public function test_birthdate_is_serialized_as_a_plain_calendar_date(): void
+    {
+        config(['app.timezone' => 'Asia/Manila']);
+        date_default_timezone_set('Asia/Manila');
+
+        $this->patient->update(['birthdate' => '1964-03-04']);
+
+        $response = $this->actingAs($this->bhw, 'sanctum')
+            ->getJson("/api/patients/{$this->patient->id}")
+            ->assertOk();
+
+        $birthdate = $response->json('data.birthdate');
+        $this->assertSame('1964-03-04', $birthdate);
+
+        // Round-trip: saving the date the profile just read must not shift it.
+        $this->actingAs($this->bhw, 'sanctum')
+            ->putJson("/api/patients/{$this->patient->id}", [
+                'birthdate' => explode('T', (string) $birthdate)[0],
+            ])
+            ->assertOk();
+
+        $this->assertSame(
+            '1964-03-04',
+            $this->patient->fresh()->birthdate->format('Y-m-d'),
+        );
+    }
 }
