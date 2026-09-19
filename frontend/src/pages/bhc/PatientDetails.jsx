@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  CalendarClock,
   Check,
   ChevronRight,
   ClipboardList,
@@ -23,6 +24,13 @@ import {
   SuccessModal,
 } from "../../components/common";
 import SpecializedRecordsTab from "../../components/features/records/SpecializedRecordsTab";
+import PatientOverviewTab from "../../components/features/patients/PatientOverviewTab";
+import PatientBackgroundTab, {
+  BACKGROUND_SECTIONS,
+} from "../../components/features/patients/PatientBackgroundTab";
+import PatientProgramTab from "../../components/features/patients/PatientProgramTab";
+import { getConditionalProgramTabs } from "../../utils/programApplicability";
+import { buildRecordFollowUpVisitPath } from "../../components/features/followups/followUpStatusStyles.jsx";
 import {
   calculateBmi,
   formatBmi,
@@ -37,6 +45,7 @@ import {
   getPatientReferrals,
   getPatientDetailsListByRole,
   updatePatient,
+  updatePatientMedicalBackground,
 } from "../../services/patientService";
 import {
   formatDate,
@@ -47,9 +56,12 @@ import {
 import {
   getRecordDateValue,
   getRecordIdLabel,
+  getRecordVisitTypeLabel,
   getServiceTypeLabel,
   getSpecializedRecordPrograms,
+  isFollowUpVisitRecord,
 } from "../../utils/healthRecordPrograms";
+import RecordOutcomeBadge from "../../components/features/records/RecordOutcomeBadge";
 import {
   calculateAgeInMonths,
   normalizePhilippineContact,
@@ -74,9 +86,10 @@ const BULAKAN_BARANGAYS = [
 ];
 
 const TAB_LABELS = {
+  overview: "Overview",
   general: "General",
   records: "Health Records",
-  referrals: "Referral History",
+  referrals: "Referrals & Follow-ups",
 };
 
 export default function PatientDetails() {
@@ -84,8 +97,9 @@ export default function PatientDetails() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [patientOverride, setPatientOverride] = useState(null);
-  const [activeTab, setActiveTab] = useState("general");
+  const [activeTab, setActiveTab] = useState("overview");
   const [isEditing, setIsEditing] = useState(false);
+  const [savingBackground, setSavingBackground] = useState(false);
   const [openConfirm, setOpenConfirm] = useState(false);
   const [openSuccess, setOpenSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -164,17 +178,40 @@ export default function PatientDetails() {
     () => getSpecializedRecordPrograms(recordsData),
     [recordsData],
   );
+  /**
+   * Women's Health and Pediatric / EPI are shown when the patient is currently
+   * applicable for the program OR already has records in it - so a closed
+   * eligibility window never hides an existing chart.
+   */
+  const conditionalProgramTabs = useMemo(
+    () => getConditionalProgramTabs(patientData, recordsData),
+    [patientData, recordsData],
+  );
+  const conditionalProgramKeys = conditionalProgramTabs
+    .map(({ key }) => key)
+    .join("|");
   const specializedProgramKeys = specializedRecordPrograms
     .map(({ key }) => key)
     .join("|");
 
   useEffect(() => {
-    if (!activeTab.startsWith("specialized:")) return;
-    const programKey = activeTab.slice("specialized:".length);
-    if (!specializedProgramKeys.split("|").includes(programKey)) {
-      setActiveTab("general");
+    if (activeTab.startsWith("specialized:")) {
+      const programKey = activeTab.slice("specialized:".length);
+      if (!specializedProgramKeys.split("|").includes(programKey)) {
+        setActiveTab("overview");
+      }
+      return;
     }
-  }, [activeTab, specializedProgramKeys]);
+
+    // A conditional area can disappear between loads (the records that kept it
+    // visible were reassigned); fall back rather than render a blank tab.
+    if (activeTab.startsWith("program:")) {
+      const areaKey = activeTab.slice("program:".length);
+      if (!conditionalProgramKeys.split("|").includes(areaKey)) {
+        setActiveTab("overview");
+      }
+    }
+  }, [activeTab, specializedProgramKeys, conditionalProgramKeys]);
 
   const overrideMatchesPatient =
     patientOverride &&
@@ -214,7 +251,7 @@ export default function PatientDetails() {
   }, [patientData]);
 
   useEffect(() => {
-    setActiveTab("general");
+    setActiveTab("overview");
     setShowAllRecords(false);
     setShowAllReferrals(false);
     setIsEditing(false);
@@ -368,6 +405,31 @@ export default function PatientDetails() {
     }
   }
 
+  /**
+   * Saves the whole medical_background object, not just the section being
+   * edited - the three background tabs are views over one payload, so a
+   * partial save would drop whichever sections the user was not looking at.
+   * Returns false on failure so the tab keeps its edit state for a retry.
+   */
+  async function handleBackgroundSave(nextBackground) {
+    try {
+      setSavingBackground(true);
+      const savedPatient = await updatePatientMedicalBackground(
+        patientId,
+        nextBackground,
+      );
+      if (savedPatient) setPatientOverride(savedPatient);
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.patientDetails("bhc", patientId),
+      });
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setSavingBackground(false);
+    }
+  }
+
   if (patientLoading && !patient) {
     return (
       <DashboardLayout role="bhc" title="Patient Details">
@@ -451,27 +513,48 @@ export default function PatientDetails() {
       const search = motherSearch.trim().toLowerCase();
       return !search || getMotherPatientLabel(item).toLowerCase().includes(search);
     });
+  // Programs Women's Health and Pediatric/EPI already own, so they are not
+  // also listed as their own specialized tabs.
+  const claimedPrograms = new Set(
+    conditionalProgramTabs.flatMap((area) => area.programs),
+  );
   const tabs = [
+    { key: "overview", label: TAB_LABELS.overview },
     { key: "general", label: TAB_LABELS.general },
+    { key: "medical", label: BACKGROUND_SECTIONS.medical.label },
+    { key: "family", label: BACKGROUND_SECTIONS.family.label },
+    { key: "social", label: BACKGROUND_SECTIONS.social.label },
+    ...conditionalProgramTabs.map((area) => ({
+      key: `program:${area.key}`,
+      label: area.label,
+      count: area.recordCount || null,
+      area,
+    })),
     {
       key: "records",
       label: TAB_LABELS.records,
       count: records.length,
     },
-    ...specializedRecordPrograms.map(({ key, label, count }) => ({
-      key: `specialized:${key}`,
-      label,
-      count,
-      program: key,
-    })),
+    // NCD and TB keep their own history-driven tabs; they have no conditional
+    // chart area of their own and only appear once records exist.
+    ...specializedRecordPrograms
+      .filter(({ key }) => !claimedPrograms.has(key))
+      .map(({ key, label, count }) => ({
+        key: `specialized:${key}`,
+        label,
+        count,
+        program: key,
+      })),
     {
       key: "referrals",
       label: TAB_LABELS.referrals,
-      count: referrals.length,
+      count: referrals.length + patientFollowUps.length,
     },
   ];
   const activeSpecializedProgram =
     tabs.find((tab) => tab.key === activeTab)?.program || "";
+  const activeProgramArea =
+    tabs.find((tab) => tab.key === activeTab)?.area || null;
 
   return (
     <>
@@ -485,9 +568,15 @@ export default function PatientDetails() {
               <ArrowLeft size={16} />
               Back to Patients
             </Link>
-            {patientUpdating && (
-              <RefreshingIndicator label="Updating patient details..." />
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {patientUpdating && (
+                <RefreshingIndicator label="Updating patient details..." />
+              )}
+              <PatientConsultationActions
+                patientId={patient.id || patientId}
+                activeFollowUp={activePatientFollowUp}
+              />
+            </div>
           </div>
 
           <div className="grid min-w-0 gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
@@ -499,8 +588,11 @@ export default function PatientDetails() {
             />
 
 <section className="min-w-0">
+  {/* One row always: the chart can carry nine or more sections once the
+      conditional program areas appear, so it scrolls sideways rather than
+      wrapping into a second row that would push the content down. */}
   <nav
-    className="flex overflow-x-auto"
+    className="flex flex-nowrap overflow-x-auto"
     aria-label="Patient chart sections"
   >
     {tabs.map(({ key, label, count = null }) => {
@@ -509,7 +601,7 @@ export default function PatientDetails() {
           key={key}
           type="button"
           onClick={() => handleTabChange(key)}
-          className={`shrink-0 rounded-t-xl border border-b-0 px-5 py-3 text-xs font-semibold transition ${
+          className={`shrink-0 whitespace-nowrap rounded-t-xl border border-b-0 px-4 py-3 text-xs font-semibold transition ${
             activeTab === key
               ? "border-slate-200 bg-white text-[#B91C1C]"
               : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-white hover:text-slate-800"
@@ -523,6 +615,32 @@ export default function PatientDetails() {
   </nav>
 
   <div className="rounded-b-2xl rounded-tr-2xl border border-slate-200 bg-white p-5 shadow-sm">
+
+              {activeTab === "overview" && (
+                <PatientOverviewTab
+                  patient={patient}
+                  records={records}
+                  referrals={referrals}
+                  activeFollowUp={activePatientFollowUp}
+                  basePath="/bhc"
+                  onViewRecord={(recordId) =>
+                    navigate(`/bhc/health-records/${recordId}`)
+                  }
+                  onViewReferral={(trackingId) =>
+                    navigate(`/bhc/referrals/${trackingId}`)
+                  }
+                  onViewAllRecords={() => handleTabChange("records")}
+                />
+              )}
+
+              {["medical", "family", "social"].includes(activeTab) && (
+                <PatientBackgroundTab
+                  section={activeTab}
+                  background={patient.medicalBackground}
+                  saving={savingBackground}
+                  onSave={handleBackgroundSave}
+                />
+              )}
 
               {activeTab === "general" && (
                 <GeneralPatientTab
@@ -558,6 +676,16 @@ export default function PatientDetails() {
                 />
               )}
 
+              {activeProgramArea && (
+                <PatientProgramTab
+                  area={activeProgramArea}
+                  patient={patient}
+                  records={records}
+                  basePath="/bhc"
+                  historyOnly={activeProgramArea.historyOnly}
+                />
+              )}
+
               {activeSpecializedProgram && (
                 <SpecializedRecordsTab
                   records={records}
@@ -568,9 +696,10 @@ export default function PatientDetails() {
               )}
 
               {activeTab === "referrals" && (
-                <ReferralHistoryTab
+                <ReferralsAndFollowUpsTab
                   referrals={referrals}
                   visibleReferrals={visibleReferrals}
+                  followUps={patientFollowUps}
                   isLoading={referralsLoading}
                   isFetching={referralsFetching}
                   isError={Boolean(referralsError)}
@@ -580,6 +709,9 @@ export default function PatientDetails() {
                   }
                   onView={(trackingId) =>
                     navigate(`/bhc/referrals/${trackingId}`)
+                  }
+                  onViewFollowUp={(taskId) =>
+                    navigate(`/bhc/follow-ups/${taskId}`)
                   }
                 />
               )}
@@ -605,6 +737,38 @@ export default function PatientDetails() {
         description="The changes are now reflected across this patient's records."
         onClose={() => setOpenSuccess(false)}
       />
+    </>
+  );
+}
+
+/**
+ * The two ways a visit starts for a patient already on screen.
+ *
+ * "New Consultation" carries only the patient, so Add Health Record still
+ * opens on its own setup step (visit type, then program) rather than guessing
+ * a program on the patient's behalf. "Record Follow-up Visit" is offered only
+ * when there is an active task to fulfil, and uses the same query contract the
+ * Follow-ups list uses, so both entry points land on the same form state.
+ */
+function PatientConsultationActions({ patientId, activeFollowUp }) {
+  return (
+    <>
+      {activeFollowUp && (
+        <Link
+          to={buildRecordFollowUpVisitPath(activeFollowUp)}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3.5 py-2 text-xs font-bold text-[#B91C1C] transition hover:bg-[#FEE2E2]"
+        >
+          <CalendarClock size={14} />
+          Record Follow-up Visit
+        </Link>
+      )}
+      <Link
+        to={`/bhc/health-records/add?patientId=${patientId}`}
+        className="inline-flex items-center gap-1.5 rounded-xl bg-[#B91C1C] px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#991B1B]"
+      >
+        <Plus size={14} strokeWidth={2.5} />
+        New Consultation
+      </Link>
     </>
   );
 }
@@ -1227,6 +1391,8 @@ function HealthRecordsTab({
                   <th className="px-5 py-3">Record ID</th>
                   <th className="px-4 py-3">Date of Visit</th>
                   <th className="px-4 py-3">Service Type</th>
+                  <th className="px-4 py-3">Visit Type</th>
+                  <th className="px-4 py-3">Outcome</th>
                   <th className="px-4 py-3 text-right">Action</th>
                 </tr>
               </thead>
@@ -1243,6 +1409,18 @@ function HealthRecordsTab({
                       </td>
                       <td className="px-4 py-4 text-xs font-semibold text-[#0F172A]">
                         {getServiceTypeLabel(record)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-4 text-xs font-semibold text-slate-600">
+                        {isFollowUpVisitRecord(record) ? (
+                          <span className="inline-flex rounded-md border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-[#1D4ED8]">
+                            Follow-up
+                          </span>
+                        ) : (
+                          getRecordVisitTypeLabel(record)
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-4">
+                        <RecordOutcomeBadge record={record} />
                       </td>
                       <td className="whitespace-nowrap px-4 py-4 text-right">
                         <button
@@ -1271,6 +1449,106 @@ function HealthRecordsTab({
           )}
           <AddHealthRecordAction to={addRecordTo} />
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Both onward dispositions a visit can produce, in one place: the referrals
+ * raised for this patient and the follow-up tasks scheduled for them. They
+ * share a tab because a BHW asking "what is still open for this patient"
+ * has to check both.
+ */
+function ReferralsAndFollowUpsTab({
+  referrals,
+  visibleReferrals,
+  followUps,
+  isLoading,
+  isFetching,
+  isError,
+  showAll,
+  onToggleShowAll,
+  onView,
+  onViewFollowUp,
+}) {
+  return (
+    <div className="space-y-5">
+      <FollowUpHistorySection
+        followUps={followUps}
+        onViewFollowUp={onViewFollowUp}
+      />
+      <ReferralHistoryTab
+        referrals={referrals}
+        visibleReferrals={visibleReferrals}
+        isLoading={isLoading}
+        isFetching={isFetching}
+        isError={isError}
+        showAll={showAll}
+        onToggleShowAll={onToggleShowAll}
+        onView={onView}
+      />
+    </div>
+  );
+}
+
+function FollowUpHistorySection({ followUps = [], onViewFollowUp }) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-slate-200">
+      <TabHeader
+        title="Follow-up Tasks"
+        subtitle="Follow-ups scheduled from this patient's visits, newest first."
+      />
+      {followUps.length === 0 ? (
+        <TabEmptyState
+          icon={<CalendarClock size={32} />}
+          message="No follow-ups scheduled for this patient yet."
+        />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[620px] text-left">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <th className="px-5 py-3">Follow-up</th>
+                <th className="px-4 py-3">Due Date</th>
+                <th className="px-4 py-3">From Record</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-sm">
+              {followUps.map((task) => (
+                <tr key={task.id} className="transition hover:bg-slate-50/80">
+                  <td className="whitespace-nowrap px-5 py-4 font-mono text-xs font-bold text-[#0F172A]">
+                    #{task.id}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-4 text-slate-600">
+                    {formatDate(task.dueDate, "Not recorded")}
+                    {task.dueTime ? ` - ${task.dueTime}` : ""}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-4 text-slate-600">
+                    Record #{formatDisplayValue(task.healthRecordId, "-")}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-4">
+                    <FollowUpStateBadge
+                      state={task.effectiveState}
+                      date={task.dueDate}
+                    />
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-4 text-right">
+                    <button
+                      type="button"
+                      onClick={() => onViewFollowUp?.(task.id)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
+                    >
+                      <Eye size={12} /> View Details
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

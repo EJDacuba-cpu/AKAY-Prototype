@@ -10,7 +10,9 @@
     "test:env": "node --test config/environment.test.js",
     "test:patient-tabs": "node --test src/utils/healthRecordPrograms.test.js",
     "preview": "vite preview",
-    "test:referral-gate": "node --test src/utils/referralGateErrors.test.js"
+    "test:referral-gate": "node --test src/utils/referralGateErrors.test.js",
+    "test:patient-utils": "node --test src/utils/patientUtils.test.js",
+    "test:program-tabs": "node --test src/utils/programApplicability.test.js"
   },
   "dependencies": {
     "@fontsource-variable/public-sans": "^5.3.0",

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { getPatients } from "../services/patients";
+import { getPatientSex } from "../utils/patientUtils";
 import { queryKeys } from "../utils/queryKeys";
 
 export default function usePatients(role = "bhc") {
@@ -102,10 +103,7 @@ export default function usePatients(role = "bhc") {
       const matchesSearch = !query || searchable.includes(query);
 
       const matchesSex =
-        filters.sex === "All" ||
-        (patient.ageSex || "")
-          .toLowerCase()
-          .includes(filters.sex === "Male" ? "/m" : "/f");
+        filters.sex === "All" || getPatientSex(patient) === filters.sex;
 
       const matchesBarangay =
         filters.barangay === "All Barangays" ||

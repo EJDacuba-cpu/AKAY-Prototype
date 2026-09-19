@@ -41,6 +41,7 @@ class Patient extends Model
         'philhealth_number',
         'philhealth_category',
         'patient_category',
+        'medical_background',
         'status',
         'created_by',
         'barangay_health_center_id',
@@ -52,6 +53,7 @@ class Patient extends Model
         'birth_time' => 'datetime:H:i',
         'birth_weight' => 'decimal:2',
         'birth_height' => 'decimal:2',
+        'medical_background' => 'array',
     ];
 
     protected $appends = ['full_name', 'age'];

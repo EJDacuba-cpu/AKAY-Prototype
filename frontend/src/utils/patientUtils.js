@@ -126,3 +126,21 @@ export const formatFullName = (firstName, middleName, lastName) => {
 export const formatTpal = (term, preterm, abortion, living) => {
   return `${term || 0}-${preterm || 0}-${abortion || 0}-${living || 0}`;
 };
+
+/**
+ * A patient's sex, for filtering and grouping.
+ *
+ * Reads the stored `sex` field first. `ageSex` is a display string built for
+ * the UI ("34 yrs / Female"), so it is only a fallback for rows that reached
+ * the client without `sex` - matching against that string's punctuation is
+ * what made the patient list's sex filter return nothing.
+ */
+export const getPatientSex = (patient = {}) => {
+  if (patient.sex) return String(patient.sex).trim();
+
+  const ageSex = String(patient.ageSex || "").toLowerCase();
+  if (ageSex.includes("female")) return "Female";
+  if (ageSex.includes("male")) return "Male";
+
+  return "";
+};

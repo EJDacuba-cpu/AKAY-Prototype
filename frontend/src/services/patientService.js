@@ -29,6 +29,71 @@ function normalizeDate(value) {
   return String(value).split("T")[0];
 }
 
+export const EMPTY_MEDICAL_BACKGROUND = {
+  currentDiseases: [],
+  allergies: "",
+  hospitalizations: "",
+  surgeries: "",
+  familyHistory: {
+    similarIllness: "",
+    chronicIllness: "",
+    hereditaryIllness: "",
+  },
+  personalSocial: {
+    diet: "",
+    smoking: "",
+    alcohol: "",
+    notes: "",
+  },
+  // When each section was last edited, so the profile can date the record
+  // rather than showing background of unknown vintage. Not a revision log:
+  // it answers "is this current?", which is the question a BHW actually asks.
+  updatedAt: {
+    medical: "",
+    family: "",
+    social: "",
+  },
+};
+
+/**
+ * Patient-level clinical background. Always returns the full shape so the
+ * profile can render read-only sections without per-field guards; an older
+ * patient row with no background at all reads as "not yet recorded" rather
+ * than crashing on a missing sub-object.
+ */
+export function normalizeMedicalBackground(source) {
+  const background = source && typeof source === "object" ? source : {};
+
+  return {
+    currentDiseases: Array.isArray(background.currentDiseases)
+      ? background.currentDiseases
+          .filter((entry) => entry && typeof entry === "object")
+          .map((entry) => ({
+            name: entry.name || "",
+            status: entry.status || "",
+            firstRecorded: normalizeDate(entry.firstRecorded),
+            lastConfirmed: normalizeDate(entry.lastConfirmed),
+            source: entry.source || "",
+          }))
+      : [],
+    allergies: background.allergies || "",
+    hospitalizations: background.hospitalizations || "",
+    surgeries: background.surgeries || "",
+    familyHistory: {
+      ...EMPTY_MEDICAL_BACKGROUND.familyHistory,
+      ...(background.familyHistory || {}),
+    },
+    personalSocial: {
+      ...EMPTY_MEDICAL_BACKGROUND.personalSocial,
+      ...(background.personalSocial || {}),
+    },
+    updatedAt: {
+      ...EMPTY_MEDICAL_BACKGROUND.updatedAt,
+      ...(background.updatedAt || {}),
+    },
+  };
+}
+
 export function normalizePatient(patient = {}) {
   const nameParts = splitName(patient.name || patient.fullName);
   const firstName = patient.first_name || patient.firstName || nameParts.firstName;
@@ -124,6 +189,9 @@ export function normalizePatient(patient = {}) {
       "",
     patientCategory: patient.patient_category || patient.patientCategory || "",
     category: patient.patient_category || patient.category || "",
+    medicalBackground: normalizeMedicalBackground(
+      patient.medical_background || patient.medicalBackground,
+    ),
     status: patient.status || "active",
     dateRegistered,
     date_registered: patient.date_registered || patient.created_at || "",
@@ -198,6 +266,15 @@ function toPayload(patient = {}) {
       patient.patientClassification || patient.patientCategory || patient.category || null;
   }
 
+  // Only sent when the caller actually carries a background, so a plain
+  // registration-details edit cannot blank out the clinical background the
+  // Medical Background / Family History / Personal & Social tabs own.
+  const backgroundSource =
+    patient.medicalBackground ?? patient.medical_background;
+  if (backgroundSource && typeof backgroundSource === "object") {
+    payload.medical_background = normalizeMedicalBackground(backgroundSource);
+  }
+
   return payload;
 }
 
@@ -226,6 +303,20 @@ export async function updateBhcPatient(id, data) {
   const response = await apiRequest(`/patients/${id}`, {
     method: "PATCH",
     body: toPayload(data),
+  });
+  return normalizePatient(unwrapData(response));
+}
+
+/**
+ * Saves only the clinical background. Deliberately does NOT go through
+ * toPayload(): that builder fills in defaults for every registration field
+ * ("Patient" for a missing surname, "Other" for a missing sex), which a
+ * background-only save must never send. PATCH leaves untouched columns alone.
+ */
+export async function updatePatientMedicalBackground(id, medicalBackground) {
+  const response = await apiRequest(`/patients/${id}`, {
+    method: "PATCH",
+    body: { medical_background: normalizeMedicalBackground(medicalBackground) },
   });
   return normalizePatient(unwrapData(response));
 }
