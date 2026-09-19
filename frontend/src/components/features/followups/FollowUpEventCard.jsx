@@ -13,15 +13,26 @@ export default function FollowUpEventCard({
   onClick,
   onRecordVisit,
   onReschedule,
+  onCancel,
+  onViewRecord,
   dense = false,
 }) {
   const config = getStateConfig(task.effectiveState);
-  const timeLabel =
-    formatTimeLabel(task.dueTime) || formatStateLabel(task.effectiveState);
+  const timeLabel = formatTimeLabel(task.dueTime);
+  const stateLabel = formatStateLabel(task.effectiveState);
+  // Untimed tasks show their status in the time slot; timed ones show both,
+  // except in dense cells where the card colour already carries the status.
+  const headline = !timeLabel
+    ? stateLabel
+    : dense
+      ? timeLabel
+      : `${timeLabel} · ${stateLabel}`;
   const patientName = formatDisplayValue(task.patientName, "Unnamed Patient");
   const actions = buildTaskActions(task, {
     onRecordVisit: () => onRecordVisit?.(task),
     onReschedule: () => onReschedule?.(task),
+    onCancel: onCancel ? () => onCancel(task) : undefined,
+    onViewRecord: onViewRecord ? () => onViewRecord(task) : undefined,
   });
 
   return (
@@ -29,10 +40,11 @@ export default function FollowUpEventCard({
       <button
         type="button"
         onClick={() => onClick?.(task)}
-        className={`w-full rounded-md border-l-4 px-2 py-1.5 pr-7 text-left shadow-sm transition-transform hover:-translate-y-px hover:shadow ${config.event}`}
+        title={`${patientName} · ${getTaskServiceTypeLabel(task)}`}
+        className={`w-full rounded-md border-l-4 px-2 py-1.5 pr-7 text-left transition-colors hover:brightness-[0.98] ${config.event}`}
       >
-        <span className="block text-[9.5px] font-bold uppercase tracking-wide opacity-80">
-          {timeLabel}
+        <span className="block truncate text-[9.5px] font-bold uppercase tracking-wide opacity-80">
+          {headline}
         </span>
         <span className={`block truncate font-semibold text-[#0F172A] ${dense ? "text-[11px]" : "text-[12.5px]"}`}>
           {patientName}
@@ -44,10 +56,10 @@ export default function FollowUpEventCard({
         )}
       </button>
 
-      <div className="absolute right-0.5 top-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+      <div className="absolute right-0.5 top-0.5 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
         <ActionMenu
           title={patientName}
-          subtitle={`#${task.healthRecordId}`}
+          subtitle={task.healthRecordId ? `#${task.healthRecordId}` : ""}
           actions={actions}
           triggerVariant="calendar"
         />

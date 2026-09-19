@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useBlocker, useLocation, useNavigate, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -51,7 +51,10 @@ import {
   DEFAULT_ATTENTION,
   normalizeAttention,
 } from "../../utils/referralAttention";
-import { formatDisplayTime } from "../../utils/healthRecordPrograms";
+import {
+  formatDisplayTime,
+  getRecordDateValue,
+} from "../../utils/healthRecordPrograms";
 import {
   FP_CLIENT_TYPE_OPTIONS,
   FP_SOURCE_OPTIONS,
@@ -61,6 +64,11 @@ import {
 } from "../../utils/familyPlanning";
 import { calculateBmi, formatBmi, getBmiCategory } from "../../utils/bmi";
 import PatientSummaryDrawer from "../../components/features/health-records/PatientSummaryDrawer";
+import UnfinishedConsultationModal from "../../components/features/health-records/UnfinishedConsultationModal";
+import {
+  CONSULTATION_PROFILE_SOURCE,
+  locationToPath,
+} from "../../utils/profileNavigation";
 import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "../../utils/consultationPrograms";
 import DraftSaveStatus from "../../components/features/health-records/DraftSaveStatus";
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
@@ -107,6 +115,7 @@ import {
 import {
   formatDisplayValue,
   formatFacilityName,
+  formatLongDate,
   formatPatientName,
   formatUserName,
 } from "../../utils/formatters";
@@ -1161,6 +1170,12 @@ export default function AddHealthRecord() {
   const [draftListLoading, setDraftListLoading] = useState(false);
   const [draftListError, setDraftListError] = useState("");
   const [draftResumingId, setDraftResumingId] = useState("");
+  // Set only when starting a New Consultation would duplicate an unfinished
+  // draft for the same patient; page entry itself is never blocked.
+  const [draftDecision, setDraftDecision] = useState(null);
+  const [draftDecisionBusy, setDraftDecisionBusy] = useState(false);
+  const [draftDecisionError, setDraftDecisionError] = useState("");
+  const [setupChecking, setSetupChecking] = useState(false);
   const [draftDiscardingId, setDraftDiscardingId] = useState("");
   const [activeDraft, setActiveDraft] = useState(null);
   const [draftSavedAt, setDraftSavedAt] = useState("");
@@ -2168,6 +2183,7 @@ export default function AddHealthRecord() {
     conflict: draftConflict,
     error: draftAutosaveError,
     saveNow: saveDraftNow,
+    flushBeforeLeave: flushDraftBeforeLeave,
     resolveConflict: resolveDraftConflict,
   } = draftAutosave;
 
@@ -2232,6 +2248,70 @@ export default function AddHealthRecord() {
     return () =>
       window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [draftHasPendingChanges]);
+
+  // Leaving mid-consultation (sidebar, header links, browser Back) saves the
+  // draft first and then goes - no "discard?" prompt, the draft protects the
+  // work. Trips to this page's own path (Back from Patient Profile) and View
+  // Full Profile itself are exempt: the consultation stays mounted for those.
+  const pageLocation = useLocation();
+  const ownPath = locationToPath(pageLocation);
+  const bypassLeaveGuardRef = useRef(false);
+  const leaveBlocker = useBlocker(
+    ({ nextLocation }) =>
+      !bypassLeaveGuardRef.current &&
+      canSaveCurrentDraft &&
+      !saveSuccess &&
+      !saving &&
+      nextLocation.pathname !== pageLocation.pathname &&
+      nextLocation.state?.source !== CONSULTATION_PROFILE_SOURCE,
+  );
+  const leaveBlockerRef = useRef(leaveBlocker);
+  useEffect(() => {
+    leaveBlockerRef.current = leaveBlocker;
+  });
+
+  useEffect(() => {
+    if (leaveBlocker.state !== "blocked") return undefined;
+    let active = true;
+    const destination = leaveBlocker.location;
+
+    flushDraftBeforeLeave().then((saved) => {
+      if (!active) return;
+      const blocker = leaveBlockerRef.current;
+      if (saved) {
+        blocker.proceed?.();
+        return;
+      }
+
+      // Not saved (offline, server error, or an unresolved draft conflict):
+      // stay, so nothing is lost silently. If this consultation is hidden
+      // behind the Patient Profile, bring it back so the notice is visible.
+      blocker.reset?.();
+      if (window.location.pathname !== pageLocation.pathname) navigate(ownPath);
+      setNoticeModal({
+        title: "Draft Not Saved Yet",
+        message:
+          "Your latest changes could not be saved as a draft, so you are still on this consultation. Check your connection and try again, or leave without those unsaved changes.",
+        actions: [
+          { label: "Stay on Consultation" },
+          {
+            label: "Leave Without Saving",
+            variant: "secondary",
+            onClick: () => {
+              bypassLeaveGuardRef.current = true;
+              navigate(locationToPath(destination), { state: destination.state });
+            },
+          },
+        ],
+      });
+    });
+
+    return () => {
+      active = false;
+    };
+    // Keyed on the blocker state only; the latest blocker is read from a ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leaveBlocker.state]);
 
   useEffect(() => {
     if (!requestedDraftId || !isDraftRouteEligible || resumedRouteDraft.current === requestedDraftId) return;
@@ -3970,11 +4050,59 @@ export default function AddHealthRecord() {
       return {
         id: patient.id,
         name: display.name,
-        meta: [display.id && `ID ${display.id}`, display.age]
+        meta: [
+          display.id && `Patient #${display.id}`,
+          patient.sex,
+          formatSetupAge(patient),
+        ]
           .filter(Boolean)
           .join(" · "),
+        address: getSetupAddress(patient),
       };
     });
+
+  // Read-only: the patient row carries no visit history, so the preview asks
+  // the existing per-patient records endpoint for the latest visit date.
+  const {
+    data: lastConsultationDate = "",
+    isPending: lastConsultationLoading,
+    isError: lastConsultationError,
+  } = useQuery({
+    queryKey: ["consultation-setup-last-visit", selectedPatientId],
+    queryFn: async () => {
+      const records = await getHealthRecordsByPatient(selectedPatientId);
+      return (Array.isArray(records) ? records : [])
+        .map((record) => getRecordDateValue(record))
+        .filter(Boolean)
+        .sort((a, b) => new Date(b) - new Date(a))[0] || "";
+    },
+    enabled: Boolean(wizardPhase === WIZARD_SETUP && selectedPatientId),
+  });
+  const lastConsultationLabel = lastConsultationLoading
+    ? "Loading..."
+    : lastConsultationError
+      ? "Unavailable"
+      : lastConsultationDate
+        ? formatLongDate(lastConsultationDate, "")
+        : "No previous consultation";
+
+  const wizardSelectedPatient = selectedPatient
+    ? {
+        id: getPatientDisplay(selectedPatient).id || selectedPatientId,
+        name: getPatientName(selectedPatient),
+        fields: [
+          { label: "Age", value: formatSetupAge(selectedPatient) },
+          { label: "Sex", value: selectedPatient.sex },
+          {
+            label: "Birthday",
+            value: formatLongDate(selectedPatient.birthDate, ""),
+          },
+          { label: "Barangay / Address", value: getSetupAddress(selectedPatient) },
+          { label: "Contact Number", value: selectedPatient.contactNumber },
+          { label: "Last Consultation", value: lastConsultationLabel },
+        ],
+      }
+    : null;
 
   const wizardPrograms = Object.entries(PROGRAM_CLASSIFICATIONS).map(([key, classification]) => {
     const eligibility = key === "Maternal" ? getMaternalEligibility(selectedPatient)
@@ -4042,12 +4170,83 @@ export default function AddHealthRecord() {
     }
   }
 
-  function handleSetupNext() {
-    if (!selectedPatientId || !consultationType) return;
+  function continueSetup() {
     if (consultationType === "new" && !healthRecordType) setHealthRecordType("General Consultation");
     goToWizardPhase(
       consultationType === "followup" ? WIZARD_FU_SELECT : WIZARD_PROGRAM,
     );
+  }
+
+  // The unfinished-draft decision belongs here, at the moment a New
+  // Consultation is actually started - not on page entry. Only a draft for the
+  // same patient conflicts: the backend keeps several drafts per user, and
+  // follow-up visits never create one. The consultation's own draft (after
+  // Back to setup) is not a conflict.
+  async function handleSetupNext() {
+    if (!selectedPatientId || !consultationType || setupChecking) return;
+    if (consultationType !== "new" || !isDraftRouteEligible) {
+      continueSetup();
+      return;
+    }
+
+    setSetupChecking(true);
+    let drafts = healthRecordDrafts;
+    try {
+      drafts = await listHealthRecordDrafts();
+      setHealthRecordDrafts(drafts);
+    } catch {
+      // Unreachable server: decide from the list already loaded on this page.
+    } finally {
+      setSetupChecking(false);
+    }
+
+    const conflicting = [...drafts]
+      .filter(
+        (draft) =>
+          String(draft.patient?.id) === String(selectedPatientId) &&
+          draft.id !== activeDraft?.id,
+      )
+      .sort((a, b) => new Date(b.lastSavedAt) - new Date(a.lastSavedAt))[0];
+
+    if (conflicting) {
+      setDraftDecisionError("");
+      setDraftDecision(conflicting);
+      return;
+    }
+    continueSetup();
+  }
+
+  function closeDraftDecision() {
+    if (draftDecisionBusy) return;
+    setDraftDecision(null);
+    setDraftDecisionError("");
+  }
+
+  async function discardConflictingDraftAndStart() {
+    setDraftDecisionBusy(true);
+    setDraftDecisionError("");
+    try {
+      await discardHealthRecordDraft(draftDecision.id);
+      setHealthRecordDrafts((current) =>
+        current.filter((item) => item.id !== draftDecision.id),
+      );
+      setDraftDecision(null);
+      continueSetup();
+    } catch (error) {
+      setDraftDecisionError(
+        isConnectionError(error)
+          ? "Unable to reach the server. Please check your connection and try again."
+          : error?.message || "Unable to discard this draft. Please try again.",
+      );
+    } finally {
+      setDraftDecisionBusy(false);
+    }
+  }
+
+  async function continueConflictingDraft() {
+    const draftId = draftDecision.id;
+    setDraftDecision(null);
+    await handleResumeDraft(draftId);
   }
 
   function handleProgramSelect(option) {
@@ -4186,6 +4385,15 @@ export default function AddHealthRecord() {
         <button type="button" onClick={() => setSummaryOpen(true)} className="fixed bottom-4 right-4 z-[90] inline-flex items-center gap-2 rounded-full bg-[#B91C1C] px-4 py-3 text-xs font-semibold text-white shadow-lg"><Users size={15} />Patient Summary</button>
         <PatientSummaryDrawer key={selectedPatientId} patientId={selectedPatientId} open={summaryOpen} onClose={() => setSummaryOpen(false)} basePath={basePath} />
       </>}
+      <UnfinishedConsultationModal
+        draft={draftDecision}
+        selectedPatientName={getPatientName(selectedPatient)}
+        busy={draftDecisionBusy || Boolean(draftResumingId)}
+        error={draftDecisionError}
+        onCancel={closeDraftDecision}
+        onDiscardAndStart={discardConflictingDraftAndStart}
+        onContinue={continueConflictingDraft}
+      />
 
       {canSaveCurrentDraft && draftAutosaveStatus === "offline" && (
         <div className="anim-fade-up mb-4 ml-0 mr-auto w-full max-w-7xl">
@@ -4237,22 +4445,18 @@ export default function AddHealthRecord() {
         <ConsultationSetupStep
           visitDate={wizardVisitDate}
           visitTime={wizardVisitTime}
-          selectedPatient={selectedPatient ? { id: selectedPatientId, name: getPatientName(selectedPatient), fields: [
-            { label: "Age", value: getPatientDisplay(selectedPatient).age },
-            { label: "Sex", value: selectedPatient.sex },
-            { label: "Date of Birth", value: selectedPatient.birthDate },
-            { label: "Barangay / Address", value: [selectedPatient.address, selectedPatient.barangay, selectedPatient.municipality].filter(Boolean).join(", ") },
-            { label: "Contact Number", value: selectedPatient.contactNumber },
-          ] } : null}
+          selectedPatient={wizardSelectedPatient}
           patients={wizardPatientRows}
           selectedPatientId={selectedPatientId}
-          onSelectPatient={(id) => { selectPatient(id); setSearchExpanded(false); }}
+          onSelectPatient={selectPatient}
           consultationType={consultationType}
           onConsultationTypeChange={handleConsultationTypeChange}
+          searchRef={searchWrapperRef}
           searchOpen={searchExpanded}
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
-          onToggleSearch={() => setSearchExpanded((open) => !open)}
+          onOpenSearch={() => setSearchExpanded(true)}
+          onCloseSearch={closeHeaderSearch}
           draftCount={healthRecordDrafts.length}
           onOpenDrafts={() => setDraftsDrawerOpen(true)}
           showDrafts={isDraftRouteEligible}
@@ -4265,6 +4469,7 @@ export default function AddHealthRecord() {
           error={validationErrors.consultationType}
           onBack={handleStepBack}
           onNext={handleSetupNext}
+          nextBusy={setupChecking}
         />
       ) : wizardPhase === WIZARD_PROGRAM ? (
         <ConsultationClinicalStep
@@ -6622,6 +6827,22 @@ function getPatientDisplay(patient = {}) {
   const id = formatDisplayValue(patient.patientId || patient.id, "");
 
   return { name, age, cls, contact, barangay, id };
+}
+
+function formatSetupAge(patient) {
+  const age = getPatientAgeInYears(patient);
+  if (age === null) return "";
+  return `${age} year${age === 1 ? "" : "s"} old`;
+}
+
+function getSetupAddress(patient = {}) {
+  return [
+    patient.address || patient.purokArea,
+    patient.barangay,
+    patient.municipality,
+  ]
+    .filter(Boolean)
+    .join(", ");
 }
 
 

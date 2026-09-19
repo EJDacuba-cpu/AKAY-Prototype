@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
+import { buildProfileReturnState } from "../../utils/profileNavigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -71,6 +72,7 @@ const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 
 export default function CreateReferral() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const resumeHoldParam = searchParams.get("resume_hold");
@@ -1549,6 +1551,7 @@ export default function CreateReferral() {
             headerRight={
               <Link
                 to={`/bhc/patients/${patient?.id}`}
+                state={buildProfileReturnState(location)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-500 hover:border-red-200 hover:text-[#B91C1C]"
               >
                 <ExternalLink size={11} /> Open Patient Details

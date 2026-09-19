@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Navigate,
   Route,
@@ -18,6 +26,10 @@ import {
 import DashboardLayout from "./components/layout/DashboardLayout";
 import { FullScreenAkayLoader } from "./components/common";
 import { AkayLoadingLifecycleProvider } from "./hooks/useAkayLoadingLifecycle";
+import {
+  getConsultationBackground,
+  locationToPath,
+} from "./utils/profileNavigation";
 import NotificationsPage from "./pages/bhc/NotificationsPage";
 import DesignTokens from "./pages/DesignTokens";
 import { queryClient } from "./lib/queryClient";
@@ -273,6 +285,42 @@ export default function App() {
     [authStatus, authUser],
   );
 
+  // "View Full Profile" during a consultation keeps that consultation mounted
+  // (hidden) underneath the profile, so returning resumes it exactly - no
+  // draft reload, no Unfinished Consultation prompt. It survives only a return
+  // to its own URL; leaving anywhere else remounts the page tree as usual.
+  const consultationBackground = getConsultationBackground(location);
+  const backgroundPath = locationToPath(consultationBackground);
+  const currentPath = locationToPath(location);
+  const mainTreeRef = useRef(null);
+  const [heldConsultation, setHeldConsultation] = useState({
+    path: "",
+    scrollTop: 0,
+    treeKey: 0,
+    restoreScroll: null,
+  });
+
+  if (backgroundPath !== heldConsultation.path) {
+    const leaving = Boolean(heldConsultation.path) && !backgroundPath;
+    const resumed = leaving && currentPath === heldConsultation.path;
+    setHeldConsultation({
+      path: backgroundPath,
+      scrollTop: backgroundPath ? Number(location.state?.scrollTop) || 0 : 0,
+      treeKey:
+        leaving && !resumed
+          ? heldConsultation.treeKey + 1
+          : heldConsultation.treeKey,
+      restoreScroll: resumed ? heldConsultation.scrollTop : null,
+    });
+  }
+
+  // The scroll container lost its offset while hidden; put it back.
+  useLayoutEffect(() => {
+    if (heldConsultation.restoreScroll === null) return;
+    const scroller = mainTreeRef.current?.querySelector(".akay-content-scroll");
+    if (scroller) scroller.scrollTop = heldConsultation.restoreScroll;
+  }, [heldConsultation.restoreScroll]);
+
   useEffect(() => {
     function handleSensitiveSessionCleared(event) {
       if (event.detail?.preserveAuthentication) {
@@ -378,7 +426,12 @@ export default function App() {
       <AkayLoadingLifecycleProvider
         hasCompletedInitialBoot={hasCompletedInitialBoot}
       >
-      <Routes>
+      <div
+        ref={mainTreeRef}
+        key={heldConsultation.treeKey}
+        hidden={Boolean(consultationBackground)}
+      >
+      <Routes location={consultationBackground || location}>
       <Route path="/login" element={<Login />} />
       <Route path="/reset-password" element={<ResetPassword />} />
 
@@ -461,14 +514,6 @@ export default function App() {
       />
       <Route
         path="/bhc/patients/add"
-        element={
-          <ProtectedPage allowedRole="bhc">
-            <AddPatient />
-          </ProtectedPage>
-        }
-      />
-      <Route
-        path="/bhc/patients/edit/:patientId"
         element={
           <ProtectedPage allowedRole="bhc">
             <AddPatient />
@@ -736,6 +781,20 @@ export default function App() {
 
       <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
+      </div>
+
+      {consultationBackground && (
+        <Routes>
+          <Route
+            path="/bhc/patients/:patientId"
+            element={
+              <ProtectedPage allowedRole="bhc">
+                <PatientDetails />
+              </ProtectedPage>
+            }
+          />
+        </Routes>
+      )}
       </AkayLoadingLifecycleProvider>
     </AuthStateContext.Provider>
   );

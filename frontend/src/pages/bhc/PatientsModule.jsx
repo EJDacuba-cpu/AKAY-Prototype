@@ -118,6 +118,10 @@ export default function PatientsModule() {
     (filter) => filter.key !== "search",
   ).length;
   const hasAnyFilter = activeFilters.length > 0;
+  const isNarrowed = hasAnyFilter || Boolean(filters.search);
+  const patientCountLabel = isNarrowed
+    ? `${filteredPatients.length} of ${patients.length} patients`
+    : `${patients.length} registered patient${patients.length === 1 ? "" : "s"}`;
   const visiblePatients = filteredPatients.slice(0, visibleCount);
   const hasMorePatients = visibleCount < filteredPatients.length;
   const showInitialLoading = loading && patients.length === 0;
@@ -207,11 +211,25 @@ export default function PatientsModule() {
       >
         {!showInitialLoading && (
           <ModuleToolbar
+            heading={
+              <div className="min-w-0">
+                <h1 className="text-[17px] font-black tracking-tight text-[#0F172A]">
+                  Patients
+                </h1>
+                <p className="mt-0.5 text-[12px] text-[#64748B]">
+                  Register, search, and manage patient profiles.
+                </p>
+                <p className="mt-1 text-[11px] font-semibold text-[#94A3B8]">
+                  {patientCountLabel}
+                </p>
+              </div>
+            }
             searchValue={filters.search}
             onSearchChange={(value) =>
               setFilters((prev) => ({ ...prev, search: value }))
             }
-            searchPlaceholder="Search by name, ID, contact, or barangay..."
+            searchPlaceholder="Search name, ID, or contact number..."
+            searchAlwaysOpen
             filters={dropdownFilters}
             activeFilterCount={activeFilterCount}
             activeFilters={activeFilters}
@@ -233,12 +251,12 @@ export default function PatientsModule() {
           )}
           {!showInitialLoading && (
             <PatientDirectory
-            patients={visiblePatients}
-            hasAnyFilter={hasAnyFilter}
-            hasMorePatients={hasMorePatients}
-            loadingMore={loadingMore}
-            loadMoreRef={loadMoreRef}
-          />
+              patients={visiblePatients}
+              hasAnyFilter={hasAnyFilter}
+              hasMorePatients={hasMorePatients}
+              loadingMore={loadingMore}
+              loadMoreRef={loadMoreRef}
+            />
           )}
         </div>
       </SoftLoadingArea>

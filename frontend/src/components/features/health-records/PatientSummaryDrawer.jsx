@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import Drawer from "../../common/drawer/Drawer";
 import PatientBackgroundTab from "../patients/PatientBackgroundTab";
 import { getBhcPatientById, updatePatientMedicalBackground } from "../../../services/patientService";
@@ -8,6 +8,7 @@ import { getHealthRecordsByPatient } from "../../../services/healthRecordService
 import { formatLongDate, formatPatientName } from "../../../utils/formatters";
 import { getRecordDateValue, getServiceTypeLabel, isMaternalRecord } from "../../../utils/healthRecordPrograms";
 import { queryKeys } from "../../../utils/queryKeys";
+import { buildConsultationProfileState } from "../../../utils/profileNavigation";
 
 function SummarySection({ title, rows }) {
   return <section className="mt-5"><h3 className="mb-2 text-[10px] uppercase tracking-wider text-slate-400">{title}</h3>
@@ -17,7 +18,19 @@ function SummarySection({ title, rows }) {
 
 export default function PatientSummaryDrawer({ patientId, open, onClose, basePath = "/bhc" }) {
   const client = useQueryClient();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [editing, setEditing] = useState(false);
+
+  // Same-tab navigation: the consultation stays mounted behind the profile
+  // (see App), and its scroll offset rides along so Back lands in place.
+  function openFullProfile() {
+    const scrollTop =
+      document.querySelector(".akay-content-scroll")?.scrollTop || 0;
+    navigate(`${basePath}/patients/${patientId}`, {
+      state: buildConsultationProfileState(location, scrollTop),
+    });
+  }
   const [draft, setDraft] = useState(null);
   const [section, setSection] = useState("medical");
   const [saving, setSaving] = useState(false);
@@ -75,7 +88,7 @@ export default function PatientSummaryDrawer({ patientId, open, onClose, basePat
         </div>}
         {!editing && <div className="sticky bottom-0 mt-auto space-y-2 border-t border-slate-100 bg-white pb-1 pt-4">
           <button type="button" onClick={() => { setDraft(structuredClone(background)); setEditing(true); setSection("medical"); }} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs">Update Medical Background ↑</button>
-          <Link to={`${basePath}/patients/${patientId}`} target="_blank" rel="noopener noreferrer" className="block rounded-lg border border-slate-200 px-3 py-2 text-center text-xs">View Full Profile</Link>
+          <button type="button" onClick={openFullProfile} className="block w-full rounded-lg border border-slate-200 px-3 py-2 text-center text-xs">View Full Profile</button>
         </div>}
       </>}
     </div>

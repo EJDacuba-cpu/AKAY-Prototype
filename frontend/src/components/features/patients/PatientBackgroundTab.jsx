@@ -82,13 +82,13 @@ function readValue(background, field) {
     : background?.[field.key] || "";
 }
 
-function Row({ label, children }) {
+function Row({ label, children, compact }) {
   return (
-    <div className="flex flex-col gap-1 border-b border-slate-100 px-4 py-3 last:border-b-0 sm:flex-row sm:items-center sm:gap-4">
-      <span className="w-full shrink-0 text-[10.5px] font-bold uppercase tracking-wider text-slate-400 sm:w-48">
+    <div className={`flex flex-col gap-1 border-b border-slate-100 px-4 py-3 last:border-b-0 ${compact ? "" : "sm:flex-row sm:items-center sm:gap-4"}`}>
+      <span className={`w-full shrink-0 text-[10.5px] font-bold uppercase tracking-wider text-slate-400 ${compact ? "" : "sm:w-48"}`}>
         {label}
       </span>
-      <div className="min-w-0 flex-1 sm:text-right">{children}</div>
+      <div className={`min-w-0 flex-1 ${compact ? "" : "sm:text-right"}`}>{children}</div>
     </div>
   );
 }
@@ -149,27 +149,40 @@ export default function PatientBackgroundTab({
   background,
   saving = false,
   onSave,
+  compact = false,
+  startEditing = false,
+  onEditingDone,
+  sharedDraft,
+  onDraftChange,
 }) {
   const config = BACKGROUND_SECTIONS[section];
-  // The fields are editable at rest; "dirty" is what brings up Save Changes,
-  // so a BHW types straight into the chart instead of hunting for an Edit
-  // toggle first. It also guards the reset below: a background refetch that
-  // lands mid-edit must not overwrite what the user is typing.
-  const [dirty, setDirty] = useState(false);
-  const [draft, setDraft] = useState(() => cloneBackground(background));
+  const [isEditing, setIsEditing] = useState(startEditing);
   const [newDisease, setNewDisease] = useState("");
 
-  useEffect(() => {
-    if (!dirty) setDraft(cloneBackground(background));
-  }, [background, dirty]);
+  // The drawer mounts one instance per section at the same time, so the draft
+  // has to live above them - otherwise saving "family" would post whatever
+  // stale "medical" slice that instance was holding. When no owner is passed
+  // (the full Patient Profile), the draft stays local.
+  const controlled = typeof onDraftChange === "function";
+  const [localDraft, setLocalDraft] = useState(() => cloneBackground(background));
+  const draft = controlled ? cloneBackground(sharedDraft || background) : localDraft;
+
+  function setDraft(updater) {
+    const next = typeof updater === "function" ? updater(draft) : updater;
+    if (controlled) onDraftChange(next);
+    else setLocalDraft(next);
+  }
 
   useEffect(() => {
-    setDirty(false);
+    if (!isEditing && !controlled) setLocalDraft(cloneBackground(background));
+  }, [background, isEditing, controlled]);
+
+  useEffect(() => {
+    setIsEditing(startEditing);
     setNewDisease("");
-  }, [section]);
+  }, [section, startEditing]);
 
   function setField(field, value) {
-    setDirty(true);
     setDraft((current) => {
       if (!field.group) return { ...current, [field.key]: value };
       return {
@@ -184,7 +197,6 @@ export default function PatientBackgroundTab({
     if (!name) return;
     const today = new Date().toISOString().slice(0, 10);
 
-    setDirty(true);
     setDraft((current) => {
       if (
         current.currentDiseases.some(
@@ -211,7 +223,6 @@ export default function PatientBackgroundTab({
   }
 
   function updateDisease(index, key, value) {
-    setDirty(true);
     setDraft((current) => ({
       ...current,
       currentDiseases: current.currentDiseases.map((disease, position) =>
@@ -221,7 +232,6 @@ export default function PatientBackgroundTab({
   }
 
   function removeDisease(index) {
-    setDirty(true);
     setDraft((current) => ({
       ...current,
       currentDiseases: current.currentDiseases.filter(
@@ -233,7 +243,8 @@ export default function PatientBackgroundTab({
   function cancel() {
     setDraft(cloneBackground(background));
     setNewDisease("");
-    setDirty(false);
+    setIsEditing(false);
+    onEditingDone?.();
   }
 
   async function save() {
@@ -249,8 +260,9 @@ export default function PatientBackgroundTab({
 
     const saved = await onSave?.(stamped);
     if (saved !== false) {
-      setDirty(false);
       setNewDisease("");
+      setIsEditing(false);
+      onEditingDone?.();
     }
   }
 
@@ -261,7 +273,7 @@ export default function PatientBackgroundTab({
   return (
     <div>
       <div className="overflow-hidden rounded-xl border border-slate-200">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
           <div>
             <h3 className="text-[13px] font-bold text-[#0F172A]">
               {config.title}
@@ -275,142 +287,182 @@ export default function PatientBackgroundTab({
                 : "Not yet recorded"}
             </p>
           </div>
-          {dirty && (
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            {isEditing ? (
+              <>
+                <button
+                  type="button"
+                  onClick={cancel}
+                  disabled={saving}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:border-slate-300 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={save}
+                  disabled={saving}
+                  className="rounded-lg bg-[#B91C1C] px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-[#991B1B] disabled:opacity-60"
+                >
+                  {saving ? "Saving..." : compact ? "Done" : "Save Changes"}
+                </button>
+              </>
+            ) : (
               <button
                 type="button"
-                onClick={cancel}
-                disabled={saving}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:border-slate-300 disabled:opacity-60"
+                onClick={() => setIsEditing(true)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
               >
-                Cancel
+                Edit
               </button>
-              <button
-                type="button"
-                onClick={save}
-                disabled={saving}
-                className="rounded-lg bg-[#B91C1C] px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-[#991B1B] disabled:opacity-60"
-              >
-                {saving ? "Saving..." : "Save Changes"}
-              </button>
-            </div>
-          )}
+            )}
+          </div>
         </header>
 
         <div className="bg-white">
           {section === "medical" && (
-            <Row label="Current Diseases">
-              <div className="space-y-2 sm:text-left">
-                {diseases.map((disease, index) => (
-                  <div
-                    key={`${disease.name}-${index}`}
-                    className="rounded-lg border border-slate-200 p-3 text-left"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-[12.5px] font-bold text-[#0F172A]">
-                        {disease.name}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeDisease(index)}
-                        aria-label={`Remove ${disease.name}`}
-                        className="text-slate-400 transition hover:text-[#B91C1C]"
+            <Row label="Current Diseases" compact={compact}>
+              {!isEditing ? (
+                <div className="flex flex-wrap gap-1.5 sm:justify-end">
+                  {diseases.length ? (
+                    diseases.map((disease, index) => (
+                      <span
+                        key={`${disease.name}-${index}`}
+                        className="rounded-full bg-red-50 px-2.5 py-1 text-[11.5px] font-semibold text-[#B91C1C]"
                       >
-                        <X size={14} />
-                      </button>
-                    </div>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                        Status
-                        <select
-                          value={disease.status || ""}
-                          onChange={(event) =>
-                            updateDisease(index, "status", event.target.value)
-                          }
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-slate-700 outline-none focus:border-[#B91C1C]"
-                        >
-                          <option value="">Select...</option>
-                          {DISEASE_STATUS_OPTIONS.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                        First Recorded
-                        <input
-                          type="date"
-                          value={disease.firstRecorded || ""}
-                          onChange={(event) =>
-                            updateDisease(
-                              index,
-                              "firstRecorded",
-                              event.target.value,
-                            )
-                          }
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-slate-700 outline-none focus:border-[#B91C1C]"
-                        />
-                      </label>
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                        Last Confirmed
-                        <input
-                          type="date"
-                          value={disease.lastConfirmed || ""}
-                          onChange={(event) =>
-                            updateDisease(
-                              index,
-                              "lastConfirmed",
-                              event.target.value,
-                            )
-                          }
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-slate-700 outline-none focus:border-[#B91C1C]"
-                        />
-                      </label>
-                    </div>
-                  </div>
-                ))}
-
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newDisease}
-                    placeholder="Add other disease..."
-                    onChange={(event) => setNewDisease(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        addDisease();
-                      }
-                    }}
-                    className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-[12.5px] outline-none transition focus:border-[#B91C1C]"
-                  />
-                  <button
-                    type="button"
-                    onClick={addDisease}
-                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-                  >
-                    <Plus size={13} />
-                    Add
-                  </button>
+                        {disease.name}
+                        {disease.status ? ` · ${disease.status}` : ""}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[12.5px] text-slate-400">
+                      Not yet recorded
+                    </span>
+                  )}
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-2 sm:text-left">
+                  {diseases.map((disease, index) => (
+                    <div
+                      key={`${disease.name}-${index}`}
+                      className="rounded-lg border border-slate-200 p-3 text-left"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[12.5px] font-bold text-[#0F172A]">
+                          {disease.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeDisease(index)}
+                          aria-label={`Remove ${disease.name}`}
+                          className="text-slate-400 transition hover:text-[#B91C1C]"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                      <div className={`mt-2 grid gap-2 ${compact ? "" : "sm:grid-cols-3"}`}>
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Status
+                          <select
+                            value={disease.status || ""}
+                            onChange={(event) =>
+                              updateDisease(index, "status", event.target.value)
+                            }
+                            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-slate-700 outline-none focus:border-[#B91C1C]"
+                          >
+                            <option value="">Select...</option>
+                            {DISEASE_STATUS_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          First Recorded
+                          <input
+                            type="date"
+                            value={disease.firstRecorded || ""}
+                            onChange={(event) =>
+                              updateDisease(
+                                index,
+                                "firstRecorded",
+                                event.target.value,
+                              )
+                            }
+                            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-slate-700 outline-none focus:border-[#B91C1C]"
+                          />
+                        </label>
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Last Confirmed
+                          <input
+                            type="date"
+                            value={disease.lastConfirmed || ""}
+                            onChange={(event) =>
+                              updateDisease(
+                                index,
+                                "lastConfirmed",
+                                event.target.value,
+                              )
+                            }
+                            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-slate-700 outline-none focus:border-[#B91C1C]"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newDisease}
+                      placeholder="Add other disease..."
+                      onChange={(event) => setNewDisease(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addDisease();
+                        }
+                      }}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-[12.5px] outline-none transition focus:border-[#B91C1C]"
+                    />
+                    <button
+                      type="button"
+                      onClick={addDisease}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
+                    >
+                      <Plus size={13} />
+                      Add
+                    </button>
+                  </div>
+                </div>
+              )}
             </Row>
           )}
 
           {fields.map((field) => (
-            <Row key={field.key} label={field.label}>
-              <TextInput
-                value={readValue(draft, field)}
-                placeholder={field.placeholder || "Not yet recorded"}
-                onChange={(value) => setField(field, value)}
-              />
+            <Row key={field.key} label={field.label} compact={compact}>
+              {isEditing ? (
+                <TextInput
+                  value={readValue(draft, field)}
+                  placeholder={field.placeholder || "Not yet recorded"}
+                  onChange={(value) => setField(field, value)}
+                />
+              ) : (
+                <span
+                  className={`text-[12.5px] ${readValue(background, field) ? "text-[#0F172A]" : "text-slate-400"}`}
+                >
+                  {readValue(background, field) || "Not yet recorded"}
+                </span>
+              )}
             </Row>
           ))}
         </div>
       </div>
 
-      <BackgroundUpdateLog config={config} lastUpdated={lastUpdated} />
+      {!compact && (
+        <BackgroundUpdateLog config={config} lastUpdated={lastUpdated} />
+      )}
     </div>
   );
 }

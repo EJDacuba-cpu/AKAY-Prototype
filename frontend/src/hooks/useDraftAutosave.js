@@ -505,6 +505,35 @@ export default function useDraftAutosave({
     return runSaveRef.current?.("manual") ?? Promise.resolve();
   }, [clearDebounceTimer]);
 
+  /**
+   * Save before the page is left. Unlike saveNow, this settles only once any
+   * in-flight write is done and resolves true only when the latest edits are
+   * actually on the server - so a caller can decide whether leaving is safe.
+   * A conflict/validation pause resolves false: those edits cannot be saved
+   * without the user's decision, and the existing notice already asked for it.
+   */
+  const flushBeforeLeave = useCallback(async () => {
+    if (!paramsRef.current.enabled) return true;
+    clearDebounceTimer();
+
+    const isSaved = () =>
+      serializePayload(latestPayloadRef.current) ===
+      lastSavedSerializedRef.current;
+    const waitForInFlight = async () => {
+      for (let waited = 0; inFlightRef.current && waited < 15_000; waited += 100) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    };
+
+    await waitForInFlight();
+    if (isSaved()) return true;
+    if (pausedRef.current) return false;
+
+    await runSaveRef.current?.("leave");
+    await waitForInFlight();
+    return isSaved();
+  }, [clearDebounceTimer]);
+
   const resolveConflict = useCallback((mode) => {
     if (mode === "reload") {
       // The page reloads the latest draft; the identity effect resets the
@@ -528,6 +557,7 @@ export default function useDraftAutosave({
     conflict,
     error,
     saveNow,
+    flushBeforeLeave,
     resolveConflict,
   };
 }

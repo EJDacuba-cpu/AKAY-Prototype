@@ -1,4 +1,5 @@
-import { Link, useParams, useNavigate, useSearchParams } from "react-router";
+import { Link, useLocation, useParams, useNavigate, useSearchParams } from "react-router";
+import { buildProfileReturnState } from "../../utils/profileNavigation";
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardList, FilePlus2, HeartPulse, Printer } from "lucide-react";
@@ -46,6 +47,7 @@ import {
 export default function HealthRecordDetails() {
   const { recordId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const shouldAutoPrint = searchParams.get("print") === "1";
@@ -329,6 +331,7 @@ export default function HealthRecordDetails() {
                   <div className="mt-5 border-t border-slate-100 pt-4">
                     <Link
                       to={`/bhc/patients/${patient.id || patient._id}`}
+                      state={buildProfileReturnState(location)}
                       className="flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white py-2.5 text-center text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
                     >
                       View Full Patient Profile

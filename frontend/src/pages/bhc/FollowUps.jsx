@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -19,10 +19,14 @@ import {
 import { formatDisplayValue } from "../../utils/formatters";
 import { createActiveFilterChips } from "../../utils/filterUtils";
 import { queryKeys } from "../../utils/queryKeys";
+import ActionMenu from "../../components/common/tables/ActionMenu";
 import {
   StateBadge,
   buildRecordFollowUpVisitPath,
+  buildTaskActions,
   formatDate,
+  formatFollowUpId,
+  formatTimeLabel,
   getCalendarEffectiveState,
   getEffectiveState,
   getTaskClassification,
@@ -45,7 +49,7 @@ import {
 } from "../../components/features/followups/followUpCalendarUtils.js";
 import FollowUpWeekCalendar from "../../components/features/followups/FollowUpWeekCalendar";
 import FollowUpDayView from "../../components/features/followups/FollowUpDayView";
-import FollowUpMonthMiniCalendar from "../../components/features/followups/FollowUpMonthMiniCalendar";
+import FollowUpMonthCalendar from "../../components/features/followups/FollowUpMonthCalendar";
 import FollowUpActionModal from "../../components/features/followups/FollowUpActionModal";
 
 const DEFAULT_FILTERS = {
@@ -403,10 +407,23 @@ export default function FollowUps() {
 
   const headerLabel =
     viewMode === "day"
-      ? formatMonthLabel(currentDate)
+      ? currentDate.toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        })
       : viewMode === "month"
         ? formatMonthLabel(currentDate)
         : formatWeekRangeLabel(weekStart, weekDays[6]);
+  // One handler set for the List menu and every Calendar event, so all four
+  // views drive the same record / reschedule / cancel flows.
+  const taskHandlers = {
+    onTaskClick: handleTaskClick,
+    onRecordVisit: recordFollowUpVisit,
+    onReschedule: openRescheduleModal,
+    onCancel: openCancelModal,
+    onViewRecord: viewCompletedHealthRecord,
+  };
 
   return (
     <DashboardLayout role="bhc" title="Follow-ups">
@@ -447,11 +464,23 @@ export default function FollowUps() {
         ) : null}
 
         {!loading && (
-          <div className="anim-fade-up rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm shadow-black/[0.02]">
-            <div className="flex flex-col gap-3 border-b border-[#F1F5F9] pb-3 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="text-sm font-bold text-[#0F172A]">
-                {viewMode === "list" ? "Scheduled Return Visits" : headerLabel}
-              </h2>
+          <div className="anim-fade-up rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm shadow-black/[0.02]">
+            <div className="flex flex-col gap-3 border-b border-[#F1F5F9] pb-4 lg:flex-row lg:items-center lg:justify-between">
+              {viewMode === "list" ? (
+                <div className="min-w-0">
+                  <h2 className="text-[15px] font-bold text-[#0F172A]">
+                    Scheduled Return Visits
+                  </h2>
+                  <p className="mt-0.5 text-[12px] text-[#64748B]">
+                    Scheduled follow-up visits due for this patient list. Use
+                    the menu to record or reschedule a visit.
+                  </p>
+                </div>
+              ) : (
+                <h2 className="text-[15px] font-bold text-[#0F172A]">
+                  {headerLabel}
+                </h2>
+              )}
 
               <div className="flex flex-wrap items-center gap-2">
                 {viewMode !== "list" && (
@@ -501,24 +530,15 @@ export default function FollowUps() {
               </div>
             </div>
 
-            <div className="pt-3">
+            <div className="pt-4">
               {viewMode === "list" && (
-                <FollowUpList
-                  tasks={filteredTasks}
-                  onView={handleTaskClick}
-                  onRecord={recordFollowUpVisit}
-                  onReschedule={openRescheduleModal}
-                  onCancel={openCancelModal}
-                  onViewRecord={viewCompletedHealthRecord}
-                />
+                <FollowUpList tasks={filteredTasks} handlers={taskHandlers} />
               )}
               {viewMode === "week" && (
                 <FollowUpWeekCalendar
                   weekStart={weekStart}
                   groupedByDay={groupedByDay}
-                  onTaskClick={handleTaskClick}
-                  onRecordVisit={recordFollowUpVisit}
-                  onReschedule={openRescheduleModal}
+                  {...taskHandlers}
                 />
               )}
 
@@ -526,17 +546,16 @@ export default function FollowUps() {
                 <FollowUpDayView
                   date={currentDate}
                   tasksForDay={getTasksForDay(groupedByDay, currentDate)}
-                  onTaskClick={handleTaskClick}
-                  onRecordVisit={recordFollowUpVisit}
-                  onReschedule={openRescheduleModal}
+                  {...taskHandlers}
                 />
               )}
 
               {viewMode === "month" && (
-                <FollowUpMonthMiniCalendar
+                <FollowUpMonthCalendar
                   monthDate={currentDate}
                   groupedByDay={groupedByDay}
                   onSelectDay={handleSelectDayFromMonth}
+                  {...taskHandlers}
                 />
               )}
             </div>
@@ -547,14 +566,7 @@ export default function FollowUps() {
   );
 }
 
-function FollowUpList({
-  tasks,
-  onView,
-  onRecord,
-  onReschedule,
-  onCancel,
-  onViewRecord,
-}) {
+function FollowUpList({ tasks, handlers }) {
   if (tasks.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-slate-200 px-6 py-12 text-center text-sm text-slate-500">
@@ -565,69 +577,70 @@ function FollowUpList({
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
+      <table className="w-full min-w-[820px] text-left text-sm">
         <thead>
-          <tr className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-            <th className="px-3 py-3">Patient</th>
-            <th className="px-3 py-3">Linked Record</th>
-            <th className="px-3 py-3">Schedule</th>
-            <th className="px-3 py-3">Service</th>
-            <th className="px-3 py-3">Status</th>
-            <th className="px-3 py-3 text-right">Actions</th>
+          <tr className="border-b border-[#F1F5F9] text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+            <th className="px-3 pb-3 font-bold">Follow-up ID</th>
+            <th className="px-3 pb-3 font-bold">Patient</th>
+            <th className="px-3 pb-3 font-bold">Program</th>
+            <th className="px-3 pb-3 font-bold">Follow-up Date</th>
+            <th className="px-3 pb-3 font-bold">Status</th>
+            <th className="px-3 pb-3 font-bold">Recorded From</th>
+            <th className="px-3 pb-3 text-right font-bold">Action</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-[#F1F5F9]">
           {tasks.map((task) => {
-            const active = ["due_today", "no_show", "upcoming", "rescheduled"].includes(
-              task.effectiveState,
-            );
+            const patientName = formatDisplayValue(task.patientName, "Unnamed Patient");
+            const timeLabel = formatTimeLabel(task.dueTime);
+            const actions = buildTaskActions(task, {
+              onRecordVisit: () => handlers.onRecordVisit(task),
+              onReschedule: () => handlers.onReschedule(task),
+              onCancel: () => handlers.onCancel(task),
+              onViewRecord: () => handlers.onViewRecord(task),
+            });
+
             return (
-              <tr key={task.id} className="align-top hover:bg-slate-50/60">
-                <td className="px-3 py-4">
-                  <p className="font-bold text-slate-900">
-                    {formatDisplayValue(task.patientName)}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Patient ID {formatDisplayValue(task.patientId)}
-                  </p>
+              <tr key={task.id} className="transition-colors hover:bg-[#F8FAFC]">
+                <td className="whitespace-nowrap px-3 py-3.5 font-mono text-[12px] font-semibold text-[#475569]">
+                  {formatFollowUpId(task)}
                 </td>
-                <td className="px-3 py-4 font-semibold text-slate-700">
-                  Record #{formatDisplayValue(task.healthRecordId)}
-                </td>
-                <td className="px-3 py-4 text-slate-700">
-                  <p className="font-semibold">{formatDate(task.dueDate)}</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {task.dueTime || "Time not recorded"}
+                <td className="px-3 py-3.5">
+                  <p className="font-semibold text-[#0F172A]">{patientName}</p>
+                  <p className="mt-0.5 text-[11.5px] text-[#94A3B8]">
+                    Patient #{formatDisplayValue(task.patientId, "—")}
                   </p>
                 </td>
-                <td className="px-3 py-4 text-slate-700">
+                <td className="px-3 py-3.5 text-[#334155]">
                   {getTaskServiceTypeLabel(task)}
                 </td>
-                <td className="px-3 py-4">
+                <td className="whitespace-nowrap px-3 py-3.5">
+                  <p className="text-[#334155]">{formatDate(task.dueDate)}</p>
+                  {timeLabel && (
+                    <p className="mt-0.5 text-[11.5px] text-[#94A3B8]">{timeLabel}</p>
+                  )}
+                </td>
+                <td className="px-3 py-3.5">
                   <StateBadge state={task.effectiveState} />
                 </td>
-                <td className="px-3 py-4">
-                  <div className="flex min-w-max justify-end gap-2">
-                    <TableAction onClick={() => onView(task)}>View Details</TableAction>
-                    {active && (
-                      <>
-                        <TableAction primary onClick={() => onRecord(task)}>
-                          Record Visit
-                        </TableAction>
-                        <TableAction onClick={() => onReschedule(task)}>
-                          Reschedule
-                        </TableAction>
-                        <TableAction danger onClick={() => onCancel(task)}>
-                          Cancel
-                        </TableAction>
-                      </>
-                    )}
-                    {task.effectiveState === "fulfilled" && (
-                      <TableAction primary onClick={() => onViewRecord(task)}>
-                        View Health Record
-                      </TableAction>
-                    )}
-                  </div>
+                <td className="whitespace-nowrap px-3 py-3.5">
+                  {task.healthRecordId ? (
+                    <Link
+                      to={`/bhc/health-records/${task.healthRecordId}`}
+                      className="font-semibold text-[#B91C1C] hover:underline"
+                    >
+                      Record #{task.healthRecordId}
+                    </Link>
+                  ) : (
+                    <span className="text-[#94A3B8]">—</span>
+                  )}
+                </td>
+                <td className="px-3 py-3.5 text-right">
+                  <ActionMenu
+                    title={patientName}
+                    subtitle={formatFollowUpId(task)}
+                    actions={actions}
+                  />
                 </td>
               </tr>
             );
@@ -635,23 +648,5 @@ function FollowUpList({
         </tbody>
       </table>
     </div>
-  );
-}
-
-function TableAction({ children, onClick, primary = false, danger = false }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${
-        primary
-          ? "border-[#B91C1C] bg-[#B91C1C] text-white hover:bg-[#991B1B]"
-          : danger
-            ? "border-red-200 bg-white text-[#B91C1C] hover:bg-red-50"
-            : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-      }`}
-    >
-      {children}
-    </button>
   );
 }

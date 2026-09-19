@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -49,6 +49,7 @@ import {
   formatLongDate,
   formatPatientName,
 } from "../../utils/formatters";
+import { getProfileReturnPath } from "../../utils/profileNavigation";
 import {
   getRecordIdLabel,
   getRecordVisitTypeLabel,
@@ -90,6 +91,9 @@ const TAB_LABELS = {
 export default function PatientDetails() {
   const { patientId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Explicit origin passed by whoever opened the profile; Patients otherwise.
+  const backPath = getProfileReturnPath(location, "/bhc/patients");
   const queryClient = useQueryClient();
   const [patientOverride, setPatientOverride] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
@@ -565,11 +569,11 @@ export default function PatientDetails() {
         <div className="min-h-[520px]">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <Link
-              to="/bhc/patients"
+              to={backPath}
               className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#0F172A]"
             >
               <ArrowLeft size={16} />
-              Back to Patients
+              Back
             </Link>
             <div className="flex flex-wrap items-center gap-2">
               {patientUpdating && (

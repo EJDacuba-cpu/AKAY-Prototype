@@ -1,6 +1,5 @@
 import { formatDayHeaderLabel, isSameDay } from "./followUpCalendarUtils.js";
 import FollowUpEventCard from "./FollowUpEventCard";
-import { formatStateLabel } from "./followUpStatusStyles.jsx";
 
 const DEFAULT_START_HOUR = 3;
 const DEFAULT_END_HOUR = 20;
@@ -21,8 +20,17 @@ export default function FollowUpDayView({
   onTaskClick,
   onRecordVisit,
   onReschedule,
+  onCancel,
+  onViewRecord,
   showHeader = true,
 }) {
+  const cardHandlers = {
+    onClick: onTaskClick,
+    onRecordVisit,
+    onReschedule,
+    onCancel,
+    onViewRecord,
+  };
   const isToday = isSameDay(date, new Date());
   const timedHours = tasksForDay.timed
     .map(taskHour)
@@ -38,15 +46,6 @@ export default function FollowUpDayView({
       hour,
       tasksForDay.timed.filter((task) => taskHour(task) === hour),
     ]),
-  );
-  const untimedGroups = Object.entries(
-    tasksForDay.untimed.reduce((groups, task) => {
-      const state = task.effectiveState || "upcoming";
-      return {
-        ...groups,
-        [state]: [...(groups[state] || []), task],
-      };
-    }, {}),
   );
 
   return (
@@ -68,29 +67,17 @@ export default function FollowUpDayView({
         </div>
       )}
 
-      {untimedGroups.length > 0 && (
-        <div className="border-b border-[#E5E7EB]">
-          {untimedGroups.map(([state, stateTasks]) => (
-            <div
-              key={state}
-              className="grid grid-cols-[64px_minmax(0,1fr)] border-b border-[#EEF2F6] last:border-b-0"
-            >
-              <div className="border-r border-[#EEF2F6] bg-[#FAFBFC] px-2 py-3 text-right text-[9px] font-bold uppercase tracking-wider text-[#64748B]">
-                {formatStateLabel(state)}
-              </div>
-              <div className="grid gap-2 p-3 lg:grid-cols-2">
-                {stateTasks.map((task) => (
-                  <FollowUpEventCard
-                    key={task.id}
-                    task={task}
-                    onClick={onTaskClick}
-                    onRecordVisit={onRecordVisit}
-                    onReschedule={onReschedule}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+      {/* Follow-ups saved without a time are never given an artificial slot. */}
+      {tasksForDay.untimed.length > 0 && (
+        <div className="grid grid-cols-[64px_minmax(0,1fr)] border-b border-[#E5E7EB]">
+          <div className="border-r border-[#EEF2F6] bg-[#FAFBFC] px-2 py-3 text-right text-[9px] font-bold uppercase tracking-wider text-[#64748B]">
+            All day
+          </div>
+          <div className="grid gap-2 p-3 lg:grid-cols-2">
+            {tasksForDay.untimed.map((task) => (
+              <FollowUpEventCard key={task.id} task={task} {...cardHandlers} />
+            ))}
+          </div>
         </div>
       )}
 
@@ -111,13 +98,7 @@ export default function FollowUpDayView({
                 {hourTasks.length > 0 ? (
                   <div className="grid gap-2 lg:grid-cols-2">
                     {hourTasks.map((task) => (
-                      <FollowUpEventCard
-                        key={task.id}
-                        task={task}
-                        onClick={onTaskClick}
-                        onRecordVisit={onRecordVisit}
-                        onReschedule={onReschedule}
-                      />
+                      <FollowUpEventCard key={task.id} task={task} {...cardHandlers} />
                     ))}
                   </div>
                 ) : null}

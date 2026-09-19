@@ -22,9 +22,9 @@ export const STATE_CONFIG = {
   },
   rescheduled: {
     label: "Rescheduled",
-    badge: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
-    event: "border-l-[#3B82F6] bg-[#EFF6FF] text-[#1D4ED8]",
-    dot: "bg-[#3B82F6]",
+    badge: "border-[#CBD5E1] bg-[#F1F5F9] text-[#334155]",
+    event: "border-l-[#64748B] bg-[#F1F5F9] text-[#334155]",
+    dot: "bg-[#64748B]",
   },
   fulfilled: {
     label: "Completed",
@@ -86,6 +86,11 @@ export function getCalendarEffectiveState(task) {
   return getEffectiveState(task);
 }
 
+/**
+ * The one follow-up action menu, shared by the List rows and every Calendar
+ * event so the two views can never offer different actions for the same
+ * task. Optional handlers are only listed when the caller supplies them.
+ */
 export function buildTaskActions(task, handlers) {
   const actions = [];
 
@@ -98,6 +103,19 @@ export function buildTaskActions(task, handlers) {
       label: "Reschedule",
       onClick: handlers.onReschedule,
     });
+    if (handlers.onCancel) {
+      actions.push({
+        label: "Cancel Follow-up",
+        onClick: handlers.onCancel,
+      });
+    }
+  }
+
+  if (task.effectiveState === "fulfilled" && handlers.onViewRecord) {
+    actions.push({
+      label: "View Health Record",
+      onClick: handlers.onViewRecord,
+    });
   }
 
   actions.push({
@@ -105,6 +123,10 @@ export function buildTaskActions(task, handlers) {
     to: `/bhc/follow-ups/${task.id}`,
   });
   return actions;
+}
+
+export function formatFollowUpId(task) {
+  return task?.id ? `FU-${task.id}` : "—";
 }
 
 export function getTaskNavigationTarget(task) {
@@ -152,7 +174,17 @@ export function formatStateLabel(state) {
 
 export function normalizeDate(value) {
   if (!value) return "";
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  // Local calendar date, not toISOString(): in UTC+8 a local midnight is
+  // still the previous day in UTC, which put every calendar event one column
+  // late and moved "today" to tomorrow.
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return "";
+    return [
+      value.getFullYear(),
+      String(value.getMonth() + 1).padStart(2, "0"),
+      String(value.getDate()).padStart(2, "0"),
+    ].join("-");
+  }
   return String(value).slice(0, 10);
 }
 

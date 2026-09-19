@@ -1,5 +1,6 @@
 import {
   AlertCircle,
+  ArrowLeft,
   CalendarDays,
   Check,
   ChevronRight,
@@ -8,6 +9,7 @@ import {
   Search,
   X,
 } from "lucide-react";
+import { forwardRef, useRef } from "react";
 
 import InlineSpinner from "../../../common/loading/InlineSpinner";
 
@@ -25,13 +27,14 @@ export function WizardCard({
   visitTime,
   showVisitOverview = true,
   unboxed = false,
+  headerActions = null,
   children,
 }) {
   return (
     <section className="anim-fade-up ml-0 mr-auto w-full max-w-6xl">
       <div className={unboxed ? "" : "rounded-xl border border-[#E8ECF0] bg-white px-5 py-5 shadow-sm sm:px-6"}>
         <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
+          <div className="min-w-0">
             <h2 className="text-lg font-bold tracking-tight text-[#0F172A]">
               {title}
             </h2>
@@ -41,24 +44,29 @@ export function WizardCard({
               </p>
             )}
           </div>
-          {showVisitOverview && (
-            <div className="flex flex-none items-center gap-3.5">
-              <span className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-[#94A3B8]">
-                Visit Overview
-              </span>
-              <span className="h-4 w-px bg-[#E2E8F0]" aria-hidden="true" />
-              <span className="flex items-center gap-1.5">
-                <CalendarDays size={14} className="text-[#B91C1C]" />
-                <span className="text-[12.5px] font-bold text-[#0F172A]">
-                  {visitDate}
-                </span>
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Clock size={14} className="text-[#B91C1C]" />
-                <span className="text-[12.5px] font-bold text-[#0F172A]">
-                  {visitTime}
-                </span>
-              </span>
+          {(showVisitOverview || headerActions) && (
+            <div className="flex w-full min-w-0 flex-col gap-3 sm:w-auto sm:items-end">
+              {showVisitOverview && (
+                <div className="flex flex-none flex-wrap items-center gap-3.5">
+                  <span className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-[#94A3B8]">
+                    Visit Overview
+                  </span>
+                  <span className="h-4 w-px bg-[#E2E8F0]" aria-hidden="true" />
+                  <span className="flex items-center gap-1.5">
+                    <CalendarDays size={14} className="text-[#B91C1C]" />
+                    <span className="text-[12.5px] font-bold text-[#0F172A]">
+                      {visitDate}
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Clock size={14} className="text-[#B91C1C]" />
+                    <span className="text-[12.5px] font-bold text-[#0F172A]">
+                      {visitTime}
+                    </span>
+                  </span>
+                </div>
+              )}
+              {headerActions}
             </div>
           )}
         </div>
@@ -109,139 +117,217 @@ function WizardFooter({
   );
 }
 
-function PatientPanel({
-  selectedPatient,
-  patients,
-  selectedPatientId,
-  onSelectPatient,
-  searchOpen,
-  searchTerm,
-  onSearchChange,
-  onToggleSearch,
-  draftCount,
-  onOpenDrafts,
-  showDrafts,
-  loading,
-  loadError,
-  onRetryLoad,
-}) {
+/**
+ * Page-level patient search for the setup step. Presentational only: the rows,
+ * the search term and the open state all come from the page's existing patient
+ * search, so there is still exactly one search implementation.
+ */
+const PatientSearchBar = forwardRef(function PatientSearchBar(
+  {
+    searchRef,
+    patients,
+    selectedPatientId,
+    onSelectPatient,
+    searchOpen,
+    searchTerm,
+    onSearchChange,
+    onOpenSearch,
+    onCloseSearch,
+    draftCount,
+    onOpenDrafts,
+    showDrafts,
+    loading,
+    loadError,
+    onRetryLoad,
+  },
+  inputRef,
+) {
   return (
-    <div className="w-full flex-none rounded-2xl border border-[#E8ECF0] bg-white p-4 lg:w-[260px] lg:min-h-[430px]">
-      <div className="mb-4 flex items-center justify-end gap-2">
-        {searchOpen ? (
-          <div className="flex h-9 flex-1 items-center gap-2 rounded-lg border border-[#FECACA] bg-white px-2.5">
-            <Search size={14} className="shrink-0 text-[#94A3B8]" />
-            <input
-              autoFocus
-              value={searchTerm}
-              onChange={(event) => onSearchChange(event.target.value)}
-              placeholder="Search patients..."
-              className="min-w-0 flex-1 border-0 text-[12.5px] outline-none"
-            />
+    <div className="flex w-full min-w-0 items-center gap-2 sm:w-[420px]">
+      <div ref={searchRef} className="relative min-w-0 flex-1">
+        <div
+          className={`flex h-9 items-center gap-2 rounded-lg border bg-white px-2.5 transition ${
+            searchOpen ? "border-[#FECACA]" : "border-[#E5E7EB] hover:border-[#FECACA]"
+          }`}
+        >
+          <Search size={14} className="shrink-0 text-[#94A3B8]" />
+          <input
+            ref={inputRef}
+            value={searchTerm}
+            onFocus={onOpenSearch}
+            onChange={(event) => {
+              onSearchChange(event.target.value);
+              if (!searchOpen) onOpenSearch();
+            }}
+            placeholder="Search patient by name or Patient ID..."
+            aria-label="Search patient"
+            aria-expanded={searchOpen}
+            aria-controls="setup-patient-results"
+            role="combobox"
+            className="min-w-0 flex-1 border-0 bg-transparent text-[12.5px] text-[#0F172A] outline-none placeholder:text-[#94A3B8]"
+          />
+          {(searchTerm || searchOpen) && (
             <button
               type="button"
-              onClick={onToggleSearch}
-              aria-label="Close patient search"
+              onClick={() => {
+                onSearchChange("");
+                onCloseSearch();
+              }}
+              aria-label="Clear patient search"
               className="shrink-0 text-[#94A3B8] hover:text-[#B91C1C]"
             >
               <X size={14} />
             </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={onToggleSearch}
-            aria-label="Search patients"
-            className="flex h-9 min-w-0 flex-1 gap-2 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
+          )}
+        </div>
+
+        {searchOpen && (
+          <div
+            id="setup-patient-results"
+            role="listbox"
+            className="absolute left-0 right-0 top-full z-30 mt-1.5 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white shadow-lg shadow-black/[0.06]"
           >
-            <Search size={14} /><span className="truncate text-[11px]">Search by name or Patient ID</span>
-          </button>
-        )}
-        {showDrafts && (
-          <button
-            type="button"
-            onClick={onOpenDrafts}
-            className="inline-flex h-9 flex-none items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-3 text-[12px] font-bold text-[#475569] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
-          >
-            <FileClock size={14} />
-            Drafts
-            {draftCount > 0 && (
-              <span className="flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-[#B91C1C] px-1 text-[9px] font-bold text-white">
-                {draftCount}
-              </span>
+            <p className="border-b border-[#F1F5F9] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[#94A3B8]">
+              {searchTerm.trim() ? "Matching Patients" : "Recent Patients"}
+            </p>
+            {loading ? (
+              <div className="py-6 text-center">
+                <InlineSpinner label="Loading patients..." />
+              </div>
+            ) : loadError ? (
+              <div className="m-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+                <p className="flex items-start gap-2 text-[11.5px] leading-relaxed text-amber-800">
+                  <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                  {loadError}
+                </p>
+                <button
+                  type="button"
+                  onClick={onRetryLoad}
+                  className="mt-2 text-[11px] font-bold text-[#991B1B] hover:text-[#7F1D1D]"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : patients.length === 0 ? (
+              <p className="px-3 py-5 text-center text-[11.5px] text-[#94A3B8]">
+                No matching patients.
+              </p>
+            ) : (
+              <div className="max-h-[340px] overflow-y-auto">
+                {patients.map((patient) => {
+                  const selected =
+                    String(patient.id) === String(selectedPatientId);
+
+                  return (
+                    <button
+                      key={patient.id}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      onClick={() => onSelectPatient(patient.id)}
+                      className={`flex w-full min-w-0 items-start gap-2.5 border-b border-[#F1F5F9] px-3 py-2.5 text-left transition last:border-b-0 ${
+                        selected ? "bg-[#FEF2F2]" : "hover:bg-[#F8FAFC]"
+                      }`}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-bold text-[#111827]">
+                          {patient.name}
+                        </span>
+                        <span className="mt-0.5 block truncate text-[11px] text-[#64748B]">
+                          {patient.meta}
+                        </span>
+                        {patient.address && (
+                          <span className="mt-0.5 block truncate text-[11px] text-[#94A3B8]">
+                            {patient.address}
+                          </span>
+                        )}
+                      </span>
+                      {selected && (
+                        <Check
+                          size={14}
+                          strokeWidth={3}
+                          className="mt-1 shrink-0 text-[#B91C1C]"
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             )}
-          </button>
+          </div>
         )}
       </div>
 
-      {selectedPatient && !searchOpen ? (
-        <div className="space-y-4 text-xs">
-          <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
-            <div><p className="font-semibold text-slate-900">{selectedPatient.name}</p><p className="mt-1 text-slate-400">Patient #{selectedPatient.id}</p></div>
-            <button type="button" onClick={onToggleSearch} className="rounded border border-slate-200 px-2 py-1 text-[10px]">Change</button>
-          </div>
-          <dl className="space-y-3">{selectedPatient.fields.map(({label,value}) => <div key={label}><dt className="text-[9px] uppercase tracking-wider text-slate-400">{label}</dt><dd className="mt-1 text-slate-900">{value || "Not recorded"}</dd></div>)}</dl>
-        </div>
-      ) : <>
-      <p className="mb-2 text-[10.5px] font-bold uppercase tracking-[0.08em] text-[#94A3B8]">
-        Recent Patients
+      {showDrafts && (
+        <button
+          type="button"
+          onClick={onOpenDrafts}
+          className="inline-flex h-9 flex-none items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-3 text-[12px] font-bold text-[#475569] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
+        >
+          <FileClock size={14} />
+          Drafts
+          {draftCount > 0 && (
+            <span className="flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-[#B91C1C] px-1 text-[9px] font-bold text-white">
+              {draftCount}
+            </span>
+          )}
+        </button>
+      )}
+    </div>
+  );
+});
+
+/**
+ * Read-only preview of the chosen patient. "Change Patient" only reopens the
+ * top search; the current selection stays until another patient is picked.
+ */
+function PatientPreview({ selectedPatient, onChangePatient }) {
+  return (
+    <div className="w-full flex-none rounded-2xl border border-[#E8ECF0] bg-white p-4 lg:w-[280px]">
+      <p className="text-[11.5px] font-bold uppercase tracking-[0.08em] text-[#94A3B8]">
+        Patient Preview
       </p>
 
-      {loading ? (
-        <div className="py-6 text-center">
-          <InlineSpinner label="Loading patients..." />
-        </div>
-      ) : loadError ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
-          <p className="flex items-start gap-2 text-[11.5px] leading-relaxed text-amber-800">
-            <AlertCircle size={14} className="mt-0.5 shrink-0" />
-            {loadError}
-          </p>
+      {selectedPatient ? (
+        <div className="mt-3 text-xs">
+          <div className="border-b border-[#F1F5F9] pb-3">
+            <p className="text-[14px] font-bold text-[#0F172A]">
+              {selectedPatient.name}
+            </p>
+            <p className="mt-0.5 text-[11px] text-[#94A3B8]">
+              Patient #{selectedPatient.id}
+            </p>
+          </div>
+          <dl className="mt-3 space-y-3">
+            {selectedPatient.fields.map(({ label, value }) => (
+              <div key={label}>
+                <dt className="text-[9.5px] font-bold uppercase tracking-wider text-[#94A3B8]">
+                  {label}
+                </dt>
+                <dd className="mt-0.5 break-words text-[12.5px] text-[#0F172A]">
+                  {value || "Not recorded"}
+                </dd>
+              </div>
+            ))}
+          </dl>
           <button
             type="button"
-            onClick={onRetryLoad}
-            className="mt-2 text-[11px] font-bold text-[#991B1B] hover:text-[#7F1D1D]"
+            onClick={onChangePatient}
+            className="mt-4 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-[12px] font-semibold text-[#475569] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
           >
-            Retry
+            Change Patient
           </button>
         </div>
-      ) : patients.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-[#E5E7EB] px-3 py-4 text-center text-[11.5px] text-[#94A3B8]">
-          No matching patients.
-        </p>
       ) : (
-        <div className="flex max-h-[420px] flex-col overflow-y-auto border-t border-[#F1F5F9]">
-          {patients.map((patient) => {
-            const selected =
-              String(patient.id) === String(selectedPatientId);
-
-            return (
-              <button
-                key={patient.id}
-                type="button"
-                onClick={() => onSelectPatient(patient.id)}
-                aria-pressed={selected}
-                className={`flex min-w-0 items-center gap-2.5 border-b border-[#F1F5F9] px-2.5 py-2.5 text-left transition ${
-                  selected ? "rounded-lg bg-[#FEF2F2]" : "hover:bg-[#F8FAFC]"
-                }`}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-bold text-[#111827]">
-                    {patient.name}
-                  </span>
-                  <span className="mt-0.5 block truncate text-[11px] text-[#94A3B8]">
-                    {patient.meta}
-                  </span>
-                </span>
-                {selected && (
-                  <Check size={14} strokeWidth={3} className="shrink-0 text-[#B91C1C]" />
-                )}
-              </button>
-            );
-          })}
+        <div className="mt-3 rounded-lg border border-dashed border-[#E5E7EB] px-3 py-8 text-center">
+          <p className="text-[12.5px] font-semibold text-[#475569]">
+            No patient selected yet.
+          </p>
+          <p className="mt-1 text-[11.5px] text-[#94A3B8]">
+            Search for a patient above to begin.
+          </p>
         </div>
       )}
-      </>}
     </div>
   );
 }
@@ -275,10 +361,12 @@ export function ConsultationSetupStep({
   onSelectPatient,
   consultationType,
   onConsultationTypeChange,
+  searchRef,
   searchOpen,
   searchTerm,
   onSearchChange,
-  onToggleSearch,
+  onOpenSearch,
+  onCloseSearch,
   draftCount,
   onOpenDrafts,
   showDrafts,
@@ -289,8 +377,17 @@ export function ConsultationSetupStep({
   error,
   onBack,
   onNext,
+  nextBusy = false,
 }) {
   const canProceed = Boolean(selectedPatientId && consultationType);
+  const searchInputRef = useRef(null);
+
+  // Focusing the input opens the dropdown through its onFocus, so Change
+  // Patient reuses the normal search path and leaves the selection untouched.
+  function handleChangePatient() {
+    onOpenSearch();
+    searchInputRef.current?.focus();
+  }
 
   return (
     <WizardCard
@@ -299,23 +396,31 @@ export function ConsultationSetupStep({
       subtitle="Set the patient and visit type to begin."
       visitDate={visitDate}
       visitTime={visitTime}
-    >
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-        <PatientPanel
-          selectedPatient={selectedPatient}
+      headerActions={
+        <PatientSearchBar
+          ref={searchInputRef}
+          searchRef={searchRef}
           patients={patients}
           selectedPatientId={selectedPatientId}
           onSelectPatient={onSelectPatient}
           searchOpen={searchOpen}
           searchTerm={searchTerm}
           onSearchChange={onSearchChange}
-          onToggleSearch={onToggleSearch}
+          onOpenSearch={onOpenSearch}
+          onCloseSearch={onCloseSearch}
           draftCount={draftCount}
           onOpenDrafts={onOpenDrafts}
           showDrafts={showDrafts}
           loading={patientsLoading}
           loadError={patientsLoadError}
           onRetryLoad={onRetryLoadPatients}
+        />
+      }
+    >
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+        <PatientPreview
+          selectedPatient={selectedPatient}
+          onChangePatient={handleChangePatient}
         />
 
         <div className="min-w-0 flex-1 rounded-2xl border border-[#E8ECF0] bg-white p-5">
@@ -378,6 +483,7 @@ export function ConsultationSetupStep({
             onBack={onBack}
             onNext={onNext}
             nextDisabled={!canProceed}
+            nextBusy={nextBusy}
           />
         </div>
       </div>
@@ -389,6 +495,26 @@ export function ConsultationSetupStep({
 export function ConsultationClinicalStep({ programs, selected = [], primary, onSelect, onPrimaryChange, mode, onModeChange, onBack, onNext, error, children }) {
   return (
     <section className="max-w-5xl rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      {/* Back lives up here now; the footer below carries Next only. */}
+      {onBack && (
+        <button
+          type="button"
+          onClick={onBack}
+          className="mb-3 inline-flex items-center gap-1.5 rounded-md text-[12px] font-semibold text-[#64748B] transition hover:text-[#B91C1C]"
+        >
+          <ArrowLeft size={14} />
+          Back
+        </button>
+      )}
+      <header className="mb-5 border-b border-slate-100 pb-4">
+        <h2 className="text-[17px] font-bold tracking-tight text-[#0F172A]">
+          New Consultation
+        </h2>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-[#64748B]">
+          Record today&apos;s clinical assessment, vital signs, and consultation
+          details for this patient.
+        </p>
+      </header>
       {children}
       <div className="mt-6 border-t border-slate-100 pt-5" data-field="healthRecordType">
         <h3 className="text-sm font-semibold text-slate-900">Consultation Type<span className="text-red-700">*</span></h3>
@@ -420,7 +546,7 @@ export function ConsultationClinicalStep({ programs, selected = [], primary, onS
         </>}
         {error && <p role="alert" className="mt-3 text-xs text-red-700">{error}</p>}
       </div>
-      <WizardFooter onBack={onBack} onNext={onNext} nextDisabled={!mode || (mode === "program" && !selected.length)} />
+      <WizardFooter onNext={onNext} nextDisabled={!mode || (mode === "program" && !selected.length)} />
     </section>
   );
 }

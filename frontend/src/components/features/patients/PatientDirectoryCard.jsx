@@ -1,12 +1,5 @@
 import { Link } from "react-router";
-import {
-  CalendarDays,
-  Eye,
-  FilePlus2,
-  MapPin,
-  Pencil,
-  Phone,
-} from "lucide-react";
+import { MapPin } from "lucide-react";
 
 import { formatDisplayValue, formatPatientName } from "../../../utils/formatters";
 
@@ -97,6 +90,16 @@ function getPatientLocation(patient) {
   );
 }
 
+function getBirthDate(patient) {
+  return normalizeDate(
+    patient.birthDate ||
+      patient.birthdate ||
+      patient.dateOfBirth ||
+      patient.date_of_birth ||
+      patient.dob,
+  );
+}
+
 function getRegisteredDate(patient) {
   return normalizeDate(
     patient.dateRegistered ||
@@ -111,6 +114,17 @@ function getPatientDisplayId(patient) {
   return formatDisplayValue(patient.patientId || patient.id, "Not recorded");
 }
 
+function DetailField({ label, value }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#94A3B8]">
+        {label}
+      </p>
+      <p className="truncate text-[11.5px] font-medium text-[#475569]">{value}</p>
+    </div>
+  );
+}
+
 export default function PatientDirectoryCard({ patient, basePath }) {
   const routePatientId = formatDisplayValue(patient.id || patient.patientId, "");
   const patientName = formatPatientName(patient, "Unnamed Patient");
@@ -120,62 +134,50 @@ export default function PatientDirectoryCard({ patient, basePath }) {
   const ageSex = getPatientAgeSex(patient);
   const contact = getPatientContact(patient);
   const location = getPatientLocation(patient);
+  const birthDate = formatDate(getBirthDate(patient));
   const registeredDate = formatDate(getRegisteredDate(patient));
-  const metadata = [sex, age || (!sex ? ageSex : ""), location]
-    .filter((value) => value && value !== "Not recorded")
-    .join(` ${String.fromCharCode(8226)} `);
+  // Sex and age head the card on their own now; the barangay moved down to the
+  // pinned line, so it is no longer part of this joined string.
+  const sexAge =
+    [sex, age].filter(Boolean).join(` ${String.fromCharCode(183)} `) || ageSex;
 
   return (
-    <article className="group flex min-h-[132px] flex-col rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm shadow-black/[0.015] transition-all duration-200 hover:-translate-y-0.5 hover:border-red-100 hover:shadow-md">
+    <article className="group flex flex-col rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm shadow-black/[0.015] transition-all duration-200 hover:-translate-y-0.5 hover:border-red-100 hover:shadow-md">
       <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="truncate text-[13px] font-bold leading-5 text-[#0F172A]">
-            {patientName}
-          </h3>
-        </div>
+        <h3 className="min-w-0 truncate text-[13px] font-bold leading-5 text-[#0F172A]">
+          {patientName}
+        </h3>
         <span className="shrink-0 rounded-md border border-red-100 bg-white px-2 py-0.5 font-mono text-[10px] font-semibold text-[#B91C1C]">
           ID #{displayId}
         </span>
       </div>
 
-      <div className="mt-2 min-w-0 space-y-1">
-        <p className="flex min-w-0 items-center gap-1.5 text-[11.5px] font-medium text-[#64748B]">
-          <MapPin size={12} className="shrink-0 text-[#94A3B8]" />
-          <span className="truncate">{metadata || ageSex}</span>
-        </p>
-        <p className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-[#475569]">
-          <Phone size={12} className="shrink-0 text-[#94A3B8]" />
-          <span className="truncate">{contact}</span>
-        </p>
-        <p className="flex min-w-0 items-center gap-1.5 text-[10.5px] font-medium text-[#94A3B8]">
-          <CalendarDays size={12} className="shrink-0" />
-          <span className="truncate">Registered {registeredDate}</span>
-        </p>
+      <div className="mt-2.5 grid min-w-0 grid-cols-2 gap-x-3 gap-y-2">
+        <div className="min-w-0 space-y-1.5">
+          <p className="truncate text-[11.5px] font-semibold text-[#0F172A]">
+            {sexAge}
+          </p>
+          {location && (
+            <p className="flex min-w-0 items-start gap-1 text-[11px] font-medium text-[#64748B]">
+              <MapPin size={12} className="mt-px shrink-0 text-[#94A3B8]" />
+              <span className="min-w-0">{location}</span>
+            </p>
+          )}
+        </div>
+
+        <div className="min-w-0 space-y-2">
+          <DetailField label="Date of Birth" value={birthDate} />
+          <DetailField label="Contact" value={contact} />
+          <DetailField label="Registered" value={registeredDate} />
+        </div>
       </div>
 
-      <div className="mt-auto grid grid-cols-3 gap-1.5 pt-3">
-        <Link
-          to={`${basePath}/patients/${routePatientId}`}
-          className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-[#B91C1C] px-1.5 text-[10px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
-        >
-          <Eye size={12} />
-          <span className="truncate">View Details</span>
-        </Link>
-        <Link
-          to={`${basePath}/patients/edit/${routePatientId}`}
-          className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-[#E5E7EB] bg-white px-1.5 text-[10px] font-semibold text-[#475569] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-        >
-          <Pencil size={12} />
-          <span className="truncate">Edit</span>
-        </Link>
-        <Link
-          to={`${basePath}/health-records/add?patientId=${routePatientId}`}
-          className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-[#E5E7EB] bg-white px-1.5 text-[10px] font-semibold text-[#475569] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-        >
-          <FilePlus2 size={12} />
-          <span className="truncate">Add Record</span>
-        </Link>
-      </div>
+      <Link
+        to={`${basePath}/patients/${routePatientId}`}
+        className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-lg bg-[#B91C1C] px-3 text-[11.5px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
+      >
+        Open Profile
+      </Link>
     </article>
   );
 }

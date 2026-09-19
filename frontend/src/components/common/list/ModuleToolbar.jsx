@@ -44,9 +44,13 @@ function getResetValues(fields) {
 }
 
 export default function ModuleToolbar({
+  heading = null,
   searchValue = "",
   onSearchChange,
   searchPlaceholder = "Search...",
+  // Opt-in: keeps the search field expanded instead of collapsing it to an
+  // icon, for modules whose design shows the input at rest.
+  searchAlwaysOpen = false,
   showFilters = true,
   filtersLabel = "Filters",
   filters = [],
@@ -65,7 +69,9 @@ export default function ModuleToolbar({
   actions = null,
   disabled = false,
 }) {
-  const [searchOpen, setSearchOpen] = useState(Boolean(searchValue));
+  const [searchOpen, setSearchOpen] = useState(
+    searchAlwaysOpen || Boolean(searchValue),
+  );
   const [internalFiltersOpen, setInternalFiltersOpen] = useState(false);
   const [draft, setDraft] = useState(() => getInitialValues(filters));
   const toolbarRef = useRef(null);
@@ -75,9 +81,9 @@ export default function ModuleToolbar({
 
   useEffect(() => {
     if (!disabled) return;
-    setSearchOpen(false);
+    setSearchOpen(searchAlwaysOpen);
     setInternalFiltersOpen(false);
-  }, [disabled]);
+  }, [disabled, searchAlwaysOpen]);
 
   useEffect(() => {
     if (!filtersOpen) return undefined;
@@ -103,7 +109,7 @@ export default function ModuleToolbar({
 
   function toggleSearch() {
     if (disabled) return;
-    if (searchOpen) {
+    if (searchOpen && !searchAlwaysOpen) {
       setSearchOpen(false);
       return;
     }
@@ -115,11 +121,11 @@ export default function ModuleToolbar({
   function clearSearch() {
     if (disabled) return;
     onSearchChange?.("");
-    setSearchOpen(false);
+    setSearchOpen(searchAlwaysOpen);
   }
 
   function handleSearchBlur() {
-    if (!searchValue) setSearchOpen(false);
+    if (!searchValue && !searchAlwaysOpen) setSearchOpen(false);
   }
 
   function openFilters() {
@@ -184,8 +190,13 @@ export default function ModuleToolbar({
   }
   return (
     <div ref={toolbarRef} className="relative z-20 mb-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-        <div className="flex min-w-0 items-center justify-end gap-2">
+      <div
+        className={`flex flex-col gap-3 sm:flex-row sm:items-center ${
+          heading ? "sm:justify-between" : "sm:justify-end"
+        }`}
+      >
+        {heading}
+        <div className="flex min-w-0 items-center justify-end gap-2 sm:ml-auto">
           <div
             className={`group relative flex h-10 items-center rounded-xl border border-[#E5E7EB] bg-white shadow-sm transition-all duration-300 ${
               searchOpen
@@ -215,7 +226,7 @@ export default function ModuleToolbar({
                 searchOpen ? "w-full opacity-100" : "w-full opacity-100 sm:w-0 sm:opacity-0"
               }`}
             />
-            {(searchOpen || searchValue) && (
+            {(searchValue || (searchOpen && !searchAlwaysOpen)) && (
               <button
                 type="button"
                 onMouseDown={(event) => event.preventDefault()}
