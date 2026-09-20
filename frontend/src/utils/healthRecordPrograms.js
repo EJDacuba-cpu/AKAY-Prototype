@@ -241,6 +241,8 @@ export function getRecordSearchText(record = {}) {
     record.chief_complaint,
     record.diagnosis,
     record.notes,
+    record.history_of_present_illness,
+    record.historyOfPresentIllness,
     record.medicalHistory,
     record.medical_history,
     monitoringData.conditionType,

@@ -42,6 +42,7 @@ import {
   getDispensedMedicines,
   getRecordDateValue,
   getRecordDiagnosis,
+  getRecordPhysicalExam,
   getRecordChiefComplaint,
   getRecordSummary,
   getRecordNotes,
@@ -127,9 +128,10 @@ export default function HealthRecordClinicalDetails({
       : getRecordNotes(record, "");
   const chiefComplaintValue = getRecordChiefComplaint(record, "");
   const diagnosisValue = getRecordDiagnosis(record, "");
+  const physicalExamValue = getRecordPhysicalExam(record, "");
   const summaryValue = getRecordSummary(record, "");
   const hasClinicalAssessmentDetails = Boolean(
-    chiefComplaintValue || diagnosisValue || summaryValue,
+    chiefComplaintValue || diagnosisValue || summaryValue || physicalExamValue,
   );
   const initialActionsValue = getRecordInitialActions(record, "");
   const treatmentNotesValue = getRecordTreatmentNotes(record, "");
@@ -229,6 +231,7 @@ export default function HealthRecordClinicalDetails({
         record={record}
         vitalItems={generalVitalItems}
         chiefComplaint={chiefComplaintValue}
+        physicalExam={physicalExamValue}
         diagnosis={diagnosisValue}
         signsSymptoms={summaryValue}
         treatmentAction={initialActionsValue}
@@ -252,6 +255,7 @@ export default function HealthRecordClinicalDetails({
       hasClinicalAssessmentDetails={hasClinicalAssessmentDetails}
       hasTreatmentDetails={hasTreatmentDetails}
       chiefComplaintValue={chiefComplaintValue}
+      physicalExamValue={physicalExamValue}
       diagnosisValue={diagnosisValue}
       initialActionsValue={initialActionsValue}
       summaryValue={summaryValue}
@@ -565,6 +569,7 @@ function GenericRecordDetails({
   hasClinicalAssessmentDetails,
   hasTreatmentDetails,
   chiefComplaintValue,
+  physicalExamValue,
   diagnosisValue,
   initialActionsValue,
   summaryValue,
@@ -600,6 +605,9 @@ function GenericRecordDetails({
               value={diagnosisValue || "Not recorded"}
             />
           </div>
+          {physicalExamValue && (
+            <NarrativeBox label="Physical Exam" value={physicalExamValue} />
+          )}
           {summaryValue && (
             <NarrativeBox label="Signs & Symptoms" value={summaryValue} />
           )}
@@ -750,6 +758,7 @@ function GeneralConsultationRecordDetails({
   record,
   vitalItems = [],
   chiefComplaint,
+  physicalExam,
   diagnosis,
   signsSymptoms,
   treatmentAction,
@@ -770,6 +779,7 @@ function GeneralConsultationRecordDetails({
     getRecordVisitTypeValue(record) === "follow_up_visit";
   const hasConsultationDetails = Boolean(
     chiefComplaint ||
+      physicalExam ||
       diagnosis ||
       signsSymptoms ||
       treatmentAction ||
@@ -812,6 +822,7 @@ function GeneralConsultationRecordDetails({
                 }
                 value={signsSymptoms}
               />
+              <TabbedNarrativeBlock label="Physical Exam" value={physicalExam} />
               <TabbedNarrativeBlock label="Diagnosis / Assessment" value={diagnosis} />
             </div>
           ) : (

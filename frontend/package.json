@@ -13,7 +13,8 @@
     "test:referral-gate": "node --test src/utils/referralGateErrors.test.js",
     "test:patient-utils": "node --test src/utils/patientUtils.test.js",
     "test:program-tabs": "node --test src/utils/programApplicability.test.js",
-    "test:profile-navigation": "node --test src/utils/profileNavigation.test.js"
+    "test:profile-navigation": "node --test src/utils/profileNavigation.test.js",
+    "test:consultation-steps": "node --test src/utils/consultationSteps.test.js src/utils/consultationPrograms.test.js"
   },
   "dependencies": {
     "@fontsource-variable/public-sans": "^5.3.0",

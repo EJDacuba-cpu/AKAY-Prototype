@@ -116,6 +116,10 @@ class HealthRecordRequest extends FormRequest
             'monitoring_data.follow_up_time' => ['nullable', 'date_format:H:i'],
             'monitoring_data.followUpTaskId' => ['nullable', 'integer', 'exists:follow_up_tasks,id'],
             'monitoring_data.follow_up_task_id' => ['nullable', 'integer', 'exists:follow_up_tasks,id'],
+            // Physical examination findings. Stored in the existing JSON column
+            // rather than a new one - no schema change was needed.
+            'monitoring_data.physicalExam' => ['nullable', 'string'],
+            'monitoring_data.physical_exam' => ['nullable', 'string'],
             'monitoring_data.monitoringNotes' => ['nullable', 'string'],
             'monitoring_data.monitoring_notes' => ['nullable', 'string'],
             'monitoring_data.patientCondition' => ['nullable', 'string', 'max:100'],
@@ -232,6 +236,8 @@ class HealthRecordRequest extends FormRequest
             'tb_data.doseCalendar.months.*.heightCm' => ['nullable', 'string', 'max:20'],
             'needs_referral' => ['nullable', 'boolean'],
             'chief_complaint' => ['nullable', 'string'],
+            'physical_exam' => ['nullable', 'string'],
+            'history_of_present_illness' => ['nullable', 'string'],
             'diagnosis' => ['nullable', 'string'],
             'treatment_notes' => ['nullable', 'string'],
             'medical_history' => ['nullable', 'string'],

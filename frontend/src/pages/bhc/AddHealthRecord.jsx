@@ -54,6 +54,7 @@ import {
 import {
   formatDisplayTime,
   getRecordDateValue,
+  getServiceTypeLabel,
 } from "../../utils/healthRecordPrograms";
 import {
   FP_CLIENT_TYPE_OPTIONS,
@@ -83,9 +84,36 @@ import {
   FollowUpSelectStep,
   NextActionStep,
   ConsultationClinicalStep,
+  ConsultationReviewStep,
 } from "../../components/features/health-records/wizard/HealthRecordWizardSteps";
 import {
+  ConsultationActionBar,
+  ConsultationStepHeading,
+  ConsultationWorkspaceBody,
+  ConsultationWorkspaceHeader,
+} from "../../components/features/health-records/wizard/ConsultationWorkflow";
+import {
+  ASSESSMENT_STEP,
+  NEXT_STEP,
+  PROGRAMS_STEP,
+  REVIEW_STEP,
+  TREATMENT_STEP,
+  VISIT_STEP,
+  buildConsultationSteps,
+  findFirstErrorStepKey,
+  getErrorOwnerStepKey,
+  getFormSequence,
+  getGlobalStepKey,
+  getProgramFormSteps,
+  getStepOrder,
+  pickErrorsForStep,
+  programStepKey,
+  resolveFormStep,
+} from "../../utils/consultationSteps";
+import {
   NEXT_ACTION_NONE,
+  NEXT_ACTION_REFERRAL,
+  NEXT_ACTION_SCHEDULE,
   deriveNextAction,
   getNextActionPatch,
   isLegacyFollowUpStatus,
@@ -151,6 +179,14 @@ const WIZARD_FU_SELECT = "fuSelect";
 const WIZARD_FU_CONFIRM = "fuConfirm";
 const WIZARD_FORM = "form";
 const WIZARD_NEXT = "next";
+const WIZARD_REVIEW = "review";
+// Step "phase" (from utils/consultationSteps) -> this page's wizardPhase.
+const WIZARD_PHASE_FOR_STEP = {
+  program: WIZARD_PROGRAM,
+  form: WIZARD_FORM,
+  next: WIZARD_NEXT,
+  review: WIZARD_REVIEW,
+};
 
 const HEALTH_RECORD_CONNECTION_LOST_MESSAGE =
   "The server did not confirm this submission. Your form remains available in this tab. Keep this page open, check the patient's recent records, and retry when the connection is stable.";
@@ -1077,6 +1113,9 @@ export default function AddHealthRecord() {
   const [consultationMode, setConsultationMode] = useState(null);
   const [selectedPrograms, setSelectedPrograms] = useState([]);
   const [primaryProgram, setPrimaryProgram] = useState("");
+  // Which screen of the form phase is showing (a program form, Clinical
+  // Assessment or Treatment). UI position only - saved in the one draft.
+  const [formStep, setFormStep] = useState("");
   const [summaryOpen, setSummaryOpen] = useState(false);
   const requestedDraftId = searchParams.get("draftId");
   const resumedRouteDraft = useRef("");
@@ -1084,7 +1123,10 @@ export default function AddHealthRecord() {
   // Kept as a derived value: everything downstream (drafts, medicine warnings,
   // the header search) only ever asked "are we past the setup screens".
   const setupComplete =
-    wizardPhase === WIZARD_PROGRAM || wizardPhase === WIZARD_FORM || wizardPhase === WIZARD_NEXT;
+    wizardPhase === WIZARD_PROGRAM ||
+    wizardPhase === WIZARD_FORM ||
+    wizardPhase === WIZARD_NEXT ||
+    wizardPhase === WIZARD_REVIEW;
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const [searchExpanded, setSearchExpanded] = useState(false);
@@ -1101,6 +1143,9 @@ export default function AddHealthRecord() {
   const [chiefComplaint, setChiefComplaint] = useState("");
   const [summaryOfPresentIllness, setSummaryOfPresentIllness] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
+  // Physical examination findings. Persisted in the existing monitoring_data
+  // JSON column, so no health-record column was added for it.
+  const [physicalExam, setPhysicalExam] = useState("");
   const [medication, setMedication] = useState("");
   const [attendingStaff, setAttendingStaff] = useState(currentUserName);
   const [consultationNotes, setConsultationNotes] = useState("");
@@ -1394,6 +1439,7 @@ export default function AddHealthRecord() {
       setConsultationMode(getConsultationPrograms(found).length ? "program" : "general");
       setChiefComplaint(found.chiefComplaint || "");
       setSummaryOfPresentIllness(found.summaryOfPresentIllness || "");
+      setPhysicalExam(found.physicalExam || "");
       setDiagnosis(found.diagnosis || "");
       setMedication(found.medication || found.initialActionsTaken || "");
       setAttendingStaff(found.attendingStaff || found.recordedBy || "");
@@ -1718,6 +1764,7 @@ export default function AddHealthRecord() {
 
   function resetClassificationSpecificState() {
     setHealthRecordType("");
+    setPhysicalExam("");
     setMorbidityReportingStatus("not_included");
     setHfmdSurveillance(false);
     setMaternalData(EMPTY_MATERNAL_DATA);
@@ -1737,6 +1784,7 @@ export default function AddHealthRecord() {
       setSelectedPrograms([]);
       setPrimaryProgram("");
       setConsultationMode(null);
+      setFormStep("");
       resetClassificationSpecificState();
       setWizardPhase(WIZARD_SETUP);
       setConsultationType(null);
@@ -1790,6 +1838,45 @@ export default function AddHealthRecord() {
   const isGeneralConsultationFollowUp =
     isFollowUpVisitMode && recordTypeKey === "general consultation";
   const patientGateLocked = !isFollowUpVisitMode && !selectedPatientId;
+
+  // ---- Step-based New Consultation ---------------------------------------
+  // A new consultation walks Current Visit -> one screen per selected program
+  // (primary first) -> Clinical Assessment -> Treatment / Medicine -> Next Step
+  // -> Review & Save. Follow-up visits and route-driven entries keep the single
+  // long form they always had.
+  const usesConsultationSteps =
+    !isFollowUpVisitMode && !isEditingRecord && consultationType === "new";
+  const consultationSteps = useMemo(
+    () => buildConsultationSteps({ selectedPrograms, primaryProgram }),
+    [selectedPrograms, primaryProgram],
+  );
+  // The programs nested inside the single "Program Forms" step.
+  const programFormSteps = useMemo(
+    () => getProgramFormSteps(selectedPrograms, primaryProgram),
+    [selectedPrograms, primaryProgram],
+  );
+  const formSequence = getFormSequence(programFormSteps);
+  const stepOrder = getStepOrder(programFormSteps);
+  const activeFormStep = resolveFormStep(formStep, formSequence);
+  const currentStepKey =
+    wizardPhase === WIZARD_PROGRAM
+      ? VISIT_STEP
+      : wizardPhase === WIZARD_FORM
+        ? activeFormStep
+        : wizardPhase === WIZARD_NEXT
+          ? NEXT_STEP
+          : wizardPhase === WIZARD_REVIEW
+            ? REVIEW_STEP
+            : "";
+  const currentGlobalStepKey = getGlobalStepKey(currentStepKey);
+  const activeProgramStep =
+    programFormSteps.find((step) => step.key === activeFormStep) || null;
+  // Each program's own fields render only on its own step; everywhere else
+  // (follow-up visits) the blocks keep showing together, as before.
+  const showProgramBlock = (classification) =>
+    !usesConsultationSteps ||
+    (wizardPhase === WIZARD_FORM &&
+      activeFormStep === programStepKey(classification));
   const selectedPatientIsMale =
     !isFollowUpVisitMode && isPatientMale(selectedPatient);
   const selectedPatientSexMissing =
@@ -1879,11 +1966,17 @@ export default function AddHealthRecord() {
       selectedPrograms,
       primaryProgram,
       consultationMode,
-      wizardPhase,
+      // Review & Save has no phase of its own in a draft; it resumes on Next Step.
+      wizardPhase: wizardPhase === WIZARD_REVIEW ? WIZARD_NEXT : wizardPhase,
+      formStep:
+        usesConsultationSteps && wizardPhase !== WIZARD_PROGRAM
+          ? activeFormStep
+          : "",
       dateOfVisit,
       timeOfVisit,
       chiefComplaint,
       summaryOfPresentIllness,
+      physicalExam,
       diagnosis,
       medication,
       attendingStaff,
@@ -2052,6 +2145,7 @@ export default function AddHealthRecord() {
       dispensedMedicines: dispensedMedicines.map((item) => ({
         medicineId: Number(item.medicineId),
         quantity: Number(item.quantity),
+        remarks: item.remarks || "",
       })),
     };
   }
@@ -2068,6 +2162,7 @@ export default function AddHealthRecord() {
     setTimeOfVisit(payload.timeOfVisit || toTimeInputValue());
     setChiefComplaint(payload.chiefComplaint || "");
     setSummaryOfPresentIllness(payload.summaryOfPresentIllness || "");
+    setPhysicalExam(payload.physicalExam || "");
     setDiagnosis(payload.diagnosis || "");
     setMedication(payload.medication || "");
     setAttendingStaff(payload.attendingStaff || currentUserName);
@@ -2127,7 +2222,7 @@ export default function AddHealthRecord() {
           availableStock: medicine?.quantity ?? 0,
           quantity: selection.quantity,
           unit: medicine?.unit || "",
-          remarks: "",
+          remarks: selection.remarks || "",
         };
       }),
     );
@@ -2135,6 +2230,15 @@ export default function AddHealthRecord() {
     setActiveDraft({ id: draft.id, version: draft.version });
     setDraftSavedAt(draft.lastSavedAt);
     setWizardPhase(payload.wizardPhase === WIZARD_PROGRAM ? WIZARD_PROGRAM : WIZARD_FORM);
+    // Back to the screen the user left on. A draft saved on Next Step resumes on
+    // the last form screen, and one from before the steps existed on the first.
+    setFormStep(
+      typeof payload.formStep === "string" && payload.formStep
+        ? payload.formStep
+        : payload.wizardPhase === WIZARD_NEXT
+          ? TREATMENT_STEP
+          : "",
+    );
     setDraftsDrawerOpen(false);
     setValidationErrors({});
   }
@@ -2154,7 +2258,7 @@ export default function AddHealthRecord() {
     ? buildHealthRecordDraftPayload()
     : null;
   // Entering the referral/care-decision sub-steps flushes an immediate save.
-  const draftAutosaveSectionKey = `${normalizedHealthRecordType}|${wizardPhase}|${needsReferral}`;
+  const draftAutosaveSectionKey = `${normalizedHealthRecordType}|${wizardPhase}|${activeFormStep}|${needsReferral}`;
   const draftIdentity = useMemo(
     () =>
       activeDraft
@@ -3196,6 +3300,7 @@ export default function AddHealthRecord() {
 
   async function handleSave(event) {
     event?.preventDefault();
+    if (saving) return;
     closeDateTimePopovers();
 
     const isReferralContinuation =
@@ -3262,6 +3367,7 @@ export default function AddHealthRecord() {
 
     const clientErrors = getClinicalValidationErrors();
 
+    if (usesConsultationSteps && revealErrorStep(clientErrors)) return;
     if (setValidationErrorsAndFocus(clientErrors)) return;
 
     if (
@@ -3522,6 +3628,7 @@ export default function AddHealthRecord() {
       timeOfVisit: timeOfVisit || toTimeInputValue(),
       chiefComplaint: finalChiefComplaint,
       summaryOfPresentIllness,
+      physicalExam,
       diagnosis,
       vitalSigns: consultationVitalSigns,
       systolicBp: systolicBp || null,
@@ -4038,6 +4145,103 @@ export default function AddHealthRecord() {
     );
   }
 
+  // ---- Step navigation (New Consultation) --------------------------------
+  function scrollWorkflowToTop() {
+    window.requestAnimationFrame(() =>
+      document
+        .querySelector(".akay-content-scroll")
+        ?.scrollTo({ top: 0, behavior: "smooth" }),
+    );
+  }
+
+  /**
+   * Accepts either a screen key (a program form, assessment, treatment) or a
+   * global progress-bar key; "Program Forms" opens the first program.
+   */
+  function goToStepKey(key, { scroll = true } = {}) {
+    const target = key === PROGRAMS_STEP ? formSequence[0] : key;
+    const phase = formSequence.includes(target)
+      ? "form"
+      : consultationSteps.find((item) => item.key === target)?.phase;
+    if (!phase) return;
+
+    closeDateTimePopovers();
+    if (phase === "form") setFormStep(target);
+    goToWizardPhase(WIZARD_PHASE_FOR_STEP[phase]);
+    if (scroll) scrollWorkflowToTop();
+  }
+
+  /**
+   * Whether the user may leave a step going forward. Only the step's own
+   * fields block it; anything owned by an EARLIER step means that screen was
+   * left incomplete (e.g. a restored draft), so the user is sent back there.
+   * Uses the page's existing validation - no rules are added or dropped.
+   */
+  function checkStepGate(stepKey) {
+    const errors = { ...getClinicalValidationErrors() };
+    if (stepKey !== NEXT_STEP) {
+      delete errors.followUpDate;
+      delete errors.followUpTime;
+      delete errors.followUpStatus;
+    }
+
+    const own = pickErrorsForStep(errors, stepKey);
+    if (Object.keys(own).length > 0) {
+      setValidationErrorsAndFocus(own);
+      return false;
+    }
+
+    const stepIndex = stepOrder.indexOf(stepKey);
+    const earlier = Object.fromEntries(
+      Object.entries(errors).filter(([key]) => {
+        const ownerIndex = stepOrder.indexOf(getErrorOwnerStepKey(key));
+        return ownerIndex >= 0 && ownerIndex < stepIndex;
+      }),
+    );
+    if (Object.keys(earlier).length > 0) {
+      setValidationErrorsAndFocus(earlier);
+      goToStepKey(findFirstErrorStepKey(earlier, stepOrder), { scroll: false });
+      return false;
+    }
+
+    setValidationErrorsAndFocus({});
+    return true;
+  }
+
+  // Same idea for Save: an error that belongs to another screen is shown there.
+  function revealErrorStep(errors) {
+    const target = findFirstErrorStepKey(errors, stepOrder);
+    if (!target || target === currentStepKey) return false;
+    setValidationErrorsAndFocus(errors);
+    goToStepKey(target, { scroll: false });
+    return true;
+  }
+
+  function handleFormStepNext(event) {
+    event?.preventDefault();
+    closeDateTimePopovers();
+    if (!checkStepGate(activeFormStep)) return;
+
+    const index = formSequence.indexOf(activeFormStep);
+    goToStepKey(
+      index >= 0 && index < formSequence.length - 1
+        ? formSequence[index + 1]
+        : NEXT_STEP,
+    );
+  }
+
+  function handleFormStepPrevious() {
+    closeDateTimePopovers();
+    const index = formSequence.indexOf(activeFormStep);
+    goToStepKey(index > 0 ? formSequence[index - 1] : VISIT_STEP);
+  }
+
+  function handleNextActionContinue() {
+    closeDateTimePopovers();
+    if (!checkStepGate(NEXT_STEP)) return;
+    goToStepKey(REVIEW_STEP);
+  }
+
   // ---- Wizard view models -------------------------------------------------
   // Built here so the step components stay presentational and never reach for
   // this page's patient/record helpers.
@@ -4064,26 +4268,37 @@ export default function AddHealthRecord() {
   // Read-only: the patient row carries no visit history, so the preview asks
   // the existing per-patient records endpoint for the latest visit date.
   const {
-    data: lastConsultationDate = "",
+    data: lastConsultation = null,
     isPending: lastConsultationLoading,
     isError: lastConsultationError,
   } = useQuery({
     queryKey: ["consultation-setup-last-visit", selectedPatientId],
     queryFn: async () => {
       const records = await getHealthRecordsByPatient(selectedPatientId);
-      return (Array.isArray(records) ? records : [])
-        .map((record) => getRecordDateValue(record))
-        .filter(Boolean)
-        .sort((a, b) => new Date(b) - new Date(a))[0] || "";
+      const latest = (Array.isArray(records) ? records : [])
+        .filter((record) => getRecordDateValue(record))
+        .sort(
+          (a, b) =>
+            new Date(getRecordDateValue(b)) - new Date(getRecordDateValue(a)),
+        )[0];
+
+      return latest
+        ? {
+            date: getRecordDateValue(latest),
+            program: getServiceTypeLabel(latest),
+          }
+        : null;
     },
-    enabled: Boolean(wizardPhase === WIZARD_SETUP && selectedPatientId),
+    // Needed by the setup screen's Patient Preview and by the workspace's
+    // Patient Snapshot, so it runs wherever a patient is chosen.
+    enabled: Boolean(selectedPatientId),
   });
   const lastConsultationLabel = lastConsultationLoading
     ? "Loading..."
     : lastConsultationError
       ? "Unavailable"
-      : lastConsultationDate
-        ? formatLongDate(lastConsultationDate, "")
+      : lastConsultation?.date
+        ? formatLongDate(lastConsultation.date, "")
         : "No previous consultation";
 
   const wizardSelectedPatient = selectedPatient
@@ -4275,6 +4490,15 @@ export default function AddHealthRecord() {
       return;
     }
     if (!consultationMode || (consultationMode === "program" && !selectedPrograms.length)) return;
+    if (usesConsultationSteps) {
+      // Same validation as before, plus the Current Visit fields that used to be
+      // checked later (HPI for a general visit, BP when Hypertension is chosen).
+      if (!checkStepGate(VISIT_STEP)) return;
+      // The first screen of the form phase: the primary program when programs
+      // are selected, otherwise Clinical Assessment.
+      goToStepKey(formSequence[0]);
+      return;
+    }
     goToWizardPhase(WIZARD_FORM);
   }
 
@@ -4334,6 +4558,256 @@ export default function AddHealthRecord() {
     />
   );
 
+
+  const isGeneralOnly =
+    !isImmunization &&
+    !isFamilyPlanning &&
+    !isMaternal &&
+    !isHypertensionDiabetic &&
+    !isTb;
+
+  // The Treatment step has ONE "Treatment / Action Taken" field. It keeps writing
+  // exactly what each selected program's own field wrote before (Maternal and
+  // Hypertension also mirror into `medication`, as they always did), so saved
+  // records and drafts keep the same shape. The first binding - the primary
+  // program's - supplies the value that is displayed.
+  const treatmentBindingFor = {
+    Maternal: {
+      value: maternalData.treatment,
+      set: (value) => {
+        handleMaternalChange("treatment", value);
+        setMedication(value);
+      },
+    },
+    "Hypertension / Diabetic Monitoring": {
+      value: hypertensionDiabeticData.treatmentActionTaken,
+      set: (value) => {
+        handleHypertensionDiabeticChange("treatmentActionTaken", value);
+        setMedication(value);
+      },
+    },
+    "Family Planning": {
+      value: familyPlanningData.actionTaken,
+      set: (value) => handleFamilyPlanningChange("actionTaken", value),
+    },
+  };
+  const treatmentBindings = isGeneralOnly
+    ? [{ value: medication, set: setMedication }]
+    : consultationSteps
+        .filter((step) => step.kind === "program")
+        .map((step) => treatmentBindingFor[step.classification])
+        .filter(Boolean);
+  const treatmentValue = treatmentBindings[0]?.value || "";
+  const handleTreatmentChange = (value) =>
+    treatmentBindings.forEach((binding) => binding.set(value));
+
+  // Two reporting decisions, side by side, shared by the Clinical Assessment
+  // step and the legacy single-screen general form. They are one row rather
+  // than two stacked FormSections because each is a single short control and
+  // they are decided together.
+  const reportingDecisions = (
+    <div
+      className="anim-fade-up grid gap-8 border-t border-[#F1F5F9] pt-5 pb-1 lg:grid-cols-2"
+      style={stagger(7)}
+    >
+      <div>
+        <h2 className="text-sm font-bold text-[#1A1A1A]">
+          Morbidity / Notifiable Disease Record
+        </h2>
+        <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
+          Choose whether this visit should appear in the morbidity or
+          notifiable diseases daily log.
+        </p>
+        <div className="mt-4">
+          <LockedFormContent locked={patientGateLocked}>
+            <MorbidityNotifiableReportingSection
+              value={morbidityReportingStatus}
+              onChange={setMorbidityReportingStatus}
+            />
+          </LockedFormContent>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="text-sm font-bold text-[#1A1A1A]">
+          Community-Based Surveillance
+        </h2>
+        <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
+          Decide whether this visit should be included in the HFMD
+          surveillance list.
+        </p>
+        <div className="mt-4">
+          <LockedFormContent locked={patientGateLocked}>
+            <YesNoRadioGroup
+              label="Include in HFMD Surveillance List?"
+              name="hfmdSurveillance"
+              value={hfmdSurveillance ? "Yes" : "No"}
+              onChange={(value) =>
+                setHfmdSurveillance(value === "Yes" || value === true)
+              }
+            />
+          </LockedFormContent>
+        </div>
+      </div>
+    </div>
+  );
+
+  const saveDraftButton = canSaveCurrentDraft ? (
+      <button
+        type="button"
+        onClick={handleManualSaveDraft}
+        disabled={draftAutosaveStatus === "saving" || saving}
+        aria-busy={draftAutosaveStatus === "saving"}
+        className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-5 py-2.5 text-[12.5px] font-semibold text-[#475569] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {draftAutosaveStatus === "saving" ? <ButtonSpinner /> : null}
+        {draftAutosaveStatus === "saving"
+          ? "Saving draft..."
+          : activeDraft
+            ? "Update Draft"
+            : "Save as Draft"}
+      </button>
+  ) : null;
+
+  // ---- Consultation workspace (screen 2) ---------------------------------
+  const inConsultationWorkspace =
+    usesConsultationSteps &&
+    !isResolvingClinicalMode &&
+    [WIZARD_PROGRAM, WIZARD_FORM, WIZARD_NEXT, WIZARD_REVIEW].includes(wizardPhase);
+  const isReviewStep = wizardPhase === WIZARD_REVIEW;
+
+  function handleWorkspacePrevious() {
+    if (currentStepKey === VISIT_STEP) return;
+    handleStepBack();
+  }
+
+  function handleWorkspaceContinue() {
+    if (wizardPhase === WIZARD_PROGRAM) return handleCurrentVisitNext();
+    if (wizardPhase === WIZARD_FORM) return handleFormStepNext();
+    if (wizardPhase === WIZARD_NEXT) return handleNextActionContinue();
+    return handleSave();
+  }
+
+  // Heading for the current screen. The wizard still knows its position; that
+  // position is simply not shown while the progress UI is switched off.
+  const currentGlobalIndex = consultationSteps.findIndex(
+    (step) => step.key === currentGlobalStepKey,
+  );
+  const stepSubtitles = {
+    [VISIT_STEP]:
+      "Record the details specific to today's consultation.",
+    [ASSESSMENT_STEP]: "Record the diagnosis and how this visit is classified.",
+    [TREATMENT_STEP]:
+      "Record the medication plan and any medicines or supplies dispensed. Medicine is optional.",
+    [NEXT_STEP]: "What should be done next?",
+    [REVIEW_STEP]: "Confirm the consultation details below before saving.",
+  };
+  const stepIndicator = (
+    <ConsultationStepHeading
+      title={
+        activeProgramStep
+          ? activeProgramStep.label
+          : consultationSteps[currentGlobalIndex]?.label || ""
+      }
+      subtitle={
+        activeProgramStep
+          ? activeProgramStep.headerDescription
+          : stepSubtitles[currentGlobalStepKey] || ""
+      }
+    />
+  );
+
+  // Read-only recap for Review & Save, built from the page's existing state.
+  const vitalsSummary = [
+    (systolicBp || diastolicBp) &&
+      `BP ${systolicBp || "?"}/${diastolicBp || "?"} mmHg`,
+    pulse && `Pulse ${pulse} bpm`,
+    temp && `Temp ${temp}`,
+    spo2 && `SpO2 ${spo2}%`,
+    weight && `Weight ${weight} kg`,
+    height && `Height ${height} cm`,
+  ]
+    .filter(Boolean)
+    .join(" \u00b7 ");
+  const medicinesSummary = dispensedMedicines
+    .map(
+      (item) =>
+        `${item.medicineName} \u00d7 ${item.quantity}${item.unit ? ` ${item.unit}` : ""}`,
+    )
+    .join("\n");
+  const nextActionSummary = {
+    [NEXT_ACTION_NONE]: "No follow-up",
+    [NEXT_ACTION_SCHEDULE]: [
+      "Schedule a follow-up",
+      followUpDate && formatLongDate(followUpDate, ""),
+      followUpTime && formatDisplayTime(followUpTime),
+    ]
+      .filter(Boolean)
+      .join(" \u00b7 "),
+    [NEXT_ACTION_REFERRAL]: "Refer to RHU",
+  }[nextAction];
+  const reviewSections = [
+    {
+      key: "visit",
+      title: "Current Visit",
+      stepKey: VISIT_STEP,
+      rows: [
+        {
+          label: "Patient",
+          value: `${getPatientName(selectedPatient)} \u00b7 #${selectedPatientId}`,
+        },
+        {
+          label: "Visit",
+          value: [
+            dateOfVisit && formatLongDate(dateOfVisit, ""),
+            timeOfVisit && formatDisplayTime(timeOfVisit),
+          ]
+            .filter(Boolean)
+            .join(" \u00b7 "),
+        },
+        { label: "Chief Complaint", value: chiefComplaint },
+        { label: "History of Present Illness", value: summaryOfPresentIllness },
+        { label: "Vital Signs", value: vitalsSummary },
+      ],
+    },
+    ...consultationSteps
+      .filter((step) => step.kind === "program")
+      .map((step) => ({
+        key: step.key,
+        title: step.label,
+        stepKey: step.key,
+        rows: [{ label: "Program", value: step.description }],
+      })),
+    {
+      key: ASSESSMENT_STEP,
+      title: "Clinical Assessment",
+      stepKey: ASSESSMENT_STEP,
+      rows: [
+        { label: "Physical Exam", value: physicalExam },
+        { label: "Diagnosis / Assessment", value: diagnosis },
+      ],
+    },
+    {
+      key: TREATMENT_STEP,
+      title: "Treatment / Medicine",
+      stepKey: TREATMENT_STEP,
+      rows: [
+        { label: "Meds and Other Plans", value: treatmentValue },
+        { label: "Medicines / Supplies", value: medicinesSummary },
+      ],
+    },
+    {
+      key: NEXT_STEP,
+      title: "Next Step",
+      stepKey: NEXT_STEP,
+      rows: [
+        { label: "Next Action", value: nextActionSummary },
+        { label: "Notes", value: monitoringNotes },
+      ],
+    },
+  ];
+  const reviewErrorMessages = Object.values(validationErrors).filter(Boolean);
+
   /**
    * Walk one screen back through the wizard.
    *
@@ -4349,6 +4823,21 @@ export default function AddHealthRecord() {
 
   function handleStepBack() {
     closeDateTimePopovers();
+
+    if (usesConsultationSteps) {
+      if (wizardPhase === WIZARD_REVIEW) {
+        goToStepKey(NEXT_STEP);
+        return;
+      }
+      if (wizardPhase === WIZARD_NEXT) {
+        goToStepKey(formSequence[formSequence.length - 1]);
+        return;
+      }
+      if (wizardPhase === WIZARD_FORM) {
+        handleFormStepPrevious();
+        return;
+      }
+    }
 
     if (wizardPhase === WIZARD_NEXT) {
       goToWizardPhase(WIZARD_FORM);
@@ -4382,7 +4871,11 @@ export default function AddHealthRecord() {
     <DashboardLayout role={userRole} title={pageTitle}>
       <style>{keyframes}</style>
       {selectedPatientId && wizardPhase !== WIZARD_SETUP && <>
-        <button type="button" onClick={() => setSummaryOpen(true)} className="fixed bottom-4 right-4 z-[90] inline-flex items-center gap-2 rounded-full bg-[#B91C1C] px-4 py-3 text-xs font-semibold text-white shadow-lg"><Users size={15} />Patient Summary</button>
+        {/* Outside the consultation workspace (follow-up visits) this is still
+            the way into the summary; inside it, the snapshot panel owns that. */}
+        {!inConsultationWorkspace && (
+          <button type="button" onClick={() => setSummaryOpen(true)} className="fixed bottom-4 right-4 z-[90] inline-flex items-center gap-2 rounded-full bg-[#B91C1C] px-4 py-3 text-xs font-semibold text-white shadow-lg"><Users size={15} />Patient Summary</button>
+        )}
         <PatientSummaryDrawer key={selectedPatientId} patientId={selectedPatientId} open={summaryOpen} onClose={() => setSummaryOpen(false)} basePath={basePath} />
       </>}
       <UnfinishedConsultationModal
@@ -4437,6 +4930,10 @@ export default function AddHealthRecord() {
         </div>
       )}
 
+      {inConsultationWorkspace && (
+        <ConsultationWorkspaceHeader onOpenSummary={() => setSummaryOpen(true)} />
+      )}
+      <ConsultationWorkspaceBody>
       {isResolvingClinicalMode ? (
         <div className="ml-0 mr-auto w-full max-w-7xl">
           <HealthRecordFormSkeleton message="Loading health record..." />
@@ -4476,22 +4973,27 @@ export default function AddHealthRecord() {
           programs={wizardPrograms} selected={selectedPrograms} primary={primaryProgram}
           onSelect={handleProgramSelect} mode={consultationMode} onModeChange={handleConsultationMode}
           onPrimaryChange={(key) => { setPrimaryProgram(key); setHealthRecordType(PROGRAM_CLASSIFICATIONS[key]); }}
-          error={validationErrors.healthRecordType} onBack={handleStepBack} onNext={handleCurrentVisitNext}
+          error={validationErrors.healthRecordType}
+          indicator={usesConsultationSteps ? stepIndicator : null}
         >
-          <FormSection title="Current Visit" subtitle="Record the details specific to today's consultation.">
+          {/* Title and subtitle come from the step heading above, so this
+              block carries the fields only - no second heading, no divider. */}
+          <div className="anim-fade-up space-y-4 pb-1">
             <div className="grid gap-4 sm:grid-cols-2">
               <FieldTextarea label="Chief Complaint" required name="chiefComplaint" error={validationErrors.chiefComplaint} value={chiefComplaint} onChange={event => { clearValidationError("chiefComplaint"); setChiefComplaint(event.target.value); }} placeholder="Describe the patient's chief complaint..." rows={3} />
-              <FieldTextarea label="History of Present Illness" value={summaryOfPresentIllness} onChange={event => setSummaryOfPresentIllness(event.target.value)} placeholder="Onset, duration, and details of the current concern..." rows={3} />
+              <FieldTextarea label="History of Present Illness" required={consultationMode === "general"} name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }} placeholder="Onset, duration, and details of the current concern..." rows={3} />
             </div>
-          </FormSection>
+          </div>
           <FormSection title="Vital Signs" subtitle="Record the patient's vital signs for this visit.">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <BpInputGroup systolic={systolicBp} diastolic={diastolicBp} onSystolicChange={setSystolicBp} onDiastolicChange={setDiastolicBp} />
+              {/* Blood pressure is required when Hypertension / Diabetes is chosen; that
+                  program's own step no longer repeats it, so its error shows here. */}
+              <BpInputGroup required={isHypertensionDiabetic} name="hypertensionDiabeticData.bp" error={validationErrors["hypertensionDiabeticData.bp"]} systolic={systolicBp} diastolic={diastolicBp} onSystolicChange={(value) => { clearValidationError("hypertensionDiabeticData.bp"); setSystolicBp(value); }} onDiastolicChange={(value) => { clearValidationError("hypertensionDiabeticData.bp"); setDiastolicBp(value); }} />
               <FieldInput label="Pulse Rate" type="number" value={pulse} onChange={event => setPulse(event.target.value)} placeholder="bpm" />
-              <FieldInput label="Temperature" value={temp} onChange={event => setTemp(event.target.value)} placeholder="°C" />
               <FieldInput label="SpO2" type="number" value={spo2} onChange={event => setSpo2(event.target.value)} placeholder="%" />
               <FieldInput label="Weight" type="number" value={weight} onChange={event => setWeight(event.target.value)} placeholder="kg" />
               <FieldInput label="Height" type="number" value={height} onChange={event => setHeight(event.target.value)} placeholder="cm" />
+              <FieldInput label="Temperature" value={temp} onChange={event => setTemp(event.target.value)} placeholder="°C" />
               <BmiOutputField weight={weight} height={height} />
             </div>
           </FormSection>
@@ -4519,13 +5021,24 @@ export default function AddHealthRecord() {
         <NextActionStep
           visitDate={wizardVisitDate}
           visitTime={wizardVisitTime}
-          saving={saving}
-          saveLabel={saving ? "Saving health record..." : "Save Record"}
-          onBack={handleStepBack}
-          onSave={handleSave}
+          saving={usesConsultationSteps ? false : saving}
+          saveLabel="Save Record"
+          savingLabel="Saving health record..."
+          {...(usesConsultationSteps
+            ? { title: "", subtitle: "", indicator: stepIndicator }
+            : { onBack: handleStepBack, onSave: handleSave })}
         >
           {nextActionSection}
         </NextActionStep>
+      ) : wizardPhase === WIZARD_REVIEW ? (
+        <ConsultationReviewStep
+          visitDate={wizardVisitDate}
+          visitTime={wizardVisitTime}
+          sections={reviewSections}
+          errors={reviewErrorMessages}
+          onEditStep={goToStepKey}
+          indicator={stepIndicator}
+        />
       ) : (
       <>
       {careDecisionStep && usesCareDecisionStep ? (
@@ -4551,13 +5064,24 @@ export default function AddHealthRecord() {
         />
       ) : (
       <form
-        onSubmit={handleContinueToNextAction}
+        onSubmit={usesConsultationSteps ? handleFormStepNext : handleContinueToNextAction}
         noValidate
         className="relative ml-0 mr-auto w-full max-w-5xl pb-16"
       >
         <div className="space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
         {/* The form opens on the program it is recording. Visit date, time and
             practitioner are no longer edited here - see formHeaderTitle. */}
+        {usesConsultationSteps ? (
+          <div className="anim-fade-up" style={stagger(2)}>
+            {stepIndicator}
+            {showMaternalPatientWarning &&
+              activeFormStep === programStepKey("Maternal") && (
+                <div className="-mt-2 pb-4">
+                  <MaternalClassificationWarning />
+                </div>
+              )}
+          </div>
+        ) : (
         <div className="anim-fade-up pb-5" style={stagger(2)}>
           <h2 className="text-lg font-bold tracking-tight text-[#0F172A]">
             {formHeaderTitle}
@@ -4571,6 +5095,7 @@ export default function AddHealthRecord() {
             </div>
           )}
         </div>
+        )}
 
         {isGeneralConsultationFollowUp && (
           <>
@@ -4733,7 +5258,7 @@ export default function AddHealthRecord() {
 
         {/* ImmunizationVisitFields renders its own titled sections, so it is
             placed directly in the card rather than inside a FormSection. */}
-        {!patientGateLocked && isImmunization && (
+        {!patientGateLocked && isImmunization && showProgramBlock("Immunization") && (
           <div className="anim-fade-up" style={stagger(2)}>
             <ImmunizationVisitFields
               vaccineOptions={CHILD_VACCINE_OPTIONS}
@@ -4750,6 +5275,7 @@ export default function AddHealthRecord() {
               breastfeedingMonitoring={immunizationData.breastfeedingMonitoring}
               breastfeedingMonths={BREASTFEEDING_MONTHS}
               consultationNotes={consultationNotes}
+              hideBasicMonitoring={usesConsultationSteps}
               errors={validationErrors}
               onTemperatureChange={setTemp}
               onPulseChange={setPulse}
@@ -4759,7 +5285,7 @@ export default function AddHealthRecord() {
               onBreastfeedingChange={handleBreastfeedingChange}
               onToggleVaccine={handleVaccineToggle}
               onNotesChange={setConsultationNotes}
-              medicinesSlot={
+              medicinesSlot={usesConsultationSteps ? null : (
                 <ClinicalSection
                   title="Medicines / Supplies Dispensed"
                   subtitle="Optional medicines or supplies given from BHC inventory during this visit."
@@ -4776,13 +5302,13 @@ export default function AddHealthRecord() {
                     }
                   />
                 </ClinicalSection>
-              }
+              )}
             />
           </div>
         )}
 
 
-        {!patientGateLocked && isMaternal && !selectedPatientIsMale && (
+        {!patientGateLocked && isMaternal && !selectedPatientIsMale && showProgramBlock("Maternal") && (
           <>
             {showMaternalPatientWarning && <MaternalClassificationWarning />}
 
@@ -4810,6 +5336,9 @@ export default function AddHealthRecord() {
                       onChange={setExpectedDeliveryDate}
                     />
                   </div>
+                  {/* Vital signs are recorded once, on Current Visit. */}
+                  {!usesConsultationSteps && (
+                    <>
                   <div className="sm:col-span-4">
                     <BpInputGroup
                       systolic={systolicBp}
@@ -4834,6 +5363,8 @@ export default function AddHealthRecord() {
                     onChange={(event) => setSpo2(event.target.value)}
                     wrapperClassName="sm:col-span-4"
                   />
+                    </>
+                  )}
 
                   <div className="sm:col-span-6">
                     <ScoreInputGroup
@@ -4856,6 +5387,10 @@ export default function AddHealthRecord() {
                     />
                   </div>
 
+                  {/* Weight, height and BMI are recorded once, on Current Visit; the
+                      stored maternal BMI is still derived from them (see effect). */}
+                  {!usesConsultationSteps && (
+                    <>
                   <FieldInput
                     label="WT (Weight)"
                     type="number"
@@ -4880,6 +5415,8 @@ export default function AddHealthRecord() {
                     onChange={(event) => setHeight(event.target.value)}
                     wrapperClassName="sm:col-span-3"
                   />
+                    </>
+                  )}
                 </div>
               </LockedFormContent>
             </FormSection>
@@ -5036,6 +5573,9 @@ export default function AddHealthRecord() {
               </LockedFormContent>
             </FormSection>
 
+            {/* Treatment and medicines move to the shared Treatment / Medicine step. */}
+            {!usesConsultationSteps && (
+            <>
             <FormSection
               title="Treatment/Action Taken"
               subtitle="Document treatment given for this visit."
@@ -5076,10 +5616,12 @@ export default function AddHealthRecord() {
                 />
               </LockedFormContent>
             </FormSection>
+            </>
+            )}
           </>
         )}
 
-        {!patientGateLocked && isFamilyPlanning && (
+        {!patientGateLocked && isFamilyPlanning && showProgramBlock("Family Planning") && (
           <FormSection
             title="Family Planning Details"
             subtitle="Record client type, method, and visit details."
@@ -5163,6 +5705,7 @@ export default function AddHealthRecord() {
                   </p>
                 )}
 
+                {!usesConsultationSteps && (
                 <div className="sm:col-span-2">
                   <FieldTextarea
                     label="Treatment/Action Taken"
@@ -5177,12 +5720,13 @@ export default function AddHealthRecord() {
                     rows={3}
                   />
                 </div>
+                )}
               </div>
             </LockedFormContent>
           </FormSection>
         )}
 
-        {!patientGateLocked && isFamilyPlanning && (
+        {!patientGateLocked && isFamilyPlanning && !usesConsultationSteps && (
           <FormSection
             title="Medicines / Supplies Dispensed"
             subtitle="Record medicines or supplies given to the client."
@@ -5205,7 +5749,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!patientGateLocked && isTb && (
+        {!patientGateLocked && isTb && showProgramBlock("TB DOTS / TB Monitoring") && (
           <FormSection
             title="DS-TB Treatment Card (DOH Form 4b)"
             subtitle="Digitized National TB Control Program treatment card — case finding, diagnosis, regimen, treatment supporter, dose calendar, and adverse events."
@@ -5221,7 +5765,7 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
-        {!patientGateLocked && isHypertensionDiabetic && (
+        {!patientGateLocked && isHypertensionDiabetic && showProgramBlock("Hypertension / Diabetic Monitoring") && (
           <>
             <FormSection
               title="Monitoring Details"
@@ -5229,6 +5773,8 @@ export default function AddHealthRecord() {
               delay={3}
             >
               <div className="grid gap-4 lg:grid-cols-2">
+                {/* Blood pressure, pulse and SpO2 are recorded once, on Current Visit. */}
+                {!usesConsultationSteps && (
                 <BpInputGroup
                   required
                   name="hypertensionDiabeticData.bp"
@@ -5244,6 +5790,7 @@ export default function AddHealthRecord() {
                     setDiastolicBp(value);
                   }}
                 />
+                )}
                 <FieldInput
                   label="Fasting Blood Sugar (FBS)"
                   value={hypertensionDiabeticData.fbs}
@@ -5252,6 +5799,8 @@ export default function AddHealthRecord() {
                   }
                   placeholder="e.g. 95 mg/dL"
                 />
+                {!usesConsultationSteps && (
+                  <>
                 <FieldInput
                   label="Pulse Rate"
                   type="number"
@@ -5266,6 +5815,8 @@ export default function AddHealthRecord() {
                   value={spo2}
                   onChange={(event) => setSpo2(event.target.value)}
                 />
+                  </>
+                )}
                 <RadioChoiceGroup
                   label="Condition Type"
                   name="hypertensionDiabeticData.conditionType"
@@ -5281,6 +5832,9 @@ export default function AddHealthRecord() {
               </div>
             </FormSection>
 
+            {/* Treatment and medicines move to the shared Treatment / Medicine step. */}
+            {!usesConsultationSteps && (
+            <>
             <FormSection
               title="Treatment / Action Taken"
               subtitle="Record clinical action, advice, or care plan for this monitoring visit."
@@ -5318,11 +5872,119 @@ export default function AddHealthRecord() {
                 onRetry={() => setBhcMedicineInventoryReloadKey((key) => key + 1)}
               />
             </FormSection>
+            </>
+            )}
 
           </>
         )}
 
-        {!isFollowUpVisitMode && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && !isTb && (
+        {/* Clinical Assessment: one screen for every consultation. */}
+        {usesConsultationSteps && activeFormStep === ASSESSMENT_STEP && (
+          <>
+            <FormSection
+              title="Physical Exam"
+              subtitle="Record the examination findings for this visit."
+              delay={3}
+            >
+              <LockedFormContent locked={patientGateLocked}>
+                <FieldTextarea
+                  label="Findings"
+                  value={physicalExam}
+                  onChange={(event) => setPhysicalExam(event.target.value)}
+                  placeholder="Document relevant physical examination findings for this visit."
+                  rows={4}
+                />
+              </LockedFormContent>
+            </FormSection>
+
+            <FormSection
+              title="Diagnosis / Assessment"
+              subtitle="Record the patient's diagnosis or clinical assessment for this visit."
+              delay={4}
+            >
+              <LockedFormContent locked={patientGateLocked}>
+                <FieldTextarea
+                  label="Diagnosis / Assessment"
+                  value={diagnosis}
+                  onChange={(event) => setDiagnosis(event.target.value)}
+                  placeholder="Initial diagnosis or clinical assessment"
+                  rows={4}
+                />
+              </LockedFormContent>
+            </FormSection>
+            {/* The morbidity and HFMD decisions apply to a general consultation
+                only, exactly as before. */}
+            {isGeneralOnly && reportingDecisions}
+          </>
+        )}
+
+        {/* Treatment / Medicine: treatment given and inventory dispensed, once. */}
+        {usesConsultationSteps && activeFormStep === TREATMENT_STEP && (
+          <>
+            {treatmentBindings.length > 0 && (
+              <FormSection
+                title="Meds and Other Plans"
+                subtitle="Document the treatment, medication plan, or other management for this visit."
+                delay={3}
+              >
+                <LockedFormContent locked={patientGateLocked}>
+                  <FieldTextarea
+                    label="Meds and Other Plans"
+                    value={treatmentValue}
+                    onChange={(event) => handleTreatmentChange(event.target.value)}
+                    placeholder="Medications, procedures, advice given..."
+                    rows={4}
+                  />
+                </LockedFormContent>
+              </FormSection>
+            )}
+            {isFamilyPlanning && (
+              <FormSection
+                title="Family Planning Medicines / Supplies"
+                subtitle="Record medicines or supplies given to the client."
+                delay={4}
+              >
+                <LockedFormContent locked={patientGateLocked}>
+                  <FieldTextarea
+                    label="Medicines / Supplies"
+                    value={familyPlanningData.medicinesSupplies}
+                    onChange={(event) =>
+                      handleFamilyPlanningChange(
+                        "medicinesSupplies",
+                        event.target.value,
+                      )
+                    }
+                    placeholder="List items dispensed..."
+                    rows={3}
+                  />
+                </LockedFormContent>
+              </FormSection>
+            )}
+            <FormSection
+              title="Medicines / Supplies Dispensed"
+              subtitle="Optional medicines or supplies given from BHC inventory during this visit."
+              delay={5}
+            >
+              <LockedFormContent locked={patientGateLocked}>
+                <DispensedMedicinesSection
+                  inventory={bhcMedicineInventory}
+                  value={dispensedMedicines}
+                  onChange={handleDispensedMedicinesChange}
+                  pendingDraftError={validationErrors.dispensedMedicines}
+                  onPendingDraftChange={handlePendingDispensedMedicineChange}
+                  disabled={isEditingRecord}
+                  loading={bhcMedicineInventoryLoading}
+                  error={bhcMedicineInventoryError}
+                  onRetry={() =>
+                    setBhcMedicineInventoryReloadKey((key) => key + 1)
+                  }
+                />
+              </LockedFormContent>
+            </FormSection>
+          </>
+        )}
+
+        {!usesConsultationSteps && !isFollowUpVisitMode && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && !isTb && (
           <>
             <FormSection
               title="Clinical Assessment"
@@ -5461,58 +6123,13 @@ export default function AddHealthRecord() {
               </LockedFormContent>
             </FormSection>
 
-            {/* Two reporting decisions, side by side. They are one row rather
-                than two stacked FormSections because each is a single short
-                control and they are decided together. */}
-            <div
-              className="anim-fade-up grid gap-8 border-t border-[#F1F5F9] pt-5 pb-1 lg:grid-cols-2"
-              style={stagger(7)}
-            >
-              <div>
-                <h2 className="text-sm font-bold text-[#1A1A1A]">
-                  Morbidity / Notifiable Disease Record
-                </h2>
-                <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
-                  Choose whether this visit should appear in the morbidity or
-                  notifiable diseases daily log.
-                </p>
-                <div className="mt-4">
-                  <LockedFormContent locked={patientGateLocked}>
-                    <MorbidityNotifiableReportingSection
-                      value={morbidityReportingStatus}
-                      onChange={setMorbidityReportingStatus}
-                    />
-                  </LockedFormContent>
-                </div>
-              </div>
-
-              <div>
-                <h2 className="text-sm font-bold text-[#1A1A1A]">
-                  Community-Based Surveillance
-                </h2>
-                <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
-                  Decide whether this visit should be included in the HFMD
-                  surveillance list.
-                </p>
-                <div className="mt-4">
-                  <LockedFormContent locked={patientGateLocked}>
-                    <YesNoRadioGroup
-                      label="Include in HFMD Surveillance List?"
-                      name="hfmdSurveillance"
-                      value={hfmdSurveillance ? "Yes" : "No"}
-                      onChange={(value) =>
-                        setHfmdSurveillance(value === "Yes" || value === true)
-                      }
-                    />
-                  </LockedFormContent>
-                </div>
-              </div>
-            </div>
+            {reportingDecisions}
 
           </>
         )}
 
 
+        {usesConsultationSteps ? null : (
         <div
           className="anim-fade-up flex flex-col gap-3 pt-1 pb-4 sm:flex-row sm:items-center sm:justify-between"
           style={stagger(7)}
@@ -5527,37 +6144,46 @@ export default function AddHealthRecord() {
             </button>
           </div>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
-            {canSaveCurrentDraft && (
-              <button
-                type="button"
-                onClick={handleManualSaveDraft}
-                disabled={draftAutosaveStatus === "saving" || saving}
-                aria-busy={draftAutosaveStatus === "saving"}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-5 py-2.5 text-[12.5px] font-semibold text-[#475569] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {draftAutosaveStatus === "saving" ? <ButtonSpinner /> : null}
-                {draftAutosaveStatus === "saving"
-                  ? "Saving draft..."
-                  : activeDraft
-                    ? "Update Draft"
-                    : "Save as Draft"}
-              </button>
-            )}
+            {saveDraftButton}
             <button
               type="button"
               onClick={handleContinueToNextAction}
               disabled={isPrimaryActionLoading}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-[12.5px] font-bold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isPrimaryActionLoading ? <ButtonSpinner /> : null}
-              Next
+              {isPrimaryActionLoading ? (
+                <>
+                  <ButtonSpinner />
+                  Loading...
+                </>
+              ) : (
+                "Next"
+              )}
             </button>
           </div>
         </div>
+        )}
         </div>
       </form>
       )}
       </>
+      )}
+      </ConsultationWorkspaceBody>
+
+      {inConsultationWorkspace && (
+        <ConsultationActionBar
+          onPrevious={handleWorkspacePrevious}
+          previousDisabled={currentStepKey === VISIT_STEP}
+          onContinue={handleWorkspaceContinue}
+          continueLabel={isReviewStep ? "Save Consultation" : "Next"}
+          continueBusy={isReviewStep ? saving : setupChecking}
+          continueBusyLabel={isReviewStep ? "Saving..." : "Loading..."}
+          continueDisabled={
+            wizardPhase === WIZARD_PROGRAM &&
+            (!consultationMode ||
+              (consultationMode === "program" && selectedPrograms.length === 0))
+          }
+        />
       )}
 
       <SuccessModal

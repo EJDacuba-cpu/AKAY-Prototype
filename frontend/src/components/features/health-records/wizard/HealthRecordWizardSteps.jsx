@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { forwardRef, useRef } from "react";
 
+import ButtonSpinner from "../../../common/loading/ButtonSpinner";
 import InlineSpinner from "../../../common/loading/InlineSpinner";
 
 /**
@@ -28,22 +29,33 @@ export function WizardCard({
   showVisitOverview = true,
   unboxed = false,
   headerActions = null,
+  backAction = null,
   children,
 }) {
   return (
     <section className="anim-fade-up ml-0 mr-auto w-full max-w-6xl">
       <div className={unboxed ? "" : "rounded-xl border border-[#E8ECF0] bg-white px-5 py-5 shadow-sm sm:px-6"}>
+        {backAction}
+        {/* The step-based consultation carries its title above the card, so the
+            heading here is optional; the Visit Overview strip stays either way. */}
+        {(title || subtitle || showVisitOverview || headerActions) && (
         <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          {title || subtitle ? (
           <div className="min-w-0">
-            <h2 className="text-lg font-bold tracking-tight text-[#0F172A]">
-              {title}
-            </h2>
+            {title && (
+              <h2 className="text-lg font-bold tracking-tight text-[#0F172A]">
+                {title}
+              </h2>
+            )}
             {subtitle && (
               <p className="mt-1 text-[13px] leading-relaxed text-[#64748B]">
                 {subtitle}
               </p>
             )}
           </div>
+          ) : (
+            <span />
+          )}
           {(showVisitOverview || headerActions) && (
             <div className="flex w-full min-w-0 flex-col gap-3 sm:w-auto sm:items-end">
               {showVisitOverview && (
@@ -70,21 +82,35 @@ export function WizardCard({
             </div>
           )}
         </div>
+        )}
         {children}
       </div>
     </section>
   );
 }
 
-function WizardFooter({
+/**
+ * One footer for every wizard screen: an optional Back on the left (or, where
+ * the page-level Back already handles that, a subtle "Step n of N" line), and
+ * the primary action on the right.
+ */
+export function WizardFooter({
   onBack,
   backLabel = "Back",
   onNext,
   nextLabel = "Next",
   nextDisabled = false,
   nextBusy = false,
+  // Shown INSTEAD of nextLabel while the action runs - never alongside it.
+  busyLabel = "Loading...",
+  helper = "",
+  extra = null,
   align = "between",
 }) {
+  // The consultation workspace navigates from its own sticky action bar, so a
+  // step that passes no actions gets no footer at all.
+  if (!onBack && !onNext && !extra && !helper) return null;
+
   return (
     <div
       className={`mt-8 flex items-center gap-3 ${
@@ -99,19 +125,35 @@ function WizardFooter({
         >
           {backLabel}
         </button>
+      ) : helper ? (
+        <p className="hidden min-w-0 truncate text-[11px] font-medium text-[#94A3B8] sm:block">
+          {helper}
+        </p>
       ) : (
         <span />
       )}
-      {onNext && (
-        <button
-          type="button"
-          onClick={onNext}
-          disabled={nextDisabled || nextBusy}
-          className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-[12.5px] font-bold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {nextBusy && <InlineSpinner />}
-          {nextLabel}
-        </button>
+      {(onNext || extra) && (
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
+          {extra}
+          {onNext && (
+            <button
+              type="button"
+              onClick={onNext}
+              disabled={nextDisabled || nextBusy}
+              aria-busy={nextBusy}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-[12.5px] font-bold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {nextBusy ? (
+                <>
+                  <ButtonSpinner />
+                  {busyLabel}
+                </>
+              ) : (
+                nextLabel
+              )}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -392,6 +434,18 @@ export function ConsultationSetupStep({
   return (
     <WizardCard
       unboxed
+      backAction={
+        onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="mb-2 inline-flex items-center gap-1.5 rounded-md text-[12px] font-semibold text-[#64748B] transition hover:text-[#B91C1C]"
+          >
+            <ArrowLeft size={14} />
+            Back
+          </button>
+        )
+      }
       title="New Health Record"
       subtitle="Set the patient and visit type to begin."
       visitDate={visitDate}
@@ -479,11 +533,12 @@ export function ConsultationSetupStep({
             <p className="mt-3 text-[11px] font-medium text-[#B91C1C]">{error}</p>
           )}
 
+          {/* Only the primary action here; Back sits at the top of the screen. */}
           <WizardFooter
-            onBack={onBack}
             onNext={onNext}
             nextDisabled={!canProceed}
             nextBusy={nextBusy}
+            align="end"
           />
         </div>
       </div>
@@ -492,29 +547,11 @@ export function ConsultationSetupStep({
 }
 
 /** Current visit fields and program selection reuse the page's clinical state. */
-export function ConsultationClinicalStep({ programs, selected = [], primary, onSelect, onPrimaryChange, mode, onModeChange, onBack, onNext, error, children }) {
+export function ConsultationClinicalStep({ programs, selected = [], primary, onSelect, onPrimaryChange, mode, onModeChange, onNext, nextBusy = false, helper = "", error, indicator = null, children }) {
   return (
     <section className="max-w-5xl rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-      {/* Back lives up here now; the footer below carries Next only. */}
-      {onBack && (
-        <button
-          type="button"
-          onClick={onBack}
-          className="mb-3 inline-flex items-center gap-1.5 rounded-md text-[12px] font-semibold text-[#64748B] transition hover:text-[#B91C1C]"
-        >
-          <ArrowLeft size={14} />
-          Back
-        </button>
-      )}
-      <header className="mb-5 border-b border-slate-100 pb-4">
-        <h2 className="text-[17px] font-bold tracking-tight text-[#0F172A]">
-          New Consultation
-        </h2>
-        <p className="mt-1 text-[12.5px] leading-relaxed text-[#64748B]">
-          Record today&apos;s clinical assessment, vital signs, and consultation
-          details for this patient.
-        </p>
-      </header>
+      {/* Back and the patient line live above this card. */}
+      {indicator}
       {children}
       <div className="mt-6 border-t border-slate-100 pt-5" data-field="healthRecordType">
         <h3 className="text-sm font-semibold text-slate-900">Consultation Type<span className="text-red-700">*</span></h3>
@@ -542,11 +579,10 @@ export function ConsultationClinicalStep({ programs, selected = [], primary, onS
               </div>;
             })}
           </div>
-          {selected.length > 0 && <p className="mt-3 text-xs text-slate-500">Selected: {selected.join(", ")} · Primary: {primary}</p>}
         </>}
         {error && <p role="alert" className="mt-3 text-xs text-red-700">{error}</p>}
       </div>
-      <WizardFooter onNext={onNext} nextDisabled={!mode || (mode === "program" && !selected.length)} />
+      <WizardFooter helper={helper} onNext={onNext} nextDisabled={!mode || (mode === "program" && !selected.length)} nextBusy={nextBusy} />
     </section>
   );
 }
@@ -712,23 +748,35 @@ export function FollowUpConfirmStep({
 export function NextActionStep({
   visitDate,
   visitTime,
+  // Blank in the step-based consultation, where the page header above the card
+  // already carries the title.
+  title = "New Health Record",
+  subtitle = "Set the patient and visit type to begin.",
   children,
   onBack,
   onSave,
   saving,
   saveLabel = "Save Record",
+  savingLabel = "Saving...",
+  helper = "",
+  indicator = null,
 }) {
   return (
     <WizardCard
-      title="New Health Record"
-      subtitle="Set the patient and visit type to begin."
+      title={title}
+      subtitle={subtitle}
       visitDate={visitDate}
       visitTime={visitTime}
     >
-      <h3 className="text-[15px] font-bold text-[#0F172A]">Next Action</h3>
-      <p className="mb-4 mt-0.5 text-[12.5px] text-[#64748B]">
-        What should be done next?
-      </p>
+      {indicator}
+      {!indicator && (
+        <>
+          <h3 className="text-[15px] font-bold text-[#0F172A]">Next Action</h3>
+          <p className="mb-4 mt-0.5 text-[12.5px] text-[#64748B]">
+            What should be done next?
+          </p>
+        </>
+      )}
 
       {children}
 
@@ -737,8 +785,102 @@ export function NextActionStep({
         onNext={onSave}
         nextLabel={saveLabel}
         nextBusy={saving}
+        busyLabel={savingLabel}
+        helper={helper}
       />
     </WizardCard>
   );
 }
 
+/**
+ * Last step: a read-only recap of what the consultation will save, each block
+ * with an Edit shortcut back to the step that owns it. It reads the page's
+ * existing state - nothing here is a second copy of the data.
+ */
+export function ConsultationReviewStep({
+  visitDate,
+  visitTime,
+  sections,
+  errors = [],
+  onEditStep,
+  onSave,
+  saving,
+  saveLabel = "Save Record",
+  savingLabel = "Saving...",
+  helper = "",
+  indicator = null,
+}) {
+  return (
+    <WizardCard
+      title={indicator ? "" : "Review & Save"}
+      subtitle={
+        indicator ? "" : "Confirm the consultation details below before saving."
+      }
+      visitDate={visitDate}
+      visitTime={visitTime}
+    >
+      {indicator}
+      {/* Save happens here, where the fields themselves are not on screen, so
+          anything the checks or the server rejected is listed in one place. */}
+      {errors.length > 0 && (
+        <div
+          role="alert"
+          className="mb-4 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3"
+        >
+          <p className="text-[12.5px] font-bold text-[#B91C1C]">
+            Please review before saving
+          </p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12px] text-[#B91C1C]">
+            {errors.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="space-y-4">
+        {sections.map((section) => (
+          <section
+            key={section.key}
+            className="rounded-xl border border-[#E8ECF0] bg-white"
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-[#F1F5F9] px-4 py-2.5">
+              <h3 className="text-[13px] font-bold text-[#0F172A]">{section.title}</h3>
+              {section.stepKey && (
+                <button
+                  type="button"
+                  onClick={() => onEditStep(section.stepKey)}
+                  className="text-[11.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+            <dl className="divide-y divide-[#F1F5F9]">
+              {section.rows.map(({ label, value }) => (
+                <div
+                  key={label}
+                  className="grid gap-1 px-4 py-2.5 sm:grid-cols-[180px_minmax(0,1fr)] sm:gap-4"
+                >
+                  <dt className="text-[10.5px] font-bold uppercase tracking-wider text-[#94A3B8]">
+                    {label}
+                  </dt>
+                  <dd className="min-w-0 whitespace-pre-line break-words text-[12.5px] text-[#0F172A]">
+                    {value || <span className="text-[#94A3B8]">Not recorded</span>}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        ))}
+      </div>
+
+      <WizardFooter
+        onNext={onSave}
+        nextLabel={saveLabel}
+        nextBusy={saving}
+        busyLabel={savingLabel}
+        helper={helper}
+      />
+    </WizardCard>
+  );
+}

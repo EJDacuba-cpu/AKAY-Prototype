@@ -592,6 +592,8 @@ function getNotes(record = {}) {
       record.consultation_notes ||
     record.monitoringNotes ||
     record.monitoring_notes ||
+    record.history_of_present_illness ||
+    record.historyOfPresentIllness ||
     record.medicalHistory ||
     record.medical_history,
     EMPTY_MARK,

@@ -14,9 +14,14 @@ class HealthRecordDraftPayloadService
         'primaryProgram' => self::SCALAR,
         'consultationMode' => self::SCALAR,
         'wizardPhase' => self::SCALAR,
+        // Which screen of the step-based consultation the user was on (a program
+        // form, Clinical Assessment or Treatment). UI position only; optional, so
+        // drafts saved before the steps existed keep loading.
+        'formStep' => self::SCALAR,
         'dateOfVisit' => self::SCALAR,
         'timeOfVisit' => self::SCALAR,
         'chiefComplaint' => self::SCALAR,
+        'physicalExam' => self::SCALAR,
         'summaryOfPresentIllness' => self::SCALAR,
         'diagnosis' => self::SCALAR,
         'medication' => self::SCALAR,
@@ -309,6 +314,9 @@ class HealthRecordDraftPayloadService
         'dispensedMedicines' => ['*' => [
             'medicineId' => self::SCALAR,
             'quantity' => self::SCALAR,
+            // Typed per-line remarks used to be dropped here, so resuming a
+            // draft silently lost them.
+            'remarks' => self::SCALAR,
         ]],
     ];
 
@@ -402,6 +410,8 @@ class HealthRecordDraftPayloadService
             ...ConsultationPrograms::rules('payload'),
             'payload.consultationMode' => ['nullable', 'in:general,program'],
             'payload.wizardPhase' => ['nullable', 'in:program,form,next'],
+            'payload.formStep' => ['nullable', 'string', 'max:100'],
+            'payload.physicalExam' => ['nullable', 'string'],
             'payload.dateOfVisit' => ['nullable', 'date_format:Y-m-d'],
             'payload.timeOfVisit' => ['nullable', 'date_format:H:i'],
             'payload.followUpDate' => ['nullable', 'date_format:Y-m-d'],
@@ -413,6 +423,7 @@ class HealthRecordDraftPayloadService
             'payload.referralDetailsStep' => ['nullable', 'boolean'],
             'payload.dispensedMedicines' => ['nullable', 'array', 'max:50'],
             'payload.dispensedMedicines.*.medicineId' => ['required', 'integer'],
+            'payload.dispensedMedicines.*.remarks' => ['nullable', 'string', 'max:500'],
             'payload.dispensedMedicines.*.quantity' => [
                 'required',
                 'integer',

@@ -28,6 +28,8 @@ class HealthRecord extends Model
         'tb_data',
         'needs_referral',
         'chief_complaint',
+        'physical_exam',
+        'history_of_present_illness',
         'diagnosis',
         'treatment_notes',
         'medical_history',

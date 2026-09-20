@@ -1174,6 +1174,9 @@ function getRecordSummary(record = {}, fallback = "Not recorded") {
   return getRecordValue(
     record,
     [
+      // Canonical column first; medical_history and notes are legacy storage.
+      "history_of_present_illness",
+      "historyOfPresentIllness",
       "summaryOfPresentIllness",
       "summary_of_present_illness",
       "physicalExamination",

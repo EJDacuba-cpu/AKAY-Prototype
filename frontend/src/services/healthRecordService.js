@@ -484,7 +484,13 @@ function normalizeRecord(record = {}) {
       record.treatmentNotes ||
       record.medication ||
       "",
+    // History of Present Illness has its own column now. Records written
+    // before it existed kept the text in medical_history, and older ones still
+    // in notes (it was copied there when no consultation notes were typed), so
+    // both remain as read-only fallbacks. Nothing writes to them any more.
     summaryOfPresentIllness: firstPresent([
+      record.history_of_present_illness,
+      record.historyOfPresentIllness,
       record.summaryOfPresentIllness,
       record.summary_of_present_illness,
       record.physicalExamination,
@@ -495,6 +501,15 @@ function normalizeRecord(record = {}) {
     ]),
     physicalExamination:
       record.physicalExamination || record.physical_examination || "",
+    // Physical exam findings live in their own column now. Records written
+    // before that column existed kept them in monitoring_data.physicalExam,
+    // so that is read as a fallback and never written to again.
+    physicalExam: firstPresent([
+      record.physical_exam,
+      record.physicalExam,
+      monitoringData.physicalExam,
+      monitoringData.physical_exam,
+    ]),
     consultationNotes: record.notes || record.consultationNotes || "",
     medicalHistory: record.medical_history || record.medicalHistory || "",
     attendingStaff:
@@ -999,6 +1014,8 @@ function toPayload(record = {}, { partial = false } = {}) {
         : null,
     needs_referral: needsReferral,
     chief_complaint: record.chiefComplaint || null,
+    physical_exam: record.physicalExam || null,
+    history_of_present_illness: record.summaryOfPresentIllness || null,
     diagnosis: record.diagnosis || null,
     treatment_notes:
       record.treatmentNotes ||
@@ -1006,16 +1023,10 @@ function toPayload(record = {}, { partial = false } = {}) {
       record.initialActionsTaken ||
       record.initialActionTaken ||
       null,
-    medical_history:
-      record.medicalHistory ||
-      record.summaryOfPresentIllness ||
-      record.physicalExamination ||
-      null,
-    notes:
-      record.consultationNotes ||
-      record.summaryOfPresentIllness ||
-      record.monitoringNotes ||
-      null,
+    // Left in place for any caller that sets it explicitly; HPI no longer
+    // flows here. Dropped from the request entirely when unset (see below).
+    medical_history: record.medicalHistory || null,
+    notes: record.consultationNotes || record.monitoringNotes || null,
     dispensed_medicines: Array.isArray(record.dispensedMedicines)
       ? record.dispensedMedicines.map((item) => ({
           medicine_id: item.medicineId || item.medicine_id,
@@ -1206,22 +1217,16 @@ function toPayload(record = {}, { partial = false } = {}) {
   ) {
     delete payload.treatment_notes;
   }
-  if (
-    !hasAny(record, [
-      "medicalHistory",
-      "summaryOfPresentIllness",
-      "physicalExamination",
-    ])
-  ) {
+  if (!hasAny(record, ["medicalHistory"])) {
     delete payload.medical_history;
   }
-  if (
-    !hasAny(record, [
-      "consultationNotes",
-      "summaryOfPresentIllness",
-      "monitoringNotes",
-    ])
-  ) {
+  if (!hasAny(record, ["summaryOfPresentIllness"])) {
+    delete payload.history_of_present_illness;
+  }
+  if (!hasAny(record, ["physicalExam"])) {
+    delete payload.physical_exam;
+  }
+  if (!hasAny(record, ["consultationNotes", "monitoringNotes"])) {
     delete payload.notes;
   }
 

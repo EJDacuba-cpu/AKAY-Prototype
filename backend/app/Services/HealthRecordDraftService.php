@@ -194,6 +194,9 @@ class HealthRecordDraftService
             return [
                 'medicine_id' => $medicineId,
                 'quantity' => (int) $selection['quantity'],
+                // Resume reads this enriched list rather than the raw payload,
+                // so the remarks have to be carried through here too.
+                'remarks' => (string) ($selection['remarks'] ?? ''),
                 'medicine' => $authorized ? [
                     'id' => $medicine->id,
                     'name' => $medicine->name,

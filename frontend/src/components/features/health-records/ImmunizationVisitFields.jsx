@@ -83,6 +83,9 @@ export default function ImmunizationVisitFields({
   consultationNotes,
   errors = {},
   ageWarning = null,
+  // The step-based consultation records weight, height, temperature, pulse and
+  // SpO2 once, on its Current Visit step, so its EPI step leaves them out.
+  hideBasicMonitoring = false,
   otherVaccineSlot = null,
   medicinesSlot = null,
   emptySelectionHint = null,
@@ -127,6 +130,7 @@ export default function ImmunizationVisitFields({
     <div className="space-y-6">
       {ageWarning}
 
+      {!hideBasicMonitoring && (
       <ClinicalSection
         title="Basic Monitoring"
         subtitle="Record the child's weight, height, temperature, pulse rate, and SpO2."
@@ -176,6 +180,7 @@ export default function ImmunizationVisitFields({
           )}
         </div>
       </ClinicalSection>
+      )}
 
       {essentialOptions.length > 0 && (
         <ClinicalSection

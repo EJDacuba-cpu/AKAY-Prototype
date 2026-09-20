@@ -1872,6 +1872,8 @@ function formatAddressContact(patient = {}, record = {}) {
 
 function getMorbiditySignsSymptoms(record = {}) {
   return firstFilledValue(
+    record.history_of_present_illness,
+    record.historyOfPresentIllness,
     record.summaryOfPresentIllness,
     record.summary_of_present_illness,
     record.signsSymptoms,

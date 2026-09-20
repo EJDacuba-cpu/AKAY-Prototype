@@ -461,6 +461,18 @@ export function getRecordDiagnosis(record = {}, fallback = "Not recorded") {
   return getRecordValue(record, ["diagnosis", "initialDiagnosis", "initial_diagnosis"], fallback);
 }
 
+/**
+ * Physical examination findings. Reads the dedicated column, then the
+ * monitoring_data key records written before that column existed used.
+ */
+export function getRecordPhysicalExam(record = {}, fallback = "Not recorded") {
+  const direct = getRecordValue(record, ["physicalExam", "physical_exam"], "");
+  if (direct) return direct;
+
+  const monitoring = record.monitoringData || record.monitoring_data || {};
+  return monitoring.physicalExam || monitoring.physical_exam || fallback;
+}
+
 export function getRecordChiefComplaint(record = {}, fallback = "Not recorded") {
   return getRecordValue(record, ["chiefComplaint", "chief_complaint", "concern"], fallback);
 }
@@ -469,6 +481,9 @@ export function getRecordSummary(record = {}, fallback = "Not recorded") {
   return getRecordValue(
     record,
     [
+      // Canonical column first; medical_history and notes are legacy storage.
+      "history_of_present_illness",
+      "historyOfPresentIllness",
       "summaryOfPresentIllness",
       "summary_of_present_illness",
       "physicalExamination",
