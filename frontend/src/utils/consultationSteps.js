@@ -122,6 +122,35 @@ export function buildConsultationSteps({ selectedPrograms, primaryProgram } = {}
 }
 
 /**
+ * Title and subtitle for the screen on show.
+ *
+ * A program-specific heading belongs to the Program Forms step and nowhere
+ * else. The caller's `activeProgramStep` is derived from `formStep` alone, so
+ * it already points at the first program form BEFORE that step is reached (and
+ * still points at one after Previous). Gating on the global step key is what
+ * keeps Current Visit generic no matter which programs are selected.
+ */
+export function resolveStepHeading({
+  currentGlobalStepKey,
+  activeProgramStep = null,
+  steps = [],
+  subtitles = {},
+} = {}) {
+  if (currentGlobalStepKey === PROGRAMS_STEP && activeProgramStep) {
+    return {
+      title: activeProgramStep.label || "",
+      subtitle: activeProgramStep.headerDescription || "",
+    };
+  }
+
+  const step = steps.find((entry) => entry.key === currentGlobalStepKey);
+  return {
+    title: step?.label || "",
+    subtitle: subtitles[currentGlobalStepKey] || "",
+  };
+}
+
+/**
  * The screens the form phase walks through: each selected program in turn,
  * then Assessment, then Treatment.
  */

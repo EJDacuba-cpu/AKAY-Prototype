@@ -18,6 +18,7 @@ import {
   pickErrorsForStep,
   programStepKey,
   resolveFormStep,
+  resolveStepHeading,
 } from "./consultationSteps.js";
 
 const keysOf = (steps) => steps.map((step) => step.key);
@@ -230,4 +231,118 @@ test("Next from Current Visit lands on a real screen key, not a step object", ()
     getFormSequence(getProgramFormSteps(["TB", "Maternal"], "Maternal"))[0],
     MATERNAL,
   );
+});
+
+/* ── Current Visit heading ─────────────────────────────────────────────
+   Regression: the heading read `activeProgramStep`, which resolves to the
+   first program form whenever a program is selected - including while the
+   user is still on Current Visit, and again after Previous. Current Visit
+   then renamed itself "Maternal / Prenatal Care" and so on.            */
+
+const VISIT_SUBTITLE = "Record the details specific to today's consultation.";
+const SUBTITLES = {
+  [VISIT_STEP]: VISIT_SUBTITLE,
+  [ASSESSMENT_STEP]: "Record the diagnosis and how this visit is classified.",
+  [NEXT_STEP]: "What should be done next?",
+};
+
+function headingOnCurrentVisit(selectedPrograms, primaryProgram = "") {
+  const programSteps = getProgramFormSteps(selectedPrograms, primaryProgram);
+  return resolveStepHeading({
+    currentGlobalStepKey: VISIT_STEP,
+    // What the page derives before the program step is ever reached.
+    activeProgramStep:
+      programSteps.find(
+        (step) => step.key === resolveFormStep("", getFormSequence(programSteps)),
+      ) || null,
+    steps: buildConsultationSteps({ selectedPrograms, primaryProgram }),
+    subtitles: SUBTITLES,
+  });
+}
+
+for (const [label, programs, primary] of [
+  ["General Consultation", [], ""],
+  ["Maternal / Prenatal", ["Maternal"], "Maternal"],
+  ["TB", ["TB"], "TB"],
+  ["Family Planning", ["Family Planning"], "Family Planning"],
+  ["Hypertension", ["Hypertension"], "Hypertension"],
+  ["Diabetes", ["Diabetes"], "Diabetes"],
+  ["EPI", ["EPI"], "EPI"],
+  ["several programs", ["TB", "Maternal"], "Maternal"],
+]) {
+  test(`Current Visit keeps its generic heading with ${label}`, () => {
+    // Guard against a vacuous pass: with programs selected there really is a
+    // program step that the old heading would have picked up here.
+    assert.equal(
+      getProgramFormSteps(programs, primary).length > 0,
+      programs.length > 0,
+    );
+    assert.deepEqual(headingOnCurrentVisit(programs, primary), {
+      title: "Current Visit",
+      subtitle: VISIT_SUBTITLE,
+    });
+  });
+}
+
+test("the Program Forms step still shows the program-specific heading", () => {
+  const programSteps = getProgramFormSteps(["TB", "Maternal"], "Maternal");
+  const heading = resolveStepHeading({
+    currentGlobalStepKey: PROGRAMS_STEP,
+    activeProgramStep: programSteps[0],
+    steps: buildConsultationSteps({
+      selectedPrograms: ["TB", "Maternal"],
+      primaryProgram: "Maternal",
+    }),
+    subtitles: SUBTITLES,
+  });
+
+  assert.equal(heading.title, "Maternal / Prenatal Care");
+  assert.equal(
+    heading.subtitle,
+    "Complete the maternal / prenatal information for this visit.",
+  );
+});
+
+test("Previous from the first program form restores the generic heading", () => {
+  const selectedPrograms = ["Maternal"];
+  const programSteps = getProgramFormSteps(selectedPrograms, "Maternal");
+  const steps = buildConsultationSteps({ selectedPrograms, primaryProgram: "Maternal" });
+  // Previous moves the screen back to Current Visit but leaves formStep - and
+  // therefore activeProgramStep - pointing at the program that was just open.
+  const heading = resolveStepHeading({
+    currentGlobalStepKey: getGlobalStepKey(VISIT_STEP),
+    activeProgramStep: programSteps[0],
+    steps,
+    subtitles: SUBTITLES,
+  });
+
+  assert.deepEqual(heading, { title: "Current Visit", subtitle: VISIT_SUBTITLE });
+});
+
+test("later steps keep their own headings while a program is selected", () => {
+  const selectedPrograms = ["Family Planning"];
+  const steps = buildConsultationSteps({ selectedPrograms, primaryProgram: "Family Planning" });
+  const programSteps = getProgramFormSteps(selectedPrograms, "Family Planning");
+
+  for (const stepKey of [ASSESSMENT_STEP, NEXT_STEP]) {
+    const heading = resolveStepHeading({
+      currentGlobalStepKey: stepKey,
+      activeProgramStep: programSteps[0],
+      steps,
+      subtitles: SUBTITLES,
+    });
+    assert.equal(heading.title, steps.find((s) => s.key === stepKey).label);
+    assert.equal(heading.subtitle, SUBTITLES[stepKey]);
+  }
+});
+
+test("Review keeps its own heading even with programs selected", () => {
+  const selectedPrograms = ["EPI"];
+  const heading = resolveStepHeading({
+    currentGlobalStepKey: REVIEW_STEP,
+    activeProgramStep: getProgramFormSteps(selectedPrograms, "EPI")[0],
+    steps: buildConsultationSteps({ selectedPrograms, primaryProgram: "EPI" }),
+    subtitles: SUBTITLES,
+  });
+  assert.equal(heading.title, "Review");
 });

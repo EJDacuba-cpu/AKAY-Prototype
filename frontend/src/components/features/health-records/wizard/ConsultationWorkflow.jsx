@@ -53,6 +53,9 @@ export function ConsultationWorkspaceHeader({ onOpenSummary }) {
 export function ConsultationActionBar({
   onPrevious,
   previousDisabled = false,
+  // The first screen has no previous STEP - it goes back out to setup - so the
+  // caller names the destination instead of always saying "Previous".
+  previousLabel = "Previous",
   onContinue,
   continueLabel = "Next",
   continueBusy = false,
@@ -70,7 +73,7 @@ export function ConsultationActionBar({
           disabled={previousDisabled}
           className="inline-flex items-center gap-1.5 rounded-xl border border-[#E5E7EB] bg-white px-4 py-2.5 text-[12.5px] font-semibold text-[#475569] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#E5E7EB] disabled:hover:bg-white disabled:hover:text-[#475569]"
         >
-          Previous
+          {previousLabel}
         </button>
 
         <button

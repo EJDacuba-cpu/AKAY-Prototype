@@ -11,6 +11,9 @@ export default function ConnectionIssueModal({
   retryLabel = "Retry",
   retryLoading = false,
   retryLoadingLabel = "Retrying...",
+  // Secondary reassurance under the message. Pass null where `message` already
+  // says this, so the dialog does not repeat itself.
+  detail = "Your entries are still on this form. Continue editing, keep this tab open, or retry the official save when the connection is stable.",
   onContinue,
   onRetry,
 }) {
@@ -79,10 +82,11 @@ export default function ConnectionIssueModal({
       }
     >
       <p className="text-[13px] leading-5 text-slate-600">{message}</p>
-      <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50 px-3.5 py-3 text-xs leading-5 text-slate-500">
-        Your entries are still on this form. Continue editing, keep this tab
-        open, or retry the official save when the connection is stable.
-      </div>
+      {detail && (
+        <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50 px-3.5 py-3 text-xs leading-5 text-slate-500">
+          {detail}
+        </div>
+      )}
     </ModalShell>
   );
 }

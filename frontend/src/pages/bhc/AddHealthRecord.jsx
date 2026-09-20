@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBlocker, useLocation, useNavigate, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import {
   AlertCircle,
   Check,
@@ -16,6 +17,7 @@ import {
   Trash2,
   User,
   Users,
+  WifiOff,
   X,
   Zap,
 } from "lucide-react";
@@ -36,11 +38,19 @@ import healthRecordService, {
   getHealthRecordsByPatient,
 } from "../../services/healthRecordService";
 import {
+  createHealthRecordDraft,
   discardHealthRecordDraft,
   getHealthRecordDraft,
   listHealthRecordDrafts,
+  updateHealthRecordDraft,
 } from "../../services/healthRecordDraftService";
+import {
+  deleteLocalDraft,
+  isLocalDraftVaultAvailable,
+  listLocalDrafts,
+} from "../../services/localDraftVault";
 import useDraftAutosave from "../../hooks/useDraftAutosave";
+import useConnectionStatus from "../../hooks/useConnectionStatus";
 import { useDoctorAvailability } from "../../hooks/useDoctorAvailability";
 import {
   isNoProviderAvailableError,
@@ -71,7 +81,7 @@ import {
   locationToPath,
 } from "../../utils/profileNavigation";
 import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "../../utils/consultationPrograms";
-import DraftSaveStatus from "../../components/features/health-records/DraftSaveStatus";
+import { mergeSavedDrafts } from "../../utils/savedDrafts";
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
 import {
   ClinicalSection,
@@ -108,6 +118,8 @@ import {
   getStepOrder,
   pickErrorsForStep,
   programStepKey,
+  resolveStepHeading,
+
   resolveFormStep,
 } from "../../utils/consultationSteps";
 import {
@@ -1051,6 +1063,16 @@ export default function AddHealthRecord() {
       currentUser?.facilityId ||
       "",
   ).trim();
+  // ---- On-device safety net for an interrupted consultation --------------
+  // AKAY stays ONLINE-FIRST. The vault holds only consultations that were
+  // already open when the connection dropped, encrypted and scoped to this
+  // user. Nothing else - patient search, inventory, referrals, reports - works
+  // offline, and nothing else is ever written here.
+  const localVaultAvailable = useMemo(() => isLocalDraftVaultAvailable(), []);
+  const localDraftOwnerKey = String(currentUser?.id || "");
+  // Shared with the rest of AKAY: drives whether Saved Drafts should even
+  // expect the server to answer.
+  const { isOnline } = useConnectionStatus();
   const basePath = userRole === "bhc" ? "/bhc" : "/rhu";
   const healthRecordsPath = `${basePath}/health-records`;
 
@@ -1221,10 +1243,30 @@ export default function AddHealthRecord() {
   const [draftDecisionBusy, setDraftDecisionBusy] = useState(false);
   const [draftDecisionError, setDraftDecisionError] = useState("");
   const [setupChecking, setSetupChecking] = useState(false);
-  const [draftDiscardingId, setDraftDiscardingId] = useState("");
+  // Holds the Saved Drafts ROW key being discarded, not a server id:
+  // a row may be server-only, device-only, or both.
+  const [discardingDraftKey, setDiscardingDraftKey] = useState("");
   const [activeDraft, setActiveDraft] = useState(null);
   const [draftSavedAt, setDraftSavedAt] = useState("");
   const [draftMedicineWarnings, setDraftMedicineWarnings] = useState([]);
+  // The patient whose consultation is already underway. Stepping out to setup
+  // and back in is not a new consultation and must not re-run the conflict
+  // check; changing patient clears it because the id no longer matches.
+  const [startedConsultationPatientId, setStartedConsultationPatientId] =
+    useState("");
+  // Encrypted on-device consultations belonging to this user, listed for the
+  // Saved Drafts drawer and for recovery after a refresh, close, or restart.
+  const [localDrafts, setLocalDrafts] = useState([]);
+  const [localDraftsLoading, setLocalDraftsLoading] = useState(false);
+  const [localRecovery, setLocalRecovery] = useState(null);
+  // True from recovering that copy until the server confirms it. It tells
+  // autosave the restored form is NEWER than the server draft, so the content
+  // is pushed up instead of being mistaken for an already-saved baseline.
+  const [pendingLocalSync, setPendingLocalSync] = useState(false);
+  // Which offline transition the midwife has already dismissed, so the
+  // Connection Lost modal shows once per drop instead of on every retry.
+  const [dismissedOfflineEpoch, setDismissedOfflineEpoch] = useState(0);
+  const [offlineRetryNotice, setOfflineRetryNotice] = useState("");
 
   const loadHealthRecordDrafts = useCallback(async () => {
     if (!isDraftRouteEligible) return;
@@ -1233,19 +1275,48 @@ export default function AddHealthRecord() {
     try {
       setHealthRecordDrafts(await listHealthRecordDrafts());
     } catch (error) {
+      // Server drafts only. The drawer still lists on-device drafts, so this
+      // never becomes the whole state of Saved Drafts.
       setDraftListError(
         isConnectionError(error)
-          ? "Unable to load drafts. Please check your connection and try again."
-          : error?.message || "Unable to load drafts right now.",
+          ? typeof navigator !== "undefined" && navigator.onLine === false
+            ? "Server drafts are unavailable while offline. Showing drafts saved on this device."
+            : "Server drafts could not be loaded. Showing drafts saved on this device."
+          : error?.message || "Unable to load server drafts right now.",
       );
     } finally {
       setDraftListLoading(false);
     }
   }, [isDraftRouteEligible]);
 
+  // Reads the encrypted vault. Needs no connection, so it runs on every entry
+  // and alongside every server refresh.
+  const loadLocalDrafts = useCallback(async () => {
+    if (!isDraftRouteEligible || !localVaultAvailable || !localDraftOwnerKey) {
+      setLocalDrafts([]);
+      return [];
+    }
+    setLocalDraftsLoading(true);
+    try {
+      const entries = await listLocalDrafts(localDraftOwnerKey);
+      setLocalDrafts(entries);
+      return entries;
+    } catch {
+      // An unreadable vault is treated as empty; nothing is fabricated.
+      setLocalDrafts([]);
+      return [];
+    } finally {
+      setLocalDraftsLoading(false);
+    }
+  }, [isDraftRouteEligible, localVaultAvailable, localDraftOwnerKey]);
+
   useEffect(() => {
     void loadHealthRecordDrafts();
   }, [loadHealthRecordDrafts]);
+
+  useEffect(() => {
+    void loadLocalDrafts();
+  }, [loadLocalDrafts]);
 
   useEffect(() => {
     function clearInMemorySubmissionState() {
@@ -1781,6 +1852,9 @@ export default function AddHealthRecord() {
   function selectPatient(id) {
     clearValidationError("selectedPatientId");
     if (id !== selectedPatientId) {
+      // A different patient starts over, so any consultation that was already
+      // underway is abandoned and the next Next must check for conflicts again.
+      setStartedConsultationPatientId("");
       setSelectedPrograms([]);
       setPrimaryProgram("");
       setConsultationMode(null);
@@ -2153,6 +2227,9 @@ export default function AddHealthRecord() {
   function restoreHealthRecordDraft(draft) {
     const payload = draft.payload || {};
     setSelectedPatientId(draft.patient.id);
+    // Resuming a draft IS this patient's consultation, so stepping out to
+    // setup and back in must not be mistaken for starting a second one.
+    setStartedConsultationPatientId(String(draft.patient.id || ""));
     setHealthRecordType(normalizeRecordType(draft.classification));
     setSelectedPrograms(getConsultationPrograms({ ...payload, classification: draft.classification }));
     setPrimaryProgram(getPrimaryProgram({ ...payload, classification: draft.classification }));
@@ -2227,8 +2304,14 @@ export default function AddHealthRecord() {
       }),
     );
     setDraftMedicineWarnings(Array.from(new Set(warnings)));
-    setActiveDraft({ id: draft.id, version: draft.version });
-    setDraftSavedAt(draft.lastSavedAt);
+    // A recovered on-device copy may never have reached the server, in which
+    // case there is no draft to update yet - autosave must create one.
+    setActiveDraft(draft.id ? { id: draft.id, version: draft.version } : null);
+    setDraftSavedAt(draft.id ? draft.lastSavedAt || "" : "");
+    // Restored content matches whatever it was restored from. Recovering an
+    // on-device copy sets this back to true right after, because that copy IS
+    // ahead of the server; reloading after a conflict deliberately is not.
+    setPendingLocalSync(false);
     setWizardPhase(payload.wizardPhase === WIZARD_PROGRAM ? WIZARD_PROGRAM : WIZARD_FORM);
     // Back to the screen the user left on. A draft saved on Next Step resumes on
     // the last form screen, and one from before the steps existed on the first.
@@ -2246,6 +2329,8 @@ export default function AddHealthRecord() {
   const handleDraftAutosaved = useCallback((saved) => {
     setActiveDraft({ id: saved.id, version: saved.version });
     setDraftSavedAt(saved.lastSavedAt || "");
+    // The server has it, so the recovered copy is no longer ahead of it.
+    setPendingLocalSync(false);
     setHealthRecordDrafts((current) => [
       saved,
       ...current.filter((item) => item.id !== saved.id),
@@ -2271,6 +2356,58 @@ export default function AddHealthRecord() {
     [activeDraft, draftSavedAt],
   );
 
+  const localDraftIdentity = useMemo(() => {
+    if (!canSaveCurrentDraft || !localVaultAvailable || !localDraftOwnerKey) {
+      return null;
+    }
+    // One slot per patient consultation. Deliberately NOT keyed on the server
+    // draft id or the classification: both can appear or change mid-visit and
+    // would orphan the snapshot taken before the change.
+    return {
+      ownerKey: localDraftOwnerKey,
+      consultationKey: `patient:${selectedPatientId}`,
+    };
+  }, [
+    canSaveCurrentDraft,
+    localVaultAvailable,
+    localDraftOwnerKey,
+    selectedPatientId,
+  ]);
+
+  // Rebuilt on demand at the moment of an offline write. Plain function, not
+  // memoized: the hook reads it from a ref refreshed on every render, so it
+  // always closes over the newest form state.
+  function buildLocalDraftRecord() {
+    return {
+      draft: {
+        id: activeDraft?.id || "",
+        version: Number(activeDraft?.version || 0),
+        patient: {
+          id: String(selectedPatientId || ""),
+          label: getPatientName(selectedPatient) || "Patient",
+        },
+        classification: normalizedHealthRecordType,
+        lastSavedAt: draftSavedAt || "",
+        payload: buildHealthRecordDraftPayload(),
+        // Names are kept for display on recovery only. Stock is re-checked
+        // against the server before the official save - see the warning
+        // raised by handleRecoverLocalDraft.
+        medicineSelections: dispensedMedicines.map((item) => ({
+          medicine_id: item.medicineId,
+          quantity: item.quantity,
+          remarks: item.remarks || "",
+          medicine: {
+            name: item.medicineName,
+            category: item.category,
+            quantity: item.availableStock,
+            unit: item.unit,
+          },
+          warning: "",
+        })),
+      },
+    };
+  }
+
   const draftAutosave = useDraftAutosave({
     enabled: canSaveCurrentDraft,
     patientId: selectedPatientId,
@@ -2279,6 +2416,9 @@ export default function AddHealthRecord() {
     draft: draftIdentity,
     sectionKey: draftAutosaveSectionKey,
     onDraftSaved: handleDraftAutosaved,
+    localDraft: localDraftIdentity,
+    buildLocalRecord: buildLocalDraftRecord,
+    unsyncedRecovery: pendingLocalSync,
   });
 
   const {
@@ -2286,15 +2426,258 @@ export default function AddHealthRecord() {
     hasPendingChanges: draftHasPendingChanges,
     conflict: draftConflict,
     error: draftAutosaveError,
+    localStatus: draftLocalStatus,
+    syncStatus: draftSyncStatus,
+    offlineEpoch: draftOfflineEpoch,
     saveNow: saveDraftNow,
     flushBeforeLeave: flushDraftBeforeLeave,
     resolveConflict: resolveDraftConflict,
+    acknowledgeSync: acknowledgeDraftSync,
   } = draftAutosave;
 
   const handleManualSaveDraft = useCallback(() => {
     if (!canSaveCurrentDraft) return;
+    // Offline this reaches no server: the hook falls through to the encrypted
+    // on-device copy and the status line says "Saved locally", never "saved".
     void saveDraftNow();
   }, [canSaveCurrentDraft, saveDraftNow]);
+
+  // Confirmed sync is a one-off confirmation, not a status to live with: a
+  // short toast, then nothing. Offline itself is announced once by the
+  // Connection Lost dialog and then stays silent while the midwife works.
+  useEffect(() => {
+    if (draftSyncStatus !== "synced") return;
+    toast.success("Draft synced", { id: "consultation-draft-synced" });
+    acknowledgeDraftSync();
+  }, [draftSyncStatus, acknowledgeDraftSync]);
+
+  // The Connection Lost dialog interrupts once per drop. A later drop raises a
+  // new epoch, so it can appear again - but typing is never interrupted twice
+  // for the same outage.
+  const connectionLostOpen =
+    canSaveCurrentDraft &&
+    draftAutosaveStatus === "offline" &&
+    draftOfflineEpoch > dismissedOfflineEpoch;
+
+  useEffect(() => {
+    if (draftAutosaveStatus !== "offline") setOfflineRetryNotice("");
+  }, [draftAutosaveStatus]);
+
+  function dismissConnectionLost() {
+    setDismissedOfflineEpoch(draftOfflineEpoch);
+    setOfflineRetryNotice("");
+  }
+
+  async function handleOfflineDraftRetry() {
+    setOfflineRetryNotice("");
+    const synced = await saveDraftNow();
+    if (!synced) {
+      setOfflineRetryNotice(
+        "Still no connection. This consultation stays saved on this device and will sync automatically.",
+      );
+    }
+  }
+
+  // Offer back a consultation this device kept through a refresh, tab close,
+  // or restart. Checked once, and only on a fresh entry - never over an open
+  // consultation, which would replace live work with an older snapshot.
+  const localRecoveryCheckedRef = useRef(false);
+  useEffect(() => {
+    if (localRecoveryCheckedRef.current) return undefined;
+    if (!isDraftRouteEligible || !localVaultAvailable || !localDraftOwnerKey) {
+      return undefined;
+    }
+    if (selectedPatientId || wizardPhase !== WIZARD_SETUP) return undefined;
+    localRecoveryCheckedRef.current = true;
+
+    let active = true;
+    listLocalDrafts(localDraftOwnerKey)
+      .then((entries) => {
+        if (!active) return;
+        const recoverable = entries.find(
+          (entry) => entry.record?.draft?.patient?.id,
+        );
+        if (recoverable) setLocalRecovery(recoverable);
+      })
+      .catch(() => {
+        // An unreadable vault is treated as empty; nothing is fabricated.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    isDraftRouteEligible,
+    localVaultAvailable,
+    localDraftOwnerKey,
+    selectedPatientId,
+    wizardPhase,
+  ]);
+
+  /**
+   * Reopen an encrypted on-device consultation: the same patient, programs,
+   * fields, medicines, and wizard step, continuing the SAME draft. Never
+   * creates a second consultation - the restored server draft id (when the
+   * copy had one) is what autosave keeps updating.
+   */
+  function recoverLocalDraft(entry) {
+    if (!entry?.record?.draft) return;
+
+    restoreHealthRecordDraft(entry.record.draft);
+    // Autosave now treats the restored form as ahead of the server and pushes
+    // it up on the next connection; the on-device copy stays until it lands.
+    setPendingLocalSync(true);
+    setLocalRecovery(null);
+    setDraftsDrawerOpen(false);
+    if (entry.record.draft.medicineSelections?.length) {
+      setDraftMedicineWarnings((current) => [
+        ...current,
+        "Medicine availability was not re-checked while this consultation was offline. Confirm stock before saving.",
+      ]);
+    }
+  }
+
+  function handleRecoverLocalDraft() {
+    recoverLocalDraft(localRecovery);
+  }
+
+  // Deleting unsynced clinical work is irreversible, so it is confirmed on its
+  // own. "Keep It" puts the recovery offer back rather than silently dropping.
+  function handleDiscardLocalRecovery() {
+    const entry = localRecovery;
+    setNoticeModal({
+      title: "Discard Offline Consultation?",
+      message:
+        "The consultation kept on this device will be permanently deleted. It never reached the server, so it cannot be recovered afterwards.",
+      actions: [
+        {
+          label: "Delete Permanently",
+          variant: "destructive",
+          onClick: async () => {
+            if (entry?.consultationKey && localDraftOwnerKey) {
+              await deleteLocalDraft({
+                ownerKey: localDraftOwnerKey,
+                consultationKey: entry.consultationKey,
+              }).catch(() => {});
+            }
+            setLocalRecovery(null);
+          },
+        },
+        {
+          label: "Keep It",
+          variant: "secondary",
+          onClick: () => setLocalRecovery(entry),
+        },
+      ],
+    });
+  }
+
+  // ---- Saved Drafts: server + on-device, one list ------------------------
+
+  /**
+   * Push one on-device draft to the server draft API. Draft writes have no
+   * clinical side effects, so this is safe to run unattended - but the version
+   * rules still hold: a 409 means the server copy is newer, so nothing is
+   * overwritten and the local copy is KEPT for the user to resolve on resume.
+   * Any failure leaves the local copy alone.
+   */
+  const syncLocalDraftToServer = useCallback(
+    async (entry) => {
+      const draft = entry?.record?.draft;
+      if (!draft?.patient?.id || !draft?.classification) return false;
+
+      const request = {
+        patientId: Number(draft.patient.id),
+        classification: draft.classification,
+        payload: draft.payload,
+      };
+
+      try {
+        if (draft.id) {
+          await updateHealthRecordDraft(draft.id, {
+            ...request,
+            version: draft.version,
+          });
+        } else {
+          await createHealthRecordDraft(request);
+        }
+      } catch {
+        return false;
+      }
+
+      // Confirmed by the server: only now may the local copy go.
+      await deleteLocalDraft({
+        ownerKey: localDraftOwnerKey,
+        consultationKey: entry.consultationKey,
+      }).catch(() => {});
+      return true;
+    },
+    [localDraftOwnerKey],
+  );
+
+  // The consultation currently open belongs to the autosave hook; pushing it
+  // from here as well would race it into a version conflict with itself.
+  const openConsultationKeyRef = useRef("");
+  useEffect(() => {
+    openConsultationKeyRef.current = localDraftIdentity?.consultationKey || "";
+  });
+
+  const refreshSavedDrafts = useCallback(
+    async ({ syncLocal = false } = {}) => {
+      const entries = await loadLocalDrafts();
+
+      if (syncLocal && entries.length) {
+        let syncedCount = 0;
+        for (const entry of entries) {
+          if (entry.consultationKey === openConsultationKeyRef.current) continue;
+          if (await syncLocalDraftToServer(entry)) syncedCount += 1;
+        }
+        if (syncedCount > 0) {
+          await loadLocalDrafts();
+          toast.success(
+            syncedCount === 1 ? "Draft synced" : `${syncedCount} drafts synced`,
+            { id: "saved-drafts-synced" },
+          );
+        }
+      }
+
+      await loadHealthRecordDrafts();
+    },
+    [loadLocalDrafts, loadHealthRecordDrafts, syncLocalDraftToServer],
+  );
+
+  // Reconnecting refreshes and syncs on its own: the midwife never has to
+  // press Retry just to see her drafts again.
+  useEffect(() => {
+    function handleOnline() {
+      void refreshSavedDrafts({ syncLocal: true });
+    }
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [refreshSavedDrafts]);
+
+  /**
+   * One row per consultation.
+   *
+   * A local copy and a server draft are the same consultation when they share
+   * the server draft id, or failing that the patient. When both exist the
+   * newer one decides what Resume opens: an unsynced local copy is never
+   * silently replaced by an older server copy.
+   */
+  const savedDraftEntries = useMemo(
+    () => mergeSavedDrafts(healthRecordDrafts, localDrafts),
+    [healthRecordDrafts, localDrafts],
+  );
+
+  function handleSavedDraftResume(row) {
+    // The device copy is ahead, so it - not the older server draft - is what
+    // the midwife gets back. Autosave reconciles it upward afterwards.
+    if (row.unsynced && row.localEntry) {
+      recoverLocalDraft(row.localEntry);
+      return;
+    }
+    if (row.serverId) void handleResumeDraft(row.serverId);
+  }
 
   // Non-destructive conflict dialog: never silently overwrite a newer draft.
   useEffect(() => {
@@ -2395,7 +2778,9 @@ export default function AddHealthRecord() {
       setNoticeModal({
         title: "Draft Not Saved Yet",
         message:
-          "Your latest changes could not be saved as a draft, so you are still on this consultation. Check your connection and try again, or leave without those unsaved changes.",
+          draftLocalStatus === "saved"
+            ? "Your latest changes have not reached the server yet. They are saved on this device and will sync when the connection returns, so you can stay here or leave and recover this consultation later."
+            : "Your latest changes could not be saved as a draft, so you are still on this consultation. Check your connection and try again, or leave without those unsaved changes.",
         actions: [
           { label: "Stay on Consultation" },
           {
@@ -2443,21 +2828,41 @@ export default function AddHealthRecord() {
     }
   }
 
-  function handleDiscardDraft(draft) {
+  /**
+   * Discard one Saved Drafts row. A row can have a server draft, an on-device
+   * copy, or both - all of them go, otherwise the deleted consultation would
+   * come straight back from whichever copy was left behind.
+   */
+  function handleDiscardDraft(row) {
+    const hasServerCopy = Boolean(row.serverId && row.serverDraft);
     setNoticeModal({
       title: "Discard Draft?",
-      message: `Discard the ${draft.classification} draft for ${draft.patient.label}? This cannot be restored.`,
+      message: `Discard the ${row.classification} draft for ${row.patientLabel}?${
+        row.unsynced
+          ? " It has not been saved to the server, so it cannot be restored."
+          : " This cannot be restored."
+      }`,
       actions: [
         {
           label: "Discard Draft",
+          variant: "destructive",
           onClick: async () => {
-            setDraftDiscardingId(draft.id);
+            setDiscardingDraftKey(row.key);
             try {
-              await discardHealthRecordDraft(draft.id);
-              setHealthRecordDrafts((current) =>
-                current.filter((item) => item.id !== draft.id),
-              );
-              if (activeDraft?.id === draft.id) {
+              if (hasServerCopy) {
+                await discardHealthRecordDraft(row.serverId);
+                setHealthRecordDrafts((current) =>
+                  current.filter((item) => item.id !== row.serverId),
+                );
+              }
+              if (row.localEntry) {
+                await deleteLocalDraft({
+                  ownerKey: localDraftOwnerKey,
+                  consultationKey: row.localEntry.consultationKey,
+                }).catch(() => {});
+                await loadLocalDrafts();
+              }
+              if (row.serverId && activeDraft?.id === row.serverId) {
                 setActiveDraft(null);
                 setDraftSavedAt("");
               }
@@ -2465,11 +2870,11 @@ export default function AddHealthRecord() {
               setNoticeModal({
                 title: "Draft Not Discarded",
                 message: isConnectionError(error)
-                  ? "Unable to reach the server. Please check your connection and try again."
+                  ? "Unable to reach the server, so the server copy is still there. Check your connection and try again."
                   : error?.message || "Unable to discard this draft.",
               });
             } finally {
-              setDraftDiscardingId("");
+              setDiscardingDraftKey("");
             }
           },
         },
@@ -4387,6 +4792,9 @@ export default function AddHealthRecord() {
 
   function continueSetup() {
     if (consultationType === "new" && !healthRecordType) setHealthRecordType("General Consultation");
+    if (consultationType === "new" && selectedPatientId) {
+      setStartedConsultationPatientId(String(selectedPatientId));
+    }
     goToWizardPhase(
       consultationType === "followup" ? WIZARD_FU_SELECT : WIZARD_PROGRAM,
     );
@@ -4400,6 +4808,14 @@ export default function AddHealthRecord() {
   async function handleSetupNext() {
     if (!selectedPatientId || !consultationType || setupChecking) return;
     if (consultationType !== "new" || !isDraftRouteEligible) {
+      continueSetup();
+      return;
+    }
+    // Already inside this patient's consultation and merely stepped out to
+    // setup (Back to Setup): re-entering is not a new consultation, so it must
+    // not be re-examined for conflicts. Works offline too, where the draft may
+    // have no server id yet and the conflict list cannot be refreshed.
+    if (startedConsultationPatientId === String(selectedPatientId)) {
       continueSetup();
       return;
     }
@@ -4676,8 +5092,10 @@ export default function AddHealthRecord() {
     [WIZARD_PROGRAM, WIZARD_FORM, WIZARD_NEXT, WIZARD_REVIEW].includes(wizardPhase);
   const isReviewStep = wizardPhase === WIZARD_REVIEW;
 
+  // Current Visit is the first STEP, not a dead end: back from here returns to
+  // the setup screen (where Saved Drafts lives) with the consultation intact.
+  // handleStepBack already routes WIZARD_PROGRAM -> WIZARD_SETUP.
   function handleWorkspacePrevious() {
-    if (currentStepKey === VISIT_STEP) return;
     handleStepBack();
   }
 
@@ -4690,9 +5108,6 @@ export default function AddHealthRecord() {
 
   // Heading for the current screen. The wizard still knows its position; that
   // position is simply not shown while the progress UI is switched off.
-  const currentGlobalIndex = consultationSteps.findIndex(
-    (step) => step.key === currentGlobalStepKey,
-  );
   const stepSubtitles = {
     [VISIT_STEP]:
       "Record the details specific to today's consultation.",
@@ -4702,18 +5117,18 @@ export default function AddHealthRecord() {
     [NEXT_STEP]: "What should be done next?",
     [REVIEW_STEP]: "Confirm the consultation details below before saving.",
   };
+  // Current Visit keeps its generic heading whatever programs are selected;
+  // only the Program Forms step shows a program-specific title.
+  const stepHeading = resolveStepHeading({
+    currentGlobalStepKey,
+    activeProgramStep,
+    steps: consultationSteps,
+    subtitles: stepSubtitles,
+  });
   const stepIndicator = (
     <ConsultationStepHeading
-      title={
-        activeProgramStep
-          ? activeProgramStep.label
-          : consultationSteps[currentGlobalIndex]?.label || ""
-      }
-      subtitle={
-        activeProgramStep
-          ? activeProgramStep.headerDescription
-          : stepSubtitles[currentGlobalStepKey] || ""
-      }
+      title={stepHeading.title}
+      subtitle={stepHeading.subtitle}
     />
   );
 
@@ -4888,27 +5303,20 @@ export default function AddHealthRecord() {
         onContinue={continueConflictingDraft}
       />
 
-      {canSaveCurrentDraft && draftAutosaveStatus === "offline" && (
-        <div className="anim-fade-up mb-4 ml-0 mr-auto w-full max-w-7xl">
-          <DraftSaveStatus
-            status={draftAutosaveStatus}
-            lastSavedAt={draftAutosave.lastSavedAt}
-          />
-        </div>
-      )}
 
       {isDraftRouteEligible && (
         <DraftsDrawer
           open={draftsDrawerOpen}
           onClose={() => setDraftsDrawerOpen(false)}
-          drafts={healthRecordDrafts}
-          loading={draftListLoading}
-          error={draftListError}
+          rows={savedDraftEntries}
+          loading={draftListLoading || localDraftsLoading}
+          serverError={draftListError}
+          isOffline={!isOnline}
           resumingId={draftResumingId}
-          discardingId={draftDiscardingId}
+          discardingKey={discardingDraftKey}
           activeDraftId={activeDraft?.id || ""}
-          onRetry={loadHealthRecordDrafts}
-          onResume={handleResumeDraft}
+          onRetry={() => void refreshSavedDrafts({ syncLocal: true })}
+          onResume={handleSavedDraftResume}
           onDiscard={handleDiscardDraft}
         />
       )}
@@ -6173,7 +6581,9 @@ export default function AddHealthRecord() {
       {inConsultationWorkspace && (
         <ConsultationActionBar
           onPrevious={handleWorkspacePrevious}
-          previousDisabled={currentStepKey === VISIT_STEP}
+          previousLabel={
+            currentStepKey === VISIT_STEP ? "Back to Setup" : "Previous"
+          }
           onContinue={handleWorkspaceContinue}
           continueLabel={isReviewStep ? "Save Consultation" : "Next"}
           continueBusy={isReviewStep ? saving : setupChecking}
@@ -6260,6 +6670,53 @@ export default function AddHealthRecord() {
         }
         onClose={() => setNoticeModal(null)}
       />
+      {/* Connection lost mid-consultation. Reuses the existing modal rather
+          than adding another: the work is already protected on this device,
+          so the choice is simply keep going or try the server again now. */}
+      <ConnectionIssueModal
+        open={connectionLostOpen}
+        title="Connection Lost"
+        message={[
+          draftLocalStatus === "unavailable" || draftLocalStatus === "failed"
+            ? "This consultation could not be stored securely on this device, so it is held in this tab only. Keep the tab open — AKAY will sync the draft automatically when the connection is restored."
+            : "Your current consultation is temporarily saved on this device. You can continue working, and AKAY will sync the draft automatically when the connection is restored.",
+          offlineRetryNotice,
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        detail={null}
+        retryLabel="Retry"
+        retryLoadingLabel="Retrying…"
+        onContinue={dismissConnectionLost}
+        onRetry={handleOfflineDraftRetry}
+      />
+
+      {/* Offered once on a fresh entry. "Not Now" leaves the encrypted copy
+          in place, so declining never destroys unsynced clinical work. */}
+      <NoticeModal
+        open={Boolean(localRecovery)}
+        title="Unfinished Consultation on This Device"
+        message={`A consultation for ${localRecovery?.record?.draft?.patient?.label || "a patient"} was kept on this device when the connection dropped and has not reached the server yet. Recover it to continue where you left off.`}
+        onClose={() => setLocalRecovery(null)}
+        actions={[
+          {
+            label: "Recover Consultation",
+            variant: "primary",
+            onClick: handleRecoverLocalDraft,
+          },
+          {
+            label: "Not Now",
+            variant: "secondary",
+            onClick: () => setLocalRecovery(null),
+          },
+          {
+            label: "Discard",
+            variant: "destructive",
+            onClick: handleDiscardLocalRecovery,
+          },
+        ]}
+      />
+
       <ConnectionIssueModal
         open={Boolean(connectionIssue)}
         title={connectionIssue?.title}
@@ -6292,19 +6749,29 @@ function formatFollowUpSchedule(task = {}) {
 }
 
 
+/**
+ * Saved Drafts lists server drafts and encrypted on-device drafts together.
+ *
+ * A server failure is a notice above the list, never a replacement for it:
+ * on-device drafts need no connection, so they stay reachable and usable while
+ * offline. Retry is offered only when the server could actually answer.
+ */
 function DraftsDrawer({
   open,
   onClose,
-  drafts,
+  rows,
   loading,
-  error,
+  serverError,
+  isOffline,
   resumingId,
-  discardingId,
+  discardingKey,
   activeDraftId,
   onRetry,
   onResume,
   onDiscard,
 }) {
+  const busy = Boolean(resumingId || discardingKey);
+
   return (
     <Drawer
       open={open}
@@ -6313,81 +6780,103 @@ function DraftsDrawer({
       title="Saved Drafts"
       description="Resume an incomplete record saved securely to AKAY."
     >
-      {loading ? (
+      {loading && rows.length === 0 ? (
         <div className="px-5 py-5" role="status">
           <InlineSpinner label="Loading saved drafts..." />
         </div>
-      ) : error ? (
-        <div className="flex flex-col gap-3 px-5 py-5">
-          <div className="flex items-start gap-2 text-sm text-[#64748B]">
-            <AlertCircle size={17} className="mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="inline-flex h-9 items-center justify-center gap-2 self-start rounded-lg border border-[#DDE3E9] bg-white px-3 text-xs font-semibold text-[#475569] transition hover:bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/15"
-          >
-            <RotateCcw size={14} /> Retry
-          </button>
-        </div>
-      ) : drafts.length === 0 ? (
-        <div className="px-5 py-5 text-sm text-[#64748B]">
-          No active drafts. Select a patient and classification to start a new
-          health record.
-        </div>
       ) : (
-        <div className="divide-y divide-[#EEF2F6]">
-          {drafts.map((draft) => {
-            const resumeBusy = resumingId === draft.id;
-            const discardBusy = discardingId === draft.id;
-            return (
-              <div key={draft.id} className="group px-5 py-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-semibold text-[#1E293B]">
-                        {draft.patient.label}
-                      </p>
-                      {activeDraftId === draft.id && (
-                        <span className="text-[10px] font-bold uppercase text-[#B91C1C]">
-                          Current
-                        </span>
-                      )}
-                    </div>
-                    <span className="mt-1 inline-block rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-2 py-0.5 text-[10px] font-bold text-[#64748B]">
-                      {draft.classification}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onDiscard(draft)}
-                    disabled={Boolean(resumingId || discardingId)}
-                    aria-label={`Discard draft for ${draft.patient.label}`}
-                    title="Discard draft"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#94A3B8] opacity-0 transition hover:bg-red-50 hover:text-[#B91C1C] focus:opacity-100 disabled:cursor-not-allowed disabled:opacity-50 group-hover:opacity-100"
-                  >
-                    {discardBusy ? <ButtonSpinner /> : <Trash2 size={15} />}
-                  </button>
-                </div>
-                <p className="mt-2 text-xs text-[#64748B]">
-                  Saved {formatDraftDateTime(draft.lastSavedAt)}
-                  <span className="mx-1.5 text-[#CBD5E1]">&bull;</span>
-                  {formatDraftExpiry(draft.expiresAt)}
-                </p>
+        <>
+          {serverError && (
+            <div className="flex flex-col gap-2.5 border-b border-[#EEF2F6] bg-[#F8FAFC] px-5 py-3.5">
+              <div className="flex items-start gap-2 text-xs leading-relaxed text-[#64748B]">
+                <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                <span>{serverError}</span>
+              </div>
+              {/* Offline, retrying the server is pointless and must not look
+                  like the only way forward - the list below already works. */}
+              {!isOffline && (
                 <button
                   type="button"
-                  onClick={() => onResume(draft.id)}
-                  disabled={Boolean(resumingId || discardingId)}
-                  className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-3.5 text-xs font-semibold text-white transition hover:bg-[#991B1B] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/20 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={onRetry}
+                  className="inline-flex h-8 items-center justify-center gap-2 self-start rounded-lg border border-[#DDE3E9] bg-white px-3 text-xs font-semibold text-[#475569] transition hover:bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/15"
                 >
-                  {resumeBusy ? <ButtonSpinner /> : <RotateCcw size={14} />}
-                  {resumeBusy ? "Opening..." : "Resume"}
+                  <RotateCcw size={13} /> Retry
                 </button>
-              </div>
-            );
-          })}
-        </div>
+              )}
+            </div>
+          )}
+
+          {rows.length === 0 ? (
+            <div className="px-5 py-5 text-sm text-[#64748B]">
+              {isOffline
+                ? "No drafts are saved on this device. Server drafts will be available when the connection is restored."
+                : "No active drafts. Select a patient and classification to start a new health record."}
+            </div>
+          ) : (
+            <div className="divide-y divide-[#EEF2F6]">
+              {rows.map((row) => {
+                const resumeBusy =
+                  resumingId && row.serverId === resumingId && !row.unsynced;
+                const discardBusy = discardingKey === row.key;
+                return (
+                  <div key={row.key} className="group px-5 py-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate text-sm font-semibold text-[#1E293B]">
+                            {row.patientLabel}
+                          </p>
+                          {activeDraftId && activeDraftId === row.serverId && (
+                            <span className="text-[10px] font-bold uppercase text-[#B91C1C]">
+                              Current
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <span className="inline-block rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-2 py-0.5 text-[10px] font-bold text-[#64748B]">
+                            {row.classification}
+                          </span>
+                          {row.unsynced && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                              <WifiOff size={10} aria-hidden="true" />
+                              On this device
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onDiscard(row)}
+                        disabled={busy}
+                        aria-label={`Discard draft for ${row.patientLabel}`}
+                        title="Discard draft"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#94A3B8] opacity-0 transition hover:bg-red-50 hover:text-[#B91C1C] focus:opacity-100 disabled:cursor-not-allowed disabled:opacity-50 group-hover:opacity-100"
+                      >
+                        {discardBusy ? <ButtonSpinner /> : <Trash2 size={15} />}
+                      </button>
+                    </div>
+                    <p className="mt-2 text-xs text-[#64748B]">
+                      Saved {formatDraftDateTime(row.lastSavedAt)}
+                      <span className="mx-1.5 text-[#CBD5E1]">&bull;</span>
+                      {row.unsynced
+                        ? "Not yet synced to the server"
+                        : formatDraftExpiry(row.expiresAt)}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => onResume(row)}
+                      disabled={busy}
+                      className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-3.5 text-xs font-semibold text-white transition hover:bg-[#991B1B] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/20 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {resumeBusy ? <ButtonSpinner /> : <RotateCcw size={14} />}
+                      {resumeBusy ? "Opening..." : "Continue"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </Drawer>
   );

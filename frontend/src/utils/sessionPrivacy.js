@@ -1,3 +1,5 @@
+import { purgeLocalDraftVault } from "../services/localDraftVault";
+
 export const SENSITIVE_SESSION_CLEARED_EVENT =
   "akay:sensitive-session-cleared";
 
@@ -216,6 +218,19 @@ function broadcastSessionCleared() {
   channel.close();
 }
 
+/**
+ * The one reason an encrypted on-device draft outlives session cleanup: the
+ * SAME account re-authenticating on this device. Every other reason (logout,
+ * account switch, changed identity, forced invalidation, cross-tab clear) ends
+ * this user's presence on the workstation, so the vault and its keys go with
+ * it - a shared BHW machine must not keep clinical work after sign-out.
+ */
+const LOCAL_DRAFT_PRESERVING_REASONS = new Set(["login-initialized"]);
+
+export function shouldPurgeLocalDraftVault(reason) {
+  return !LOCAL_DRAFT_PRESERVING_REASONS.has(String(reason || ""));
+}
+
 export async function clearSensitiveSessionState({
   queryClient,
   reason = "session-cleared",
@@ -233,6 +248,12 @@ export async function clearSensitiveSessionState({
   queryClient?.clear?.();
 
   await clearLegacySensitiveBrowserData();
+
+  if (shouldPurgeLocalDraftVault(reason)) {
+    // Clearing the key store makes any residual ciphertext unreadable, so this
+    // is a destruction, not just a delete.
+    await purgeLocalDraftVault().catch(() => false);
+  }
 
   if (typeof window !== "undefined") {
     window.dispatchEvent(
