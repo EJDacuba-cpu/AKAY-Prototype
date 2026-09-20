@@ -48,9 +48,6 @@ export default function ModuleToolbar({
   searchValue = "",
   onSearchChange,
   searchPlaceholder = "Search...",
-  // Opt-in: keeps the search field expanded instead of collapsing it to an
-  // icon, for modules whose design shows the input at rest.
-  searchAlwaysOpen = false,
   showFilters = true,
   filtersLabel = "Filters",
   filters = [],
@@ -69,9 +66,7 @@ export default function ModuleToolbar({
   actions = null,
   disabled = false,
 }) {
-  const [searchOpen, setSearchOpen] = useState(
-    searchAlwaysOpen || Boolean(searchValue),
-  );
+  const [searchOpen, setSearchOpen] = useState(Boolean(searchValue));
   const [internalFiltersOpen, setInternalFiltersOpen] = useState(false);
   const [draft, setDraft] = useState(() => getInitialValues(filters));
   const toolbarRef = useRef(null);
@@ -81,9 +76,9 @@ export default function ModuleToolbar({
 
   useEffect(() => {
     if (!disabled) return;
-    setSearchOpen(searchAlwaysOpen);
+    setSearchOpen(false);
     setInternalFiltersOpen(false);
-  }, [disabled, searchAlwaysOpen]);
+  }, [disabled]);
 
   useEffect(() => {
     if (!filtersOpen) return undefined;
@@ -109,7 +104,7 @@ export default function ModuleToolbar({
 
   function toggleSearch() {
     if (disabled) return;
-    if (searchOpen && !searchAlwaysOpen) {
+    if (searchOpen) {
       setSearchOpen(false);
       return;
     }
@@ -121,11 +116,11 @@ export default function ModuleToolbar({
   function clearSearch() {
     if (disabled) return;
     onSearchChange?.("");
-    setSearchOpen(searchAlwaysOpen);
+    setSearchOpen(false);
   }
 
   function handleSearchBlur() {
-    if (!searchValue && !searchAlwaysOpen) setSearchOpen(false);
+    if (!searchValue) setSearchOpen(false);
   }
 
   function openFilters() {
@@ -226,7 +221,7 @@ export default function ModuleToolbar({
                 searchOpen ? "w-full opacity-100" : "w-full opacity-100 sm:w-0 sm:opacity-0"
               }`}
             />
-            {(searchValue || (searchOpen && !searchAlwaysOpen)) && (
+            {(searchOpen || searchValue) && (
               <button
                 type="button"
                 onMouseDown={(event) => event.preventDefault()}

@@ -229,7 +229,6 @@ export default function PatientsModule() {
               setFilters((prev) => ({ ...prev, search: value }))
             }
             searchPlaceholder="Search name, ID, or contact number..."
-            searchAlwaysOpen
             filters={dropdownFilters}
             activeFilterCount={activeFilterCount}
             activeFilters={activeFilters}
