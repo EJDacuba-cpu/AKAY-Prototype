@@ -43,8 +43,9 @@ export function ConsultationWorkspaceHeader({ onOpenSummary }) {
 }
 
 /**
- * Sticky bar across the consultation content. Autosave is silent: it never
- * reports here, and there is no manual save-draft button.
+ * Sticky bar across the consultation content. Autosave itself is silent and
+ * never reports here; `secondaryAction` carries the manual Save Draft button,
+ * placed beside the primary action.
  *
  * The negative margins pull it across the scroll container's own padding so
  * the white surface runs edge to edge and all the way to the bottom, leaving
@@ -56,6 +57,7 @@ export function ConsultationActionBar({
   // The first screen has no previous STEP - it goes back out to setup - so the
   // caller names the destination instead of always saying "Previous".
   previousLabel = "Previous",
+  secondaryAction = null,
   onContinue,
   continueLabel = "Next",
   continueBusy = false,
@@ -76,22 +78,25 @@ export function ConsultationActionBar({
           {previousLabel}
         </button>
 
-        <button
-          type="button"
-          onClick={onContinue}
-          disabled={continueBusy || continueDisabled}
-          aria-busy={continueBusy}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-[12.5px] font-bold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {continueBusy ? (
-            <>
-              <ButtonSpinner />
-              {continueBusyLabel}
-            </>
-          ) : (
-            continueLabel
-          )}
-        </button>
+        <div className="flex items-center gap-2">
+          {secondaryAction}
+          <button
+            type="button"
+            onClick={onContinue}
+            disabled={continueBusy || continueDisabled}
+            aria-busy={continueBusy}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-[12.5px] font-bold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {continueBusy ? (
+              <>
+                <ButtonSpinner />
+                {continueBusyLabel}
+              </>
+            ) : (
+              continueLabel
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

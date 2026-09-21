@@ -16,7 +16,9 @@
     "test:profile-navigation": "node --test src/utils/profileNavigation.test.js",
     "test:consultation-steps": "node --test src/utils/consultationSteps.test.js src/utils/consultationPrograms.test.js",
     "test:local-draft-vault": "node --test src/services/localDraftCrypto.test.js",
-    "test:saved-drafts": "node --test src/utils/savedDrafts.test.js"
+    "test:saved-drafts": "node --test src/utils/savedDrafts.test.js",
+    "test:consultation-identity": "node --test src/utils/consultationIdentity.test.js",
+    "test:prenatal-form": "node --test src/utils/prenatalForm.test.js"
   },
   "dependencies": {
     "@fontsource-variable/public-sans": "^5.3.0",

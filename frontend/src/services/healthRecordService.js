@@ -1287,13 +1287,20 @@ export async function createHealthRecord(recordData, role = "bhc", options = {})
   void role;
   const idempotencyKey = options.idempotencyKey || createIdempotencyKey();
   const draftId = String(options.draftId || "").trim();
+  // The consultation this record concludes - the same value its drafts carry.
+  // Kept apart from idempotencyKey on purpose: that one names this submission
+  // attempt, this one names the consultation. Create-only; updates reject it.
+  const consultationUuid = String(options.consultationUuid || "").trim();
   const response = await apiRequest("/health-records", {
     method: "POST",
     headers: {
       "Idempotency-Key": idempotencyKey,
       ...(draftId ? { "X-Health-Record-Draft-ID": draftId } : {}),
     },
-    body: toPayload(recordData, { partial: true }),
+    body: {
+      ...toPayload(recordData, { partial: true }),
+      ...(consultationUuid ? { consultation_uuid: consultationUuid } : {}),
+    },
   });
   return {
     ...normalizeRecord(unwrapData(response)),

@@ -3,21 +3,26 @@ import assert from "node:assert/strict";
 
 import {
   ASSESSMENT_STEP,
+  INTERVIEW_STEP,
   NEXT_STEP,
   PROGRAMS_STEP,
   REVIEW_STEP,
+  SETUP_STEP,
   TREATMENT_STEP,
-  VISIT_STEP,
   buildConsultationSteps,
+  deferUntilProgramDecision,
   findFirstErrorStepKey,
   getErrorOwnerStepKey,
   getFormSequence,
   getGlobalStepKey,
+  getNextStepKey,
+  getPreviousStepKey,
   getProgramFormSteps,
   getStepOrder,
   pickErrorsForStep,
   programStepKey,
   resolveFormStep,
+  resolveRestoredPosition,
   resolveStepHeading,
 } from "./consultationSteps.js";
 
@@ -25,11 +30,26 @@ const keysOf = (steps) => steps.map((step) => step.key);
 const MATERNAL = programStepKey("Maternal");
 const TB = programStepKey("TB DOTS / TB Monitoring");
 const FP = programStepKey("Family Planning");
+const HPN_DM = programStepKey("Hypertension / Diabetic Monitoring");
+const EPI = programStepKey("Immunization");
 
-test("General Consultation shows no Program Forms step at all", () => {
-  const steps = buildConsultationSteps({ selectedPrograms: [], primaryProgram: "" });
-  assert.deepEqual(keysOf(steps), [
-    VISIT_STEP,
+/** Every screen from Interview to Review, following Next the way the page does. */
+function walkForward(selectedPrograms, primaryProgram) {
+  const sequence = getFormSequence(getProgramFormSteps(selectedPrograms, primaryProgram));
+  const screens = [sequence[0]];
+  let current = sequence[0];
+  while (current !== NEXT_STEP) {
+    current = getNextStepKey(sequence, current);
+    screens.push(current);
+  }
+  return [...screens, REVIEW_STEP];
+}
+
+/* ── The flows ───────────────────────────────────────────────────────── */
+
+test("GENERAL CONSULTATION: Interview & Vitals → Assessment → Treatment → Next Care → Review", () => {
+  assert.deepEqual(walkForward([], ""), [
+    INTERVIEW_STEP,
     ASSESSMENT_STEP,
     TREATMENT_STEP,
     NEXT_STEP,
@@ -37,25 +57,134 @@ test("General Consultation shows no Program Forms step at all", () => {
   ]);
 });
 
-test("programs collapse into ONE global Program Forms step, never one each", () => {
+test("MATERNAL: the program form sits between Assessment and Treatment", () => {
+  assert.deepEqual(walkForward(["Maternal"], "Maternal"), [
+    INTERVIEW_STEP,
+    ASSESSMENT_STEP,
+    MATERNAL,
+    TREATMENT_STEP,
+    NEXT_STEP,
+    REVIEW_STEP,
+  ]);
+});
+
+test("MATERNAL + DIABETES: Program 1 Maternal, Program 2 Diabetes, then Treatment", () => {
+  assert.deepEqual(walkForward(["Maternal", "Diabetes"], "Maternal"), [
+    INTERVIEW_STEP,
+    ASSESSMENT_STEP,
+    MATERNAL,
+    HPN_DM,
+    TREATMENT_STEP,
+    NEXT_STEP,
+    REVIEW_STEP,
+  ]);
+});
+
+test("NO PROGRAM: the Program / Service Details step is skipped entirely", () => {
+  const steps = buildConsultationSteps({ selectedPrograms: [], primaryProgram: "" });
+  assert.equal(keysOf(steps).includes(PROGRAMS_STEP), false);
+  assert.equal(getNextStepKey(getFormSequence([]), ASSESSMENT_STEP), TREATMENT_STEP);
+});
+
+test("BACKWARD: Previous reverses the exact forward order, out to Setup", () => {
+  const programs = getProgramFormSteps(["Maternal", "Diabetes"], "Maternal");
+  const sequence = getFormSequence(programs);
+
+  const back = [];
+  let current = TREATMENT_STEP;
+  while (current !== SETUP_STEP) {
+    back.push(current);
+    current = getPreviousStepKey(sequence, current);
+  }
+  back.push(SETUP_STEP);
+
+  assert.deepEqual(back, [
+    TREATMENT_STEP,
+    HPN_DM, // last program
+    MATERNAL, // previous program
+    ASSESSMENT_STEP,
+    INTERVIEW_STEP,
+    SETUP_STEP,
+  ]);
+});
+
+test("Previous from the FIRST program returns to Clinical Assessment", () => {
+  const sequence = getFormSequence(getProgramFormSteps(["TB", "Maternal"], "Maternal"));
+  assert.equal(getPreviousStepKey(sequence, MATERNAL), ASSESSMENT_STEP);
+  assert.equal(getPreviousStepKey(sequence, TB), MATERNAL);
+});
+
+test("Next from the LAST program goes to Treatment & Management", () => {
+  const sequence = getFormSequence(getProgramFormSteps(["TB", "Maternal"], "Maternal"));
+  assert.equal(getNextStepKey(sequence, TB), TREATMENT_STEP);
+});
+
+test("Previous from Interview steps out to Setup", () => {
+  assert.equal(getPreviousStepKey(getFormSequence([]), INTERVIEW_STEP), SETUP_STEP);
+});
+
+test("Next from Treatment goes to Next Care Decision", () => {
+  assert.equal(getNextStepKey(getFormSequence([]), TREATMENT_STEP), NEXT_STEP);
+});
+
+/* ── Global steps ────────────────────────────────────────────────────── */
+
+test("the global steps read in the new order with the new names", () => {
   const steps = buildConsultationSteps({
     selectedPrograms: ["Maternal", "TB", "Family Planning"],
     primaryProgram: "Maternal",
   });
-  assert.deepEqual(keysOf(steps), [
-    VISIT_STEP,
-    PROGRAMS_STEP,
+  assert.deepEqual(
+    steps.map((step) => step.label),
+    [
+      "Interview",
+      "Clinical Assessment",
+      "Program / Service Details",
+      "Treatment & Management",
+      "Next Care Decision",
+      "Review & Save",
+    ],
+  );
+});
+
+test("programs collapse into ONE global Program / Service Details step", () => {
+  const three = buildConsultationSteps({
+    selectedPrograms: ["Maternal", "TB", "Family Planning"],
+    primaryProgram: "Maternal",
+  });
+  const one = buildConsultationSteps({ selectedPrograms: ["TB"], primaryProgram: "TB" });
+  assert.equal(three.length, one.length);
+  assert.equal(keysOf(three).filter((key) => key === PROGRAMS_STEP).length, 1);
+});
+
+test("every form screen belongs to the form phase", () => {
+  const steps = buildConsultationSteps({ selectedPrograms: ["TB"], primaryProgram: "TB" });
+  for (const key of [INTERVIEW_STEP, ASSESSMENT_STEP, PROGRAMS_STEP, TREATMENT_STEP]) {
+    assert.equal(steps.find((step) => step.key === key).phase, "form", key);
+  }
+  assert.equal(steps.find((step) => step.key === NEXT_STEP).phase, "next");
+  assert.equal(steps.find((step) => step.key === REVIEW_STEP).phase, "review");
+});
+
+test("every program screen maps back to the one Program / Service Details step", () => {
+  assert.equal(getGlobalStepKey(MATERNAL), PROGRAMS_STEP);
+  assert.equal(getGlobalStepKey(FP), PROGRAMS_STEP);
+  assert.equal(getGlobalStepKey(INTERVIEW_STEP), INTERVIEW_STEP);
+});
+
+test("step order spans Interview through Review, programs after Assessment", () => {
+  assert.deepEqual(getStepOrder(getProgramFormSteps(["Maternal", "TB"], "Maternal")), [
+    INTERVIEW_STEP,
     ASSESSMENT_STEP,
+    MATERNAL,
+    TB,
     TREATMENT_STEP,
     NEXT_STEP,
     REVIEW_STEP,
   ]);
-  // The global list is the same length whether there are 1 or 3 programs.
-  assert.equal(
-    buildConsultationSteps({ selectedPrograms: ["TB"], primaryProgram: "TB" }).length,
-    steps.length,
-  );
 });
+
+/* ── Program ordering (unchanged behaviour) ──────────────────────────── */
 
 test("the nested program list puts the primary first, then selected order", () => {
   const forms = getProgramFormSteps(["TB", "Maternal", "Family Planning"], "Maternal");
@@ -63,11 +192,6 @@ test("the nested program list puts the primary first, then selected order", () =
     "Maternal",
     "TB DOTS / TB Monitoring",
     "Family Planning",
-  ]);
-  assert.deepEqual(forms.map((step) => step.role), [
-    "Primary Program",
-    "Additional Program",
-    "Additional Program",
   ]);
   assert.deepEqual(
     forms.map((step) => `${step.programNumber} of ${step.programCount}`),
@@ -91,170 +215,29 @@ test("unknown program keys never produce a form", () => {
   assert.deepEqual(getProgramFormSteps(["Nonsense"], "Nonsense"), []);
 });
 
-test("the form sequence walks each program, then Assessment and Treatment", () => {
-  const forms = getProgramFormSteps(["Maternal", "TB"], "Maternal");
-  assert.deepEqual(getFormSequence(forms), [MATERNAL, TB, ASSESSMENT_STEP, TREATMENT_STEP]);
-  assert.deepEqual(getFormSequence([]), [ASSESSMENT_STEP, TREATMENT_STEP]);
-});
-
-test("every program screen maps back to the one Program Forms global step", () => {
-  assert.equal(getGlobalStepKey(MATERNAL), PROGRAMS_STEP);
-  assert.equal(getGlobalStepKey(FP), PROGRAMS_STEP);
-  assert.equal(getGlobalStepKey(TREATMENT_STEP), TREATMENT_STEP);
-  assert.equal(getGlobalStepKey(VISIT_STEP), VISIT_STEP);
-});
-
-test("a stored screen that no longer exists falls back to the first one", () => {
+test("a stored screen that no longer exists falls back to Interview", () => {
   const sequence = getFormSequence(getProgramFormSteps(["Maternal", "TB"], "Maternal"));
   assert.equal(resolveFormStep(TB, sequence), TB);
-  assert.equal(resolveFormStep(FP, sequence), MATERNAL);
-  assert.equal(resolveFormStep("", sequence), MATERNAL);
-  assert.equal(resolveFormStep(TREATMENT_STEP, sequence), TREATMENT_STEP);
+  assert.equal(resolveFormStep(FP, sequence), INTERVIEW_STEP); // deselected program
+  assert.equal(resolveFormStep("", sequence), INTERVIEW_STEP);
+  assert.equal(resolveFormStep("visit", sequence), INTERVIEW_STEP); // old Current Visit key
 });
 
-test("step order spans Current Visit through Review, programs included", () => {
-  const forms = getProgramFormSteps(["Maternal", "TB"], "Maternal");
-  assert.deepEqual(getStepOrder(forms), [
-    VISIT_STEP,
-    MATERNAL,
-    TB,
-    ASSESSMENT_STEP,
-    TREATMENT_STEP,
-    NEXT_STEP,
-    REVIEW_STEP,
-  ]);
-});
+/* ── Headings ────────────────────────────────────────────────────────── */
 
-test("each validation error is owned by the screen that shows its field", () => {
-  assert.equal(getErrorOwnerStepKey("chiefComplaint"), VISIT_STEP);
-  assert.equal(getErrorOwnerStepKey("summaryOfPresentIllness"), VISIT_STEP);
-  assert.equal(getErrorOwnerStepKey("hypertensionDiabeticData.bp"), VISIT_STEP);
-  assert.equal(
-    getErrorOwnerStepKey("hypertensionDiabeticData.conditionType"),
-    programStepKey("Hypertension / Diabetic Monitoring"),
-  );
-  assert.equal(getErrorOwnerStepKey("tbData.diagnosis.tbCaseNumber"), TB);
-  assert.equal(getErrorOwnerStepKey("familyPlanningMethodUsed"), FP);
-  assert.equal(getErrorOwnerStepKey("vaccineEntries"), programStepKey("Immunization"));
-  assert.equal(getErrorOwnerStepKey("dispensedMedicines"), TREATMENT_STEP);
-  assert.equal(getErrorOwnerStepKey("followUpDate"), NEXT_STEP);
-  assert.equal(getErrorOwnerStepKey("somethingElse"), null);
-});
-
-test("per-screen validation only blocks on that screen's own errors", () => {
-  const errors = {
-    "tbData.diagnosis.tbCaseNumber": "TB case number is required.",
-    dispensedMedicines: "Click Add Medicine.",
-    familyPlanningMethodUsed: "Method is required.",
-  };
-  assert.deepEqual(Object.keys(pickErrorsForStep(errors, TB)), [
-    "tbData.diagnosis.tbCaseNumber",
-  ]);
-  assert.deepEqual(Object.keys(pickErrorsForStep(errors, TREATMENT_STEP)), [
-    "dispensedMedicines",
-  ]);
-  assert.deepEqual(Object.keys(pickErrorsForStep(errors, ASSESSMENT_STEP)), []);
-});
-
-test("the earliest failing screen is revealed, not object key order", () => {
-  const order = getStepOrder(getProgramFormSteps(["Maternal", "TB"], "Maternal"));
-  assert.equal(
-    findFirstErrorStepKey(
-      { dispensedMedicines: "x", "tbData.phases.intensiveStart": "y" },
-      order,
-    ),
-    TB,
-  );
-  assert.equal(findFirstErrorStepKey({}, order), "");
-});
-
-test("the step indicator counts 5 steps for General, 6 with programs", () => {
-  const general = buildConsultationSteps({ selectedPrograms: [], primaryProgram: "" });
-  assert.equal(general.length, 5);
-  assert.equal(general.findIndex((s) => s.key === ASSESSMENT_STEP) + 1, 2);
-  assert.equal(general[1].label, "Clinical Assessment");
-
-  // Three programs still add exactly one step, not three.
-  const withPrograms = buildConsultationSteps({
-    selectedPrograms: ["Maternal", "TB", "Family Planning"],
-    primaryProgram: "Maternal",
-  });
-  assert.equal(withPrograms.length, 6);
-  assert.equal(withPrograms.findIndex((s) => s.key === PROGRAMS_STEP) + 1, 2);
-  assert.equal(withPrograms[1].label, "Program Forms");
-  assert.equal(withPrograms.findIndex((s) => s.key === ASSESSMENT_STEP) + 1, 3);
-});
-
-test("General Consultation goes from Current Visit straight to Assessment", () => {
-  const sequence = getFormSequence(getProgramFormSteps([], ""));
-  assert.equal(sequence[0], ASSESSMENT_STEP);
-
-  const order = getStepOrder(getProgramFormSteps([], ""));
-  assert.deepEqual(order, [
-    VISIT_STEP,
-    ASSESSMENT_STEP,
-    TREATMENT_STEP,
-    NEXT_STEP,
-    REVIEW_STEP,
-  ]);
-});
-
-test("with programs, Current Visit is followed by the first program form", () => {
-  const forms = getProgramFormSteps(["TB", "Maternal"], "Maternal");
-  const order = getStepOrder(forms);
-  assert.equal(order[1], MATERNAL);      // primary first
-  assert.equal(order[2], TB);
-  assert.equal(order[3], ASSESSMENT_STEP); // last program -> Assessment
-});
-
-test("Next from Current Visit lands on a real screen key, not a step object", () => {
-  // Regression: the handler once passed the global step list to resolveFormStep,
-  // which handed back a step OBJECT. Navigation then could not resolve a phase
-  // and silently did nothing, so Next appeared dead on both consultation types.
-  for (const config of [
-    { selectedPrograms: [], primaryProgram: "" },
-    { selectedPrograms: ["TB", "Maternal"], primaryProgram: "Maternal" },
-  ]) {
-    const sequence = getFormSequence(
-      getProgramFormSteps(config.selectedPrograms, config.primaryProgram),
-    );
-    const destination = sequence[0];
-
-    assert.equal(typeof destination, "string");
-    assert.ok(sequence.includes(destination));
-    assert.ok(getStepOrder(getProgramFormSteps(config.selectedPrograms, config.primaryProgram)).includes(destination));
-  }
-
-  // General goes straight to Assessment; with programs, to the primary one.
-  assert.equal(getFormSequence(getProgramFormSteps([], ""))[0], ASSESSMENT_STEP);
-  assert.equal(
-    getFormSequence(getProgramFormSteps(["TB", "Maternal"], "Maternal"))[0],
-    MATERNAL,
-  );
-});
-
-/* ── Current Visit heading ─────────────────────────────────────────────
-   Regression: the heading read `activeProgramStep`, which resolves to the
-   first program form whenever a program is selected - including while the
-   user is still on Current Visit, and again after Previous. Current Visit
-   then renamed itself "Maternal / Prenatal Care" and so on.            */
-
-const VISIT_SUBTITLE = "Record the details specific to today's consultation.";
 const SUBTITLES = {
-  [VISIT_STEP]: VISIT_SUBTITLE,
-  [ASSESSMENT_STEP]: "Record the diagnosis and how this visit is classified.",
+  [INTERVIEW_STEP]: "Record the patient's reason for visit and present illness.",
+  [ASSESSMENT_STEP]: "Document the examination findings and initial assessment for this visit.",
   [NEXT_STEP]: "What should be done next?",
 };
 
-function headingOnCurrentVisit(selectedPrograms, primaryProgram = "") {
+function headingFor(stepKey, selectedPrograms, primaryProgram = "", activeIndex = 0) {
   const programSteps = getProgramFormSteps(selectedPrograms, primaryProgram);
   return resolveStepHeading({
-    currentGlobalStepKey: VISIT_STEP,
-    // What the page derives before the program step is ever reached.
-    activeProgramStep:
-      programSteps.find(
-        (step) => step.key === resolveFormStep("", getFormSequence(programSteps)),
-      ) || null,
+    currentGlobalStepKey: getGlobalStepKey(stepKey),
+    // The page derives this from formStep, which can point at a program while
+    // another screen shows - exactly the case the gating exists for.
+    activeProgramStep: programSteps[activeIndex] || null,
     steps: buildConsultationSteps({ selectedPrograms, primaryProgram }),
     subtitles: SUBTITLES,
   });
@@ -270,79 +253,213 @@ for (const [label, programs, primary] of [
   ["EPI", ["EPI"], "EPI"],
   ["several programs", ["TB", "Maternal"], "Maternal"],
 ]) {
-  test(`Current Visit keeps its generic heading with ${label}`, () => {
+  test(`Interview and Assessment keep their own headings with ${label}`, () => {
     // Guard against a vacuous pass: with programs selected there really is a
-    // program step that the old heading would have picked up here.
-    assert.equal(
-      getProgramFormSteps(programs, primary).length > 0,
-      programs.length > 0,
-    );
-    assert.deepEqual(headingOnCurrentVisit(programs, primary), {
-      title: "Current Visit",
-      subtitle: VISIT_SUBTITLE,
+    // program step the heading could wrongly pick up.
+    assert.equal(getProgramFormSteps(programs, primary).length > 0, programs.length > 0);
+
+    assert.deepEqual(headingFor(INTERVIEW_STEP, programs, primary), {
+      title: "Interview",
+      subtitle: SUBTITLES[INTERVIEW_STEP],
+    });
+    assert.deepEqual(headingFor(ASSESSMENT_STEP, programs, primary), {
+      title: "Clinical Assessment",
+      subtitle: SUBTITLES[ASSESSMENT_STEP],
     });
   });
 }
 
-test("the Program Forms step still shows the program-specific heading", () => {
-  const programSteps = getProgramFormSteps(["TB", "Maternal"], "Maternal");
-  const heading = resolveStepHeading({
-    currentGlobalStepKey: PROGRAMS_STEP,
-    activeProgramStep: programSteps[0],
-    steps: buildConsultationSteps({
-      selectedPrograms: ["TB", "Maternal"],
-      primaryProgram: "Maternal",
-    }),
-    subtitles: SUBTITLES,
-  });
-
-  assert.equal(heading.title, "Maternal / Prenatal Care");
+test("a single program shows just its own title", () => {
+  const heading = headingFor(MATERNAL, ["Maternal"], "Maternal");
+  assert.equal(heading.title, "Prenatal");
   assert.equal(
     heading.subtitle,
-    "Complete the maternal / prenatal information for this visit.",
+    "Record the patient's pregnancy and obstetric information for this prenatal consultation.",
   );
 });
 
-test("Previous from the first program form restores the generic heading", () => {
-  const selectedPrograms = ["Maternal"];
-  const programSteps = getProgramFormSteps(selectedPrograms, "Maternal");
-  const steps = buildConsultationSteps({ selectedPrograms, primaryProgram: "Maternal" });
-  // Previous moves the screen back to Current Visit but leaves formStep - and
-  // therefore activeProgramStep - pointing at the program that was just open.
-  const heading = resolveStepHeading({
-    currentGlobalStepKey: getGlobalStepKey(VISIT_STEP),
-    activeProgramStep: programSteps[0],
-    steps,
-    subtitles: SUBTITLES,
-  });
-
-  assert.deepEqual(heading, { title: "Current Visit", subtitle: VISIT_SUBTITLE });
+test("several programs say where in the set the form is", () => {
+  assert.equal(
+    headingFor(MATERNAL, ["Maternal", "Diabetes"], "Maternal", 0).title,
+    "Program 1 of 2 · Prenatal",
+  );
+  assert.equal(
+    headingFor(HPN_DM, ["Maternal", "Diabetes"], "Maternal", 1).title,
+    "Program 2 of 2 · Hypertension / Diabetic",
+  );
 });
 
-test("later steps keep their own headings while a program is selected", () => {
-  const selectedPrograms = ["Family Planning"];
-  const steps = buildConsultationSteps({ selectedPrograms, primaryProgram: "Family Planning" });
-  const programSteps = getProgramFormSteps(selectedPrograms, "Family Planning");
+test("later steps never show a program title", () => {
+  for (const stepKey of [TREATMENT_STEP, NEXT_STEP, REVIEW_STEP]) {
+    const heading = headingFor(stepKey, ["Family Planning"], "Family Planning");
+    assert.doesNotMatch(heading.title, /Family Planning|Program \d/);
+  }
+  assert.equal(headingFor(TREATMENT_STEP, ["EPI"], "EPI").title, "Treatment & Management");
+  assert.equal(headingFor(NEXT_STEP, ["EPI"], "EPI").title, "Next Care Decision");
+  assert.equal(headingFor(REVIEW_STEP, ["EPI"], "EPI").title, "Review & Save");
+});
 
-  for (const stepKey of [ASSESSMENT_STEP, NEXT_STEP]) {
-    const heading = resolveStepHeading({
-      currentGlobalStepKey: stepKey,
-      activeProgramStep: programSteps[0],
-      steps,
-      subtitles: SUBTITLES,
-    });
-    assert.equal(heading.title, steps.find((s) => s.key === stepKey).label);
-    assert.equal(heading.subtitle, SUBTITLES[stepKey]);
+/* ── Validation ownership ────────────────────────────────────────────── */
+
+test("each validation error is owned by the screen that shows its field", () => {
+  assert.equal(getErrorOwnerStepKey("chiefComplaint"), INTERVIEW_STEP);
+  assert.equal(getErrorOwnerStepKey("summaryOfPresentIllness"), INTERVIEW_STEP);
+  // Vital Signs is a card on the first step, so BP belongs to that step.
+  assert.equal(getErrorOwnerStepKey("hypertensionDiabeticData.bp"), INTERVIEW_STEP);
+  assert.equal(getErrorOwnerStepKey("hypertensionDiabeticData.conditionType"), HPN_DM);
+  assert.equal(getErrorOwnerStepKey("tbData.diagnosis.tbCaseNumber"), TB);
+  assert.equal(getErrorOwnerStepKey("familyPlanningMethodUsed"), FP);
+  assert.equal(getErrorOwnerStepKey("vaccineEntries"), EPI);
+  assert.equal(getErrorOwnerStepKey("dispensedMedicines"), TREATMENT_STEP);
+  assert.equal(getErrorOwnerStepKey("followUpDate"), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("somethingElse"), null);
+});
+
+test("per-screen validation only blocks on that screen's own errors", () => {
+  const errors = {
+    "tbData.diagnosis.tbCaseNumber": "TB case number is required.",
+    dispensedMedicines: "Click Add Medicine.",
+    familyPlanningMethodUsed: "Method is required.",
+  };
+  assert.deepEqual(Object.keys(pickErrorsForStep(errors, TB)), ["tbData.diagnosis.tbCaseNumber"]);
+  assert.deepEqual(Object.keys(pickErrorsForStep(errors, TREATMENT_STEP)), ["dispensedMedicines"]);
+  assert.deepEqual(Object.keys(pickErrorsForStep(errors, ASSESSMENT_STEP)), []);
+});
+
+test("the earliest failing screen is revealed, in the NEW order", () => {
+  const order = getStepOrder(getProgramFormSteps(["Maternal", "TB"], "Maternal"));
+  // HPI (Interview) now precedes the TB form, which follows Assessment.
+  assert.equal(
+    findFirstErrorStepKey(
+      { "tbData.phases.intensiveStart": "y", summaryOfPresentIllness: "x" },
+      order,
+    ),
+    INTERVIEW_STEP,
+  );
+  assert.equal(
+    findFirstErrorStepKey({ dispensedMedicines: "x", "hypertensionDiabeticData.bp": "y" }, order),
+    INTERVIEW_STEP,
+  );
+  assert.equal(findFirstErrorStepKey({}, order), "");
+});
+
+test("HPI is not demanded before the program decision is made", () => {
+  // At Interview no program is chosen yet, so every visit still looks
+  // general - requiring HPI there would wrongly bind Maternal/TB visits too.
+  const errors = { summaryOfPresentIllness: "Required.", chiefComplaint: "Required." };
+  assert.deepEqual(Object.keys(deferUntilProgramDecision(errors, INTERVIEW_STEP)), ["chiefComplaint"]);
+});
+
+test("HPI IS enforced once the program decision is made", () => {
+  const errors = { summaryOfPresentIllness: "Required." };
+  for (const stepKey of [ASSESSMENT_STEP, MATERNAL, TREATMENT_STEP, NEXT_STEP]) {
+    assert.deepEqual(deferUntilProgramDecision(errors, stepKey), errors, stepKey);
   }
 });
 
-test("Review keeps its own heading even with programs selected", () => {
-  const selectedPrograms = ["EPI"];
-  const heading = resolveStepHeading({
-    currentGlobalStepKey: REVIEW_STEP,
-    activeProgramStep: getProgramFormSteps(selectedPrograms, "EPI")[0],
-    steps: buildConsultationSteps({ selectedPrograms, primaryProgram: "EPI" }),
-    subtitles: SUBTITLES,
+test("deferral never touches unrelated errors, and never mutates its input", () => {
+  const errors = { "hypertensionDiabeticData.bp": "BP required.", summaryOfPresentIllness: "x" };
+  const deferred = deferUntilProgramDecision(errors, INTERVIEW_STEP);
+  assert.deepEqual(Object.keys(deferred), ["hypertensionDiabeticData.bp"]);
+  assert.deepEqual(Object.keys(errors), ["hypertensionDiabeticData.bp", "summaryOfPresentIllness"]);
+  assert.deepEqual(deferUntilProgramDecision(undefined, INTERVIEW_STEP), {});
+});
+
+/* ── Draft restore: every stage returns to its own screen ────────────── */
+
+/** What the page's draft payload stores for a position (review saves as next). */
+function payloadFor(wizardPhase, formStep) {
+  return { wizardPhase: wizardPhase === "review" ? "next" : wizardPhase, formStep };
+}
+
+for (const [stage, formStep] of [
+  ["Interview & Vital Signs", INTERVIEW_STEP],
+  ["Clinical Assessment", ASSESSMENT_STEP],
+  ["Program 1 (Maternal)", MATERNAL],
+  ["Program 2 (Hypertension / Diabetic)", HPN_DM],
+  ["Treatment & Management", TREATMENT_STEP],
+]) {
+  test(`DRAFT RESTORE: a draft saved on ${stage} reopens on ${stage}`, () => {
+    assert.deepEqual(resolveRestoredPosition(payloadFor("form", formStep)), {
+      phase: "form",
+      formStep,
+    });
   });
-  assert.equal(heading.title, "Review");
+}
+
+test("DRAFT RESTORE: a draft saved on Next Care reopens on Next Care", () => {
+  assert.deepEqual(resolveRestoredPosition(payloadFor("next", TREATMENT_STEP)), {
+    phase: "next",
+    formStep: TREATMENT_STEP,
+  });
+});
+
+test("DRAFT RESTORE: a draft saved on Review reopens on Next Care", () => {
+  assert.equal(resolveRestoredPosition(payloadFor("review", TREATMENT_STEP)).phase, "next");
+});
+
+test("DRAFT RESTORE: the current program index survives the round trip", () => {
+  const selected = ["Maternal", "Diabetes"];
+  const sequence = getFormSequence(getProgramFormSteps(selected, "Maternal"));
+  const restored = resolveRestoredPosition(payloadFor("form", HPN_DM));
+  assert.equal(resolveFormStep(restored.formStep, sequence), HPN_DM);
+  assert.equal(sequence.indexOf(HPN_DM) - sequence.indexOf(MATERNAL), 1, "still Program 2");
+});
+
+test("DRAFT RESTORE: a draft from the old Current Visit screen opens on Interview", () => {
+  assert.deepEqual(resolveRestoredPosition({ wizardPhase: "program", formStep: "" }), {
+    phase: "form",
+    formStep: INTERVIEW_STEP,
+  });
+  // Even with a stray formStep, the old phase is not trusted.
+  assert.equal(
+    resolveRestoredPosition({ wizardPhase: "program", formStep: ASSESSMENT_STEP }).formStep,
+    INTERVIEW_STEP,
+  );
+});
+
+test("DRAFT RESTORE: drafts from the previous wizard's form screens still land correctly", () => {
+  // Those drafts stored assessment / treatment / a program key; all still exist.
+  for (const formStep of [ASSESSMENT_STEP, TREATMENT_STEP, MATERNAL]) {
+    assert.equal(resolveRestoredPosition({ wizardPhase: "form", formStep }).formStep, formStep);
+  }
+});
+
+test("DRAFT RESTORE: a draft from before the steps existed opens on Interview", () => {
+  assert.deepEqual(resolveRestoredPosition({}), { phase: "form", formStep: INTERVIEW_STEP });
+  assert.deepEqual(resolveRestoredPosition(undefined), { phase: "form", formStep: INTERVIEW_STEP });
+});
+
+test("DRAFT RESTORE: a payload never gains a phase the draft allowlist rejects", () => {
+  for (const phase of ["program", "form", "next", "review", undefined]) {
+    assert.ok(["form", "next"].includes(resolveRestoredPosition({ wizardPhase: phase }).phase));
+  }
+});
+
+/* ── Interview and Vital Signs are one step ──────────────────────────── */
+
+test("there is no separate Vital Signs screen to click Next through", () => {
+  const sequence = getFormSequence(getProgramFormSteps(["Maternal"], "Maternal"));
+  assert.equal(sequence.includes("vitals"), false);
+  // Next from the first step goes straight to Clinical Assessment.
+  assert.equal(getNextStepKey(sequence, INTERVIEW_STEP), ASSESSMENT_STEP);
+  // ...and Previous from Assessment comes straight back to it.
+  assert.equal(getPreviousStepKey(sequence, ASSESSMENT_STEP), INTERVIEW_STEP);
+});
+
+test("vitals errors stop the user on the first step", () => {
+  const errors = { "hypertensionDiabeticData.bp": "BP required.", chiefComplaint: "Required." };
+  assert.deepEqual(
+    Object.keys(pickErrorsForStep(deferUntilProgramDecision(errors, INTERVIEW_STEP), INTERVIEW_STEP)).sort(),
+    ["chiefComplaint", "hypertensionDiabeticData.bp"],
+  );
+});
+
+test("DRAFT RESTORE: a draft saved on the former Vital Signs screen reopens on the first step", () => {
+  assert.deepEqual(resolveRestoredPosition({ wizardPhase: "form", formStep: "vitals" }), {
+    phase: "form",
+    formStep: INTERVIEW_STEP,
+  });
+  // Even without the mapping, a stale key would still land there.
+  assert.equal(resolveFormStep("vitals", getFormSequence([])), INTERVIEW_STEP);
 });

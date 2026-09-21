@@ -100,8 +100,9 @@ authorized medicine display information with neutral review warnings.
 The direct BHW Add Health Record setup screen lists active drafts in last-saved
 order. Saved Drafts shows server drafts and encrypted on-device drafts in one
 list: a device copy and a server draft are the same consultation when they share
-the draft id, or failing that the patient, and the newer of the two decides what
-Continue reopens. A device copy that is ahead is marked *On this device / Not yet
+the consultation identity, else the draft id, and — for legacy drafts where
+neither side has an identity — the patient (see *Consultation identity* below).
+The newer of the two decides what Continue reopens. A device copy that is ahead is marked *On this device / Not yet
 synced* and is never displaced by an older server copy; an older device copy is
 still attached to the row so discarding removes both. A server failure is a
 notice above the list rather than a replacement for it, so on-device drafts stay
@@ -115,11 +116,43 @@ not move the page, clear fields, or validate official required fields. A failed
 request leaves React form state intact. Offline, that action updates the
 encrypted device copy instead and never reports a server save.
 
-Current Visit is the first step, not a dead end: its left action is
+The New Consultation wizard runs:
+
+```text
+Setup → Interview & Vital Signs → Clinical Assessment
+      → Program / Service Details (only when a program is selected)
+      → Treatment & Management → Next Care Decision → Review & Save
+```
+
+Interview and Vital Signs share the first step: two cards on one screen, with no
+Next between them. Next from that step proceeds only when both cards satisfy the
+existing validation, including blood pressure when Hypertension / Diabetes is
+selected.
+
+Setup answers only which patient and what type of visit. Programs and services
+are chosen at the end of Clinical Assessment, grouped as *Services* (Maternal,
+Family Planning, EPI) and *Condition Monitoring / Evaluation* (TB,
+Hypertension, Diabetes). Selecting none is a general consultation, and Program /
+Service Details is skipped. With several, their existing forms follow one at a
+time, primary first, headed "Program 1 of N · <name>". Previous reverses the
+exact forward order.
+
+Interview is the first step, not a dead end: its left action is
 `Back to Setup`, which returns to the setup screen — and so to Saved Drafts —
 with the patient, visit type, programs, field values, server draft identity, and
-device draft identity all intact. Re-entering the same patient's consultation is
-not a new consultation and does not re-run the unfinished-draft conflict check.
+device draft identity all intact. It flushes pending edits into the same draft
+first, since autosave pauses on setup. Re-entering the same patient's
+consultation is not a new consultation and does not re-run the unfinished-draft
+conflict check.
+
+History of Present Illness remains required for a general consultation only.
+Because Interview now precedes the program decision, that requirement is
+enforced when Clinical Assessment is left, returning the encoder to Interview if
+it is missing. Chief Complaint is required on leaving Interview, as before.
+
+A draft reopens on the screen it was saved on, including Next Care Decision.
+Drafts from the previous wizard's Current Visit screen, and from the brief
+standalone Vital Signs screen, reopen on the first step.
 
 Resume fetches one detail response, restores known fields only, and rebuilds
 medicine labels and availability from the authorized server response. A stale,
@@ -249,3 +282,64 @@ that signed-in profile, nor against a forensic extraction of the browser's own k
 store. A server-issued, per-session derived key would narrow this further at the
 cost of making restart recovery impossible; the trade was made deliberately in
 favour of recovery, bounded by the seven-day sweep and the session-clear purge.
+
+## Consultation identity (`consultation_uuid`)
+
+One consultation carries one stable identity from setup to the official record:
+
+```text
+Setup → Interview → server draft → encrypted device copy → reconnect → health record
+```
+
+It is **not** `idempotency_key`, which is unchanged. The two answer different
+questions:
+
+| Field | Identifies | Minted | Lifetime |
+|---|---|---|---|
+| `consultation_uuid` | one **consultation** | client, once, when setup hands over to Interview | the whole consultation |
+| `idempotency_key` | one final-save **attempt** | client, at final save | one submission, bound to one payload via `idempotency_hash` |
+
+`consultation_uuid` is excluded from `idempotency_hash`, alongside
+`idempotency_key` and `draft_public_id`, so the fingerprint is byte-identical to
+what it was before the column existed.
+
+**Lifecycle.** Minted by `ensureConsultationUuid()` only when there is none, so
+Next, Previous, Back to Setup, autosave, manual save, program changes, and
+reconnect all keep it. Resume and recovery use `adoptConsultationUuid()`, which
+always takes the draft's own identity; only a legacy draft with none is given
+one, and the server adopts it once on the next save and never reassigns it. It
+is cleared only when the consultation ends — saved, discarded, abandoned for a
+different patient, or on session clear.
+
+**Where it lives.** `health_record_drafts.consultation_uuid` (a real column),
+`payload.consultationUuid` inside the encrypted draft (so the device copy
+carries it), and `health_records.consultation_uuid`. It is hidden on the
+`HealthRecord` model like the idempotency fields and is never an authorization
+input — every lookup keeps its owner and BHC predicates.
+
+**Uniqueness.**
+
+- Drafts: unique on `(owner_user_id, consultation_uuid)` for **active** rows
+  only (partial index). Per owner because the value is client-supplied and only
+  meaningful within one user's drafts; active-only so a consumed draft can share
+  the value with its record and a discarded or expired row never blocks a
+  resume. Creating a draft for an identity that already has an active draft
+  returns `409 DRAFT_CONSULTATION_EXISTS` with that draft's `draft_id` and
+  `version`, and neither splits the consultation nor overwrites the server copy.
+- Records: globally unique, nullable. One consultation becomes at most one
+  record, even across a reload that mints a fresh idempotency key — that returns
+  `409 CONSULTATION_ALREADY_RECORDED`. The caller's own record id is returned;
+  anyone else's is never identified.
+
+**Device copies** are keyed `consultation:<uuid>`, scoped to the owner. There is
+no patient-keyed form for a new slot, so two consultations for one patient are
+two slots. Slots written before this change (`patient:<id>`) remain readable.
+
+**Saved Drafts matching**, in strict priority: consultation identity, then
+server draft id, then patient — the last only when **neither** side has an
+identity. Empty identities never match each other. A device copy with no server
+id that matches a server draft is reopened bound to that draft's id and current
+version, so autosave updates it under the normal version check rather than
+creating a duplicate.
+
+Existing rows keep `consultation_uuid = NULL` and are not backfilled.

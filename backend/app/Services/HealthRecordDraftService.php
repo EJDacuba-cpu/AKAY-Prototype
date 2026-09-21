@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\DraftConsultationExistsException;
 use App\Exceptions\DraftFinalizationConflictException;
 use App\Exceptions\DraftVersionConflictException;
 use App\Models\AuditLog;
@@ -11,6 +12,7 @@ use App\Models\Patient;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -40,15 +42,80 @@ class HealthRecordDraftService
             ->paginate($perPage);
     }
 
+    /**
+     * The active draft for one consultation identity, or null.
+     *
+     * Owner and BHC predicates are part of the lookup: consultation_uuid says
+     * WHICH consultation, never WHO may open it.
+     */
+    public function findActiveByConsultationUuid(
+        User $user,
+        ?string $consultationUuid
+    ): ?HealthRecordDraft {
+        if ($consultationUuid === null || $consultationUuid === '') {
+            return null;
+        }
+
+        return HealthRecordDraft::query()
+            ->where('owner_user_id', $user->id)
+            ->where('barangay_health_center_id', $user->barangay_health_center_id)
+            ->where('consultation_uuid', $consultationUuid)
+            ->where('status', HealthRecordDraft::STATUS_ACTIVE)
+            ->where('expires_at', '>', now())
+            ->first();
+    }
+
     public function create(User $user, array $data): HealthRecordDraft
     {
         $this->ensureBhw($user);
         $patient = $this->authorizedPatient($user, (int) $data['patient_id']);
+        $consultationUuid = $this->normalizeConsultationUuid(
+            $data['consultation_uuid'] ?? null
+        );
+
+        // This consultation already has a server draft - the client simply did
+        // not know its public id (it went offline before the first autosave, or
+        // another tab got there first). Creating a second draft would split one
+        // consultation in two, so the caller is told which draft to update
+        // instead. Its payload is NOT overwritten here: that would be a silent
+        // write over content this request has never seen.
+        if ($existing = $this->findActiveByConsultationUuid($user, $consultationUuid)) {
+            throw new DraftConsultationExistsException($existing);
+        }
+
         $payload = $this->payloads->sanitize($data['payload']);
         $this->authorizeMedicineSelections($user, $payload);
         $ciphertext = $this->encrypt($payload);
 
-        return DB::transaction(function () use ($user, $patient, $data, $ciphertext): HealthRecordDraft {
+        try {
+            return $this->insertDraft($user, $patient, $data, $ciphertext, $consultationUuid);
+        } catch (QueryException $exception) {
+            // Two creates for one consultation raced past the check above; the
+            // partial unique index let exactly one through. Answer the loser the
+            // same way as if it had arrived second.
+            $existing = $this->findActiveByConsultationUuid($user, $consultationUuid);
+            if ($existing !== null) {
+                throw new DraftConsultationExistsException($existing);
+            }
+
+            throw $exception;
+        }
+    }
+
+    private function insertDraft(
+        User $user,
+        Patient $patient,
+        array $data,
+        string $ciphertext,
+        ?string $consultationUuid
+    ): HealthRecordDraft {
+        return DB::transaction(function () use (
+            $user,
+            $patient,
+            $data,
+            $ciphertext,
+            $consultationUuid
+        ): HealthRecordDraft {
             User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
             $activeCount = HealthRecordDraft::query()
                 ->where('owner_user_id', $user->id)
@@ -64,6 +131,7 @@ class HealthRecordDraftService
 
             return HealthRecordDraft::create([
                 'public_id' => (string) Str::uuid(),
+                'consultation_uuid' => $consultationUuid,
                 'owner_user_id' => $user->id,
                 'barangay_health_center_id' => $user->barangay_health_center_id,
                 'patient_id' => $patient->id,
@@ -109,6 +177,23 @@ class HealthRecordDraftService
         $ciphertext = $this->encrypt($payload);
         $expectedVersion = (int) $data['version'];
 
+        // Adopt-once: a draft created before consultation identities existed
+        // gains one the first time a current client saves it. An identity that
+        // is already set is never reassigned - the consultation keeps the uuid
+        // it was born with, whatever a later client claims.
+        $adoptedUuid = $draft->consultation_uuid === null
+            ? $this->normalizeConsultationUuid($data['consultation_uuid'] ?? null)
+            : null;
+
+        if ($adoptedUuid !== null
+            && $this->findActiveByConsultationUuid($user, $adoptedUuid) !== null) {
+            // That identity belongs to a different active draft; saving would
+            // merge two consultations into one row.
+            throw new DraftConsultationExistsException(
+                $this->findActiveByConsultationUuid($user, $adoptedUuid)
+            );
+        }
+
         $updated = HealthRecordDraft::query()
             ->whereKey($draft->id)
             ->where('owner_user_id', $user->id)
@@ -119,6 +204,9 @@ class HealthRecordDraftService
             ->update([
                 'patient_id' => $patient->id,
                 'classification' => $data['classification'],
+                ...($adoptedUuid !== null
+                    ? ['consultation_uuid' => $adoptedUuid]
+                    : []),
                 'encrypted_payload' => $ciphertext,
                 'version' => DB::raw('version + 1'),
                 'expires_at' => now()->addDays(config('health_record_drafts.expiry_days')),
@@ -297,10 +385,18 @@ class HealthRecordDraftService
         ]);
     }
 
+    private function normalizeConsultationUuid(mixed $value): ?string
+    {
+        $uuid = is_string($value) ? trim($value) : '';
+
+        return $uuid === '' ? null : strtolower($uuid);
+    }
+
     public function metadata(HealthRecordDraft $draft): array
     {
         return [
             'id' => $draft->public_id,
+            'consultation_uuid' => $draft->consultation_uuid,
             'patient' => [
                 'id' => $draft->patient?->id,
                 'label' => $draft->patient?->full_name ?: 'Patient',

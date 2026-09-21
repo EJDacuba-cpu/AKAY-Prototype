@@ -3,19 +3,29 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
 /**
  * Step model for the New Consultation workspace.
  *
+ *   Setup -> Interview & Vital Signs -> Clinical Assessment
+ *         -> Program / Service Details (only when a program is selected)
+ *         -> Treatment & Management -> Next Care Decision -> Review & Save
+ *
+ * Interview and Vital Signs are one step: two cards on the same screen,
+ * with no Next between them. The step's key is INTERVIEW_STEP.
+ *
  * Two levels:
- *  - GLOBAL steps, shown in the progress bar: Current Visit, Program Forms,
- *    Assessment, Treatment, Next Step, Review. Health programs are never
- *    global steps of their own.
- *  - The PROGRAM forms nested inside the single "Program Forms" step, walked
- *    one at a time, primary first.
+ *  - GLOBAL steps (one heading each). Health programs are never global steps
+ *    of their own: however many are selected they share the single
+ *    "Program / Service Details" step.
+ *  - The PROGRAM forms nested inside that step, walked one at a time, primary
+ *    first, then in the order they were selected.
+ *
+ * Programs are chosen at the END of Clinical Assessment, so their forms follow
+ * the assessment rather than precede it.
  *
  * Pure UI bookkeeping: it never touches the program data itself -
  * selectedPrograms / primaryProgram stay the single source of truth and every
  * form keeps writing the same state it always did.
  */
 
-export const VISIT_STEP = "visit";
+export const INTERVIEW_STEP = "interview";
 export const PROGRAMS_STEP = "programs";
 export const ASSESSMENT_STEP = "assessment";
 export const TREATMENT_STEP = "treatment";
@@ -26,8 +36,9 @@ const PROGRAM_PREFIX = "program:";
 
 const PROGRAM_STEP_DETAILS = {
   Maternal: {
-    label: "Maternal / Prenatal Care",
-    description: "Complete the maternal / prenatal information for this visit.",
+    label: "Prenatal",
+    description:
+      "Record the patient's pregnancy and obstetric information for this prenatal consultation.",
   },
   "TB DOTS / TB Monitoring": {
     label: "TB DOTS",
@@ -102,33 +113,35 @@ export function getProgramFormSteps(selectedPrograms = [], primaryProgram = "") 
 }
 
 /**
- * The global steps for the progress bar. "Program Forms" appears only when at
- * least one health program is selected, so a General Consultation never shows
- * an empty program step.
+ * The global steps, one heading each. "Program / Service Details" appears only
+ * when at least one program is selected, so a General Consultation goes
+ * straight from Clinical Assessment to Treatment & Management.
  */
 export function buildConsultationSteps({ selectedPrograms, primaryProgram } = {}) {
   const programSteps = getProgramFormSteps(selectedPrograms, primaryProgram);
 
   return [
-    { key: VISIT_STEP, phase: "program", label: "Current Visit" },
-    ...(programSteps.length > 0
-      ? [{ key: PROGRAMS_STEP, phase: "form", label: "Program Forms" }]
-      : []),
+    { key: INTERVIEW_STEP, phase: "form", label: "Interview" },
     { key: ASSESSMENT_STEP, phase: "form", label: "Clinical Assessment" },
-    { key: TREATMENT_STEP, phase: "form", label: "Treatment / Management" },
-    { key: NEXT_STEP, phase: "next", label: "Next Step" },
-    { key: REVIEW_STEP, phase: "review", label: "Review" },
+    ...(programSteps.length > 0
+      ? [{ key: PROGRAMS_STEP, phase: "form", label: "Program / Service Details" }]
+      : []),
+    { key: TREATMENT_STEP, phase: "form", label: "Treatment & Management" },
+    { key: NEXT_STEP, phase: "next", label: "Next Care Decision" },
+    { key: REVIEW_STEP, phase: "review", label: "Review & Save" },
   ];
 }
 
 /**
  * Title and subtitle for the screen on show.
  *
- * A program-specific heading belongs to the Program Forms step and nowhere
- * else. The caller's `activeProgramStep` is derived from `formStep` alone, so
- * it already points at the first program form BEFORE that step is reached (and
- * still points at one after Previous). Gating on the global step key is what
- * keeps Current Visit generic no matter which programs are selected.
+ * A program-specific heading belongs to the Program / Service Details step and
+ * nowhere else. The caller's `activeProgramStep` can point at a program form
+ * while another screen is showing, so gating on the global step key is what
+ * keeps every other screen's heading generic whatever is selected.
+ *
+ * With more than one program the title also says where in the set it is:
+ * "Program 1 of 2 · Maternal / Prenatal Care".
  */
 export function resolveStepHeading({
   currentGlobalStepKey,
@@ -137,8 +150,13 @@ export function resolveStepHeading({
   subtitles = {},
 } = {}) {
   if (currentGlobalStepKey === PROGRAMS_STEP && activeProgramStep) {
+    const label = activeProgramStep.label || "";
+    const count = Number(activeProgramStep.programCount) || 0;
     return {
-      title: activeProgramStep.label || "",
+      title:
+        count > 1
+          ? `Program ${activeProgramStep.programNumber} of ${count} · ${label}`
+          : label,
       subtitle: activeProgramStep.headerDescription || "",
     };
   }
@@ -151,16 +169,104 @@ export function resolveStepHeading({
 }
 
 /**
- * The screens the form phase walks through: each selected program in turn,
- * then Assessment, then Treatment.
+ * The screens the form phase walks through, in order. Program forms sit AFTER
+ * Clinical Assessment (where they are chosen) and are skipped entirely when
+ * none is selected.
  */
 export function getFormSequence(programSteps = []) {
-  return [...programSteps.map((step) => step.key), ASSESSMENT_STEP, TREATMENT_STEP];
+  return [
+    INTERVIEW_STEP,
+    ASSESSMENT_STEP,
+    ...programSteps.map((step) => step.key),
+    TREATMENT_STEP,
+  ];
 }
 
 /** Every screen in order, used to rank validation errors and Previous/Continue. */
 export function getStepOrder(programSteps = []) {
-  return [VISIT_STEP, ...getFormSequence(programSteps), NEXT_STEP, REVIEW_STEP];
+  return [...getFormSequence(programSteps), NEXT_STEP, REVIEW_STEP];
+}
+
+/**
+ * Errors whose REQUIREMENT depends on the program decision, which is made at
+ * the end of Clinical Assessment. History of Present Illness is required for a
+ * general consultation only - but Interview comes before the programs are
+ * chosen, so at that point every visit still looks general.
+ */
+const PROGRAM_DECISION_ERRORS = new Set(["summaryOfPresentIllness"]);
+
+/** Steps that come before the program decision is made. */
+const BEFORE_PROGRAM_DECISION = new Set([INTERVIEW_STEP]);
+
+/**
+ * The errors a step may act on. Before the program decision, any requirement
+ * that depends on it is not yet knowable, so it is set aside rather than
+ * enforced early; it is enforced when Clinical Assessment is left, and the
+ * step gate then sends the user back to the screen that owns the field. The
+ * rule itself is unchanged - only WHEN it can be decided moved.
+ */
+export function deferUntilProgramDecision(errors, stepKey) {
+  if (!BEFORE_PROGRAM_DECISION.has(stepKey)) return { ...(errors || {}) };
+  return Object.fromEntries(
+    Object.entries(errors || {}).filter(([key]) => !PROGRAM_DECISION_ERRORS.has(key)),
+  );
+}
+
+/** Where Previous from the first screen goes: out to the setup screen. */
+export const SETUP_STEP = "setup";
+
+/**
+ * Where Next goes from a form screen: the next screen in order, and Next Care
+ * Decision after the last one (Treatment & Management).
+ */
+export function getNextStepKey(formSequence, current) {
+  const index = formSequence.indexOf(current);
+  return index >= 0 && index < formSequence.length - 1
+    ? formSequence[index + 1]
+    : NEXT_STEP;
+}
+
+/**
+ * Where Previous goes from a form screen: the exact reverse of Next. The first
+ * screen (Interview) steps out to setup.
+ */
+export function getPreviousStepKey(formSequence, current) {
+  const index = formSequence.indexOf(current);
+  return index > 0 ? formSequence[index - 1] : SETUP_STEP;
+}
+
+// The wizardPhase values a draft payload can carry. The server allowlist
+// accepts exactly program / form / next; nothing new is ever written.
+const LEGACY_CURRENT_VISIT_PHASE = "program";
+// Vital Signs was briefly a screen of its own. Its fields now sit on the
+// first step, so a draft saved there reopens on that step.
+const LEGACY_VITALS_STEP = "vitals";
+const FORM_PHASE = "form";
+const NEXT_CARE_PHASE = "next";
+
+/**
+ * The screen a saved draft reopens on - server resume and on-device recovery
+ * alike.
+ *
+ *  - A form screen reopens from its stored formStep.
+ *  - Next Care Decision reopens on Next Care (Review is saved as Next Care).
+ *  - A draft from the previous wizard's Current Visit, or from before the steps
+ *    existed, has no usable formStep and opens on Interview.
+ *
+ * A stored program form that is no longer selected is resolved to Interview by
+ * resolveFormStep at render time.
+ */
+export function resolveRestoredPosition(payload = {}) {
+  const phase = payload?.wizardPhase;
+  const resumesOnNextCare = phase === NEXT_CARE_PHASE;
+  const raw = typeof payload?.formStep === "string" ? payload.formStep : "";
+  const stored = raw === LEGACY_VITALS_STEP ? INTERVIEW_STEP : raw;
+  const usable = phase !== LEGACY_CURRENT_VISIT_PHASE && stored;
+
+  return {
+    phase: resumesOnNextCare ? NEXT_CARE_PHASE : FORM_PHASE,
+    formStep: usable ? stored : resumesOnNextCare ? TREATMENT_STEP : INTERVIEW_STEP,
+  };
 }
 
 /** The global (progress-bar) step a screen belongs to. */
@@ -180,12 +286,15 @@ export function resolveFormStep(current, formSequence) {
 export function getErrorOwnerStepKey(errorKey) {
   const key = String(errorKey || "");
 
+  // Interview and Vital Signs share the first step. BP is recorded once, in
+  // its Vital Signs card; the Hypertension / Diabetic form does not repeat it,
+  // so its error is shown there.
   if (
     key === "chiefComplaint" ||
     key === "summaryOfPresentIllness" ||
     key === "hypertensionDiabeticData.bp"
   ) {
-    return VISIT_STEP;
+    return INTERVIEW_STEP;
   }
   if (key.startsWith("hypertensionDiabeticData.")) {
     return programStepKey("Hypertension / Diabetic Monitoring");

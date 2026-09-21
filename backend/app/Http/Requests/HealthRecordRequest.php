@@ -43,6 +43,13 @@ class HealthRecordRequest extends FormRequest
             'draft_public_id' => $this->isMethod('post')
                 ? ['nullable', 'uuid']
                 : ['prohibited'],
+            // The consultation this record concludes - the SAME value the
+            // client minted at consultation start and carried through every
+            // draft. Not a submission key (that is idempotency_key) and never
+            // editable afterwards, so it is create-only.
+            'consultation_uuid' => $this->isMethod('post')
+                ? ['nullable', 'uuid']
+                : ['prohibited'],
             'patient_id' => [$this->isMethod('post') ? 'required' : 'sometimes', 'exists:patients,id'],
             'date_recorded' => ['nullable', 'date'],
             'vital_signs' => ['nullable', 'array'],
@@ -59,6 +66,16 @@ class HealthRecordRequest extends FormRequest
             'maternal_data.supplements_given.*.remarks' => ['nullable', 'string'],
             'maternal_data.supplements_given.*.given_by_id' => ['nullable', 'integer', 'exists:users,id'],
             'maternal_data.supplements_given.*.given_by_name' => ['nullable', 'string', 'max:150'],
+            // Prenatal: the dose given at this visit, and when each lab result
+            // was taken. The dose's date is also filed under its TT/Td schedule
+            // below, where it is validated as a date as well.
+            'maternal_data.immunizationThisVisit' => ['nullable', 'array'],
+            'maternal_data.immunizationThisVisit.type' => ['nullable', 'in:tt1,tt2,tt3,tt4,tt5,td1,td2,td3,td4,td5'],
+            'maternal_data.immunizationThisVisit.doseStatus' => ['nullable', 'string', 'max:255'],
+            'maternal_data.immunizationThisVisit.dateGiven' => ['nullable', 'date'],
+            'maternal_data.laboratoryResultDates' => ['nullable', 'array'],
+            'maternal_data.laboratoryResultDates.*' => ['nullable', 'date'],
+            'maternal_data.fht' => ['nullable', 'string', 'max:100'],
             'maternal_data.tetanusToxoidStatus' => ['nullable', 'array'],
             'maternal_data.tetanusToxoidStatus.tt1' => ['nullable', 'date'],
             'maternal_data.tetanusToxoidStatus.tt2' => ['nullable', 'date'],

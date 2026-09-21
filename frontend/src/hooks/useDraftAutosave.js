@@ -31,6 +31,10 @@ const BACKOFF_SCHEDULE_MS = [5_000, 10_000, 30_000, 60_000];
 // is checkpointed far more eagerly than the server debounce allows.
 const LOCAL_PERSIST_DEBOUNCE_MS = 1_500;
 const DRAFT_VERSION_CONFLICT_CODE = "DRAFT_VERSION_CONFLICT";
+// The server already has a draft for this consultation_uuid (another tab, or a
+// device that reconnected first). Resolved exactly like a version conflict:
+// the newer server copy is never silently overwritten.
+const DRAFT_CONSULTATION_EXISTS_CODE = "DRAFT_CONSULTATION_EXISTS";
 
 function serializePayload(payload) {
   if (!payload) return "";
@@ -69,6 +73,8 @@ function getInitialStatus() {
  * @param {number}   [options.debounceMs]      Override debounce window (defaults to 20s).
  * @param {Function} [options.createDraft]     Injected create API (defaults to service).
  * @param {Function} [options.updateDraft]     Injected update API (defaults to service).
+ * @param {string}   [options.consultationUuid] Stable identity of the consultation,
+ *        sent with every create/update so reconnect can find the right draft.
  * @param {{ownerKey: string, consultationKey: string}|null} [options.localDraft]
  *        Identity of the encrypted on-device snapshot. Null disables the vault.
  * @param {() => object|null} [options.buildLocalRecord]
@@ -93,6 +99,7 @@ export default function useDraftAutosave({
   debounceMs = DEFAULT_DEBOUNCE_MS,
   createDraft = defaultCreateDraft,
   updateDraft = defaultUpdateDraft,
+  consultationUuid = "",
   localDraft = null,
   buildLocalRecord = null,
   unsyncedRecovery = false,
@@ -257,7 +264,11 @@ export default function useDraftAutosave({
         return;
       }
 
-      if (httpStatus === 409 && code === DRAFT_VERSION_CONFLICT_CODE) {
+      if (
+        httpStatus === 409 &&
+        (code === DRAFT_VERSION_CONFLICT_CODE ||
+          code === DRAFT_CONSULTATION_EXISTS_CODE)
+      ) {
         pausedRef.current = true;
         pendingSaveRef.current = null;
         clearRetryTimer();
@@ -265,7 +276,10 @@ export default function useDraftAutosave({
         if (isMountedRef.current) {
           setStatus("conflict");
           setConflict({
-            draftId: draftRef.current?.id || "",
+            // A consultation-exists conflict names the draft the server holds;
+            // Reload opens THAT one rather than a draft this tab never had.
+            draftId:
+              err?.payload?.draft_id || draftRef.current?.id || "",
             message: err?.message || "This draft was updated elsewhere.",
           });
         }
@@ -370,6 +384,7 @@ export default function useDraftAutosave({
       }
 
       const request = {
+        consultationUuid: params.consultationUuid || "",
         patientId: Number(params.patientId),
         classification: params.classification,
         payload: payloadToSave,
@@ -438,6 +453,7 @@ export default function useDraftAutosave({
       enabled,
       patientId,
       classification,
+      consultationUuid,
       onDraftSaved,
       createDraft,
       updateDraft,

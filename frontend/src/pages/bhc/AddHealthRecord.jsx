@@ -81,7 +81,20 @@ import {
   locationToPath,
 } from "../../utils/profileNavigation";
 import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "../../utils/consultationPrograms";
-import { mergeSavedDrafts } from "../../utils/savedDrafts";
+import {
+  MATERNAL_LAB_TEST_KEYS,
+  MATERNAL_LAB_TESTS,
+  MATERNAL_RISK_GROUPS,
+  PRENATAL_IMMUNIZATION_OPTIONS,
+  applyRiskFactorChange,
+  thisVisitDoseEntry,
+} from "../../utils/prenatalForm";
+import {
+  bindLocalToServerDraft,
+  getLocalConsultationUuid,
+  localConsultationKey,
+  mergeSavedDrafts,
+} from "../../utils/savedDrafts";
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
 import {
   ClinicalSection,
@@ -93,8 +106,8 @@ import {
   FollowUpConfirmStep,
   FollowUpSelectStep,
   NextActionStep,
-  ConsultationClinicalStep,
   ConsultationReviewStep,
+  ProgramServicePicker,
 } from "../../components/features/health-records/wizard/HealthRecordWizardSteps";
 import {
   ConsultationActionBar,
@@ -104,23 +117,27 @@ import {
 } from "../../components/features/health-records/wizard/ConsultationWorkflow";
 import {
   ASSESSMENT_STEP,
+  INTERVIEW_STEP,
   NEXT_STEP,
   PROGRAMS_STEP,
   REVIEW_STEP,
+  SETUP_STEP,
   TREATMENT_STEP,
-  VISIT_STEP,
   buildConsultationSteps,
+  deferUntilProgramDecision,
   findFirstErrorStepKey,
   getErrorOwnerStepKey,
   getFormSequence,
   getGlobalStepKey,
+  getNextStepKey,
+  getPreviousStepKey,
   getProgramFormSteps,
   getStepOrder,
   pickErrorsForStep,
   programStepKey,
-  resolveStepHeading,
-
   resolveFormStep,
+  resolveRestoredPosition,
+  resolveStepHeading,
 } from "../../utils/consultationSteps";
 import {
   NEXT_ACTION_NONE,
@@ -161,6 +178,10 @@ import {
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 import { createIdempotencyKey } from "../../utils/idempotency";
+import {
+  adoptConsultationUuid,
+  ensureConsultationUuid,
+} from "../../utils/consultationIdentity";
 import { SENSITIVE_SESSION_CLEARED_EVENT } from "../../utils/sessionPrivacy";
 
 /* ═══════════════════════════════════════════════════════════════
@@ -185,8 +206,11 @@ const keyframes = `
 `;
 const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 
+// The one card every consultation step sits in.
+const CONSULTATION_CARD_CLASS =
+  "space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8";
+
 const WIZARD_SETUP = "setup";
-const WIZARD_PROGRAM = "program";
 const WIZARD_FU_SELECT = "fuSelect";
 const WIZARD_FU_CONFIRM = "fuConfirm";
 const WIZARD_FORM = "form";
@@ -194,7 +218,6 @@ const WIZARD_NEXT = "next";
 const WIZARD_REVIEW = "review";
 // Step "phase" (from utils/consultationSteps) -> this page's wizardPhase.
 const WIZARD_PHASE_FOR_STEP = {
-  program: WIZARD_PROGRAM,
   form: WIZARD_FORM,
   next: WIZARD_NEXT,
   review: WIZARD_REVIEW,
@@ -432,6 +455,8 @@ const EMPTY_MATERNAL_DATA = {
   abortion: "",
   living: "",
   bmi: "",
+  // Fetal heart tone, e.g. "140 bpm".
+  fht: "",
   treatment: "",
   previousFpMethodUsed: "",
   previousFpMethodOther: "",
@@ -466,6 +491,26 @@ const EMPTY_MATERNAL_DATA = {
     syphilis: "",
     urinalysis: "",
   },
+  // The date each laboratory result above was taken. Kept beside
+  // laboratoryResults rather than inside it, so records that stored a plain
+  // result string for each test keep reading exactly as before.
+  laboratoryResultDates: {
+    hemoglobin: "",
+    cbc: "",
+    hbsag: "",
+    bloodType: "",
+    hiv: "",
+    syphilis: "",
+    urinalysis: "",
+  },
+  // The TT/Td dose given AT THIS VISIT. On save its date is also written into
+  // tetanusToxoidStatus / tetanusDiphtheriaStatus under that dose, so the
+  // existing TT/Td history and its readers keep working unchanged.
+  immunizationThisVisit: {
+    type: "",
+    doseStatus: "",
+    dateGiven: "",
+  },
   tetanusToxoidStatus: {
     tt1: "",
     tt2: "",
@@ -488,53 +533,12 @@ const EMPTY_MATERNAL_DATA = {
   },
 };
 
-/**
- * Prenatal risk codes, as they appear on the DOH prenatal record.
- *
- * Risk Code D and Risk Code E are parents whose children are only recorded -
- * and only shown - when the parent applies. Unchecking a parent clears its
- * children so a hidden sub-condition can never be submitted.
- */
-const PREGNANCY_RISK_CODES = [
-  { key: "ageRisk", label: "Risk Code A: Age < 18 or > 35" },
-  { key: "heightRisk", label: "Risk Code B: Height < 145 cm" },
-  {
-    key: "grandMultipara",
-    label: "Risk Code C: Grand multipara / 4+ pregnancies",
-  },
-  {
-    key: "previousPregnancyComplications",
-    label: "Risk Code D: Previous Pregnancy Complications",
-    children: [
-      { key: "previousCs", label: "Previous C/S" },
-      {
-        key: "recurrentMiscarriageOrStillbirth",
-        label: "3 consecutive miscarriages or stillbirth",
-      },
-      { key: "postpartumHemorrhage", label: "Post-partum hemorrhage (PPH)" },
-    ],
-  },
-];
-
-const MEDICAL_CONDITION_CODES = [
-  {
-    key: "medicalConditions",
-    label: "Risk Code E (Medical Conditions)",
-    children: [
-      { key: "tuberculosis", label: "Tuberculosis" },
-      { key: "heartDisease", label: "Heart Disease" },
-      { key: "diabetes", label: "Diabetes" },
-      { key: "bronchialAsthma", label: "Bronchial Asthma" },
-      { key: "goiter", label: "Goiter" },
-    ],
-  },
-];
-
-const OTHER_IMPORTANT_INFORMATION = [
-  { key: "hypertensive", label: "Hypertensive" },
-  { key: "alcoholUser", label: "Alcohol User" },
-  { key: "smoker", label: "Smoker" },
-];
+// The red sub-heading the prenatal form uses inside a section.
+const MATERNAL_EYEBROW_CLASS =
+  "mb-3 text-[10.5px] font-bold uppercase tracking-[0.08em] text-[#B91C1C]";
+// FieldInput's own input style, for a table cell whose column header labels it.
+const MATERNAL_TABLE_INPUT_CLASS =
+  "h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10";
 
 /**
  * OB score components, recorded as separate counts rather than one string.
@@ -544,58 +548,15 @@ const OTHER_IMPORTANT_INFORMATION = [
  * being derived from them and no new payload key is introduced.
  */
 const OB_SCORE_TPAL_FIELDS = [
-  { key: "term", short: "T", label: "T (Term Pregnancies)", placeholder: "0" },
-  {
-    key: "preterm",
-    short: "P",
-    label: "P (Preterm Pregnancies)",
-    placeholder: "0",
-  },
-  {
-    key: "abortion",
-    short: "A",
-    label: "A (Abortions / Miscarriages)",
-    placeholder: "0",
-  },
-  { key: "living", short: "L", label: "L (Living Children)", placeholder: "0" },
+  { key: "term", label: "Term" },
+  { key: "preterm", label: "Preterm" },
+  { key: "abortion", label: "Abortion" },
+  { key: "living", label: "Living" },
 ];
 
 const OB_SCORE_GP_FIELDS = [
-  {
-    key: "gravida",
-    short: "G",
-    label: "G (Gravida - Total Pregnancies)",
-    placeholder: "1",
-  },
-  {
-    key: "para",
-    short: "P",
-    label: "P (Para - Viable Births)",
-    placeholder: "1",
-  },
-];
-
-/** "T1 P0 A0 L1" / "G2 P1" - the shorthand a clinician reads back. */
-function formatObScore(fields, values = {}) {
-  return fields
-    .map((field) => `${field.short}${values[field.key] || 0}`)
-    .join(" ");
-}
-
-const TETANUS_TOXOID_FIELDS = [
-  { key: "tt1", label: "TT1 Date" },
-  { key: "tt2", label: "TT2 Date" },
-  { key: "tt3", label: "TT3 Date" },
-  { key: "tt4", label: "TT4 Date" },
-  { key: "tt5", label: "TT5 Date" },
-];
-
-const TETANUS_DIPHTHERIA_FIELDS = [
-  { key: "td1", label: "Td1 Date" },
-  { key: "td2", label: "Td2 Date" },
-  { key: "td3", label: "Td3 Date" },
-  { key: "td4", label: "Td4 Date" },
-  { key: "td5", label: "Td5 Date" },
+  { key: "gravida", label: "Gravida (G)", placeholder: "e.g. 2" },
+  { key: "para", label: "Para (P)", placeholder: "e.g. 1" },
 ];
 
 function toDateInputValue(date = new Date()) {
@@ -634,6 +595,7 @@ function mergeMaternalData(data = {}, fallback = {}) {
     abortion: source.abortion || fallback.abortion || "",
     living: source.living || fallback.living || "",
     bmi: source.bmi || fallback.bmi || "",
+    fht: source.fht || fallback.fht || "",
     treatment: source.treatment || fallback.treatment || "",
     previousFpMethodUsed:
       source.previousFpMethodUsed ||
@@ -653,6 +615,14 @@ function mergeMaternalData(data = {}, fallback = {}) {
     laboratoryResults: {
       ...EMPTY_MATERNAL_DATA.laboratoryResults,
       ...(source.laboratoryResults || {}),
+    },
+    laboratoryResultDates: {
+      ...EMPTY_MATERNAL_DATA.laboratoryResultDates,
+      ...(source.laboratoryResultDates || {}),
+    },
+    immunizationThisVisit: {
+      ...EMPTY_MATERNAL_DATA.immunizationThisVisit,
+      ...(source.immunizationThisVisit || {}),
     },
     tetanusToxoidStatus: {
       ...EMPTY_MATERNAL_DATA.tetanusToxoidStatus,
@@ -1145,7 +1115,6 @@ export default function AddHealthRecord() {
   // Kept as a derived value: everything downstream (drafts, medicine warnings,
   // the header search) only ever asked "are we past the setup screens".
   const setupComplete =
-    wizardPhase === WIZARD_PROGRAM ||
     wizardPhase === WIZARD_FORM ||
     wizardPhase === WIZARD_NEXT ||
     wizardPhase === WIZARD_REVIEW;
@@ -1254,6 +1223,13 @@ export default function AddHealthRecord() {
   // check; changing patient clears it because the id no longer matches.
   const [startedConsultationPatientId, setStartedConsultationPatientId] =
     useState("");
+  // The stable identity of THIS consultation, from setup to the official
+  // record: carried by the server draft, the encrypted device copy, and the
+  // final health record. Minted once when setup hands over to Interview;
+  // adopted (never re-minted) on resume or recovery; cleared only when this
+  // consultation ends - saved, discarded, or abandoned for another patient.
+  // Distinct from idempotencyKey, which names one final-save ATTEMPT.
+  const [consultationUuid, setConsultationUuid] = useState("");
   // Encrypted on-device consultations belonging to this user, listed for the
   // Saved Drafts drawer and for recovery after a refresh, close, or restart.
   const [localDrafts, setLocalDrafts] = useState([]);
@@ -1321,6 +1297,7 @@ export default function AddHealthRecord() {
   useEffect(() => {
     function clearInMemorySubmissionState() {
       officialSubmissionRef.current = null;
+      setConsultationUuid("");
       setLastFailedSubmit(null);
       setConnectionIssue(null);
       setHealthRecordDrafts([]);
@@ -1853,8 +1830,10 @@ export default function AddHealthRecord() {
     clearValidationError("selectedPatientId");
     if (id !== selectedPatientId) {
       // A different patient starts over, so any consultation that was already
-      // underway is abandoned and the next Next must check for conflicts again.
+      // underway is abandoned and the next Next must check for conflicts again
+      // - and will be a NEW consultation with a new identity.
       setStartedConsultationPatientId("");
+      setConsultationUuid("");
       setSelectedPrograms([]);
       setPrimaryProgram("");
       setConsultationMode(null);
@@ -1914,10 +1893,11 @@ export default function AddHealthRecord() {
   const patientGateLocked = !isFollowUpVisitMode && !selectedPatientId;
 
   // ---- Step-based New Consultation ---------------------------------------
-  // A new consultation walks Current Visit -> one screen per selected program
-  // (primary first) -> Clinical Assessment -> Treatment / Medicine -> Next Step
-  // -> Review & Save. Follow-up visits and route-driven entries keep the single
-  // long form they always had.
+  // A new consultation walks Interview -> Vital Signs -> Clinical Assessment
+  // -> one screen per selected program (primary first; skipped when none) ->
+  // Treatment & Management -> Next Care Decision -> Review & Save - see
+  // utils/consultationSteps. Follow-up visits and route-driven entries keep
+  // the single long form they always had.
   const usesConsultationSteps =
     !isFollowUpVisitMode && !isEditingRecord && consultationType === "new";
   const consultationSteps = useMemo(
@@ -1932,16 +1912,16 @@ export default function AddHealthRecord() {
   const formSequence = getFormSequence(programFormSteps);
   const stepOrder = getStepOrder(programFormSteps);
   const activeFormStep = resolveFormStep(formStep, formSequence);
+  // Interview, Vital Signs, Clinical Assessment, each program form, and
+  // Treatment are all screens of the one form phase; formStep says which.
   const currentStepKey =
-    wizardPhase === WIZARD_PROGRAM
-      ? VISIT_STEP
-      : wizardPhase === WIZARD_FORM
-        ? activeFormStep
-        : wizardPhase === WIZARD_NEXT
-          ? NEXT_STEP
-          : wizardPhase === WIZARD_REVIEW
-            ? REVIEW_STEP
-            : "";
+    wizardPhase === WIZARD_FORM
+      ? activeFormStep
+      : wizardPhase === WIZARD_NEXT
+        ? NEXT_STEP
+        : wizardPhase === WIZARD_REVIEW
+          ? REVIEW_STEP
+          : "";
   const currentGlobalStepKey = getGlobalStepKey(currentStepKey);
   const activeProgramStep =
     programFormSteps.find((step) => step.key === activeFormStep) || null;
@@ -2037,15 +2017,18 @@ export default function AddHealthRecord() {
 
   function buildHealthRecordDraftPayload() {
     return {
+      // Rides in the payload so the encrypted device copy carries the same
+      // identity as the server draft. Omitted rather than sent empty.
+      ...(consultationUuid ? { consultationUuid } : {}),
       selectedPrograms,
       primaryProgram,
       consultationMode,
       // Review & Save has no phase of its own in a draft; it resumes on Next Step.
       wizardPhase: wizardPhase === WIZARD_REVIEW ? WIZARD_NEXT : wizardPhase,
-      formStep:
-        usesConsultationSteps && wizardPhase !== WIZARD_PROGRAM
-          ? activeFormStep
-          : "",
+      // The exact screen the user is on, so a resumed or recovered draft
+      // opens there. Never a new wizardPhase value: the draft allowlist
+      // accepts only program / form / next.
+      formStep: usesConsultationSteps ? activeFormStep : "",
       dateOfVisit,
       timeOfVisit,
       chiefComplaint,
@@ -2085,6 +2068,7 @@ export default function AddHealthRecord() {
           "abortion",
           "living",
           "bmi",
+          "fht",
           "treatment",
           "previousFpMethodUsed",
           "previousFpMethodOther",
@@ -2105,6 +2089,10 @@ export default function AddHealthRecord() {
           "ageRisk",
           "heightRisk",
           "grandMultipara",
+          // The Risk Code D / E flags themselves, so a resumed draft keeps
+          // them too (they were previously dropped from drafts).
+          "previousPregnancyComplications",
+          "medicalConditions",
           "previousCs",
           "recurrentMiscarriageOrStillbirth",
           "postpartumHemorrhage",
@@ -2117,15 +2105,18 @@ export default function AddHealthRecord() {
           "alcoholUser",
           "smoker",
         ]),
-        laboratoryResults: pickDraftFields(maternalData.laboratoryResults, [
-          "hemoglobin",
-          "cbc",
-          "hbsag",
-          "bloodType",
-          "hiv",
-          "syphilis",
-          "urinalysis",
-        ]),
+        laboratoryResults: pickDraftFields(
+          maternalData.laboratoryResults,
+          MATERNAL_LAB_TEST_KEYS,
+        ),
+        laboratoryResultDates: pickDraftFields(
+          maternalData.laboratoryResultDates,
+          MATERNAL_LAB_TEST_KEYS,
+        ),
+        immunizationThisVisit: pickDraftFields(
+          maternalData.immunizationThisVisit,
+          ["type", "doseStatus", "dateGiven"],
+        ),
         tetanusToxoidStatus: pickDraftFields(
           maternalData.tetanusToxoidStatus,
           ["tt1", "tt2", "tt3", "tt4", "tt5"],
@@ -2230,6 +2221,11 @@ export default function AddHealthRecord() {
     // Resuming a draft IS this patient's consultation, so stepping out to
     // setup and back in must not be mistaken for starting a second one.
     setStartedConsultationPatientId(String(draft.patient.id || ""));
+    // Adopt the consultation's existing identity - never mint a fresh one for
+    // a consultation that already has it. A legacy draft saved before
+    // identities existed has none, so it gains one now; the server adopts it
+    // on the next save (and never reassigns one that is already set).
+    setConsultationUuid(adoptConsultationUuid(draft));
     setHealthRecordType(normalizeRecordType(draft.classification));
     setSelectedPrograms(getConsultationPrograms({ ...payload, classification: draft.classification }));
     setPrimaryProgram(getPrimaryProgram({ ...payload, classification: draft.classification }));
@@ -2312,16 +2308,10 @@ export default function AddHealthRecord() {
     // on-device copy sets this back to true right after, because that copy IS
     // ahead of the server; reloading after a conflict deliberately is not.
     setPendingLocalSync(false);
-    setWizardPhase(payload.wizardPhase === WIZARD_PROGRAM ? WIZARD_PROGRAM : WIZARD_FORM);
-    // Back to the screen the user left on. A draft saved on Next Step resumes on
-    // the last form screen, and one from before the steps existed on the first.
-    setFormStep(
-      typeof payload.formStep === "string" && payload.formStep
-        ? payload.formStep
-        : payload.wizardPhase === WIZARD_NEXT
-          ? TREATMENT_STEP
-          : "",
-    );
+    // Back to the exact screen the user left on - see resolveRestoredPosition.
+    const restored = resolveRestoredPosition(payload);
+    setWizardPhase(WIZARD_PHASE_FOR_STEP[restored.phase]);
+    setFormStep(restored.formStep);
     setDraftsDrawerOpen(false);
     setValidationErrors({});
   }
@@ -2357,21 +2347,29 @@ export default function AddHealthRecord() {
   );
 
   const localDraftIdentity = useMemo(() => {
-    if (!canSaveCurrentDraft || !localVaultAvailable || !localDraftOwnerKey) {
+    if (
+      !canSaveCurrentDraft ||
+      !localVaultAvailable ||
+      !localDraftOwnerKey ||
+      !consultationUuid
+    ) {
       return null;
     }
-    // One slot per patient consultation. Deliberately NOT keyed on the server
-    // draft id or the classification: both can appear or change mid-visit and
-    // would orphan the snapshot taken before the change.
+    // One slot per CONSULTATION, scoped to this user. Keyed on the stable
+    // consultation identity - never the patient - so two consultations for the
+    // same patient are two slots and neither can overwrite the other. Nor is
+    // it keyed on the server draft id or classification, which can appear or
+    // change mid-visit and would orphan the earlier snapshot. With no identity
+    // there is no slot: a new slot never falls back to the patient.
     return {
       ownerKey: localDraftOwnerKey,
-      consultationKey: `patient:${selectedPatientId}`,
+      consultationKey: localConsultationKey(consultationUuid),
     };
   }, [
     canSaveCurrentDraft,
     localVaultAvailable,
     localDraftOwnerKey,
-    selectedPatientId,
+    consultationUuid,
   ]);
 
   // Rebuilt on demand at the moment of an offline write. Plain function, not
@@ -2381,6 +2379,7 @@ export default function AddHealthRecord() {
     return {
       draft: {
         id: activeDraft?.id || "",
+        consultationUuid,
         version: Number(activeDraft?.version || 0),
         patient: {
           id: String(selectedPatientId || ""),
@@ -2416,6 +2415,7 @@ export default function AddHealthRecord() {
     draft: draftIdentity,
     sectionKey: draftAutosaveSectionKey,
     onDraftSaved: handleDraftAutosaved,
+    consultationUuid,
     localDraft: localDraftIdentity,
     buildLocalRecord: buildLocalDraftRecord,
     unsyncedRecovery: pendingLocalSync,
@@ -2587,6 +2587,12 @@ export default function AddHealthRecord() {
       if (!draft?.patient?.id || !draft?.classification) return false;
 
       const request = {
+        // The identity the consultation was born with. With it, a copy that
+        // went offline before its first autosave finds - or is told about -
+        // the server draft for the same consultation instead of creating a
+        // second one (DRAFT_CONSULTATION_EXISTS -> kept locally, resolved on
+        // Continue).
+        consultationUuid: getLocalConsultationUuid(entry),
         patientId: Number(draft.patient.id),
         classification: draft.classification,
         payload: draft.payload,
@@ -2671,9 +2677,11 @@ export default function AddHealthRecord() {
 
   function handleSavedDraftResume(row) {
     // The device copy is ahead, so it - not the older server draft - is what
-    // the midwife gets back. Autosave reconciles it upward afterwards.
+    // the midwife gets back. Bound to the matched server draft when it has no
+    // id of its own, so autosave updates that draft (version-checked) instead
+    // of creating a duplicate.
     if (row.unsynced && row.localEntry) {
-      recoverLocalDraft(row.localEntry);
+      recoverLocalDraft(bindLocalToServerDraft(row));
       return;
     }
     if (row.serverId) void handleResumeDraft(row.serverId);
@@ -2866,6 +2874,14 @@ export default function AddHealthRecord() {
                 setActiveDraft(null);
                 setDraftSavedAt("");
               }
+              // Discarding the consultation that is open ends it; a later
+              // start must not revive the discarded identity.
+              if (
+                (row.serverId && activeDraft?.id === row.serverId) ||
+                (row.consultationUuid && row.consultationUuid === consultationUuid)
+              ) {
+                setConsultationUuid("");
+              }
             } catch (error) {
               setNoticeModal({
                 title: "Draft Not Discarded",
@@ -3012,12 +3028,6 @@ export default function AddHealthRecord() {
     `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | ` +
     `PR: ${pulse || "N/A"} bpm | SpO2: ${spo2 || "N/A"}% | ` +
     `Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
-
-  const maternalTpalPreview = formatObScore(OB_SCORE_TPAL_FIELDS, maternalData);
-  const maternalGravidaParaPreview = formatObScore(
-    OB_SCORE_GP_FIELDS,
-    maternalData,
-  );
 
   useEffect(() => {
     if (isMaternal) {
@@ -3322,21 +3332,13 @@ export default function AddHealthRecord() {
    * sub-condition can never stay set while hidden and be submitted with the
    * record.
    */
-  function handleRiskAssessmentChange(key, checked, childKeys = []) {
-    setMaternalData((previous) => {
-      const riskAssessment = {
-        ...(previous.riskAssessment || {}),
-        [key]: checked,
-      };
-
-      if (!checked) {
-        childKeys.forEach((childKey) => {
-          riskAssessment[childKey] = false;
-        });
-      }
-
-      return { ...previous, riskAssessment };
-    });
+  // Every risk factor is its own checkbox; Risk Code D / E flags are kept in
+  // step by applyRiskFactorChange (utils/prenatalForm).
+  function handleRiskAssessmentChange(key, checked) {
+    setMaternalData((previous) => ({
+      ...previous,
+      riskAssessment: applyRiskFactorChange(previous.riskAssessment, key, checked),
+    }));
   }
 
   function handleNestedMaternalChange(group, field, value) {
@@ -3554,6 +3556,10 @@ export default function AddHealthRecord() {
         : await healthRecordService.createHealthRecord(formData, "bhc", {
             idempotencyKey: submission?.idempotencyKey,
             draftId: activeDraft?.id,
+            // The SAME identity the consultation has carried since setup -
+            // never minted here. Retries keep it; only idempotencyKey is
+            // per-attempt.
+            consultationUuid,
           });
     if (!isEditingRecord && activeDraft?.id) {
       setHealthRecordDrafts((current) =>
@@ -3562,6 +3568,11 @@ export default function AddHealthRecord() {
       setActiveDraft(null);
       setDraftSavedAt("");
     }
+    // The consultation is now an official record, so its identity is spent.
+    // The next consultation started on this page is a new one and mints its
+    // own at setup. Reached only after the create resolved - a failed save
+    // throws above and keeps the identity for its retry.
+    if (!isEditingRecord) setConsultationUuid("");
     const savedId =
       savedRecord?.id ||
       savedRecord?._id ||
@@ -3894,6 +3905,13 @@ export default function AddHealthRecord() {
             ? "TB DOTS / TB Monitoring Visit"
           : chiefComplaint;
 
+    // The dose given at this visit is also filed under its TT/Td schedule,
+    // so the existing TT/Td history stays complete - see thisVisitDoseEntry.
+    const thisVisitImmunization = {
+      ...EMPTY_MATERNAL_DATA.immunizationThisVisit,
+      ...(maternalData.immunizationThisVisit || {}),
+    };
+
     const recordMaternalData = {
       ...maternalData,
       expectedDeliveryDate,
@@ -3922,15 +3940,22 @@ export default function AddHealthRecord() {
         ...EMPTY_MATERNAL_DATA.laboratoryResults,
         ...(maternalData.laboratoryResults || {}),
       },
+      laboratoryResultDates: {
+        ...EMPTY_MATERNAL_DATA.laboratoryResultDates,
+        ...(maternalData.laboratoryResultDates || {}),
+      },
+      immunizationThisVisit: thisVisitImmunization,
       tetanusToxoidStatus: {
         ...EMPTY_MATERNAL_DATA.tetanusToxoidStatus,
         ...(maternalData.tetanus_toxoid_status || {}),
         ...(maternalData.tetanusToxoidStatus || {}),
+        ...thisVisitDoseEntry(thisVisitImmunization, "tetanusToxoidStatus"),
       },
       tetanusDiphtheriaStatus: {
         ...EMPTY_MATERNAL_DATA.tetanusDiphtheriaStatus,
         ...(maternalData.tetanus_diphtheria_status || {}),
         ...(maternalData.tetanusDiphtheriaStatus || {}),
+        ...thisVisitDoseEntry(thisVisitImmunization, "tetanusDiphtheriaStatus"),
       },
       ultrasound: {
         ...EMPTY_MATERNAL_DATA.ultrasound,
@@ -4583,11 +4608,20 @@ export default function AddHealthRecord() {
    * Uses the page's existing validation - no rules are added or dropped.
    */
   function checkStepGate(stepKey) {
-    const errors = { ...getClinicalValidationErrors() };
+    // Requirements that hinge on the program decision (made at the end of
+    // Clinical Assessment) are not knowable on Interview or Vital Signs yet;
+    // they are enforced when that decision is made, and the gate below then
+    // returns the user to the screen that owns the field.
+    const errors = deferUntilProgramDecision(getClinicalValidationErrors(), stepKey);
     if (stepKey !== NEXT_STEP) {
       delete errors.followUpDate;
       delete errors.followUpTime;
       delete errors.followUpStatus;
+    }
+    // Leaving Interview always needs a chief complaint, program or not - the
+    // rule Current Visit's Next enforced before the steps were split.
+    if (stepKey === INTERVIEW_STEP && !chiefComplaint.trim()) {
+      errors.chiefComplaint = "Chief complaint is required.";
     }
 
     const own = pickErrorsForStep(errors, stepKey);
@@ -4626,19 +4660,26 @@ export default function AddHealthRecord() {
     event?.preventDefault();
     closeDateTimePopovers();
     if (!checkStepGate(activeFormStep)) return;
-
-    const index = formSequence.indexOf(activeFormStep);
-    goToStepKey(
-      index >= 0 && index < formSequence.length - 1
-        ? formSequence[index + 1]
-        : NEXT_STEP,
-    );
+    goToStepKey(getNextStepKey(formSequence, activeFormStep));
   }
 
+  // Previous reverses the exact forward order. From Interview - the first
+  // screen - it steps out to setup with the consultation intact: nothing is
+  // reset, no draft is created, and re-entering does not re-run the
+  // unfinished-draft check (see handleSetupNext).
   function handleFormStepPrevious() {
     closeDateTimePopovers();
-    const index = formSequence.indexOf(activeFormStep);
-    goToStepKey(index > 0 ? formSequence[index - 1] : VISIT_STEP);
+    const target = getPreviousStepKey(formSequence, activeFormStep);
+    if (target === SETUP_STEP) {
+      // Autosave pauses on setup and drops its pending debounce, so edits
+      // typed just before leaving would otherwise wait - or, on a draft not
+      // yet created, be re-baselined as saved on return. Flush them into the
+      // SAME draft first (offline, into the encrypted device copy).
+      void saveDraftNow();
+      goToWizardPhase(WIZARD_SETUP);
+      return;
+    }
+    goToStepKey(target);
   }
 
   function handleNextActionContinue() {
@@ -4794,10 +4835,20 @@ export default function AddHealthRecord() {
     if (consultationType === "new" && !healthRecordType) setHealthRecordType("General Consultation");
     if (consultationType === "new" && selectedPatientId) {
       setStartedConsultationPatientId(String(selectedPatientId));
+      // The one moment a consultation is born. Back to Setup and Next again
+      // lands here too, so this only mints when there is no identity yet -
+      // re-entering the same consultation keeps the one it already has.
+      setConsultationUuid((current) => ensureConsultationUuid(current));
     }
-    goToWizardPhase(
-      consultationType === "followup" ? WIZARD_FU_SELECT : WIZARD_PROGRAM,
-    );
+    if (consultationType === "followup") {
+      goToWizardPhase(WIZARD_FU_SELECT);
+      return;
+    }
+    // A consultation always opens on Interview. Programs are chosen later, at
+    // the end of Clinical Assessment, so it starts as a general consultation.
+    setConsultationMode((current) => current || "general");
+    setFormStep(INTERVIEW_STEP);
+    goToWizardPhase(WIZARD_FORM);
   }
 
   // The unfinished-draft decision belongs here, at the moment a New
@@ -4885,37 +4936,14 @@ export default function AddHealthRecord() {
     const next = toggleConsultationProgram(selectedPrograms, primaryProgram, option);
     setSelectedPrograms(next.selectedPrograms);
     setPrimaryProgram(next.primaryProgram);
+    // No separate general/program toggle any more: selecting nothing IS a
+    // general consultation. consultationMode still records it, because the
+    // draft payload and the saved record read it exactly as before.
+    setConsultationMode(next.selectedPrograms.length ? "program" : "general");
     setHealthRecordType(PROGRAM_CLASSIFICATIONS[next.primaryProgram] || "General Consultation");
     if (next.selectedPrograms.includes("Hypertension") || next.selectedPrograms.includes("Diabetes")) {
       setHypertensionDiabeticData(current => ({ ...current, conditionType: next.selectedPrograms.includes("Hypertension") && next.selectedPrograms.includes("Diabetes") ? "both" : next.selectedPrograms.includes("Diabetes") ? "dm" : "hpn" }));
     }
-  }
-
-  function handleConsultationMode(mode) {
-    setConsultationMode(mode);
-    if (mode === "general") {
-      setSelectedPrograms([]);
-      setPrimaryProgram("");
-      setHealthRecordType("General Consultation");
-    }
-  }
-
-  function handleCurrentVisitNext() {
-    if (!chiefComplaint.trim()) {
-      setValidationErrorsAndFocus({ chiefComplaint: "Chief complaint is required." });
-      return;
-    }
-    if (!consultationMode || (consultationMode === "program" && !selectedPrograms.length)) return;
-    if (usesConsultationSteps) {
-      // Same validation as before, plus the Current Visit fields that used to be
-      // checked later (HPI for a general visit, BP when Hypertension is chosen).
-      if (!checkStepGate(VISIT_STEP)) return;
-      // The first screen of the form phase: the primary program when programs
-      // are selected, otherwise Clinical Assessment.
-      goToStepKey(formSequence[0]);
-      return;
-    }
-    goToWizardPhase(WIZARD_FORM);
   }
 
   function handleFollowUpConfirm() {
@@ -5089,18 +5117,21 @@ export default function AddHealthRecord() {
   const inConsultationWorkspace =
     usesConsultationSteps &&
     !isResolvingClinicalMode &&
-    [WIZARD_PROGRAM, WIZARD_FORM, WIZARD_NEXT, WIZARD_REVIEW].includes(wizardPhase);
+    [WIZARD_FORM, WIZARD_NEXT, WIZARD_REVIEW].includes(wizardPhase);
   const isReviewStep = wizardPhase === WIZARD_REVIEW;
+  const isFirstConsultationStep =
+    usesConsultationSteps &&
+    wizardPhase === WIZARD_FORM &&
+    activeFormStep === INTERVIEW_STEP;
 
-  // Current Visit is the first STEP, not a dead end: back from here returns to
-  // the setup screen (where Saved Drafts lives) with the consultation intact.
-  // handleStepBack already routes WIZARD_PROGRAM -> WIZARD_SETUP.
+  // Interview is the first STEP, not a dead end: back from there returns to
+  // the setup screen (where Saved Drafts lives) with the consultation intact -
+  // see handleFormStepPrevious.
   function handleWorkspacePrevious() {
     handleStepBack();
   }
 
   function handleWorkspaceContinue() {
-    if (wizardPhase === WIZARD_PROGRAM) return handleCurrentVisitNext();
     if (wizardPhase === WIZARD_FORM) return handleFormStepNext();
     if (wizardPhase === WIZARD_NEXT) return handleNextActionContinue();
     return handleSave();
@@ -5109,16 +5140,17 @@ export default function AddHealthRecord() {
   // Heading for the current screen. The wizard still knows its position; that
   // position is simply not shown while the progress UI is switched off.
   const stepSubtitles = {
-    [VISIT_STEP]:
-      "Record the details specific to today's consultation.",
-    [ASSESSMENT_STEP]: "Record the diagnosis and how this visit is classified.",
+    [INTERVIEW_STEP]:
+      "Record the patient's reason for visit and present illness.",
+    [ASSESSMENT_STEP]:
+      "Document the examination findings and initial assessment for this visit.",
     [TREATMENT_STEP]:
       "Record the medication plan and any medicines or supplies dispensed. Medicine is optional.",
     [NEXT_STEP]: "What should be done next?",
     [REVIEW_STEP]: "Confirm the consultation details below before saving.",
   };
-  // Current Visit keeps its generic heading whatever programs are selected;
-  // only the Program Forms step shows a program-specific title.
+  // Every screen keeps its own heading whatever programs are selected; only
+  // the Program / Service Details step shows a program-specific title.
   const stepHeading = resolveStepHeading({
     currentGlobalStepKey,
     activeProgramStep,
@@ -5161,15 +5193,18 @@ export default function AddHealthRecord() {
       .join(" \u00b7 "),
     [NEXT_ACTION_REFERRAL]: "Refer to RHU",
   }[nextAction];
+  // One block per step, in wizard order, each with an Edit shortcut back to
+  // the screen that owns it. Every value is read from the page's own state -
+  // nothing here is a second copy of the data.
   const reviewSections = [
     {
-      key: "visit",
-      title: "Current Visit",
-      stepKey: VISIT_STEP,
+      key: INTERVIEW_STEP,
+      title: "Interview",
+      stepKey: INTERVIEW_STEP,
       rows: [
         {
           label: "Patient",
-          value: `${getPatientName(selectedPatient)} \u00b7 #${selectedPatientId}`,
+          value: `${getPatientName(selectedPatient)} · #${selectedPatientId}`,
         },
         {
           label: "Visit",
@@ -5178,21 +5213,19 @@ export default function AddHealthRecord() {
             timeOfVisit && formatDisplayTime(timeOfVisit),
           ]
             .filter(Boolean)
-            .join(" \u00b7 "),
+            .join(" · "),
         },
         { label: "Chief Complaint", value: chiefComplaint },
         { label: "History of Present Illness", value: summaryOfPresentIllness },
-        { label: "Vital Signs", value: vitalsSummary },
       ],
     },
-    ...consultationSteps
-      .filter((step) => step.kind === "program")
-      .map((step) => ({
-        key: step.key,
-        title: step.label,
-        stepKey: step.key,
-        rows: [{ label: "Program", value: step.description }],
-      })),
+    {
+      key: "vitals",
+      title: "Vital Signs",
+      // Its card sits on the first step, beside Interview.
+      stepKey: INTERVIEW_STEP,
+      rows: [{ label: "Measurements", value: vitalsSummary }],
+    },
     {
       key: ASSESSMENT_STEP,
       title: "Clinical Assessment",
@@ -5200,11 +5233,34 @@ export default function AddHealthRecord() {
       rows: [
         { label: "Physical Exam", value: physicalExam },
         { label: "Diagnosis / Assessment", value: diagnosis },
+        // The selection itself is listed under Program / Service Details
+        // when there is one; only its absence is stated here.
+        ...(programFormSteps.length === 0
+          ? [{ label: "Programs / Services", value: "None — General Consultation" }]
+          : []),
       ],
     },
+    // Present only when a program was chosen. Edit opens the first program
+    // form; Next from there walks the rest in order.
+    ...(programFormSteps.length > 0
+      ? [
+          {
+            key: PROGRAMS_STEP,
+            title: "Program / Service Details",
+            stepKey: PROGRAMS_STEP,
+            rows: programFormSteps.map((step) => ({
+              label:
+                step.programCount > 1
+                  ? `Program ${step.programNumber} of ${step.programCount}`
+                  : "Program",
+              value: `${step.label} · ${step.role}`,
+            })),
+          },
+        ]
+      : []),
     {
       key: TREATMENT_STEP,
-      title: "Treatment / Medicine",
+      title: "Treatment & Management",
       stepKey: TREATMENT_STEP,
       rows: [
         { label: "Meds and Other Plans", value: treatmentValue },
@@ -5213,7 +5269,7 @@ export default function AddHealthRecord() {
     },
     {
       key: NEXT_STEP,
-      title: "Next Step",
+      title: "Next Care Decision",
       stepKey: NEXT_STEP,
       rows: [
         { label: "Next Action", value: nextActionSummary },
@@ -5259,9 +5315,14 @@ export default function AddHealthRecord() {
       return;
     }
 
+    // The long form outside the step workspace: a follow-up visit returns to
+    // its confirmation screen; the route-driven entry (patient and
+    // classification preselected, no visit type chosen) returns to setup. It
+    // used to land on the old Current Visit screen, which in that path had no
+    // action bar and so no way forward.
     if (wizardPhase === WIZARD_FORM && !isFollowUpVisitMode && !isEditingRecord) {
       goToWizardPhase(
-        consultationType === "followup" ? WIZARD_FU_CONFIRM : WIZARD_PROGRAM,
+        consultationType === "followup" ? WIZARD_FU_CONFIRM : WIZARD_SETUP,
       );
       return;
     }
@@ -5271,10 +5332,7 @@ export default function AddHealthRecord() {
       return;
     }
 
-    if (
-      wizardPhase === WIZARD_PROGRAM ||
-      wizardPhase === WIZARD_FU_SELECT
-    ) {
+    if (wizardPhase === WIZARD_FU_SELECT) {
       goToWizardPhase(WIZARD_SETUP);
       return;
     }
@@ -5376,36 +5434,6 @@ export default function AddHealthRecord() {
           onNext={handleSetupNext}
           nextBusy={setupChecking}
         />
-      ) : wizardPhase === WIZARD_PROGRAM ? (
-        <ConsultationClinicalStep
-          programs={wizardPrograms} selected={selectedPrograms} primary={primaryProgram}
-          onSelect={handleProgramSelect} mode={consultationMode} onModeChange={handleConsultationMode}
-          onPrimaryChange={(key) => { setPrimaryProgram(key); setHealthRecordType(PROGRAM_CLASSIFICATIONS[key]); }}
-          error={validationErrors.healthRecordType}
-          indicator={usesConsultationSteps ? stepIndicator : null}
-        >
-          {/* Title and subtitle come from the step heading above, so this
-              block carries the fields only - no second heading, no divider. */}
-          <div className="anim-fade-up space-y-4 pb-1">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FieldTextarea label="Chief Complaint" required name="chiefComplaint" error={validationErrors.chiefComplaint} value={chiefComplaint} onChange={event => { clearValidationError("chiefComplaint"); setChiefComplaint(event.target.value); }} placeholder="Describe the patient's chief complaint..." rows={3} />
-              <FieldTextarea label="History of Present Illness" required={consultationMode === "general"} name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }} placeholder="Onset, duration, and details of the current concern..." rows={3} />
-            </div>
-          </div>
-          <FormSection title="Vital Signs" subtitle="Record the patient's vital signs for this visit.">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {/* Blood pressure is required when Hypertension / Diabetes is chosen; that
-                  program's own step no longer repeats it, so its error shows here. */}
-              <BpInputGroup required={isHypertensionDiabetic} name="hypertensionDiabeticData.bp" error={validationErrors["hypertensionDiabeticData.bp"]} systolic={systolicBp} diastolic={diastolicBp} onSystolicChange={(value) => { clearValidationError("hypertensionDiabeticData.bp"); setSystolicBp(value); }} onDiastolicChange={(value) => { clearValidationError("hypertensionDiabeticData.bp"); setDiastolicBp(value); }} />
-              <FieldInput label="Pulse Rate" type="number" value={pulse} onChange={event => setPulse(event.target.value)} placeholder="bpm" />
-              <FieldInput label="SpO2" type="number" value={spo2} onChange={event => setSpo2(event.target.value)} placeholder="%" />
-              <FieldInput label="Weight" type="number" value={weight} onChange={event => setWeight(event.target.value)} placeholder="kg" />
-              <FieldInput label="Height" type="number" value={height} onChange={event => setHeight(event.target.value)} placeholder="cm" />
-              <FieldInput label="Temperature" value={temp} onChange={event => setTemp(event.target.value)} placeholder="°C" />
-              <BmiOutputField weight={weight} height={height} />
-            </div>
-          </FormSection>
-        </ConsultationClinicalStep>
       ) : wizardPhase === WIZARD_FU_SELECT ? (
         <FollowUpSelectStep
           visitDate={wizardVisitDate}
@@ -5476,7 +5504,45 @@ export default function AddHealthRecord() {
         noValidate
         className="relative ml-0 mr-auto w-full max-w-5xl pb-16"
       >
-        <div className="space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
+        {isFirstConsultationStep ? (
+          // The first step is Interview and Vital Signs together: one card on
+          // one screen, no Next between them - the same card every other step
+          // uses, with each section under its own heading.
+          <section className={CONSULTATION_CARD_CLASS}>
+            <div className="anim-fade-up" style={stagger(2)}>
+              {stepIndicator}
+            </div>
+            {/* HPI is marked required for a general consultation; whether that
+                applies is decided at Clinical Assessment, which enforces it. */}
+            <div className="anim-fade-up grid gap-4 pb-1 sm:grid-cols-2" style={stagger(3)}>
+              <FieldTextarea label="Chief Complaint" required name="chiefComplaint" error={validationErrors.chiefComplaint} value={chiefComplaint} onChange={event => { clearValidationError("chiefComplaint"); setChiefComplaint(event.target.value); }} placeholder="Describe the patient's chief complaint..." rows={3} />
+              <FieldTextarea label="History of Present Illness" required={consultationMode === "general"} name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }} placeholder="Onset, duration, and details of the current concern..." rows={3} />
+            </div>
+
+            {/* Vital Signs: recorded once, here. Program forms do not repeat
+                them. Three columns on desktop: BP | Pulse | SpO2, then Weight |
+                Height | Temperature, then BMI. */}
+            <div className="anim-fade-up border-t border-[#F1F5F9] pt-5" style={stagger(3)}>
+              <ConsultationStepHeading
+                title="Vital Signs"
+                subtitle="Record the patient's current measurements for this visit."
+              />
+            </div>
+            <div className="anim-fade-up grid gap-4 pb-1 sm:grid-cols-2 lg:grid-cols-3" style={stagger(4)}>
+              {/* Blood pressure is required when Hypertension / Diabetes is
+                  chosen; that program's own form no longer repeats it, so its
+                  error shows here. */}
+              <BpInputGroup required={isHypertensionDiabetic} name="hypertensionDiabeticData.bp" error={validationErrors["hypertensionDiabeticData.bp"]} systolic={systolicBp} diastolic={diastolicBp} onSystolicChange={(value) => { clearValidationError("hypertensionDiabeticData.bp"); setSystolicBp(value); }} onDiastolicChange={(value) => { clearValidationError("hypertensionDiabeticData.bp"); setDiastolicBp(value); }} />
+              <FieldInput label="Pulse Rate" type="number" value={pulse} onChange={event => setPulse(event.target.value)} placeholder="bpm" />
+              <FieldInput label="SpO₂" type="number" value={spo2} onChange={event => setSpo2(event.target.value)} placeholder="%" />
+              <FieldInput label="Weight" type="number" value={weight} onChange={event => setWeight(event.target.value)} placeholder="kg" />
+              <FieldInput label="Height" type="number" value={height} onChange={event => setHeight(event.target.value)} placeholder="cm" />
+              <FieldInput label="Temperature" value={temp} onChange={event => setTemp(event.target.value)} placeholder="°C" />
+              <BmiOutputField weight={weight} height={height} />
+            </div>
+          </section>
+        ) : (
+        <div className={CONSULTATION_CARD_CLASS}>
         {/* The form opens on the program it is recording. Visit date, time and
             practitioner are no longer edited here - see formHeaderTitle. */}
         {usesConsultationSteps ? (
@@ -5721,170 +5787,265 @@ export default function AddHealthRecord() {
             {showMaternalPatientWarning && <MaternalClassificationWarning />}
 
             <FormSection
-              title="Personal / Obstetric Information"
-              subtitle="Record the client's pregnancy dating, OB score, and measurements for this visit."
+              title="Pregnancy / Obstetric Information"
+              subtitle="Record the patient's pregnancy and obstetric information for this prenatal consultation."
               delay={3}
             >
               <LockedFormContent locked={patientGateLocked}>
-                {/* 12-column grid. LMP / EDC / BP take thirds, the two OB
-                    score groups take halves so their inline number inputs stay
-                    legible, and WT / BMI / HT take quarters. */}
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-12">
-                  <div className="sm:col-span-4">
-                    <DatePickerField
-                      label="LMP (Last Menstrual Period)"
-                      value={maternalData.lmp}
-                      onChange={(value) => handleMaternalChange("lmp", value)}
-                    />
+                <div className="space-y-5">
+                  <div>
+                    <p className={MATERNAL_EYEBROW_CLASS}>Pregnancy Information</p>
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <DatePickerField
+                        label="Visit Date"
+                        value={dateOfVisit}
+                        onChange={setDateOfVisit}
+                      />
+                      <DatePickerField
+                        label="LMP"
+                        value={maternalData.lmp}
+                        onChange={(value) => handleMaternalChange("lmp", value)}
+                      />
+                      {/* Filled from LMP (Naegele's rule), and still editable. */}
+                      <DatePickerField
+                        label="EDC"
+                        value={expectedDeliveryDate}
+                        onChange={setExpectedDeliveryDate}
+                      />
+                    </div>
                   </div>
-                  <div className="sm:col-span-4">
-                    <DatePickerField
-                      label="EDC (Expected Date of Confinement)"
-                      value={expectedDeliveryDate}
-                      onChange={setExpectedDeliveryDate}
-                    />
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {OB_SCORE_GP_FIELDS.map((field) => (
+                      <FieldInput
+                        key={field.key}
+                        label={field.label}
+                        type="number"
+                        min="0"
+                        placeholder={field.placeholder}
+                        value={maternalData[field.key]}
+                        onChange={(event) =>
+                          handleMaternalChange(field.key, event.target.value)
+                        }
+                      />
+                    ))}
                   </div>
-                  {/* Vital signs are recorded once, on Current Visit. */}
-                  {!usesConsultationSteps && (
-                    <>
-                  <div className="sm:col-span-4">
+
+                  <div>
+                    <p className={MATERNAL_EYEBROW_CLASS}>OB Score (TPAL)</p>
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                      {OB_SCORE_TPAL_FIELDS.map((field) => (
+                        <FieldInput
+                          key={field.key}
+                          label={field.label}
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={maternalData[field.key]}
+                          onChange={(event) =>
+                            handleMaternalChange(field.key, event.target.value)
+                          }
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className={MATERNAL_EYEBROW_CLASS}>Current Prenatal Information</p>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {/* Calculated from LMP and the visit date, and still editable. */}
+                      <FieldInput
+                        label="AOG (Age of Gestation)"
+                        placeholder="e.g. 28 weeks"
+                        value={aog}
+                        onChange={(event) => setAog(event.target.value)}
+                      />
+                      <FieldInput
+                        label="FHT (Fetal Heart Tone)"
+                        placeholder="e.g. 140 bpm"
+                        value={maternalData.fht}
+                        onChange={(event) =>
+                          handleMaternalChange("fht", event.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              </LockedFormContent>
+            </FormSection>
+
+            {/* The step workflow records vital signs once, on its first step.
+                The single long form (record edits, follow-ups) keeps them here. */}
+            {!usesConsultationSteps && (
+              <FormSection
+                title="Vital Signs"
+                subtitle="Record the patient's measurements for this visit."
+                delay={3}
+              >
+                <LockedFormContent locked={patientGateLocked}>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <BpInputGroup
                       systolic={systolicBp}
                       diastolic={diastolicBp}
                       onSystolicChange={setSystolicBp}
                       onDiastolicChange={setDiastolicBp}
                     />
-                  </div>
-                  <FieldInput
-                    label="Pulse Rate"
-                    type="number"
-                    placeholder="e.g. 78 bpm"
-                    value={pulse}
-                    onChange={(event) => setPulse(event.target.value)}
-                    wrapperClassName="sm:col-span-4"
-                  />
-                  <FieldInput
-                    label="SpO2"
-                    type="number"
-                    placeholder="e.g. 98%"
-                    value={spo2}
-                    onChange={(event) => setSpo2(event.target.value)}
-                    wrapperClassName="sm:col-span-4"
-                  />
-                    </>
-                  )}
-
-                  <div className="sm:col-span-6">
-                    <ScoreInputGroup
-                      label="OB Score (TPAL)"
-                      columnsClassName="grid-cols-4"
-                      fields={OB_SCORE_TPAL_FIELDS}
-                      values={maternalData}
-                      onChange={handleMaternalChange}
-                      preview={maternalTpalPreview}
+                    <FieldInput
+                      label="Pulse Rate"
+                      type="number"
+                      placeholder="e.g. 78 bpm"
+                      value={pulse}
+                      onChange={(event) => setPulse(event.target.value)}
+                    />
+                    <FieldInput
+                      label="SpO2"
+                      type="number"
+                      placeholder="e.g. 98%"
+                      value={spo2}
+                      onChange={(event) => setSpo2(event.target.value)}
+                    />
+                    <FieldInput
+                      label="WT (Weight)"
+                      type="number"
+                      placeholder="kg"
+                      value={weight}
+                      onChange={(event) => setWeight(event.target.value)}
+                    />
+                    <FieldInput
+                      label="BMI"
+                      value={maternalData.bmi}
+                      onChange={(event) =>
+                        handleMaternalChange("bmi", event.target.value)
+                      }
+                    />
+                    <FieldInput
+                      label="HT (Height)"
+                      type="number"
+                      placeholder="cm"
+                      value={height}
+                      onChange={(event) => setHeight(event.target.value)}
                     />
                   </div>
-                  <div className="sm:col-span-6">
-                    <ScoreInputGroup
-                      label="G/P (Gravida/Para)"
-                      columnsClassName="grid-cols-2"
-                      fields={OB_SCORE_GP_FIELDS}
-                      values={maternalData}
-                      onChange={handleMaternalChange}
-                      preview={maternalGravidaParaPreview}
-                    />
-                  </div>
-
-                  {/* Weight, height and BMI are recorded once, on Current Visit; the
-                      stored maternal BMI is still derived from them (see effect). */}
-                  {!usesConsultationSteps && (
-                    <>
-                  <FieldInput
-                    label="WT (Weight)"
-                    type="number"
-                    placeholder="kg"
-                    value={weight}
-                    onChange={(event) => setWeight(event.target.value)}
-                    wrapperClassName="sm:col-span-3"
-                  />
-                  <FieldInput
-                    label="BMI"
-                    value={maternalData.bmi}
-                    onChange={(event) =>
-                      handleMaternalChange("bmi", event.target.value)
-                    }
-                    wrapperClassName="sm:col-span-3"
-                  />
-                  <FieldInput
-                    label="HT (Height)"
-                    type="number"
-                    placeholder="cm"
-                    value={height}
-                    onChange={(event) => setHeight(event.target.value)}
-                    wrapperClassName="sm:col-span-3"
-                  />
-                    </>
-                  )}
-                </div>
-              </LockedFormContent>
-            </FormSection>
+                </LockedFormContent>
+              </FormSection>
+            )}
 
             <FormSection
-              title="Medical History / Risk Codes"
-              subtitle="Mark pregnancy risk codes and medical conditions from the prenatal record."
+              title="Medical History"
+              subtitle="Mark any risk factors and medical conditions relevant to this pregnancy."
               delay={4}
             >
               <LockedFormContent locked={patientGateLocked}>
-                <div className="grid gap-8 lg:grid-cols-2">
-                  <div className="space-y-6">
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {MATERNAL_RISK_GROUPS.map((group) => (
                     <RiskCodeChecklist
-                      eyebrow="Pregnancy Risk Codes"
-                      options={PREGNANCY_RISK_CODES}
+                      key={group.key}
+                      eyebrow={group.eyebrow}
+                      options={group.options}
                       values={maternalData.riskAssessment}
                       onChange={handleRiskAssessmentChange}
                     />
-                    <RiskCodeChecklist
-                      eyebrow="Other Important Information"
-                      options={OTHER_IMPORTANT_INFORMATION}
-                      values={maternalData.riskAssessment}
-                      onChange={handleRiskAssessmentChange}
-                    />
-                  </div>
-                  <RiskCodeChecklist
-                    eyebrow="Medical Conditions"
-                    options={MEDICAL_CONDITION_CODES}
-                    values={maternalData.riskAssessment}
-                    onChange={handleRiskAssessmentChange}
-                  />
+                  ))}
                 </div>
               </LockedFormContent>
             </FormSection>
 
             <FormSection
-              title="Additional Health Information"
-              subtitle="Record any family planning method used before this pregnancy."
+              title="Laboratory Results"
+              subtitle="Record laboratory test results taken for this pregnancy."
               delay={5}
             >
               <LockedFormContent locked={patientGateLocked}>
-                <FieldSelect
-                  label="Previous FP Method Used"
-                  value={maternalData.previousFpMethodUsed}
-                  onChange={(event) =>
-                    handleMaternalChange(
-                      "previousFpMethodUsed",
-                      event.target.value,
-                    )
-                  }
-                >
-                  <option value="">Select FP Method Used...</option>
-                  {PREVIOUS_FP_METHOD_OPTIONS.map((method) => (
-                    <option key={method} value={method}>
-                      {method}
-                    </option>
-                  ))}
-                </FieldSelect>
-                {maternalData.previousFpMethodUsed === "Other" && (
-                  <div className="mt-4">
+                <div className="overflow-x-auto rounded-xl border border-[#E8ECF0]">
+                  <table className="w-full min-w-[520px] border-collapse text-left">
+                    <thead>
+                      <tr className="border-b border-[#EEF2F6] bg-[#F8FAFC]">
+                        {["Test", "Result", "Date"].map((heading) => (
+                          <th
+                            key={heading}
+                            scope="col"
+                            className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]"
+                          >
+                            {heading}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {MATERNAL_LAB_TESTS.map((test) => (
+                        <tr
+                          key={test.key}
+                          className="border-b border-[#EEF2F6] last:border-b-0"
+                        >
+                          <th
+                            scope="row"
+                            className="w-1/3 px-4 py-2 text-sm font-medium text-[#1F2937]"
+                          >
+                            {test.label}
+                          </th>
+                          <td className="px-2 py-2">
+                            <input
+                              type="text"
+                              aria-label={`${test.label} result`}
+                              placeholder="Enter result..."
+                              value={maternalData.laboratoryResults?.[test.key] || ""}
+                              onChange={(event) =>
+                                handleNestedMaternalChange(
+                                  "laboratoryResults",
+                                  test.key,
+                                  event.target.value,
+                                )
+                              }
+                              className={MATERNAL_TABLE_INPUT_CLASS}
+                            />
+                          </td>
+                          <td className="px-2 py-2">
+                            <DatePickerField
+                              hideLabel
+                              label={`${test.label} date`}
+                              value={maternalData.laboratoryResultDates?.[test.key] || ""}
+                              onChange={(value) =>
+                                handleNestedMaternalChange(
+                                  "laboratoryResultDates",
+                                  test.key,
+                                  value,
+                                )
+                              }
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </LockedFormContent>
+            </FormSection>
+
+            <FormSection
+              title="OB History"
+              subtitle="Record the client's prior family planning method use."
+              delay={6}
+            >
+              <LockedFormContent locked={patientGateLocked}>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FieldSelect
+                    label="Previous FP Method Used"
+                    value={maternalData.previousFpMethodUsed}
+                    onChange={(event) =>
+                      handleMaternalChange(
+                        "previousFpMethodUsed",
+                        event.target.value,
+                      )
+                    }
+                  >
+                    <option value="">Select method...</option>
+                    {PREVIOUS_FP_METHOD_OPTIONS.map((method) => (
+                      <option key={method} value={method}>
+                        {method}
+                      </option>
+                    ))}
+                  </FieldSelect>
+                  {maternalData.previousFpMethodUsed === "Other" && (
                     <FieldInput
                       label="Specify FP Method"
                       value={maternalData.previousFpMethodOther}
@@ -5895,66 +6056,66 @@ export default function AddHealthRecord() {
                         )
                       }
                     />
-                  </div>
-                )}
-              </LockedFormContent>
-            </FormSection>
-
-            <FormSection
-              title="Tetanus Toxoid (TT) Status"
-              subtitle="Record TT1-TT5 dates given."
-              delay={6}
-            >
-              <LockedFormContent locked={patientGateLocked}>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {TETANUS_TOXOID_FIELDS.map((field) => (
-                    <DatePickerField
-                      key={field.key}
-                      label={field.label}
-                      value={maternalData.tetanusToxoidStatus?.[field.key] || ""}
-                      onChange={(value) =>
-                        handleNestedMaternalChange(
-                          "tetanusToxoidStatus",
-                          field.key,
-                          value,
-                        )
-                      }
-                    />
-                  ))}
+                  )}
                 </div>
               </LockedFormContent>
             </FormSection>
 
             <FormSection
-              title="Tetanus-Diphtheria (Td) Status"
-              subtitle="Record Td1-Td5 dates given. A separate 5-dose schedule from TT, tracked independently."
+              title="Immunization This Visit"
+              subtitle="Record any immunization given during this prenatal visit."
               delay={7}
             >
               <LockedFormContent locked={patientGateLocked}>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {TETANUS_DIPHTHERIA_FIELDS.map((field) => (
-                    <DatePickerField
-                      key={field.key}
-                      label={field.label}
-                      value={
-                        maternalData.tetanusDiphtheriaStatus?.[field.key] || ""
-                      }
-                      onChange={(value) =>
-                        handleNestedMaternalChange(
-                          "tetanusDiphtheriaStatus",
-                          field.key,
-                          value,
-                        )
-                      }
-                    />
-                  ))}
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <FieldSelect
+                    label="Immunization Type"
+                    value={maternalData.immunizationThisVisit?.type || ""}
+                    onChange={(event) =>
+                      handleNestedMaternalChange(
+                        "immunizationThisVisit",
+                        "type",
+                        event.target.value,
+                      )
+                    }
+                  >
+                    <option value="">Select vaccine...</option>
+                    {PRENATAL_IMMUNIZATION_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </FieldSelect>
+                  <FieldInput
+                    label="Dose / Status"
+                    placeholder="Enter dose or status..."
+                    value={maternalData.immunizationThisVisit?.doseStatus || ""}
+                    onChange={(event) =>
+                      handleNestedMaternalChange(
+                        "immunizationThisVisit",
+                        "doseStatus",
+                        event.target.value,
+                      )
+                    }
+                  />
+                  <DatePickerField
+                    label="Date Given"
+                    value={maternalData.immunizationThisVisit?.dateGiven || ""}
+                    onChange={(value) =>
+                      handleNestedMaternalChange(
+                        "immunizationThisVisit",
+                        "dateGiven",
+                        value,
+                      )
+                    }
+                  />
                 </div>
               </LockedFormContent>
             </FormSection>
 
             <FormSection
-              title="Ultrasound Result"
-              subtitle="Enter the latest ultrasound result and date."
+              title="Ultrasound"
+              subtitle="Record the latest ultrasound result and date for this pregnancy."
               delay={8}
             >
               <LockedFormContent locked={patientGateLocked}>
@@ -6181,7 +6342,7 @@ export default function AddHealthRecord() {
               delay={3}
             >
               <div className="grid gap-4 lg:grid-cols-2">
-                {/* Blood pressure, pulse and SpO2 are recorded once, on Current Visit. */}
+                {/* Blood pressure, pulse and SpO2 are recorded once, on the Vital Signs step. */}
                 {!usesConsultationSteps && (
                 <BpInputGroup
                   required
@@ -6323,6 +6484,24 @@ export default function AddHealthRecord() {
             {/* The morbidity and HFMD decisions apply to a general consultation
                 only, exactly as before. */}
             {isGeneralOnly && reportingDecisions}
+
+            {/* The program decision, made after the assessment it follows from.
+                Optional: none selected is a general consultation, and Program /
+                Service Details is then skipped. */}
+            <FormSection
+              title="Programs & Services"
+              subtitle="Optional. Select any program or service this visit is part of."
+              delay={5}
+            >
+              <ProgramServicePicker
+                programs={wizardPrograms}
+                selected={selectedPrograms}
+                primary={primaryProgram}
+                onSelect={handleProgramSelect}
+                onPrimaryChange={(key) => { setPrimaryProgram(key); setHealthRecordType(PROGRAM_CLASSIFICATIONS[key]); }}
+                error={validationErrors.healthRecordType}
+              />
+            </FormSection>
           </>
         )}
 
@@ -6572,6 +6751,7 @@ export default function AddHealthRecord() {
         </div>
         )}
         </div>
+        )}
       </form>
       )}
       </>
@@ -6582,17 +6762,15 @@ export default function AddHealthRecord() {
         <ConsultationActionBar
           onPrevious={handleWorkspacePrevious}
           previousLabel={
-            currentStepKey === VISIT_STEP ? "Back to Setup" : "Previous"
+            currentStepKey === INTERVIEW_STEP ? "Back to Setup" : "Previous"
           }
+          // The existing manual draft save, beside Next on every step but
+          // Review, where Save Consultation is the one action that commits.
+          secondaryAction={isReviewStep ? null : saveDraftButton}
           onContinue={handleWorkspaceContinue}
           continueLabel={isReviewStep ? "Save Consultation" : "Next"}
           continueBusy={isReviewStep ? saving : setupChecking}
           continueBusyLabel={isReviewStep ? "Saving..." : "Loading..."}
-          continueDisabled={
-            wizardPhase === WIZARD_PROGRAM &&
-            (!consultationMode ||
-              (consultationMode === "program" && selectedPrograms.length === 0))
-          }
         />
       )}
 
@@ -7701,112 +7879,33 @@ function BpInputGroup({
  * the assembled shorthand shown beneath so the clinician can read back what
  * they entered without re-parsing the boxes.
  */
-function ScoreInputGroup({
-  label,
-  fields,
-  values = {},
-  onChange,
-  preview,
-  columnsClassName = "grid-cols-4",
-}) {
-  return (
-    <div>
-      <p className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-        {label}
-      </p>
-      <div className={`grid gap-3 ${columnsClassName}`}>
-        {fields.map((field) => (
-          <div key={field.key}>
-            <label
-              className="mb-1 block text-[9px] font-semibold uppercase leading-tight tracking-wider text-[#9CA3AF]"
-              htmlFor={`ob-score-${field.key}`}
-            >
-              {field.label}
-            </label>
-            <input
-              id={`ob-score-${field.key}`}
-              type="number"
-              min="0"
-              inputMode="numeric"
-              placeholder={field.placeholder}
-              value={values[field.key] ?? ""}
-              onChange={(event) => onChange(field.key, event.target.value)}
-              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-center text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-          </div>
-        ))}
-      </div>
-      <p className="mt-1.5 text-[11px] text-[#94A3B8]">
-        Format: <span className="font-bold text-[#B91C1C]">{preview}</span>
-      </p>
-    </div>
-  );
-}
-
+/**
+ * One column of prenatal risk factors: a red sub-heading over a flat list of
+ * checkboxes. Grouping into Risk Codes happens in the change handler, not on
+ * screen.
+ */
 function RiskCodeChecklist({ eyebrow, options, values = {}, onChange }) {
   return (
     <div>
-      <p className="mb-3 text-[10.5px] font-bold uppercase tracking-[0.08em] text-[#B91C1C]">
-        {eyebrow}
-      </p>
+      <p className={MATERNAL_EYEBROW_CLASS}>{eyebrow}</p>
       <div className="flex flex-col gap-3">
         {options.map((option) => {
-          const childKeys = (option.children || []).map((child) => child.key);
           const checked = Boolean(values[option.key]);
-
           return (
-            <div key={option.key}>
-              <label className="flex cursor-pointer items-center gap-2.5 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={(event) =>
-                    onChange(option.key, event.target.checked, childKeys)
-                  }
-                  className="h-4 w-4 shrink-0 rounded border-[#D1D5DB] accent-[#B91C1C]"
-                />
-                <span
-                  className={
-                    checked ? "font-semibold text-[#B91C1C]" : "text-[#475569]"
-                  }
-                >
-                  {option.label}
-                </span>
-              </label>
-
-              {checked && childKeys.length > 0 && (
-                <div className="mt-3 flex flex-col gap-3 pl-7">
-                  {option.children.map((child) => {
-                    const childChecked = Boolean(values[child.key]);
-
-                    return (
-                      <label
-                        key={child.key}
-                        className="flex cursor-pointer items-center gap-2.5 text-sm font-medium"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={childChecked}
-                          onChange={(event) =>
-                            onChange(child.key, event.target.checked)
-                          }
-                          className="h-4 w-4 shrink-0 rounded border-[#D1D5DB] accent-[#B91C1C]"
-                        />
-                        <span
-                          className={
-                            childChecked
-                              ? "font-semibold text-[#B91C1C]"
-                              : "text-[#475569]"
-                          }
-                        >
-                          {child.label}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            <label
+              key={option.key}
+              className="flex cursor-pointer items-start gap-2.5 text-sm font-medium"
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(event) => onChange(option.key, event.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#D1D5DB] accent-[#B91C1C]"
+              />
+              <span className={checked ? "font-semibold text-[#B91C1C]" : "text-[#475569]"}>
+                {option.label}
+              </span>
+            </label>
           );
         })}
       </div>

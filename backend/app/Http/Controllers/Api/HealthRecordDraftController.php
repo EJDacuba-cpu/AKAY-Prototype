@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\DraftConsultationExistsException;
 use App\Exceptions\DraftVersionConflictException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\HealthRecordDraftRequest;
@@ -138,6 +139,7 @@ class HealthRecordDraftController extends Controller
             ValidationException|
             ModelNotFoundException|
             DraftVersionConflictException|
+            DraftConsultationExistsException|
             HttpExceptionInterface $exception
         ) {
             throw $exception;

@@ -12,6 +12,7 @@ class HealthRecord extends Model
     protected $fillable = [
         'idempotency_key',
         'idempotency_hash',
+        'consultation_uuid',
         'patient_id',
         'created_by',
         'barangay_health_center_id',
@@ -36,9 +37,13 @@ class HealthRecord extends Model
         'notes',
     ];
 
+    // Internal identity, never part of a clinical response. consultation_uuid
+    // is hidden for the same reason as the idempotency fields: it is written by
+    // the client and read by the draft pipeline, not by record consumers.
     protected $hidden = [
         'idempotency_key',
         'idempotency_hash',
+        'consultation_uuid',
     ];
 
     protected $appends = [

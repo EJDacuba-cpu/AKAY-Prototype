@@ -17,6 +17,7 @@ class HealthRecordDraft extends Model
 
     protected $fillable = [
         'public_id',
+        'consultation_uuid',
         'owner_user_id',
         'barangay_health_center_id',
         'patient_id',

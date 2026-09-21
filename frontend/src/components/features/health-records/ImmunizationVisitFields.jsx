@@ -84,7 +84,7 @@ export default function ImmunizationVisitFields({
   errors = {},
   ageWarning = null,
   // The step-based consultation records weight, height, temperature, pulse and
-  // SpO2 once, on its Current Visit step, so its EPI step leaves them out.
+  // SpO2 once, on its Vital Signs step, so its EPI step leaves them out.
   hideBasicMonitoring = false,
   otherVaccineSlot = null,
   medicinesSlot = null,

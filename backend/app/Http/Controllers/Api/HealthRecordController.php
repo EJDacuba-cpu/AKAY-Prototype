@@ -99,6 +99,25 @@ class HealthRecordController extends Controller
             return $response;
         }
 
+        // Same consultation, different submission key: the encoder reloaded
+        // after a save that DID commit (its response was lost) and saved the
+        // recovered draft again. idempotency_key cannot catch this - it is new -
+        // but the consultation identity can. This is a 409, never a replay: the
+        // idempotency contract is per key, so a "success" here would vouch for
+        // content under a key that never submitted it.
+        // One canonical form, matching HealthRecordDraftService, so the draft
+        // and the record it becomes compare equal.
+        $consultationUuid = isset($data['consultation_uuid'])
+            ? strtolower(trim((string) $data['consultation_uuid'])) ?: null
+            : null;
+        $data['consultation_uuid'] = $consultationUuid;
+        if ($consultationUuid !== null && ($recorded = HealthRecord::query()
+            ->where('created_by', $request->user()->id)
+            ->where('consultation_uuid', $consultationUuid)
+            ->first())) {
+            return $this->consultationAlreadyRecordedResponse($recorded);
+        }
+
         unset($data['idempotency_key']);
         $referralData = $data['referral'] ?? null;
         unset($data['referral']);
@@ -199,6 +218,18 @@ class HealthRecordController extends Controller
 
             throw $exception;
         } catch (QueryException $exception) {
+            if ($this->isConsultationUuidConflict($exception)) {
+                // Lost the race to a concurrent save of this consultation, or
+                // the uuid belongs to another user. Only the caller's OWN record
+                // is ever identified; someone else's stays invisible.
+                $recorded = HealthRecord::query()
+                    ->where('created_by', $request->user()->id)
+                    ->where('consultation_uuid', $consultationUuid)
+                    ->first();
+
+                return $this->consultationAlreadyRecordedResponse($recorded);
+            }
+
             if (! $this->isIdempotencyConflict($exception)) {
                 throw $exception;
             }
@@ -597,6 +628,29 @@ class HealthRecordController extends Controller
 
         return in_array($sqlState, ['23505', '23000'], true)
             && str_contains($message, 'idempotency_key');
+    }
+
+    private function isConsultationUuidConflict(QueryException $exception): bool
+    {
+        $sqlState = $exception->errorInfo[0] ?? null;
+        $message = strtolower($exception->getMessage());
+
+        return in_array($sqlState, ['23505', '23000'], true)
+            && str_contains($message, 'consultation_uuid');
+    }
+
+    /**
+     * One consultation, one official record. The caller's own record id is
+     * returned so the client can take the encoder to it; a record owned by
+     * anyone else is never identified.
+     */
+    private function consultationAlreadyRecordedResponse(?HealthRecord $record)
+    {
+        return response()->json([
+            'message' => 'This consultation has already been saved as a health record.',
+            'code' => 'CONSULTATION_ALREADY_RECORDED',
+            'health_record_id' => $record?->id,
+        ], 409);
     }
 
     private function auditDraftConsumed(

@@ -27,6 +27,11 @@ class HealthRecordDraftRequest extends FormRequest
         return [
             'patient_id' => ['required', 'integer', 'exists:patients,id'],
             'classification' => ['required', 'string', Rule::in(self::CLASSIFICATIONS)],
+            // The consultation identity minted by the client at consultation
+            // start. Nullable so drafts from before it existed still save, and
+            // never an authorization input - owner and BHC checks still decide
+            // what may be read or written.
+            'consultation_uuid' => ['nullable', 'uuid'],
             'payload' => ['required', 'array'],
             'version' => $this->isMethod('put')
                 ? ['required', 'integer', 'min:1']
@@ -37,7 +42,7 @@ class HealthRecordDraftRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator): void {
-            $allowed = ['patient_id', 'classification', 'payload'];
+            $allowed = ['patient_id', 'classification', 'consultation_uuid', 'payload'];
             if ($this->isMethod('put')) {
                 $allowed[] = 'version';
             }

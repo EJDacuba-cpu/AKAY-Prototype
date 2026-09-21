@@ -8,9 +8,21 @@ class HealthRecordIdempotencyService
 {
     public function __construct(private readonly MedicineStockService $medicineStock) {}
 
+    /**
+     * Identity fields are never part of the payload fingerprint. They say
+     * WHICH submission or consultation this is, not WHAT is being submitted,
+     * so leaving them out keeps the hash byte-identical to what it was before
+     * consultation_uuid existed - existing idempotency semantics unchanged.
+     */
+    private const IDENTITY_FIELDS = [
+        'idempotency_key',
+        'draft_public_id',
+        'consultation_uuid',
+    ];
+
     public function hash(array $payload): string
     {
-        $officialPayload = Arr::except($payload, ['idempotency_key', 'draft_public_id']);
+        $officialPayload = Arr::except($payload, self::IDENTITY_FIELDS);
         if (is_array($officialPayload['dispensed_medicines'] ?? null)) {
             $officialPayload['dispensed_medicines'] = $this->medicineStock->normalize(
                 $officialPayload['dispensed_medicines']
@@ -22,10 +34,7 @@ class HealthRecordIdempotencyService
 
     public function legacyHash(array $payload): string
     {
-        return $this->hashNormalized(Arr::except($payload, [
-            'idempotency_key',
-            'draft_public_id',
-        ]));
+        return $this->hashNormalized(Arr::except($payload, self::IDENTITY_FIELDS));
     }
 
     private function hashNormalized(array $payload): string

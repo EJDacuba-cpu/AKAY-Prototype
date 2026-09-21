@@ -10,6 +10,12 @@ class HealthRecordDraftPayloadService
     private const SCALAR = true;
 
     private const SCHEMA = [
+        // Identity of the consultation this draft belongs to, minted by the
+        // client at consultation start. It rides in the payload so the
+        // encrypted on-device copy carries it too; the server also keeps it as
+        // a real column for lookup. Optional, so drafts saved before it existed
+        // still decrypt - sanitize() runs on READ as well as write.
+        'consultationUuid' => self::SCALAR,
         'selectedPrograms' => ['*' => self::SCALAR],
         'primaryProgram' => self::SCALAR,
         'consultationMode' => self::SCALAR,
@@ -63,6 +69,8 @@ class HealthRecordDraftPayloadService
             'abortion' => self::SCALAR,
             'living' => self::SCALAR,
             'bmi' => self::SCALAR,
+            // Fetal heart tone, e.g. "140 bpm".
+            'fht' => self::SCALAR,
             'treatment' => self::SCALAR,
             'previousFpMethodUsed' => self::SCALAR,
             'previousFpMethodOther' => self::SCALAR,
@@ -100,6 +108,25 @@ class HealthRecordDraftPayloadService
                 'hiv' => self::SCALAR,
                 'syphilis' => self::SCALAR,
                 'urinalysis' => self::SCALAR,
+            ],
+            // The date each result above was taken, kept beside it so records
+            // that stored a plain result string per test read unchanged.
+            'laboratoryResultDates' => [
+                'hemoglobin' => self::SCALAR,
+                'cbc' => self::SCALAR,
+                'hbsag' => self::SCALAR,
+                'bloodType' => self::SCALAR,
+                'hiv' => self::SCALAR,
+                'syphilis' => self::SCALAR,
+                'urinalysis' => self::SCALAR,
+            ],
+            // The TT/Td dose given at this visit. On the official record its
+            // date is also filed under tetanusToxoidStatus /
+            // tetanusDiphtheriaStatus, so the dose history stays complete.
+            'immunizationThisVisit' => [
+                'type' => self::SCALAR,
+                'doseStatus' => self::SCALAR,
+                'dateGiven' => self::SCALAR,
             ],
             'tetanusToxoidStatus' => [
                 'tt1' => self::SCALAR,
@@ -408,6 +435,7 @@ class HealthRecordDraftPayloadService
     {
         return [
             ...ConsultationPrograms::rules('payload'),
+            'payload.consultationUuid' => ['nullable', 'uuid'],
             'payload.consultationMode' => ['nullable', 'in:general,program'],
             'payload.wizardPhase' => ['nullable', 'in:program,form,next'],
             'payload.formStep' => ['nullable', 'string', 'max:100'],
@@ -431,6 +459,10 @@ class HealthRecordDraftPayloadService
                 'max:2147483647',
             ],
             'payload.maternalData.previousPregnancyHistory' => ['nullable', 'array', 'max:30'],
+            'payload.maternalData.immunizationThisVisit.type' => [
+                'nullable',
+                'in:tt1,tt2,tt3,tt4,tt5,td1,td2,td3,td4,td5',
+            ],
             'payload.immunizationData.vaccineEntries' => ['nullable', 'array', 'max:30'],
             'payload.immunizationData.vaccineEntries.*.dateGiven' => [
                 'nullable',

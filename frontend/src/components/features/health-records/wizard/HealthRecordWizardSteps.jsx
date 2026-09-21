@@ -546,25 +546,47 @@ export function ConsultationSetupStep({
   );
 }
 
-/** Current visit fields and program selection reuse the page's clinical state. */
-export function ConsultationClinicalStep({ programs, selected = [], primary, onSelect, onPrimaryChange, mode, onModeChange, onNext, nextBusy = false, helper = "", error, indicator = null, children }) {
+/**
+ * The six programs / services, grouped for scanning only. Grouping is visual:
+ * it does not change what selecting one does, and nothing is ever selected on
+ * the encoder's behalf from the diagnosis or vitals.
+ */
+const PROGRAM_GROUPS = [
+  { key: "services", title: "Services", programs: ["Maternal", "Family Planning", "EPI"] },
+  {
+    key: "monitoring",
+    title: "Condition Monitoring / Evaluation",
+    programs: ["TB", "Hypertension", "Diabetes"],
+  },
+];
+
+/**
+ * Program / service selection at the end of Clinical Assessment. Optional:
+ * selecting nothing is a general consultation. Cards, eligibility, and the
+ * primary toggle are exactly the ones Current Visit used; only their grouping
+ * is new.
+ */
+export function ProgramServicePicker({ programs, selected = [], primary, onSelect, onPrimaryChange, error }) {
+  const grouped = new Set(PROGRAM_GROUPS.flatMap((group) => group.programs));
+  // Anything not assigned a group is still offered - a program is never
+  // silently hidden because the grouping list was not updated.
+  const groups = [
+    ...PROGRAM_GROUPS.map((group) => ({
+      ...group,
+      items: programs.filter((program) => group.programs.includes(program.key)),
+    })),
+    { key: "other", title: "Other", items: programs.filter((program) => !grouped.has(program.key)) },
+  ].filter((group) => group.items.length > 0);
+
   return (
-    <section className="max-w-5xl rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-      {/* Back and the patient line live above this card. */}
-      {indicator}
-      {children}
-      <div className="mt-6 border-t border-slate-100 pt-5" data-field="healthRecordType">
-        <h3 className="text-sm font-semibold text-slate-900">Consultation Type<span className="text-red-700">*</span></h3>
-        <p className="mb-3 text-xs text-slate-500">General consultation, or connected to a health program?</p>
-        <div className="grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
-          {[["general", "General Consultation"], ["program", "With Health Program"]].map(([key, label]) => (
-            <button key={key} type="button" aria-pressed={mode === key} onClick={() => onModeChange(key)} className={"rounded-md px-2 py-2.5 text-xs transition " + (mode === key ? "bg-[#B91C1C] text-white" : "text-slate-600 hover:bg-white")}>{label}</button>
-          ))}
-        </div>
-        {mode === "program" && <>
-          <p className="mb-3 mt-4 text-xs text-slate-500">Select one or more health programs related to today's consultation.</p>
+    <div data-field="healthRecordType" className="space-y-5">
+      {groups.map((group) => (
+        <div key={group.key}>
+          <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">
+            {group.title}
+          </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {programs.map(program => {
+            {group.items.map((program) => {
               const Icon = program.icon;
               const active = selected.includes(program.key);
               return <div key={program.key} className={"relative rounded-xl border " + (active ? "border-red-600 bg-red-50" : "border-slate-200 bg-white")}>
@@ -579,11 +601,10 @@ export function ConsultationClinicalStep({ programs, selected = [], primary, onS
               </div>;
             })}
           </div>
-        </>}
-        {error && <p role="alert" className="mt-3 text-xs text-red-700">{error}</p>}
-      </div>
-      <WizardFooter helper={helper} onNext={onNext} nextDisabled={!mode || (mode === "program" && !selected.length)} nextBusy={nextBusy} />
-    </section>
+        </div>
+      ))}
+      {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+    </div>
   );
 }
 

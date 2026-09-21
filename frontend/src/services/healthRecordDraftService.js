@@ -3,6 +3,11 @@ import { apiRequest, unwrapData, unwrapList } from "./apiClient";
 function normalizeDraft(draft = {}) {
   return {
     id: String(draft.id || ""),
+    // Identity of the CONSULTATION (not the draft). Null for drafts created
+    // before it existed; those fall back to id/patient matching.
+    consultationUuid: draft.consultation_uuid
+      ? String(draft.consultation_uuid).toLowerCase()
+      : "",
     patient: {
       id: draft.patient?.id ? String(draft.patient.id) : "",
       label: draft.patient?.label || "Patient",
@@ -38,6 +43,7 @@ export async function listHealthRecordDrafts() {
 export async function createHealthRecordDraft({
   patientId,
   classification,
+  consultationUuid,
   payload,
 }) {
   const response = await apiRequest("/health-record-drafts", {
@@ -45,6 +51,7 @@ export async function createHealthRecordDraft({
     body: {
       patient_id: patientId,
       classification,
+      consultation_uuid: consultationUuid || null,
       payload,
     },
   });
@@ -58,13 +65,16 @@ export async function getHealthRecordDraft(draftId) {
 
 export async function updateHealthRecordDraft(
   draftId,
-  { patientId, classification, payload, version },
+  { patientId, classification, consultationUuid, payload, version },
 ) {
   const response = await apiRequest(`/health-record-drafts/${draftId}`, {
     method: "PUT",
     body: {
       patient_id: patientId,
       classification,
+      // Adopted server-side only by a draft that has none yet; an identity
+      // that is already set is never reassigned.
+      consultation_uuid: consultationUuid || null,
       payload,
       version,
     },
