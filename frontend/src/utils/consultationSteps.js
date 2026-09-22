@@ -3,9 +3,9 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
 /**
  * Step model for the New Consultation workspace.
  *
- *   Setup -> Interview & Vital Signs -> Clinical Assessment
- *         -> Program / Service Details (only when a program is selected)
- *         -> Treatment & Management -> Next Care Decision -> Review & Save
+ *   Interview & Vital Signs -> Clinical Assessment
+ *       -> Program / Service Details (only when a program is selected)
+ *       -> Treatment & Management -> Next Care Decision -> Review & Save
  *
  * Interview and Vital Signs are one step: two cards on the same screen,
  * with no Next between them. The step's key is INTERVIEW_STEP.
@@ -212,8 +212,8 @@ export function deferUntilProgramDecision(errors, stepKey) {
   );
 }
 
-/** Where Previous from the first screen goes: out to the setup screen. */
-export const SETUP_STEP = "setup";
+/** Navigation boundary before the first consultation screen. */
+export const EXIT_STEP = "exit";
 
 /**
  * Where Next goes from a form screen: the next screen in order, and Next Care
@@ -228,11 +228,11 @@ export function getNextStepKey(formSequence, current) {
 
 /**
  * Where Previous goes from a form screen: the exact reverse of Next. The first
- * screen (Interview) steps out to setup.
+ * screen (Interview) exits the workspace to its patient context.
  */
 export function getPreviousStepKey(formSequence, current) {
   const index = formSequence.indexOf(current);
-  return index > 0 ? formSequence[index - 1] : SETUP_STEP;
+  return index > 0 ? formSequence[index - 1] : EXIT_STEP;
 }
 
 // The wizardPhase values a draft payload can carry. The server allowlist
@@ -264,7 +264,7 @@ export function resolveRestoredPosition(payload = {}) {
   const usable = phase !== LEGACY_CURRENT_VISIT_PHASE && stored;
 
   return {
-    phase: resumesOnNextCare ? NEXT_CARE_PHASE : FORM_PHASE,
+    phase: phase === REVIEW_STEP ? REVIEW_STEP : resumesOnNextCare ? NEXT_CARE_PHASE : FORM_PHASE,
     formStep: usable ? stored : resumesOnNextCare ? TREATMENT_STEP : INTERVIEW_STEP,
   };
 }

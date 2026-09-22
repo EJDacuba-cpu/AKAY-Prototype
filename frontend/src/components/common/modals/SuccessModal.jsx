@@ -9,7 +9,7 @@ const ALLOWED_VARIANTS = new Set(["primary", "destructive", "ghost"]);
 
 // No exit animation by design. It would require keeping the panel mounted after
 // open=false, but most callers unmount this outright (AddUser renders it behind
-// `{successModal && ...}`) or navigate away in onClose (AddHealthRecord,
+// `{successModal && ...}`) or navigate away in onClose (ConsultationWorkspace,
 // AddPatient). The animation would rarely be seen, while delaying unmount would
 // shift ModalShell's focus-return and scroll-lock timing for every consumer.
 export default function SuccessModal({

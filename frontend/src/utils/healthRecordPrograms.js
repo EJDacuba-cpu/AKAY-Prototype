@@ -201,6 +201,8 @@ export function formatServiceType(value = "", fallback = "Not recorded") {
 }
 
 export function getServiceTypeLabel(record = {}, fallback = "Not recorded") {
+  const programs = getConsultationPrograms(record);
+  if (programs.length > 1) return programs.join(" / ");
   const raw = String(getRecordClassificationText(record) || "").trim();
   if (!raw) return fallback;
 

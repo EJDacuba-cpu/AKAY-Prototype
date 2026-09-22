@@ -142,6 +142,8 @@ export default function useDraftAutosave({
   const hasLocalCopyRef = useRef(false);
   const lastLocalSerializedRef = useRef("");
   const localWriteSeqRef = useRef(0);
+  const localWritesRef = useRef(Promise.resolve());
+  const finalizedRef = useRef(false);
 
   const clearDebounceTimer = useCallback(() => {
     if (debounceTimerRef.current) {
@@ -174,16 +176,24 @@ export default function useDraftAutosave({
     }
 
     const record = params.buildLocalRecord?.();
-    if (!record) return false;
+    if (!record || finalizedRef.current) return false;
+    if (record.draft && draftRef.current) {
+      record.draft.id = draftRef.current.id;
+      record.draft.version = draftRef.current.version;
+    }
 
     const serializedAtWrite = serializePayload(latestPayloadRef.current);
     const sequence = (localWriteSeqRef.current += 1);
     try {
-      await params.vault.saveLocalDraft({
-        ownerKey: target.ownerKey,
-        consultationKey: target.consultationKey,
-        record,
-      });
+      const write = localWritesRef.current.catch(() => {}).then(() =>
+        params.vault.saveLocalDraft({
+          ownerKey: target.ownerKey,
+          consultationKey: target.consultationKey,
+          record,
+        }),
+      );
+      localWritesRef.current = write;
+      await write;
       hasLocalCopyRef.current = true;
       lastLocalSerializedRef.current = serializedAtWrite;
       // A newer write already landed; do not report this stale one.
@@ -199,26 +209,20 @@ export default function useDraftAutosave({
     }
   }, []);
 
-  /**
-   * Drop the on-device copy. Only ever called after the server CONFIRMED the
-   * draft was stored - a failed request must never destroy unsynced work.
-   */
-  const clearLocalCopy = useCallback(async () => {
-    const params = paramsRef.current;
-    const target = params.localDraft;
-    hasLocalCopyRef.current = false;
-    lastLocalSerializedRef.current = "";
-    if (!target?.ownerKey || !target?.consultationKey) return;
-    try {
-      await params.vault.deleteLocalDraft({
-        ownerKey: target.ownerKey,
-        consultationKey: target.consultationKey,
-      });
-    } catch {
-      // A stale ciphertext is unreadable once the key is destroyed at logout,
-      // and the owner/consultation key overwrites it on the next offline save.
+  // Stop autosave before deleting recovery, so a late timer cannot recreate it.
+  const completeConsultation = useCallback(async () => {
+    finalizedRef.current = true;
+    clearDebounceTimer();
+    clearRetryTimer();
+    const target = paramsRef.current.localDraft;
+    await localWritesRef.current.catch(() => {});
+    if (target?.ownerKey && target?.consultationKey) {
+      await paramsRef.current.vault.deleteLocalDraft(target);
     }
-  }, []);
+    hasLocalCopyRef.current = false;
+    pendingSaveRef.current = null;
+    if (isMountedRef.current) setHasPendingChanges(false);
+  }, [clearDebounceTimer, clearRetryTimer]);
 
   /** Mark a NEW offline transition (once per drop, not once per failed retry). */
   const enterOfflineMode = useCallback(() => {
@@ -346,9 +350,9 @@ export default function useDraftAutosave({
   const runSave = useCallback(
     async (reason) => {
       const params = paramsRef.current;
-      if (!params.enabled) return;
+      if (!params.enabled || finalizedRef.current) return;
       // Conflict/validation pause halts autosave until reload; manual save overrides.
-      if (pausedRef.current && reason !== "manual") return;
+      if (pausedRef.current) return;
       if (inFlightRef.current) {
         rerunRef.current = true;
         return;
@@ -365,6 +369,13 @@ export default function useDraftAutosave({
           setHasPendingChanges(false);
           setStatus(lastSavedAtRef.current ? "saved" : "idle");
         }
+        return;
+      }
+
+      if (!isOnline()) {
+        enterOfflineMode();
+        if (isMountedRef.current) { setStatus("offline"); setHasPendingChanges(true); }
+        await persistLocalNow();
         return;
       }
 
@@ -409,7 +420,7 @@ export default function useDraftAutosave({
         // The server has CONFIRMED this draft, so the on-device copy has done
         // its job and may finally be removed.
         const hadLocalCopy = hasLocalCopyRef.current;
-        if (hadLocalCopy) void clearLocalCopy();
+        // Recovery is retained until the official Health Record is confirmed.
 
         if (isMountedRef.current) {
           setLastSavedAt(saved.lastSavedAt || null);
@@ -417,7 +428,6 @@ export default function useDraftAutosave({
           setError(null);
           setHasPendingChanges(false);
           setStatus("saved");
-          setLocalStatus("idle");
           setSyncStatus(hadLocalCopy ? "synced" : "idle");
         }
         params.onDraftSaved?.(saved);
@@ -438,7 +448,7 @@ export default function useDraftAutosave({
         }
       }
     },
-    [clearDebounceTimer, clearLocalCopy, clearRetryTimer, handleSaveError],
+    [clearDebounceTimer, clearRetryTimer, enterOfflineMode, handleSaveError, persistLocalNow],
   );
 
   useEffect(() => {
@@ -598,7 +608,7 @@ export default function useDraftAutosave({
   // a refresh, tab close, or PC restart survivable; the 20s server debounce is
   // far too slow to rely on, and no request is being made anyway.
   useEffect(() => {
-    if (!enabled || !serialized || status !== "offline") return undefined;
+    if (!enabled || !serialized || finalizedRef.current) return undefined;
     if (serialized === lastLocalSerializedRef.current) return undefined;
 
     const timer = setTimeout(() => {
@@ -625,11 +635,7 @@ export default function useDraftAutosave({
     }
 
     function handleOffline() {
-      const stillDirty =
-        pendingSaveRef.current ||
-        serializePayload(latestPayloadRef.current) !==
-          lastSavedSerializedRef.current;
-      if (paramsRef.current.enabled && stillDirty) {
+      if (paramsRef.current.enabled && !finalizedRef.current) {
         enterOfflineMode();
         if (isMountedRef.current) {
           setStatus("offline");
@@ -646,6 +652,21 @@ export default function useDraftAutosave({
       window.removeEventListener("offline", handleOffline);
     };
   }, [clearRetryTimer, enterOfflineMode, persistLocalNow]);
+
+  useEffect(() => {
+    const checkpoint = () => {
+      if (!paramsRef.current.enabled || finalizedRef.current) return;
+      void persistLocalNow();
+      void runSaveRef.current?.("pagehide");
+    };
+    const onVisibility = () => { if (document.visibilityState === "hidden") checkpoint(); };
+    window.addEventListener("pagehide", checkpoint);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", checkpoint);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [persistLocalNow]);
 
   // Reset every trace of draft state when the sensitive session is cleared.
   useEffect(() => {
@@ -770,6 +791,9 @@ export default function useDraftAutosave({
     offlineEpoch,
     saveNow,
     flushBeforeLeave,
+    persistLocalNow,
+    completeConsultation,
+    getDraftIdentity: () => draftRef.current,
     resolveConflict,
     acknowledgeSync,
   };

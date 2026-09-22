@@ -54,8 +54,8 @@ export function ConsultationWorkspaceHeader({ onOpenSummary }) {
 export function ConsultationActionBar({
   onPrevious,
   previousDisabled = false,
-  // The first screen has no previous STEP - it goes back out to setup - so the
-  // caller names the destination instead of always saying "Previous".
+  // The first screen has no previous step; it returns to the launching patient
+  // or follow-up context, so the caller names that destination.
   previousLabel = "Previous",
   secondaryAction = null,
   onContinue,

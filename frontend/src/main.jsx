@@ -18,7 +18,7 @@ import { clearLegacySensitiveBrowserData } from "./utils/sessionPrivacy";
 
 void clearLegacySensitiveBrowserData();
 
-// A data router only so pages can use useBlocker (Add Health Record saves its
+// A data router only so pages can use useBlocker (the consultation workspace saves its
 // draft before letting the user navigate away). Every route still lives in
 // App's own <Routes>; this single splat route just hosts it.
 const router = createBrowserRouter([

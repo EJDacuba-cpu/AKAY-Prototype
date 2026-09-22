@@ -3,6 +3,7 @@ import { ArrowRight, CalendarClock, FileText } from "lucide-react";
 
 import { formatLongDate } from "../../../utils/formatters";
 import { formatDisplayTime } from "./recordDetailsHelpers";
+import { buildRecordFollowUpVisitPath } from "../followups/followUpStatusStyles.jsx";
 
 const ACTIVE_STATES = new Set(["pending", "rescheduled", "no_show"]);
 
@@ -242,7 +243,7 @@ export function FollowUpEpisodeContent({
                         {active && (
                           <>
                             <Link
-                              to={`/bhc/health-records/add?mode=followup&followUpId=${task.id}&patientId=${task.patientId}&recordId=${task.healthRecordId}`}
+                              to={buildRecordFollowUpVisitPath(task)}
                               className="rounded-lg bg-[#B91C1C] px-3 py-2 text-xs font-semibold text-white hover:bg-[#991B1B]"
                             >
                               Record Visit

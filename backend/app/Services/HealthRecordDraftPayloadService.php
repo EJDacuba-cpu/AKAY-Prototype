@@ -437,7 +437,7 @@ class HealthRecordDraftPayloadService
             ...ConsultationPrograms::rules('payload'),
             'payload.consultationUuid' => ['nullable', 'uuid'],
             'payload.consultationMode' => ['nullable', 'in:general,program'],
-            'payload.wizardPhase' => ['nullable', 'in:program,form,next'],
+            'payload.wizardPhase' => ['nullable', 'in:program,form,next,review'],
             'payload.formStep' => ['nullable', 'string', 'max:100'],
             'payload.physicalExam' => ['nullable', 'string'],
             'payload.dateOfVisit' => ['nullable', 'date_format:Y-m-d'],

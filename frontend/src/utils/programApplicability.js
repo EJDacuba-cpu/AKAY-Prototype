@@ -25,7 +25,7 @@ import { getSpecializedRecordPrograms } from "./healthRecordPrograms.js";
  * under-show (hiding a real history the moment the window closes).
  */
 
-/** Child immunization schedule boundary, matching Add Health Record's own gate. */
+/** Child immunization schedule boundary, matching the consultation gate. */
 const ADULT_IMMUNIZATION_MIN_AGE_YEARS = 18;
 
 /** Youngest age at which reproductive-health services are offered. */

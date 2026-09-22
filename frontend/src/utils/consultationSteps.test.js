@@ -7,7 +7,7 @@ import {
   NEXT_STEP,
   PROGRAMS_STEP,
   REVIEW_STEP,
-  SETUP_STEP,
+  EXIT_STEP,
   TREATMENT_STEP,
   buildConsultationSteps,
   deferUntilProgramDecision,
@@ -86,17 +86,17 @@ test("NO PROGRAM: the Program / Service Details step is skipped entirely", () =>
   assert.equal(getNextStepKey(getFormSequence([]), ASSESSMENT_STEP), TREATMENT_STEP);
 });
 
-test("BACKWARD: Previous reverses the exact forward order, out to Setup", () => {
+test("BACKWARD: Previous reverses the exact forward order, out to patient context", () => {
   const programs = getProgramFormSteps(["Maternal", "Diabetes"], "Maternal");
   const sequence = getFormSequence(programs);
 
   const back = [];
   let current = TREATMENT_STEP;
-  while (current !== SETUP_STEP) {
+  while (current !== EXIT_STEP) {
     back.push(current);
     current = getPreviousStepKey(sequence, current);
   }
-  back.push(SETUP_STEP);
+  back.push(EXIT_STEP);
 
   assert.deepEqual(back, [
     TREATMENT_STEP,
@@ -104,7 +104,7 @@ test("BACKWARD: Previous reverses the exact forward order, out to Setup", () => 
     MATERNAL, // previous program
     ASSESSMENT_STEP,
     INTERVIEW_STEP,
-    SETUP_STEP,
+    EXIT_STEP,
   ]);
 });
 
@@ -119,8 +119,8 @@ test("Next from the LAST program goes to Treatment & Management", () => {
   assert.equal(getNextStepKey(sequence, TB), TREATMENT_STEP);
 });
 
-test("Previous from Interview steps out to Setup", () => {
-  assert.equal(getPreviousStepKey(getFormSequence([]), INTERVIEW_STEP), SETUP_STEP);
+test("Previous from Interview exits to patient context", () => {
+  assert.equal(getPreviousStepKey(getFormSequence([]), INTERVIEW_STEP), EXIT_STEP);
 });
 
 test("Next from Treatment goes to Next Care Decision", () => {

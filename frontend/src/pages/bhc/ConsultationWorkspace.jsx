@@ -6,43 +6,32 @@ import {
   AlertCircle,
   Check,
   ClipboardList,
-  FileClock,
   HeartPulse,
-  RotateCcw,
   Save,
-  Search,
   ShieldCheck,
   Stethoscope,
   Syringe,
-  Trash2,
-  User,
   Users,
-  WifiOff,
-  X,
   Zap,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConnectionIssueModal,
-  Drawer,
   HealthRecordFormSkeleton,
   NoticeModal,
   SuccessModal,
 } from "../../components/common";
 import { DatePickerField } from "../../components/common/forms/DatePickerField";
 import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
-import InlineSpinner from "../../components/common/loading/InlineSpinner";
 import DispensedMedicinesSection from "../../components/features/medicine/DispensedMedicinesSection";
 import healthRecordService, {
   getHealthRecordById,
   getHealthRecordsByPatient,
 } from "../../services/healthRecordService";
 import {
-  createHealthRecordDraft,
   discardHealthRecordDraft,
   getHealthRecordDraft,
   listHealthRecordDrafts,
-  updateHealthRecordDraft,
 } from "../../services/healthRecordDraftService";
 import {
   deleteLocalDraft,
@@ -50,7 +39,6 @@ import {
   listLocalDrafts,
 } from "../../services/localDraftVault";
 import useDraftAutosave from "../../hooks/useDraftAutosave";
-import useConnectionStatus from "../../hooks/useConnectionStatus";
 import { useDoctorAvailability } from "../../hooks/useDoctorAvailability";
 import {
   isNoProviderAvailableError,
@@ -64,7 +52,6 @@ import {
 import {
   formatDisplayTime,
   getRecordDateValue,
-  getServiceTypeLabel,
 } from "../../utils/healthRecordPrograms";
 import {
   FP_CLIENT_TYPE_OPTIONS,
@@ -90,10 +77,7 @@ import {
   thisVisitDoseEntry,
 } from "../../utils/prenatalForm";
 import {
-  bindLocalToServerDraft,
-  getLocalConsultationUuid,
   localConsultationKey,
-  mergeSavedDrafts,
 } from "../../utils/savedDrafts";
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
 import {
@@ -102,9 +86,6 @@ import {
 } from "../../components/features/health-records/fields/ClinicalFields";
 import NextActionSection from "../../components/features/health-records/NextActionSection";
 import {
-  ConsultationSetupStep,
-  FollowUpConfirmStep,
-  FollowUpSelectStep,
   NextActionStep,
   ConsultationReviewStep,
   ProgramServicePicker,
@@ -121,7 +102,7 @@ import {
   NEXT_STEP,
   PROGRAMS_STEP,
   REVIEW_STEP,
-  SETUP_STEP,
+  EXIT_STEP,
   TREATMENT_STEP,
   buildConsultationSteps,
   deferUntilProgramDecision,
@@ -157,7 +138,7 @@ import {
   loadMedicineAvailability,
   refreshRhuMedicines,
 } from "../../services/medicineService";
-import { getBhcPatientById, getPatientDetailsListByRole } from "../../services/patientService";
+import { getBhcPatientById } from "../../services/patientService";
 import {
   getFollowUpTask,
   getFollowUpTasks,
@@ -178,6 +159,7 @@ import {
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 import { createIdempotencyKey } from "../../utils/idempotency";
+import { resolveBhcConsultationRoute } from "../../utils/consultationRoute";
 import {
   adoptConsultationUuid,
   ensureConsultationUuid,
@@ -210,9 +192,6 @@ const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 const CONSULTATION_CARD_CLASS =
   "space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8";
 
-const WIZARD_SETUP = "setup";
-const WIZARD_FU_SELECT = "fuSelect";
-const WIZARD_FU_CONFIRM = "fuConfirm";
 const WIZARD_FORM = "form";
 const WIZARD_NEXT = "next";
 const WIZARD_REVIEW = "review";
@@ -236,25 +215,6 @@ const DRAFT_SUPPORTED_RECORD_TYPES = new Set([
 
 function pickDraftFields(source = {}, keys = []) {
   return Object.fromEntries(keys.map((key) => [key, source?.[key] ?? ""]));
-}
-
-function formatDraftDateTime(value) {
-  if (!value) return "Not available";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Not available";
-  return new Intl.DateTimeFormat("en-PH", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
-function formatDraftExpiry(value) {
-  if (!value) return "Expiry unavailable";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Expiry unavailable";
-  return `Expires ${new Intl.DateTimeFormat("en-PH", {
-    dateStyle: "medium",
-  }).format(date)}`;
 }
 
 /**
@@ -851,38 +811,6 @@ function normalizePatientStatus(status) {
   return value || "Routine Monitoring";
 }
 
-function normalizeDateOnly(value) {
-  if (!value) return "";
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  return String(value).slice(0, 10);
-}
-
-function getFollowUpTaskState(task = {}) {
-  const state = String(task.state || task.status || task.followUpStatus || "")
-    .toLowerCase()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (state === "fulfilled" || state === "completed") return "fulfilled";
-  if (state === "cancelled" || state === "canceled") return "cancelled";
-  if (state === "no show") return "no_show";
-  if (state === "due today") return "due_today";
-  if (state === "rescheduled") return "rescheduled";
-  if (state === "pending") return "pending";
-
-  const dueDate = normalizeDateOnly(task.dueDate || task.due_date);
-  const today = new Date().toISOString().slice(0, 10);
-  if (dueDate && dueDate < today) return "no_show";
-  if (dueDate === today) return "due_today";
-  return "pending";
-}
-
-function isActiveFollowUpTask(task = {}) {
-  return ["pending", "due_today", "no_show", "rescheduled"].includes(
-    getFollowUpTaskState(task),
-  );
-}
-
 function getFollowUpTaskServiceType(task = {}) {
   const source =
     task.healthRecord?.category ||
@@ -1019,7 +947,7 @@ function getVaccineEntries(data) {
 /* ═══════════════════════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════ */
-export default function AddHealthRecord() {
+export default function ConsultationWorkspace() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
@@ -1040,16 +968,15 @@ export default function AddHealthRecord() {
   // offline, and nothing else is ever written here.
   const localVaultAvailable = useMemo(() => isLocalDraftVaultAvailable(), []);
   const localDraftOwnerKey = String(currentUser?.id || "");
-  // Shared with the rest of AKAY: drives whether Saved Drafts should even
-  // expect the server to answer.
-  const { isOnline } = useConnectionStatus();
   const basePath = userRole === "bhc" ? "/bhc" : "/rhu";
   const healthRecordsPath = `${basePath}/health-records`;
+  const patientsPath = `${basePath}/patients`;
+  const routeContext = resolveBhcConsultationRoute(searchParams);
 
   const recordId = searchParams.get("recordId");
-  const followUpTaskId =
-    searchParams.get("followUpId") || searchParams.get("follow_up_id") || "";
-  const preselectedPatientId = searchParams.get("patientId") || "";
+  const followUpTaskId = routeContext.kind === "followup" ? routeContext.followUpId : "";
+  const preselectedPatientId = routeContext.patientId || "";
+  const requestedDraftId = routeContext.kind === "draft" ? routeContext.draftId : "";
   const preselectedClassification = normalizeRecordType(
     searchParams.get("serviceType") ||
       searchParams.get("classification") ||
@@ -1064,11 +991,6 @@ export default function AddHealthRecord() {
     .replace(/[_-]+/g, "");
   const isFollowUpRouteMode = ["followup"].includes(normalizedRequestedMode);
   const isFollowUp = !!recordId && isFollowUpRouteMode;
-  const isOrphanFollowUpRequest =
-    !recordId &&
-    isFollowUpRouteMode &&
-    !followUpTaskId &&
-    !(preselectedPatientId && preselectedClassification);
   // Editing an already-saved health record is intentionally disabled. Records are
   // read-only after saving; corrections are made via a new record or follow-up visit.
   // The ?mode=edit URL path is no longer reachable from the UI and is neutralized here.
@@ -1080,10 +1002,6 @@ export default function AddHealthRecord() {
   const isDraftRouteEligible =
     userRole === "bhc" && !isEditingRecord && !isFollowUpRouteMode;
 
-  const [patients, setPatients] = useState([]);
-  const [patientsLoading, setPatientsLoading] = useState(true);
-  const [patientsLoadError, setPatientsLoadError] = useState("");
-  const [patientsReloadKey, setPatientsReloadKey] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(null);
   const [noticeModal, setNoticeModal] = useState(null);
@@ -1091,38 +1009,26 @@ export default function AddHealthRecord() {
   const [lastFailedSubmit, setLastFailedSubmit] = useState(null);
   const officialSubmissionRef = useRef(null);
   const [validationErrors, setValidationErrors] = useState({});
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [selectedPatientId, setSelectedPatientId] = useState(preselectedPatientId);
   // The wizard is a single ordered phase rather than a set of booleans so that
   // "which screen am I on" has exactly one answer. Editing an existing record
   // and the route-driven follow-up entry both open straight on the form.
-  const [wizardPhase, setWizardPhase] = useState(() =>
-    Boolean(recordId) || Boolean(preselectedPatientId && preselectedClassification)
-      ? WIZARD_FORM
-      : WIZARD_SETUP,
+  const [wizardPhase, setWizardPhase] = useState(WIZARD_FORM);
+  const [consultationType, setConsultationType] = useState(
+    routeContext.kind === "followup" ? "followup" : "new",
   );
-  const [consultationType, setConsultationType] = useState(null);
-  const [consultationMode, setConsultationMode] = useState(null);
+  const [consultationMode, setConsultationMode] = useState(
+    routeContext.kind === "new" ? "general" : null,
+  );
   const [selectedPrograms, setSelectedPrograms] = useState([]);
   const [primaryProgram, setPrimaryProgram] = useState("");
   // Which screen of the form phase is showing (a program form, Clinical
   // Assessment or Treatment). UI position only - saved in the one draft.
-  const [formStep, setFormStep] = useState("");
+  const [formStep, setFormStep] = useState(
+    routeContext.kind === "new" ? INTERVIEW_STEP : "",
+  );
   const [summaryOpen, setSummaryOpen] = useState(false);
-  const requestedDraftId = searchParams.get("draftId");
   const resumedRouteDraft = useRef("");
-  const [selectedFollowUpTaskId, setSelectedFollowUpTaskId] = useState("");
-  // Kept as a derived value: everything downstream (drafts, medicine warnings,
-  // the header search) only ever asked "are we past the setup screens".
-  const setupComplete =
-    wizardPhase === WIZARD_FORM ||
-    wizardPhase === WIZARD_NEXT ||
-    wizardPhase === WIZARD_REVIEW;
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [highlightIndex, setHighlightIndex] = useState(-1);
-  const [searchExpanded, setSearchExpanded] = useState(false);
-  const [draftsDrawerOpen, setDraftsDrawerOpen] = useState(false);
-  const searchWrapperRef = useRef(null);
   const classificationRef = useRef(null);
 
   const [dateOfVisit, setDateOfVisit] = useState(
@@ -1141,7 +1047,8 @@ export default function AddHealthRecord() {
   const [attendingStaff, setAttendingStaff] = useState(currentUserName);
   const [consultationNotes, setConsultationNotes] = useState("");
   const [healthRecordType, setHealthRecordType] = useState(
-    preselectedClassification,
+    preselectedClassification ||
+      (routeContext.kind === "new" ? "General Consultation" : ""),
   );
   const [morbidityReportingStatus, setMorbidityReportingStatus] = useState(
     getDefaultMorbidityReportingStatus(preselectedClassification),
@@ -1203,37 +1110,30 @@ export default function AddHealthRecord() {
     setHasPendingDispensedMedicineDraft,
   ] = useState(false);
   const [healthRecordDrafts, setHealthRecordDrafts] = useState([]);
-  const [draftListLoading, setDraftListLoading] = useState(false);
-  const [draftListError, setDraftListError] = useState("");
+  const [draftListLoading, setDraftListLoading] = useState(isDraftRouteEligible);
+  const [, setDraftListError] = useState("");
   const [draftResumingId, setDraftResumingId] = useState("");
   // Set only when starting a New Consultation would duplicate an unfinished
   // draft for the same patient; page entry itself is never blocked.
   const [draftDecision, setDraftDecision] = useState(null);
   const [draftDecisionBusy, setDraftDecisionBusy] = useState(false);
   const [draftDecisionError, setDraftDecisionError] = useState("");
-  const [setupChecking, setSetupChecking] = useState(false);
-  // Holds the Saved Drafts ROW key being discarded, not a server id:
-  // a row may be server-only, device-only, or both.
-  const [discardingDraftKey, setDiscardingDraftKey] = useState("");
   const [activeDraft, setActiveDraft] = useState(null);
   const [draftSavedAt, setDraftSavedAt] = useState("");
   const [draftMedicineWarnings, setDraftMedicineWarnings] = useState([]);
-  // The patient whose consultation is already underway. Stepping out to setup
-  // and back in is not a new consultation and must not re-run the conflict
-  // check; changing patient clears it because the id no longer matches.
-  const [startedConsultationPatientId, setStartedConsultationPatientId] =
-    useState("");
-  // The stable identity of THIS consultation, from setup to the official
+  // The stable identity of THIS consultation, from route entry to the official
   // record: carried by the server draft, the encrypted device copy, and the
-  // final health record. Minted once when setup hands over to Interview;
+  // final health record. Minted once when the workspace opens;
   // adopted (never re-minted) on resume or recovery; cleared only when this
   // consultation ends - saved, discarded, or abandoned for another patient.
   // Distinct from idempotencyKey, which names one final-save ATTEMPT.
-  const [consultationUuid, setConsultationUuid] = useState("");
-  // Encrypted on-device consultations belonging to this user, listed for the
-  // Saved Drafts drawer and for recovery after a refresh, close, or restart.
-  const [localDrafts, setLocalDrafts] = useState([]);
-  const [localDraftsLoading, setLocalDraftsLoading] = useState(false);
+  const [consultationUuid, setConsultationUuid] = useState(() =>
+    routeContext.kind === "new" ? ensureConsultationUuid("") : "",
+  );
+  // Encrypted on-device consultations belonging to this user are still loaded
+  // for route-scoped recovery after a refresh, close, or restart.
+  const [, setLocalDrafts] = useState([]);
+  const [, setLocalDraftsLoading] = useState(false);
   const [localRecovery, setLocalRecovery] = useState(null);
   // True from recovering that copy until the server confirms it. It tells
   // autosave the restored form is NEWER than the server draft, so the content
@@ -1294,6 +1194,36 @@ export default function AddHealthRecord() {
     void loadLocalDrafts();
   }, [loadLocalDrafts]);
 
+  const draftConflictCheckedRef = useRef(false);
+  useEffect(() => {
+    if (
+      draftConflictCheckedRef.current ||
+      routeContext.kind !== "new" ||
+      draftListLoading ||
+      !selectedPatientId
+    ) {
+      return;
+    }
+    draftConflictCheckedRef.current = true;
+    const conflicting = [...healthRecordDrafts]
+      .filter(
+        (draft) =>
+          String(draft.patient?.id || "") === String(selectedPatientId) &&
+          draft.id !== activeDraft?.id,
+      )
+      .sort((a, b) => new Date(b.lastSavedAt) - new Date(a.lastSavedAt))[0];
+    if (conflicting) {
+      setDraftDecisionError("");
+      setDraftDecision(conflicting);
+    }
+  }, [
+    activeDraft?.id,
+    draftListLoading,
+    healthRecordDrafts,
+    routeContext.kind,
+    selectedPatientId,
+  ]);
+
   useEffect(() => {
     function clearInMemorySubmissionState() {
       officialSubmissionRef.current = null;
@@ -1334,12 +1264,9 @@ export default function AddHealthRecord() {
   const [epiHistoryLoading, setEpiHistoryLoading] = useState(false);
   const [epiHistoryError, setEpiHistoryError] = useState("");
   const [routeLinkedFollowUpTask, setRouteLinkedFollowUpTask] = useState(null);
-  const [autoLinkedFollowUpTask, setAutoLinkedFollowUpTask] = useState(null);
-  const [activePatientFollowUps, setActivePatientFollowUps] = useState([]);
-  const [activeFollowUpLookup, setActiveFollowUpLookup] = useState({
-    key: "",
-    isChecking: false,
-  });
+  const [routeFollowUpLoading, setRouteFollowUpLoading] = useState(
+    routeContext.kind === "followup",
+  );
 
   const rhuProviders = useMemo(
     () =>
@@ -1358,53 +1285,10 @@ export default function AddHealthRecord() {
 
 
   useEffect(() => {
-    if (!isOrphanFollowUpRequest) return undefined;
-
-    setNoticeModal({
-      title: "Original Record Required",
-      message:
-        "Follow-up visits must start from an existing Follow-up Required health record. Redirecting back to Health Records.",
-    });
-
-    const timer = window.setTimeout(() => navigate(healthRecordsPath), 2200);
-    return () => window.clearTimeout(timer);
-  }, [healthRecordsPath, isOrphanFollowUpRequest, navigate]);
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadPatients() {
-      try {
-        setPatientsLoading(true);
-        setPatientsLoadError("");
-        const parsedPatients = await getPatientDetailsListByRole("bhc", {
-          search: searchTerm.trim(),
-          per_page: 50,
-        });
-        if (!active) return;
-        setPatients(parsedPatients || []);
-        setPatientsLoadError("");
-        if (preselectedPatientId) setSelectedPatientId(preselectedPatientId);
-      } catch (error) {
-        if (!active) return;
-        setPatientsLoadError(
-          isConnectionError(error)
-            ? "Unable to load patients. Please check your connection and try again."
-            : error?.message ||
-                "Unable to load patients. Please check your connection and try again.",
-        );
-      } finally {
-        if (active) setPatientsLoading(false);
-      }
+    if (routeContext.kind === "redirect") {
+      navigate(patientsPath, { replace: true });
     }
-
-    const timer = window.setTimeout(loadPatients, searchTerm.trim() ? 250 : 0);
-
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [preselectedPatientId, patientsReloadKey, searchTerm]);
+  }, [navigate, patientsPath, routeContext.kind]);
 
   useEffect(() => {
     let active = true;
@@ -1654,10 +1538,12 @@ export default function AddHealthRecord() {
     async function loadRouteFollowUpTask() {
       if (!hasRouteFollowUpContext || !followUpTaskId) {
         setRouteLinkedFollowUpTask(null);
+        setRouteFollowUpLoading(false);
         return;
       }
 
       try {
+        setRouteFollowUpLoading(true);
         const task = await getFollowUpTask(followUpTaskId);
         if (!active) return;
 
@@ -1674,10 +1560,25 @@ export default function AddHealthRecord() {
           setFollowUpRecord(task.healthRecord);
         }
         setConsultationType("followup");
-        setSelectedFollowUpTaskId(String(task.id));
         setWizardPhase(WIZARD_FORM);
       } catch {
-        if (active) setRouteLinkedFollowUpTask(null);
+        if (active) {
+          setRouteLinkedFollowUpTask(null);
+          setNoticeModal({
+            title: "Follow-up Not Available",
+            message:
+              "The selected follow-up task could not be loaded. Return to Follow-ups and choose the task again.",
+            actions: [
+              {
+                label: "Return to Follow-ups",
+                variant: "primary",
+                onClick: () => navigate(`${basePath}/follow-ups`, { replace: true }),
+              },
+            ],
+          });
+        }
+      } finally {
+        if (active) setRouteFollowUpLoading(false);
       }
     }
 
@@ -1686,18 +1587,15 @@ export default function AddHealthRecord() {
     return () => {
       active = false;
     };
-  }, [followUpTaskId, hasRouteFollowUpContext]);
+  }, [basePath, followUpTaskId, hasRouteFollowUpContext, navigate]);
 
-  const selectedPatientFromList = patients.find(
-    (patient) => String(patient.id) === String(selectedPatientId),
-  );
   const { data: selectedPatientDetails } = useQuery({
     queryKey: ["consultation-selected-patient", selectedPatientId],
     queryFn: () => getBhcPatientById(selectedPatientId),
-    enabled: Boolean(selectedPatientId && !selectedPatientFromList),
+    enabled: Boolean(selectedPatientId),
   });
   const selectedPatient =
-    selectedPatientFromList || selectedPatientDetails ||
+    selectedPatientDetails ||
     (routeLinkedFollowUpTask?.patient &&
     String(routeLinkedFollowUpTask.patientId) === String(selectedPatientId)
       ? routeLinkedFollowUpTask.patient
@@ -1708,20 +1606,6 @@ export default function AddHealthRecord() {
       ? followUpRecord.patient
       : null);
 
-  const normalizedSearch = searchTerm.trim().toLowerCase();
-
-  const matchingPatients = useMemo(() => {
-    const source = patients || [];
-
-    if (!normalizedSearch) return source;
-
-    return source.filter((patient) =>
-      getPatientSearchText(patient).includes(normalizedSearch),
-    );
-  }, [patients, normalizedSearch]);
-  const visiblePatientLimit = normalizedSearch ? 8 : 6;
-  const filteredPatients = matchingPatients.slice(0, visiblePatientLimit);
-
   const visitType = isFollowUp ? "follow_up_visit" : "initial_consultation";
   const followUpPatientName =
     getPatientName(selectedPatient) ||
@@ -1731,143 +1615,7 @@ export default function AddHealthRecord() {
     followUpRecord?.patient?.name ||
     "Selected patient";
 
-  useEffect(() => {
-    if (!searchExpanded) return undefined;
-
-    function handleClickOutside(event) {
-      if (
-        searchWrapperRef.current &&
-        !searchWrapperRef.current.contains(event.target)
-      ) {
-        closeHeaderSearch();
-      }
-    }
-
-    function handleKeyDown(event) {
-      if (event.key === "Escape") {
-        closeHeaderSearch();
-        return;
-      }
-
-      if (!dropdownOpen) return;
-
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        setHighlightIndex((prev) =>
-          filteredPatients.length === 0
-            ? -1
-            : prev < filteredPatients.length - 1
-              ? prev + 1
-              : 0,
-        );
-        return;
-      }
-
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        setHighlightIndex((prev) =>
-          filteredPatients.length === 0
-            ? -1
-            : prev > 0
-              ? prev - 1
-              : filteredPatients.length - 1,
-        );
-        return;
-      }
-
-      if (
-        event.key === "Enter" &&
-        highlightIndex >= 0 &&
-        highlightIndex < filteredPatients.length
-      ) {
-        event.preventDefault();
-        selectPatient(filteredPatients[highlightIndex].id);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [
-    searchExpanded,
-    dropdownOpen,
-    filteredPatients,
-    highlightIndex,
-  ]);
-
-  useEffect(() => {
-    setHighlightIndex(filteredPatients.length > 0 ? 0 : -1);
-  }, [searchTerm, filteredPatients.length]);
-
-  function closeHeaderSearch() {
-    setDropdownOpen(false);
-    setHighlightIndex(-1);
-    setSearchExpanded(false);
-  }
-
-
-  function resetClassificationSpecificState() {
-    setHealthRecordType("");
-    setPhysicalExam("");
-    setMorbidityReportingStatus("not_included");
-    setHfmdSurveillance(false);
-    setMaternalData(EMPTY_MATERNAL_DATA);
-    setDispensedMedicines([]);
-    setExpectedDeliveryDate("");
-    setAog("");
-    setImmunizationData(EMPTY_IMMUNIZATION_DATA);
-    setFamilyPlanningData(EMPTY_FAMILY_PLANNING_DATA);
-    setHypertensionDiabeticData(EMPTY_HYPERTENSION_DIABETIC_DATA);
-    setTbData(EMPTY_TB_DATA);
-    setDraftMedicineWarnings([]);
-  }
-
-  function selectPatient(id) {
-    clearValidationError("selectedPatientId");
-    if (id !== selectedPatientId) {
-      // A different patient starts over, so any consultation that was already
-      // underway is abandoned and the next Next must check for conflicts again
-      // - and will be a NEW consultation with a new identity.
-      setStartedConsultationPatientId("");
-      setConsultationUuid("");
-      setSelectedPrograms([]);
-      setPrimaryProgram("");
-      setConsultationMode(null);
-      setFormStep("");
-      resetClassificationSpecificState();
-      setWizardPhase(WIZARD_SETUP);
-      setConsultationType(null);
-      setSelectedFollowUpTaskId("");
-      setCareDecisionStep(false);
-      setNeedsReferral(false);
-      setAutoLinkedFollowUpTask(null);
-      setActivePatientFollowUps([]);
-    }
-    setSelectedPatientId(id);
-    setSearchTerm("");
-    setDropdownOpen(false);
-    setHighlightIndex(-1);
-    setSearchExpanded(false);
-  }
-
-
-
   const normalizedHealthRecordType = normalizeRecordType(healthRecordType);
-  const activeFollowUpLookupKey =
-    !isFollowUp &&
-    !isEditingRecord &&
-    !hasRouteFollowUpContext &&
-    selectedPatientId
-      ? String(selectedPatientId)
-      : "";
-  const isResolvingFollowUpMode =
-    Boolean(activeFollowUpLookupKey) &&
-    (activeFollowUpLookup.isChecking ||
-      activeFollowUpLookup.key !== activeFollowUpLookupKey);
   const recordTypeKey = normalizedHealthRecordType.toLowerCase();
   const isImmunization = recordTypeKey === "immunization" || selectedPrograms.includes("EPI");
   const isMaternal = recordTypeKey === "maternal" || selectedPrograms.includes("Maternal");
@@ -1875,8 +1623,7 @@ export default function AddHealthRecord() {
   const isHypertensionDiabetic =
     recordTypeKey === "hypertension / diabetic monitoring" || selectedPrograms.includes("Hypertension") || selectedPrograms.includes("Diabetes");
   const isTb = recordTypeKey === "tb dots / tb monitoring" || selectedPrograms.includes("TB");
-  const effectiveLinkedFollowUpTask =
-    routeLinkedFollowUpTask || (isFollowUp ? null : autoLinkedFollowUpTask);
+  const effectiveLinkedFollowUpTask = routeLinkedFollowUpTask;
   const effectiveFollowUpParentRecordId = isFollowUp
     ? recordId
     : effectiveLinkedFollowUpTask?.healthRecordId || "";
@@ -1993,10 +1740,9 @@ export default function AddHealthRecord() {
     isImmunization && !needsReferral && !epiWillComplete;
   const canSaveCurrentDraft =
     isDraftRouteEligible &&
-    setupComplete &&
     Boolean(selectedPatientId) &&
     DRAFT_SUPPORTED_RECORD_TYPES.has(normalizedHealthRecordType) &&
-    !isFollowUpVisitMode;
+    !isFollowUpVisitMode && !saveSuccess && Boolean(consultationUuid);
 
   function handleDispensedMedicinesChange(nextMedicines) {
     setDispensedMedicines(nextMedicines);
@@ -2024,7 +1770,7 @@ export default function AddHealthRecord() {
       primaryProgram,
       consultationMode,
       // Review & Save has no phase of its own in a draft; it resumes on Next Step.
-      wizardPhase: wizardPhase === WIZARD_REVIEW ? WIZARD_NEXT : wizardPhase,
+      wizardPhase,
       // The exact screen the user is on, so a resumed or recovered draft
       // opens there. Never a new wizardPhase value: the draft allowlist
       // accepts only program / form / next.
@@ -2218,9 +1964,6 @@ export default function AddHealthRecord() {
   function restoreHealthRecordDraft(draft) {
     const payload = draft.payload || {};
     setSelectedPatientId(draft.patient.id);
-    // Resuming a draft IS this patient's consultation, so stepping out to
-    // setup and back in must not be mistaken for starting a second one.
-    setStartedConsultationPatientId(String(draft.patient.id || ""));
     // Adopt the consultation's existing identity - never mint a fresh one for
     // a consultation that already has it. A legacy draft saved before
     // identities existed has none, so it gains one now; the server adopts it
@@ -2285,7 +2028,7 @@ export default function AddHealthRecord() {
 
     const warnings = [];
     setDispensedMedicines(
-      draft.medicineSelections.map((selection) => {
+      (draft.medicineSelections || []).map((selection) => {
         if (selection.warning) warnings.push(selection.warning);
         const medicine = selection.medicine;
         return {
@@ -2312,7 +2055,6 @@ export default function AddHealthRecord() {
     const restored = resolveRestoredPosition(payload);
     setWizardPhase(WIZARD_PHASE_FOR_STEP[restored.phase]);
     setFormStep(restored.formStep);
-    setDraftsDrawerOpen(false);
     setValidationErrors({});
   }
 
@@ -2423,7 +2165,6 @@ export default function AddHealthRecord() {
 
   const {
     status: draftAutosaveStatus,
-    hasPendingChanges: draftHasPendingChanges,
     conflict: draftConflict,
     error: draftAutosaveError,
     localStatus: draftLocalStatus,
@@ -2431,23 +2172,19 @@ export default function AddHealthRecord() {
     offlineEpoch: draftOfflineEpoch,
     saveNow: saveDraftNow,
     flushBeforeLeave: flushDraftBeforeLeave,
+    persistLocalNow: protectLocalRecovery,
+    completeConsultation: completeDraftRecovery,
+    getDraftIdentity,
     resolveConflict: resolveDraftConflict,
     acknowledgeSync: acknowledgeDraftSync,
   } = draftAutosave;
-
-  const handleManualSaveDraft = useCallback(() => {
-    if (!canSaveCurrentDraft) return;
-    // Offline this reaches no server: the hook falls through to the encrypted
-    // on-device copy and the status line says "Saved locally", never "saved".
-    void saveDraftNow();
-  }, [canSaveCurrentDraft, saveDraftNow]);
 
   // Confirmed sync is a one-off confirmation, not a status to live with: a
   // short toast, then nothing. Offline itself is announced once by the
   // Connection Lost dialog and then stays silent while the midwife works.
   useEffect(() => {
     if (draftSyncStatus !== "synced") return;
-    toast.success("Draft synced", { id: "consultation-draft-synced" });
+    toast.success("Saved automatically", { id: "consultation-draft-synced" });
     acknowledgeDraftSync();
   }, [draftSyncStatus, acknowledgeDraftSync]);
 
@@ -2473,7 +2210,7 @@ export default function AddHealthRecord() {
     const synced = await saveDraftNow();
     if (!synced) {
       setOfflineRetryNotice(
-        "Still no connection. This consultation stays saved on this device and will sync automatically.",
+        "Synchronization has not completed. Keep this page open until your progress is secured.",
       );
     }
   }
@@ -2487,7 +2224,7 @@ export default function AddHealthRecord() {
     if (!isDraftRouteEligible || !localVaultAvailable || !localDraftOwnerKey) {
       return undefined;
     }
-    if (selectedPatientId || wizardPhase !== WIZARD_SETUP) return undefined;
+    if (routeContext.kind !== "new" || !selectedPatientId) return undefined;
     localRecoveryCheckedRef.current = true;
 
     let active = true;
@@ -2495,7 +2232,9 @@ export default function AddHealthRecord() {
       .then((entries) => {
         if (!active) return;
         const recoverable = entries.find(
-          (entry) => entry.record?.draft?.patient?.id,
+          (entry) =>
+            String(entry.record?.draft?.patient?.id || "") ===
+            String(selectedPatientId),
         );
         if (recoverable) setLocalRecovery(recoverable);
       })
@@ -2511,7 +2250,7 @@ export default function AddHealthRecord() {
     localVaultAvailable,
     localDraftOwnerKey,
     selectedPatientId,
-    wizardPhase,
+    routeContext.kind,
   ]);
 
   /**
@@ -2528,7 +2267,6 @@ export default function AddHealthRecord() {
     // it up on the next connection; the on-device copy stays until it lands.
     setPendingLocalSync(true);
     setLocalRecovery(null);
-    setDraftsDrawerOpen(false);
     if (entry.record.draft.medicineSelections?.length) {
       setDraftMedicineWarnings((current) => [
         ...current,
@@ -2572,128 +2310,13 @@ export default function AddHealthRecord() {
     });
   }
 
-  // ---- Saved Drafts: server + on-device, one list ------------------------
-
-  /**
-   * Push one on-device draft to the server draft API. Draft writes have no
-   * clinical side effects, so this is safe to run unattended - but the version
-   * rules still hold: a 409 means the server copy is newer, so nothing is
-   * overwritten and the local copy is KEPT for the user to resolve on resume.
-   * Any failure leaves the local copy alone.
-   */
-  const syncLocalDraftToServer = useCallback(
-    async (entry) => {
-      const draft = entry?.record?.draft;
-      if (!draft?.patient?.id || !draft?.classification) return false;
-
-      const request = {
-        // The identity the consultation was born with. With it, a copy that
-        // went offline before its first autosave finds - or is told about -
-        // the server draft for the same consultation instead of creating a
-        // second one (DRAFT_CONSULTATION_EXISTS -> kept locally, resolved on
-        // Continue).
-        consultationUuid: getLocalConsultationUuid(entry),
-        patientId: Number(draft.patient.id),
-        classification: draft.classification,
-        payload: draft.payload,
-      };
-
-      try {
-        if (draft.id) {
-          await updateHealthRecordDraft(draft.id, {
-            ...request,
-            version: draft.version,
-          });
-        } else {
-          await createHealthRecordDraft(request);
-        }
-      } catch {
-        return false;
-      }
-
-      // Confirmed by the server: only now may the local copy go.
-      await deleteLocalDraft({
-        ownerKey: localDraftOwnerKey,
-        consultationKey: entry.consultationKey,
-      }).catch(() => {});
-      return true;
-    },
-    [localDraftOwnerKey],
-  );
-
-  // The consultation currently open belongs to the autosave hook; pushing it
-  // from here as well would race it into a version conflict with itself.
-  const openConsultationKeyRef = useRef("");
-  useEffect(() => {
-    openConsultationKeyRef.current = localDraftIdentity?.consultationKey || "";
-  });
-
-  const refreshSavedDrafts = useCallback(
-    async ({ syncLocal = false } = {}) => {
-      const entries = await loadLocalDrafts();
-
-      if (syncLocal && entries.length) {
-        let syncedCount = 0;
-        for (const entry of entries) {
-          if (entry.consultationKey === openConsultationKeyRef.current) continue;
-          if (await syncLocalDraftToServer(entry)) syncedCount += 1;
-        }
-        if (syncedCount > 0) {
-          await loadLocalDrafts();
-          toast.success(
-            syncedCount === 1 ? "Draft synced" : `${syncedCount} drafts synced`,
-            { id: "saved-drafts-synced" },
-          );
-        }
-      }
-
-      await loadHealthRecordDrafts();
-    },
-    [loadLocalDrafts, loadHealthRecordDrafts, syncLocalDraftToServer],
-  );
-
-  // Reconnecting refreshes and syncs on its own: the midwife never has to
-  // press Retry just to see her drafts again.
-  useEffect(() => {
-    function handleOnline() {
-      void refreshSavedDrafts({ syncLocal: true });
-    }
-    window.addEventListener("online", handleOnline);
-    return () => window.removeEventListener("online", handleOnline);
-  }, [refreshSavedDrafts]);
-
-  /**
-   * One row per consultation.
-   *
-   * A local copy and a server draft are the same consultation when they share
-   * the server draft id, or failing that the patient. When both exist the
-   * newer one decides what Resume opens: an unsynced local copy is never
-   * silently replaced by an older server copy.
-   */
-  const savedDraftEntries = useMemo(
-    () => mergeSavedDrafts(healthRecordDrafts, localDrafts),
-    [healthRecordDrafts, localDrafts],
-  );
-
-  function handleSavedDraftResume(row) {
-    // The device copy is ahead, so it - not the older server draft - is what
-    // the midwife gets back. Bound to the matched server draft when it has no
-    // id of its own, so autosave updates that draft (version-checked) instead
-    // of creating a duplicate.
-    if (row.unsynced && row.localEntry) {
-      recoverLocalDraft(bindLocalToServerDraft(row));
-      return;
-    }
-    if (row.serverId) void handleResumeDraft(row.serverId);
-  }
-
   // Non-destructive conflict dialog: never silently overwrite a newer draft.
   useEffect(() => {
     if (!draftConflict) return;
     setNoticeModal({
-      title: "Draft Updated Elsewhere",
+      title: "Unfinished Consultation Updated Elsewhere",
       message:
-        "This draft was updated in another tab or device. Reload the latest version (your unsaved edits here will be discarded) or keep editing without saving.",
+        "This unfinished consultation was updated in another tab or device. Reload the latest version (your unsaved edits here will be discarded) or keep editing without saving.",
       actions: [
         {
           label: "Reload Latest",
@@ -2724,7 +2347,7 @@ export default function AddHealthRecord() {
       }));
     }
     setNoticeModal({
-      title: "Draft Not Saved",
+      title: "Consultation Not Saved",
       message:
         draftAutosaveError.message ||
         "Some entries could not be saved. Your form remains available on this page.",
@@ -2733,7 +2356,7 @@ export default function AddHealthRecord() {
 
   // Warn before leaving while unsaved changes are still only in memory.
   useEffect(() => {
-    if (!draftHasPendingChanges) return undefined;
+    if (!canSaveCurrentDraft || saveSuccess) return undefined;
     function handleBeforeUnload(event) {
       event.preventDefault();
       event.returnValue = "";
@@ -2742,7 +2365,7 @@ export default function AddHealthRecord() {
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () =>
       window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [draftHasPendingChanges]);
+  }, [canSaveCurrentDraft, saveSuccess]);
 
   // Leaving mid-consultation (sidebar, header links, browser Back) saves the
   // draft first and then goes - no "discard?" prompt, the draft protects the
@@ -2756,59 +2379,34 @@ export default function AddHealthRecord() {
       !bypassLeaveGuardRef.current &&
       canSaveCurrentDraft &&
       !saveSuccess &&
-      !saving &&
-      nextLocation.pathname !== pageLocation.pathname &&
-      nextLocation.state?.source !== CONSULTATION_PROFILE_SOURCE,
+      locationToPath(nextLocation) !== locationToPath(pageLocation),
   );
   const leaveBlockerRef = useRef(leaveBlocker);
   useEffect(() => {
     leaveBlockerRef.current = leaveBlocker;
   });
 
-  useEffect(() => {
-    if (leaveBlocker.state !== "blocked") return undefined;
-    let active = true;
-    const destination = leaveBlocker.location;
-
-    flushDraftBeforeLeave().then((saved) => {
-      if (!active) return;
-      const blocker = leaveBlockerRef.current;
-      if (saved) {
-        blocker.proceed?.();
-        return;
+  const [leavingConsultation, setLeavingConsultation] = useState(false);
+  const [leaveError, setLeaveError] = useState("");
+  async function leaveAndResumeLater() {
+    if (leavingConsultation || saving) return;
+    setLeavingConsultation(true);
+    setLeaveError("");
+    try {
+      const synced = await flushDraftBeforeLeave();
+      if (!synced) {
+        const secured = await protectLocalRecovery();
+        if (!secured) {
+          setLeaveError("Your latest changes could not be saved securely. Keep this page open and reconnect before leaving.");
+          return;
+        }
+        toast("Saved securely on this device; not yet synced. Resume on this device.");
       }
-
-      // Not saved (offline, server error, or an unresolved draft conflict):
-      // stay, so nothing is lost silently. If this consultation is hidden
-      // behind the Patient Profile, bring it back so the notice is visible.
-      blocker.reset?.();
-      if (window.location.pathname !== pageLocation.pathname) navigate(ownPath);
-      setNoticeModal({
-        title: "Draft Not Saved Yet",
-        message:
-          draftLocalStatus === "saved"
-            ? "Your latest changes have not reached the server yet. They are saved on this device and will sync when the connection returns, so you can stay here or leave and recover this consultation later."
-            : "Your latest changes could not be saved as a draft, so you are still on this consultation. Check your connection and try again, or leave without those unsaved changes.",
-        actions: [
-          { label: "Stay on Consultation" },
-          {
-            label: "Leave Without Saving",
-            variant: "secondary",
-            onClick: () => {
-              bypassLeaveGuardRef.current = true;
-              navigate(locationToPath(destination), { state: destination.state });
-            },
-          },
-        ],
-      });
-    });
-
-    return () => {
-      active = false;
-    };
-    // Keyed on the blocker state only; the latest blocker is read from a ref.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leaveBlocker.state]);
+      leaveBlockerRef.current.proceed?.();
+    } finally {
+      setLeavingConsultation(false);
+    }
+  }
 
   useEffect(() => {
     if (!requestedDraftId || !isDraftRouteEligible || resumedRouteDraft.current === requestedDraftId) return;
@@ -2822,145 +2420,34 @@ export default function AddHealthRecord() {
     if (!draftId || draftResumingId) return;
     setDraftResumingId(draftId);
     try {
-      restoreHealthRecordDraft(await getHealthRecordDraft(draftId));
+      const draft = await getHealthRecordDraft(draftId);
+      if (!draft?.patient?.id) {
+        setNoticeModal({
+          title: "Consultation Patient Missing",
+          message:
+            "This unfinished consultation has no patient context and cannot be resumed safely.",
+          actions: [
+            {
+              label: "Return to Patients",
+              variant: "primary",
+              onClick: () => navigate(patientsPath, { replace: true }),
+            },
+          ],
+        });
+        return;
+      }
+      restoreHealthRecordDraft(draft);
     } catch (error) {
       setNoticeModal({
-        title: "Unable to Resume Draft",
+        title: "Unable to Resume Consultation",
         message: isConnectionError(error)
           ? "Unable to reach the server. Please check your connection and try again."
-          : error?.message || "This draft is no longer available.",
+          : error?.message || "This unfinished consultation is no longer available.",
       });
       void loadHealthRecordDrafts();
     } finally {
       setDraftResumingId("");
     }
-  }
-
-  /**
-   * Discard one Saved Drafts row. A row can have a server draft, an on-device
-   * copy, or both - all of them go, otherwise the deleted consultation would
-   * come straight back from whichever copy was left behind.
-   */
-  function handleDiscardDraft(row) {
-    const hasServerCopy = Boolean(row.serverId && row.serverDraft);
-    setNoticeModal({
-      title: "Discard Draft?",
-      message: `Discard the ${row.classification} draft for ${row.patientLabel}?${
-        row.unsynced
-          ? " It has not been saved to the server, so it cannot be restored."
-          : " This cannot be restored."
-      }`,
-      actions: [
-        {
-          label: "Discard Draft",
-          variant: "destructive",
-          onClick: async () => {
-            setDiscardingDraftKey(row.key);
-            try {
-              if (hasServerCopy) {
-                await discardHealthRecordDraft(row.serverId);
-                setHealthRecordDrafts((current) =>
-                  current.filter((item) => item.id !== row.serverId),
-                );
-              }
-              if (row.localEntry) {
-                await deleteLocalDraft({
-                  ownerKey: localDraftOwnerKey,
-                  consultationKey: row.localEntry.consultationKey,
-                }).catch(() => {});
-                await loadLocalDrafts();
-              }
-              if (row.serverId && activeDraft?.id === row.serverId) {
-                setActiveDraft(null);
-                setDraftSavedAt("");
-              }
-              // Discarding the consultation that is open ends it; a later
-              // start must not revive the discarded identity.
-              if (
-                (row.serverId && activeDraft?.id === row.serverId) ||
-                (row.consultationUuid && row.consultationUuid === consultationUuid)
-              ) {
-                setConsultationUuid("");
-              }
-            } catch (error) {
-              setNoticeModal({
-                title: "Draft Not Discarded",
-                message: isConnectionError(error)
-                  ? "Unable to reach the server, so the server copy is still there. Check your connection and try again."
-                  : error?.message || "Unable to discard this draft.",
-              });
-            } finally {
-              setDiscardingDraftKey("");
-            }
-          },
-        },
-        { label: "Keep Draft", variant: "secondary" },
-      ],
-    });
-  }
-
-  useEffect(() => {
-    let active = true;
-
-    async function detectActiveFollowUp() {
-      if (!activeFollowUpLookupKey) {
-        setAutoLinkedFollowUpTask(null);
-        setActivePatientFollowUps([]);
-        setActiveFollowUpLookup({ key: "", isChecking: false });
-        return;
-      }
-
-      setAutoLinkedFollowUpTask(null);
-      setActivePatientFollowUps([]);
-      setActiveFollowUpLookup({
-        key: activeFollowUpLookupKey,
-        isChecking: true,
-      });
-
-      try {
-        const tasks = await getFollowUpTasks({
-          patient_id: selectedPatientId,
-          active: 1,
-        });
-        if (!active) return;
-
-        setActivePatientFollowUps(
-          (Array.isArray(tasks) ? tasks : []).filter(isActiveFollowUpTask),
-        );
-      } catch {
-        if (active) {
-          setAutoLinkedFollowUpTask(null);
-          setActivePatientFollowUps([]);
-        }
-      } finally {
-        if (active) {
-          setActiveFollowUpLookup({
-            key: activeFollowUpLookupKey,
-            isChecking: false,
-          });
-        }
-      }
-    }
-
-    detectActiveFollowUp();
-
-    return () => {
-      active = false;
-    };
-  }, [
-    activeFollowUpLookupKey,
-    selectedPatientId,
-  ]);
-
-
-  function recordScheduledFollowUp(task) {
-    const serviceType = getFollowUpTaskServiceType(task);
-    setAutoLinkedFollowUpTask(task);
-    setFollowUpRecord(task.healthRecord || null);
-    setHealthRecordType(serviceType);
-    setSelectedFollowUpTaskId(String(task.id));
-    setConsultationType("followup");
-    setWizardPhase(WIZARD_FORM);
   }
 
   useEffect(() => {
@@ -3487,8 +2974,7 @@ export default function AddHealthRecord() {
         (task) => String(task.id) === String(taskId),
       );
       if (refreshedTask) {
-        if (isFollowUp) setRouteLinkedFollowUpTask(refreshedTask);
-        else setAutoLinkedFollowUpTask(refreshedTask);
+        setRouteLinkedFollowUpTask(refreshedTask);
       }
     } catch {
       // The saved record remains authoritative if follow-up refresh is unavailable.
@@ -3529,6 +3015,15 @@ export default function AddHealthRecord() {
   }
 
   async function saveHealthRecord(formData, submission = null) {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      await protectLocalRecovery();
+      throw new Error("Reconnect before completing this consultation. Your progress remains available here.");
+    }
+    if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) {
+      await protectLocalRecovery();
+      throw new Error("The latest changes have not synced. Keep this consultation open and retry synchronization before completing it.");
+    }
+    const finalDraftId = getDraftIdentity()?.id || activeDraft?.id;
     const savedRecord = isEditingRecord
       ? await healthRecordService.updateHealthRecordById(
           recordId,
@@ -3550,17 +3045,23 @@ export default function AddHealthRecord() {
             "bhc",
             {
               idempotencyKey: submission?.idempotencyKey,
-              draftId: activeDraft?.id,
+              draftId: finalDraftId,
             },
           )
         : await healthRecordService.createHealthRecord(formData, "bhc", {
             idempotencyKey: submission?.idempotencyKey,
-            draftId: activeDraft?.id,
-            // The SAME identity the consultation has carried since setup -
+            draftId: finalDraftId,
+            // The SAME identity the consultation has carried since entry -
             // never minted here. Retries keep it; only idempotencyKey is
             // per-attempt.
             consultationUuid,
           });
+    if (!isEditingRecord) {
+      bypassLeaveGuardRef.current = true;
+      try { await completeDraftRecovery(); }
+      catch { toast.error("The record was saved, but device recovery cleanup failed. Sign out when finished to clear protected session data."); }
+      queryClient.invalidateQueries({ queryKey: ["unfinished-consultations"] });
+    }
     if (!isEditingRecord && activeDraft?.id) {
       setHealthRecordDrafts((current) =>
         current.filter((item) => item.id !== activeDraft.id),
@@ -3570,7 +3071,7 @@ export default function AddHealthRecord() {
     }
     // The consultation is now an official record, so its identity is spent.
     // The next consultation started on this page is a new one and mints its
-    // own at setup. Reached only after the create resolved - a failed save
+    // own at entry. Reached only after the create resolved - a failed save
     // throws above and keeps the identity for its retry.
     if (!isEditingRecord) setConsultationUuid("");
     const savedId =
@@ -3724,15 +3225,6 @@ export default function AddHealthRecord() {
       userRole === "bhc" &&
       !isFollowUpVisitMode &&
       !isEditingRecord;
-
-    if (isOrphanFollowUpRequest) {
-      setNoticeModal({
-        title: "Original Record Required",
-        message:
-          "Follow-up visits must start from an existing Follow-up Required health record.",
-      });
-      return;
-    }
 
     if (
       isFollowUp &&
@@ -4505,11 +3997,7 @@ export default function AddHealthRecord() {
   }
 
   const isPrimaryActionLoading = saving;
-  // Only blank the page for the skeleton once we are on the record itself.
-  // On the setup step the same lookup is expected and is surfaced inline as
-  // "Checking for active follow-ups..." on the Follow-up Visit card, so
-  // choosing a patient must not replace the wizard with a loading state.
-  const isResolvingClinicalMode = isResolvingFollowUpMode && setupComplete;
+  const isResolvingClinicalMode = routeFollowUpLoading;
   /**
    * Heading on the record form card: the program being recorded.
    *
@@ -4522,13 +4010,9 @@ export default function AddHealthRecord() {
     : RECORD_TYPE_DETAILS[normalizedHealthRecordType]?.title ||
       normalizedHealthRecordType ||
       "New Consultation";
-  const pageTitle = isResolvingClinicalMode
-    ? "Health Record"
-    : isFollowUpVisitMode
-      ? "Follow-up Visit"
-      : isEditingRecord
-        ? "Edit Health Record"
-        : wizardPhase === WIZARD_SETUP ? "New Health Record" : "New Consultation";
+  const pageTitle = isFollowUpVisitMode
+    ? "Follow-up Visit"
+    : "New Consultation";
   const monitoringNotesLabel =
     normalizedPatientStatus === "Completed"
       ? "Outcome Notes"
@@ -4663,20 +4147,17 @@ export default function AddHealthRecord() {
     goToStepKey(getNextStepKey(formSequence, activeFormStep));
   }
 
-  // Previous reverses the exact forward order. From Interview - the first
-  // screen - it steps out to setup with the consultation intact: nothing is
-  // reset, no draft is created, and re-entering does not re-run the
-  // unfinished-draft check (see handleSetupNext).
+  // Previous reverses the form order. From the first screen it returns to the
+  // fixed patient's profile; the leave guard flushes the current draft.
   function handleFormStepPrevious() {
     closeDateTimePopovers();
     const target = getPreviousStepKey(formSequence, activeFormStep);
-    if (target === SETUP_STEP) {
-      // Autosave pauses on setup and drops its pending debounce, so edits
-      // typed just before leaving would otherwise wait - or, on a draft not
-      // yet created, be re-baselined as saved on return. Flush them into the
-      // SAME draft first (offline, into the encrypted device copy).
-      void saveDraftNow();
-      goToWizardPhase(WIZARD_SETUP);
+    if (target === EXIT_STEP) {
+      navigate(
+        followUpTaskId
+          ? `${basePath}/follow-ups/${followUpTaskId}`
+          : `${basePath}/patients/${selectedPatientId}`,
+      );
       return;
     }
     goToStepKey(target);
@@ -4689,82 +4170,6 @@ export default function AddHealthRecord() {
   }
 
   // ---- Wizard view models -------------------------------------------------
-  // Built here so the step components stay presentational and never reach for
-  // this page's patient/record helpers.
-  const wizardPatientRows = (
-    normalizedSearch ? matchingPatients : patients
-  )
-    .slice(0, normalizedSearch ? 20 : 12)
-    .map((patient) => {
-      const display = getPatientDisplay(patient);
-      return {
-        id: patient.id,
-        name: display.name,
-        meta: [
-          display.id && `Patient #${display.id}`,
-          patient.sex,
-          formatSetupAge(patient),
-        ]
-          .filter(Boolean)
-          .join(" · "),
-        address: getSetupAddress(patient),
-      };
-    });
-
-  // Read-only: the patient row carries no visit history, so the preview asks
-  // the existing per-patient records endpoint for the latest visit date.
-  const {
-    data: lastConsultation = null,
-    isPending: lastConsultationLoading,
-    isError: lastConsultationError,
-  } = useQuery({
-    queryKey: ["consultation-setup-last-visit", selectedPatientId],
-    queryFn: async () => {
-      const records = await getHealthRecordsByPatient(selectedPatientId);
-      const latest = (Array.isArray(records) ? records : [])
-        .filter((record) => getRecordDateValue(record))
-        .sort(
-          (a, b) =>
-            new Date(getRecordDateValue(b)) - new Date(getRecordDateValue(a)),
-        )[0];
-
-      return latest
-        ? {
-            date: getRecordDateValue(latest),
-            program: getServiceTypeLabel(latest),
-          }
-        : null;
-    },
-    // Needed by the setup screen's Patient Preview and by the workspace's
-    // Patient Snapshot, so it runs wherever a patient is chosen.
-    enabled: Boolean(selectedPatientId),
-  });
-  const lastConsultationLabel = lastConsultationLoading
-    ? "Loading..."
-    : lastConsultationError
-      ? "Unavailable"
-      : lastConsultation?.date
-        ? formatLongDate(lastConsultation.date, "")
-        : "No previous consultation";
-
-  const wizardSelectedPatient = selectedPatient
-    ? {
-        id: getPatientDisplay(selectedPatient).id || selectedPatientId,
-        name: getPatientName(selectedPatient),
-        fields: [
-          { label: "Age", value: formatSetupAge(selectedPatient) },
-          { label: "Sex", value: selectedPatient.sex },
-          {
-            label: "Birthday",
-            value: formatLongDate(selectedPatient.birthDate, ""),
-          },
-          { label: "Barangay / Address", value: getSetupAddress(selectedPatient) },
-          { label: "Contact Number", value: selectedPatient.contactNumber },
-          { label: "Last Consultation", value: lastConsultationLabel },
-        ],
-      }
-    : null;
-
   const wizardPrograms = Object.entries(PROGRAM_CLASSIFICATIONS).map(([key, classification]) => {
     const eligibility = key === "Maternal" ? getMaternalEligibility(selectedPatient)
       : key === "Family Planning" ? familyPlanningEligibility
@@ -4773,130 +4178,6 @@ export default function AddHealthRecord() {
     return { key, title: key, description: key === "Hypertension" ? "Monitoring and management of high blood pressure." : key === "Diabetes" ? "Monitoring and management of diabetes." : key === "EPI" ? "Immunization and child vaccination services." : RECORD_TYPE_DETAILS[classification]?.description,
       icon: RECORD_TYPE_DETAILS[classification]?.icon || Stethoscope, disabled: !eligibility.eligible, disabledReason: eligibility.message };
   });
-
-  const wizardFollowUpRows = activePatientFollowUps.map((task) => ({
-    id: task.id,
-    label: `FU-${task.id}`,
-    fromRecord: `#${task.healthRecordId || task.originalHealthRecordId || "—"}`,
-    serviceType:
-      getFollowUpTaskServiceType(task) || "Not recorded",
-    dueLabel: formatFollowUpSchedule(task),
-  }));
-
-  const selectedFollowUpTask =
-    activePatientFollowUps.find(
-      (task) => String(task.id) === String(selectedFollowUpTaskId),
-    ) || null;
-
-  const wizardConfirmFields = selectedFollowUpTask
-    ? [
-        { label: "Follow-up ID", value: `FU-${selectedFollowUpTask.id}` },
-        {
-          label: "Next Follow-up Date",
-          value: formatFollowUpSchedule(selectedFollowUpTask),
-        },
-        {
-          label: "From Record",
-          value: `#${selectedFollowUpTask.healthRecordId || "—"}`,
-        },
-        {
-          label: "Service Type",
-          value: getFollowUpTaskServiceType(selectedFollowUpTask),
-        },
-        { label: "Patient", value: getPatientName(selectedPatient) },
-        {
-          label: "Chief Complaint",
-          value:
-            selectedFollowUpTask.healthRecord?.chiefComplaint ||
-            selectedFollowUpTask.healthRecord?.chief_complaint ||
-            "",
-        },
-      ]
-    : [];
-
-  // A patient with no active task cannot record a follow-up visit: the server
-  // rejects visit_type=follow_up_visit without a task id.
-  const followUpUnavailableReason = activeFollowUpLookup.isChecking
-    ? "Checking for active follow-ups..."
-    : activePatientFollowUps.length === 0
-      ? "This patient has no active follow-ups."
-      : "";
-
-  function handleConsultationTypeChange(type) {
-    clearValidationError("consultationType");
-    setConsultationType(type);
-    if (type === "new") {
-      setSelectedFollowUpTaskId("");
-      setAutoLinkedFollowUpTask(null);
-    }
-  }
-
-  function continueSetup() {
-    if (consultationType === "new" && !healthRecordType) setHealthRecordType("General Consultation");
-    if (consultationType === "new" && selectedPatientId) {
-      setStartedConsultationPatientId(String(selectedPatientId));
-      // The one moment a consultation is born. Back to Setup and Next again
-      // lands here too, so this only mints when there is no identity yet -
-      // re-entering the same consultation keeps the one it already has.
-      setConsultationUuid((current) => ensureConsultationUuid(current));
-    }
-    if (consultationType === "followup") {
-      goToWizardPhase(WIZARD_FU_SELECT);
-      return;
-    }
-    // A consultation always opens on Interview. Programs are chosen later, at
-    // the end of Clinical Assessment, so it starts as a general consultation.
-    setConsultationMode((current) => current || "general");
-    setFormStep(INTERVIEW_STEP);
-    goToWizardPhase(WIZARD_FORM);
-  }
-
-  // The unfinished-draft decision belongs here, at the moment a New
-  // Consultation is actually started - not on page entry. Only a draft for the
-  // same patient conflicts: the backend keeps several drafts per user, and
-  // follow-up visits never create one. The consultation's own draft (after
-  // Back to setup) is not a conflict.
-  async function handleSetupNext() {
-    if (!selectedPatientId || !consultationType || setupChecking) return;
-    if (consultationType !== "new" || !isDraftRouteEligible) {
-      continueSetup();
-      return;
-    }
-    // Already inside this patient's consultation and merely stepped out to
-    // setup (Back to Setup): re-entering is not a new consultation, so it must
-    // not be re-examined for conflicts. Works offline too, where the draft may
-    // have no server id yet and the conflict list cannot be refreshed.
-    if (startedConsultationPatientId === String(selectedPatientId)) {
-      continueSetup();
-      return;
-    }
-
-    setSetupChecking(true);
-    let drafts = healthRecordDrafts;
-    try {
-      drafts = await listHealthRecordDrafts();
-      setHealthRecordDrafts(drafts);
-    } catch {
-      // Unreachable server: decide from the list already loaded on this page.
-    } finally {
-      setSetupChecking(false);
-    }
-
-    const conflicting = [...drafts]
-      .filter(
-        (draft) =>
-          String(draft.patient?.id) === String(selectedPatientId) &&
-          draft.id !== activeDraft?.id,
-      )
-      .sort((a, b) => new Date(b.lastSavedAt) - new Date(a.lastSavedAt))[0];
-
-    if (conflicting) {
-      setDraftDecisionError("");
-      setDraftDecision(conflicting);
-      return;
-    }
-    continueSetup();
-  }
 
   function closeDraftDecision() {
     if (draftDecisionBusy) return;
@@ -4913,12 +4194,11 @@ export default function AddHealthRecord() {
         current.filter((item) => item.id !== draftDecision.id),
       );
       setDraftDecision(null);
-      continueSetup();
     } catch (error) {
       setDraftDecisionError(
         isConnectionError(error)
           ? "Unable to reach the server. Please check your connection and try again."
-          : error?.message || "Unable to discard this draft. Please try again.",
+          : error?.message || "Unable to discard this unfinished consultation. Please try again.",
       );
     } finally {
       setDraftDecisionBusy(false);
@@ -4944,11 +4224,6 @@ export default function AddHealthRecord() {
     if (next.selectedPrograms.includes("Hypertension") || next.selectedPrograms.includes("Diabetes")) {
       setHypertensionDiabeticData(current => ({ ...current, conditionType: next.selectedPrograms.includes("Hypertension") && next.selectedPrograms.includes("Diabetes") ? "both" : next.selectedPrograms.includes("Diabetes") ? "dm" : "hpn" }));
     }
-  }
-
-  function handleFollowUpConfirm() {
-    if (!selectedFollowUpTask) return;
-    recordScheduledFollowUp(selectedFollowUpTask);
   }
 
   /**
@@ -5096,21 +4371,10 @@ export default function AddHealthRecord() {
     </div>
   );
 
-  const saveDraftButton = canSaveCurrentDraft ? (
-      <button
-        type="button"
-        onClick={handleManualSaveDraft}
-        disabled={draftAutosaveStatus === "saving" || saving}
-        aria-busy={draftAutosaveStatus === "saving"}
-        className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-5 py-2.5 text-[12.5px] font-semibold text-[#475569] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {draftAutosaveStatus === "saving" ? <ButtonSpinner /> : null}
-        {draftAutosaveStatus === "saving"
-          ? "Saving draft..."
-          : activeDraft
-            ? "Update Draft"
-            : "Save as Draft"}
-      </button>
+  const autosaveStatus = canSaveCurrentDraft ? (
+    <span role="status" aria-live="polite" className="text-xs text-slate-500">
+      {draftSyncStatus === "syncing" ? "Syncing..." : draftAutosaveStatus === "saving" ? "Saving..." : draftAutosaveStatus === "saved" ? "Saved automatically" : ""}
+    </span>
   ) : null;
 
   // ---- Consultation workspace (screen 2) ---------------------------------
@@ -5124,9 +4388,8 @@ export default function AddHealthRecord() {
     wizardPhase === WIZARD_FORM &&
     activeFormStep === INTERVIEW_STEP;
 
-  // Interview is the first STEP, not a dead end: back from there returns to
-  // the setup screen (where Saved Drafts lives) with the consultation intact -
-  // see handleFormStepPrevious.
+  // Interview is the first step: Back returns to the fixed patient's profile,
+  // while the leave guard flushes the current draft.
   function handleWorkspacePrevious() {
     handleStepBack();
   }
@@ -5282,13 +4545,11 @@ export default function AddHealthRecord() {
   /**
    * Walk one screen back through the wizard.
    *
-   * Editing an existing record and the route-driven follow-up entry both open
-   * on the form with no wizard behind them, so Back leaves the page instead of
-   * stepping into setup screens that were never shown.
+   * Every supported entry opens on the form with patient context already fixed,
+   * so Back from the first screen leaves the workspace.
    */
   function goToWizardPhase(phase) {
     closeDateTimePopovers();
-    setDropdownOpen(false);
     setWizardPhase(phase);
   }
 
@@ -5315,35 +4576,17 @@ export default function AddHealthRecord() {
       return;
     }
 
-    // The long form outside the step workspace: a follow-up visit returns to
-    // its confirmation screen; the route-driven entry (patient and
-    // classification preselected, no visit type chosen) returns to setup. It
-    // used to land on the old Current Visit screen, which in that path had no
-    // action bar and so no way forward.
-    if (wizardPhase === WIZARD_FORM && !isFollowUpVisitMode && !isEditingRecord) {
-      goToWizardPhase(
-        consultationType === "followup" ? WIZARD_FU_CONFIRM : WIZARD_SETUP,
-      );
-      return;
-    }
-
-    if (wizardPhase === WIZARD_FU_CONFIRM) {
-      goToWizardPhase(WIZARD_FU_SELECT);
-      return;
-    }
-
-    if (wizardPhase === WIZARD_FU_SELECT) {
-      goToWizardPhase(WIZARD_SETUP);
-      return;
-    }
-
-    navigate(healthRecordsPath);
+    navigate(
+      followUpTaskId
+        ? `${basePath}/follow-ups/${followUpTaskId}`
+        : `${basePath}/patients/${selectedPatientId}`,
+    );
   }
 
   return (
     <DashboardLayout role={userRole} title={pageTitle}>
       <style>{keyframes}</style>
-      {selectedPatientId && wizardPhase !== WIZARD_SETUP && <>
+      {selectedPatientId && <>
         {/* Outside the consultation workspace (follow-up visits) this is still
             the way into the summary; inside it, the snapshot panel owns that. */}
         {!inConsultationWorkspace && (
@@ -5362,24 +4605,7 @@ export default function AddHealthRecord() {
       />
 
 
-      {isDraftRouteEligible && (
-        <DraftsDrawer
-          open={draftsDrawerOpen}
-          onClose={() => setDraftsDrawerOpen(false)}
-          rows={savedDraftEntries}
-          loading={draftListLoading || localDraftsLoading}
-          serverError={draftListError}
-          isOffline={!isOnline}
-          resumingId={draftResumingId}
-          discardingKey={discardingDraftKey}
-          activeDraftId={activeDraft?.id || ""}
-          onRetry={() => void refreshSavedDrafts({ syncLocal: true })}
-          onResume={handleSavedDraftResume}
-          onDiscard={handleDiscardDraft}
-        />
-      )}
-
-      {setupComplete && draftMedicineWarnings.length > 0 && (
+      {draftMedicineWarnings.length > 0 && (
         <div
           className="mb-4 ml-0 mr-auto flex w-full max-w-7xl items-start gap-3 rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-900"
           role="status"
@@ -5399,60 +4625,26 @@ export default function AddHealthRecord() {
       {inConsultationWorkspace && (
         <ConsultationWorkspaceHeader onOpenSummary={() => setSummaryOpen(true)} />
       )}
+      {routeLinkedFollowUpTask && (
+        <div className="mb-4 ml-0 mr-auto w-full max-w-5xl rounded-xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm text-slate-700">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Follow-up Visit</p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            <SummaryItem label="Follow-up for" value={getFollowUpTaskServiceType(routeLinkedFollowUpTask) || "Not recorded"} />
+            <SummaryItem label="Original Visit" value={formatLongDate(getRecordDateValue(routeLinkedFollowUpTask.healthRecord || followUpRecord), "Not recorded")} />
+            <SummaryItem label="Due" value={formatFollowUpSchedule(routeLinkedFollowUpTask)} />
+          </div>
+          {(routeLinkedFollowUpTask.healthRecordId || recordId) && (
+            <button type="button" onClick={() => navigate(`${healthRecordsPath}/${routeLinkedFollowUpTask.healthRecordId || recordId}`)} className="mt-3 text-xs font-bold text-blue-700 hover:underline">
+              View Prior Record
+            </button>
+          )}
+        </div>
+      )}
       <ConsultationWorkspaceBody>
       {isResolvingClinicalMode ? (
         <div className="ml-0 mr-auto w-full max-w-7xl">
           <HealthRecordFormSkeleton message="Loading health record..." />
         </div>
-      ) : wizardPhase === WIZARD_SETUP ? (
-        <ConsultationSetupStep
-          visitDate={wizardVisitDate}
-          visitTime={wizardVisitTime}
-          selectedPatient={wizardSelectedPatient}
-          patients={wizardPatientRows}
-          selectedPatientId={selectedPatientId}
-          onSelectPatient={selectPatient}
-          consultationType={consultationType}
-          onConsultationTypeChange={handleConsultationTypeChange}
-          searchRef={searchWrapperRef}
-          searchOpen={searchExpanded}
-          searchTerm={searchTerm}
-          onSearchChange={setSearchTerm}
-          onOpenSearch={() => setSearchExpanded(true)}
-          onCloseSearch={closeHeaderSearch}
-          draftCount={healthRecordDrafts.length}
-          onOpenDrafts={() => setDraftsDrawerOpen(true)}
-          showDrafts={isDraftRouteEligible}
-          patientsLoading={patientsLoading && patients.length === 0}
-          patientsLoadError={patientsLoadError}
-          onRetryLoadPatients={() => setPatientsReloadKey((key) => key + 1)}
-          followUpUnavailableReason={
-            selectedPatientId ? followUpUnavailableReason : ""
-          }
-          error={validationErrors.consultationType}
-          onBack={handleStepBack}
-          onNext={handleSetupNext}
-          nextBusy={setupChecking}
-        />
-      ) : wizardPhase === WIZARD_FU_SELECT ? (
-        <FollowUpSelectStep
-          visitDate={wizardVisitDate}
-          visitTime={wizardVisitTime}
-          tasks={wizardFollowUpRows}
-          selectedTaskId={selectedFollowUpTaskId}
-          onSelect={(taskId) => setSelectedFollowUpTaskId(String(taskId))}
-          loading={activeFollowUpLookup.isChecking}
-          onBack={handleStepBack}
-          onNext={() => goToWizardPhase(WIZARD_FU_CONFIRM)}
-        />
-      ) : wizardPhase === WIZARD_FU_CONFIRM ? (
-        <FollowUpConfirmStep
-          visitDate={wizardVisitDate}
-          visitTime={wizardVisitTime}
-          fields={wizardConfirmFields}
-          onBack={handleStepBack}
-          onContinue={handleFollowUpConfirm}
-        />
       ) : wizardPhase === WIZARD_NEXT ? (
         <NextActionStep
           visitDate={wizardVisitDate}
@@ -6731,7 +5923,7 @@ export default function AddHealthRecord() {
             </button>
           </div>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
-            {saveDraftButton}
+            {autosaveStatus}
             <button
               type="button"
               onClick={handleContinueToNextAction}
@@ -6762,14 +5954,18 @@ export default function AddHealthRecord() {
         <ConsultationActionBar
           onPrevious={handleWorkspacePrevious}
           previousLabel={
-            currentStepKey === INTERVIEW_STEP ? "Back to Setup" : "Previous"
+            currentStepKey === INTERVIEW_STEP
+              ? isFollowUpVisitMode
+                ? "Back to Follow-up"
+                : "Back to Patient"
+              : "Previous"
           }
-          // The existing manual draft save, beside Next on every step but
+          // Autosave status stays visible throughout the consultation.
           // Review, where Save Consultation is the one action that commits.
-          secondaryAction={isReviewStep ? null : saveDraftButton}
+          secondaryAction={autosaveStatus}
           onContinue={handleWorkspaceContinue}
           continueLabel={isReviewStep ? "Save Consultation" : "Next"}
-          continueBusy={isReviewStep ? saving : setupChecking}
+          continueBusy={isReviewStep ? saving : false}
           continueBusyLabel={isReviewStep ? "Saving..." : "Loading..."}
         />
       )}
@@ -6788,7 +5984,7 @@ export default function AddHealthRecord() {
             ? "The follow-up visit has been saved and linked to the original health record."
             : saveSuccess?.referralSubmitted
               ? "The health record was saved and the referral was linked for RHU review."
-              : "The record has been added to this patient's history. You can print it or start another entry."
+              : "The record is available in this patient's history and Health Records. You can view it, print it, or open the patient profile."
         }
         onClose={() => navigate(healthRecordsPath)}
         actions={[
@@ -6814,20 +6010,26 @@ export default function AddHealthRecord() {
               ]
             : []),
           {
-            label: "Add Another Record",
-            onClick: () => {
-              setSaveSuccess(null);
-              lastReferralAttemptRef.current = null;
-              setWizardPhase(WIZARD_SETUP);
-              setConsultationType(null);
-              setSelectedFollowUpTaskId("");
-              setHealthRecordType("");
-              setSelectedPatientId("");
-            },
+            label: "Open Patient",
+            onClick: () => navigate(`${basePath}/patients/${selectedPatientId}`),
           },
         ]}
       />
 
+      <NoticeModal
+        open={leaveBlocker.state === "blocked"}
+        title="Leave Consultation?"
+        message={leaveError || "Your progress is saved automatically and can be resumed later."}
+        closeDisabled={leavingConsultation || saving}
+        onClose={() => {}}
+        dismissOnBackdrop={false}
+        actions={[
+          { label: "Continue Consultation", variant: "secondary", disabled: leavingConsultation || saving,
+            onClick: () => { setLeaveError(""); leaveBlocker.reset?.(); } },
+          { label: leavingConsultation ? "Saving..." : "Leave & Resume Later", disabled: leavingConsultation || saving,
+            onClick: leaveAndResumeLater },
+        ]}
+      />
       <NoticeModal
         open={Boolean(noticeModal)}
         title={noticeModal?.title}
@@ -6855,16 +6057,16 @@ export default function AddHealthRecord() {
         open={connectionLostOpen}
         title="Connection Lost"
         message={[
-          draftLocalStatus === "unavailable" || draftLocalStatus === "failed"
-            ? "This consultation could not be stored securely on this device, so it is held in this tab only. Keep the tab open — AKAY will sync the draft automatically when the connection is restored."
-            : "Your current consultation is temporarily saved on this device. You can continue working, and AKAY will sync the draft automatically when the connection is restored.",
+          draftLocalStatus === "saved"
+            ? "Your current consultation is secured on this device."
+            : "Your current consultation is not yet secured on this device. Keep this page open and reconnect.",
           offlineRetryNotice,
         ]
           .filter(Boolean)
           .join(" ")}
         detail={null}
         retryLabel="Retry"
-        retryLoadingLabel="Retrying…"
+        retryLoadingLabel="Syncing..."
         onContinue={dismissConnectionLost}
         onRetry={handleOfflineDraftRetry}
       />
@@ -6925,143 +6127,6 @@ function formatFollowUpSchedule(task = {}) {
     : new Intl.DateTimeFormat("en-PH", { dateStyle: "long" }).format(parsed);
   return task.dueTime ? `${date}, ${task.dueTime}` : date;
 }
-
-
-/**
- * Saved Drafts lists server drafts and encrypted on-device drafts together.
- *
- * A server failure is a notice above the list, never a replacement for it:
- * on-device drafts need no connection, so they stay reachable and usable while
- * offline. Retry is offered only when the server could actually answer.
- */
-function DraftsDrawer({
-  open,
-  onClose,
-  rows,
-  loading,
-  serverError,
-  isOffline,
-  resumingId,
-  discardingKey,
-  activeDraftId,
-  onRetry,
-  onResume,
-  onDiscard,
-}) {
-  const busy = Boolean(resumingId || discardingKey);
-
-  return (
-    <Drawer
-      open={open}
-      onClose={onClose}
-      icon={<FileClock size={18} />}
-      title="Saved Drafts"
-      description="Resume an incomplete record saved securely to AKAY."
-    >
-      {loading && rows.length === 0 ? (
-        <div className="px-5 py-5" role="status">
-          <InlineSpinner label="Loading saved drafts..." />
-        </div>
-      ) : (
-        <>
-          {serverError && (
-            <div className="flex flex-col gap-2.5 border-b border-[#EEF2F6] bg-[#F8FAFC] px-5 py-3.5">
-              <div className="flex items-start gap-2 text-xs leading-relaxed text-[#64748B]">
-                <AlertCircle size={15} className="mt-0.5 shrink-0" />
-                <span>{serverError}</span>
-              </div>
-              {/* Offline, retrying the server is pointless and must not look
-                  like the only way forward - the list below already works. */}
-              {!isOffline && (
-                <button
-                  type="button"
-                  onClick={onRetry}
-                  className="inline-flex h-8 items-center justify-center gap-2 self-start rounded-lg border border-[#DDE3E9] bg-white px-3 text-xs font-semibold text-[#475569] transition hover:bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/15"
-                >
-                  <RotateCcw size={13} /> Retry
-                </button>
-              )}
-            </div>
-          )}
-
-          {rows.length === 0 ? (
-            <div className="px-5 py-5 text-sm text-[#64748B]">
-              {isOffline
-                ? "No drafts are saved on this device. Server drafts will be available when the connection is restored."
-                : "No active drafts. Select a patient and classification to start a new health record."}
-            </div>
-          ) : (
-            <div className="divide-y divide-[#EEF2F6]">
-              {rows.map((row) => {
-                const resumeBusy =
-                  resumingId && row.serverId === resumingId && !row.unsynced;
-                const discardBusy = discardingKey === row.key;
-                return (
-                  <div key={row.key} className="group px-5 py-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="truncate text-sm font-semibold text-[#1E293B]">
-                            {row.patientLabel}
-                          </p>
-                          {activeDraftId && activeDraftId === row.serverId && (
-                            <span className="text-[10px] font-bold uppercase text-[#B91C1C]">
-                              Current
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                          <span className="inline-block rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-2 py-0.5 text-[10px] font-bold text-[#64748B]">
-                            {row.classification}
-                          </span>
-                          {row.unsynced && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">
-                              <WifiOff size={10} aria-hidden="true" />
-                              On this device
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => onDiscard(row)}
-                        disabled={busy}
-                        aria-label={`Discard draft for ${row.patientLabel}`}
-                        title="Discard draft"
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#94A3B8] opacity-0 transition hover:bg-red-50 hover:text-[#B91C1C] focus:opacity-100 disabled:cursor-not-allowed disabled:opacity-50 group-hover:opacity-100"
-                      >
-                        {discardBusy ? <ButtonSpinner /> : <Trash2 size={15} />}
-                      </button>
-                    </div>
-                    <p className="mt-2 text-xs text-[#64748B]">
-                      Saved {formatDraftDateTime(row.lastSavedAt)}
-                      <span className="mx-1.5 text-[#CBD5E1]">&bull;</span>
-                      {row.unsynced
-                        ? "Not yet synced to the server"
-                        : formatDraftExpiry(row.expiresAt)}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => onResume(row)}
-                      disabled={busy}
-                      className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-3.5 text-xs font-semibold text-white transition hover:bg-[#991B1B] focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/20 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {resumeBusy ? <ButtonSpinner /> : <RotateCcw size={14} />}
-                      {resumeBusy ? "Opening..." : "Continue"}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </>
-      )}
-    </Drawer>
-  );
-}
-
-
-
 
 
 function CareDecisionStep({
@@ -7249,334 +6314,6 @@ function SummaryItem({ label, value }) {
 
 
 
-
-
-// eslint-disable-next-line no-unused-vars
-function PatientSelectionStep({
-  selectedPatient,
-  selectedPatientId,
-  onCancel,
-  onProceed,
-  ...dropdownProps
-}) {
-  const display = getPatientDisplay(selectedPatient || {});
-  const displayId = display.id || selectedPatientId || "Not recorded";
-
-  return (
-    <section className="anim-fade-up mx-auto w-full max-w-[720px] pt-4 sm:pt-8" style={stagger(1)}>
-      <div className="relative z-[90] rounded-2xl border border-[#E8ECF0] bg-white p-5 shadow-sm sm:p-6">
-        <div className="mb-5 text-center">
-          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-red-50 text-[#B91C1C]">
-            <User size={20} />
-          </div>
-          <h2 className="text-lg font-bold text-[#1A1A1A]">Select Patient</h2>
-          <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-[#6B7280]">
-            Search and select the patient before recording a visit.
-          </p>
-        </div>
-
-        <PatientSearchDropdown
-          {...dropdownProps}
-          selectedPatientId={selectedPatientId}
-          disabled={false}
-        />
-
-        {selectedPatientId && (
-          <div className="mt-4 rounded-xl border border-[#F0F2F5] bg-[#FAFBFC] px-3.5 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#B91C1C]">
-              Selected Patient
-            </p>
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="text-sm font-bold text-[#111827]">
-                {display.name || "Selected patient"}
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="font-mono text-[11px] font-semibold text-slate-600">
-                {displayId}
-              </span>
-              {display.age && (
-                <>
-                  <span className="text-slate-300">•</span>
-                  <span className="text-xs font-medium text-[#6B7280]">
-                    {display.age}
-                  </span>
-                </>
-              )}
-              {display.barangay && (
-                <>
-                  <span className="text-slate-300">•</span>
-                  <span className="text-xs font-medium text-[#6B7280]">
-                    {display.barangay}
-                  </span>
-                </>
-              )}
-              {display.contact && (
-                <>
-                  <span className="text-slate-300">•</span>
-                  <span className="text-xs font-medium text-[#6B7280]">
-                    {display.contact}
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-xl border border-[#E8ECF0] bg-white px-4 py-2.5 text-sm font-semibold text-[#6B7280] shadow-sm transition hover:border-[#D1D5DB] hover:bg-slate-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onProceed}
-            disabled={!selectedPatientId}
-            className="rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Proceed to Health Record
-          </button>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function PatientSearchDropdown({
-  inputRef,
-  dropdownRef,
-  disabled,
-  dropdownOpen,
-  selectedPatientId,
-  searchTerm,
-  inputValue,
-  patients,
-  totalPatientCount,
-  matchingPatientCount,
-  visibleLimit,
-  loading,
-  loadError,
-  isSearching,
-  onSeeAll,
-  onRetryLoad,
-  highlightIndex,
-  onSearchChange,
-  onOpen,
-  onClear,
-  onSelect,
-  onHighlight,
-  error = "",
-  dropdownAlign = "left",
-  hideLabel = false,
-}) {
-  const dropdownPositionClass =
-    dropdownAlign === "right"
-      ? "right-0 left-auto w-[min(24rem,calc(100vw-2rem))]"
-      : "left-0 right-0 w-full";
-
-  return (
-    <div
-      className="relative z-[70] w-full"
-      data-field="selectedPatientId"
-      tabIndex={error ? -1 : undefined}
-    >
-      {!hideLabel && (
-        <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-          Search Existing Patient
-        </label>
-      )}
-
-      <div className="relative">
-
-        <Search
-          size={15}
-          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
-        />
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder="Search patient name, ID, contact, or barangay..."
-          value={inputValue}
-          onChange={onSearchChange}
-          onFocus={onOpen}
-          disabled={disabled}
-          readOnly={disabled}
-          className={`h-10 w-full rounded-xl border bg-[#FAFBFC] pl-10 pr-10 text-sm outline-none transition-all duration-200 focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:bg-[#F3F4F6] disabled:text-[#9CA3AF] ${
-            error
-              ? "border-[#B91C1C] bg-[#FEF2F2]/40 ring-2 ring-[#B91C1C]/10"
-              : dropdownOpen
-                ? "border-[#B91C1C] bg-white ring-2 ring-[#B91C1C]/10"
-                : "border-[#E8ECF0]"
-          }`}
-
-          
-        />
-
-        {selectedPatientId && !disabled && (
-          <button
-            type="button"
-            onClick={onClear}
-            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-[#9CA3AF] transition-colors hover:bg-[#F3F4F6] hover:text-[#6B7280]"
-            title="Clear selection"
-          >
-            <X size={14} />
-          </button>
-        )}
-      </div>
-
-      {error && (
-        <p className="mt-1.5 text-[11px] font-medium text-[#B91C1C]">
-          {error}
-        </p>
-      )}
-
-      {dropdownOpen && !disabled && (
-        <div
-          ref={dropdownRef}
-          role="listbox"
-          aria-label="Patient search results"
-          className={`anim-drop-in absolute top-full z-[99999] mt-2 max-h-[min(28rem,calc(100vh-9rem))] overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-2xl shadow-slate-900/10 ${dropdownPositionClass}`}
-        >
-          <div className="flex items-center justify-between border-b border-[#F3F4F6] px-3.5 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              {loadError
-                ? "Unable to load"
-                : loading
-                ? "Loading"
-                : `${matchingPatientCount} result${matchingPatientCount !== 1 ? "s" : ""}`}
-            </p>
-            {searchTerm && (
-              <span className="max-w-[220px] truncate text-[10px] text-[#BFBFBF]">
-                Searching: {searchTerm}
-              </span>
-            )}
-          </div>
-
-          {loadError ? (
-            <div className="px-3.5 py-8 text-center">
-              <AlertCircle size={22} className="mx-auto mb-2 text-[#B91C1C]" />
-              <p className="text-xs font-bold text-[#0F172A]">
-                Unable to load patients.
-              </p>
-              <p className="mx-auto mt-1 max-w-xs text-[11px] leading-relaxed text-[#64748B]">
-                Please check your connection and try again.
-              </p>
-              <button
-                type="button"
-                onClick={onRetryLoad}
-                className="mt-3 rounded-lg border border-[#E8ECF0] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569] transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-              >
-                Retry
-              </button>
-            </div>
-          ) : loading ? (
-            <div className="px-3.5 py-8 text-center">
-              <InlineSpinner
-                label={
-                  isSearching
-                    ? "Searching patients..."
-                    : "Loading registered patients..."
-                }
-                className="justify-center"
-              />
-            </div>
-          ) : patients.length === 0 ? (
-            <div className="px-3.5 py-8 text-center">
-              <Search size={20} className="mx-auto mb-2 text-[#D4D4D4]" />
-              <p className="text-xs font-medium text-[#9CA3AF]">
-                {totalPatientCount === 0
-                  ? "No registered patients found"
-                  : "No patients found"}
-              </p>
-              <p className="mt-0.5 text-[10px] text-[#D4D4D4]">
-                {totalPatientCount === 0
-                  ? "Registered patients will appear here once available."
-                  : "Try a different name, ID, contact number, or barangay."}
-              </p>
-            </div>
-          ) : (
-            <>
-            <div className="max-h-[min(20rem,calc(100vh-15rem))] divide-y divide-[#F1F5F9] overflow-y-auto overscroll-contain py-1">
-              {patients.map((patient, index) => {
-                const display = getPatientDisplay(patient);
-                const isSelected = String(patient.id) === String(selectedPatientId);
-                const isHighlighted = index === highlightIndex;
-
-                return (
-                  <button
-                    key={patient.id}
-                    type="button"
-                    role="option"
-                    aria-selected={isSelected}
-                    onMouseEnter={() => onHighlight(index)}
-                    onFocus={() => onHighlight(index)}
-                    onClick={() => onSelect(patient.id)}
-                    className={`flex w-full items-center gap-3 px-3.5 py-2.5 text-left outline-none transition-colors duration-100 focus:bg-[#FEF2F2] ${
-                      isHighlighted
-                        ? "bg-[#FEF2F2]"
-                        : isSelected
-                          ? "bg-red-50"
-                          : "bg-white hover:bg-[#FAFBFC]"
-                    }`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <p
-                          className={`truncate text-sm ${
-                            isSelected
-                              ? "font-bold text-[#B91C1C]"
-                              : "font-semibold text-[#1F2937]"
-                          }`}
-                        >
-                          {display.name}
-                        </p>
-                        {display.id && (
-                          <span className="shrink-0 rounded-md border border-[#E8ECF0] bg-[#F8FAFC] px-1.5 py-0.5 font-mono text-[9px] font-semibold text-[#0F172A]">
-                            {display.id}
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1 truncate text-[10.5px] text-[#64748B]">
-                        {[
-                          display.age,
-                          display.barangay,
-                          display.contact,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                    </div>
-
-                    {isSelected && (
-                      <Check
-                        size={14}
-                        className="shrink-0 text-[#B91C1C]"
-                        strokeWidth={3}
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            {matchingPatientCount > visibleLimit && (
-              <button
-                type="button"
-                onClick={onSeeAll}
-                className="flex w-full items-center justify-center border-t border-[#F3F4F6] bg-[#FAFBFC] px-3.5 py-2.5 text-xs font-semibold text-[#B91C1C] transition-colors hover:bg-red-50"
-              >
-                See all patients
-              </button>
-            )}
-            </>
-          )}
-        </div>
-      )}
-
-    </div>
-  );
-}
 
 
 /* ═══════════════════════════════════════════════════════════════
@@ -8042,49 +6779,6 @@ function getPatientDisplay(patient = {}) {
 
   return { name, age, cls, contact, barangay, id };
 }
-
-function formatSetupAge(patient) {
-  const age = getPatientAgeInYears(patient);
-  if (age === null) return "";
-  return `${age} year${age === 1 ? "" : "s"} old`;
-}
-
-function getSetupAddress(patient = {}) {
-  return [
-    patient.address || patient.purokArea,
-    patient.barangay,
-    patient.municipality,
-  ]
-    .filter(Boolean)
-    .join(", ");
-}
-
-
-function getPatientSearchText(patient = {}) {
-  const display = getPatientDisplay(patient);
-
-  return [
-    patient.id,
-    patient.patientId,
-    patient.familySerialNo,
-    patient.philHealthNumber,
-    patient.philhealthNumber,
-    display.name,
-    display.age,
-    display.cls,
-    display.contact,
-    patient.contact,
-    patient.contactNumber,
-    patient.address,
-    patient.streetAddress,
-    display.barangay,
-    patient.municipality,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
-
 
 function getPatientSexText(patient = {}) {
   const source = patient || {};

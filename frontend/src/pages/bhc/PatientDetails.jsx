@@ -63,6 +63,9 @@ import {
   normalizePhilippineContact,
 } from "../../utils/patientUtils";
 import { queryKeys } from "../../utils/queryKeys";
+import { listHealthRecordDrafts } from "../../services/healthRecordDraftService";
+import { getCurrentUser } from "../../utils/auth";
+import { buildPatientConsultationPath } from "../../utils/consultationRoute";
 
 const BULAKAN_BARANGAYS = [
   "Bagumbayan",
@@ -581,7 +584,6 @@ export default function PatientDetails() {
               )}
               <PatientConsultationActions
                 patientId={patient.id || patientId}
-                activeFollowUp={activePatientFollowUp}
               />
             </div>
           </div>
@@ -703,7 +705,7 @@ export default function PatientDetails() {
                   isFetching={recordsFetching}
                   isError={Boolean(recordsError)}
                   showAll={showAllRecords}
-                  addRecordTo={`/bhc/health-records/add?patientId=${patient.id || patientId}`}
+                  addRecordTo={buildPatientConsultationPath(patient.id || patientId)}
                   onToggleShowAll={() => setShowAllRecords((value) => !value)}
                   onView={(recordId) =>
                     navigate(`/bhc/health-records/${recordId}`)
@@ -775,35 +777,34 @@ export default function PatientDetails() {
   );
 }
 
-/**
- * The two ways a visit starts for a patient already on screen.
- *
- * "New Consultation" carries only the patient, so Add Health Record still
- * opens on its own setup step (visit type, then program) rather than guessing
- * a program on the patient's behalf. "Record Follow-up Visit" is offered only
- * when there is an active task to fulfil, and uses the same query contract the
- * Follow-ups list uses, so both entry points land on the same form state.
- */
-function PatientConsultationActions({ patientId, activeFollowUp }) {
+/** Starts a normal encounter for the patient already open on screen. */
+function PatientConsultationActions({ patientId }) {
+  const ownerId = String(getCurrentUser()?.id || "");
+  const { data: unfinished = [] } = useQuery({
+    queryKey: ["unfinished-consultations", ownerId],
+    queryFn: listHealthRecordDrafts,
+    enabled: Boolean(ownerId && patientId),
+    staleTime: 0,
+  });
+  const consultation = unfinished.find((item) => String(item.patient?.id) === String(patientId));
+  if (consultation) {
+    const params = new URLSearchParams({ patientId: String(patientId), draftId: consultation.id });
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
+        <p className="font-semibold">Unfinished Consultation</p>
+        <p className="text-xs text-slate-600">Last saved: {consultation.lastSavedAt ? new Date(consultation.lastSavedAt).toLocaleString() : "Unknown"}</p>
+        <Link className="mt-2 inline-block font-semibold text-red-700" to={`/bhc/health-records/add?${params}`}>Resume Consultation</Link>
+      </div>
+    );
+  }
   return (
-    <>
-      {activeFollowUp && (
-        <Link
-          to={buildRecordFollowUpVisitPath(activeFollowUp)}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3.5 py-2 text-xs font-bold text-[#B91C1C] transition hover:bg-[#FEE2E2]"
-        >
-          <CalendarClock size={14} />
-          Record Follow-up Visit
-        </Link>
-      )}
-      <Link
-        to={`/bhc/health-records/add?patientId=${patientId}`}
-        className="inline-flex items-center gap-1.5 rounded-xl bg-[#B91C1C] px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#991B1B]"
-      >
-        <Plus size={14} strokeWidth={2.5} />
-        New Consultation
-      </Link>
-    </>
+    <Link
+      to={buildPatientConsultationPath(patientId)}
+      className="inline-flex items-center gap-1.5 rounded-xl bg-[#B91C1C] px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#991B1B]"
+    >
+      <Plus size={14} strokeWidth={2.5} />
+      Start Consultation
+    </Link>
   );
 }
 
@@ -1287,7 +1288,7 @@ function HealthRecordsTab({
             icon={<FileText size={32} />}
             message="No health records recorded for this patient yet."
           />
-          <AddHealthRecordAction to={addRecordTo} />
+          <StartConsultationAction to={addRecordTo} />
         </>
       ) : (
         <>
@@ -1361,7 +1362,7 @@ function HealthRecordsTab({
               onClick={onToggleShowAll}
             />
           )}
-          <AddHealthRecordAction to={addRecordTo} />
+          <StartConsultationAction to={addRecordTo} />
         </>
       )}
     </div>
@@ -1450,13 +1451,23 @@ function FollowUpHistorySection({ followUps = [], onViewFollowUp }) {
                     />
                   </td>
                   <td className="whitespace-nowrap px-4 py-4 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onViewFollowUp?.(task.id)}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
-                    >
-                      <Eye size={12} /> View Details
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      {isActiveFollowUpState(task.effectiveState) && (
+                        <Link
+                          to={buildRecordFollowUpVisitPath(task)}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-[#B91C1C] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
+                        >
+                          <CalendarClock size={12} /> Record Visit
+                        </Link>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onViewFollowUp?.(task.id)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
+                      >
+                        <Eye size={12} /> View Details
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1571,7 +1582,7 @@ function ReferralHistoryTab({
   );
 }
 
-function AddHealthRecordAction({ to }) {
+function StartConsultationAction({ to }) {
   if (!to) return null;
 
   return (
@@ -1581,7 +1592,7 @@ function AddHealthRecordAction({ to }) {
         className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-red-200 bg-red-50/40 px-4 py-2.5 text-sm font-semibold text-[#B91C1C] transition hover:border-red-200 hover:bg-red-50"
       >
         <Plus size={15} />
-        Add new health record for this patient
+        Start Consultation
       </Link>
     </div>
   );

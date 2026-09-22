@@ -43,6 +43,7 @@ import {
 } from "../../services/patientService";
 import { isConnectionError } from "../../services/apiClient";
 import { queryKeys } from "../../utils/queryKeys";
+import { buildPatientConsultationPath } from "../../utils/consultationRoute";
 
 // Animation Utility
 const stagger = (i) => ({
@@ -130,7 +131,6 @@ export function PatientRegistrationPage({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const patientsPath = `${basePath}/patients`;
-  const addHealthRecordPath = `${basePath}/health-records/add`;
   const pageTitle = "Add New Patient";
   const dashboardTitle = "Add Patient";
   const pageDescription = systemDescription;
@@ -962,13 +962,12 @@ function handleBirthDateChange(valueOrEvent) {
       <SuccessModal
         open={modals.success}
         title="Patient Added"
-        description="The patient is now in your registry. You can start their first health record now or later."
-        buttonText="Back to Patient List"
+        description="The patient is now in your registry. Start a consultation or open their profile."
         onClose={() => navigate(patientsPath)}
-        secondaryButtonText="Add Health Record"
-        onSecondaryAction={() =>
-          navigate(`${addHealthRecordPath}?patientId=${createdPatientId}`)
-        }
+        actions={[
+          { label: "Open Patient", disabled: !createdPatientId, onClick: () => navigate(`${patientsPath}/${createdPatientId}`) },
+          { label: "Start Consultation", variant: "primary", disabled: !createdPatientId, onClick: () => navigate(buildPatientConsultationPath(createdPatientId, basePath)) },
+        ]}
       />
       <ConfirmationModal
         open={modals.confirm}

@@ -3,7 +3,7 @@ import { createUuid } from "./idempotency.js";
 /**
  * Lifecycle rules for a consultation's stable identity (consultation_uuid).
  *
- * The identity is born once, when setup hands over to Interview, and then
+ * The identity is born once when the patient-scoped workspace opens, and then
  * follows the SAME consultation through every server draft, encrypted device
  * copy, reconnect, and finally the official health record. It is never
  * re-minted for a consultation that already has one.
@@ -17,9 +17,9 @@ export function normalizeConsultationUuid(value) {
 }
 
 /**
- * The identity to use when setup hands over to Interview. Keeps an
- * existing one - Back to Setup and Next again re-enters the SAME consultation
- * - and mints only when there is none yet.
+ * The identity to use when a patient-scoped consultation opens. Keeps an
+ * existing one through navigation and recovery, and mints only when there is
+ * none yet.
  */
 export function ensureConsultationUuid(current, generate = createUuid) {
   return normalizeConsultationUuid(current) || generate();

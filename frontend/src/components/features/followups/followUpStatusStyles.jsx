@@ -96,7 +96,7 @@ export function buildTaskActions(task, handlers) {
 
   if (["due_today", "no_show", "upcoming", "rescheduled"].includes(task.effectiveState)) {
     actions.push({
-      label: "Add Health Record",
+      label: "Record Visit",
       onClick: handlers.onRecordVisit,
     });
     actions.push({
@@ -134,11 +134,10 @@ export function getTaskNavigationTarget(task) {
 }
 
 /**
- * The query contract Add Health Record reads when a visit is recorded
+ * The query contract the consultation workspace reads when a visit is recorded
  * against an existing follow-up. Shared by every surface that offers
  * "Record Visit" (the Follow-ups list/calendar and the Patient Profile) so
- * the two cannot drift apart - AddHealthRecord only opens straight on the
- * form when mode, followUpId and serviceType all arrive together.
+ * the two cannot drift apart. The workspace opens directly for the exact task.
  */
 export function buildRecordFollowUpVisitPath(task, basePath = "/bhc") {
   const params = new URLSearchParams({

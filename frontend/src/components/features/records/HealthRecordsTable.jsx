@@ -61,7 +61,7 @@ export default function HealthRecordsTable({
             Recent Health Records
           </h2>
           <p className="mt-1 text-xs text-[#9CA3AF]">
-            Saved patient visits grouped by health service.
+            Facility-wide encounter archive. Start consultations from Patients.
           </p>
         </div>
         {refreshing && <RefreshingIndicator label="Updating health records..." />}

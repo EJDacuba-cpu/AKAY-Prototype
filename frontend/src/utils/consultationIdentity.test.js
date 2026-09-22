@@ -50,19 +50,19 @@ test("idempotency keys are unchanged in format and still independent values", ()
   assert.notEqual(key, createIdempotencyKey());
 });
 
-test("a consultation identity is minted when setup hands over and none exists", () => {
+test("a consultation identity is minted when the workspace opens and none exists", () => {
   const { generate, calls } = countingGenerator();
   const uuid = ensureConsultationUuid("", generate);
   assert.equal(calls(), 1);
   assert.equal(uuid, "44444444-4444-4444-8444-000000000001");
 });
 
-test("it is minted ONCE: navigation, Back to Setup, and re-entry keep it", () => {
+test("it is minted ONCE: navigation and draft recovery keep it", () => {
   const { generate, calls } = countingGenerator();
   let current = ensureConsultationUuid("", generate);
   const born = current;
 
-  // Next, Previous, Back to Setup and Next again, autosave, manual save,
+  // Next, Previous, autosave, manual save,
   // program changes, reconnect - every one re-enters through the same rule.
   for (let step = 0; step < 25; step += 1) {
     current = ensureConsultationUuid(current, generate);

@@ -43,7 +43,7 @@ import {
 import BHCDashboard from "./pages/bhc/BHCDashboard";
 import PatientsModule from "./pages/bhc/PatientsModule";
 import HealthRecords from "./pages/bhc/HealthRecords";
-import AddHealthRecord from "./pages/bhc/AddHealthRecord";
+import ConsultationWorkspace from "./pages/bhc/ConsultationWorkspace";
 import AddPatient from "./pages/bhc/AddPatient";
 import FollowUps from "./pages/bhc/FollowUps";
 import FollowUpDetails from "./pages/bhc/FollowUpDetails";
@@ -532,7 +532,7 @@ export default function App() {
         path="/bhc/health-records/add"
         element={
           <ProtectedPage allowedRole="bhc">
-            <AddHealthRecord />
+            <ConsultationWorkspace />
           </ProtectedPage>
         }
       />

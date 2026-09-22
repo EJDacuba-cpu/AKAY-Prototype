@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { getConsultationPrograms, PROGRAM_CLASSIFICATIONS } from "../../utils/consultationPrograms";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
@@ -167,6 +167,8 @@ export default function HealthRecords() {
   const hasLoadError = Boolean(loadError) && !loading;
 
   const filteredRecords = records.filter((record) => {
+    const programs = getConsultationPrograms(record);
+    const services = programs.map((program) => formatServiceType(PROGRAM_CLASSIFICATIONS[program], ""));
     const searchLower = filters.search.toLowerCase();
     const patientWords = record.patientName?.toLowerCase().split(" ") || [];
     const matchesPatientName = patientWords.some((word) =>
@@ -176,12 +178,14 @@ export default function HealthRecords() {
     const matchesSearch =
       !filters.search ||
       matchesPatientName ||
+      [...programs, ...services].some((value) => value.toLowerCase().includes(searchLower)) ||
       record.trackingId?.toLowerCase().includes(searchLower) ||
       record.classification?.toLowerCase().includes(searchLower) ||
       formatServiceType(record.classification, "").toLowerCase().includes(searchLower) ||
       record.concern?.toLowerCase().includes(searchLower);
     const matchesClassification =
       !filters.classification ||
+      services.includes(filters.classification) ||
       formatServiceType(record.classification, "") === filters.classification;
     const matchesVisitType =
       !filters.visitType || record.visitType === filters.visitType;
@@ -313,11 +317,6 @@ export default function HealthRecords() {
             onClearFilters={clearFilters}
             onRemoveFilter={removeFilter}
             filterDescription="Narrow the health records list."
-            // Opens the setup screen directly; an unfinished draft is offered
-            // through Drafts there, and only blocks a conflicting new start.
-            primaryActionTo="/bhc/health-records/add"
-            primaryActionLabel="Add Health Record"
-            primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
           />
         ) : null}
 

@@ -44,11 +44,11 @@ export default function WorkflowPanel({ delay = 0 }) {
         />
 
         <WorkflowShortcut
-          href="/bhc/health-records/add"
+          href="/bhc/patients"
           icon={<FileText size={16} />}
           label="Consult"
           title="Existing Patient Visit"
-          description="Record consultation or monitoring"
+          description="Choose a patient, then start consultation"
         />
 
         <WorkflowShortcut
