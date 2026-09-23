@@ -24,7 +24,7 @@ import {
   deriveNextAction,
 } from "../../utils/nextAction";
 import RecordHeaderCard from "../../components/features/health-records/RecordHeaderCard";
-import HealthRecordClinicalDetails from "../../components/features/health-records/HealthRecordClinicalDetails";
+import BhcConsultationDetails from "../../components/features/health-records/BhcConsultationDetails";
 import FollowUpEpisodePanel from "../../components/features/health-records/FollowUpEpisodePanel";
 
 import {
@@ -296,7 +296,7 @@ export default function HealthRecordDetails() {
         <div className="space-y-5">
           {/* ═══ Clinical Record — Tabs ═══ */}
           <div className="space-y-6">
-            <HealthRecordClinicalDetails
+            <BhcConsultationDetails
               record={record}
               patient={patient}
               linkedReferral={linkedReferral}

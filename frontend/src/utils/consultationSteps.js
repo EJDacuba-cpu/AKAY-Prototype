@@ -117,12 +117,12 @@ export function getProgramFormSteps(selectedPrograms = [], primaryProgram = "") 
  * when at least one program is selected, so a General Consultation goes
  * straight from Clinical Assessment to Treatment & Management.
  */
-export function buildConsultationSteps({ selectedPrograms, primaryProgram } = {}) {
+export function buildConsultationSteps({ selectedPrograms, primaryProgram, generalSelected = true, purposeFlow = false } = {}) {
   const programSteps = getProgramFormSteps(selectedPrograms, primaryProgram);
 
   return [
-    { key: INTERVIEW_STEP, phase: "form", label: "Interview" },
-    { key: ASSESSMENT_STEP, phase: "form", label: "Clinical Assessment" },
+    { key: INTERVIEW_STEP, phase: "form", label: purposeFlow ? "Vital Signs" : "Interview" },
+    ...(generalSelected ? [{ key: ASSESSMENT_STEP, phase: "form", label: purposeFlow ? "General Consultation" : "Clinical Assessment" }] : []),
     ...(programSteps.length > 0
       ? [{ key: PROGRAMS_STEP, phase: "form", label: "Program / Service Details" }]
       : []),
@@ -173,18 +173,18 @@ export function resolveStepHeading({
  * Clinical Assessment (where they are chosen) and are skipped entirely when
  * none is selected.
  */
-export function getFormSequence(programSteps = []) {
+export function getFormSequence(programSteps = [], generalSelected = true) {
   return [
     INTERVIEW_STEP,
-    ASSESSMENT_STEP,
+    ...(generalSelected ? [ASSESSMENT_STEP] : []),
     ...programSteps.map((step) => step.key),
     TREATMENT_STEP,
   ];
 }
 
 /** Every screen in order, used to rank validation errors and Previous/Continue. */
-export function getStepOrder(programSteps = []) {
-  return [...getFormSequence(programSteps), NEXT_STEP, REVIEW_STEP];
+export function getStepOrder(programSteps = [], generalSelected = true) {
+  return [...getFormSequence(programSteps, generalSelected), NEXT_STEP, REVIEW_STEP];
 }
 
 /**

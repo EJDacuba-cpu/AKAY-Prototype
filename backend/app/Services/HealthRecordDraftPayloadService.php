@@ -16,6 +16,12 @@ class HealthRecordDraftPayloadService
         // a real column for lookup. Optional, so drafts saved before it existed
         // still decrypt - sanitize() runs on READ as well as write.
         'consultationUuid' => self::SCALAR,
+        'visitPurpose' => [
+            'version' => self::SCALAR,
+            'services' => ['*' => self::SCALAR],
+            'overrideReason' => self::SCALAR,
+            'pregnancyConfirmed' => self::SCALAR,
+        ],
         'selectedPrograms' => ['*' => self::SCALAR],
         'primaryProgram' => self::SCALAR,
         'consultationMode' => self::SCALAR,
@@ -435,6 +441,7 @@ class HealthRecordDraftPayloadService
     {
         return [
             ...ConsultationPrograms::rules('payload'),
+            ...VisitPurpose::rules('payload.visitPurpose'),
             'payload.consultationUuid' => ['nullable', 'uuid'],
             'payload.consultationMode' => ['nullable', 'in:general,program'],
             'payload.wizardPhase' => ['nullable', 'in:program,form,next,review'],

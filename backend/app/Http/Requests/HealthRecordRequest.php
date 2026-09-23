@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\Referral;
 use App\Services\ConsultationPrograms;
+use App\Services\VisitPurpose;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -37,6 +38,7 @@ class HealthRecordRequest extends FormRequest
     {
         return [
             ...ConsultationPrograms::rules("monitoring_data"),
+            ...VisitPurpose::rules("monitoring_data.visitPurpose"),
             'idempotency_key' => $this->isMethod('post')
                 ? ['bail', 'required', 'uuid', 'max:64']
                 : ['prohibited'],
@@ -311,6 +313,7 @@ class HealthRecordRequest extends FormRequest
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(function ($validator): void {
+            VisitPurpose::validate($validator, $this);
             $monitoringData = $this->input('monitoring_data', []);
             ConsultationPrograms::validateSelection(
                 $validator,

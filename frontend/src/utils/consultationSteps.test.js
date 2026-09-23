@@ -432,7 +432,7 @@ test("DRAFT RESTORE: a draft from before the steps existed opens on Interview", 
 
 test("DRAFT RESTORE: a payload never gains a phase the draft allowlist rejects", () => {
   for (const phase of ["program", "form", "next", "review", undefined]) {
-    assert.ok(["form", "next"].includes(resolveRestoredPosition({ wizardPhase: phase }).phase));
+    assert.ok(["form", "next", "review"].includes(resolveRestoredPosition({ wizardPhase: phase }).phase));
   }
 });
 

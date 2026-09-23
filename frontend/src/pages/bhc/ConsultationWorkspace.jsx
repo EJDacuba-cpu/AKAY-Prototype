@@ -1,3 +1,6 @@
+import PregnancyConfirmation from "../../components/features/health-records/PregnancyConfirmation";
+import PurposeOfVisitModal from "../../components/features/health-records/PurposeOfVisitModal";
+import { purposePrograms, purposeErrors, teenagePrenatal, VISIT_SERVICES } from "../../utils/visitPurpose";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBlocker, useLocation, useNavigate, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1020,6 +1023,8 @@ export default function ConsultationWorkspace() {
   const [consultationMode, setConsultationMode] = useState(
     routeContext.kind === "new" ? "general" : null,
   );
+  const [visitPurpose, setVisitPurpose] = useState(null);
+  const [purposeOpen, setPurposeOpen] = useState(routeContext.kind === "new");
   const [selectedPrograms, setSelectedPrograms] = useState([]);
   const [primaryProgram, setPrimaryProgram] = useState("");
   // Which screen of the form phase is showing (a program form, Clinical
@@ -1589,7 +1594,7 @@ export default function ConsultationWorkspace() {
     };
   }, [basePath, followUpTaskId, hasRouteFollowUpContext, navigate]);
 
-  const { data: selectedPatientDetails } = useQuery({
+  const { data: selectedPatientDetails, error: selectedPatientError, refetch: reloadSelectedPatient } = useQuery({
     queryKey: ["consultation-selected-patient", selectedPatientId],
     queryFn: () => getBhcPatientById(selectedPatientId),
     enabled: Boolean(selectedPatientId),
@@ -1617,6 +1622,10 @@ export default function ConsultationWorkspace() {
 
   const normalizedHealthRecordType = normalizeRecordType(healthRecordType);
   const recordTypeKey = normalizedHealthRecordType.toLowerCase();
+  const purposeFlow = Boolean(visitPurpose);
+  const generalSelected = purposeFlow ? visitPurpose.services.includes("General") : true;
+  const prenatalSelected = !purposeFlow || visitPurpose.services.includes("Prenatal");
+  const postpartumSelected = Boolean(visitPurpose?.services.includes("Postpartum"));
   const isImmunization = recordTypeKey === "immunization" || selectedPrograms.includes("EPI");
   const isMaternal = recordTypeKey === "maternal" || selectedPrograms.includes("Maternal");
   const isFamilyPlanning = recordTypeKey === "family planning" || selectedPrograms.includes("Family Planning");
@@ -1648,16 +1657,16 @@ export default function ConsultationWorkspace() {
   const usesConsultationSteps =
     !isFollowUpVisitMode && !isEditingRecord && consultationType === "new";
   const consultationSteps = useMemo(
-    () => buildConsultationSteps({ selectedPrograms, primaryProgram }),
-    [selectedPrograms, primaryProgram],
+    () => buildConsultationSteps({ selectedPrograms, primaryProgram, generalSelected, purposeFlow }),
+    [selectedPrograms, primaryProgram, generalSelected, purposeFlow],
   );
   // The programs nested inside the single "Program Forms" step.
   const programFormSteps = useMemo(
-    () => getProgramFormSteps(selectedPrograms, primaryProgram),
-    [selectedPrograms, primaryProgram],
+    () => getProgramFormSteps(selectedPrograms, primaryProgram).map(step => step.classification === "Maternal" && postpartumSelected ? { ...step, label: prenatalSelected ? "Prenatal / Postpartum" : "Postpartum", headerDescription: "Record maternal care provided during this visit." } : step),
+    [selectedPrograms, primaryProgram, postpartumSelected, prenatalSelected],
   );
-  const formSequence = getFormSequence(programFormSteps);
-  const stepOrder = getStepOrder(programFormSteps);
+  const formSequence = getFormSequence(programFormSteps, generalSelected);
+  const stepOrder = getStepOrder(programFormSteps, generalSelected);
   const activeFormStep = resolveFormStep(formStep, formSequence);
   // Interview, Vital Signs, Clinical Assessment, each program form, and
   // Treatment are all screens of the one form phase; formStep says which.
@@ -1740,6 +1749,7 @@ export default function ConsultationWorkspace() {
     isImmunization && !needsReferral && !epiWillComplete;
   const canSaveCurrentDraft =
     isDraftRouteEligible &&
+    !(purposeOpen && !visitPurpose) &&
     Boolean(selectedPatientId) &&
     DRAFT_SUPPORTED_RECORD_TYPES.has(normalizedHealthRecordType) &&
     !isFollowUpVisitMode && !saveSuccess && Boolean(consultationUuid);
@@ -1766,6 +1776,7 @@ export default function ConsultationWorkspace() {
       // Rides in the payload so the encrypted device copy carries the same
       // identity as the server draft. Omitted rather than sent empty.
       ...(consultationUuid ? { consultationUuid } : {}),
+      ...(visitPurpose ? { visitPurpose } : {}),
       selectedPrograms,
       primaryProgram,
       consultationMode,
@@ -1963,6 +1974,8 @@ export default function ConsultationWorkspace() {
 
   function restoreHealthRecordDraft(draft) {
     const payload = draft.payload || {};
+    setVisitPurpose(payload.visitPurpose || null);
+    setPurposeOpen(false);
     setSelectedPatientId(draft.patient.id);
     // Adopt the consultation's existing identity - never mint a fresh one for
     // a consultation that already has it. A legacy draft saved before
@@ -2607,6 +2620,10 @@ export default function ConsultationWorkspace() {
 
   function getClinicalValidationErrors() {
     const errors = {};
+    if (visitPurpose) {
+      const purposeError = purposeErrors(visitPurpose, selectedPatient, dateOfVisit);
+      if (purposeError) errors.visitPurpose = purposeError;
+    }
 
     const requiresFollowUp =
       !needsReferral &&
@@ -2696,10 +2713,10 @@ export default function ConsultationWorkspace() {
       }
     }
 
-    if (!isImmunization && !isFamilyPlanning && !isHypertensionDiabetic && !isMaternal && !isTb && !chiefComplaint.trim()) {
+    if ((purposeFlow ? generalSelected : !isImmunization && !isFamilyPlanning && !isHypertensionDiabetic && !isMaternal && !isTb) && !chiefComplaint.trim()) {
       errors.chiefComplaint = "Chief complaint is required.";
     }
-    if (!isImmunization && !isFamilyPlanning && !isHypertensionDiabetic && !isMaternal && !isTb && !summaryOfPresentIllness.trim()) {
+    if ((purposeFlow ? generalSelected : !isImmunization && !isFamilyPlanning && !isHypertensionDiabetic && !isMaternal && !isTb) && !summaryOfPresentIllness.trim()) {
       errors.summaryOfPresentIllness =
         "Summary of present illness is required.";
     }
@@ -3217,7 +3234,7 @@ export default function ConsultationWorkspace() {
 
   async function handleSave(event) {
     event?.preventDefault();
-    if (saving) return;
+    if (saving || purposeOpen) return;
     closeDateTimePopovers();
 
     const isReferralContinuation =
@@ -3279,7 +3296,7 @@ export default function ConsultationWorkspace() {
     if (setValidationErrorsAndFocus(clientErrors)) return;
 
     if (
-      !isFollowUpVisitMode &&
+      !purposeFlow && !isFollowUpVisitMode &&
       effectiveHealthRecordType === "Maternal" &&
       selectedPatientIsMale
     ) {
@@ -3292,7 +3309,7 @@ export default function ConsultationWorkspace() {
     }
 
     if (
-      !isFollowUpVisitMode &&
+      !purposeFlow && !isFollowUpVisitMode &&
       effectiveHealthRecordType === "Immunization" &&
       immunizationPatientInfo.mode === "adult"
     ) {
@@ -3307,7 +3324,7 @@ export default function ConsultationWorkspace() {
     }
 
     if (
-      !isFollowUpVisitMode &&
+      !purposeFlow && !isFollowUpVisitMode &&
       effectiveHealthRecordType === "Family Planning" &&
       !familyPlanningEligibility.eligible
     ) {
@@ -3376,7 +3393,7 @@ export default function ConsultationWorkspace() {
       setFollowUpDate(immunizationNextScheduleDate);
     }
 
-    const finalChiefComplaint =
+    const finalChiefComplaint = purposeFlow ? (generalSelected ? chiefComplaint : "") :
       isLinkedFollowUpVisit && !chiefComplaint
         ? followUpRecord?.chiefComplaint ||
           effectiveLinkedFollowUpTask?.healthRecord?.chiefComplaint ||
@@ -3549,9 +3566,9 @@ export default function ConsultationWorkspace() {
       dateOfVisit: dateOfVisit || toDateInputValue(),
       timeOfVisit: timeOfVisit || toTimeInputValue(),
       chiefComplaint: finalChiefComplaint,
-      summaryOfPresentIllness,
-      physicalExam,
-      diagnosis,
+      summaryOfPresentIllness: purposeFlow && !generalSelected ? "" : summaryOfPresentIllness,
+      physicalExam: purposeFlow && !generalSelected ? "" : physicalExam,
+      diagnosis: purposeFlow && !generalSelected ? "" : diagnosis,
       vitalSigns: consultationVitalSigns,
       systolicBp: systolicBp || null,
       diastolicBp: diastolicBp || null,
@@ -3614,6 +3631,7 @@ export default function ConsultationWorkspace() {
         isTb ? tbData : null,
       ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
       monitoringData: {
+        ...(visitPurpose ? { visitPurpose: { ...visitPurpose, pregnancyConfirmed: teenagePrenatal(visitPurpose, selectedPatient, dateOfVisit) ? visitPurpose.pregnancyConfirmed : "" } } : {}),
         ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
         hypertensionDiabeticData:
           isHypertensionDiabetic
@@ -4096,7 +4114,9 @@ export default function ConsultationWorkspace() {
     // Clinical Assessment) are not knowable on Interview or Vital Signs yet;
     // they are enforced when that decision is made, and the gate below then
     // returns the user to the screen that owns the field.
-    const errors = deferUntilProgramDecision(getClinicalValidationErrors(), stepKey);
+    const errors = purposeFlow ? getClinicalValidationErrors() : deferUntilProgramDecision(getClinicalValidationErrors(), stepKey);
+    if (purposeFlow && stepKey === INTERVIEW_STEP) { delete errors.chiefComplaint; delete errors.summaryOfPresentIllness; }
+    if (purposeFlow && stepKey === ASSESSMENT_STEP && (errors.chiefComplaint || errors.summaryOfPresentIllness)) { setValidationErrorsAndFocus(errors); return false; }
     if (stepKey !== NEXT_STEP) {
       delete errors.followUpDate;
       delete errors.followUpTime;
@@ -4104,7 +4124,7 @@ export default function ConsultationWorkspace() {
     }
     // Leaving Interview always needs a chief complaint, program or not - the
     // rule Current Visit's Next enforced before the steps were split.
-    if (stepKey === INTERVIEW_STEP && !chiefComplaint.trim()) {
+    if (!purposeFlow && stepKey === INTERVIEW_STEP && !chiefComplaint.trim()) {
       errors.chiefComplaint = "Chief complaint is required.";
     }
 
@@ -4133,6 +4153,8 @@ export default function ConsultationWorkspace() {
 
   // Same idea for Save: an error that belongs to another screen is shown there.
   function revealErrorStep(errors) {
+    if (errors.visitPurpose) { setPurposeOpen(true); return true; }
+    if (purposeFlow && (errors.chiefComplaint || errors.summaryOfPresentIllness)) { setValidationErrorsAndFocus(errors); goToStepKey(ASSESSMENT_STEP); return true; }
     const target = findFirstErrorStepKey(errors, stepOrder);
     if (!target || target === currentStepKey) return false;
     setValidationErrorsAndFocus(errors);
@@ -4209,6 +4231,24 @@ export default function ConsultationWorkspace() {
     const draftId = draftDecision.id;
     setDraftDecision(null);
     await handleResumeDraft(draftId);
+  }
+
+  function applyVisitPurpose(next) {
+    if (!teenagePrenatal(next, selectedPatient, dateOfVisit)) next = { ...next, pregnancyConfirmed: "" };
+    const programs = purposePrograms(next.services);
+    const primary = programs.includes(primaryProgram) ? primaryProgram : programs[0] || "";
+    setVisitPurpose(next);
+    setSelectedPrograms(programs);
+    setPrimaryProgram(primary);
+    setConsultationMode(programs.length ? "program" : "general");
+    setHealthRecordType(PROGRAM_CLASSIFICATIONS[primary] || "General Consultation");
+    if (programs.includes("Hypertension") || programs.includes("Diabetes")) {
+      setHypertensionDiabeticData(current => ({ ...current, conditionType: programs.includes("Hypertension") && programs.includes("Diabetes") ? "both" : programs.includes("Diabetes") ? "dm" : "hpn" }));
+    }
+    setPurposeOpen(false);
+    setWizardPhase(WIZARD_FORM);
+    setFormStep(INTERVIEW_STEP);
+    setValidationErrors({});
   }
 
   function handleProgramSelect(option) {
@@ -4312,13 +4352,14 @@ export default function ConsultationWorkspace() {
   };
   const treatmentBindings = isGeneralOnly
     ? [{ value: medication, set: setMedication }]
-    : consultationSteps
-        .filter((step) => step.kind === "program")
+    : programFormSteps
         .map((step) => treatmentBindingFor[step.classification])
         .filter(Boolean);
-  const treatmentValue = treatmentBindings[0]?.value || "";
-  const handleTreatmentChange = (value) =>
+  const treatmentValue = medication || treatmentBindings[0]?.value || "";
+  const handleTreatmentChange = (value) => {
+    setMedication(value);
     treatmentBindings.forEach((binding) => binding.set(value));
+  };
 
   // Two reporting decisions, side by side, shared by the Clinical Assessment
   // step and the legacy single-screen general form. They are one row rather
@@ -4462,7 +4503,7 @@ export default function ConsultationWorkspace() {
   const reviewSections = [
     {
       key: INTERVIEW_STEP,
-      title: "Interview",
+      title: purposeFlow ? "Visit" : "Interview",
       stepKey: INTERVIEW_STEP,
       rows: [
         {
@@ -4478,8 +4519,7 @@ export default function ConsultationWorkspace() {
             .filter(Boolean)
             .join(" · "),
         },
-        { label: "Chief Complaint", value: chiefComplaint },
-        { label: "History of Present Illness", value: summaryOfPresentIllness },
+        ...(purposeFlow ? [{ label: "Purpose of Visit", value: visitPurpose.services.map(key => VISIT_SERVICES[key]).join(" + ") }, ...(teenagePrenatal(visitPurpose, selectedPatient, dateOfVisit) ? [{ label: "Pregnancy Confirmed by BHW?", value: visitPurpose.pregnancyConfirmed || "Not answered" }] : [])] : [{ label: "Chief Complaint", value: chiefComplaint }, { label: "History of Present Illness", value: summaryOfPresentIllness }]),
       ],
     },
     {
@@ -4494,6 +4534,7 @@ export default function ConsultationWorkspace() {
       title: "Clinical Assessment",
       stepKey: ASSESSMENT_STEP,
       rows: [
+        ...(purposeFlow ? [{ label: "Chief Complaint", value: chiefComplaint }, { label: "History of Present Illness", value: summaryOfPresentIllness }] : []),
         { label: "Physical Exam", value: physicalExam },
         { label: "Diagnosis / Assessment", value: diagnosis },
         // The selection itself is listed under Program / Service Details
@@ -4640,6 +4681,10 @@ export default function ConsultationWorkspace() {
           )}
         </div>
       )}
+      {purposeOpen && !selectedPatient && <div className="rounded-xl bg-white p-6"><p>{selectedPatientError ? "Unable to load the patient. Please retry." : "Loading patient eligibility..."}</p>{selectedPatientError && <button type="button" onClick={() => reloadSelectedPatient()}>Retry</button>}</div>}
+      {purposeOpen && !isResolvingClinicalMode && selectedPatient && <PurposeOfVisitModal value={visitPurpose} patient={selectedPatient} visitDate={dateOfVisit} onProceed={applyVisitPurpose} onCancel={() => { if (visitPurpose) setPurposeOpen(false); else navigate(`/bhc/patients/${selectedPatientId}`); }} />}
+      {purposeFlow && !purposeOpen && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4"><p className="text-sm font-medium">Purpose of Visit: {visitPurpose.services.map(key => VISIT_SERVICES[key]).join(" + ")}</p><button type="button" className="text-sm font-semibold text-red-700" onClick={() => setPurposeOpen(true)}>Change purpose</button></div>}
+      <div hidden={purposeOpen}>
       <ConsultationWorkspaceBody>
       {isResolvingClinicalMode ? (
         <div className="ml-0 mr-auto w-full max-w-7xl">
@@ -4662,7 +4707,7 @@ export default function ConsultationWorkspace() {
         <ConsultationReviewStep
           visitDate={wizardVisitDate}
           visitTime={wizardVisitTime}
-          sections={reviewSections}
+          sections={reviewSections.filter(section => generalSelected || section.key !== ASSESSMENT_STEP)}
           errors={reviewErrorMessages}
           onEditStep={goToStepKey}
           indicator={stepIndicator}
@@ -4706,10 +4751,13 @@ export default function ConsultationWorkspace() {
             </div>
             {/* HPI is marked required for a general consultation; whether that
                 applies is decided at Clinical Assessment, which enforces it. */}
+            {!purposeFlow && <>
             <div className="anim-fade-up grid gap-4 pb-1 sm:grid-cols-2" style={stagger(3)}>
               <FieldTextarea label="Chief Complaint" required name="chiefComplaint" error={validationErrors.chiefComplaint} value={chiefComplaint} onChange={event => { clearValidationError("chiefComplaint"); setChiefComplaint(event.target.value); }} placeholder="Describe the patient's chief complaint..." rows={3} />
-              <FieldTextarea label="History of Present Illness" required={consultationMode === "general"} name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }} placeholder="Onset, duration, and details of the current concern..." rows={3} />
+              <FieldTextarea label="History of Present Illness" required name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }} placeholder="Onset, duration, and details of the current concern..." rows={3} />
             </div>
+
+            </>}
 
             {/* Vital Signs: recorded once, here. Program forms do not repeat
                 them. Three columns on desktop: BP | Pulse | SpO2, then Weight |
@@ -4977,15 +5025,16 @@ export default function ConsultationWorkspace() {
         {!patientGateLocked && isMaternal && !selectedPatientIsMale && showProgramBlock("Maternal") && (
           <>
             {showMaternalPatientWarning && <MaternalClassificationWarning />}
+            {teenagePrenatal(visitPurpose, selectedPatient, dateOfVisit) && <FormSection title="Pregnancy Confirmation" subtitle="Record the BHW confirmation for this visit."><PregnancyConfirmation value={visitPurpose.pregnancyConfirmed} onChange={answer => setVisitPurpose(current => ({ ...current, pregnancyConfirmed: answer }))} /></FormSection>}
 
             <FormSection
-              title="Pregnancy / Obstetric Information"
-              subtitle="Record the patient's pregnancy and obstetric information for this prenatal consultation."
+              title={postpartumSelected && !prenatalSelected ? "Postpartum / Obstetric Information" : "Pregnancy / Obstetric Information"}
+              subtitle={postpartumSelected && !prenatalSelected ? "Record obstetric history relevant to this postpartum visit." : "Record pregnancy and obstetric information for this prenatal consultation."}
               delay={3}
             >
               <LockedFormContent locked={patientGateLocked}>
                 <div className="space-y-5">
-                  <div>
+                  {prenatalSelected && <div>
                     <p className={MATERNAL_EYEBROW_CLASS}>Pregnancy Information</p>
                     <div className="grid gap-4 sm:grid-cols-3">
                       <DatePickerField
@@ -5005,7 +5054,7 @@ export default function ConsultationWorkspace() {
                         onChange={setExpectedDeliveryDate}
                       />
                     </div>
-                  </div>
+                  </div>}
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     {OB_SCORE_GP_FIELDS.map((field) => (
@@ -5042,7 +5091,7 @@ export default function ConsultationWorkspace() {
                     </div>
                   </div>
 
-                  <div>
+                  {prenatalSelected && <div>
                     <p className={MATERNAL_EYEBROW_CLASS}>Current Prenatal Information</p>
                     <div className="grid gap-4 sm:grid-cols-2">
                       {/* Calculated from LMP and the visit date, and still editable. */}
@@ -5061,7 +5110,7 @@ export default function ConsultationWorkspace() {
                         }
                       />
                     </div>
-                  </div>
+                  </div>}
                 </div>
               </LockedFormContent>
             </FormSection>
@@ -5122,6 +5171,7 @@ export default function ConsultationWorkspace() {
               </FormSection>
             )}
 
+            {prenatalSelected && <>
             <FormSection
               title="Medical History"
               subtitle="Mark any risk factors and medical conditions relevant to this pregnancy."
@@ -5141,6 +5191,7 @@ export default function ConsultationWorkspace() {
                 </div>
               </LockedFormContent>
             </FormSection>
+            </>}
 
             <FormSection
               title="Laboratory Results"
@@ -5253,6 +5304,7 @@ export default function ConsultationWorkspace() {
               </LockedFormContent>
             </FormSection>
 
+            {prenatalSelected && <>
             <FormSection
               title="Immunization This Visit"
               subtitle="Record any immunization given during this prenatal visit."
@@ -5304,7 +5356,9 @@ export default function ConsultationWorkspace() {
                 </div>
               </LockedFormContent>
             </FormSection>
+            </>}
 
+            {prenatalSelected && <>
             <FormSection
               title="Ultrasound"
               subtitle="Record the latest ultrasound result and date for this pregnancy."
@@ -5333,6 +5387,7 @@ export default function ConsultationWorkspace() {
                 </div>
               </LockedFormContent>
             </FormSection>
+            </>}
 
             {/* Treatment and medicines move to the shared Treatment / Medicine step. */}
             {!usesConsultationSteps && (
@@ -5640,8 +5695,15 @@ export default function ConsultationWorkspace() {
         )}
 
         {/* Clinical Assessment: one screen for every consultation. */}
-        {usesConsultationSteps && activeFormStep === ASSESSMENT_STEP && (
+        {usesConsultationSteps && generalSelected && activeFormStep === ASSESSMENT_STEP && (
           <>
+            {purposeFlow && <>
+            <div className="anim-fade-up grid gap-4 pb-1 sm:grid-cols-2" style={stagger(3)}>
+              <FieldTextarea label="Chief Complaint" required name="chiefComplaint" error={validationErrors.chiefComplaint} value={chiefComplaint} onChange={event => { clearValidationError("chiefComplaint"); setChiefComplaint(event.target.value); }} placeholder="Describe the patient's chief complaint..." rows={3} />
+              <FieldTextarea label="History of Present Illness" required name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }} placeholder="Onset, duration, and details of the current concern..." rows={3} />
+            </div>
+
+            </>}
             <FormSection
               title="Physical Exam"
               subtitle="Record the examination findings for this visit."
@@ -5675,12 +5737,12 @@ export default function ConsultationWorkspace() {
             </FormSection>
             {/* The morbidity and HFMD decisions apply to a general consultation
                 only, exactly as before. */}
-            {isGeneralOnly && reportingDecisions}
+            {(purposeFlow ? generalSelected : isGeneralOnly) && reportingDecisions}
 
             {/* The program decision, made after the assessment it follows from.
                 Optional: none selected is a general consultation, and Program /
                 Service Details is then skipped. */}
-            <FormSection
+            {!purposeFlow && <FormSection
               title="Programs & Services"
               subtitle="Optional. Select any program or service this visit is part of."
               delay={5}
@@ -5693,14 +5755,14 @@ export default function ConsultationWorkspace() {
                 onPrimaryChange={(key) => { setPrimaryProgram(key); setHealthRecordType(PROGRAM_CLASSIFICATIONS[key]); }}
                 error={validationErrors.healthRecordType}
               />
-            </FormSection>
+            </FormSection>}
           </>
         )}
 
         {/* Treatment / Medicine: treatment given and inventory dispensed, once. */}
         {usesConsultationSteps && activeFormStep === TREATMENT_STEP && (
           <>
-            {treatmentBindings.length > 0 && (
+            {(purposeFlow || treatmentBindings.length > 0) && (
               <FormSection
                 title="Meds and Other Plans"
                 subtitle="Document the treatment, medication plan, or other management for this visit."
@@ -5970,6 +6032,7 @@ export default function ConsultationWorkspace() {
         />
       )}
 
+      </div>
       <SuccessModal
         open={Boolean(saveSuccess)}
         title={

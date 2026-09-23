@@ -976,6 +976,12 @@ function toPayload(record = {}, { partial = false } = {}) {
     record.needsReferral === "yes" ||
     record.needs_referral === true;
 
+  // A postpartum-only visit reuses obstetric history, not current pregnancy
+  // observations left behind when the worker changed the purpose selection.
+  const purpose = sourceMonitoringData.visitPurpose;
+  if (purpose?.services?.includes("Postpartum") && !purpose.services.includes("Prenatal")) {
+    for (const key of ["lmp", "pmp", "cycleDuration", "expectedDeliveryDate", "aog", "fht", "riskAssessment", "ultrasound", "immunizationThisVisit", "tetanusToxoidStatus", "tetanusDiphtheriaStatus"]) delete maternalData[key];
+  }
   const payload = {
     patient_id: record.patientId || record.patient_id,
     date_recorded:
