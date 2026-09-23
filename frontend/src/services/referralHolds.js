@@ -18,6 +18,7 @@ function normalizeReferralHold(hold = {}) {
       hold.patientName ||
       "Unknown patient",
     ruralHealthUnitName: rhu.name || hold.ruralHealthUnitName || "",
+    ruralHealthUnitId: String(hold.rural_health_unit_id || rhu.id || ""),
     healthRecordId: hold.health_record_id
       ? String(hold.health_record_id)
       : hold.healthRecordId || "",

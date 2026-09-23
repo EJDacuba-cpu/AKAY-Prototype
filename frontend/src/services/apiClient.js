@@ -84,9 +84,29 @@ export function normalizeUser(user = {}) {
 
 export function storeAuthSession({ token, user }) {
   if (token) accessToken = token;
-  if (user) authenticatedUser = normalizeUser(user);
+  if (user) {
+    const normalized = normalizeUser(user);
+    const choices = normalized.authorized_facilities || [];
+    const key = normalized.working_facility_key || (authenticatedUser?.id === normalized.id ? authenticatedUser?.working_facility_key : null);
+    const selected = choices.find(f => f.key === key) || (choices.length === 1 ? choices[0] : null);
+    authenticatedUser = selected && normalized.role !== "admin" ? withFacility(normalized, selected) : normalized;
+  }
 
   removeLegacyPersistedAuth();
+}
+
+function withFacility(user, facility) {
+  return { ...user, working_facility_key: facility.key, role: facility.type, permissions: facility.permissions, facility: facility.name, facilityId: facility.id,
+    barangayHealthCenterId: facility.type === "bhc" ? facility.id : "", ruralHealthUnitId: facility.type === "rhu" ? facility.id : "",
+    navigation: { home: `/${facility.type}/dashboard`, scope: facility.type } };
+}
+
+export async function selectWorkingFacility(key) {
+  const selected = authenticatedUser?.authorized_facilities?.find(f => f.key === key);
+  if (!selected) throw new Error("This facility assignment is unavailable.");
+  await clearSensitiveSessionState({ queryClient, reason: "facility-switched", broadcast: false, preserveAuthentication: true });
+  authenticatedUser = withFacility(authenticatedUser, selected);
+  return authenticatedUser;
 }
 
 export function clearAuthSession() {
@@ -134,6 +154,7 @@ async function sendRequest(endpoint, options = {}) {
 
   if (accessToken && options.auth !== false) {
     headers.Authorization = `Bearer ${accessToken}`;
+    if (authenticatedUser?.working_facility_key) headers["X-Working-Facility"] = authenticatedUser.working_facility_key;
   }
 
   const controller = new AbortController();

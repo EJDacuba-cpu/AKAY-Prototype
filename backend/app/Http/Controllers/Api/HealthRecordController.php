@@ -133,6 +133,10 @@ class HealthRecordController extends Controller
         unset($data['dispensed_medicines']);
 
         $data['created_by'] = $request->user()->id;
+        $data['assessed_by'] = $request->user()->id;
+        $data['finalized_by'] = $request->user()->id;
+        $data['finalized_at'] = now();
+        $data['items_planned'] = $dispensedMedicines;
         $data['idempotency_key'] = $idempotencyKey;
         $data['idempotency_hash'] = $idempotencyHash;
         $data['barangay_health_center_id'] = $patient->barangay_health_center_id;
@@ -166,8 +170,7 @@ class HealthRecordController extends Controller
                     $patient,
                     $request->user()
                 );
-                $record = HealthRecord::create($data);
-                $this->medicineStock->dispense($request, $record, $dispensedMedicines);
+                $record = HealthRecord::create([...$data, 'encoded_by' => $lockedDraft?->owner_user_id ?? $request->user()->id]);
                 $followUpTasks->syncRecord($record, $request->user(), $lockedFollowUpTask);
                 $followUpTasks->fulfillParentTask($record, $request->user(), $lockedFollowUpTask);
 
@@ -342,35 +345,7 @@ class HealthRecordController extends Controller
         FollowUpTaskSyncService $followUpTasks
     ) {
         $this->facilityAccess->authorizeHealthRecord($request->user(), $healthRecord);
-        $data = $request->validated();
-
-        if (
-            array_key_exists('patient_id', $data)
-            && (int) $data['patient_id'] !== (int) $healthRecord->patient_id
-        ) {
-            throw ValidationException::withMessages([
-                'patient_id' => 'A health record cannot be reassigned to another patient.',
-            ]);
-        }
-
-        unset($data['patient_id']);
-        $this->normalizeVisitTypeData($request, $data, false, $healthRecord);
-        $this->normalizeMaternalSupplements($request, $data);
-        $this->normalizeFamilyPlanningData($data, $healthRecord);
-        unset($data['dispensed_medicines']);
-
-        DB::transaction(function () use ($healthRecord, $data, $followUpTasks, $request, $auditLogger): void {
-            $healthRecord->update($data);
-            $followUpTasks->syncRecord($healthRecord->fresh(), $request->user());
-            $auditLogger->log($request, 'updated', 'health_records', "Updated health record {$healthRecord->id}.");
-        });
-
-        return response()->json(['data' => $healthRecord->fresh()->load([
-            'patient',
-            'creator:id,name',
-            'dispensedMedicines',
-            ...HealthRecord::OUTCOME_RELATIONS,
-        ])]);
+        abort(409, 'Finalized records are read-only. Add a documented correction instead.');
     }
 
     public function dispenseMedicines(Request $request, HealthRecord $healthRecord)
@@ -427,9 +402,7 @@ class HealthRecordController extends Controller
     public function destroy(Request $request, HealthRecord $healthRecord)
     {
         $this->facilityAccess->authorizeHealthRecord($request->user(), $healthRecord);
-        $healthRecord->delete();
-
-        return response()->json(status: 204);
+        abort(409, 'Finalized records cannot be deleted. Add a documented correction instead.');
     }
 
     private function normalizeVisitTypeData(

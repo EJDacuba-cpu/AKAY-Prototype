@@ -447,6 +447,7 @@ class FacilityAccessService
         mixed $barangayHealthCenterId
     ): bool {
         return $user->isBhw()
+            && ActionPermissions::allows($user, 'items.dispense')
             && $this->hasValidFacilityAssignment($user)
             && $medicine->rural_health_unit_id === null
             && $this->sameAssignedId(

@@ -41,7 +41,9 @@ export const menuByRole = {
     },
     {
       section: "Management",
-      items: [{ label: "Users", path: "/admin/users", icon: Users }],
+      items: [{ label: "Users", path: "/admin/users", icon: Users },
+        { label: "Facilities", path: "/admin/facilities", icon: Boxes },
+        { label: "Staff Assignments", path: "/admin/staff-assignments", icon: CalendarDays }],
     },
     {
       section: "Accountability",

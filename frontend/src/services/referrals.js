@@ -163,6 +163,7 @@ function toPayload(referral = {}) {
     client_submission_id:
       referral.clientSubmissionId || referral.client_submission_id || null,
     patient_id: referral.patientId || referral.patient_id,
+    rural_health_unit_id: referral.ruralHealthUnitId || referral.rural_health_unit_id || null,
     health_record_id:
       referral.healthRecordId || referral.health_record_id || referral.recordId || null,
     referral_category: referral.referralCategory || referral.category || null,
@@ -208,6 +209,7 @@ export async function getReferralDestination() {
       id: bhc.id ? String(bhc.id) : "",
       name: bhc.name || "",
     },
+    destinations: data.destinations || [],
     receivingRuralHealthUnit: {
       ...rhu,
       id: rhu.id ? String(rhu.id) : "",

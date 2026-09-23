@@ -33,7 +33,7 @@ export default function StatusBadge({ status }) {
 
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
+      className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide in-[.bhc-patient-profile]:px-3"
       style={{ backgroundColor: s.bg, borderColor: s.border, color: s.text }}
     >
       <span

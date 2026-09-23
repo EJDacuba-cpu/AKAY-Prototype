@@ -1,6 +1,11 @@
 import { RefreshCcw, ServerCrash, WifiOff } from "lucide-react";
 
 const VARIANT_DEFAULTS = {
+  forbidden: {
+    title: "Access Not Assigned",
+    message: "Your current facility permissions do not include this page. Contact MHO if your work requires this access.",
+    icon: ServerCrash,
+  },
   offline: {
     title: "Connection Lost",
     message:
@@ -48,7 +53,7 @@ export default function ConnectionErrorState({
         <p className="mt-2 text-xs text-slate-400">
           Your saved records are safe.
         </p>
-        <button
+        {variant !== "forbidden" && onRetry && <button
           type="button"
           onClick={onRetry}
           disabled={retrying}
@@ -56,7 +61,7 @@ export default function ConnectionErrorState({
         >
           <RefreshCcw size={15} className={retrying ? "animate-spin" : ""} />
           {retrying ? "Retrying..." : "Retry"}
-        </button>
+        </button>}
       </div>
     </div>
   );

@@ -27,6 +27,8 @@ return [
         'Idempotency-Key',
         'X-Health-Record-Draft-ID',
         'X-AKAY-Session',
+        'X-Working-Facility',
+        'X-Draft-Version',
         'X-Requested-With',
     ],
 

@@ -7,9 +7,7 @@ import {
   FileText,
   HeartPulse,
   Pill,
-  Ruler,
   Stethoscope,
-  Users,
 } from "lucide-react";
 
 import {
@@ -22,63 +20,44 @@ import {
   getServiceTypeLabel,
   isFollowUpVisitRecord,
 } from "../../../utils/healthRecordPrograms";
-import { calculateBmi, formatBmi, getBmiCategory } from "../../../utils/bmi";
 import RecordOutcomeBadge from "../records/RecordOutcomeBadge";
+import { Card, CardContent } from "../../ui/card";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../../ui/accordion";
 
 const RECENT_VISIT_LIMIT = 3;
 
 function OverviewCard({ title, icon, action, children, className = "" }) {
   return (
-    <section
-      className={`flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white ${className}`}
+    <Card
+      className={`flex min-w-0 flex-col bg-white rounded-2xl border border-slate-100 shadow-sm ${className}`}
     >
-      <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
-        <h3 className="flex items-center gap-2 text-[12.5px] font-bold text-[#0F172A]">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+        <h3 className="flex items-center gap-2 font-sans! text-sm font-semibold text-slate-900">
           {icon}
           {title}
         </h3>
         {action}
       </header>
-      <div className="min-w-0 flex-1 p-4">{children}</div>
-    </section>
+      <CardContent className="min-w-0 flex-1 p-5">{children}</CardContent>
+    </Card>
   );
 }
 
 function EmptyLine({ children }) {
   return (
-    <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-3 py-5 text-center text-[11.5px] text-slate-400">
+    <p className="rounded-2xl border border-slate-100 bg-white px-3 py-5 text-center text-sm text-slate-500 shadow-sm">
       {children}
     </p>
   );
 }
 
-/**
- * Opens the tab that owns the full detail for a preview card. The previews
- * here are read-only summaries on purpose: editing and the complete field set
- * live on the section's own tab, so the chart has exactly one place to change
- * each value.
- */
-function FullDetailAction({ onClick, label = "View Full History" }) {
-  if (!onClick) return null;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-1 text-[11px] font-bold text-[#B91C1C] transition hover:text-[#991B1B]"
-    >
-      {label}
-      <ChevronRight size={13} />
-    </button>
-  );
-}
-
 function SummaryRow({ label, value }) {
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-slate-50 py-1.5 last:border-b-0">
-      <span className="shrink-0 text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
+    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-slate-200 py-2 last:border-b-0">
+      <span className="text-sm text-slate-500">
         {label}
       </span>
-      <span className="min-w-0 break-words text-right text-[12px] font-semibold text-slate-700">
+      <span className="min-w-0 break-words text-sm font-semibold text-slate-900">
         {value}
       </span>
     </div>
@@ -99,12 +78,10 @@ export default function PatientOverviewTab({
   referrals = [],
   activeFollowUp = null,
   activePrograms = [],
-  latestBmiRecord = null,
   basePath = "/bhc",
   onViewRecord,
   onViewReferral,
   onViewAllRecords,
-  onOpenTab,
 }) {
   const recentVisits = records.slice(0, RECENT_VISIT_LIMIT);
   const latestReferral = referrals[0] || null;
@@ -151,7 +128,7 @@ export default function PatientOverviewTab({
         };
 
   return (
-    <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+    <div className="grid min-w-0 gap-6 xl:grid-cols-2">
       <OverviewCard
         title="Recent Clinical Visits"
         icon={<Stethoscope size={14} className="text-[#B91C1C]" />}
@@ -180,20 +157,20 @@ export default function PatientOverviewTab({
                   className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
                 >
                   <div className="min-w-0">
-                    <p className="flex flex-wrap items-center gap-2 text-[12.5px] font-bold text-[#0F172A]">
+                    <p className="flex flex-wrap items-center gap-2 text-[12.5px] font-semibold text-slate-900">
                       {formatDisplayValue(record.chiefComplaint, "No complaint recorded")}
                       {isFollowUpVisitRecord(record) && (
-                        <span className="rounded-md border border-[#BFDBFE] bg-[#EFF6FF] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1D4ED8]">
+                        <span className="rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-1 text-[9px] font-bold uppercase tracking-wide text-[#1D4ED8]">
                           Follow-up
                         </span>
                       )}
                     </p>
-                    <p className="mt-0.5 text-[11px] text-slate-500">
+                    <p className="mt-0.5 text-sm text-slate-500">
                       {formatLongDate(getRecordDateValue(record), "Not recorded")}
                       {" · "}
                       {getServiceTypeLabel(record)}
                       {" · "}
-                      <span className="font-mono">{getRecordIdLabel(record)}</span>
+                      <span className="font-sans">{getRecordIdLabel(record)}</span>
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -301,130 +278,76 @@ export default function PatientOverviewTab({
       </OverviewCard>
 
       <OverviewCard
-        title="Past Medical History"
+        title="Medical History"
         icon={<HeartPulse size={14} className="text-[#B91C1C]" />}
-        action={<FullDetailAction onClick={() => onOpenTab?.("medical")} />}
+        className="xl:col-span-2"
       >
-        <div>
-          <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
-            Current Diseases
-          </p>
-          {currentDiseases.length === 0 ? (
-            <p className="mt-1 text-[12px] text-slate-400">None reported</p>
-          ) : (
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {currentDiseases.map((disease) => (
-                <span
-                  key={disease.name}
-                  className="rounded-md border border-[#FECACA] bg-[#FEF2F2] px-2 py-0.5 text-[10.5px] font-semibold text-[#B91C1C]"
-                >
-                  {disease.name}
-                  {disease.status ? ` · ${disease.status}` : ""}
-                </span>
-              ))}
+        <div className="grid gap-5 md:grid-cols-2">
+          <section className="min-w-0" aria-label="Personal medical history">
+            <h4 className="font-sans! text-xs font-semibold text-slate-700">Current Diseases</h4>
+            {currentDiseases.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-500">None reported</p>
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {currentDiseases.map((disease) => (
+                  <span key={disease.name} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700">
+                    {disease.name}{disease.status ? " · " + disease.status : ""}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="mt-3">
+              <SummaryRow label="Allergies" value={formatDisplayValue(background.allergies, "Not yet recorded")} />
+              <SummaryRow label="Hospitalizations" value={formatDisplayValue(background.hospitalizations, "Not yet recorded")} />
+              <SummaryRow label="Surgeries" value={formatDisplayValue(background.surgeries, "Not yet recorded")} />
             </div>
-          )}
-          <div className="mt-3">
-            <SummaryRow
-              label="Allergies"
-              value={formatDisplayValue(background.allergies, "Not yet recorded")}
-            />
-            <SummaryRow
-              label="Hospitalizations"
-              value={formatDisplayValue(
-                background.hospitalizations,
-                "Not yet recorded",
-              )}
-            />
-            <SummaryRow
-              label="Surgeries"
-              value={formatDisplayValue(background.surgeries, "Not yet recorded")}
-            />
-          </div>
+          </section>
+          <section className="min-w-0 border-t border-slate-200 pt-4 md:border-t-0 md:border-l md:pt-0 md:pl-5" aria-label="Family medical history">
+            <h4 className="mb-2 font-sans! text-xs font-semibold text-slate-700">Family History</h4>
+            <SummaryRow label="Similar Illness" value={formatDisplayValue(familyHistory.similarIllness, "Not yet recorded")} />
+            <SummaryRow label="Chronic Illness" value={formatDisplayValue(familyHistory.chronicIllness, "Not yet recorded")} />
+            <SummaryRow label="Hereditary Illness" value={formatDisplayValue(familyHistory.hereditaryIllness, "Not yet recorded")} />
+          </section>
         </div>
       </OverviewCard>
 
-      <OverviewCard
-        title="Family History"
-        icon={<Users size={14} className="text-[#B91C1C]" />}
-        action={<FullDetailAction onClick={() => onOpenTab?.("family")} />}
-      >
-        <SummaryRow
-          label="Similar Illness"
-          value={formatDisplayValue(
-            familyHistory.similarIllness,
-            "Not yet recorded",
-          )}
-        />
-        <SummaryRow
-          label="Chronic Illness"
-          value={formatDisplayValue(
-            familyHistory.chronicIllness,
-            "Not yet recorded",
-          )}
-        />
-        <SummaryRow
-          label="Hereditary Illness"
-          value={formatDisplayValue(
-            familyHistory.hereditaryIllness,
-            "Not yet recorded",
-          )}
-        />
-      </OverviewCard>
-
-      <OverviewCard
-        title="Personal & Social"
-        icon={<Activity size={14} className="text-[#B91C1C]" />}
-        action={<FullDetailAction onClick={() => onOpenTab?.("social")} />}
-      >
-        <SummaryRow
-          label="Occupation"
-          value={formatDisplayValue(patient?.occupation, "Not recorded")}
-        />
-        <SummaryRow
-          label="Dietary History"
-          value={formatDisplayValue(personalSocial.diet, "Not yet recorded")}
-        />
-        <SummaryRow
-          label="Smoking"
-          value={formatDisplayValue(personalSocial.smoking, "Not yet recorded")}
-        />
-        <SummaryRow
-          label="Alcohol"
-          value={formatDisplayValue(personalSocial.alcohol, "Not yet recorded")}
-        />
-      </OverviewCard>
-
-      <OverviewCard
-        title="Recent Medicines Dispensed"
-        icon={<Pill size={14} className="text-[#B91C1C]" />}
-      >
-        {dispensedMedicines.length === 0 ? (
-          <EmptyLine>No medicines dispensed yet.</EmptyLine>
-        ) : (
-          <ul className="space-y-2">
-            {dispensedMedicines.map((medicine, index) => (
-              <li
-                key={`${medicine.medicineId || medicine.name || "medicine"}-${index}`}
-                className="flex items-start justify-between gap-3"
-              >
-                <span className="min-w-0 text-[12px] font-semibold text-slate-700">
-                  {formatDisplayValue(
-                    medicine.medicineName || medicine.name,
-                    "Medicine",
-                  )}
-                  <span className="ml-1 font-normal text-slate-400">
-                    x{formatDisplayValue(medicine.quantity, "1")}
-                  </span>
-                </span>
-                <span className="shrink-0 text-[10.5px] text-slate-400">
-                  {formatLongDate(medicine.recordDate, "")}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </OverviewCard>
+      <Card className="xl:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm">
+        <Accordion type="single" collapsible>
+          <AccordionItem value="personal-social">
+            <AccordionTrigger>
+              <span className="flex items-center gap-2"><Activity size={14} className="text-slate-500" aria-hidden="true" />Personal &amp; Social</span>
+            </AccordionTrigger>
+            <AccordionContent>
+              <SummaryRow label="Occupation" value={formatDisplayValue(patient?.occupation, "Not recorded")} />
+              <SummaryRow label="Dietary History" value={formatDisplayValue(personalSocial.diet, "Not yet recorded")} />
+              <SummaryRow label="Smoking" value={formatDisplayValue(personalSocial.smoking, "Not yet recorded")} />
+              <SummaryRow label="Alcohol" value={formatDisplayValue(personalSocial.alcohol, "Not yet recorded")} />
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="medicines">
+            <AccordionTrigger>
+              <span className="flex items-center gap-2"><Pill size={14} className="text-slate-500" aria-hidden="true" />Recent Medicines Dispensed</span>
+            </AccordionTrigger>
+            <AccordionContent>
+              {dispensedMedicines.length === 0 ? (
+                <EmptyLine>No medicines dispensed yet.</EmptyLine>
+              ) : (
+                <ul className="space-y-2">
+                  {dispensedMedicines.map((medicine, index) => (
+                    <li key={(medicine.medicineId || medicine.name || "medicine") + "-" + index} className="flex flex-wrap items-start justify-between gap-3">
+                      <span className="min-w-0 text-sm font-medium text-slate-700">
+                        {formatDisplayValue(medicine.medicineName || medicine.name, "Medicine")}
+                        <span className="ml-1 font-normal text-slate-500">x{formatDisplayValue(medicine.quantity, "1")}</span>
+                      </span>
+                      <span className="shrink-0 text-sm text-slate-500">{formatLongDate(medicine.recordDate, "")}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      </Card>
 
       <OverviewCard
         title="Visit Summary"
@@ -442,60 +365,6 @@ export default function PatientOverviewTab({
         <SummaryRow label="Referrals" value={String(referrals.length)} />
       </OverviewCard>
 
-      <LatestMeasurementsCard record={latestBmiRecord} patient={patient} />
     </div>
-  );
-}
-
-/**
- * Weight, height and derived BMI from the most recent visit that measured
- * both. An Overview summary rather than a chart-wide fixture: the same
- * at-a-glance read as the visit counts beside it.
- */
-function LatestMeasurementsCard({ record, patient }) {
-  const bmi = record ? calculateBmi(record.weight, record.height) : null;
-  const age = Number.parseFloat(patient?.age);
-  // WHO adult cut-offs only - child BMI is read against percentile charts.
-  const category = Number.isFinite(age) && age < 18 ? "" : getBmiCategory(bmi);
-  const measuredOn = record ? formatLongDate(getRecordDateValue(record), "") : "";
-
-  return (
-    <OverviewCard
-      title="Latest Measurements"
-      icon={<Ruler size={14} className="text-[#B91C1C]" />}
-    >
-      {!record ? (
-        <EmptyLine>No weight or height measured yet.</EmptyLine>
-      ) : (
-        <>
-          <SummaryRow
-            label="Weight"
-            value={formatDisplayValue(
-              record.weight ? `${record.weight} kg` : "",
-              "Not recorded",
-            )}
-          />
-          <SummaryRow
-            label="Height"
-            value={formatDisplayValue(
-              record.height ? `${record.height} cm` : "",
-              "Not recorded",
-            )}
-          />
-          <SummaryRow
-            label="BMI"
-            value={formatDisplayValue(
-              category ? `${formatBmi(bmi)} (${category})` : formatBmi(bmi),
-              "Not recorded",
-            )}
-          />
-          {measuredOn && (
-            <p className="mt-2 text-[10.5px] text-slate-400">
-              Recorded {measuredOn}
-            </p>
-          )}
-        </>
-      )}
-    </OverviewCard>
   );
 }

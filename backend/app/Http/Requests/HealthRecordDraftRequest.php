@@ -19,7 +19,7 @@ class HealthRecordDraftRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return $this->user()?->role === User::ROLE_BHW;
+        return $this->user()?->isBhw() && \App\Services\ActionPermissions::allows($this->user(), 'consultations.encode');
     }
 
     public function rules(): array

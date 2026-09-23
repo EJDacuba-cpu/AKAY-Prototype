@@ -27,7 +27,9 @@ export default function PageStateWrapper({
         onRetry={onRetry}
         retrying={isFetching}
         variant={
-          error?.isTimeout
+          error?.status === 403
+            ? "forbidden"
+            : error?.isTimeout
             ? "timeout"
             : isConnectionError(error)
               ? "offline"

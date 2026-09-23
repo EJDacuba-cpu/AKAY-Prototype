@@ -42,6 +42,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
     Route::post('/auth/logout', [AuthController::class, 'logout'])
         ->middleware('auth.session-request');
 
+    Route::middleware('facility.assigned')->group(function () {
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::get('/notifications/counts', [NotificationController::class, 'counts']);
     Route::get('/notifications/trash', [NotificationController::class, 'trashed']);
@@ -53,9 +54,13 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
     Route::post('/notifications/{notification}/restore', [NotificationController::class, 'restore']);
     Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
 
-    Route::middleware('facility.assigned')->group(function () {
+    });
+
+    Route::middleware(['facility.assigned', 'actions.allowed'])->group(function () {
         Route::apiResource('patients', PatientController::class);
         Route::apiResource('health-records', HealthRecordController::class);
+        Route::get('health-records/{healthRecord}/corrections', [\App\Http\Controllers\Api\RecordCorrectionController::class, 'index']);
+        Route::post('health-records/{healthRecord}/corrections', [\App\Http\Controllers\Api\RecordCorrectionController::class, 'store']);
         Route::get('health-records/{healthRecord}/tb-card-pdf', [HealthRecordController::class, 'tbCardPdf']);
         Route::post('health-records/{healthRecord}/dispensed-medicines', [HealthRecordController::class, 'dispenseMedicines']);
         Route::post('/referrals/qr/resolve', [ReferralQrController::class, 'resolve'])
@@ -105,6 +110,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::middleware('role:bhw')->group(function () {
             Route::get('/health-record-drafts', [HealthRecordDraftController::class, 'index']);
             Route::get('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'show']);
+            Route::post('/health-record-drafts/{draft}/transition', [HealthRecordDraftController::class, 'transition']);
             Route::delete('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'destroy']);
             Route::post('/health-record-drafts', [HealthRecordDraftController::class, 'store'])
                 ->middleware('throttle:health-record-drafts');
@@ -112,6 +118,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
                 ->middleware('throttle:health-record-drafts');
             Route::get('/referral-routing', [ReferralController::class, 'destination']);
             Route::get('/referral-holds', [ReferralHoldController::class, 'index']);
+            Route::post('/referral-holds', [ReferralHoldController::class, 'store']);
             Route::post('/referral-holds/{referralHold}/discard', [ReferralHoldController::class, 'discard']);
             Route::get('/follow-up-tasks', [FollowUpTaskController::class, 'index']);
             // Must be registered before the {followUpTask} route below, or
@@ -126,6 +133,10 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
     });
 
     Route::middleware('role:admin')->group(function () {
+        Route::get('/staff-assignments', [\App\Http\Controllers\Api\StaffAssignmentController::class, 'index']);
+        Route::get('/staff-assignments/eligible-nurses', [\App\Http\Controllers\Api\StaffAssignmentController::class, 'eligible']);
+        Route::post('/staff-assignments', [\App\Http\Controllers\Api\StaffAssignmentController::class, 'store']);
+        Route::post('/staff-assignments/{staffAssignment}/revoke', [\App\Http\Controllers\Api\StaffAssignmentController::class, 'revoke']);
         Route::apiResource('users', UserController::class);
         Route::apiResource('barangay-health-centers', BarangayHealthCenterController::class);
         Route::apiResource('rural-health-units', RuralHealthUnitController::class);

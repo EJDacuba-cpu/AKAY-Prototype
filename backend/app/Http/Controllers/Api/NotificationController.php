@@ -93,7 +93,7 @@ class NotificationController extends Controller
 
     public function markRead(Request $request, UserNotification $notification)
     {
-        abort_unless($notification->user_id === $request->user()->id, 403);
+        abort_unless($request->user()->notifications()->whereKey($notification->id)->exists(), 403);
         $notification->update(['is_read' => true]);
 
         return response()->json(['data' => $notification->fresh()]);
@@ -107,7 +107,7 @@ class NotificationController extends Controller
      */
     public function markUnread(Request $request, UserNotification $notification)
     {
-        abort_unless($notification->user_id === $request->user()->id, 403);
+        abort_unless($request->user()->notifications()->whereKey($notification->id)->exists(), 403);
         $notification->update(['is_read' => false]);
 
         return response()->json(['data' => $notification->fresh()]);
@@ -143,7 +143,7 @@ class NotificationController extends Controller
      */
     public function trash(Request $request, UserNotification $notification)
     {
-        abort_unless($notification->user_id === $request->user()->id, 403);
+        abort_unless($request->user()->notifications()->whereKey($notification->id)->exists(), 403);
         $notification->update(['trashed_at' => now()]);
 
         return response()->json(['data' => $notification->fresh()]);
@@ -151,7 +151,7 @@ class NotificationController extends Controller
 
     public function restore(Request $request, UserNotification $notification)
     {
-        abort_unless($notification->user_id === $request->user()->id, 403);
+        abort_unless($request->user()->notifications()->whereKey($notification->id)->exists(), 403);
         $notification->update(['trashed_at' => null]);
 
         return response()->json(['data' => $notification->fresh()]);
@@ -159,7 +159,7 @@ class NotificationController extends Controller
 
     public function destroy(Request $request, UserNotification $notification)
     {
-        abort_unless($notification->user_id === $request->user()->id, 403);
+        abort_unless($request->user()->notifications()->whereKey($notification->id)->exists(), 403);
         $notification->update([
             'is_read' => true,
             'cleared_at' => now(),

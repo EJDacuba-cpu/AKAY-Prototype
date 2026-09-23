@@ -17,6 +17,7 @@ class ReferralRequest extends FormRequest
     {
         return [
             'patient_id' => ['required', 'exists:patients,id'],
+            'rural_health_unit_id' => ['nullable', 'integer', 'exists:rural_health_units,id'],
             'health_record_id' => ['nullable', 'exists:health_records,id'],
             'client_submission_id' => ['nullable', 'string', 'max:100'],
             'referral_category' => ['nullable', 'string', 'max:100'],

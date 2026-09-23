@@ -1,3 +1,4 @@
+import ReferralDestinationPicker from "../../components/features/health-records/ReferralDestinationPicker";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { buildProfileReturnState } from "../../utils/profileNavigation";
@@ -134,7 +135,7 @@ export default function CreateReferral() {
   const [offlineDraftNotice, setOfflineDraftNotice] = useState(null);
   const [retryingDraft, setRetryingDraft] = useState(false);
   const officialHealthRecordSubmissionRef = useRef(null);
-  const { availability: rhuDoctorAvailability } = useDoctorAvailability();
+  const { availability: rhuDoctorAvailability } = useDoctorAvailability({ rhuId: form.ruralHealthUnitId });
 
   useEffect(() => {
     function clearInMemorySubmissionState() {
@@ -235,6 +236,7 @@ export default function CreateReferral() {
 
     setForm((previous) => ({
       ...previous,
+      ruralHealthUnitId: resumeHold.ruralHealthUnitId || previous.ruralHealthUnitId,
       urgencyLevel: resumeHold.urgencyLevel
         ? normalizeAttention(resumeHold.urgencyLevel)
         : previous.urgencyLevel,
@@ -330,7 +332,7 @@ export default function CreateReferral() {
     return "General Consultation";
   }, [referralClassification]);
 
-  const receivingRhu = referralDestination?.receivingRuralHealthUnit || null;
+  const receivingRhu = (referralDestination?.destinations || []).find(r => String(r.id) === String(form.ruralHealthUnitId)) || (!form.ruralHealthUnitId ? referralDestination?.receivingRuralHealthUnit : null);
   const destinationReady = Boolean(receivingRhu?.id && receivingRhu?.name);
 
   // The roster arrives already scoped to this BHC's mapped receiving RHU
@@ -518,6 +520,7 @@ export default function CreateReferral() {
 
       // Receiving facility for the BHC → RHU referral.
       receivingFacility: receivingRhu.name,
+      ruralHealthUnitId: receivingRhu.id,
       referredFacility: receivingRhu.name,
       destinationFacility: receivingRhu.name,
 
@@ -1501,9 +1504,10 @@ export default function CreateReferral() {
             </div>
 
             <SectionDivider label="Receiving Facility & RHU Coordination" />
+            <ReferralDestinationPicker value={form.ruralHealthUnitId} patientId={patient?.id} recordId={record?.id} onChange={id => setForm(f => ({ ...f, ruralHealthUnitId: id, preferredRhuDoctorId: "" }))} />
             <div className="grid gap-4 pt-3 pb-1 lg:grid-cols-2">
               <ReferralDestinationStatus
-                destination={referralDestination}
+                destination={referralDestination ? { ...referralDestination, receivingRuralHealthUnit: receivingRhu } : null}
                 isLoading={destinationLoading}
                 error={destinationError}
                 onRetry={loadReferralDestination}

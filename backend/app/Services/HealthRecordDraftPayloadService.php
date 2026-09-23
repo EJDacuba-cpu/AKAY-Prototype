@@ -16,6 +16,7 @@ class HealthRecordDraftPayloadService
         // a real column for lookup. Optional, so drafts saved before it existed
         // still decrypt - sanitize() runs on READ as well as write.
         'consultationUuid' => self::SCALAR,
+        'receivingRhuId' => self::SCALAR,
         'visitPurpose' => [
             'version' => self::SCALAR,
             'services' => ['*' => self::SCALAR],

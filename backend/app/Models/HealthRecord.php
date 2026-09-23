@@ -35,6 +35,7 @@ class HealthRecord extends Model
         'treatment_notes',
         'medical_history',
         'notes',
+        'encoded_by', 'assessed_by', 'finalized_by', 'finalized_at', 'items_planned',
     ];
 
     // Internal identity, never part of a clinical response. consultation_uuid
@@ -60,6 +61,8 @@ class HealthRecord extends Model
         'family_planning_data' => 'array',
         'tb_data' => 'array',
         'needs_referral' => 'boolean',
+        'items_planned' => 'array',
+        'finalized_at' => 'datetime',
     ];
 
     public function patient(): BelongsTo

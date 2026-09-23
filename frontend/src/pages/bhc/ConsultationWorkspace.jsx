@@ -1,3 +1,4 @@
+import ReferralDestinationPicker from "../../components/features/health-records/ReferralDestinationPicker";
 import PregnancyConfirmation from "../../components/features/health-records/PregnancyConfirmation";
 import PurposeOfVisitModal from "../../components/features/health-records/PurposeOfVisitModal";
 import { purposePrograms, purposeErrors, teenagePrenatal, VISIT_SERVICES } from "../../utils/visitPurpose";
@@ -32,6 +33,7 @@ import healthRecordService, {
   getHealthRecordsByPatient,
 } from "../../services/healthRecordService";
 import {
+  transitionDraft,
   discardHealthRecordDraft,
   getHealthRecordDraft,
   listHealthRecordDrafts,
@@ -67,7 +69,6 @@ import { calculateBmi, formatBmi, getBmiCategory } from "../../utils/bmi";
 import PatientSummaryDrawer from "../../components/features/health-records/PatientSummaryDrawer";
 import UnfinishedConsultationModal from "../../components/features/health-records/UnfinishedConsultationModal";
 import {
-  CONSULTATION_PROFILE_SOURCE,
   locationToPath,
 } from "../../utils/profileNavigation";
 import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "../../utils/consultationPrograms";
@@ -957,6 +958,7 @@ export default function ConsultationWorkspace() {
 
   const currentUser = getCurrentUser();
   const userRole = currentUser?.role || "rhu";
+  const canFinalize = (currentUser?.permissions || []).includes("consultations.finalize");
   const currentUserName = formatUserName(currentUser, "");
   const currentBhcFacilityId = String(
     currentUser?.barangayHealthCenterId ||
@@ -1076,7 +1078,8 @@ export default function ConsultationWorkspace() {
   const [careDecisionStep, setCareDecisionStep] = useState(false);
   const [needsReferral, setNeedsReferral] = useState(false);
   // Same server-backed source the BHC dashboard and CreateReferral use.
-  const { availability: rhuDoctorAvailability } = useDoctorAvailability();
+  const [receivingRhuId, setReceivingRhuId] = useState("");
+  const { availability: rhuDoctorAvailability } = useDoctorAvailability({ rhuId: receivingRhuId });
   // The last referral submission, kept in a ref so the Decision A retry can
   // resubmit the exact same payload without re-deriving it from form state.
   const lastReferralAttemptRef = useRef(null);
@@ -1748,6 +1751,7 @@ export default function ConsultationWorkspace() {
   const epiNeedsNextFollowUp =
     isImmunization && !needsReferral && !epiWillComplete;
   const canSaveCurrentDraft =
+    activeDraft?.reviewState !== "review" &&
     isDraftRouteEligible &&
     !(purposeOpen && !visitPurpose) &&
     Boolean(selectedPatientId) &&
@@ -1773,6 +1777,7 @@ export default function ConsultationWorkspace() {
 
   function buildHealthRecordDraftPayload() {
     return {
+      receivingRhuId,
       // Rides in the payload so the encrypted device copy carries the same
       // identity as the server draft. Omitted rather than sent empty.
       ...(consultationUuid ? { consultationUuid } : {}),
@@ -1974,6 +1979,7 @@ export default function ConsultationWorkspace() {
 
   function restoreHealthRecordDraft(draft) {
     const payload = draft.payload || {};
+    setReceivingRhuId(payload.receivingRhuId || "");
     setVisitPurpose(payload.visitPurpose || null);
     setPurposeOpen(false);
     setSelectedPatientId(draft.patient.id);
@@ -2058,7 +2064,7 @@ export default function ConsultationWorkspace() {
     setDraftMedicineWarnings(Array.from(new Set(warnings)));
     // A recovered on-device copy may never have reached the server, in which
     // case there is no draft to update yet - autosave must create one.
-    setActiveDraft(draft.id ? { id: draft.id, version: draft.version } : null);
+    setActiveDraft(draft.id ? { id: draft.id, version: draft.version, reviewState: draft.reviewState, returnNote: draft.returnNote } : null);
     setDraftSavedAt(draft.id ? draft.lastSavedAt || "" : "");
     // Restored content matches whatever it was restored from. Recovering an
     // on-device copy sets this back to true right after, because that copy IS
@@ -2066,13 +2072,13 @@ export default function ConsultationWorkspace() {
     setPendingLocalSync(false);
     // Back to the exact screen the user left on - see resolveRestoredPosition.
     const restored = resolveRestoredPosition(payload);
-    setWizardPhase(WIZARD_PHASE_FOR_STEP[restored.phase]);
-    setFormStep(restored.formStep);
+    setWizardPhase(draft.reviewState === "review" ? WIZARD_REVIEW : WIZARD_PHASE_FOR_STEP[restored.phase]);
+    setFormStep(draft.reviewState === "review" ? REVIEW_STEP : restored.formStep);
     setValidationErrors({});
   }
 
   const handleDraftAutosaved = useCallback((saved) => {
-    setActiveDraft({ id: saved.id, version: saved.version });
+    setActiveDraft({ id: saved.id, version: saved.version, reviewState: saved.reviewState });
     setDraftSavedAt(saved.lastSavedAt || "");
     // The server has it, so the recovered copy is no longer ahead of it.
     setPendingLocalSync(false);
@@ -2385,7 +2391,6 @@ export default function ConsultationWorkspace() {
   // work. Trips to this page's own path (Back from Patient Profile) and View
   // Full Profile itself are exempt: the consultation stays mounted for those.
   const pageLocation = useLocation();
-  const ownPath = locationToPath(pageLocation);
   const bypassLeaveGuardRef = useRef(false);
   const leaveBlocker = useBlocker(
     ({ nextLocation }) =>
@@ -3041,6 +3046,13 @@ export default function ConsultationWorkspace() {
       throw new Error("The latest changes have not synced. Keep this consultation open and retry synchronization before completing it.");
     }
     const finalDraftId = getDraftIdentity()?.id || activeDraft?.id;
+    let finalDraftVersion = activeDraft?.reviewState === "review" ? activeDraft.version : getDraftIdentity()?.version;
+    if (finalDraftId && activeDraft?.reviewState !== "review") {
+      const submitted = await transitionDraft(finalDraftId, "submit", finalDraftVersion);
+      const claimed = await transitionDraft(finalDraftId, "claim", submitted.version);
+      finalDraftVersion = claimed.version;
+      setActiveDraft({ id: finalDraftId, version: claimed.version, reviewState: "review" });
+    }
     const savedRecord = isEditingRecord
       ? await healthRecordService.updateHealthRecordById(
           recordId,
@@ -3063,11 +3075,13 @@ export default function ConsultationWorkspace() {
             {
               idempotencyKey: submission?.idempotencyKey,
               draftId: finalDraftId,
+            draftVersion: finalDraftVersion,
             },
           )
         : await healthRecordService.createHealthRecord(formData, "bhc", {
             idempotencyKey: submission?.idempotencyKey,
             draftId: finalDraftId,
+            draftVersion: finalDraftVersion,
             // The SAME identity the consultation has carried since entry -
             // never minted here. Retries keep it; only idempotencyKey is
             // per-attempt.
@@ -3839,6 +3853,7 @@ export default function ConsultationWorkspace() {
     const officialPayload = {
       ...attempt.formData,
       referral: {
+        ruralHealthUnitId: receivingRhuId,
         referralCategory: attempt.formData.category,
         urgencyLevel: referralUrgency,
         reasonForReferral: referral.reasonForReferral,
@@ -4627,7 +4642,9 @@ export default function ConsultationWorkspace() {
   return (
     <DashboardLayout role={userRole} title={pageTitle}>
       <style>{keyframes}</style>
-      {selectedPatientId && <>
+      {needsReferral && <ReferralDestinationPicker value={receivingRhuId} onChange={id => { setReceivingRhuId(id); setReferralForm(f => ({ ...f, preferredRhuDoctorId: "" })); }} patientId={selectedPatientId} />}
+      {activeDraft?.returnNote && <div role="status" className="mb-4 rounded-lg bg-amber-50 p-4 text-sm">Return for Correction: {activeDraft.returnNote}</div>}
+      {selectedPatientId && (currentUser?.permissions || []).includes("clinical.history") && <>
         {/* Outside the consultation workspace (follow-up visits) this is still
             the way into the summary; inside it, the snapshot panel owns that. */}
         {!inConsultationWorkspace && (
@@ -4709,7 +4726,17 @@ export default function ConsultationWorkspace() {
           visitTime={wizardVisitTime}
           sections={reviewSections.filter(section => generalSelected || section.key !== ASSESSMENT_STEP)}
           errors={reviewErrorMessages}
-          onEditStep={goToStepKey}
+          onEditStep={async key => {
+            if (activeDraft?.reviewState === "review") {
+              const note = window.prompt("Required reason for returning this consultation for correction:");
+              if (!note?.trim()) return;
+              try {
+                const returned = await transitionDraft(activeDraft.id, "return", activeDraft.version, note);
+                setActiveDraft({ id: returned.id, version: returned.version, reviewState: "encoding" });
+              } catch (e) { toast.error(e.message); return; }
+            }
+            goToStepKey(key);
+          }}
           indicator={stepIndicator}
         />
       ) : (
@@ -6026,7 +6053,7 @@ export default function ConsultationWorkspace() {
           // Review, where Save Consultation is the one action that commits.
           secondaryAction={autosaveStatus}
           onContinue={handleWorkspaceContinue}
-          continueLabel={isReviewStep ? "Save Consultation" : "Next"}
+          continueLabel={isReviewStep ? (canFinalize ? "Finalize Consultation" : "Submit for Review") : "Next"}
           continueBusy={isReviewStep ? saving : false}
           continueBusyLabel={isReviewStep ? "Saving..." : "Loading..."}
         />

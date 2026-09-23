@@ -71,7 +71,11 @@ class PatientController extends Controller
             }
         }
 
-        return response()->json(['data' => $query->latest()->paginate($request->integer('per_page', 25))]);
+        $results = $query->latest()->paginate($request->integer('per_page', 25));
+        if (! $user->isAdmin() && ! \App\Services\ActionPermissions::allows($user, 'clinical.history')) {
+            $results->through(fn (Patient $patient) => \App\Services\PatientIdentity::response($patient));
+        }
+        return response()->json(['data' => $results]);
     }
 
     public function store(PatientRequest $request, AuditLogger $auditLogger)
@@ -102,6 +106,10 @@ class PatientController extends Controller
     public function show(Request $request, Patient $patient)
     {
         $this->facilityAccess->authorizePatient($request->user(), $patient);
+
+        if (! $request->user()->isAdmin() && ! \App\Services\ActionPermissions::allows($request->user(), 'clinical.history')) {
+            return response()->json(['data' => \App\Services\PatientIdentity::response($patient)]);
+        }
 
         if (StoredFunction::available() && $request->user()->isAdmin()) {
             $data = StoredFunction::selectJson(
@@ -143,6 +151,9 @@ class PatientController extends Controller
     {
         $this->facilityAccess->authorizePatientModification($request->user(), $patient);
         $data = $this->normalizeProfileFields($request->validated(), $patient);
+        if (! $request->user()->isAdmin() && ! \App\Services\ActionPermissions::allows($request->user(), 'clinical.history')) {
+            $data = array_intersect_key($data, array_flip(\App\Services\PatientIdentity::FIELDS));
+        }
         if (! $request->user()->isAdmin()) {
             unset(
                 $data['barangay_health_center_id'],
@@ -154,7 +165,9 @@ class PatientController extends Controller
         $patient->update($data);
         $auditLogger->log($request, 'updated', 'patients', "Updated patient {$patient->full_name}.");
 
-        return response()->json(['data' => $patient->fresh()->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother'])]);
+        return response()->json(['data' => ! $request->user()->isAdmin() && ! \App\Services\ActionPermissions::allows($request->user(), 'clinical.history')
+            ? \App\Services\PatientIdentity::response($patient->fresh())
+            : $patient->fresh()->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother'])]);
     }
 
     public function destroy(Request $request, Patient $patient, AuditLogger $auditLogger)

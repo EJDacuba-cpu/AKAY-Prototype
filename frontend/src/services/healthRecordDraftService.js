@@ -2,6 +2,9 @@ import { apiRequest, unwrapData, unwrapList } from "./apiClient";
 
 function normalizeDraft(draft = {}) {
   return {
+    reviewState: draft.review_state || "encoding",
+    editor: draft.editor || null,
+    returnNote: draft.return_note || "",
     id: String(draft.id || ""),
     // Identity of the CONSULTATION (not the draft). Null for drafts created
     // before it existed; those fall back to id/patient matching.
@@ -60,6 +63,13 @@ export async function createHealthRecordDraft({
 
 export async function getHealthRecordDraft(draftId) {
   const response = await apiRequest(`/health-record-drafts/${draftId}`);
+  const draft = normalizeDraft(unwrapData(response));
+  const claimed = await transitionDraft(draftId, "claim", draft.version);
+  return { ...draft, ...claimed, payload: draft.payload, medicineSelections: draft.medicineSelections };
+}
+
+export async function transitionDraft(draftId, action, version, note) {
+  const response = await apiRequest(`/health-record-drafts/${draftId}/transition`, { method: "POST", body: { action, version, note } });
   return normalizeDraft(unwrapData(response));
 }
 

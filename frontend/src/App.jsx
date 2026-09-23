@@ -16,6 +16,8 @@ import {
   useParams,
 } from "react-router";
 import Login from "./pages/Login";
+import Facilities from "./pages/admin/Facilities";
+import StaffAssignments from "./pages/admin/StaffAssignments";
 import ResetPassword from "./pages/ResetPassword";
 import {
   clearStoredAuthSession,
@@ -432,6 +434,8 @@ export default function App() {
         hidden={Boolean(consultationBackground)}
       >
       <Routes location={consultationBackground || location}>
+      <Route path="/admin/facilities" element={<ProtectedPage allowedRole="admin"><Facilities /></ProtectedPage>} />
+      <Route path="/admin/staff-assignments" element={<ProtectedPage allowedRole="admin"><StaffAssignments /></ProtectedPage>} />
       <Route path="/login" element={<Login />} />
       <Route path="/reset-password" element={<ResetPassword />} />
 

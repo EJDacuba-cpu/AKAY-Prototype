@@ -13,19 +13,19 @@ export default function MobileSidebarDrawer({
 }) {
   return (
     <aside
-      className={`fixed left-0 top-0 z-50 flex h-dvh max-h-dvh w-[min(88vw,320px)] flex-col overflow-hidden border-r border-[#E5E7EB] bg-white shadow-2xl shadow-black/15 transition-transform duration-300 ease-in-out md:hidden ${
+      className={`font-sans antialiased fixed left-0 top-0 z-50 flex h-dvh max-h-dvh w-[min(88vw,320px)] flex-col overflow-hidden border-r border-slate-200 bg-white shadow-2xl shadow-black/15 transition-transform duration-300 ease-in-out md:hidden ${
         open ? "translate-x-0" : "-translate-x-full"
       }`}
     >
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#991B1B] bg-[#B91C1C] px-4">
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
         <div className="flex min-w-0 items-center gap-2.5">
           <LogoMark />
 
           <div className="min-w-0">
-            <p className="text-sm font-bold tracking-tight text-white">
+            <p className="text-sm font-semibold tracking-tight text-[#B91C1C]">
               AKAY
             </p>
-           <p className="text-[8px] uppercase tracking-[0.16em] text-red-100">
+           <p className="text-[8px] uppercase tracking-[0.16em] text-slate-500">
               Health Coordination
             </p>
           </div>
@@ -34,7 +34,7 @@ export default function MobileSidebarDrawer({
         <button
           type="button"
           onClick={onClose}
-          className="flex h-10 w-10 items-center justify-center rounded-xl text-red-100 transition hover:bg-white/10 hover:text-white"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
           aria-label="Close sidebar"
         >
           <X size={17} />

@@ -269,6 +269,7 @@ class HealthRecordRequest extends FormRequest
             'referral' => ['nullable', 'array'],
             'referral.referral_category' => ['nullable', 'string', 'max:100'],
             'referral.urgency_level' => ['required_with:referral', Rule::in(Referral::ATTENTION_LEVELS)],
+            'referral.rural_health_unit_id' => ['nullable', 'integer', 'exists:rural_health_units,id'],
             'referral.reason_for_referral' => ['required_with:referral', 'string'],
             'referral.chief_complaint' => ['nullable', 'string'],
             'referral.initial_diagnosis' => ['nullable', 'string'],

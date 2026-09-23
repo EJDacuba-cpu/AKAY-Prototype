@@ -107,6 +107,13 @@ class HealthRecordDraftController extends Controller
         return response()->json(status: 204);
     }
 
+    public function transition(Request $request, string $draft)
+    {
+        $data = $request->validate(['action' => ['required', 'in:claim,takeover,submit,return'], 'version' => ['required', 'integer', 'min:1'], 'note' => ['nullable', 'string', 'max:2000']]);
+        $record = $this->drafts->transition($request->user(), $draft, $data['action'], $data['version'], $data['note'] ?? null);
+        return response()->json(['data' => $this->drafts->metadata($record)]);
+    }
+
     private function audit(
         AuditLogger $auditLogger,
         Request $request,

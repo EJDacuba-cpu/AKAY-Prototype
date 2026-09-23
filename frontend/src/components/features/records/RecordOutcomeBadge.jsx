@@ -27,12 +27,12 @@ export default function RecordOutcomeBadge({ record, align = "start" }) {
       className={`inline-flex flex-col ${align === "end" ? "items-end" : "items-start"}`}
     >
       <span
-        className={`inline-flex rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${getRecordOutcomeStyle(outcome)}`}
+        className={`inline-flex rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide in-[.bhc-patient-profile]:rounded-full in-[.bhc-patient-profile]:px-3 ${getRecordOutcomeStyle(outcome)}`}
       >
         {outcome}
       </span>
       {subLabel && (
-        <span className="mt-1 text-[10px] font-semibold text-[#94A3B8]">
+        <span className="mt-1 text-[10px] font-semibold text-[#94A3B8] in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:text-slate-500">
           {subLabel}
         </span>
       )}

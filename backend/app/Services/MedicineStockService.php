@@ -165,6 +165,7 @@ class MedicineStockService
 
     public function dispense(Request $request, HealthRecord $record, array $requestedItems): void
     {
+        ActionPermissions::ensure($request->user(), 'items.dispense');
         if ($requestedItems === []) {
             return;
         }

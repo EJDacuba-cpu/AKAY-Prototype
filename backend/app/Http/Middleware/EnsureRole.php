@@ -12,7 +12,7 @@ class EnsureRole
     {
         $user = $request->user();
 
-        if (! $user || ! in_array($user->role, $roles, true)) {
+        if (! $user || ! in_array($user->isAdmin() ? $user->role : $user->workflowRole(), $roles, true)) {
             return response()->json([
                 'message' => 'This action is not allowed for your role.',
                 'code' => 'AUTHORIZATION_DENIED',

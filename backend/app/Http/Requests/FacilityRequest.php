@@ -24,10 +24,13 @@ class FacilityRequest extends FormRequest
 
         if ($this->routeIs('barangay-health-centers.*')) {
             $rules['rural_health_unit_id'] = [
-                'nullable',
+                $this->isMethod('post') ? 'required' : 'sometimes',
+                'required',
                 Rule::exists('rural_health_units', 'id')
                     ->where(fn ($query) => $query->where('status', 'active')),
             ];
+            $rules['alternative_rhu_ids'] = ['sometimes', 'array'];
+            $rules['alternative_rhu_ids.*'] = ['integer', 'distinct', Rule::exists('rural_health_units', 'id')->where('status', 'active')];
         }
 
         return $rules;

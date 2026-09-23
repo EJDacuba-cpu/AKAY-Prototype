@@ -96,7 +96,7 @@ class UserSessionRevocationService
                     User::ROLE_BHW,
                     User::ROLE_RHU_STAFF,
                 ], true)
-                || ! $facilityAccess->hasValidFacilityAssignment($user)) {
+                || (! $user->isAdmin() && app(WorkingFacilityService::class)->available($user) === [])) {
                 if ($user instanceof User) {
                     $this->revokeAllTokens($user, 'persistent-session-context-invalid');
                 }

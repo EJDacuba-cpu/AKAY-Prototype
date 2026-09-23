@@ -46,12 +46,12 @@ export default function DesktopSidebar({
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-50 hidden h-dvh max-h-dvh flex-col overflow-visible border-r border-[#E5E7EB] bg-white shadow-[0_18px_50px_-42px_rgba(15,23,42,0.35)] transition-[width] duration-300 ease-in-out md:flex ${
+      className={`font-sans antialiased fixed left-0 top-0 z-50 hidden h-dvh max-h-dvh flex-col overflow-visible border-r border-slate-200 bg-white shadow-[0_18px_50px_-42px_rgba(15,23,42,0.35)] transition-[width] duration-300 ease-in-out md:flex ${
         expanded ? "w-60" : "w-[72px]"
       }`}
     >
       <div
-        className={`flex h-[72px] shrink-0 items-center border-b border-[#F1F5F9] bg-white transition-all duration-300 ease-in-out ${
+        className={`flex h-[72px] shrink-0 items-center border-b border-slate-100 bg-white transition-all duration-300 ease-in-out ${
           expanded ? "px-4" : "justify-center px-0"
         }`}
       >
@@ -68,10 +68,10 @@ export default function DesktopSidebar({
               : "ml-0 max-w-0 opacity-0"
           }`}
         >
-          <p className="text-[15px] font-black tracking-tight text-[#B91C1C]">
+          <p className="text-[15px] font-semibold tracking-tight text-[#B91C1C]">
             AKAY
           </p>
-          <p className="mt-0.5 whitespace-nowrap text-[8px] font-semibold uppercase tracking-[0.16em] text-[#94A3B8]">
+          <p className="mt-0.5 whitespace-nowrap text-[8px] font-semibold uppercase tracking-[0.16em] text-slate-500">
             Community EHR System
           </p>
         </div>
@@ -81,7 +81,7 @@ export default function DesktopSidebar({
         {menuSections.map((section) => (
           <div key={section.section} className="mb-5">
             <p
-              className={`mb-2 overflow-hidden whitespace-nowrap px-2 text-[9px] font-bold uppercase tracking-[0.18em] text-[#A7B0BE] transition-all duration-300 ease-in-out ${
+              className={`mb-2 overflow-hidden whitespace-nowrap px-2 text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500 transition-all duration-300 ease-in-out ${
                 expanded ? "max-h-6 opacity-100" : "max-h-0 opacity-0"
               }`}
             >
@@ -114,18 +114,18 @@ export default function DesktopSidebar({
                         onMouseLeave={hideCollapsedLabel}
                         onFocus={(event) => showCollapsedLabel(event, item.label)}
                         onBlur={hideCollapsedLabel}
-                        className={`group relative flex h-10 w-full items-center rounded-xl transition-all duration-200 ${
+                        className={`group relative flex h-10 w-full items-center rounded-lg hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 transition-colors duration-200 ${
                           expanded ? "px-3" : "justify-center px-0"
                         } ${
                           active
-                            ? "text-[#B91C1C]"
-                            : `text-[#64748B] hover:text-[#B91C1C] ${
-                                expanded ? "hover:bg-[#F8FAFC]" : ""
+                            ? "bg-slate-100 text-slate-900"
+                            : `text-slate-500 hover:text-slate-900 ${
+                                expanded ? "hover:bg-slate-50" : ""
                               }`
                         }`}
                       >
                         {active && (
-                          <span className="absolute left-0 top-2.5 h-5 w-0.5 rounded-r-full bg-[#B91C1C]" />
+                          <span className="absolute left-0 top-2.5 h-5 w-0.5 rounded-r-full bg-slate-300" />
                         )}
 
                         <Icon
@@ -135,7 +135,7 @@ export default function DesktopSidebar({
                         />
 
                         <span
-                          className={`ml-3 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-left text-[13px] font-semibold transition-all duration-300 ease-in-out ${
+                          className={`ml-3 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-left text-[13px] font-medium transition-all duration-300 ease-in-out ${
                             expanded
                               ? "max-w-[126px] opacity-100 delay-75"
                               : "max-w-0 opacity-0"
@@ -165,10 +165,10 @@ export default function DesktopSidebar({
                               <Link
                                 key={child.path}
                                 to={child.path}
-                                className={`block rounded-lg px-3 py-2 text-[11px] font-semibold transition ${
+                                className={`block rounded-lg px-3 py-2 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 transition ${
                                   childActive
-                                    ? "bg-red-50 text-[#B91C1C]"
-                                    : "text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
+                                    ? "bg-slate-100 text-slate-900"
+                                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                                 }`}
                               >
                                 {child.label}
@@ -192,18 +192,18 @@ export default function DesktopSidebar({
                     onMouseLeave={hideCollapsedLabel}
                     onFocus={(event) => showCollapsedLabel(event, item.label)}
                     onBlur={hideCollapsedLabel}
-                    className={`group relative flex h-10 w-full items-center rounded-xl transition-all duration-200 ${
+                    className={`group relative flex h-10 w-full items-center rounded-lg hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 transition-colors duration-200 ${
                       expanded ? "px-3" : "justify-center px-0"
                     } ${
                       active
-                        ? "text-[#B91C1C]"
-                        : `text-[#64748B] hover:text-[#B91C1C] ${
-                            expanded ? "hover:bg-[#F8FAFC]" : ""
+                        ? "bg-slate-100 text-slate-900"
+                        : `text-slate-500 hover:text-slate-900 ${
+                            expanded ? "hover:bg-slate-50" : ""
                           }`
                     }`}
                   >
                     {active && (
-                      <span className="absolute left-0 top-2.5 h-5 w-0.5 rounded-r-full bg-[#B91C1C]" />
+                      <span className="absolute left-0 top-2.5 h-5 w-0.5 rounded-r-full bg-slate-300" />
                     )}
 
                     <Icon
@@ -213,7 +213,7 @@ export default function DesktopSidebar({
                     />
 
                     <span
-                      className={`ml-3 overflow-hidden whitespace-nowrap text-[13px] font-semibold transition-all duration-300 ease-in-out ${
+                      className={`ml-3 overflow-hidden whitespace-nowrap text-[13px] font-medium transition-all duration-300 ease-in-out ${
                         expanded
                           ? "max-w-[150px] opacity-100 delay-75"
                           : "max-w-0 opacity-0"
@@ -229,17 +229,17 @@ export default function DesktopSidebar({
         ))}
       </nav>
 
-      <div className="shrink-0 border-t border-[#F1F5F9] p-2.5">
+      <div className="shrink-0 border-t border-slate-100 p-2.5">
         {expanded && (
-          <div className="mb-2 overflow-hidden rounded-xl bg-[#F8FAFC] px-2.5 py-2 ring-1 ring-[#E5E7EB] transition-all duration-300 ease-in-out">
+          <div className="mb-2 overflow-hidden rounded-lg bg-slate-50 px-2.5 py-2 ring-1 ring-slate-200 transition-all duration-300 ease-in-out">
             <div className="min-w-0">
-              <p className="truncate text-[12px] font-bold text-[#0F172A]">
+              <p className="truncate text-[12px] font-semibold text-slate-900">
                 {user.name}
               </p>
-              <p className="mt-0.5 truncate text-[10px] font-medium text-[#64748B]">
+              <p className="mt-0.5 truncate text-[10px] font-medium text-slate-500">
                 {user.facility}
               </p>
-              <p className="truncate text-[10px] font-medium text-[#94A3B8]">
+              <p className="truncate text-[10px] font-medium text-slate-500">
                 {user.roleLabel || user.position}
               </p>
             </div>
@@ -254,7 +254,7 @@ export default function DesktopSidebar({
           onMouseLeave={hideCollapsedLabel}
           onFocus={(event) => showCollapsedLabel(event, "Sign out")}
           onBlur={hideCollapsedLabel}
-          className={`flex h-9 w-full items-center rounded-xl text-[#B91C1C] transition hover:bg-[#FEF2F2] ${
+          className={`flex h-9 w-full items-center rounded-lg text-[#B91C1C] transition hover:bg-[#FEF2F2] ${
             expanded ? "gap-2 px-3" : "justify-center px-0"
           }`}
         >
@@ -278,8 +278,8 @@ export default function DesktopSidebar({
           style={{ top: hoverLabel.top }}
           role="tooltip"
         >
-          <span className="h-2.5 w-2.5 rotate-45 rounded-[2px] border-b border-l border-[#E5E7EB] bg-white shadow-sm" />
-          <span className="-ml-1 whitespace-nowrap rounded-lg border border-[#E5E7EB] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#0F172A] shadow-xl shadow-slate-900/10">
+          <span className="h-2.5 w-2.5 rotate-45 rounded-[2px] border-b border-l border-slate-200 bg-white shadow-sm" />
+          <span className="-ml-1 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-900 shadow-xl shadow-slate-900/10">
             {hoverLabel.label}
           </span>
         </div>

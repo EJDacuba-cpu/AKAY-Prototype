@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Bell, Menu } from "lucide-react";
+import WorkingFacility from "./WorkingFacility";
+import { navigationAllowed } from "../../utils/dashboardAccess";
 import { useLocation, useNavigate } from "react-router";
 import { getCurrentUser, logoutUser } from "../../utils/auth";
 import {
@@ -68,7 +70,9 @@ export default function DashboardLayout({
   const { shouldShowRouteLoading } = useAkayLoadingLifecycle();
   const routeKey = location.pathname;
 
-  const menuSections = menuByRole[role] || [];
+  const menuSections = (menuByRole[role] || []).map(section => ({ ...section,
+    items: section.items.filter(item => navigationAllowed(getCurrentUser(), item.path)),
+  })).filter(section => section.items.length);
   const user = getCurrentUser() || {
     name: "AKAY User",
     position: "Personnel",
@@ -319,14 +323,14 @@ export default function DashboardLayout({
           hideSidebar ? "" : sidebarExpanded ? "md:ml-60" : "md:ml-[72px]"
         }`}
       >
-<header className="no-print relative z-30 shrink-0 border-b border-[#E5E7EB] bg-white/95 backdrop-blur-xl">
+<header className="no-print relative z-30 shrink-0 border-b border-slate-200 bg-white/95 font-sans antialiased backdrop-blur-xl">
   <div className="flex h-14 items-center justify-between px-3.5 sm:h-[62px] sm:px-5">
 <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
   {!hideSidebar && (
     <button
       type="button"
       onClick={() => setMobileDrawerOpen(true)}
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white text-[#B91C1C] shadow-sm transition hover:bg-[#FEF2F2] md:hidden"
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 md:hidden"
       aria-label="Open sidebar"
     >
       <Menu size={17} />
@@ -336,18 +340,19 @@ export default function DashboardLayout({
   <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
     <span className="h-5 w-1 shrink-0 rounded-full bg-[#B91C1C] sm:h-6" />
 
-    <h2 className="truncate text-sm font-black tracking-tight text-[#0F172A] sm:text-base">
+    <h2 className="truncate font-sans! text-sm font-semibold tracking-tight text-slate-900 sm:text-base">
       {title}
     </h2>
   </div>
 </div>
 
             <div className="flex items-center gap-2">
+              <WorkingFacility />
               <div className="relative z-[100]">
                 <button
                   type="button"
                   onClick={() => setIsNotifOpen((prev) => !prev)}
-                  className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white text-[#64748B] shadow-sm transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] sm:h-9 sm:w-9 sm:rounded-lg"
+                  className="relative flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 sm:h-9 sm:w-9 sm:rounded-lg"
                   aria-label="Notifications"
                 >
                   <Bell size={15} />

@@ -18,11 +18,12 @@ import { queryKeys } from "../utils/queryKeys";
 const AVAILABILITY_STALE_TIME = 30_000;
 
 export function useDoctorAvailability(options = {}) {
+  const { rhuId, ...queryOptions } = options;
   const query = useQuery({
-    queryKey: queryKeys.providerAvailability(),
-    queryFn: getDoctorAvailability,
+    queryKey: [...queryKeys.providerAvailability(), rhuId || "default"],
+    queryFn: () => getDoctorAvailability(rhuId),
     staleTime: AVAILABILITY_STALE_TIME,
-    ...options,
+    ...queryOptions,
   });
 
   return { ...query, availability: query.data || EMPTY_AVAILABILITY };

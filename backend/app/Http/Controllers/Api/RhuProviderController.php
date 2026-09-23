@@ -44,6 +44,12 @@ class RhuProviderController extends Controller
      */
     public function availability(Request $request)
     {
+        if ($request->user()->isBhw() && $request->filled('rural_health_unit_id')) {
+            $validated = $request->validate(['rural_health_unit_id' => ['required', 'integer']]);
+            $route = app(\App\Services\ReferralRoutingService::class)->resolveForBhw($request->user(), (int) $validated['rural_health_unit_id']);
+            $providers = RhuProvider::where('rural_health_unit_id', $route['rhu']->id)->active()->get();
+            return response()->json(['data' => $this->availability->summarize($providers, (int) $route['rhu']->id)]);
+        }
         $ruralHealthUnitId = $this->facilityAccess
             ->resolveVisibleRuralHealthUnitId($request->user());
 

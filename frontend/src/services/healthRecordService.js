@@ -1043,6 +1043,7 @@ function toPayload(record = {}, { partial = false } = {}) {
       : [],
     referral: record.referral
       ? {
+          rural_health_unit_id: record.referral.ruralHealthUnitId || record.referral.rural_health_unit_id || null,
           referral_category:
             record.referral.referralCategory ||
             record.referral.referral_category ||
@@ -1301,7 +1302,7 @@ export async function createHealthRecord(recordData, role = "bhc", options = {})
     method: "POST",
     headers: {
       "Idempotency-Key": idempotencyKey,
-      ...(draftId ? { "X-Health-Record-Draft-ID": draftId } : {}),
+      ...(draftId ? { "X-Health-Record-Draft-ID": draftId, "X-Draft-Version": String(options.draftVersion || "") } : {}),
     },
     body: {
       ...toPayload(recordData, { partial: true }),

@@ -15,7 +15,7 @@ class UserController extends Controller
 {
     public function index(Request $request)
     {
-        $query = User::query()->with(['barangayHealthCenter', 'ruralHealthUnit', 'creator']);
+        $query = User::query()->with(['barangayHealthCenter', 'ruralHealthUnit', 'creator', 'facilityAssignments.barangayHealthCenter']);
 
         if ($search = $request->query('search')) {
             $query->where(fn ($q) => $q
@@ -40,6 +40,7 @@ class UserController extends Controller
         $data['created_by'] = $request->user()->id;
         $data['status'] ??= User::STATUS_ACTIVE;
 
+        unset($data['facility_assignments'], $data['permissions_confirmed']);
         $user = User::create($data);
 
         $notifications->notifyUser($user, 'Account created', 'Your AKAY account has been created.', 'account_created');
@@ -50,7 +51,7 @@ class UserController extends Controller
 
     public function show(User $user)
     {
-        return response()->json(['data' => $user->load(['barangayHealthCenter', 'ruralHealthUnit', 'creator'])]);
+        return response()->json(['data' => $user->load(['barangayHealthCenter', 'ruralHealthUnit', 'creator', 'facilityAssignments.barangayHealthCenter'])]);
     }
 
     public function update(
@@ -65,7 +66,9 @@ class UserController extends Controller
             unset($data['password']);
         }
 
-        $securityContextChanged = array_key_exists('password', $data);
+        unset($data['permissions_confirmed']);
+        unset($data['facility_assignments']);
+        $securityContextChanged = array_key_exists('password', $data) || array_key_exists('permissions', $data) || array_key_exists('professional_designation', $data);
         foreach (['role', 'status', 'barangay_health_center_id', 'rural_health_unit_id'] as $field) {
             if (array_key_exists($field, $data)
                 && (string) $user->{$field} !== (string) $data[$field]) {
@@ -96,7 +99,7 @@ class UserController extends Controller
             $auditLogger->log($request, 'updated', 'users', "Updated user {$user->email}.");
         });
 
-        return response()->json(['data' => $user->fresh()->load(['barangayHealthCenter', 'ruralHealthUnit'])]);
+        return response()->json(['data' => $user->fresh()->load(['barangayHealthCenter', 'ruralHealthUnit', 'facilityAssignments.barangayHealthCenter'])]);
     }
 
     public function destroy(

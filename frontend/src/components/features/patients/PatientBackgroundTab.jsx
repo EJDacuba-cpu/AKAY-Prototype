@@ -85,7 +85,7 @@ function readValue(background, field) {
 function Row({ label, children, compact }) {
   return (
     <div className={`flex flex-col gap-1 border-b border-slate-100 px-4 py-3 last:border-b-0 ${compact ? "" : "sm:flex-row sm:items-center sm:gap-4"}`}>
-      <span className={`w-full shrink-0 text-[10.5px] font-bold uppercase tracking-wider text-slate-400 ${compact ? "" : "sm:w-48"}`}>
+      <span className={`w-full shrink-0 text-[10.5px] font-bold uppercase tracking-wider text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r in-[.bhc-patient-profile]:text-slate-500 ${compact ? "" : "sm:w-48"}`}>
         {label}
       </span>
       <div className={`min-w-0 flex-1 ${compact ? "" : "sm:text-right"}`}>{children}</div>
@@ -116,26 +116,26 @@ function TextInput({ value, onChange, placeholder }) {
 function BackgroundUpdateLog({ config, lastUpdated }) {
   return (
     <section className="mt-5">
-      <h3 className="text-[13px] font-bold text-[#0F172A]">
+      <h3 className="text-[13px] font-bold text-[#0F172A] in-[.bhc-patient-profile]:font-semibold in-[.bhc-patient-profile]:text-slate-900 in-[.bhc-patient-profile]:font-sans!">
         {config.label} Records
       </h3>
-      <p className="mt-0.5 text-[11px] text-slate-500">
+      <p className="mt-0.5 text-[11px] text-slate-500 in-[.bhc-patient-profile]:text-sm">
         A dated log of changes to this patient&apos;s medical background over
         time.
       </p>
 
-      <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white in-[.bhc-patient-profile]:rounded-2xl in-[.bhc-patient-profile]:border-slate-100 in-[.bhc-patient-profile]:shadow-sm">
         {lastUpdated ? (
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-            <span className="text-[12.5px] font-semibold text-[#0F172A]">
+            <span className="text-[12.5px] font-semibold text-[#0F172A] in-[.bhc-patient-profile]:text-slate-900">
               {config.label} updated
             </span>
-            <span className="text-[11px] font-semibold text-slate-500">
+            <span className="text-[11px] font-semibold text-slate-500 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal">
               {formatLongDate(lastUpdated, "")}
             </span>
           </div>
         ) : (
-          <p className="px-4 py-6 text-center text-[12px] text-slate-400">
+          <p className="px-4 py-6 text-center text-[12px] text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:text-slate-500">
             No recorded updates yet.
           </p>
         )}
@@ -272,16 +272,16 @@ export default function PatientBackgroundTab({
 
   return (
     <div>
-      <div className="overflow-hidden rounded-xl border border-slate-200">
+      <div className="overflow-hidden rounded-xl border border-slate-200 in-[.bhc-patient-profile]:rounded-2xl in-[.bhc-patient-profile]:border-slate-100 in-[.bhc-patient-profile]:bg-white in-[.bhc-patient-profile]:shadow-sm">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
           <div>
-            <h3 className="text-[13px] font-bold text-[#0F172A]">
+            <h3 className="text-[13px] font-bold text-[#0F172A] in-[.bhc-patient-profile]:font-semibold in-[.bhc-patient-profile]:text-slate-900 in-[.bhc-patient-profile]:font-sans!">
               {config.title}
             </h3>
-            <p className="mt-0.5 text-[11px] text-slate-500">
+            <p className="mt-0.5 text-[11px] text-slate-500 in-[.bhc-patient-profile]:text-sm">
               {config.subtitle}
             </p>
-            <p className="mt-1 text-[10.5px] font-semibold text-slate-400">
+            <p className="mt-1 text-[10.5px] font-semibold text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:text-slate-500">
               {lastUpdated
                 ? `Last updated ${formatLongDate(lastUpdated, "")}`
                 : "Not yet recorded"}
@@ -328,14 +328,14 @@ export default function PatientBackgroundTab({
                     diseases.map((disease, index) => (
                       <span
                         key={`${disease.name}-${index}`}
-                        className="rounded-full bg-red-50 px-2.5 py-1 text-[11.5px] font-semibold text-[#B91C1C]"
+                        className="rounded-full bg-red-50 px-2.5 py-1 text-[11.5px] font-semibold text-[#B91C1C] in-[.bhc-patient-profile]:px-3"
                       >
                         {disease.name}
                         {disease.status ? ` · ${disease.status}` : ""}
                       </span>
                     ))
                   ) : (
-                    <span className="text-[12.5px] text-slate-400">
+                    <span className="text-[12.5px] text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:text-slate-500">
                       Not yet recorded
                     </span>
                   )}
@@ -345,23 +345,23 @@ export default function PatientBackgroundTab({
                   {diseases.map((disease, index) => (
                     <div
                       key={`${disease.name}-${index}`}
-                      className="rounded-lg border border-slate-200 p-3 text-left"
+                      className="rounded-lg border border-slate-200 p-3 text-left in-[.bhc-patient-profile]:rounded-2xl in-[.bhc-patient-profile]:border-slate-100 in-[.bhc-patient-profile]:bg-white in-[.bhc-patient-profile]:shadow-sm"
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-[12.5px] font-bold text-[#0F172A]">
+                        <span className="text-[12.5px] font-bold text-[#0F172A] in-[.bhc-patient-profile]:font-semibold in-[.bhc-patient-profile]:text-slate-900">
                           {disease.name}
                         </span>
                         <button
                           type="button"
                           onClick={() => removeDisease(index)}
                           aria-label={`Remove ${disease.name}`}
-                          className="text-slate-400 transition hover:text-[#B91C1C]"
+                          className="text-slate-400 transition hover:text-[#B91C1C] in-[.bhc-patient-profile]:text-slate-500"
                         >
                           <X size={14} />
                         </button>
                       </div>
                       <div className={`mt-2 grid gap-2 ${compact ? "" : "sm:grid-cols-3"}`}>
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r in-[.bhc-patient-profile]:text-slate-500">
                           Status
                           <select
                             value={disease.status || ""}
@@ -378,7 +378,7 @@ export default function PatientBackgroundTab({
                             ))}
                           </select>
                         </label>
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r in-[.bhc-patient-profile]:text-slate-500">
                           First Recorded
                           <input
                             type="date"
@@ -393,7 +393,7 @@ export default function PatientBackgroundTab({
                             className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-slate-700 outline-none focus:border-[#B91C1C]"
                           />
                         </label>
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r in-[.bhc-patient-profile]:text-slate-500">
                           Last Confirmed
                           <input
                             type="date"
@@ -450,7 +450,7 @@ export default function PatientBackgroundTab({
                 />
               ) : (
                 <span
-                  className={`text-[12.5px] ${readValue(background, field) ? "text-[#0F172A]" : "text-slate-400"}`}
+                  className={`text-[12.5px] ${readValue(background, field) ? "text-[#0F172A] in-[.bhc-patient-profile]:text-slate-900" : "text-slate-400 in-[.bhc-patient-profile]:text-slate-500"}`}
                 >
                   {readValue(background, field) || "Not yet recorded"}
                 </span>

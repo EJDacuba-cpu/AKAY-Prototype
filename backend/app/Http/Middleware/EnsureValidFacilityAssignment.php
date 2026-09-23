@@ -22,6 +22,10 @@ class EnsureValidFacilityAssignment
 
         abort_unless($user, 401);
 
+        if (! $user->isAdmin()) {
+            app(\App\Services\WorkingFacilityService::class)->select($user, $request->header('X-Working-Facility'));
+        }
+
         if (! $this->facilityAccess->hasValidFacilityAssignment($user)) {
             $this->sessions->revokeAllTokens($user, 'invalid-facility-assignment');
 

@@ -48,6 +48,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'active' => EnsureUserIsActive::class,
             'facility.assigned' => EnsureValidFacilityAssignment::class,
+            'actions.allowed' => \App\Http\Middleware\EnforceActionPermissions::class,
             'role' => EnsureRole::class,
             'sensitive.no-store' => PreventSensitiveResponseCaching::class,
             'auth.session-request' => EnsureTrustedSessionRequest::class,

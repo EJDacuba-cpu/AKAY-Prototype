@@ -33,7 +33,6 @@ class HealthRecordDraftService
         $this->expireOwnedDrafts($user);
 
         return HealthRecordDraft::query()
-            ->where('owner_user_id', $user->id)
             ->where('barangay_health_center_id', $user->barangay_health_center_id)
             ->where('status', HealthRecordDraft::STATUS_ACTIVE)
             ->where('expires_at', '>', now())
@@ -57,7 +56,6 @@ class HealthRecordDraftService
         }
 
         return HealthRecordDraft::query()
-            ->where('owner_user_id', $user->id)
             ->where('barangay_health_center_id', $user->barangay_health_center_id)
             ->where('consultation_uuid', $consultationUuid)
             ->where('status', HealthRecordDraft::STATUS_ACTIVE)
@@ -118,8 +116,7 @@ class HealthRecordDraftService
         ): HealthRecordDraft {
             User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
             $activeCount = HealthRecordDraft::query()
-                ->where('owner_user_id', $user->id)
-                ->where('status', HealthRecordDraft::STATUS_ACTIVE)
+                    ->where('status', HealthRecordDraft::STATUS_ACTIVE)
                 ->where('expires_at', '>', now())
                 ->count();
 
@@ -133,6 +130,10 @@ class HealthRecordDraftService
                 'public_id' => (string) Str::uuid(),
                 'consultation_uuid' => $consultationUuid,
                 'owner_user_id' => $user->id,
+                'editor_user_id' => $user->id,
+                'last_editor_user_id' => $user->id,
+                'editor_expires_at' => now()->addMinutes(15),
+                'review_state' => 'encoding',
                 'barangay_health_center_id' => $user->barangay_health_center_id,
                 'patient_id' => $patient->id,
                 'classification' => $data['classification'],
@@ -152,7 +153,6 @@ class HealthRecordDraftService
 
         $draft = HealthRecordDraft::query()
             ->where('public_id', $publicId)
-            ->where('owner_user_id', $user->id)
             ->where('barangay_health_center_id', $user->barangay_health_center_id)
             ->where('status', HealthRecordDraft::STATUS_ACTIVE)
             ->where('expires_at', '>', now())
@@ -171,6 +171,8 @@ class HealthRecordDraftService
     public function update(User $user, string $publicId, array $data): HealthRecordDraft
     {
         $draft = $this->loadOwnedActive($user, $publicId);
+        abort_unless((int) $draft->patient_id === (int) $data['patient_id'], 422, 'A consultation cannot be reassigned to another patient.');
+        $this->assertEditor($user, $draft);
         $patient = $this->authorizedPatient($user, (int) $data['patient_id']);
         $payload = $this->payloads->sanitize($data['payload']);
         $this->authorizeMedicineSelections($user, $payload);
@@ -196,11 +198,13 @@ class HealthRecordDraftService
 
         $updated = HealthRecordDraft::query()
             ->whereKey($draft->id)
-            ->where('owner_user_id', $user->id)
             ->where('barangay_health_center_id', $user->barangay_health_center_id)
             ->where('status', HealthRecordDraft::STATUS_ACTIVE)
             ->where('expires_at', '>', now())
             ->where('version', $expectedVersion)
+            ->where('editor_user_id', $user->id)
+            ->where('editor_expires_at', '>', now())
+            ->where('review_state', 'encoding')
             ->update([
                 'patient_id' => $patient->id,
                 'classification' => $data['classification'],
@@ -209,6 +213,8 @@ class HealthRecordDraftService
                     : []),
                 'encrypted_payload' => $ciphertext,
                 'version' => DB::raw('version + 1'),
+                'last_editor_user_id' => $user->id,
+                'editor_expires_at' => now()->addMinutes(15),
                 'expires_at' => now()->addDays(config('health_record_drafts.expiry_days')),
                 'last_saved_at' => now(),
                 'updated_at' => now(),
@@ -224,6 +230,7 @@ class HealthRecordDraftService
     public function discard(User $user, string $publicId): HealthRecordDraft
     {
         $draft = $this->loadOwnedActive($user, $publicId);
+        $this->assertEditor($user, $draft);
         $updated = HealthRecordDraft::query()
             ->whereKey($draft->id)
             ->where('status', HealthRecordDraft::STATUS_ACTIVE)
@@ -315,7 +322,6 @@ class HealthRecordDraftService
         $this->ensureBhw($user);
         $draft = HealthRecordDraft::query()
             ->where('public_id', $publicId)
-            ->where('owner_user_id', $user->id)
             ->where('barangay_health_center_id', $user->barangay_health_center_id)
             ->lockForUpdate()
             ->first();
@@ -337,6 +343,10 @@ class HealthRecordDraftService
             throw new DraftFinalizationConflictException;
         }
 
+        ActionPermissions::ensure($user, 'consultations.finalize');
+        $this->assertEditor($user, $draft, false);
+        abort_unless($draft->review_state === 'review', 409, 'Submit and review this consultation before finalizing.');
+        abort_unless((int) request()->header('X-Draft-Version') === (int) $draft->version, 409, 'The consultation changed. Reload the review before finalizing.');
         $this->authorizedPatient($user, (int) $draft->patient_id);
 
         if ((int) $draft->patient_id !== $patientId
@@ -363,7 +373,6 @@ class HealthRecordDraftService
         $this->ensureBhw($user);
         $updated = HealthRecordDraft::query()
             ->whereKey($draft->id)
-            ->where('owner_user_id', $user->id)
             ->where('barangay_health_center_id', $user->barangay_health_center_id)
             ->where('status', HealthRecordDraft::STATUS_ACTIVE)
             ->whereNull('consumed_health_record_id')
@@ -392,6 +401,53 @@ class HealthRecordDraftService
         return $uuid === '' ? null : strtolower($uuid);
     }
 
+    public function transition(User $user, string $publicId, string $action, int $version, ?string $note = null): HealthRecordDraft
+    {
+        $this->loadOwnedActive($user, $publicId);
+        return DB::transaction(function () use ($user, $publicId, $action, $version, $note) {
+            $draft = HealthRecordDraft::where('public_id', $publicId)->lockForUpdate()->firstOrFail();
+            abort_unless($draft->status === HealthRecordDraft::STATUS_ACTIVE && $draft->expires_at?->isFuture(), 409, 'This consultation is no longer editable.');
+            if ((int) $draft->version !== $version) {
+                throw new DraftVersionConflictException;
+            }
+            if ($action === 'claim' || $action === 'takeover') {
+                if ($draft->review_state === 'review') {
+                    ActionPermissions::ensure($user, 'consultations.finalize');
+                }
+                $occupied = $draft->editor_user_id && (int) $draft->editor_user_id !== (int) $user->id && $draft->editor_expires_at?->isFuture();
+                abort_if($occupied && $action !== 'takeover', 409, 'Being edited by '.$draft->editor?->name.'. Confirm takeover to continue.');
+                if ($action === 'takeover') {
+                    abort_unless(filled($note), 422, 'A takeover reason is required.');
+                }
+                $draft->editor_user_id = $user->id;
+                $draft->editor_expires_at = now()->addMinutes(15);
+            } elseif ($action === 'submit') {
+                $this->assertEditor($user, $draft);
+                $draft->review_state = 'review';
+                $draft->editor_user_id = null;
+                $draft->editor_expires_at = null;
+            } elseif ($action === 'return') {
+                ActionPermissions::ensure($user, 'consultations.finalize');
+                $this->assertEditor($user, $draft, false);
+                abort_unless($draft->review_state === 'review' && filled($note), 422, 'A correction note is required for a consultation under review.');
+                $draft->review_state = 'encoding';
+                $draft->return_note = $note;
+            } else {
+                abort(422, 'Unsupported consultation action.');
+            }
+            $draft->version++;
+            $draft->save();
+            DB::table('consultation_events')->insert(['health_record_draft_id' => $draft->id, 'actor_id' => $user->id, 'action' => $action, 'version' => $draft->version, 'note' => $note, 'created_at' => now()]);
+            return $draft->fresh(['patient', 'editor']);
+        });
+    }
+
+    private function assertEditor(User $user, HealthRecordDraft $draft, bool $encoding = true): void
+    {
+        abort_unless((int) $draft->editor_user_id === (int) $user->id && $draft->editor_expires_at?->isFuture(), 409, 'Your editing session ended or was taken over. Reopen the consultation.');
+        abort_if($encoding && $draft->review_state !== 'encoding', 409, 'Return this consultation for correction before editing.');
+    }
+
     public function metadata(HealthRecordDraft $draft): array
     {
         return [
@@ -402,6 +458,11 @@ class HealthRecordDraftService
                 'label' => $draft->patient?->full_name ?: 'Patient',
             ],
             'classification' => $draft->classification,
+            'review_state' => $draft->review_state,
+            'created_by' => $draft->owner_user_id,
+            'editor' => $draft->editor ? ['id' => $draft->editor->id, 'name' => $draft->editor->name] : null,
+            'editor_expires_at' => $draft->editor_expires_at?->toISOString(),
+            'return_note' => $draft->return_note,
             'version' => (int) $draft->version,
             'last_saved_at' => $draft->last_saved_at?->toISOString(),
             'expires_at' => $draft->expires_at?->toISOString(),
@@ -470,12 +531,12 @@ class HealthRecordDraftService
     {
         abort_unless($user->isBhw(), 403, 'This action is not allowed for your role.');
         $this->facilityAccess->ensureValidFacilityAssignment($user);
+        ActionPermissions::ensure($user, 'consultations.encode');
     }
 
     private function expireOwnedDrafts(User $user, ?string $publicId = null): void
     {
         HealthRecordDraft::query()
-            ->where('owner_user_id', $user->id)
             ->where('barangay_health_center_id', $user->barangay_health_center_id)
             ->where('status', HealthRecordDraft::STATUS_ACTIVE)
             ->where('expires_at', '<=', now())

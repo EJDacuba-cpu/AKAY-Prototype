@@ -46,6 +46,7 @@ class ReferralSubmissionGate
             ->where('rural_health_unit_id', $rhu->id)
             ->where('is_active', true)
             ->orderBy('name')
+            ->when(\Illuminate\Support\Facades\DB::transactionLevel() > 0, fn ($q) => $q->lockForUpdate())
             ->get();
 
         $available = $providers->where(

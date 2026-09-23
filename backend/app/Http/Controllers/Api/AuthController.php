@@ -34,7 +34,7 @@ class AuthController extends Controller
             && Hash::check($request->validated('password'), $user->password)
             && $user->isActive()
             && $validRole
-            && $facilityAccess->hasValidFacilityAssignment($user);
+            && ($user->isAdmin() || app(\App\Services\WorkingFacilityService::class)->available($user) !== []);
 
         if (! $validAccount) {
             return response()->json([
@@ -154,6 +154,7 @@ class AuthController extends Controller
 
     private function userPayload(User $user): array
     {
+        $choices = app(\App\Services\WorkingFacilityService::class)->available($user);
         $user->loadMissing(['barangayHealthCenter:id,name', 'ruralHealthUnit:id,name']);
         $facility = $user->isBhw()
             ? $user->barangayHealthCenter
@@ -170,6 +171,9 @@ class AuthController extends Controller
             'name' => $user->name,
             'role' => $user->role,
             'status' => $user->status,
+            'professional_designation' => $user->professional_designation,
+            'permissions' => \App\Services\ActionPermissions::home($user),
+            'authorized_facilities' => $choices,
             'barangay_health_center_id' => $user->barangay_health_center_id,
             'rural_health_unit_id' => $user->rural_health_unit_id,
             'facility' => $facility ? [

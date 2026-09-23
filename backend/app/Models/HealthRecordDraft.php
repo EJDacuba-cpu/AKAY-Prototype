@@ -28,6 +28,7 @@ class HealthRecordDraft extends Model
         'consumed_health_record_id',
         'expires_at',
         'last_saved_at',
+        'review_state', 'editor_user_id', 'editor_expires_at', 'last_editor_user_id', 'return_note',
     ];
 
     protected $hidden = [
@@ -43,11 +44,17 @@ class HealthRecordDraft extends Model
         'version' => 'integer',
         'expires_at' => 'datetime',
         'last_saved_at' => 'datetime',
+        'editor_expires_at' => 'datetime',
     ];
 
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_user_id');
+    }
+
+    public function editor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'editor_user_id');
     }
 
     public function barangayHealthCenter(): BelongsTo

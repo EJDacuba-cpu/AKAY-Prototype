@@ -84,8 +84,8 @@ export function normalizeAvailability(payload) {
   };
 }
 
-export async function getDoctorAvailability() {
-  const response = await apiRequest("/rhu-providers/availability");
+export async function getDoctorAvailability(rhuId = null) {
+  const response = await apiRequest(`/rhu-providers/availability${rhuId ? `?rural_health_unit_id=${encodeURIComponent(rhuId)}` : ""}`);
   return normalizeAvailability(unwrapData(response));
 }
 

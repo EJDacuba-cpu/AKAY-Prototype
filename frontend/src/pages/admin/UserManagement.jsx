@@ -1,3 +1,4 @@
+import { accessProfile } from "../../utils/accountSetup";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
@@ -253,91 +254,18 @@ export default function UserManagement() {
   );
 }
 
+function assignmentSummary(user) {
+  const today = new Date().toLocaleDateString("en-CA");
+  const active = (user.facility_assignments || []).filter(a => !a.revoked_at && a.starts_on && a.starts_on.slice(0,10) <= today && (!a.ends_on || a.ends_on.slice(0,10) >= today));
+  return active.length ? active.map(a => a.barangay_health_center?.name || "BHC").join(", ") + " · " + active.length + " active" : "No active assignments";
+}
 function AccountsTable({ users, onUpdateStatus }) {
-  return (
-    <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
-      <TableHeader
-        title="Account Directory"
-        description="MHO/Admin can manage account status and review role and facility assignments."
-        count={users.length}
-      />
-
-      <div className="w-full flex-1 overflow-x-auto">
-        <table className="w-full min-w-[980px] text-left">
-          <thead>
-            <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              <th className="w-[120px] px-6 py-3">User ID</th>
-              <th className="w-[260px] px-4 py-3">Account</th>
-              <th className="w-[140px] px-4 py-3">Role</th>
-              <th className="px-4 py-3">Facility</th>
-              <th className="w-[120px] px-4 py-3">Status</th>
-              <th className="w-[90px] px-6 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-[#F3F4F6]">
-            {users.length === 0 ? (
-              <EmptyRow
-                colSpan={6}
-                message="No user accounts match the current filters."
-              />
-            ) : (
-              users.map((user) => {
-                const facilityName = getFacilityName(user);
-
-                return (
-                <tr
-                  key={user.id}
-                  className="transition-colors hover:bg-[#F9FAFB]"
-                >
-                  <td className="whitespace-nowrap px-6 py-3.5 align-middle">
-                    <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0F172A]">
-                      {user.id}
-                    </span>
-                  </td>
-
-                  <td className="px-4 py-3.5 align-middle">
-                    <p className="truncate text-sm font-semibold text-[#111827]">
-                      {getDisplayName(user)}
-                    </p>
-                    <p className="mt-0.5 truncate text-xs text-[#9CA3AF]">
-                      {user.email || "No email recorded"}
-                    </p>
-                  </td>
-
-                  <td className="px-4 py-3.5 align-middle">
-                    <RoleBadge role={user.role} />
-                  </td>
-
-                  <td className="px-4 py-3.5 align-middle">
-                    <p className="truncate text-sm text-[#6B7280]">
-                      {facilityName}
-                    </p>
-                  </td>
-
-                  <td className="whitespace-nowrap px-4 py-3.5 align-middle">
-                    <StatusBadge status={user.status} />
-                  </td>
-
-                  <td className="whitespace-nowrap px-6 py-3.5 text-right align-middle">
-                    <AccountActions
-                      user={user}
-                      onUpdateStatus={onUpdateStatus}
-                    />
-                  </td>
-                </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="mt-auto">
-        <TablePagination currentPage={1} totalPages={1} />
-      </div>
-    </div>
-  );
+  return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <TableHeader title="Account Directory" description="Manage personal accounts, home access, and additional nurse assignments." count={users.length}/>
+    <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[1050px] text-left"><thead><tr className="bg-slate-50 text-xs text-slate-500">{["Account","Designation","Access Profile","Home Facility","Additional Assignments","Status","Actions"].map(label=><th key={label} className="px-4 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{users.length===0 ? <EmptyRow colSpan={7} message="No accounts match the current filters."/> : users.map(user=><tr key={user.id}><td className="px-4 py-4"><p className="text-sm font-semibold">{getDisplayName(user)}</p><p className="text-xs text-slate-500">{user.email}</p></td><td className="px-4 py-4 text-sm">{user.professional_designation || "Not recorded"}</td><td className="px-4 py-4"><RoleBadge role={accessProfile(user)}/></td><td className="px-4 py-4 text-sm">{getFacilityName(user)}</td><td className="px-4 py-4 text-xs"><Link className="text-red-700" to={"/admin/staff-assignments?userId="+user.id}>{assignmentSummary(user)}</Link></td><td className="px-4 py-4"><StatusBadge status={user.status}/></td><td className="px-4 py-4"><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></td></tr>)}</tbody></table></div>
+    <div className="divide-y divide-slate-100 md:hidden">{users.map(user=><article key={user.id} className="space-y-3 p-4"><div className="flex justify-between"><div><h3 className="font-semibold">{getDisplayName(user)}</h3><p className="text-xs text-slate-500">{user.email}</p></div><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></div><dl className="grid grid-cols-2 gap-3 text-sm">{[["Designation",user.professional_designation||"Not recorded"],["Access Profile",accessProfile(user)],["Home Facility",getFacilityName(user)],["Status",user.status]].map(([label,value])=><div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl><Link className="block text-xs text-red-700" to={"/admin/staff-assignments?userId="+user.id}>Additional Assignments: {assignmentSummary(user)}</Link></article>)}</div>
+    <TablePagination currentPage={1} totalPages={1}/>
+  </div>;
 }
 
 function TableHeader({ title, description, count }) {

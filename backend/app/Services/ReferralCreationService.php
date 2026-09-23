@@ -31,7 +31,8 @@ class ReferralCreationService
         $user = $request->user();
         abort_unless($user?->isBhw(), 403, 'Only BHW accounts can create referrals.');
 
-        $route = $this->referralRouting->resolveForBhw($user);
+        ActionPermissions::ensure($user, 'referrals.submit');
+        $route = $this->referralRouting->resolveForBhw($user, isset($data['rural_health_unit_id']) ? (int) $data['rural_health_unit_id'] : null);
         $this->facilityAccess->authorizePatientModification($user, $patient);
 
         if ($healthRecord) {
@@ -121,6 +122,8 @@ class ReferralCreationService
             $hold = ReferralHold::query()
                 ->where('id', $data['resume_hold_id'])
                 ->where('created_by', $user->id)
+                ->where('patient_id', $patient->id)
+                ->where('barangay_health_center_id', $route['bhc']->id)
                 ->where('status', ReferralHold::STATUS_WAITING)
                 ->first();
 

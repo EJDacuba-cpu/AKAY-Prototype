@@ -734,26 +734,5 @@ function formatDateTime(value) {
 }
 
 function canManageBhcMedicineInventory(user = {}) {
-  const roleText = [
-    user.role,
-    user.accountRole,
-    user.account_role,
-    user.accessRole,
-    user.access_role,
-    user.position,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  if (!roleText) return false;
-  if (roleText.includes("rhu") || roleText.includes("rural health")) {
-    return false;
-  }
-  return (
-    roleText.includes("admin") ||
-    roleText.includes("bhc") ||
-    roleText.includes("bhw") ||
-    roleText.includes("barangay health")
-  );
+  return (user.permissions || []).includes("inventory.manage");
 }

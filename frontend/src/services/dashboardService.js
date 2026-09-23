@@ -3,10 +3,8 @@ import { getBhcPatients } from "./patientService";
 import { getReferrals } from "./referrals";
 import { getAllNotifications } from "./notificationService";
 
-const DASHBOARD_CACHE_MS = 30_000;
-let dashboardCache = null;
-let dashboardLoadingPromise = null;
-let dashboardFetchedAt = 0;
+import { getStoredAuthUser } from "./apiClient";
+import { loadAuthorizedDashboardCollections } from "../utils/dashboardAccess";
 
 function formatMaybeDate(value) {
   if (!value) return "";
@@ -81,55 +79,19 @@ function buildDashboardStats({ patients, healthRecords, referrals }) {
   };
 }
 
-async function fetchDashboardCollections() {
-  const [patients, healthRecords, referrals] = await Promise.all([
-    getBhcPatients(),
-    getHealthRecords(),
-    getReferrals(),
-  ]);
-
+// React Query owns caching. Do not share a module-global cache across accounts or facilities.
+export async function getBhcDashboardData() {
+  const collections = await loadAuthorizedDashboardCollections(getStoredAuthUser(), {
+    patients: getBhcPatients,
+    healthRecords: getHealthRecords,
+    referrals: getReferrals,
+  });
   return {
-    patients: Array.isArray(patients) ? patients : [],
-    healthRecords: Array.isArray(healthRecords) ? healthRecords : [],
-    referrals: Array.isArray(referrals) ? referrals : [],
+    ...collections,
+    stats: buildDashboardStats(collections),
+    recentReferrals: normalizeRecentReferrals(collections.referrals),
+    recentHealthRecords: normalizeRecentHealthRecords(collections.healthRecords, collections.patients),
   };
-}
-
-export async function getBhcDashboardData({
-  force = false,
-  maxAgeMs = DASHBOARD_CACHE_MS,
-} = {}) {
-  const now = Date.now();
-
-  if (dashboardLoadingPromise) return dashboardLoadingPromise;
-  if (
-    !force &&
-    dashboardCache &&
-    dashboardFetchedAt &&
-    now - dashboardFetchedAt < maxAgeMs
-  ) {
-    return dashboardCache;
-  }
-
-  dashboardLoadingPromise = fetchDashboardCollections()
-    .then((collections) => {
-      dashboardCache = {
-        ...collections,
-        stats: buildDashboardStats(collections),
-        recentReferrals: normalizeRecentReferrals(collections.referrals),
-        recentHealthRecords: normalizeRecentHealthRecords(
-          collections.healthRecords,
-          collections.patients,
-        ),
-      };
-      dashboardFetchedAt = Date.now();
-      return dashboardCache;
-    })
-    .finally(() => {
-      dashboardLoadingPromise = null;
-    });
-
-  return dashboardLoadingPromise;
 }
 
 export async function getDashboardStats() {

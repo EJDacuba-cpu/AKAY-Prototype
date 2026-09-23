@@ -33,12 +33,13 @@ class ReferralController extends Controller
 
     public function destination(Request $request)
     {
-        $route = $this->referralRouting->resolveForBhw($request->user());
+        $bhc = $this->referralRouting->resolveAssignedBhc($request->user());
 
         return response()->json([
             'data' => [
-                'referring_barangay_health_center' => $route['bhc']->only(['id', 'name', 'status']),
-                'receiving_rural_health_unit' => $route['rhu']->only(['id', 'name', 'status']),
+                'referring_barangay_health_center' => $bhc->only(['id', 'name', 'status']),
+                'receiving_rural_health_unit' => $bhc->ruralHealthUnit?->only(['id', 'name', 'status']),
+                'destinations' => $this->referralRouting->destinations($request->user()),
             ],
         ]);
     }
@@ -127,7 +128,7 @@ class ReferralController extends Controller
             // Recorded only after the transaction above has already rolled
             // back, in its own fresh transaction - see ReferralHoldService.
             if ($exception->blockCode === ReferralSubmissionBlockedException::NO_PROVIDER_AVAILABLE) {
-                $route = $referralRouting->resolveForBhw($user);
+                $route = $referralRouting->resolveForBhw($user, isset($data['rural_health_unit_id']) ? (int) $data['rural_health_unit_id'] : null);
 
                 $referralHolds->recordBlockedAttempt($user, $patient, $route['bhc']->id, $route['rhu'], [
                     'health_record_id' => $record?->id,

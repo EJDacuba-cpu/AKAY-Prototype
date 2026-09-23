@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import {
   ArrowLeft,
   CalendarClock,
@@ -9,12 +10,15 @@ import {
   ClipboardList,
   Eye,
   FileText,
+  MoreHorizontal,
   Pencil,
   Plus,
   X,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import { Button } from "../../components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import {
   ConfirmationModal,
   ConnectionErrorState,
@@ -30,9 +34,9 @@ import PatientBackgroundTab, {
 } from "../../components/features/patients/PatientBackgroundTab";
 import PatientProgramTab from "../../components/features/patients/PatientProgramTab";
 import PatientIdentityCard from "../../components/features/patients/PatientIdentityCard";
+import CurrentVitalSignsCard from "../../components/features/patients/CurrentVitalSignsCard";
 import { getConditionalProgramTabs } from "../../utils/programApplicability";
 import { buildRecordFollowUpVisitPath } from "../../components/features/followups/followUpStatusStyles.jsx";
-import { getLatestBmiRecord } from "../../utils/bmi";
 import { isConnectionError } from "../../services/apiClient";
 import { getFollowUpTasks } from "../../services/followUpTaskService";
 import {
@@ -63,7 +67,7 @@ import {
   normalizePhilippineContact,
 } from "../../utils/patientUtils";
 import { queryKeys } from "../../utils/queryKeys";
-import { listHealthRecordDrafts } from "../../services/healthRecordDraftService";
+import { discardHealthRecordDraft, listHealthRecordDrafts } from "../../services/healthRecordDraftService";
 import { getCurrentUser } from "../../utils/auth";
 import { buildPatientConsultationPath } from "../../utils/consultationRoute";
 
@@ -92,6 +96,7 @@ const TAB_LABELS = {
 };
 
 export default function PatientDetails() {
+  const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
   const { patientId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -133,7 +138,7 @@ export default function PatientDetails() {
   } = useQuery({
     queryKey: [...queryKeys.healthRecords("bhc"), "patient", patientId],
     queryFn: () => getPatientHealthRecords(patientId),
-    enabled: Boolean(patientId),
+    enabled: Boolean(patientId) && canViewHistory,
     retry: false,
   });
 
@@ -146,7 +151,7 @@ export default function PatientDetails() {
   } = useQuery({
     queryKey: [...queryKeys.referrals("bhc"), "patient", patientId],
     queryFn: () => getPatientReferrals(patientId),
-    enabled: Boolean(patientId),
+    enabled: Boolean(patientId) && canViewHistory,
     retry: false,
   });
 
@@ -158,7 +163,7 @@ export default function PatientDetails() {
   } = useQuery({
     queryKey: queryKeys.followUpTasks("bhc"),
     queryFn: () => getFollowUpTasks(),
-    enabled: Boolean(patientId),
+    enabled: Boolean(patientId) && canViewHistory,
     staleTime: 30_000,
     retry: false,
   });
@@ -224,9 +229,7 @@ export default function PatientDetails() {
     : patientData || null;
   const loadError =
     patientError ||
-    recordsError ||
-    referralsError ||
-    followUpsError ||
+    (canViewHistory && (recordsError || referralsError || followUpsError)) ||
     registeredPatientsError ||
     null;
   const retrying =
@@ -455,7 +458,7 @@ export default function PatientDetails() {
           fullPage
           onRetry={retryPatientDetails}
           retrying={retrying}
-          variant={loadError?.isTimeout ? "timeout" : isConnectionError(loadError) ? "offline" : "error"}
+          variant={loadError?.status === 403 ? "forbidden" : loadError?.isTimeout ? "timeout" : isConnectionError(loadError) ? "offline" : "error"}
         />
       </DashboardLayout>
     );
@@ -464,13 +467,13 @@ export default function PatientDetails() {
   if (!patient) {
     return (
       <DashboardLayout role="bhc" title="Patient Details">
-        <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-          <h1 className="text-xl font-bold text-[#0F172A]">
+        <div className="mx-auto max-w-md rounded-2xl border border-slate-100 bg-white p-10 text-center shadow-sm">
+          <h1 className="text-xl font-semibold text-slate-900 font-sans!">
             Patient not found
           </h1>
           <Link
             to="/bhc/patients"
-            className="mt-4 inline-flex rounded-xl bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#991B1B]"
+            className="mt-4 inline-flex rounded-lg bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#991B1B]"
           >
             Back to Patients
           </Link>
@@ -501,8 +504,6 @@ export default function PatientDetails() {
     patientFollowUps
       .filter((task) => isActiveFollowUpState(task.effectiveState))
       .sort((a, b) => getDateTimeValue(a) - getDateTimeValue(b))[0] || null;
-  // BMI is shown from the newest visit that measured both weight and height.
-  const latestBmiRecord = getLatestBmiRecord(records);
   const visibleRecords = showAllRecords ? records : records.slice(0, 5);
   const visibleReferrals = showAllReferrals
     ? referrals
@@ -560,7 +561,7 @@ export default function PatientDetails() {
       label: TAB_LABELS.referrals,
       count: referrals.length + patientFollowUps.length,
     },
-  ];
+  ].filter(tab => canViewHistory || ["overview", "information"].includes(tab.key));
   const activeSpecializedProgram =
     tabs.find((tab) => tab.key === activeTab)?.program || "";
   const activeProgramArea =
@@ -569,91 +570,87 @@ export default function PatientDetails() {
   return (
     <>
       <DashboardLayout role="bhc" title="Patient Details">
-        <div className="min-h-[520px]">
+        <div className="bhc-patient-profile bg-slate-50 p-4 sm:p-6 min-h-[520px] font-sans [&_h1]:font-sans! [&_h2]:font-sans! [&_h3]:font-sans! [&_h4]:font-sans!">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Link
-              to={backPath}
-              className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#0F172A]"
-            >
-              <ArrowLeft size={16} />
-              Back
-            </Link>
+            <div className="space-y-2">
+              <Link
+                to={backPath}
+                className="inline-flex items-center gap-2 text-sm font-normal text-slate-500 transition hover:text-slate-900"
+              >
+                <ArrowLeft size={16} />
+                Back
+              </Link>
+              <h1 className="text-xl font-semibold text-slate-900 font-sans!">Patient Profile</h1>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               {patientUpdating && (
                 <RefreshingIndicator label="Updating patient details..." />
               )}
               <PatientConsultationActions
                 patientId={patient.id || patientId}
+                onEdit={handleStartGeneralEdit}
+                onOpenTab={handleTabChange}
+                canViewHistory={canViewHistory}
               />
             </div>
           </div>
 
-          <section className="min-w-0">
-            {/* One row always: the chart can carry nine or more sections once
-                the conditional program areas appear, so it scrolls sideways
-                rather than wrapping into a second row that would push the
-                content down. */}
-            <nav
-              className="flex flex-nowrap gap-6 overflow-x-auto border-b border-slate-200"
-              aria-label="Patient chart sections"
-            >
-              {tabs.map(({ key, label, count = null }) => {
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => handleTabChange(key)}
-                    className={`shrink-0 whitespace-nowrap border-b-2 pb-3 text-xs font-semibold transition ${
-                      activeTab === key
-                        ? "border-[#B91C1C] text-[#B91C1C]"
-                        : "border-transparent text-slate-500 hover:text-slate-800"
-                    }`}
-                  >
-                    {label}
-                    {count !== null && ` (${count})`}
-                  </button>
-                );
-              })}
-            </nav>
-
-            <div className="pt-5">
-
-              {/* The identity card belongs to Overview alone - the other tabs
-                  open straight onto their own full-detail content. Its Edit
-                  hands off to Patient Information rather than editing here. */}
-              {activeTab === "overview" && (
-                <>
-                  <h1 className="text-lg font-bold text-[#0F172A]">
-                    Patient Profile
-                  </h1>
-                  <div className="mt-3">
-                    <PatientIdentityCard
-                      patient={patient}
-                      patientId={patientId}
-                      onEdit={handleStartGeneralEdit}
-                      followUpBadge={
-                        activePatientFollowUp ? (
-                          <FollowUpStateBadge
-                            state={activePatientFollowUp.effectiveState}
-                            date={activePatientFollowUp.dueDate}
-                            context="profile"
-                          />
-                        ) : null
-                      }
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+            <aside className="col-span-1 min-w-0 space-y-6" aria-label="Patient summary">
+              <PatientIdentityCard
+                patient={patient}
+                patientId={patientId}
+                followUpBadge={
+                  activePatientFollowUp ? (
+                    <FollowUpStateBadge
+                      state={activePatientFollowUp.effectiveState}
+                      date={activePatientFollowUp.dueDate}
+                      context="profile"
                     />
-                  </div>
-                </>
+                  ) : null
+                }
+              />
+              {canViewHistory && (
+                <CurrentVitalSignsCard records={records} isLoading={recordsLoading} />
               )}
+            </aside>
+            <section className="col-span-1 min-w-0 lg:col-span-2">
+              {/* One row always: the chart can carry nine or more sections once
+                  the conditional program areas appear, so it scrolls sideways
+                  rather than wrapping into a second row that would push the
+                  content down. */}
+              <nav
+                className="flex flex-nowrap gap-6 overflow-x-auto border-b border-slate-200"
+                aria-label="Patient chart sections"
+              >
+                {tabs.map(({ key, label, count = null }) => {
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => handleTabChange(key)}
+                      aria-current={activeTab === key ? "page" : undefined}
+                      className={`shrink-0 whitespace-nowrap border-b-2 px-1 pb-3 pt-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-400 ${
+                        activeTab === key
+                          ? "border-[#B91C1C] text-[#B91C1C]"
+                          : "border-transparent text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      {label}
+                      {count !== null && ` (${count})`}
+                    </button>
+                  );
+                })}
+              </nav>
 
-              {activeTab === "overview" && (
-                <div className="mt-4">
+              <div className="pt-5">
+                {activeTab === "overview" && canViewHistory && (
                   <PatientOverviewTab
                     patient={patient}
                     records={records}
                     referrals={referrals}
                     activeFollowUp={activePatientFollowUp}
                     activePrograms={activeProgramLabels}
-                    latestBmiRecord={latestBmiRecord}
                     basePath="/bhc"
                     onViewRecord={(recordId) =>
                       navigate(`/bhc/health-records/${recordId}`)
@@ -662,98 +659,96 @@ export default function PatientDetails() {
                       navigate(`/bhc/referrals/${trackingId}`)
                     }
                     onViewAllRecords={() => handleTabChange("records")}
-                    onOpenTab={handleTabChange}
                   />
-                </div>
-              )}
+                )}
 
-              {/* Patient Information owns every registration/admin field, and
-                  is the only place they are edited - Overview shows the
-                  identity summary but never a second copy of this form. */}
-              {activeTab === "information" && (
-                <GeneralPatientTab
-                  patient={patient}
-                  form={form}
-                  isEditing={isEditing}
-                  onChange={handleChange}
-                  fieldErrors={fieldErrors}
-                  saving={saving}
-                  motherSearch={motherSearch}
-                  motherPatientOptions={motherPatientOptions}
-                  onMotherSearchChange={setMotherSearch}
-                  onMotherPatientChange={handleMotherPatientChange}
-                  onEdit={handleStartGeneralEdit}
-                  onCancel={handleCancelGeneralEdit}
-                  onSave={handleRequestInlineSave}
-                />
-              )}
+                {/* Patient Information owns every registration/admin field, and
+                    is the only place they are edited - the sidebar shows the
+                    identity summary but never a second copy of this form. */}
+                {activeTab === "information" && (
+                  <GeneralPatientTab
+                    patient={patient}
+                    form={form}
+                    isEditing={isEditing}
+                    onChange={handleChange}
+                    fieldErrors={fieldErrors}
+                    saving={saving}
+                    motherSearch={motherSearch}
+                    motherPatientOptions={motherPatientOptions}
+                    onMotherSearchChange={setMotherSearch}
+                    onMotherPatientChange={handleMotherPatientChange}
+                    onCancel={handleCancelGeneralEdit}
+                    onSave={handleRequestInlineSave}
+                  />
+                )}
 
-              {["medical", "family", "social"].includes(activeTab) && (
-                <PatientBackgroundTab
-                  section={activeTab}
-                  background={patient.medicalBackground}
-                  saving={savingBackground}
-                  onSave={handleBackgroundSave}
-                />
-              )}
+                {["medical", "family", "social"].includes(activeTab) && (
+                  <PatientBackgroundTab
+                    section={activeTab}
+                    background={patient.medicalBackground}
+                    saving={savingBackground}
+                    onSave={handleBackgroundSave}
+                  />
+                )}
 
-              {activeTab === "records" && (
-                <HealthRecordsTab
-                  records={records}
-                  visibleRecords={visibleRecords}
-                  isLoading={recordsLoading}
-                  isFetching={recordsFetching}
-                  isError={Boolean(recordsError)}
-                  showAll={showAllRecords}
-                  addRecordTo={buildPatientConsultationPath(patient.id || patientId)}
-                  onToggleShowAll={() => setShowAllRecords((value) => !value)}
-                  onView={(recordId) =>
-                    navigate(`/bhc/health-records/${recordId}`)
-                  }
-                />
-              )}
+                {activeTab === "records" && (
+                  <HealthRecordsTab
+                    records={records}
+                    visibleRecords={visibleRecords}
+                    isLoading={recordsLoading}
+                    isFetching={recordsFetching}
+                    isError={Boolean(recordsError)}
+                    showAll={showAllRecords}
+                    addRecordTo={buildPatientConsultationPath(patient.id || patientId)}
+                    onToggleShowAll={() => setShowAllRecords((value) => !value)}
+                    onView={(recordId) =>
+                      navigate(`/bhc/health-records/${recordId}`)
+                    }
+                  />
+                )}
 
-              {activeProgramArea && (
-                <PatientProgramTab
-                  area={activeProgramArea}
-                  patient={patient}
-                  records={records}
-                  basePath="/bhc"
-                  historyOnly={activeProgramArea.historyOnly}
-                />
-              )}
+                {activeProgramArea && (
+                  <PatientProgramTab
+                    area={activeProgramArea}
+                    patient={patient}
+                    records={records}
+                    basePath="/bhc"
+                    historyOnly={activeProgramArea.historyOnly}
+                  />
+                )}
 
-              {activeSpecializedProgram && (
-                <SpecializedRecordsTab
-                  records={records}
-                  patient={patient}
-                  basePath="/bhc"
-                  program={activeSpecializedProgram}
-                />
-              )}
+                {activeSpecializedProgram && (
+                  <SpecializedRecordsTab
+                    records={records}
+                    patient={patient}
+                    basePath="/bhc"
+                    program={activeSpecializedProgram}
+                  />
+                )}
 
-              {activeTab === "referrals" && (
-                <ReferralsAndFollowUpsTab
-                  referrals={referrals}
-                  visibleReferrals={visibleReferrals}
-                  followUps={patientFollowUps}
-                  isLoading={referralsLoading}
-                  isFetching={referralsFetching}
-                  isError={Boolean(referralsError)}
-                  showAll={showAllReferrals}
-                  onToggleShowAll={() =>
-                    setShowAllReferrals((value) => !value)
-                  }
-                  onView={(trackingId) =>
-                    navigate(`/bhc/referrals/${trackingId}`)
-                  }
-                  onViewFollowUp={(taskId) =>
-                    navigate(`/bhc/follow-ups/${taskId}`)
-                  }
-                />
-              )}
-            </div>
-          </section>
+                {activeTab === "referrals" && (
+                  <ReferralsAndFollowUpsTab
+                    referrals={referrals}
+                    visibleReferrals={visibleReferrals}
+                    followUps={patientFollowUps}
+                    isLoading={referralsLoading}
+                    isFetching={referralsFetching}
+                    isError={Boolean(referralsError)}
+                    showAll={showAllReferrals}
+                    onToggleShowAll={() =>
+                      setShowAllReferrals((value) => !value)
+                    }
+                    onView={(trackingId) =>
+                      navigate(`/bhc/referrals/${trackingId}`)
+                    }
+                    onViewFollowUp={(taskId) =>
+                      navigate(`/bhc/follow-ups/${taskId}`)
+                    }
+                  />
+                )}
+              </div>
+            </section>
+          </div>
         </div>
       </DashboardLayout>
 
@@ -778,33 +773,86 @@ export default function PatientDetails() {
 }
 
 /** Starts a normal encounter for the patient already open on screen. */
-function PatientConsultationActions({ patientId }) {
+function PatientConsultationActions({ patientId, onEdit, onOpenTab, canViewHistory }) {
+  const queryClient = useQueryClient();
   const ownerId = String(getCurrentUser()?.id || "");
-  const { data: unfinished = [] } = useQuery({
+  const { data: unfinished = [], isPending, isError } = useQuery({
     queryKey: ["unfinished-consultations", ownerId],
     queryFn: listHealthRecordDrafts,
     enabled: Boolean(ownerId && patientId),
     staleTime: 0,
   });
   const consultation = unfinished.find((item) => String(item.patient?.id) === String(patientId));
-  if (consultation) {
-    const params = new URLSearchParams({ patientId: String(patientId), draftId: consultation.id });
-    return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
-        <p className="font-semibold">Unfinished Consultation</p>
-        <p className="text-xs text-slate-600">Last saved: {consultation.lastSavedAt ? new Date(consultation.lastSavedAt).toLocaleString() : "Unknown"}</p>
-        <Link className="mt-2 inline-block font-semibold text-red-700" to={`/bhc/health-records/add?${params}`}>Resume Consultation</Link>
-      </div>
-    );
-  }
+  const discardDraft = useMutation({
+    mutationFn: discardHealthRecordDraft,
+    onSuccess: async (_, draftId) => {
+      const queryKey = ["unfinished-consultations", ownerId];
+      await queryClient.cancelQueries({ queryKey });
+      queryClient.setQueryData(queryKey, (current = []) =>
+        current.filter((draft) => draft.id !== draftId),
+      );
+      toast.success("Draft discarded.");
+      await queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (error) => {
+      toast.error(error?.message || "Unable to discard this draft. Please try again.");
+    },
+  });
+  const params = consultation
+    ? new URLSearchParams({ patientId: String(patientId), draftId: consultation.id })
+    : null;
+  const primaryLabel = consultation ? "Resume Consultation" : "Start Consultation";
+  const primaryDisabled = isPending || isError || discardDraft.isPending;
+
   return (
-    <Link
-      to={buildPatientConsultationPath(patientId)}
-      className="inline-flex items-center gap-1.5 rounded-xl bg-[#B91C1C] px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#991B1B]"
-    >
-      <Plus size={14} strokeWidth={2.5} />
-      Start Consultation
-    </Link>
+    <div className="flex flex-wrap items-center justify-end gap-2 font-sans">
+      {primaryDisabled ? (
+        <Button disabled className="rounded-full" title={isError ? "Unable to check unfinished consultations. Refresh to retry." : undefined}>
+          {isPending ? "Checking consultation..." : primaryLabel}
+        </Button>
+      ) : (
+        <Button asChild className="rounded-full">
+          <Link to={consultation ? `/bhc/health-records/add?${params}` : buildPatientConsultationPath(patientId)}>
+            <Plus size={16} aria-hidden="true" />
+            {primaryLabel}
+          </Link>
+        </Button>
+      )}
+      {consultation && (
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={discardDraft.isPending || isPending || isError}
+          onClick={() => discardDraft.mutate(consultation.id)}
+          className="rounded-full text-red-700 hover:bg-red-50 hover:text-red-800"
+        >
+          {discardDraft.isPending ? "Discarding..." : "Discard Draft"}
+        </Button>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" variant="ghost" size="icon" className="rounded-full" aria-label="More patient actions">
+            <MoreHorizontal size={18} aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={onEdit}><Pencil size={14} aria-hidden="true" />Edit Details</DropdownMenuItem>
+          {isError && (
+            <DropdownMenuItem onSelect={() => queryClient.invalidateQueries({ queryKey: ["unfinished-consultations", ownerId] })}>
+              Retry consultation check
+            </DropdownMenuItem>
+          )}
+          {canViewHistory && (
+            <>
+              <DropdownMenuItem onSelect={() => onOpenTab("medical")}>View Medical History</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onOpenTab("family")}>View Family History</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onOpenTab("social")}>View Personal &amp; Social History</DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {isError && <p role="status" className="basis-full text-right text-sm text-slate-500">Unable to check drafts. Retry from the actions menu.</p>}
+    </div>
   );
 }
 
@@ -819,7 +867,6 @@ function GeneralPatientTab({
   motherPatientOptions,
   onMotherSearchChange,
   onMotherPatientChange,
-  onEdit,
   onCancel,
   onSave,
 }) {
@@ -994,18 +1041,6 @@ function GeneralPatientTab({
       <RegistrationSection
         title="Basic Information"
         description="Identity and demographic information from registration."
-        action={
-          <button
-            type="button"
-            onClick={onEdit}
-            aria-label="Edit patient information"
-            title="Edit patient information"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-          >
-            <Pencil size={12} />
-            Edit Details
-          </button>
-        }
       >
         <DetailItem label="First Name" value={getPatientValue(patient, ["firstName", "first_name"])} />
         <DetailItem label="Middle Name" value={getPatientValue(patient, ["middleName", "middle_name"])} />
@@ -1105,11 +1140,11 @@ function GeneralPatientTab({
 
 function RegistrationSection({ title, description, action, children }) {
   return (
-    <section>
+    <section className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 font-sans">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-sm font-bold text-[#0F172A]">{title}</h2>
-          <p className="mt-0.5 text-xs text-slate-400">{description}</p>
+          <h2 className="text-sm font-semibold text-slate-900 font-sans!">{title}</h2>
+          <p className="mt-0.5 text-sm text-slate-500">{description}</p>
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}
       </div>
@@ -1123,10 +1158,10 @@ function RegistrationSection({ title, description, action, children }) {
 function DetailItem({ label, value }) {
   return (
     <div className="min-w-0">
-      <p className="text-[10px] font-semibold text-slate-400">
+      <p className="text-sm font-normal text-slate-500">
         {label}
       </p>
-      <p className="mt-1 break-words text-sm font-semibold text-[#0F172A]">
+      <p className="mt-1 break-words text-sm font-semibold text-slate-900">
         {formatDisplayValue(value, "Not recorded")}
       </p>
     </div>
@@ -1140,7 +1175,7 @@ function InlineEditActions({ saving, onCancel, onSave }) {
         type="button"
         onClick={onCancel}
         disabled={saving}
-        className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <X size={14} />
         Cancel
@@ -1149,7 +1184,7 @@ function InlineEditActions({ saving, onCancel, onSave }) {
         type="button"
         onClick={onSave}
         disabled={saving}
-        className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#B91C1C] px-3.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:bg-red-300"
+        className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#B91C1C] px-3.5 text-xs font-semibold text-white transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:bg-red-300"
       >
         <Check size={14} />
         {saving ? "Saving..." : "Save Changes"}
@@ -1167,7 +1202,7 @@ function EditField({ label, required, readOnly, error, value, ...props }) {
 
   return (
     <label className="min-w-0">
-      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+      <span className="text-sm font-normal r text-slate-500">
         {label}
         {required && <span className="text-[#B91C1C]"> *</span>}
       </span>
@@ -1177,7 +1212,7 @@ function EditField({ label, required, readOnly, error, value, ...props }) {
         required={required}
         readOnly={readOnly}
         aria-invalid={Boolean(error)}
-        className={`mt-1.5 h-10 w-full min-w-0 rounded-xl border px-3 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${inputStateClass}`}
+        className={`mt-1.5 h-10 w-full min-w-0 rounded-lg border px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${inputStateClass}`}
       />
       {error && (
         <span className="mt-1 block text-[11px] font-medium text-[#B91C1C]">
@@ -1191,7 +1226,7 @@ function EditField({ label, required, readOnly, error, value, ...props }) {
 function EditSelect({ label, required, error, children, value, ...props }) {
   return (
     <label className="min-w-0">
-      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+      <span className="text-sm font-normal r text-slate-500">
         {label}
         {required && <span className="text-[#B91C1C]"> *</span>}
       </span>
@@ -1200,7 +1235,7 @@ function EditSelect({ label, required, error, children, value, ...props }) {
         value={value ?? ""}
         required={required}
         aria-invalid={Boolean(error)}
-        className={`mt-1.5 h-10 w-full min-w-0 rounded-xl border bg-white px-3 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
+        className={`mt-1.5 h-10 w-full min-w-0 rounded-lg border bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
           error ? "border-[#B91C1C]" : "border-slate-200"
         }`}
       >
@@ -1224,7 +1259,7 @@ function EditLinkedMotherSelect({
 }) {
   return (
     <label className="min-w-0">
-      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+      <span className="text-sm font-normal r text-slate-500">
         Registered Mother Link
       </span>
       <input
@@ -1232,12 +1267,12 @@ function EditLinkedMotherSelect({
         value={search}
         onChange={(event) => onSearchChange(event.target.value)}
         placeholder="Search registered mother"
-        className="mt-1.5 h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+        className="mt-1.5 h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
       />
       <select
         value={value || ""}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+        className="mt-2 h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
       >
         <option value="">No linked mother selected</option>
         {options.map((patient) => (
@@ -1262,7 +1297,7 @@ function HealthRecordsTab({
   onView,
 }) {
   return (
-    <div className="relative overflow-hidden rounded-xl border border-slate-200">
+    <div className="relative overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
       <TabHeader
         title="Health Record History"
         subtitle="Every consultation saved for this patient. The global Health Records module lists these across all patients."
@@ -1295,7 +1330,7 @@ function HealthRecordsTab({
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-left">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <tr className="border-b border-slate-200 bg-slate-50 text-sm font-normal r text-slate-500">
                   <th className="px-5 py-3">Record ID</th>
                   <th className="px-4 py-3">Visit Date</th>
                   <th className="px-4 py-3">Chief Complaint</th>
@@ -1310,24 +1345,24 @@ function HealthRecordsTab({
                   const recordId = getHealthRecordId(record);
                   return (
                     <tr key={recordId} className="transition hover:bg-slate-50/80">
-                      <td className="whitespace-nowrap px-5 py-4 font-mono text-xs font-bold text-[#B91C1C]">
+                      <td className="whitespace-nowrap px-5 py-4 font-sans text-xs font-bold text-[#B91C1C]">
                         {getRecordIdLabel(record)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-4 font-medium text-slate-700">
                         {getHealthRecordDate(record)}
                       </td>
-                      <td className="px-4 py-4 text-xs font-semibold text-[#0F172A]">
+                      <td className="px-4 py-4 text-xs font-semibold text-slate-900">
                         {formatDisplayValue(
                           record.chiefComplaint,
                           "No complaint recorded",
                         )}
                       </td>
-                      <td className="px-4 py-4 text-xs font-semibold text-[#0F172A]">
+                      <td className="px-4 py-4 text-xs font-semibold text-slate-900">
                         {getServiceTypeLabel(record)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-4 text-xs font-semibold text-slate-600">
                         {isFollowUpVisitRecord(record) ? (
-                          <span className="inline-flex rounded-md border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-[#1D4ED8]">
+                          <span className="inline-flex rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-1 text-[9.5px] font-bold uppercase tracking-wide text-[#1D4ED8]">
                             Follow-up
                           </span>
                         ) : (
@@ -1343,7 +1378,7 @@ function HealthRecordsTab({
                           onClick={() => onView(recordId)}
                           aria-label="View health record"
                           title="View health record"
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-[#0F172A] shadow-sm transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-900 transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
                         >
                           <ChevronRight size={16} />
                         </button>
@@ -1409,7 +1444,7 @@ function ReferralsAndFollowUpsTab({
 
 function FollowUpHistorySection({ followUps = [], onViewFollowUp }) {
   return (
-    <div className="relative overflow-hidden rounded-xl border border-slate-200">
+    <div className="relative overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
       <TabHeader
         title="Follow-up Tasks"
         subtitle="Follow-ups scheduled from this patient's visits, newest first."
@@ -1423,7 +1458,7 @@ function FollowUpHistorySection({ followUps = [], onViewFollowUp }) {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[620px] text-left">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              <tr className="border-b border-slate-200 bg-slate-50 text-sm font-normal r text-slate-500">
                 <th className="px-5 py-3">Follow-up</th>
                 <th className="px-4 py-3">Due Date</th>
                 <th className="px-4 py-3">From Record</th>
@@ -1434,7 +1469,7 @@ function FollowUpHistorySection({ followUps = [], onViewFollowUp }) {
             <tbody className="divide-y divide-slate-100 text-sm">
               {followUps.map((task) => (
                 <tr key={task.id} className="transition hover:bg-slate-50/80">
-                  <td className="whitespace-nowrap px-5 py-4 font-mono text-xs font-bold text-[#0F172A]">
+                  <td className="whitespace-nowrap px-5 py-4 font-sans text-xs font-semibold text-slate-900">
                     #{task.id}
                   </td>
                   <td className="whitespace-nowrap px-4 py-4 text-slate-600">
@@ -1455,7 +1490,7 @@ function FollowUpHistorySection({ followUps = [], onViewFollowUp }) {
                       {isActiveFollowUpState(task.effectiveState) && (
                         <Link
                           to={buildRecordFollowUpVisitPath(task)}
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-[#B91C1C] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-[#B91C1C] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#991B1B]"
                         >
                           <CalendarClock size={12} /> Record Visit
                         </Link>
@@ -1463,7 +1498,7 @@ function FollowUpHistorySection({ followUps = [], onViewFollowUp }) {
                       <button
                         type="button"
                         onClick={() => onViewFollowUp?.(task.id)}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition hover:bg-slate-50"
                       >
                         <Eye size={12} /> View Details
                       </button>
@@ -1490,7 +1525,7 @@ function ReferralHistoryTab({
   onView,
 }) {
   return (
-    <div className="relative overflow-hidden rounded-xl border border-slate-200">
+    <div className="relative overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
       <TabHeader
         title="Referral Tracking Logs"
         subtitle="BHC-RHU referrals linked to this patient."
@@ -1519,7 +1554,7 @@ function ReferralHistoryTab({
         <div className="overflow-x-auto">
           <table className="w-full min-w-[850px] text-left">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              <tr className="border-b border-slate-200 bg-slate-50 text-sm font-normal r text-slate-500">
                 <th className="px-5 py-3">Tracking ID</th>
                 <th className="px-4 py-3">Date</th>
                 <th className="px-4 py-3">Destination</th>
@@ -1536,7 +1571,7 @@ function ReferralHistoryTab({
                     key={trackingId}
                     className="transition hover:bg-slate-50/80"
                   >
-                    <td className="whitespace-nowrap px-5 py-4 font-mono text-xs font-bold text-[#0F172A]">
+                    <td className="whitespace-nowrap px-5 py-4 font-sans text-xs font-semibold text-slate-900">
                       {trackingId}
                     </td>
                     <td className="whitespace-nowrap px-4 py-4 text-slate-600">
@@ -1558,7 +1593,7 @@ function ReferralHistoryTab({
                       <button
                         type="button"
                         onClick={() => onView(trackingId)}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition hover:bg-slate-50"
                       >
                         <Eye size={12} /> View Details
                       </button>
@@ -1589,7 +1624,7 @@ function StartConsultationAction({ to }) {
     <div className="border-t border-slate-100 bg-white px-4 py-3">
       <Link
         to={to}
-        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-red-200 bg-red-50/40 px-4 py-2.5 text-sm font-semibold text-[#B91C1C] transition hover:border-red-200 hover:bg-red-50"
+        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-red-200 bg-red-50/40 px-4 py-2.5 text-sm font-semibold text-[#B91C1C] transition hover:border-red-200 hover:bg-red-50"
       >
         <Plus size={15} />
         Start Consultation
@@ -1602,8 +1637,8 @@ function TabHeader({ title, subtitle, action }) {
   return (
     <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-slate-50/50 px-5 py-4">
       <div>
-        <h2 className="text-sm font-bold text-[#0F172A]">{title}</h2>
-        <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>
+        <h2 className="text-sm font-semibold text-slate-900 font-sans!">{title}</h2>
+        <p className="mt-0.5 text-sm text-slate-500">{subtitle}</p>
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
@@ -1612,7 +1647,7 @@ function TabHeader({ title, subtitle, action }) {
 
 function TabEmptyState({ icon, message }) {
   return (
-    <div className="p-12 text-center text-sm text-slate-400">
+    <div className="p-12 text-center text-sm text-slate-500">
       <span className="mx-auto mb-3 flex justify-center text-slate-300">
         {icon}
       </span>
@@ -1623,7 +1658,7 @@ function TabEmptyState({ icon, message }) {
 
 function TabErrorState({ message }) {
   return (
-    <div className="p-12 text-center text-sm text-slate-400">
+    <div className="p-12 text-center text-sm text-slate-500">
       <FileText className="mx-auto mb-3 text-slate-300" size={32} />
       {message}
     </div>
@@ -1684,7 +1719,7 @@ function FollowUpStateBadge({ state, date, context = "row" }) {
 
   return (
     <span
-      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-semibold ${
+      className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold ${
         styles[state] || styles.upcoming
       }`}
     >
@@ -1697,7 +1732,7 @@ function ReturnSlipIndicator({ referral }) {
   const hasReturnSlip = Boolean(referral.feedback || referral.returnSlip);
   return (
     <span
-      className={`inline-flex rounded-md border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+      className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-wide ${
         hasReturnSlip
           ? "border-emerald-200 bg-emerald-50 text-emerald-700"
           : "border-amber-200 bg-amber-50 text-amber-700"
