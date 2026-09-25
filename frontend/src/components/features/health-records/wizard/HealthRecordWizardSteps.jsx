@@ -286,7 +286,7 @@ export function ConsultationReviewStep({
 }) {
   return (
     <WizardCard
-      title={indicator ? "" : "Review & Save"}
+      title={indicator ? "" : "Review & Confirm"}
       subtitle={
         indicator ? "" : "Confirm the consultation details below before saving."
       }

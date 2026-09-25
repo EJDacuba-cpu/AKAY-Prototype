@@ -217,6 +217,7 @@ function TransactionRow({ transaction }) {
       </td>
       <td className="whitespace-nowrap px-4 py-3.5 text-right text-sm font-semibold tabular-nums text-[#0F172A]">
         {formatQuantity(transaction.quantity_after)}
+        {Number(transaction.discrepancy) < 0 && <span className="mt-1 block text-xs text-amber-700">Discrepancy: {transaction.discrepancy}</span>}
       </td>
       <td className="max-w-[260px] px-4 py-3.5 text-xs leading-5 text-[#475569]">
         {formatReason(transaction)}

@@ -13,6 +13,7 @@ class Medicine extends Model
         'category',
         'description',
         'quantity',
+        'reconciliation_required',
         'low_stock_threshold',
         'unit',
         'availability_status',
@@ -28,6 +29,7 @@ class Medicine extends Model
     protected $casts = [
         'expiration_date' => 'date',
         'is_active' => 'boolean',
+        'reconciliation_required' => 'boolean',
         'archived_at' => 'datetime',
     ];
 

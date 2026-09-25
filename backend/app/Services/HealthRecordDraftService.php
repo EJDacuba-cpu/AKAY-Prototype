@@ -116,7 +116,7 @@ class HealthRecordDraftService
         ): HealthRecordDraft {
             User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
             $activeCount = HealthRecordDraft::query()
-                    ->where('status', HealthRecordDraft::STATUS_ACTIVE)
+                ->where('status', HealthRecordDraft::STATUS_ACTIVE)
                 ->where('expires_at', '>', now())
                 ->count();
 
@@ -170,61 +170,72 @@ class HealthRecordDraftService
 
     public function update(User $user, string $publicId, array $data): HealthRecordDraft
     {
-        $draft = $this->loadOwnedActive($user, $publicId);
-        abort_unless((int) $draft->patient_id === (int) $data['patient_id'], 422, 'A consultation cannot be reassigned to another patient.');
-        $this->assertEditor($user, $draft);
-        $patient = $this->authorizedPatient($user, (int) $data['patient_id']);
-        $payload = $this->payloads->sanitize($data['payload']);
-        $this->authorizeMedicineSelections($user, $payload);
-        $ciphertext = $this->encrypt($payload);
-        $expectedVersion = (int) $data['version'];
+        return DB::transaction(function () use ($user, $publicId, $data) {
+            $draft = $this->loadOwnedActive($user, $publicId);
+            $before = $this->payload($draft);
+            abort_unless((int) $draft->patient_id === (int) $data['patient_id'], 422, 'A consultation cannot be reassigned to another patient.');
+            $this->assertEditor($user, $draft);
+            $patient = $this->authorizedPatient($user, (int) $data['patient_id']);
+            $payload = $this->payloads->sanitize($data['payload']);
+            $this->authorizeMedicineSelections($user, $payload);
+            $ciphertext = $this->encrypt($payload);
+            $expectedVersion = (int) $data['version'];
 
-        // Adopt-once: a draft created before consultation identities existed
-        // gains one the first time a current client saves it. An identity that
-        // is already set is never reassigned - the consultation keeps the uuid
-        // it was born with, whatever a later client claims.
-        $adoptedUuid = $draft->consultation_uuid === null
-            ? $this->normalizeConsultationUuid($data['consultation_uuid'] ?? null)
-            : null;
+            // Adopt-once: a draft created before consultation identities existed
+            // gains one the first time a current client saves it. An identity that
+            // is already set is never reassigned - the consultation keeps the uuid
+            // it was born with, whatever a later client claims.
+            $adoptedUuid = $draft->consultation_uuid === null
+                ? $this->normalizeConsultationUuid($data['consultation_uuid'] ?? null)
+                : null;
 
-        if ($adoptedUuid !== null
-            && $this->findActiveByConsultationUuid($user, $adoptedUuid) !== null) {
-            // That identity belongs to a different active draft; saving would
-            // merge two consultations into one row.
-            throw new DraftConsultationExistsException(
-                $this->findActiveByConsultationUuid($user, $adoptedUuid)
-            );
-        }
+            if ($adoptedUuid !== null
+                && $this->findActiveByConsultationUuid($user, $adoptedUuid) !== null) {
+                // That identity belongs to a different active draft; saving would
+                // merge two consultations into one row.
+                throw new DraftConsultationExistsException(
+                    $this->findActiveByConsultationUuid($user, $adoptedUuid)
+                );
+            }
 
-        $updated = HealthRecordDraft::query()
-            ->whereKey($draft->id)
-            ->where('barangay_health_center_id', $user->barangay_health_center_id)
-            ->where('status', HealthRecordDraft::STATUS_ACTIVE)
-            ->where('expires_at', '>', now())
-            ->where('version', $expectedVersion)
-            ->where('editor_user_id', $user->id)
-            ->where('editor_expires_at', '>', now())
-            ->where('review_state', 'encoding')
-            ->update([
-                'patient_id' => $patient->id,
-                'classification' => $data['classification'],
-                ...($adoptedUuid !== null
-                    ? ['consultation_uuid' => $adoptedUuid]
-                    : []),
-                'encrypted_payload' => $ciphertext,
-                'version' => DB::raw('version + 1'),
-                'last_editor_user_id' => $user->id,
-                'editor_expires_at' => now()->addMinutes(15),
-                'expires_at' => now()->addDays(config('health_record_drafts.expiry_days')),
-                'last_saved_at' => now(),
-                'updated_at' => now(),
-            ]);
+            $updated = HealthRecordDraft::query()
+                ->whereKey($draft->id)
+                ->where('barangay_health_center_id', $user->barangay_health_center_id)
+                ->where('status', HealthRecordDraft::STATUS_ACTIVE)
+                ->where('expires_at', '>', now())
+                ->where('version', $expectedVersion)
+                ->where('editor_user_id', $user->id)
+                ->where('editor_expires_at', '>', now())
+                ->where('review_state', $draft->review_state)
+                ->update([
+                    'patient_id' => $patient->id,
+                    'classification' => $data['classification'],
+                    ...($adoptedUuid !== null
+                        ? ['consultation_uuid' => $adoptedUuid]
+                        : []),
+                    'encrypted_payload' => $ciphertext,
+                    'version' => DB::raw('version + 1'),
+                    'last_editor_user_id' => $user->id,
+                    'editor_expires_at' => now()->addMinutes(15),
+                    'expires_at' => now()->addDays(config('health_record_drafts.expiry_days')),
+                    'last_saved_at' => now(),
+                    'updated_at' => now(),
+                ]);
 
-        if ($updated !== 1) {
-            throw new DraftVersionConflictException;
-        }
+            if ($updated !== 1) {
+                throw new DraftVersionConflictException;
+            }
 
-        return $draft->fresh(['patient']);
+            $changes = [];
+            foreach (array_unique([...array_keys($before), ...array_keys($payload)]) as $key) {
+                if (($before[$key] ?? null) !== ($payload[$key] ?? null)) {
+                    $changes[$key] = ['before' => $before[$key] ?? null, 'after' => $payload[$key] ?? null];
+                }
+            }
+            DB::table('consultation_events')->insert(['health_record_draft_id' => $draft->id, 'actor_id' => $user->id, 'action' => 'edited', 'version' => $expectedVersion + 1, 'encrypted_changes' => Crypt::encryptString(json_encode($changes, JSON_THROW_ON_ERROR)), 'created_at' => now()]);
+
+            return $draft->fresh(['patient']);
+        });
     }
 
     public function discard(User $user, string $publicId): HealthRecordDraft
@@ -345,7 +356,7 @@ class HealthRecordDraftService
 
         ActionPermissions::ensure($user, 'consultations.finalize');
         $this->assertEditor($user, $draft, false);
-        abort_unless($draft->review_state === 'review', 409, 'Submit and review this consultation before finalizing.');
+        // Explicit finalization permission permits finalizing one's own draft.
         abort_unless((int) request()->header('X-Draft-Version') === (int) $draft->version, 409, 'The consultation changed. Reload the review before finalizing.');
         $this->authorizedPatient($user, (int) $draft->patient_id);
 
@@ -404,6 +415,7 @@ class HealthRecordDraftService
     public function transition(User $user, string $publicId, string $action, int $version, ?string $note = null): HealthRecordDraft
     {
         $this->loadOwnedActive($user, $publicId);
+
         return DB::transaction(function () use ($user, $publicId, $action, $version, $note) {
             $draft = HealthRecordDraft::where('public_id', $publicId)->lockForUpdate()->firstOrFail();
             abort_unless($draft->status === HealthRecordDraft::STATUS_ACTIVE && $draft->expires_at?->isFuture(), 409, 'This consultation is no longer editable.');
@@ -423,7 +435,10 @@ class HealthRecordDraftService
                 $draft->editor_expires_at = now()->addMinutes(15);
             } elseif ($action === 'submit') {
                 $this->assertEditor($user, $draft);
+                abort_if(blank($this->payload($draft)['chiefComplaint'] ?? null), 422, 'Chief complaint is required.');
                 $draft->review_state = 'review';
+                $reviewers = ActionPermissions::bhcRecipients((int) $draft->barangay_health_center_id, 'consultations.finalize');
+                app(UserNotificationService::class)->notifyUsers($reviewers, 'Consultation For Review', 'A consultation is ready for review.', 'consultation_review', null, '/bhc/health-records/add?draftId='.$draft->public_id, 'health_record_draft', $draft->id);
                 $draft->editor_user_id = null;
                 $draft->editor_expires_at = null;
             } elseif ($action === 'return') {
@@ -432,12 +447,16 @@ class HealthRecordDraftService
                 abort_unless($draft->review_state === 'review' && filled($note), 422, 'A correction note is required for a consultation under review.');
                 $draft->review_state = 'encoding';
                 $draft->return_note = $note;
+                app(UserNotificationService::class)->notifyUser(User::find($draft->owner_user_id), 'Consultation Returned for Correction', $note, 'consultation_correction', null, '/bhc/health-records/add?draftId='.$draft->public_id, 'health_record_draft', $draft->id);
+                $draft->editor_user_id = null;
+                $draft->editor_expires_at = null;
             } else {
                 abort(422, 'Unsupported consultation action.');
             }
             $draft->version++;
             $draft->save();
             DB::table('consultation_events')->insert(['health_record_draft_id' => $draft->id, 'actor_id' => $user->id, 'action' => $action, 'version' => $draft->version, 'note' => $note, 'created_at' => now()]);
+
             return $draft->fresh(['patient', 'editor']);
         });
     }
@@ -445,7 +464,10 @@ class HealthRecordDraftService
     private function assertEditor(User $user, HealthRecordDraft $draft, bool $encoding = true): void
     {
         abort_unless((int) $draft->editor_user_id === (int) $user->id && $draft->editor_expires_at?->isFuture(), 409, 'Your editing session ended or was taken over. Reopen the consultation.');
-        abort_if($encoding && $draft->review_state !== 'encoding', 409, 'Return this consultation for correction before editing.');
+        if ($encoding && $draft->review_state === 'review') {
+            ActionPermissions::ensure($user, 'consultations.finalize');
+            ActionPermissions::ensure($user, 'records.correct');
+        }
     }
 
     public function metadata(HealthRecordDraft $draft): array
@@ -459,6 +481,7 @@ class HealthRecordDraftService
             ],
             'classification' => $draft->classification,
             'review_state' => $draft->review_state,
+            'can_edit' => $draft->review_state !== 'review' || ActionPermissions::allows(request()->user(), 'consultations.finalize'),
             'created_by' => $draft->owner_user_id,
             'editor' => $draft->editor ? ['id' => $draft->editor->id, 'name' => $draft->editor->name] : null,
             'editor_expires_at' => $draft->editor_expires_at?->toISOString(),

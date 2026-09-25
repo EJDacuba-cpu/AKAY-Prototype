@@ -1,6 +1,5 @@
 // Isolated manual UI fixture. Every API request is handled in memory; this
 // fixture never authenticates against or writes to an actual AKAY database.
-import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -22,6 +21,12 @@ window.fetch = async (input, options = {}) => {
   const body = options.body ? JSON.parse(options.body) : {};
   let data = [];
   if (path.endsWith('/patients/1')) data = patient;
+  else if (path.includes('/health-record-drafts') && path.endsWith('/transition')) {
+    const id = path.split('/').at(-2);
+    const draft = drafts.get(id);
+    data = { ...draft, version: (draft?.version || 0) + 1, review_state: body.action === 'submit' ? 'review' : body.action === 'return' ? 'encoding' : draft?.review_state || 'encoding' };
+    drafts.set(id, data);
+  }
   else if (path.includes('/health-record-drafts')) {
     if (method === 'POST' || method === 'PUT') {
       const id = path.split('/').at(-1) === 'health-record-drafts' ? crypto.randomUUID() : path.split('/').at(-1);
@@ -40,7 +45,7 @@ window.fetch = async (input, options = {}) => {
   else if (!path.includes('/api/')) throw Error(`Fixture blocked unexpected request: ${path}`);
   return new Response(JSON.stringify({ data }), { status: method === 'POST' ? 201 : 200, headers: { 'Content-Type': 'application/json' } });
 };
-storeAuthSession({ token: 'synthetic-fixture-only', user: { id: 99999, name: 'Synthetic BHW', role: 'bhw', barangay_health_center_id: 1 } });
+storeAuthSession({ token: 'synthetic-fixture-only', user: { id: Date.now(), name: 'Synthetic BHW', role: 'bhw', permissions: ['consultations.encode', 'consultations.finalize', 'records.correct', 'clinical.history', 'patients.register', 'referrals.submit', 'items.dispense', 'inventory.view'], barangay_health_center_id: 1 } });
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 const router = createMemoryRouter([
   { path: '/bhc/health-records/add', element: <NotificationProvider><ConsultationWorkspace /></NotificationProvider> },

@@ -13,6 +13,7 @@ import PatientDirectoryCard from "../../components/features/patients/PatientDire
 import usePatients from "../../hooks/usePatients";
 import { isConnectionError } from "../../services/apiClient";
 import { formatDisplayValue } from "../../utils/formatters";
+import "../../components/features/patients/clinical-directory.css";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -207,23 +208,23 @@ export default function PatientsModule() {
         isLoading={showInitialLoading}
         message="Loading patients..."
         scope="area"
-        className="space-y-4"
+        className="clinical-directory"
       >
         {!showInitialLoading && (
-          <ModuleToolbar
-            heading={
-              <div className="min-w-0">
-                <h1 className="text-[17px] font-black tracking-tight text-[#0F172A]">
+          <>
+              <div className="clinical-directory__heading min-w-0">
+                <h1 className="clinical-directory__title">
                   Patients
                 </h1>
                 <p className="mt-0.5 text-[12px] text-[#64748B]">
                   Register, search, and manage patient profiles.
                 </p>
-                <p className="mt-1 text-[11px] font-semibold text-[#94A3B8]">
+                <p className="clinical-directory__count">
                   {patientCountLabel}
                 </p>
               </div>
-            }
+          <ModuleToolbar
+            variant="clinical"
             searchValue={filters.search}
             onSearchChange={(value) =>
               setFilters((prev) => ({ ...prev, search: value }))
@@ -240,9 +241,10 @@ export default function PatientsModule() {
             primaryActionLabel="New Patient"
             primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
           />
+          </>
         )}
 
-        <div className="relative min-w-0">
+        <div className="clinical-directory__results relative min-w-0">
           {showRefreshOverlay && (
             <div className="pointer-events-none absolute right-0 top-0 z-10">
               <RefreshingIndicator label="Updating patients..." />
@@ -296,12 +298,13 @@ function PatientDirectory({
           />
         ) : (
           <>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+            <div className="clinical-directory__grid">
               {patients.map((patient) => (
                 <PatientDirectoryCard
                   key={patient.id || patient.patientId}
                   patient={patient}
                   basePath="/bhc"
+                  variant="clinical"
                 />
               ))}
             </div>

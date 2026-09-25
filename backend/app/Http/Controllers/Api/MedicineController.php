@@ -22,8 +22,7 @@ class MedicineController extends Controller
         private readonly FacilityAccessService $facilityAccess,
         private readonly MedicineStockService $medicineStock,
         private readonly AkayCacheService $cache
-    ) {
-    }
+    ) {}
 
     public function index(Request $request)
     {
@@ -206,6 +205,7 @@ class MedicineController extends Controller
                 'quantity_before',
                 'quantity_delta',
                 'quantity_after',
+                'discrepancy',
                 'reason',
                 'source_type',
                 'created_at',
@@ -220,6 +220,7 @@ class MedicineController extends Controller
                 'quantity_before' => $transaction->quantity_before,
                 'quantity_delta' => $transaction->quantity_delta,
                 'quantity_after' => $transaction->quantity_after,
+                'discrepancy' => $transaction->discrepancy,
                 'reason' => $transaction->reason,
                 'source_type' => $transaction->source_type,
                 'created_at' => $transaction->created_at?->toISOString(),
@@ -283,6 +284,7 @@ class MedicineController extends Controller
             'category' => $medicine->category,
             'description' => $medicine->description,
             'quantity' => (int) $medicine->quantity,
+            'reconciliation_required' => (bool) $medicine->reconciliation_required,
             'low_stock_threshold' => (int) ($medicine->low_stock_threshold ?? 10),
             'unit' => $medicine->unit,
             'availability_status' => $medicine->availability_status,

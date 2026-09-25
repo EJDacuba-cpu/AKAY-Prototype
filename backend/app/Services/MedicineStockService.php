@@ -30,8 +30,7 @@ class MedicineStockService
     public function __construct(
         private readonly FacilityAccessService $facilityAccess,
         private readonly AuditLogger $auditLogger
-    ) {
-    }
+    ) {}
 
     public function normalize(array $items): array
     {
@@ -141,6 +140,20 @@ class MedicineStockService
         ?string $direction = null,
         ?string $operationKey = null
     ): array {
+        if ($action === 'physical_count') {
+            ActionPermissions::ensure($request->user(), 'inventory.manage');
+            $locked = Medicine::whereKey($medicine->id)->lockForUpdate()->firstOrFail();
+            $this->facilityAccess->authorizeMedicine($request->user(), $locked);
+            $before = (int) $locked->quantity;
+            $difference = $quantity - $before;
+            $result = $difference === 0
+                ? ['transaction_id' => null, 'medicine_id' => $locked->id, 'quantity_before' => $before, 'quantity_after' => $quantity, 'quantity_delta' => 0, 'transaction_type' => 'physical_count']
+                : $this->adjust($request, $locked, 'correction', abs($difference), 'Physical count: '.$reason, $difference > 0 ? 'in' : 'out', $operationKey);
+            $locked->update(['reconciliation_required' => false]);
+            $this->auditLogger->log($request, 'inventory_reconciled', 'medicines', "medicine_id={$locked->id}; physical_count={$quantity}; reason={$reason}");
+
+            return $result;
+        }
         abort_unless(in_array($action, self::ADJUSTMENT_ACTIONS, true), 422, 'Invalid inventory operation.');
         $this->facilityAccess->authorizeMedicine($request->user(), $medicine);
         $context = $this->facilityContext($request->user());
@@ -427,7 +440,6 @@ class MedicineStockService
             if (
                 ! $medicine->is_active
                 || $medicine->expiration_date?->isBefore(today())
-                || strcasecmp((string) $medicine->availability_status, 'Unavailable') === 0
             ) {
                 $this->inventoryError(
                     'MEDICINE_NOT_DISPENSABLE',
@@ -437,34 +449,14 @@ class MedicineStockService
             }
         }
 
-        $insufficientItems = [];
-        foreach ($items as $item) {
-            $medicine = $medicines->get($item['medicine_id']);
-            if ($item['quantity'] > (int) $medicine->quantity) {
-                $insufficientItems[] = [
-                    'medicine_id' => $medicine->id,
-                    'medicine_name' => $medicine->name,
-                    'requested_quantity' => $item['quantity'],
-                    'available_quantity' => (int) $medicine->quantity,
-                ];
-            }
-        }
-        if ($insufficientItems !== []) {
-            $this->inventoryError(
-                'INSUFFICIENT_STOCK',
-                409,
-                'One or more selected medicines no longer have enough available stock.',
-                $insufficientItems
-            );
-        }
-
         $results = [];
         foreach ($items as $item) {
             $medicine = $medicines->get($item['medicine_id']);
             $before = (int) $medicine->quantity;
-            $after = $before - $item['quantity'];
+            $after = max(0, $before - $item['quantity']);
             $medicine->update([
                 'quantity' => $after,
+                'reconciliation_required' => $medicine->reconciliation_required || $item['quantity'] > $before,
                 'availability_status' => $this->medicineStatus($after, (int) ($medicine->low_stock_threshold ?? 10)),
                 'updated_by' => $user->id,
             ]);
@@ -473,6 +465,8 @@ class MedicineStockService
                 'actor_user_id' => $user->id,
                 'transaction_type' => 'dispense',
                 'quantity_delta' => -$item['quantity'],
+                'discrepancy' => min(0, $before - $item['quantity']),
+                'reason' => $item['quantity'] > $before ? 'Reconciliation Required: actual dispensing exceeds recorded stock.' : null,
                 'quantity_before' => $before,
                 'quantity_after' => $after,
                 'source_type' => 'health_record',

@@ -96,7 +96,7 @@ class VisitPurpose
             $validator->errors()->add("$prefix.pregnancyConfirmed", 'Pregnancy confirmation applies only to a teenage Prenatal visit.');
         }
         if (in_array('General', $services, true)) {
-            foreach (['chief_complaint' => 'Chief complaint', 'history_of_present_illness' => 'History of present illness'] as $field => $label) {
+            foreach (['chief_complaint' => 'Chief complaint'] as $field => $label) {
                 if (blank($request->input($field))) {
                     $validator->errors()->add($field, "$label is required for General Consultation.");
                 }

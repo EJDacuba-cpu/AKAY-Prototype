@@ -37,8 +37,8 @@ class HealthRecordRequest extends FormRequest
     public function rules(): array
     {
         return [
-            ...ConsultationPrograms::rules("monitoring_data"),
-            ...VisitPurpose::rules("monitoring_data.visitPurpose"),
+            ...ConsultationPrograms::rules('monitoring_data'),
+            ...VisitPurpose::rules('monitoring_data.visitPurpose'),
             'idempotency_key' => $this->isMethod('post')
                 ? ['bail', 'required', 'uuid', 'max:64']
                 : ['prohibited'],
@@ -55,6 +55,13 @@ class HealthRecordRequest extends FormRequest
             'patient_id' => [$this->isMethod('post') ? 'required' : 'sometimes', 'exists:patients,id'],
             'date_recorded' => ['nullable', 'date'],
             'vital_signs' => ['nullable', 'array'],
+            'vital_signs.systolicBp' => ['nullable', 'numeric', 'min:0'],
+            'vital_signs.diastolicBp' => ['nullable', 'numeric', 'min:0'],
+            'vital_signs.temperature' => ['nullable', 'numeric'],
+            'vital_signs.pulse' => ['nullable', 'numeric', 'min:0'],
+            'vital_signs.spo2' => ['nullable', 'numeric', 'between:0,100'],
+            'vital_signs.weight' => ['nullable', 'numeric', 'gt:0'],
+            'vital_signs.height' => ['nullable', 'numeric', 'gt:0'],
             'visit_type' => ['nullable', 'string', 'in:initial_consultation,follow_up_visit'],
             'parent_health_record_id' => ['nullable', 'exists:health_records,id'],
             'category' => ['nullable', 'string', 'max:100'],
@@ -125,6 +132,9 @@ class HealthRecordRequest extends FormRequest
             'maternal_data.td5Date' => ['nullable', 'date'],
             'maternal_data.td5_date' => ['nullable', 'date'],
             'immunization_data' => ['nullable', 'array'],
+            'immunization_data.vaccineEntries.*.medicineId' => ['nullable', 'integer', 'exists:medicines,id'],
+            'immunization_data.vaccineEntries.*.inventoryQuantity' => ['nullable', 'integer', 'min:1', 'max:2147483647'],
+            'immunization_data.vaccineEntries.*.confirmedGiven' => ['nullable', 'boolean'],
             'monitoring_data' => ['nullable', 'array'],
             'monitoring_data.followUpStatus' => ['nullable', 'string', 'max:100'],
             'monitoring_data.follow_up_status' => ['nullable', 'string', 'max:100'],
@@ -254,7 +264,7 @@ class HealthRecordRequest extends FormRequest
             'tb_data.doseCalendar.months.*.weightKg' => ['nullable', 'string', 'max:20'],
             'tb_data.doseCalendar.months.*.heightCm' => ['nullable', 'string', 'max:20'],
             'needs_referral' => ['nullable', 'boolean'],
-            'chief_complaint' => ['nullable', 'string'],
+            'chief_complaint' => [$this->isMethod('post') ? 'required' : 'sometimes', 'string'],
             'physical_exam' => ['nullable', 'string'],
             'history_of_present_illness' => ['nullable', 'string'],
             'diagnosis' => ['nullable', 'string'],
@@ -264,6 +274,7 @@ class HealthRecordRequest extends FormRequest
             'dispensed_medicines' => ['nullable', 'array'],
             'dispensed_medicines.*.medicine_id' => ['required', 'integer', 'exists:medicines,id'],
             'dispensed_medicines.*.quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
+            'dispensed_medicines.*.confirmed_given' => ['nullable', 'boolean'],
             'dispensed_medicines.*.unit' => ['nullable', 'string', 'max:50'],
             'dispensed_medicines.*.remarks' => ['nullable', 'string'],
             'referral' => ['nullable', 'array'],
@@ -314,6 +325,9 @@ class HealthRecordRequest extends FormRequest
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(function ($validator): void {
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
             VisitPurpose::validate($validator, $this);
             $monitoringData = $this->input('monitoring_data', []);
             ConsultationPrograms::validateSelection(
@@ -330,9 +344,6 @@ class HealthRecordRequest extends FormRequest
             $date = $monitoringData['followUpDate']
                 ?? $monitoringData['follow_up_date']
                 ?? null;
-            $time = $monitoringData['followUpTime']
-                ?? $monitoringData['follow_up_time']
-                ?? null;
             $taskId = $monitoringData['followUpTaskId']
                 ?? $monitoringData['follow_up_task_id']
                 ?? null;
@@ -347,22 +358,16 @@ class HealthRecordRequest extends FormRequest
                 strtolower(trim((string) $status))
             );
 
+            if (($needsReferral || $normalizedStatus === 'follow up required') && blank($this->input('diagnosis'))) {
+                $validator->errors()->add('diagnosis', 'BHC Assessment is required for follow-up or referral.');
+            }
+            if ($needsReferral && blank($this->input('referral.reason_for_referral'))) {
+                $validator->errors()->add('referral.reason_for_referral', 'Reason for referral is required.');
+            }
             if (! $needsReferral && $normalizedStatus === 'follow up required' && ! $date) {
                 $validator->errors()->add(
                     'monitoring_data.followUpDate',
                     'Follow-up date is required when status is Follow-up Required.'
-                );
-            }
-
-            if (
-                ! $needsReferral
-                && strcasecmp((string) $this->input('category'), 'General Consultation') === 0
-                && $normalizedStatus === 'follow up required'
-                && blank($time)
-            ) {
-                $validator->errors()->add(
-                    'monitoring_data.followUpTime',
-                    'Follow-up time is required for a General Consultation follow-up schedule.'
                 );
             }
 
@@ -377,6 +382,34 @@ class HealthRecordRequest extends FormRequest
                 );
             }
 
+            $programs = $this->input('monitoring_data.selectedPrograms', []);
+            $required = [];
+            if (in_array('Family Planning', $programs)) {
+                $required[] = 'family_planning_data.methodUsed';
+            }
+            if (in_array('TB', $programs)) {
+                $required = [...$required, 'tb_data.diagnosis.tbCaseNumber', 'tb_data.phases.intensiveStart'];
+            }
+            if (array_intersect(['Hypertension', 'Diabetes'], $programs)) {
+                $required = [...$required, 'monitoring_data.hypertensionDiabeticData.conditionType', 'vital_signs.systolicBp', 'vital_signs.diastolicBp'];
+            }
+            foreach ($required as $field) {
+                if (blank($this->input($field))) {
+                    $validator->errors()->add($field, 'Complete this required program field or remove the additional form.');
+                }
+            }
+            if (in_array('EPI', $programs) && empty($this->input('immunization_data.vaccineEntries')) && blank($this->input('notes'))) {
+                $validator->errors()->add('immunization_data.vaccineEntries', 'Select a vaccine or record why no vaccine was given.');
+            }
+            $medicineIds = array_column($this->input('dispensed_medicines', []), 'medicine_id');
+            foreach ($this->input('immunization_data.vaccineEntries', []) as $index => $entry) {
+                if (($entry['confirmedGiven'] ?? false) && (empty($entry['medicineId']) || empty($entry['inventoryQuantity']))) {
+                    $validator->errors()->add("immunization_data.vaccineEntries.$index", 'Select the inventory item and quantity for the confirmed administration.');
+                }
+                if (! empty($entry['medicineId']) && in_array($entry['medicineId'], $medicineIds)) {
+                    $validator->errors()->add('dispensed_medicines', 'This vaccine is already recorded in the Immunization form. Remove its duplicate Medicines/Supplies entry.');
+                }
+            }
             $supplements = $this->input('maternal_data.supplements_given', []);
             if (! is_array($supplements)) {
                 return;

@@ -1037,6 +1037,7 @@ function toPayload(record = {}, { partial = false } = {}) {
       ? record.dispensedMedicines.map((item) => ({
           medicine_id: item.medicineId || item.medicine_id,
           quantity: item.quantity,
+          confirmed_given: item.confirmedGiven === true,
           unit: item.unit || null,
           remarks: item.remarks || null,
         }))

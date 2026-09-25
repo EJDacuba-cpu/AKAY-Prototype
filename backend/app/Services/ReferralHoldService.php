@@ -72,8 +72,9 @@ class ReferralHoldService
             ->each(function (ReferralHold $hold) use ($rhu): void {
                 $patientName = $hold->patient?->full_name ?: 'A previously blocked referral';
 
-                $this->notifications->notifyUser(
-                    $hold->creator,
+                $recipients = ActionPermissions::bhcRecipients((int) $hold->barangay_health_center_id, 'referrals.submit');
+                $this->notifications->notifyUsers(
+                    $recipients,
                     'Doctor Now Available',
                     "{$rhu->name} may now have an available doctor - {$patientName} can be resubmitted.",
                     'referral_hold_available',

@@ -1,5 +1,6 @@
 import { Link } from "react-router";
-import { MapPin } from "lucide-react";
+import { ArrowUpRight, MapPin } from "lucide-react";
+import { Button } from "../../ui/button";
 
 import { formatDisplayValue, formatPatientName } from "../../../utils/formatters";
 
@@ -125,7 +126,7 @@ function DetailField({ label, value }) {
   );
 }
 
-export default function PatientDirectoryCard({ patient, basePath }) {
+export default function PatientDirectoryCard({ patient, basePath, variant }) {
   const routePatientId = formatDisplayValue(patient.id || patient.patientId, "");
   const patientName = formatPatientName(patient, "Unnamed Patient");
   const displayId = getPatientDisplayId(patient);
@@ -140,6 +141,43 @@ export default function PatientDirectoryCard({ patient, basePath }) {
   // pinned line, so it is no longer part of this joined string.
   const sexAge =
     [sex, age].filter(Boolean).join(` ${String.fromCharCode(183)} `) || ageSex;
+
+  if (variant === "clinical") {
+    return (
+      <article className="clinical-patient">
+        <header className="clinical-patient__identity">
+          <p className="clinical-patient__id">ID #{displayId}</p>
+          <h3 className="clinical-patient__name">{patientName}</h3>
+          <p className="clinical-patient__demographics">{sexAge}</p>
+        </header>
+        <dl className="clinical-patient__fields">
+          {[
+            ["Date of birth", birthDate],
+            ["Contact", contact],
+            ["Registered", registeredDate],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+        <footer className="clinical-patient__footer">
+          {location && (
+            <p className="clinical-patient__location">
+              <MapPin size={13} aria-hidden="true" />
+              <span>{location}</span>
+            </p>
+          )}
+          <Button asChild variant="ghost" size="sm" className="clinical-patient__open">
+            <Link to={`${basePath}/patients/${routePatientId}`} aria-label={`Open Profile: ${patientName}, ID ${displayId}`}>
+              Open Profile <ArrowUpRight size={14} aria-hidden="true" />
+            </Link>
+          </Button>
+        </footer>
+      </article>
+    );
+  }
 
   return (
     <article className="group flex flex-col rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm shadow-black/[0.015] transition-all duration-200 hover:-translate-y-0.5 hover:border-red-100 hover:shadow-md">

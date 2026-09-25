@@ -65,6 +65,7 @@ export default function ModuleToolbar({
   onPrimaryAction,
   actions = null,
   disabled = false,
+  variant,
 }) {
   const [searchOpen, setSearchOpen] = useState(Boolean(searchValue));
   const [internalFiltersOpen, setInternalFiltersOpen] = useState(false);
@@ -184,14 +185,14 @@ export default function ModuleToolbar({
     );
   }
   return (
-    <div ref={toolbarRef} className="relative z-20 mb-4">
+    <div ref={toolbarRef} data-variant={variant} className="module-toolbar relative z-20 mb-4">
       <div
-        className={`flex flex-col gap-3 sm:flex-row sm:items-center ${
+        className={`module-toolbar__row flex flex-col gap-3 sm:flex-row sm:items-center ${
           heading ? "sm:justify-between" : "sm:justify-end"
         }`}
       >
         {heading}
-        <div className="flex min-w-0 items-center justify-end gap-2 sm:ml-auto">
+        <div className="module-toolbar__controls flex min-w-0 items-center justify-end gap-2 sm:ml-auto">
           <div
             className={`group relative flex h-10 items-center rounded-xl border border-[#E5E7EB] bg-white shadow-sm transition-all duration-300 ${
               searchOpen

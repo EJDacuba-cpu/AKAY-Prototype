@@ -3,6 +3,7 @@ import { apiRequest, unwrapData, unwrapList } from "./apiClient";
 function normalizeDraft(draft = {}) {
   return {
     reviewState: draft.review_state || "encoding",
+    canEdit: draft.can_edit !== false,
     editor: draft.editor || null,
     returnNote: draft.return_note || "",
     id: String(draft.id || ""),
@@ -64,6 +65,7 @@ export async function createHealthRecordDraft({
 export async function getHealthRecordDraft(draftId) {
   const response = await apiRequest(`/health-record-drafts/${draftId}`);
   const draft = normalizeDraft(unwrapData(response));
+  if (!draft.canEdit) return draft;
   const claimed = await transitionDraft(draftId, "claim", draft.version);
   return { ...draft, ...claimed, payload: draft.payload, medicineSelections: draft.medicineSelections };
 }

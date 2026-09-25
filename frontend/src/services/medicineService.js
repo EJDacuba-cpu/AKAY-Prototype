@@ -57,6 +57,7 @@ function normalizeMedicine(item = {}) {
     unit: item.unit || "pcs",
     status,
     availabilityStatus: status,
+    reconciliationRequired: Boolean(item.reconciliation_required),
     expiryDate: item.expiration_date || item.expiryDate || "",
     ruralHealthUnitId: item.rural_health_unit_id || item.ruralHealthUnitId || "",
     barangayHealthCenterId:

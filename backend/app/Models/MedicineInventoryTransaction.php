@@ -15,6 +15,7 @@ class MedicineInventoryTransaction extends Model
         'actor_user_id',
         'transaction_type',
         'quantity_delta',
+        'discrepancy',
         'quantity_before',
         'quantity_after',
         'source_type',

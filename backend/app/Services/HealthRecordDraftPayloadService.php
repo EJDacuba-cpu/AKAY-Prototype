@@ -174,6 +174,9 @@ class HealthRecordDraftPayloadService
             'mmr_dose2' => self::SCALAR,
             'feeding_status' => self::SCALAR,
             'vaccineEntries' => ['*' => [
+                'medicineId' => self::SCALAR,
+                'inventoryQuantity' => self::SCALAR,
+                'confirmedGiven' => self::SCALAR,
                 'vaccineName' => self::SCALAR,
                 'customVaccineName' => self::SCALAR,
                 'dose' => self::SCALAR,
@@ -346,6 +349,7 @@ class HealthRecordDraftPayloadService
             'preferredRhuDoctorId' => self::SCALAR,
         ],
         'dispensedMedicines' => ['*' => [
+            'confirmedGiven' => self::SCALAR,
             'medicineId' => self::SCALAR,
             'quantity' => self::SCALAR,
             // Typed per-line remarks used to be dropped here, so resuming a

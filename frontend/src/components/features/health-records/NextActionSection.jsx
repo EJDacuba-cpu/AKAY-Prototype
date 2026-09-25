@@ -17,13 +17,13 @@ function buildActionCards({ referralTitle, referralBody }) {
     {
       key: NEXT_ACTION_NONE,
       icon: CircleSlash,
-      title: "No Follow-up",
+      title: "No Follow-up or Referral Required",
       body: "No follow-up needed at this time.",
     },
     {
       key: NEXT_ACTION_SCHEDULE,
       icon: CalendarClock,
-      title: "Schedule Follow-up",
+      title: "BHC Follow-up Required",
       body: "Schedule a return visit for this patient.",
     },
     {
@@ -102,7 +102,7 @@ export default function NextActionSection({
   // the same card grid without inventing state it never submits.
   showReferralFields = true,
   showFollowUpTime = true,
-  referralTitle = "Referral",
+  referralTitle = "Refer to RHU",
   referralBody = "Refer to the RHU for further management.",
   scheduleNotice = null,
   legacyStatusNote = null,
@@ -201,31 +201,12 @@ export default function NextActionSection({
       {referring && (
         <ClinicalFieldGroup
           title="Referral Details"
-          subtitle="Describe the case for the receiving RHU. Facility, urgency and preferred doctor are set on the next step."
+          subtitle="The RHU receives the referral and assigns the practitioner. RHU staff determine queue order."
         >
           <div className="space-y-4">
-            <FieldTextarea
-              label="Initial Diagnosis"
-              name="initialDiagnosis"
-              value={referralForm.initialDiagnosis || ""}
-              error={errors.initialDiagnosis}
-              onChange={(event) =>
-                onReferralFieldChange("initialDiagnosis", event.target.value)
-              }
-              placeholder="Enter initial diagnosis..."
-              rows={2}
-            />
-            <FieldTextarea
-              label="Initial Actions Taken"
-              name="initialActionsTaken"
-              value={referralForm.initialActionsTaken || ""}
-              error={errors.initialActionsTaken}
-              onChange={(event) =>
-                onReferralFieldChange("initialActionsTaken", event.target.value)
-              }
-              placeholder="Enter initial actions taken..."
-              rows={3}
-            />
+            <label className="block text-sm font-medium">Queue Priority
+              <select className="mt-2 block h-10 w-full rounded-md border border-slate-200 bg-white px-3" value={referralForm.urgencyLevel || "Routine"} disabled={disabled} onChange={event => onReferralFieldChange("urgencyLevel", event.target.value)}><option value="Routine">Regular</option><option value="Priority">Priority</option></select>
+            </label>
             <FieldTextarea
               label="Reason for Referral"
               required

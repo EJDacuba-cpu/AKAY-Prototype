@@ -35,6 +35,7 @@ class AdjustMedicineRequest extends FormRequest
                     'damaged_disposal',
                     'expired_disposal',
                     'correction',
+                    'physical_count',
                 ]),
             ],
             'direction' => [
@@ -43,7 +44,7 @@ class AdjustMedicineRequest extends FormRequest
                 'nullable',
                 Rule::in(['in', 'out']),
             ],
-            'quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
+            'quantity' => ['required', 'integer', $this->input('action') === 'physical_count' ? 'min:0' : 'min:1', 'max:2147483647'],
             'reason' => ['required', 'string', 'max:1000'],
         ];
     }

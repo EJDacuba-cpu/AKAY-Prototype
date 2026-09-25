@@ -137,12 +137,12 @@ test("the global steps read in the new order with the new names", () => {
   assert.deepEqual(
     steps.map((step) => step.label),
     [
-      "Interview",
-      "Clinical Assessment",
+      "Chief Complaint & HPI",
+      "Physical Examination",
       "Program / Service Details",
-      "Treatment & Management",
-      "Next Care Decision",
-      "Review & Save",
+      "BHC Assessment & Actions Taken",
+      "Disposition",
+      "Review & Confirm",
     ],
   );
 });
@@ -259,11 +259,11 @@ for (const [label, programs, primary] of [
     assert.equal(getProgramFormSteps(programs, primary).length > 0, programs.length > 0);
 
     assert.deepEqual(headingFor(INTERVIEW_STEP, programs, primary), {
-      title: "Interview",
+      title: "Chief Complaint & HPI",
       subtitle: SUBTITLES[INTERVIEW_STEP],
     });
     assert.deepEqual(headingFor(ASSESSMENT_STEP, programs, primary), {
-      title: "Clinical Assessment",
+      title: "Physical Examination",
       subtitle: SUBTITLES[ASSESSMENT_STEP],
     });
   });
@@ -294,9 +294,9 @@ test("later steps never show a program title", () => {
     const heading = headingFor(stepKey, ["Family Planning"], "Family Planning");
     assert.doesNotMatch(heading.title, /Family Planning|Program \d/);
   }
-  assert.equal(headingFor(TREATMENT_STEP, ["EPI"], "EPI").title, "Treatment & Management");
-  assert.equal(headingFor(NEXT_STEP, ["EPI"], "EPI").title, "Next Care Decision");
-  assert.equal(headingFor(REVIEW_STEP, ["EPI"], "EPI").title, "Review & Save");
+  assert.equal(headingFor(TREATMENT_STEP, ["EPI"], "EPI").title, "BHC Assessment & Actions Taken");
+  assert.equal(headingFor(NEXT_STEP, ["EPI"], "EPI").title, "Disposition");
+  assert.equal(headingFor(REVIEW_STEP, ["EPI"], "EPI").title, "Review & Confirm");
 });
 
 /* ── Validation ownership ────────────────────────────────────────────── */
@@ -374,10 +374,10 @@ function payloadFor(wizardPhase, formStep) {
 
 for (const [stage, formStep] of [
   ["Interview & Vital Signs", INTERVIEW_STEP],
-  ["Clinical Assessment", ASSESSMENT_STEP],
+  ["Physical Examination", ASSESSMENT_STEP],
   ["Program 1 (Maternal)", MATERNAL],
   ["Program 2 (Hypertension / Diabetic)", HPN_DM],
-  ["Treatment & Management", TREATMENT_STEP],
+  ["BHC Assessment & Actions Taken", TREATMENT_STEP],
 ]) {
   test(`DRAFT RESTORE: a draft saved on ${stage} reopens on ${stage}`, () => {
     assert.deepEqual(resolveRestoredPosition(payloadFor("form", formStep)), {

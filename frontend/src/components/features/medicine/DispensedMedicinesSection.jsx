@@ -63,7 +63,7 @@ function getItemStatus(item) {
 
 function isBlocked(item) {
   const status = getItemStatus(item);
-  return status === "Expired" || status === "Out of stock";
+  return status === "Expired";
 }
 
 function getStatusClasses(status) {
@@ -177,23 +177,16 @@ export default function DispensedMedicinesSection({
       setValidationError("This medicine is expired and cannot be dispensed.");
       return;
     }
-    if (getItemStatus(medicine) === "Out of stock") {
-      setValidationError("This medicine is out of stock.");
-      return;
-    }
 
     const existingItem = value.find(
       (item) => String(item.medicineId) === String(medicine.id),
     );
     const nextQuantity = quantity + toNumber(existingItem?.quantity);
 
-    if (nextQuantity > toNumber(medicine.quantity)) {
-      setValidationError("Quantity exceeds available stock.");
-      return;
-    }
 
     const nextItem = {
       medicineId: String(medicine.id),
+      confirmedGiven: true,
       medicineName: medicine.name,
       category: medicine.category || "Uncategorized",
       availableStock: medicine.quantity,
@@ -288,7 +281,7 @@ export default function DispensedMedicinesSection({
       <div className="rounded-xl border border-[#E8ECF0] bg-white p-4">
         <div>
           <p className="text-xs leading-relaxed text-[#64748B]">
-            Select an item and quantity, then click Add Medicine. Only items
+            Select an item and quantity, then click Confirm Dispensed/Given. Only items
             shown in the list below will be saved and deducted from BHC
             inventory with this health record.
           </p>
@@ -412,7 +405,7 @@ export default function DispensedMedicinesSection({
             className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-xs font-semibold text-white transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Package size={14} />
-            Add Medicine
+            Confirm Dispensed/Given
           </button>
         </div>
 

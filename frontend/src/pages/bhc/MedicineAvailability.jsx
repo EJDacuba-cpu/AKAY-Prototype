@@ -444,7 +444,7 @@ function MedicineTable({
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3.5">
-                  <StatusBadge status={item.status} />
+                  <StatusBadge status={item.status} />{item.reconciliationRequired && <span className="mt-1 block text-xs font-semibold text-amber-700">Reconciliation Required</span>}
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">

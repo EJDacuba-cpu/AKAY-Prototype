@@ -11,6 +11,7 @@ const ACTIONS = [
   { value: "damaged_disposal", label: "Damaged Disposal" },
   { value: "expired_disposal", label: "Expired Disposal" },
   { value: "correction", label: "Correction" },
+  { value: "physical_count", label: "Reconcile Physical Count" },
 ];
 
 export default function MedicineInventoryActionModal({
@@ -157,10 +158,10 @@ export default function MedicineInventoryActionModal({
             </div>
           )}
 
-          <Field label={isRestock ? "Quantity to Add" : "Quantity"} required>
+          <Field label={isRestock ? "Quantity to Add" : form.action === "physical_count" ? "Actual Remaining Stock (Physical Count)" : "Quantity"} required>
             <input
               type="number"
-              min="1"
+              min={form.action === "physical_count" ? "0" : "1"}
               max="2147483647"
               value={form.quantity}
               onChange={(event) =>

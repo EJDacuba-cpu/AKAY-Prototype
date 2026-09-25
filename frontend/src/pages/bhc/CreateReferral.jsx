@@ -44,7 +44,6 @@ import { getReferralHoldById } from "../../services/referralHolds";
 import { useDoctorAvailability } from "../../hooks/useDoctorAvailability";
 import { getCurrentUser } from "../../utils/auth";
 import ReferralQrCode from "../../components/features/referrals/ReferralQrCode";
-import RhuProviderSelect from "../../components/features/referrals/RhuProviderSelect";
 import ReferralPrintSlip from "../../components/features/referrals/ReferralPrintSlip";
 import { queryKeys } from "../../utils/queryKeys";
 import {
@@ -269,6 +268,8 @@ export default function CreateReferral() {
 
     if (foundRecord) {
       setRecord(foundRecord);
+      const pending = foundRecord.monitoringData?.pendingReferral || foundRecord.monitoring_data?.pendingReferral;
+      if (pending) setForm(current => ({ ...current, reasonForReferral: pending.reason_for_referral || "", urgencyLevel: pending.urgency_level || "Routine", initialDiagnosis: pending.initial_diagnosis || foundRecord.diagnosis || "", initialActionsTaken: pending.initial_action_taken || "", preferredRhuDoctorId: "" }));
 
       const foundPatient = patients.find((p) => p.id === foundRecord.patientId);
       if (foundPatient) setPatient(foundPatient);
@@ -337,18 +338,6 @@ export default function CreateReferral() {
 
   // The roster arrives already scoped to this BHC's mapped receiving RHU
   // (DOC-01, DOC-15), so no browser-side facility filtering is applied.
-  const rhuDoctors = useMemo(
-    () =>
-      (rhuDoctorAvailability.providers || []).map((doctor) => ({
-        id: doctor.id,
-        name: doctor.name,
-        role: doctor.specialization || "General Practitioner",
-        status: doctor.availabilityStatus,
-        note: doctor.remarks || "",
-        updatedAt: doctor.updatedAt || null,
-      })),
-    [rhuDoctorAvailability],
-  );
 
   // DOC-19 counts are computed by the server and read straight through; the
   // browser must never re-derive the DOC-14 rule.
@@ -362,9 +351,7 @@ export default function CreateReferral() {
   const noProviderMessage =
     "The receiving Rural Health Unit has no available doctor right now. This referral cannot be submitted until the RHU marks a doctor available.";
   const doctorAvailabilitySummary = `${availableDoctorCount} of ${totalDoctorCount} doctors available`;
-  const selectedRhuDoctor = rhuDoctors.find(
-    (doctor) => doctor.id === form.preferredRhuDoctorId,
-  );
+  const selectedRhuDoctor = null; // RHU staff assigns the receiving practitioner.
   const preferredRhuDoctorLabel = selectedRhuDoctor
     ? `${selectedRhuDoctor.name} · ${selectedRhuDoctor.status}`
     : "RHU to assign";
@@ -372,18 +359,6 @@ export default function CreateReferral() {
   function handleChange(e) {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
-  }
-
-  function handleDoctorPreferenceChange(e) {
-    const doctorId = e.target.value;
-    const nextDoctor = rhuDoctors.find((doctor) => doctor.id === doctorId);
-
-    setForm((prev) => ({ ...prev, preferredRhuDoctorId: doctorId }));
-
-    if (nextDoctor?.status === "Unavailable") {
-      setUnavailableDoctorNotice(nextDoctor);
-      setShowUnavailableDoctorModal(true);
-    }
   }
 
   function handleChooseAnotherDoctor() {
@@ -551,7 +526,7 @@ export default function CreateReferral() {
       // server resolves that referral_holds row on success.
       resumeHoldId: resumeHold?.id || "",
 
-      // BHC may indicate a preferred RHU doctor, but RHU can still reassign.
+      // The referral is addressed to the RHU; its staff assigns the practitioner.
       preferredRhuDoctorId: selectedRhuDoctor?.id || "",
       preferredRhuDoctorName: selectedRhuDoctor?.name || "RHU to assign",
       preferredRhuDoctorRole:
@@ -1513,11 +1488,7 @@ export default function CreateReferral() {
                 onRetry={loadReferralDestination}
               />
 
-              <RhuProviderSelect
-                providers={rhuDoctors}
-                selectedProviderId={form.preferredRhuDoctorId}
-                onChange={handleDoctorPreferenceChange}
-              />
+              <p className="text-sm text-slate-600">RHU staff will assign the receiving practitioner after submission.</p>
             </div>
 
             {/* DOC-14 / USB-02 - state the block plainly and up front rather

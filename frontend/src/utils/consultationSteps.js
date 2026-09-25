@@ -117,18 +117,18 @@ export function getProgramFormSteps(selectedPrograms = [], primaryProgram = "") 
  * when at least one program is selected, so a General Consultation goes
  * straight from Clinical Assessment to Treatment & Management.
  */
-export function buildConsultationSteps({ selectedPrograms, primaryProgram, generalSelected = true, purposeFlow = false } = {}) {
+export function buildConsultationSteps({ selectedPrograms, primaryProgram, generalSelected = true } = {}) {
   const programSteps = getProgramFormSteps(selectedPrograms, primaryProgram);
 
   return [
-    { key: INTERVIEW_STEP, phase: "form", label: purposeFlow ? "Vital Signs" : "Interview" },
-    ...(generalSelected ? [{ key: ASSESSMENT_STEP, phase: "form", label: purposeFlow ? "General Consultation" : "Clinical Assessment" }] : []),
+    { key: INTERVIEW_STEP, phase: "form", label: "Chief Complaint & HPI" },
+    ...(generalSelected ? [{ key: ASSESSMENT_STEP, phase: "form", label: "Physical Examination" }] : []),
     ...(programSteps.length > 0
       ? [{ key: PROGRAMS_STEP, phase: "form", label: "Program / Service Details" }]
       : []),
-    { key: TREATMENT_STEP, phase: "form", label: "Treatment & Management" },
-    { key: NEXT_STEP, phase: "next", label: "Next Care Decision" },
-    { key: REVIEW_STEP, phase: "review", label: "Review & Save" },
+    { key: TREATMENT_STEP, phase: "form", label: "BHC Assessment & Actions Taken" },
+    { key: NEXT_STEP, phase: "next", label: "Disposition" },
+    { key: REVIEW_STEP, phase: "review", label: "Review & Confirm" },
   ];
 }
 
@@ -290,6 +290,7 @@ export function getErrorOwnerStepKey(errorKey) {
   // its Vital Signs card; the Hypertension / Diabetic form does not repeat it,
   // so its error is shown there.
   if (
+    ["pulse", "spo2", "weight", "height", "temp"].includes(key) ||
     key === "chiefComplaint" ||
     key === "summaryOfPresentIllness" ||
     key === "hypertensionDiabeticData.bp"
@@ -304,8 +305,8 @@ export function getErrorOwnerStepKey(errorKey) {
     return programStepKey("Family Planning");
   }
   if (key === "vaccineEntries") return programStepKey("Immunization");
-  if (key === "dispensedMedicines") return TREATMENT_STEP;
-  if (key === "followUpDate" || key === "followUpTime" || key === "followUpStatus") {
+  if (key === "diagnosis" || key === "dispensedMedicines") return TREATMENT_STEP;
+  if (key === "reasonForReferral" || key === "followUpDate" || key === "followUpTime" || key === "followUpStatus") {
     return NEXT_STEP;
   }
   return null;

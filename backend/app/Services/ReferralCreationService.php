@@ -65,7 +65,7 @@ class ReferralCreationService
             'created_by' => $user->id,
             'status' => Referral::STATUS_PENDING,
             'urgency_level' => $data['urgency_level'] ?? Referral::ATTENTION_ROUTINE,
-            'referral_datetime' => $data['referral_datetime'] ?? now(),
+            'referral_datetime' => now(),
         ]);
 
         ReferralUpdate::create([
@@ -121,7 +121,6 @@ class ReferralCreationService
         if (! empty($data['resume_hold_id'])) {
             $hold = ReferralHold::query()
                 ->where('id', $data['resume_hold_id'])
-                ->where('created_by', $user->id)
                 ->where('patient_id', $patient->id)
                 ->where('barangay_health_center_id', $route['bhc']->id)
                 ->where('status', ReferralHold::STATUS_WAITING)
@@ -129,6 +128,7 @@ class ReferralCreationService
 
             if ($hold) {
                 app(ReferralHoldService::class)->markResubmitted($hold, $referral->id);
+                if ($healthRecord) $healthRecord->update(['monitoring_data' => [...($healthRecord->monitoring_data ?? []), 'referralStatus' => 'Submitted', 'submissionStatus' => 'Submitted', 'linkedTrackingId' => $referral->tracking_id]]);
             }
         }
 

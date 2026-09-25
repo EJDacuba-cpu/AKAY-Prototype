@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exceptions\DraftFinalizationConflictException;
+use App\Exceptions\ReferralSubmissionBlockedException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\HealthRecordRequest;
 use App\Models\FollowUpTask;
@@ -18,11 +19,13 @@ use App\Services\HealthRecordDraftService;
 use App\Services\HealthRecordIdempotencyService;
 use App\Services\MedicineStockService;
 use App\Services\ReferralCreationService;
+use App\Services\ReferralHoldService;
+use App\Services\ReferralRoutingService;
 use App\Support\StoredFunction;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 class HealthRecordController extends Controller
 {
@@ -171,21 +174,39 @@ class HealthRecordController extends Controller
                     $request->user()
                 );
                 $record = HealthRecord::create([...$data, 'encoded_by' => $lockedDraft?->owner_user_id ?? $request->user()->id]);
+                $confirmedItems = array_values(array_filter($dispensedMedicines, fn ($item) => ($item['confirmed_given'] ?? false) === true));
+                foreach ($data['immunization_data']['vaccineEntries'] ?? [] as $entry) {
+                    if (($entry['confirmedGiven'] ?? false) === true) {
+                        $confirmedItems[] = ['medicine_id' => $entry['medicineId'], 'quantity' => $entry['inventoryQuantity'], 'remarks' => 'Administered: '.($entry['vaccineName'] ?? 'vaccine')];
+                    }
+                }
+                if ($confirmedItems !== []) {
+                    $this->medicineStock->dispense($request, $record, $confirmedItems);
+                }
                 $followUpTasks->syncRecord($record, $request->user(), $lockedFollowUpTask);
                 $followUpTasks->fulfillParentTask($record, $request->user(), $lockedFollowUpTask);
 
                 if (is_array($referralData)) {
-                    $referral = $referralCreation->create($request, $patient, [
-                        ...$referralData,
-                        'client_submission_id' => "health-record:{$idempotencyKey}",
-                    ], $record);
-                    $record->update([
-                        'monitoring_data' => [
-                            ...($record->monitoring_data ?? []),
-                            'linkedTrackingId' => $referral->tracking_id,
-                            'referralTrackingId' => $referral->tracking_id,
-                        ],
-                    ]);
+                    try {
+                        $referral = $referralCreation->create($request, $patient, [
+                            ...$referralData,
+                            'client_submission_id' => "health-record:{$idempotencyKey}",
+                        ], $record);
+                        $record->update([
+                            'monitoring_data' => [
+                                ...($record->monitoring_data ?? []),
+                                'linkedTrackingId' => $referral->tracking_id,
+                                'referralTrackingId' => $referral->tracking_id,
+                            ],
+                        ]);
+                    } catch (ReferralSubmissionBlockedException $exception) {
+                        if ($exception->blockCode !== 'NO_PROVIDER_AVAILABLE') {
+                            throw $exception;
+                        }
+                        $route = app(ReferralRoutingService::class)->resolveForBhw($request->user(), $referralData['rural_health_unit_id'] ?? null);
+                        $hold = app(ReferralHoldService::class)->recordBlockedAttempt($request->user(), $patient, $route['bhc']->id, $route['rhu'], [...$referralData, 'health_record_id' => $record->id]);
+                        $record->update(['monitoring_data' => [...($record->monitoring_data ?? []), 'pendingReferral' => $referralData, 'referralHoldId' => $hold->id, 'referralStatus' => 'Awaiting Doctor Availability', 'submissionStatus' => 'Not Yet Submitted']]);
+                    }
                 }
 
                 $purpose = $record->monitoring_data['visitPurpose'] ?? null;
@@ -261,7 +282,7 @@ class HealthRecordController extends Controller
             return $response;
         }
 
-        if ($dispensedMedicines !== []) {
+        if ($record->dispensedMedicines()->exists()) {
             $this->cache->invalidateBhcMedicineDisplay((int) $patient->barangay_health_center_id);
         }
         if (is_array($referralData)) {
@@ -278,8 +299,7 @@ class HealthRecordController extends Controller
         Request $request,
         HealthRecord $healthRecord,
         FollowUpEpisodeService $episodes
-    )
-    {
+    ) {
         $this->facilityAccess->authorizeHealthRecord($request->user(), $healthRecord);
         $episode = $episodes->forRecord($healthRecord, $request->user());
 
@@ -326,7 +346,7 @@ class HealthRecordController extends Controller
 
         abort_unless(is_array($healthRecord->tb_data), 404, 'This record has no TB treatment card.');
 
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.tb-treatment-card', [
+        $pdf = Pdf::loadView('pdf.tb-treatment-card', [
             'record' => $healthRecord,
             'patient' => $healthRecord->patient,
             'tb' => $healthRecord->tb_data,
