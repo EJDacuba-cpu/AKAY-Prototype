@@ -321,7 +321,7 @@ export default function PatientsModule() {
         title="Patient Summary"
         widthClassName="w-full sm:w-[420px]"
       >
-        {selectedPatientId && (
+        {!showInlinePreview && selectedPatientId && (
           <PatientSummaryPanel key={selectedPatientId} patientId={selectedPatientId} />
         )}
       </Drawer>
