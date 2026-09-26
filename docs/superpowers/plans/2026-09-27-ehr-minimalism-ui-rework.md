@@ -411,7 +411,7 @@ Expected changes only: `bg-[#F8FAFC] text-[#0F172A]` → `bg-gray-50 text-gray-9
 - [ ] **Step 5: Verify the sidebar/breadcrumb files are already clean**
 
 ```bash
-grep -rnE "slate-|#(B91C1C|991B1B|7F1D1D|0F172A|F8FAFC)|rounded-(md|lg|xl|2xl|3xl)|shadow-(xs|sm|md)|backdrop-blur" src/components/layout
+grep -rnE "\bslate-|#(B91C1C|991B1B|7F1D1D|0F172A|F8FAFC)|rounded-(md|lg|xl|2xl|3xl)|shadow-(xs|sm|md)|backdrop-blur" src/components/layout
 ```
 Expected: no output. (Sidebar files needed no edits.)
 
@@ -945,7 +945,7 @@ with:
 - [ ] **Step 5: Confirm no legacy values remain in this module**
 
 ```bash
-grep -rniE "slate-|#(B91C1C|991B1B|7F1D1D|0F172A|F8FAFC|94A3B8|475569|64748B)|rounded-(md|lg|xl|2xl|3xl)|shadow-(xs|sm|md)|backdrop-blur" src/pages/bhc/PatientsModule.jsx src/components/features/patients/*.jsx src/components/features/patients/clinical-directory.css
+grep -rniE "\bslate-|#(B91C1C|991B1B|7F1D1D|0F172A|F8FAFC|94A3B8|475569|64748B)|rounded-(md|lg|xl|2xl|3xl)|shadow-(xs|sm|md)|backdrop-blur" src/pages/bhc/PatientsModule.jsx src/components/features/patients/*.jsx src/components/features/patients/clinical-directory.css
 grep -nE "rounded-full|className=\" \"" src/pages/bhc/PatientsModule.jsx src/components/features/patients/*.jsx
 ```
 Expected first command: no output. For each `rounded-full` hit in the second: keep it only on round dots/avatars/spinners; on a text pill (has `px-`) change to `rounded-sm`.
@@ -1403,7 +1403,7 @@ Also update the doc comment above `export default function PatientDetails()`: re
 - [ ] **Step 5: Gate check for the profile files**
 
 ```bash
-grep -rnE "slate-|#(B91C1C|991B1B|7F1D1D|0F172A|F8FAFC|94A3B8|475569|64748B)|rounded-(md|lg|xl|2xl|3xl)|shadow-(xs|sm|md)|backdrop-blur" src/pages/bhc/PatientDetails.jsx src/components/features/patients/profile src/components/features/patients/PatientBackgroundTab.jsx
+grep -rnE "\bslate-|#(B91C1C|991B1B|7F1D1D|0F172A|F8FAFC|94A3B8|475569|64748B)|rounded-(md|lg|xl|2xl|3xl)|shadow-(xs|sm|md)|backdrop-blur" src/pages/bhc/PatientDetails.jsx src/components/features/patients/profile src/components/features/patients/PatientBackgroundTab.jsx
 grep -nE "rounded-full|className=\" \"" src/pages/bhc/PatientDetails.jsx src/components/features/patients/profile/*.jsx src/components/features/patients/PatientBackgroundTab.jsx
 ```
 Expected first: no output. Second: keep `rounded-full` only on round dots/avatars; change text pills (with `px-`) to `rounded-sm`.
@@ -1491,7 +1491,7 @@ Keep the pill rules (`rounded-full` with `px-` → 2px, without `px-` → round)
 - [ ] **Step 4: Gate check**
 
 ```bash
-grep -rnE "slate-|#(B91C1C|991B1B|7F1D1D|0F172A|F8FAFC|94A3B8|475569|64748B)|rounded-(md|lg|xl|2xl|3xl)|shadow-(xs|sm|md)|backdrop-blur" src/pages/bhc/ConsultationWorkspace.jsx src/components/features/health-records/wizard --include=*.jsx
+grep -rnE "\bslate-|#(B91C1C|991B1B|7F1D1D|0F172A|F8FAFC|94A3B8|475569|64748B)|rounded-(md|lg|xl|2xl|3xl)|shadow-(xs|sm|md)|backdrop-blur" src/pages/bhc/ConsultationWorkspace.jsx src/components/features/health-records/wizard --include=*.jsx
 grep -nE "rounded-full|rounded\b" src/pages/bhc/ConsultationWorkspace.jsx | grep -v "rounded-none\|rounded-sm" | head
 ```
 Expected first: no output. Second: text pills (with `px-`) → `rounded-sm`; keep round dots/avatars.
@@ -1535,7 +1535,7 @@ EOF
 - [ ] **Step 1: Whole-area grep gate**
 
 ```bash
-grep -rnE "slate-|#(B91C1C|991B1B|7F1D1D|0F172A|F8FAFC|94A3B8|475569|64748B)|rounded-(md|lg|xl|2xl|3xl)|shadow-(xs|sm|md)|backdrop-blur" \
+grep -rnE "\bslate-|#(B91C1C|991B1B|7F1D1D|0F172A|F8FAFC|94A3B8|475569|64748B)|rounded-(md|lg|xl|2xl|3xl)|shadow-(xs|sm|md)|backdrop-blur" \
   src/components/layout src/pages/bhc/PatientsModule.jsx src/pages/bhc/PatientDetails.jsx src/pages/bhc/ConsultationWorkspace.jsx \
   src/components/features/patients src/components/features/health-records/wizard --include=*.jsx --include=*.js
 grep -niE "#(b91c1c|991b1b|7f1d1d)" src/components/features/patients/clinical-directory.css
