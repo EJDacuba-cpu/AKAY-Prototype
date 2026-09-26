@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import { ArrowLeft, Plus } from "lucide-react";
 
@@ -100,24 +101,28 @@ function ConsultationNotice({ consultation }) {
           </button>
         </div>
       </div>
-      <ConfirmationModal
-        open={confirmingDiscard}
-        title="Discard unfinished consultation?"
-        description="The saved draft for this patient will be deleted. This cannot be undone."
-        confirmText="Discard Draft"
-        loading={discarding}
-        loadingText="Discarding..."
-        onCancel={() => setConfirmingDiscard(false)}
-        onConfirm={async () => {
-          try {
-            await discard();
-          } catch {
-            // The mutation's onError already toasted; keep the draft visible.
-          } finally {
-            setConfirmingDiscard(false);
-          }
-        }}
-      />
+      {/* Portaled: the profile aside is `sticky`, which would trap the modal's z-index below the sidebar/topbar. */}
+      {createPortal(
+        <ConfirmationModal
+          open={confirmingDiscard}
+          title="Discard unfinished consultation?"
+          description="The saved draft for this patient will be deleted. This cannot be undone."
+          confirmText="Discard Draft"
+          loading={discarding}
+          loadingText="Discarding..."
+          onCancel={() => setConfirmingDiscard(false)}
+          onConfirm={async () => {
+            try {
+              await discard();
+            } catch {
+              // The mutation's onError already toasted; keep the draft visible.
+            } finally {
+              setConfirmingDiscard(false);
+            }
+          }}
+        />,
+        document.body,
+      )}
     </>
   );
 }
