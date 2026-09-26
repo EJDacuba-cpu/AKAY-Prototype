@@ -20,53 +20,53 @@
 @theme {
   /* ── Color ramps ─────────────────────────────────────────────────────── */
 
-  /* Neutral — warm greige (replaces slate) */
-  --color-neutral-50: #fafaf9;
-  --color-neutral-100: #f5f4f2;
-  --color-neutral-200: #e8e7e3;
-  --color-neutral-300: #d6d4ce;
-  --color-neutral-400: #b0ada4;
-  --color-neutral-500: #8a867c;
-  --color-neutral-600: #6b6860;
-  --color-neutral-700: #4e4b45;
-  --color-neutral-800: #35332e;
-  --color-neutral-900: #21201c;
+  /* Neutral — cool gray (medical-ehr-minimalism) */
+  --color-neutral-50: #f9fafb;
+  --color-neutral-100: #f3f4f6;
+  --color-neutral-200: #e5e7eb;
+  --color-neutral-300: #d1d5db;
+  --color-neutral-400: #9ca3af;
+  --color-neutral-500: #6b7280;
+  --color-neutral-600: #4b5563;
+  --color-neutral-700: #374151;
+  --color-neutral-800: #1f2937;
+  --color-neutral-900: #111827;
 
-  /* Brand — clay / brick (logo, nav, primary actions) */
-  --color-brand-50: #fbf1ef;
-  --color-brand-100: #f5ded9;
-  --color-brand-200: #e4b3aa;
-  --color-brand-300: #ce8578;
-  --color-brand-400: #b85a4b;
-  --color-brand-500: #a23f31;
-  --color-brand-600: #853327;
-  --color-brand-700: #67281f;
-  --color-brand-800: #4a1e17;
-  --color-brand-900: #331512;
+  /* Brand — red (primary actions, active states) */
+  --color-brand-50: #fef2f2;
+  --color-brand-100: #fee2e2;
+  --color-brand-200: #fecaca;
+  --color-brand-300: #fca5a5;
+  --color-brand-400: #f87171;
+  --color-brand-500: #ef4444;
+  --color-brand-600: #dc2626;
+  --color-brand-700: #b91c1c;
+  --color-brand-800: #991b1b;
+  --color-brand-900: #7f1d1d;
 
-  /* Alert — vivid red (Emergency / No Show / destructive ONLY) */
-  --color-alert-50: #fdecec;
-  --color-alert-100: #fad1d1;
-  --color-alert-200: #f2a0a0;
-  --color-alert-300: #e96a6a;
-  --color-alert-400: #de3f3f;
-  --color-alert-500: #c81e1e;
-  --color-alert-600: #a31616;
-  --color-alert-700: #7d1010;
+  /* Alert — critical only */
+  --color-alert-50: #fef2f2;
+  --color-alert-100: #fee2e2;
+  --color-alert-200: #fecaca;
+  --color-alert-300: #fca5a5;
+  --color-alert-400: #f87171;
+  --color-alert-500: #ef4444;
+  --color-alert-600: #dc2626;
+  --color-alert-700: #b91c1c;
 
-  /* Status — muted, calm */
-  --color-success-50: #eaf2ec;
-  --color-success-500: #3f7a55;
-  --color-success-700: #2c5a3e;
-  --color-warning-50: #f7f0e1;
-  --color-warning-500: #b07d2b;
-  --color-warning-700: #855c18;
-  --color-info-50: #eaf1f6;
-  --color-info-500: #3a6b94;
-  --color-info-700: #29506f;
+  /* Status */
+  --color-success-50: #ecfdf5;
+  --color-success-500: #059669;
+  --color-success-700: #047857;
+  --color-warning-50: #fffbeb;
+  --color-warning-500: #f59e0b;
+  --color-warning-700: #b45309;
+  --color-info-50: #ecfeff;
+  --color-info-500: #0891b2;
+  --color-info-700: #0e7490;
 
   /* ── Typography ──────────────────────────────────────────────────────── */
-  --font-sans: "Public Sans Variable", system-ui, sans-serif;
+  --font-sans: "Geiza", "Public Sans Variable", system-ui, sans-serif;
   --font-serif: "Source Serif 4 Variable", Georgia, serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
@@ -79,21 +79,33 @@
   --text-2xl: 1.5rem;
   --text-3xl: 1.875rem;
 
-  /* ── Radius (restrained — do NOT round heavily) ──────────────────────── */
-  --radius-row: 4px;
-  --radius-input: 8px;
-  --radius-card: 12px;
-  --radius-card-sm: 10px;
-  --radius-lg: 14px;
-  --radius-modal: 16px;
-  --radius-pill: 999px;
+  /* ── Radius: sharp. Only badges get 2px. ─────────────────────────────── */
+  --radius-row: 0;
+  --radius-input: 0;
+  --radius-card: 0;
+  --radius-card-sm: 0;
+  --radius-modal: 0;
+  --radius-pill: 999px; /* dots, avatars, spinners only */
+  --radius-badge: 2px;
+  /* Tailwind's own scale, so hard-coded rounded-* classes go square too. */
+  --radius-xs: 0;
+  --radius-sm: 2px;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
 
-  /* ── Shadow (soft system; overlays AND elevated cards) ────────────────── */
-  --shadow-sm: 0 1px 2px rgba(33, 32, 28, 0.05);
-  --shadow-md: 0 4px 12px rgba(33, 32, 28, 0.06);
-  --shadow-lg: 0 12px 28px rgba(33, 32, 28, 0.08);
-  --shadow-card:
-    0 1px 2px rgba(33, 32, 28, 0.05), 0 2px 8px rgba(33, 32, 28, 0.05);
+  /* ── Shadow: flat. Only floating layers keep one subtle shadow. ──────── */
+  --shadow-2xs: 0 0 #0000;
+  --shadow-xs: 0 0 #0000;
+  --shadow-sm: 0 0 #0000;
+  --shadow-md: 0 0 #0000;
+  --shadow-lg: 0 4px 12px rgba(17, 24, 39, 0.08);
+  --shadow-xl: 0 4px 12px rgba(17, 24, 39, 0.08);
+  --shadow-2xl: 0 4px 12px rgba(17, 24, 39, 0.08);
+  --shadow-card: 0 0 #0000;
 }
 
 :root {
@@ -106,13 +118,13 @@
   --color-text: var(--color-neutral-900);
   --color-text-secondary: var(--color-neutral-600);
   --color-text-muted: var(--color-neutral-500);
-  --color-primary: var(--color-brand-500);
-  --color-primary-hover: var(--color-brand-600);
+  --color-primary: var(--color-brand-600);
+  --color-primary-hover: var(--color-brand-700);
   --color-primary-soft: var(--color-brand-50);
   --color-danger: var(--color-alert-500);
   --color-danger-hover: var(--color-alert-600);
   --color-danger-soft: var(--color-alert-50);
-  --color-ring: color-mix(in srgb, var(--color-brand-500) 30%, transparent);
+  --color-ring: color-mix(in srgb, var(--color-brand-600) 30%, transparent);
 
   /* ── Legacy aliases — keep the old --akay-* API working (re-pointed) ─── */
   --akay-primary: var(--color-primary);
@@ -137,20 +149,19 @@ body {
   margin: 0;
   background: var(--color-bg);
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 14px;
   color: var(--color-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Serif headings by default; utility classes (font-sans, font-bold, …) still
-   win by specificity, so components keep full control where they opt in. */
+/* Bold sans headings (medical-ehr-minimalism). Utility classes still win. */
 h1,
 h2,
 h3,
 h4 {
-  font-family: var(--font-serif);
-  font-weight: 600;
+  font-family: var(--font-sans);
+  font-weight: 700;
 }
 
 /* Cards: elevated surfaces get a border + --shadow-card (top-level panels,
@@ -166,16 +177,11 @@ h4 {
 }
 
 .akay-card-hover {
-  transition:
-    transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 0.18s ease,
-    box-shadow 0.18s ease;
+  transition: border-color 0.18s ease;
 }
 
 .akay-card-hover:hover {
-  transform: translateY(-1px);
-  border-color: #fecaca;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  border-color: var(--color-border-strong);
 }
 
 .akay-scrollbar {
@@ -194,7 +200,7 @@ h4 {
 
 .akay-scrollbar::-webkit-scrollbar-thumb {
   background: #d1d5db;
-  border-radius: 999px;
+  border-radius: 0;
 }
 
 .akay-scrollbar:hover::-webkit-scrollbar-thumb {

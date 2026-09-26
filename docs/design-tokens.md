@@ -7,11 +7,13 @@ of truth for AKAY's color, type, radius, and elevation tokens. Components are
 
 ## Design direction
 
-> **"Calm medical sanctuary"** — airy, precise, trustworthy, humane.
-> Not startup, not aggressive, not heavily rounded.
+> **"Clinical minimalism"** — flat, dense, structured, professional
+> (the *medical-ehr-minimalism* skill).
 
-Warm-neutral base, a clay brand red, a **separate** vivid alert red used
-sparingly, restrained radius, and serif headings.
+Cool-gray neutrals, one red (`#DC2626`) for primary actions / active states /
+urgency, sharp corners (2px on badges only), no shadows except floating layers,
+and bold sans headings. Geiza is the first font in the stack; Public Sans is the
+shipped fallback.
 
 ## Where tokens live (Tailwind v4)
 
@@ -20,7 +22,7 @@ tokens are defined in [`frontend/src/index.css`](../frontend/src/index.css).
 
 | Block     | Purpose                                                                 |
 | --------- | ----------------------------------------------------------------------- |
-| `@theme`  | **Generating tokens.** Tailwind emits these as CSS vars *and* builds utilities from them (`bg-brand-500`, `text-neutral-600`, `rounded-card`, `font-serif`, `text-2xl`, `shadow-md`). |
+| `@theme`  | **Generating tokens.** Tailwind emits these as CSS vars *and* builds utilities from them (`bg-brand-600`, `text-neutral-600`, `rounded-card`, `font-sans`, `text-2xl`, `shadow-md`). |
 | `:root`   | **Semantic role tokens.** Plain CSS vars that do *not* generate utilities. Components consume THESE in Step 2. |
 | `:root` (aliases) | Legacy `--akay-*` variables, re-pointed at the new tokens so nothing breaks. |
 
@@ -32,63 +34,64 @@ is what lets a dark theme drop in later by overriding roles only.
 
 ## Color
 
-### Neutral — warm greige (replaces slate)
+### Neutral — cool gray
 
 | Shade | Hex       | Typical use              |
 | ----- | --------- | ------------------------ |
-| 50    | `#FAFAF9` | App background           |
-| 100   | `#F5F4F2` | Subtle surface / hover   |
-| 200   | `#E8E7E3` | Borders                  |
-| 300   | `#D6D4CE` | Strong borders / dividers|
-| 400   | `#B0ADA4` | Disabled text, icons     |
-| 500   | `#8A867C` | Muted text               |
-| 600   | `#6B6860` | Secondary text           |
-| 700   | `#4E4B45` | Body text (strong)       |
-| 800   | `#35332E` | Headings                 |
-| 900   | `#21201C` | Primary text             |
+| 50    | `#F9FAFB` | App background           |
+| 100   | `#F3F4F6` | Subtle surface / hover   |
+| 200   | `#E5E7EB` | Borders                  |
+| 300   | `#D1D5DB` | Strong borders / dividers|
+| 400   | `#9CA3AF` | Disabled text, icons     |
+| 500   | `#6B7280` | Muted text               |
+| 600   | `#4B5563` | Secondary text           |
+| 700   | `#374151` | Body text (strong)       |
+| 800   | `#1F2937` | Headings                 |
+| 900   | `#111827` | Primary text             |
 
-### Brand — clay / brick
+### Brand — red
 
 | Shade | Hex       | Typical use                         |
 | ----- | --------- | ----------------------------------- |
-| 50    | `#FBF1EF` | Primary-soft tint (active nav bg)   |
-| 100   | `#F5DED9` | Soft fills, hovers                  |
-| 200   | `#E4B3AA` | Soft borders                        |
-| 300   | `#CE8578` | —                                   |
-| 400   | `#B85A4B` | —                                   |
-| 500   | `#A23F31` | **Primary** — buttons, links, logo  |
-| 600   | `#853327` | Primary hover                       |
-| 700   | `#67281F` | Primary pressed / on-tint text      |
-| 800   | `#4A1E17` | —                                   |
-| 900   | `#331512` | —                                   |
+| 50    | `#FEF2F2` | Primary-soft tint (active nav bg)   |
+| 100   | `#FEE2E2` | Soft fills, hovers                  |
+| 200   | `#FECACA` | Soft borders                        |
+| 300   | `#FCA5A5` | —                                   |
+| 400   | `#F87171` | —                                   |
+| 500   | `#EF4444` | Critical accents                    |
+| 600   | `#DC2626` | **Primary** — buttons, links, active states |
+| 700   | `#B91C1C` | Primary hover / on-tint text        |
+| 800   | `#991B1B` | Primary pressed                     |
+| 900   | `#7F1D1D` | —                                   |
 
-### Alert — vivid red
+### Alert — critical only
 
 | Shade | Hex       | Typical use                    |
 | ----- | --------- | ------------------------------ |
-| 50    | `#FDECEC` | Danger-soft tint (error bg)    |
-| 100   | `#FAD1D1` | —                              |
-| 200   | `#F2A0A0` | —                              |
-| 300   | `#E96A6A` | —                              |
-| 400   | `#DE3F3F` | —                              |
-| 500   | `#C81E1E` | **Danger** — destructive, urgent |
-| 600   | `#A31616` | Danger hover                   |
-| 700   | `#7D1010` | On-tint danger text            |
+| 50    | `#FEF2F2` | Danger-soft tint (error bg)    |
+| 100   | `#FEE2E2` | —                              |
+| 200   | `#FECACA` | —                              |
+| 300   | `#FCA5A5` | —                              |
+| 400   | `#F87171` | —                              |
+| 500   | `#EF4444` | **Danger** — destructive, urgent |
+| 600   | `#DC2626` | Danger hover                   |
+| 700   | `#B91C1C` | On-tint danger text            |
 
-### Status — muted, calm
+### Status
 
 | Role    | 50        | 500       | 700       | Use                         |
 | ------- | --------- | --------- | --------- | --------------------------- |
-| Success | `#EAF2EC` | `#3F7A55` | `#2C5A3E` | Completed, healthy, confirmed |
-| Warning | `#F7F0E1` | `#B07D2B` | `#855C18` | Caution, pending review     |
-| Info    | `#EAF1F6` | `#3A6B94` | `#29506F` | Neutral information         |
+| Success | `#ECFDF5` | `#059669` | `#047857` | Completed, healthy, confirmed |
+| Warning | `#FFFBEB` | `#F59E0B` | `#B45309` | Caution, pending review     |
+| Info    | `#ECFEFF` | `#0891B2` | `#0E7490` | Neutral information         |
 
 ### 🔴 Brand red vs. Alert red — WHEN to use each
 
-The old system used one red (`#B91C1C`) for both brand and danger, so **nothing
-read as urgent.** These are now two different reds with two different jobs:
+Brand and alert now resolve to the same red family (`#DC2626` / `#EF4444`), so
+red is **reserved**: primary actions, active states and critical alerts only.
+The two token families keep two different jobs:
 
-| Use **Brand** (`brand-500`, clay) for…      | Use **Alert** (`alert-500`, vivid) for…            |
+| Use **Brand** (`brand-600`) for…            | Use **Alert** (`alert-500`) for…                   |
 | ------------------------------------------- | -------------------------------------------------- |
 | Logo, wordmark                              | Emergency / triage-urgent flags                    |
 | Active navigation item                      | "No Show" status                                   |
@@ -108,15 +111,16 @@ it's **alert**. Alert red must stay rare to stay loud. Muted status colors
 
 | Token         | Family                                            | Role                    |
 | ------------- | ------------------------------------------------- | ----------------------- |
-| `--font-sans` | `"Public Sans Variable", system-ui, sans-serif`   | Body, UI (default)      |
-| `--font-serif`| `"Source Serif 4 Variable", Georgia, serif`       | Headings (h1–h4 default)|
+| `--font-sans` | `"Geiza", "Public Sans Variable", system-ui, sans-serif` | Body, UI, headings (default) |
+| `--font-serif`| `"Source Serif 4 Variable", Georgia, serif`       | Not used for headings (kept for legacy use) |
 | `--font-mono` | `"IBM Plex Mono", ui-monospace, monospace`        | IDs, codes, data        |
 
-Fonts are **self-hosted** via `@fontsource` (no CDN — poor-connectivity context),
-imported in [`main.jsx`](../frontend/src/main.jsx). Weights: Public Sans
+Geiza is first in the stack but its files are **not shipped**; the browser falls
+back to Public Sans. Shipped fonts are **self-hosted** via `@fontsource` (no CDN —
+poor-connectivity context), imported in [`main.jsx`](../frontend/src/main.jsx). Weights: Public Sans
 400/500/600/700, Source Serif 4 500/600, IBM Plex Mono 400/500.
 
-**Type scale (15px base):**
+**Type scale (unchanged; `body` is 14px):**
 
 | Utility     | Token         | Size      | px   |
 | ----------- | ------------- | --------- | ---- |
@@ -128,45 +132,38 @@ imported in [`main.jsx`](../frontend/src/main.jsx). Weights: Public Sans
 | `text-2xl`  | `--text-2xl`  | 1.5rem    | 24px |
 | `text-3xl`  | `--text-3xl`  | 1.875rem  | 30px |
 
-`body` defaults to Public Sans at 15px; `h1`–`h4` default to Source Serif 4 at
-weight 600. Utility classes (`font-sans`, `font-bold`, …) still win by
+`body` defaults to the sans stack at 14px; `h1`–`h4` default to bold (700) sans.
+The `--text-*` scale is unchanged, so only inherited, un-classed text gets denser. Utility classes (`font-sans`, `font-bold`, …) still win by
 specificity, so a component can always opt out.
 
 ---
 
-## Radius (restrained — do **not** round heavily)
+## Radius (sharp — only badges get 2px)
 
 | Utility           | Token               | Value | Use                                          |
 | ----------------- | ------------------- | ----- | --------------------------------------------- |
-| `rounded-row`     | `--radius-row`      | 4px   | Table rows, list items                        |
-| `rounded-input`   | `--radius-input`    | 8px   | Inputs, buttons                               |
-| `rounded-card`    | `--radius-card`     | 12px  | Cards, stat tiles, patient header             |
-| `rounded-card-sm` | `--radius-card-sm`  | 10px  | Nested/small cards inside a section (task/medication cards) |
-| `rounded-lg`      | `--radius-lg`       | 14px  | Larger panels, sidebars                       |
-| `rounded-modal`   | `--radius-modal`    | 16px  | Modals, dialogs                               |
-| `rounded-pill`    | `--radius-pill`     | 999px | Pills, badges, avatars                        |
+| `rounded-row`     | `--radius-row`      | 0     | Table rows, list items                        |
+| `rounded-input`   | `--radius-input`    | 0     | Inputs, buttons                               |
+| `rounded-card`    | `--radius-card`     | 0     | Cards, stat tiles, patient header             |
+| `rounded-card-sm` | `--radius-card-sm`  | 0     | Nested/small cards inside a section           |
+| `rounded-modal`   | `--radius-modal`    | 0     | Modals, dialogs                               |
+| `rounded-badge`   | `--radius-badge`    | 2px   | Badges, status tags                           |
+| `rounded-pill`    | `--radius-pill`     | 999px | Dots, avatars, spinners only                  |
+
+Tailwind's own scale is overridden so hard-coded classes go square too:
+`rounded-xs/md/lg/xl/2xl/3xl/4xl` = `0`, `rounded-sm` = `2px`.
 
 ## Elevation / shadow
 
-`shadow-sm` / `shadow-md` / `shadow-lg` stay **reserved for overlays** (menus,
-modals, toasts). `shadow-card` is the exception: it pairs **with** a border on
-elevated/primary surfaces — the intent is gentle layering, not drama.
+Flat by default. `shadow-2xs/xs/sm/md` and `shadow-card` are `0 0 #0000` (no
+shadow); structure comes from 1px borders. Only floating layers (menus,
+popovers, modals, toasts) keep one subtle shadow via `shadow-lg/xl/2xl`.
 
-- **Elevated cards** (patient/record header, top-level accordion sections,
-  stat tiles): `border border-neutral-200` **+** `shadow-card`, `rounded-card`.
-- **Nested/small cards** living inside an elevated card (medicine rows, task
-  cards): `border` only, **no shadow**, `rounded-card-sm`. The absence of
-  shadow is what marks them as content inside a surface rather than a surface
-  of their own.
-- Don't stack `shadow-md`/`shadow-lg` on top of `shadow-card` — those stay for
-  genuine overlays and hover states.
-
-| Utility        | Token            | Value                                                              |
-| -------------- | ---------------- | ------------------------------------------------------------------- |
-| `shadow-sm`    | `--shadow-sm`    | `0 1px 2px rgba(33,32,28,.05)`                                      |
-| `shadow-md`    | `--shadow-md`    | `0 4px 12px rgba(33,32,28,.06)`                                     |
-| `shadow-lg`    | `--shadow-lg`    | `0 12px 28px rgba(33,32,28,.08)`                                    |
-| `shadow-card`  | `--shadow-card`  | `0 1px 2px rgba(33,32,28,.05), 0 2px 8px rgba(33,32,28,.05)`        |
+| Utility        | Token            | Value                                |
+| -------------- | ---------------- | ------------------------------------ |
+| `shadow-2xs/xs/sm/md` | `--shadow-2xs/xs/sm/md` | `0 0 #0000` (flat)      |
+| `shadow-card`  | `--shadow-card`  | `0 0 #0000` (flat)                   |
+| `shadow-lg/xl/2xl` | `--shadow-lg/xl/2xl` | `0 4px 12px rgba(17,24,39,.08)` |
 
 ---
 
@@ -184,13 +181,13 @@ These are what components should reference in Step 2 — not raw ramp shades.
 | `--color-text`           | `neutral-900`      |
 | `--color-text-secondary` | `neutral-600`      |
 | `--color-text-muted`     | `neutral-500`      |
-| `--color-primary`        | `brand-500`        |
-| `--color-primary-hover`  | `brand-600`        |
+| `--color-primary`        | `brand-600`        |
+| `--color-primary-hover`  | `brand-700`        |
 | `--color-primary-soft`   | `brand-50`         |
 | `--color-danger`         | `alert-500`        |
 | `--color-danger-hover`   | `alert-600`        |
 | `--color-danger-soft`    | `alert-50`         |
-| `--color-ring`           | `brand-500 @ 30%`  |
+| `--color-ring`           | `brand-600 @ 30%`  |
 
 ### Legacy `--akay-*` aliases (still valid)
 
@@ -207,7 +204,7 @@ Prefer, in order:
 
 1. **Tailwind utilities from ramps** — everyday styling:
    ```jsx
-   <button className="bg-brand-500 hover:bg-brand-600 text-neutral-50 rounded-input">
+   <button className="bg-brand-600 hover:bg-brand-700 text-white rounded-input">
    <p className="text-neutral-600 text-sm">
    <div className="rounded-card border border-neutral-200 bg-white">
    ```
@@ -221,18 +218,17 @@ Prefer, in order:
 **Do**
 
 - Use `brand-*` for identity/primary, `alert-*` only for danger/urgency.
-- Elevated cards: `border border-neutral-200` + `shadow-card`. Nested cards
-  inside them: `border` only, no shadow. Keep `shadow-sm/md/lg` for overlays.
-- Use serif for headings, mono for IDs/codes, sans everywhere else.
+- Cards: `border border-neutral-200`, square, no shadow. Keep `shadow-lg` for
+  floating layers only.
+- Use bold sans for headings, mono for IDs/codes.
 - Reach for semantic roles (`--color-text`, `--color-surface`) over raw shades
   when the value could differ under a future dark theme.
 
 **Don't**
 
-- Hardcode hex (`#B91C1C`, `#0f172a`) or `slate-*` utilities — those are the
+- Hardcode hex (`#DC2626`, `#0f172a`) or `slate-*` utilities — those are the
   Step 2 migration targets.
-- Add `shadow-card` to a nested/small card, or stack `shadow-md`/`shadow-lg`
-  on top of an already-elevated card.
+- Add shadows or rounded corners to cards; use `rounded-sm` on badges only.
 - Spend `alert-*` on ordinary status — that's what muted success/warning/info
   are for.
 

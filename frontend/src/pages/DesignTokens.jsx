@@ -14,19 +14,19 @@
 const RAMPS = [
   {
     name: "Neutral",
-    note: "Warm greige base — surfaces, text, borders.",
+    note: "Cool gray — surfaces, text, borders.",
     prefix: "neutral",
     shades: [50, 100, 200, 300, 400, 500, 600, 700, 800, 900],
   },
   {
     name: "Brand",
-    note: "Clay / brick — logo, nav, primary actions.",
+    note: "Red — primary actions, active states.",
     prefix: "brand",
     shades: [50, 100, 200, 300, 400, 500, 600, 700, 800, 900],
   },
   {
     name: "Alert",
-    note: "Vivid red — Emergency / No Show / destructive ONLY.",
+    note: "Critical alerts only.",
     prefix: "alert",
     shades: [50, 100, 200, 300, 400, 500, 600, 700],
   },
@@ -306,9 +306,9 @@ export default function DesignTokens() {
               maxWidth: "68ch",
             }}
           >
-            &ldquo;Calm medical sanctuary&rdquo; — airy, precise, trustworthy,
-            humane. Warm-neutral base, clay brand red, a separate vivid alert red
-            used sparingly, restrained radius, and serif headings.
+            Clinical minimalism — flat, dense, structured. Cool-gray neutrals,
+            one red for actions and urgency, sharp corners, no shadows except
+            floating layers, bold sans headings.
           </p>
         </header>
 
@@ -440,9 +440,8 @@ export default function DesignTokens() {
                 maxWidth: "64ch",
               }}
             >
-              Public Sans body copy at 15px. Legible at small sizes over poor
-              connections, and pairs cleanly with the serif for a trustworthy,
-              clinical feel.
+              Body copy in the Geiza-first sans stack (Public Sans is the
+              shipped fallback). Legible at small sizes over poor connections.
             </p>
             <code
               style={{

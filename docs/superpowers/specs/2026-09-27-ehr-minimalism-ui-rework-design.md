@@ -78,10 +78,8 @@ old grays/reds until converted later.
   Tailwind's `rounded-md/lg/xl/2xl/3xl` are overridden to `0` and `rounded-sm` to
   `2px` so hard-coded classes elsewhere go square too. *(Review item: confirm this
   app-wide squaring is wanted.)*
-- **Shadow**: `--shadow-sm/md/lg/card` → `none`, except a single subtle shadow kept
-  for floating layers (dropdowns, popovers, modals).
-- **Type**: `--font-sans` → Geiza first; `h1–h4` use sans; scale aligned to the
-  skill (base 14px, caption/label 12px).
+- **Shadow**: `--shadow-2xs/xs/sm/md/card` → flat (`0 0 #0000`); `--shadow-lg/xl/2xl` keep one subtle value (`0 4px 12px rgba(17,24,39,0.08)`) for floating layers.
+- **Type**: `--font-sans` → Geiza first; `h1–h4` use sans; `body` text 14px. The `--text-*` scale is unchanged (only inherited, un-classed text gets denser).
 - **Body/page background** `#F9FAFB`; `.akay-card` = 1px `#E5E7EB` border, no shadow.
 - `.ehr-consult` overrides in `consultation-ehr.css` that duplicate the global
   rules are deleted; only overrides for shared components that still hard-code
@@ -95,20 +93,15 @@ old grays/reds until converted later.
   `MobileSidebarDrawer.jsx`, `FullSidebarNav.jsx`, `sidebarStyles`,
   `TopBarBreadcrumbs.jsx`, `WorkingFacility.jsx`).
 - Page background `#F8FAFC` → `#F9FAFB`; text `#0F172A` → `#111827`.
-- Active nav item: red left indicator / `text-red-600` on `bg-gray-50`.
+- Active nav item is already skill-compliant (`border-l-red-600`, `bg-red-50`, `text-red-700` in `sidebarStyles.js`); unchanged. The sidebar files need no edits.
 - Mobile drawer scrim: plain `bg-black/25`, no `backdrop-blur`.
 - Content scrollbar thumb square, not `999px`.
 - Brand text and notification badge on the new red.
 
 ### 4.3 Patient module (`pages/bhc/PatientsModule.jsx`, `clinical-directory.css`, `PatientDirectoryCard.jsx`, `PatientSummaryPanel.jsx`)
 
-- Layout at `lg+`: two areas — results (left) and preview panel (right, ~360–400px,
-  sticky, own scroll). Below `lg`: single column; the preview keeps the existing
-  `Drawer`.
-- Card grid: `grid-cols-2` at the results area (1 column below `lg`, replacing
-  `auto-fill, minmax(380px)`). Cards: 1px gray border, no shadow, no hover lift,
-  square; selected card gets a red left border + `bg-gray-50`. Content per card
-  unchanged (barangay, type badge, name, ID, six fields, Open Profile).
+- Layout at `xl+` (1280px): results (left) and a 380px sticky preview panel (right, own scroll). Below `xl` there is not enough width for both, so the preview keeps the existing `Drawer`.
+- Card grid: 1 column, switching to 2 columns when the *results area* (a named CSS container) is at least 560px wide — so it is 2 columns beside the panel at `xl+` and on tablets, 1 on phones. Cards: 1px gray border, no shadow, no hover lift, square; selected card gets a red left border. Content per card unchanged.
 - Toolbar unchanged in function (search, filters, chips, "+ New Patient");
   restyled to the skill's toolbar.
 - Preview panel: `PatientSummaryPanel`, rendered inline, restructured to the
@@ -146,7 +139,7 @@ old grays/reds until converted later.
   consultation controls (the existing `PatientProfileHeader` content, regrouped).
   **Right column**: registration + background sections and the records timeline
   (existing sections, unchanged in content and order).
-- Below `lg`: the panel stacks above the sections.
+- Below `lg`: the panel stacks above the sections. The right area is one column until `xl`, where it becomes the existing 5fr/7fr two-column split.
 - All controls, permission gates (`canViewHistory`), the unfinished-draft notice,
   and `ConfirmationModal` behavior are preserved. No record editing is added.
 - Restyle: `slate-*` → gray tokens, `#B91C1C` → `#DC2626`/`brand-600`, chips/buttons
