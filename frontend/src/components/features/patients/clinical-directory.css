@@ -4,14 +4,15 @@
   --clinical-red: #b91c1c;
   --clinical-coral: #df6257;
   --clinical-red-pale: #fef2f2;
-  --clinical-canvas: #fafaf9;
+  --clinical-canvas: #ffffff;
   --clinical-surface: #ffffff;
   --clinical-ink: #202b36;
   --clinical-muted: #596674;
   --clinical-border: #dfe3e6;
-  --clinical-radius: 11px;
-  --clinical-card-radius: 16px;
-  --clinical-card-shadow: 0 6px 24px 2px rgb(127 29 29 / 5%);
+  --clinical-radius: 10px;
+  --clinical-card-radius: 12px;
+  --clinical-card-shadow: 0 4px 16px rgb(15 23 42 / 7%);
+  --clinical-card-shadow-hover: 0 8px 24px rgb(15 23 42 / 11%);
   --clinical-gap: 12px;
   --clinical-focus: 0 0 0 3px #b91c1c26;
   container-type: inline-size;
@@ -24,10 +25,9 @@
   color: var(--clinical-ink);
 }
 
-/* Scope the atmosphere to the BHC directory's existing scroll canvas. */
+/* Keep the BHC directory canvas clean and neutral. */
 .akay-content-scroll:has(.clinical-directory) {
-  background:
-    linear-gradient(125deg, #fdfdfc 0%, #fcf9f8 55%, #fcf0ee 100%);
+  background: #ffffff;
   scroll-padding-top: 150px;
 }
 /* Only the application title above the BHC patient directory. */
@@ -64,7 +64,6 @@ main:has(> .akay-content-scroll .clinical-directory) > header h2 {
 }
 .clinical-patient {
   position: relative;
-  isolation: isolate;
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -72,74 +71,75 @@ main:has(> .akay-content-scroll .clinical-directory) > header h2 {
   border-radius: var(--clinical-card-radius);
   background: var(--clinical-surface);
   box-shadow: var(--clinical-card-shadow);
-  transition: border-color 150ms ease;
+  transition: box-shadow 160ms ease;
 }
-.clinical-patient::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  border-radius: inherit;
-  background:
-    radial-gradient(ellipse 85px 65px at 90% 12%, rgb(223 98 87 / 3%), transparent 100%),
-    radial-gradient(ellipse 100px 70px at 76% 8%, rgb(185 28 28 / 1.5%), transparent 100%);
-  filter: blur(12px);
-  clip-path: inset(0 round var(--clinical-card-radius));
+.clinical-patient:hover { box-shadow: var(--clinical-card-shadow-hover); }
+.clinical-patient__identity {
+  padding: 12px 16px 8px;
+  text-align: center;
 }
-.clinical-patient:hover,
-.clinical-patient:focus-within { border-color: #b8c0c7; }
-.clinical-patient__identity { padding: 14px 16px 12px; }
 .clinical-patient__id {
+  margin-top: 2px;
   color: var(--clinical-red);
   font-family: var(--font-mono);
   font-size: 11px;
-  line-height: 1.5;
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
 .clinical-patient__name {
-  margin-top: 4px;
   font-family: var(--font-sans);
   font-size: 15px;
   font-weight: 650;
-  line-height: 1.4;
+  line-height: 1.3;
   letter-spacing: -0.015em;
   overflow-wrap: anywhere;
 }
-.clinical-patient__demographics {
-  margin-top: 3px;
-  color: var(--clinical-muted);
-  font-size: 12px;
-}
 .clinical-patient__fields {
   display: grid;
-  gap: 7px;
-  margin: 0 16px 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin: 0 16px;
   /* Replace the former 1px divider with spacing to preserve card geometry. */
-  padding-top: 12px;
+  padding-top: 6px;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 .clinical-patient__fields > div {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  text-align: left;
 }
-.clinical-patient__fields dt { color: var(--clinical-muted); }
+.clinical-patient__fields dt {
+  color: var(--clinical-muted);
+  white-space: nowrap;
+}
 .clinical-patient__fields dd {
   margin: 0;
+  min-width: 0;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+.clinical-patient__fields > div:nth-child(5) dd { white-space: nowrap; }
+.clinical-patient__fields > .clinical-patient__registered {
+  grid-column: 1 / -1;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  gap: 6px;
+  justify-self: center;
+  white-space: nowrap;
+}
+@container (max-width: 620px) {
+  .clinical-patient__fields { grid-template-columns: minmax(0, 1fr); }
+}
 .clinical-patient__footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  margin-top: auto;
-  padding: 6px 8px 5px 16px;
+  justify-content: center;
+  padding: 4px 8px 6px;
   background: transparent;
 }
 .clinical-patient__location {
@@ -153,14 +153,18 @@ main:has(> .akay-content-scroll .clinical-directory) > header h2 {
 }
 .clinical-patient__location svg { flex-shrink: 0; align-self: center; }
 .clinical-patient__location span { overflow-wrap: anywhere; }
-.clinical-patient__open[data-slot="button"] {
-  margin-left: auto;
-  min-height: 40px;
-  border-radius: var(--clinical-radius);
-  color: var(--clinical-red-dark);
+.clinical-patient__open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding-inline: 8px;
+  color: var(--clinical-red);
   font-size: 12px;
+  font-weight: 650;
+  text-underline-offset: 3px;
 }
-.clinical-patient__open[data-slot="button"]:hover { background: var(--clinical-red-pale); }
+.clinical-patient__open:hover { color: var(--clinical-red-dark); text-decoration: underline; }
 .clinical-directory :is(button, a, input):focus-visible {
   outline: 2px solid var(--clinical-red);
   outline-offset: 3px;
@@ -209,7 +213,7 @@ main:has(> .akay-content-scroll .clinical-directory) > header h2 {
 }
 @media (pointer: coarse) {
   .clinical-directory .module-toolbar__row :is(button, a),
-  .clinical-patient__open[data-slot="button"] { min-height: 44px; }
+  .clinical-patient__open { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .clinical-directory *, .clinical-directory .anim-fade-up { animation: none; transition: none; }

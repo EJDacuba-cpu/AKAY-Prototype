@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PatientRequest;
 use App\Models\Patient;
+use App\Services\ActionPermissions;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
+use App\Services\PatientIdentity;
 use App\Support\StoredFunction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -83,6 +85,11 @@ class PatientController extends Controller
         $data = $this->normalizeProfileFields($request->validated());
         $this->authorizeMotherLink($request, $data['mother_patient_id'] ?? null);
         $user = $request->user();
+        $canAccessHistory = $user->isAdmin() || ActionPermissions::allows($user, 'clinical.history');
+        if (! $canAccessHistory) {
+            // Keep registration fields, but never persist unauthorized clinical history.
+            unset($data['medical_background']);
+        }
         $data['created_by'] = $user->id;
 
         if ($user->isBhw()) {
@@ -100,7 +107,15 @@ class PatientController extends Controller
         $patient = Patient::create($data);
         $auditLogger->log($request, 'created', 'patients', "Created patient {$patient->full_name}.");
 
-        return response()->json(['data' => $patient->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother'])], 201);
+        $patient->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother']);
+        if (! $canAccessHistory) {
+            $response = $patient->makeHidden(['medical_background', 'mother'])->toArray();
+            $response['mother'] = $patient->mother ? PatientIdentity::response($patient->mother) : null;
+
+            return response()->json(['data' => $response], 201);
+        }
+
+        return response()->json(['data' => $patient], 201);
     }
 
     public function show(Request $request, Patient $patient)

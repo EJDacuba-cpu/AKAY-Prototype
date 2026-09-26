@@ -1,6 +1,5 @@
 import { Link } from "react-router";
-import { ArrowUpRight, MapPin } from "lucide-react";
-import { Button } from "../../ui/button";
+import { MapPin } from "lucide-react";
 
 import { formatDisplayValue, formatPatientName } from "../../../utils/formatters";
 
@@ -135,6 +134,7 @@ export default function PatientDirectoryCard({ patient, basePath, variant }) {
   const ageSex = getPatientAgeSex(patient);
   const contact = getPatientContact(patient);
   const location = getPatientLocation(patient);
+  const occupation = formatDisplayValue(patient.occupation, "Not recorded");
   const birthDate = formatDate(getBirthDate(patient));
   const registeredDate = formatDate(getRegisteredDate(patient));
   // Sex and age head the card on their own now; the barangay moved down to the
@@ -146,34 +146,36 @@ export default function PatientDirectoryCard({ patient, basePath, variant }) {
     return (
       <article className="clinical-patient">
         <header className="clinical-patient__identity">
-          <p className="clinical-patient__id">ID #{displayId}</p>
           <h3 className="clinical-patient__name">{patientName}</h3>
-          <p className="clinical-patient__demographics">{sexAge}</p>
+          <p className="clinical-patient__id">Patient ID #{displayId}</p>
         </header>
         <dl className="clinical-patient__fields">
           {[
+            ["Age", formatDisplayValue(age, "Not recorded")],
+            ["Barangay", formatDisplayValue(location, "Not recorded")],
+            ["Sex", formatDisplayValue(sex, "Not recorded")],
+            ["Occupation", occupation],
             ["Date of birth", birthDate],
             ["Contact", contact],
             ["Registered", registeredDate],
           ].map(([label, value]) => (
-            <div key={label}>
+            <div
+              key={label}
+              className={label === "Registered" ? "clinical-patient__registered" : undefined}
+            >
               <dt>{label}</dt>
               <dd>{value}</dd>
             </div>
           ))}
         </dl>
         <footer className="clinical-patient__footer">
-          {location && (
-            <p className="clinical-patient__location">
-              <MapPin size={13} aria-hidden="true" />
-              <span>{location}</span>
-            </p>
-          )}
-          <Button asChild variant="ghost" size="sm" className="clinical-patient__open">
-            <Link to={`${basePath}/patients/${routePatientId}`} aria-label={`Open Profile: ${patientName}, ID ${displayId}`}>
-              Open Profile <ArrowUpRight size={14} aria-hidden="true" />
-            </Link>
-          </Button>
+          <Link
+            to={`${basePath}/patients/${routePatientId}`}
+            className="clinical-patient__open"
+            aria-label={`Open Profile: ${patientName}, ID ${displayId}`}
+          >
+            Open Profile
+          </Link>
         </footer>
       </article>
     );

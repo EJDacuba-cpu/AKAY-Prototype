@@ -348,7 +348,7 @@ export default function useDraftAutosave({
   );
 
   const runSave = useCallback(
-    async (reason) => {
+    async () => {
       const params = paramsRef.current;
       if (!params.enabled || finalizedRef.current) return;
       // Conflict/validation pause halts autosave until reload; manual save overrides.
