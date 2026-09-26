@@ -12,10 +12,18 @@
    them onto the same system: sharp corners, borders instead of shadows, one
    red.
 
-   Palette   red #DC2626 (hover #991B1B, tint #FEE2E2) · text #111827/#374151
+   Palette   red #DC2626 (hover #B91C1C, tint #FEE2E2) · text #111827/#374151
    Shape     rounded-none by default; small pills/badges 2px
-   Geiza-first font, sans headings and the radius scale now come from the global tokens in index.css.
+   Geiza-first font, sans headings and the radius scale now come from the
+   global tokens in index.css.
    ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Bare `rounded` (Tailwind's 4px) has no radius token; shared components
+   (TbTreatmentCardForm, TbDoseCalendar, ClinicalFields) still use it. The
+   checkbox rule below keeps 2px for checkboxes by specificity. */
+.ehr-consult .rounded {
+  border-radius: 0;
+}
 
 /* Text pills (status chips, tags) keep a 2px corner; icon dots, spinners and
    avatars - rounded-full without horizontal padding - stay round. */
