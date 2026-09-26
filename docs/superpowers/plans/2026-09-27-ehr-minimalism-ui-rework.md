@@ -31,7 +31,7 @@ Failure modes the spec implies that no requirement spells out, most likely first
 2. **Same card clicked twice / another card clicked** → second click on the same card clears the preview; clicking another switches it. A patient with no `id`/`patientId` must not select the string `"undefined"`. Pinned by tests in Task 3.
 3. **Viewport crosses 1280px with a patient selected** → the selection survives; the UI swaps drawer ↔ inline panel without resetting or double-fetching. Manual check in Task 4.
 4. **User without the `clinical.history` permission** → the profile's left panel still shows identity and the consultation controls, but no alerts, programs, care status or vitals (same gating as today). Manual check in Task 5.
-5. **Extreme data** — very long patient name/address, no allergies, no vitals, no follow-ups, empty patient list — truncates or falls back to "Not recorded" without breaking the 288px panel or the 2-column grid. Manual check in Tasks 4 and 5.
+5. **Extreme data** — very long patient name/address/allergy text, "NKDA" allergies, no allergies, no vitals, no consultation, no follow-ups, empty patient list — wraps or falls back to "Not recorded" without breaking the 288px profile panel, the 380px preview panel or the 2-column grid. Manual check in Tasks 4 and 5.
 
 ---
 
@@ -48,7 +48,9 @@ Failure modes the spec implies that no requirement spells out, most likely first
 | `frontend/src/hooks/useMediaQuery.js` | `matchMedia` subscription hook | Create |
 | `frontend/src/pages/bhc/PatientsModule.jsx` | Directory layout + inline preview | Modify |
 | `frontend/src/components/features/patients/clinical-directory.css` | Grid, layout, preview panel styles | Modify |
-| `frontend/src/components/features/patients/PatientSummaryPanel.jsx`, `PatientDirectoryCard.jsx`, `SummarySection.jsx` | Restyle | Modify |
+| `frontend/src/components/features/patients/PatientSummaryPanel.jsx` | Short summary in the reference's profile-panel structure (`showTitle` prop) | Partial rewrite |
+| `frontend/src/components/features/patients/PatientAlertChips.jsx` | Shared allergy/condition chips (`Chip`, `PatientAlertChips`) | Create |
+| `frontend/src/components/features/patients/PatientDirectoryCard.jsx`, `SummarySection.jsx` | Restyle | Modify |
 | `frontend/src/components/features/patients/profile/PatientProfileHeader.jsx` | Becomes the left identity panel | Rewrite |
 | `frontend/src/pages/bhc/PatientDetails.jsx` | Profile grid (panel + sections) | Modify |
 | `frontend/src/components/features/patients/profile/*.jsx`, `PatientBackgroundTab.jsx` | Restyle | Modify |
@@ -573,11 +575,18 @@ EOF
 **Files:**
 - Modify: `frontend/src/pages/bhc/PatientsModule.jsx`
 - Modify: `frontend/src/components/features/patients/clinical-directory.css`
+- Create: `frontend/src/components/features/patients/PatientAlertChips.jsx`
+- Modify (partial rewrite): `frontend/src/components/features/patients/PatientSummaryPanel.jsx`
 - Modify (codemod): `frontend/src/components/features/patients/*.jsx` (all files directly in that folder), `PatientsModule.jsx`
 
 **Interfaces:**
-- Consumes: `getPatientKey`, `toggleSelection`, `reconcileSelection` (Task 3); `useMediaQuery` (Task 3); `PatientSummaryPanel({ patientId, basePath })` (existing).
-- Produces: `.clinical-directory__layout`, `.clinical-directory__layout--preview`, `.clinical-directory__preview`, `.clinical-directory__preview-empty*` classes.
+- Consumes: `getPatientKey`, `toggleSelection`, `reconcileSelection` (Task 3); `useMediaQuery` (Task 3); `usePatientSummary(patientId)` → `{ patient, records, latest, isPending, error, refetch }` (existing); `SummarySection({ title, rows, variant })` (existing).
+- Produces:
+  - `PatientAlertChips({ background })` (default export) and `Chip({ tone, children, title })` (named export; tones `alert | neutral | program | muted`) from `PatientAlertChips.jsx` — reused by Task 5.
+  - `PatientSummaryPanel({ patientId, basePath = "/bhc", showTitle = false })` — short summary; `showTitle` draws the "Patient Summary" title bar (used by the inline preview; the `Drawer` already draws its own title).
+  - CSS classes `.clinical-directory__layout`, `.clinical-directory__layout--preview`, `.clinical-directory__preview`, `.clinical-directory__preview-empty*`.
+
+**Product decision (from brainstorming):** the preview is a **short summary** in the reference's "Profile Staff" structure: title bar + status, centered identity, Alerts, Profile Details, Current Vital Signs, Latest Consultation, sticky View Full Profile. Hospitalizations, surgeries, family, social and maternal/prenatal are removed from the preview (they stay on the full profile). `PatientSummaryDrawer.jsx` in health-records is a different component and is not touched.
 
 - [ ] **Step 1: Run the codemod on the patient module files**
 
@@ -656,7 +665,7 @@ Replace the block from `<div className="clinical-directory__results relative min
           {showInlinePreview && !showInitialLoading && (
             <aside className="clinical-directory__preview" aria-label="Patient preview">
               {selectedPatientId ? (
-                <PatientSummaryPanel key={selectedPatientId} patientId={selectedPatientId} />
+                <PatientSummaryPanel key={selectedPatientId} patientId={selectedPatientId} showTitle />
               ) : (
                 <div className="clinical-directory__preview-empty">
                   <p className="clinical-directory__preview-empty-title">Select a patient to preview</p>
@@ -680,7 +689,178 @@ Replace the block from `<div className="clinical-directory__results relative min
         )}
       </Drawer>
 ```
-Note: the `Drawer` is closed whenever the inline panel is showing, so the selection survives a viewport change and only one `PatientSummaryPanel` is mounted at a time.
+Note: the `Drawer` is closed whenever the inline panel is showing, so the selection survives a viewport change and only one `PatientSummaryPanel` is mounted at a time. The inline panel passes `showTitle`; the drawer does not (it draws its own title bar and close button).
+
+- [ ] **Step 3a: Create the shared alert chips**
+
+```jsx
+// frontend/src/components/features/patients/PatientAlertChips.jsx
+const NO_ALLERGY_PATTERN = /^(none|n\/a|na|nka|nkda|no known.*|no allergies?|-+)$/i;
+const MAX_DISEASE_CHIPS = 3;
+
+const CHIP_BASE =
+  "inline-flex max-w-full items-center break-words rounded-sm border px-2 py-0.5 text-left text-xs font-medium";
+
+const TONES = {
+  alert: "border-red-200 bg-red-50 text-red-800",
+  neutral: "border-gray-200 bg-white text-gray-700",
+  program: "border-gray-200 bg-gray-50 text-gray-700",
+  muted: "border-transparent px-0 font-normal text-gray-500",
+};
+
+export function Chip({ tone = "neutral", children, title }) {
+  return (
+    <span title={title} className={`${CHIP_BASE} ${TONES[tone]}`}>
+      {children}
+    </span>
+  );
+}
+
+/** Allergies (red when recorded) and up to three active conditions, as one chip row. */
+export default function PatientAlertChips({ background = {} }) {
+  const allergies = String(background?.allergies || "").trim();
+  const activeDiseases = (Array.isArray(background?.currentDiseases) ? background.currentDiseases : [])
+    .filter((disease) => disease?.name && String(disease.status || "Active").toLowerCase() === "active");
+  const shownDiseases = activeDiseases.slice(0, MAX_DISEASE_CHIPS);
+  const hiddenCount = activeDiseases.length - shownDiseases.length;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {!allergies ? (
+        <Chip tone="muted">Allergies not recorded</Chip>
+      ) : NO_ALLERGY_PATTERN.test(allergies) ? (
+        <Chip tone="muted">No known allergies</Chip>
+      ) : (
+        <Chip tone="alert" title={allergies}>Allergy: {allergies}</Chip>
+      )}
+      {shownDiseases.map((disease) => (
+        <Chip key={disease.name} tone="neutral">{disease.name}</Chip>
+      ))}
+      {hiddenCount > 0 && <Chip tone="muted">+{hiddenCount} more</Chip>}
+    </div>
+  );
+}
+```
+This is the logic the profile header had inline (same allergy pattern, same three-chip cap); it is now shared by the header (Task 5) and the preview.
+
+- [ ] **Step 3b: Rewrite `PatientSummaryPanel.jsx` as the short summary**
+
+In `PatientSummaryPanel.jsx` (already codemodded in Step 1):
+
+1. In the imports, **delete** `import { BACKGROUND_SECTIONS } from "./PatientBackgroundTab";` and **add** `import PatientAlertChips from "./PatientAlertChips";` after the `SummarySection` import.
+2. Keep `joinParts`, `STATUS_BADGE`, `StatusBadge` and `VitalsGrid` exactly as they are.
+3. **Replace everything from the doc comment `/** Read-only Patient Summary opened from the BHC patient directory…` to the end of the file** with:
+
+```jsx
+/**
+ * Read-only Patient Summary for the BHC patient directory. Short by design:
+ * identity, alerts, profile details, current vitals and the latest consultation;
+ * everything else lives on the full profile. It renders in the permanent preview
+ * panel (`showTitle`) or inside the slide-in Drawer, which draws its own title bar.
+ */
+export default function PatientSummaryPanel({ patientId, basePath = "/bhc", showTitle = false }) {
+  const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
+  const { patient, records, latest, isPending, error, refetch } = usePatientSummary(patientId);
+
+  if (isPending) {
+    return (
+      <div role="status" className="flex flex-col items-center justify-center gap-2 px-4 py-16">
+        <DottedSpinner label="Loading patient summary" />
+        <span className="text-[11px] font-medium text-gray-500">Loading patient summary...</span>
+      </div>
+    );
+  }
+
+  if (error || !patient) {
+    return (
+      <div role="alert" className="px-4 py-12 text-center">
+        <p className="text-sm text-gray-700">Unable to load patient summary.</p>
+        <button type="button" onClick={() => refetch()} className="mt-2 text-sm font-semibold text-red-700 hover:text-red-800">
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  const patientName = formatPatientName(patient, "Unnamed Patient");
+  const ageSex = joinParts([patient.age !== "" && patient.age != null ? `${patient.age} yrs` : "", patient.sex], " / ");
+  const philHealth = joinParts([patient.philHealthStatus, patient.philHealthNumber]);
+
+  return (
+    <div className="patient-summary flex min-h-full flex-col">
+      {showTitle && (
+        <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
+          <h2 className="text-sm font-bold text-gray-900 font-sans!">Patient Summary</h2>
+          <StatusBadge status={patient.status} />
+        </div>
+      )}
+
+      <header className="border-b border-gray-200 px-4 py-4 text-center">
+        <p className="break-words text-lg font-bold leading-tight text-gray-900">{patientName}</p>
+        <p className="mt-1 break-all font-mono text-xs text-gray-600">Patient ID #{patient.patientId || patientId}</p>
+        {ageSex && <p className="mt-0.5 text-xs tabular-nums text-gray-600">{ageSex}</p>}
+        {!showTitle && (
+          <div className="mt-2 flex justify-center">
+            <StatusBadge status={patient.status} />
+          </div>
+        )}
+      </header>
+
+      <div className="flex-1 px-4 pb-4">
+        {canViewHistory && (
+          <section aria-labelledby="summary-alerts-title" className="mt-4 border border-gray-200 bg-white">
+            <h3 id="summary-alerts-title" className="border-b border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-700">
+              Alerts
+            </h3>
+            <div className="px-3 py-2">
+              <PatientAlertChips background={patient.medicalBackground} />
+            </div>
+          </section>
+        )}
+
+        <SummarySection variant="clinical" title="Profile Details" rows={[
+          ["Age / Sex", formatDisplayValue(ageSex)],
+          ["Date of Birth", formatLongDate(patient.birthDate, "Not recorded")],
+          ["Civil Status", formatDisplayValue(patient.civilStatus)],
+          ["Occupation", formatDisplayValue(patient.occupation)],
+          ["Contact", formatDisplayValue(patient.contactNumber)],
+          ["Address", formatDisplayValue(formatPatientAddress(patient))],
+          ["PhilHealth", formatDisplayValue(philHealth)],
+        ]} />
+
+        {canViewHistory ? (
+          <>
+            <VitalsGrid records={records} />
+            <SummarySection variant="clinical" title="Latest Consultation" rows={latest ? [
+              ["Date", formatLongDate(getRecordDateValue(latest))],
+              ["Program", getServiceTypeLabel(latest)],
+              ["Chief Complaint", latest.chiefComplaint],
+              ["Initial Diagnosis", latest.diagnosis],
+              ["Medicine / Treatment", latest.medication || latest.treatmentNotes],
+              ["Outcome", latest.outcome],
+            ] : [["Consultation", "No consultation recorded yet"]]} />
+          </>
+        ) : (
+          <p className="mt-4 flex items-center gap-2 border border-gray-200 border-l-4 border-l-red-600 bg-gray-50 p-3 text-xs text-gray-700">
+            <Lock size={14} className="shrink-0" aria-hidden="true" />
+            Clinical history is restricted for your role.
+          </p>
+        )}
+      </div>
+
+      <footer className="patient-summary__footer">
+        <Link
+          to={`${basePath}/patients/${patientId}`}
+          className="flex h-9 w-full items-center justify-center rounded-none bg-red-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800"
+        >
+          View Full Profile
+        </Link>
+      </footer>
+    </div>
+  );
+}
+```
+4. Confirm nothing else referenced the removed pieces: `grep -n "maternalSummary\|BACKGROUND_SECTIONS\|familyHistory\|personalSocial" src/components/features/patients/PatientSummaryPanel.jsx` → no output. (`usePatientSummary` still returns `maternalSummary`; the panel simply no longer reads it.)
 
 - [ ] **Step 4: Update `clinical-directory.css`**
 
@@ -788,6 +968,10 @@ Start the app (`/run`, or `npm run dev` here and the backend from `.claude/launc
 4. At 800px: still 2 columns (results ≥560px); at 400px: 1 column.
 4a. With 12+ patients, scroll the list: the preview panel stays in view (sticky). If it scrolls away, `container-type: inline-size` on `.clinical-directory` is breaking sticky; remove that one line from the `.clinical-directory` rule (its only consumer is the toolbar `@container (max-width: 620px)` block — re-anchor those rules on `.clinical-directory .module-toolbar` with a `@media (max-width: 900px)` query instead) and re-check.
 5. Clear all patients (search "zzzz") → empty state in the results, placeholder in the panel, no layout break (Review Focus 5). A patient with a very long name/address wraps inside the card and the 380px panel without horizontal scroll.
+6. Panel content (selected patient, user with `clinical.history`): title bar "Patient Summary" with the status badge at the right; centered name, "Patient ID #…" and age / sex; **Alerts** box (allergy chip red when recorded, muted "Allergies not recorded" / "No known allergies", up to 3 active-condition chips, "+N more"); Profile Details rows; Current Vital Signs grid; Latest Consultation rows; "View Full Profile" pinned at the bottom while the panel scrolls, and it opens `/bhc/patients/<id>`. Hospitalizations, surgeries, family, social and maternal/prenatal no longer appear.
+7. Below 1280px the drawer shows the same content with **one** title bar (the drawer's), and the status badge sits under the centered identity — no duplicated "Patient Summary" heading.
+8. As a user **without** `clinical.history`: no Alerts box, no vitals, no latest consultation; Profile Details and the "Clinical history is restricted for your role." note remain.
+9. Edge data: a patient whose allergies read `NKDA` shows "No known allergies"; one with a very long allergy text wraps inside the chip without widening the panel; a patient with no recorded consultation shows "No consultation recorded yet".
 If the app cannot be run with data, say which items were not verified.
 
 - [ ] **Step 8: Commit**
@@ -795,10 +979,13 @@ If the app cannot be run with data, say which items were not verified.
 ```bash
 cd .. && git add frontend/src/pages/bhc/PatientsModule.jsx frontend/src/components/features/patients
 git commit -m "$(cat <<'EOF'
-feat(patients): 2-column directory grid with permanent preview panel
+feat(patients): 2-column directory grid with short permanent preview panel
 
-Below 1280px the preview keeps the slide-in drawer. Directory cards and
-summary panel move to the EHR minimalism classes.
+The preview follows the reference's profile-panel structure (title bar,
+centered identity, alerts, profile details, vitals, latest consultation) and
+drops the long background sections. Below 1280px it keeps the slide-in drawer.
+Directory cards and summary panel move to the EHR minimalism classes, and the
+allergy/condition chips are shared with the profile panel.
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 EOF
@@ -815,7 +1002,7 @@ EOF
 - Modify (codemod): `frontend/src/components/features/patients/profile/{ProfileSection,RecordsTimeline,RegistrationSections,FollowUpsAndReferrals}.jsx`, `frontend/src/components/features/patients/PatientBackgroundTab.jsx`, `PatientDetails.jsx`
 
 **Interfaces:**
-- Consumes: `PatientProfileHeader` props are unchanged: `{ patient, patientId, backPath, updating, canViewHistory, records, recordsLoading, programLabels, followUps, activeFollowUps, openReferralCount }`; `SECTION_LABEL_CLASS`, `TextAction` from `ProfileSection.jsx`; `FollowUpStateBadge` from `FollowUpsAndReferrals.jsx`.
+- Consumes: `PatientProfileHeader` props are unchanged: `{ patient, patientId, backPath, updating, canViewHistory, records, recordsLoading, programLabels, followUps, activeFollowUps, openReferralCount }`; `SECTION_LABEL_CLASS`, `TextAction` from `ProfileSection.jsx`; `FollowUpStateBadge` from `FollowUpsAndReferrals.jsx`; `PatientAlertChips` (default) and `Chip` from `components/features/patients/PatientAlertChips.jsx` (created in Task 4).
 - Produces: `PatientProfileHeader` renders a 288px-wide bordered panel (root element `<header>`), placed in an `<aside>` by `PatientDetails`.
 
 - [ ] **Step 1: Codemod the sections that are only being restyled**
@@ -853,6 +1040,7 @@ import { ConfirmationModal, RefreshingIndicator } from "../../../common";
 import usePatientConsultation from "../../../../hooks/usePatientConsultation";
 import { FollowUpStateBadge } from "./FollowUpsAndReferrals";
 import { SECTION_LABEL_CLASS, TextAction } from "./ProfileSection";
+import PatientAlertChips, { Chip } from "../PatientAlertChips";
 import { formatPatientAddress } from "../PatientIdentityCard";
 import { calculateBmi, formatBmi } from "../../../../utils/bmi";
 import {
@@ -863,25 +1051,6 @@ import {
 } from "../../../../utils/currentPatientVitals";
 import { formatDate, formatPatientName } from "../../../../utils/formatters";
 import { getPatientAge } from "../../../../utils/patientProfile";
-
-const NO_ALLERGY_PATTERN = /^(none|n\/a|na|nka|nkda|no known.*|no allergies?|-+)$/i;
-const MAX_DISEASE_CHIPS = 3;
-
-const CHIP_BASE = "inline-flex items-center rounded-sm border px-2 py-0.5 text-xs font-medium";
-
-function Chip({ tone = "neutral", children, title }) {
-  const tones = {
-    alert: "border-red-200 bg-red-50 text-red-800",
-    neutral: "border-gray-200 bg-white text-gray-700",
-    program: "border-gray-200 bg-gray-50 text-gray-700",
-    muted: "border-transparent px-0 font-normal text-gray-500",
-  };
-  return (
-    <span title={title} className={`${CHIP_BASE} ${tones[tone]}`}>
-      {children}
-    </span>
-  );
-}
 
 /** One labelled block of the panel, separated from the previous by a hairline. */
 function PanelSection({ id, label, meta, children }) {
@@ -984,32 +1153,6 @@ function ConsultationNotice({ consultation }) {
         }}
       />
     </>
-  );
-}
-
-function AlertChips({ background = {} }) {
-  const allergies = String(background.allergies || "").trim();
-  const activeDiseases = (Array.isArray(background.currentDiseases) ? background.currentDiseases : [])
-    .filter((disease) => disease?.name && String(disease.status || "Active").toLowerCase() === "active");
-  const shownDiseases = activeDiseases.slice(0, MAX_DISEASE_CHIPS);
-  const hiddenCount = activeDiseases.length - shownDiseases.length;
-
-  return (
-    <PanelSection id="profile-alerts" label="Alerts">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {!allergies ? (
-          <Chip tone="muted">Allergies not recorded</Chip>
-        ) : NO_ALLERGY_PATTERN.test(allergies) ? (
-          <Chip tone="muted">No known allergies</Chip>
-        ) : (
-          <Chip tone="alert" title={allergies}>Allergy: {allergies}</Chip>
-        )}
-        {shownDiseases.map((disease) => (
-          <Chip key={disease.name} tone="neutral">{disease.name}</Chip>
-        ))}
-        {hiddenCount > 0 && <Chip tone="muted">+{hiddenCount} more</Chip>}
-      </div>
-    </PanelSection>
   );
 }
 
@@ -1125,7 +1268,9 @@ export default function PatientProfileHeader({
 
       {canViewHistory && (
         <>
-          <AlertChips background={patient.medicalBackground} />
+          <PanelSection id="profile-alerts" label="Alerts">
+            <PatientAlertChips background={patient.medicalBackground} />
+          </PanelSection>
           {programLabels.length > 0 && (
             <PanelSection id="profile-programs" label="Programs">
               <div className="flex flex-wrap items-center gap-1.5">
@@ -1430,5 +1575,5 @@ Expected: `git status` shows only the unrelated `.claude/data` files; the log li
 ## Self-Review Notes
 
 - **Spec coverage:** tokens (T1), navbar/topbar (T2; sidebar needs no edits, verified by grep), patient module grid + permanent preview + empty placeholder + drawer fallback + selection clearing (T3, T4), profile left panel + `xl` two-column right area + `canViewHistory` gating (T5), consultation cleanup + trimmed overrides (T6), docs/design-tokens page (T1), verification order and greps (T7). Amendments to the spec for details the code reading changed are made in T1 Step 2.
-- **Type consistency:** `getPatientKey`, `toggleSelection`, `reconcileSelection`, `useMediaQuery(query)` and `PatientProfileHeader`'s prop list are named identically everywhere they are used.
+- **Type consistency:** `getPatientKey`, `toggleSelection`, `reconcileSelection`, `useMediaQuery(query)`, `PatientAlertChips`/`Chip` (created in Task 4, consumed in Task 5) and `PatientProfileHeader`'s prop list are named identically everywhere they are used; `PatientSummaryPanel`'s `showTitle` is set by the inline preview and omitted by the drawer.
 - **Known limits, stated up front:** shared components (`PatientBackgroundTab`, `PatientDirectoryCard`, `PatientSummaryPanel`, profile sections) are also used by RHU screens and are restyled there too; there is no component-test harness, so layout is verified by build output, greps and the manual passes; Geiza is not shipped.

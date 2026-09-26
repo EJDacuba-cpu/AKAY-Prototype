@@ -111,11 +111,30 @@ old grays/reds until converted later.
   unchanged (barangay, type badge, name, ID, six fields, Open Profile).
 - Toolbar unchanged in function (search, filters, chips, "+ New Patient");
   restyled to the skill's toolbar.
-- Preview panel: reuses `PatientSummaryPanel` content, rendered inline. With no
-  selection it shows an empty placeholder: "Select a patient to preview".
-  Clicking the selected card again clears it (current `toggleSelectedPatient`
-  behavior is kept). Patient changes, search, filters or list changes that remove
-  the selected patient clear the selection.
+- Preview panel: `PatientSummaryPanel`, rendered inline, restructured to the
+  reference's "Profile Staff" panel and **shortened** (decision from brainstorming):
+  1. title bar "Patient Summary" with the status badge at the right;
+  2. centered identity: name, "Patient ID #…", age / sex;
+  3. **Alerts** box: allergies and active conditions as chips (allergy red when
+     recorded; muted "Allergies not recorded" / "No known allergies");
+  4. Profile Details rows (age/sex, date of birth, civil status, occupation,
+     contact, address, PhilHealth);
+  5. Current Vital Signs grid;
+  6. Latest Consultation rows (date, program, chief complaint, initial diagnosis,
+     medicine/treatment, outcome);
+  7. sticky "View Full Profile" button.
+  Removed from the preview (still on the full profile): hospitalizations,
+  surgeries, family history, social history, maternal/prenatal. Alerts, vitals and
+  latest consultation stay gated by `clinical.history`, as today. The title bar is
+  drawn by the panel only in the inline preview (`showTitle`); the `Drawer` keeps
+  its own title bar, with the status badge under the identity. Cards keep their
+  current content (no avatar; the reference's photos have no equivalent data).
+  With no selection the panel shows an empty placeholder: "Select a patient to
+  preview". Clicking the selected card again clears it (current
+  `toggleSelectedPatient` behavior is kept). Patient changes, search, filters or
+  list changes that remove the selected patient clear the selection.
+- The allergy/condition chips are one shared component (`PatientAlertChips`) used
+  by both this preview and the profile's left identity panel.
 - Selection state lives where it does today (`PatientsModule`); the panel/drawer
   switch is presentational (breakpoint), not a second source of truth.
 
