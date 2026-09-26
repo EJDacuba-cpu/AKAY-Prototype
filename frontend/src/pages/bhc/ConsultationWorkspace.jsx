@@ -99,7 +99,6 @@ import {
   ConsultationActionBar,
   ConsultationStepHeading,
   ConsultationWorkspaceBody,
-  ConsultationWorkspaceHeader,
 } from "../../components/features/health-records/wizard/ConsultationWorkflow";
 import {
   ASSESSMENT_STEP,
@@ -4079,11 +4078,12 @@ export default function ConsultationWorkspace() {
 
   // ---- Step navigation (New Consultation) --------------------------------
   function scrollWorkflowToTop() {
-    window.requestAnimationFrame(() =>
-      document
-        .querySelector(".akay-content-scroll")
-        ?.scrollTo({ top: 0, behavior: "smooth" }),
-    );
+    window.requestAnimationFrame(() => {
+      // Pinned layout scrolls the form column; stacked layout scrolls the page.
+      for (const selector of ["[data-consult-scroll]", ".akay-content-scroll"]) {
+        document.querySelector(selector)?.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
   }
 
   /**
@@ -4450,6 +4450,9 @@ export default function ConsultationWorkspace() {
       });
     });
   }
+  // Same lock the whole form used to sit under: a review awaiting a finalizer
+  // who cannot correct records is read-only.
+  const workspaceLocked = activeDraft?.reviewState === "review" && !(canFinalize && (currentUser?.permissions || []).includes("records.correct"));
   const programPanel = (
     <ConsultationProgramPanel
       programs={wizardPrograms}
@@ -4471,6 +4474,10 @@ export default function ConsultationWorkspace() {
       subtitle={stepHeading.subtitle}
     />
   );
+  // The heading is drawn once, at the top of the scrolling form column, so the
+  // step screens are handed this empty slot: it stops them falling back to
+  // their own titles.
+  const stepHeadingSlot = <></>;
 
   // Read-only recap for Review & Save, built from the page's existing state.
   const vitalsSummary = [
@@ -4620,11 +4627,8 @@ export default function ConsultationWorkspace() {
 
   return (
     <DashboardLayout role={userRole} title={pageTitle}>
-      <div className="ehr-consult">
+      <div className={`ehr-consult${inConsultationWorkspace ? " ehr-consult--pinned" : ""}`}>
       <style>{keyframes}</style>
-      {wizardPhase === WIZARD_NEXT && needsReferral && <ReferralDestinationPicker deferWithConsultation value={receivingRhuId} onChange={id => { setReceivingRhuId(id); setReferralForm(f => ({ ...f, preferredRhuDoctorId: "" })); }} patientId={selectedPatientId} />}
-      {activeDraft?.reviewState === "review" && canFinalize && <details className="mb-4 rounded-none border border-gray-200 p-4"><summary className="cursor-pointer text-sm font-medium">Return for Correction</summary><p className="my-2 text-sm text-gray-600">Use only when the encoder must verify or complete information.</p><textarea aria-label="Correction note" className="w-full rounded-none border border-gray-300 p-3" value={correctionNote} onChange={event => setCorrectionNote(event.target.value)} /><Button type="button" disabled={!correctionNote.trim()} onClick={async () => { try { if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) return; const identity = getDraftIdentity() || activeDraft; await transitionDraft(identity.id, "return", identity.version, correctionNote.trim()); bypassLeaveGuardRef.current = true; navigate("/bhc/patients/" + selectedPatientId); } catch (error) { toast.error(error.message); } }}>Return for Correction</Button></details>}
-      {activeDraft?.returnNote && <div role="status" className="mb-4 rounded-none bg-amber-50 p-4 text-sm">Return for Correction: {activeDraft.returnNote}</div>}
       <UnfinishedConsultationModal
         draft={draftDecision}
         selectedPatientName={getPatientName(selectedPatient)}
@@ -4636,6 +4640,22 @@ export default function ConsultationWorkspace() {
       />
 
 
+
+      {purposeOpen && !selectedPatient && <div className="rounded-none bg-white p-6"><p>{selectedPatientError ? "Unable to load the patient. Please retry." : "Loading patient eligibility..."}</p>{selectedPatientError && <button type="button" onClick={() => reloadSelectedPatient()}>Retry</button>}</div>}
+      {purposeOpen && !isResolvingClinicalMode && selectedPatient && <PurposeOfVisitModal value={visitPurpose} patient={selectedPatient} visitDate={dateOfVisit} onProceed={applyVisitPurpose} onCancel={() => { if (visitPurpose) setPurposeOpen(false); else navigate(`/bhc/patients/${selectedPatientId}`); }} />}
+      <div hidden={purposeOpen} className="ehr-consult__stage">
+      <ConsultationWorkspaceBody>
+      {/* Program selection lives in a fixed column to the right of the form.
+          From 1024px this column stays put and only the form column
+          (heading included) scrolls (see consultation-ehr.css); below that everything
+          stacks and the page scrolls. Notices scroll with the form and sit
+          outside the fieldset so a locked review does not disable them. */}
+      <div className={`ehr-consult__grid${showProgramPanel ? " ehr-consult__grid--panel lg:grid lg:grid-cols-[minmax(0,1fr)_264px] lg:items-start lg:gap-4" : ""}`}>
+      <div className="@container min-w-0 ehr-consult__form" data-consult-scroll>
+      {inConsultationWorkspace && stepIndicator}
+      {wizardPhase === WIZARD_NEXT && needsReferral && <ReferralDestinationPicker deferWithConsultation value={receivingRhuId} onChange={id => { setReceivingRhuId(id); setReferralForm(f => ({ ...f, preferredRhuDoctorId: "" })); }} patientId={selectedPatientId} />}
+      {activeDraft?.reviewState === "review" && canFinalize && <details className="mb-4 rounded-none border border-gray-200 p-4"><summary className="cursor-pointer text-sm font-medium">Return for Correction</summary><p className="my-2 text-sm text-gray-600">Use only when the encoder must verify or complete information.</p><textarea aria-label="Correction note" className="w-full rounded-none border border-gray-300 p-3" value={correctionNote} onChange={event => setCorrectionNote(event.target.value)} /><Button type="button" disabled={!correctionNote.trim()} onClick={async () => { try { if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) return; const identity = getDraftIdentity() || activeDraft; await transitionDraft(identity.id, "return", identity.version, correctionNote.trim()); bypassLeaveGuardRef.current = true; navigate("/bhc/patients/" + selectedPatientId); } catch (error) { toast.error(error.message); } }}>Return for Correction</Button></details>}
+      {activeDraft?.returnNote && <div role="status" className="mb-4 rounded-none bg-amber-50 p-4 text-sm">Return for Correction: {activeDraft.returnNote}</div>}
       {draftMedicineWarnings.length > 0 && (
         <div
           className="mb-4 ml-0 mr-auto flex w-full max-w-7xl items-start gap-3 rounded-none border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-900"
@@ -4652,10 +4672,6 @@ export default function ConsultationWorkspace() {
           </div>
         </div>
       )}
-
-      {inConsultationWorkspace && (
-        <ConsultationWorkspaceHeader />
-      )}
       {routeLinkedFollowUpTask && (
         <div className="mb-4 ml-0 mr-auto w-full max-w-5xl rounded-none border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm text-gray-700">
           <p className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Follow-up Visit</p>
@@ -4671,16 +4687,8 @@ export default function ConsultationWorkspace() {
           )}
         </div>
       )}
-      {purposeOpen && !selectedPatient && <div className="rounded-none bg-white p-6"><p>{selectedPatientError ? "Unable to load the patient. Please retry." : "Loading patient eligibility..."}</p>{selectedPatientError && <button type="button" onClick={() => reloadSelectedPatient()}>Retry</button>}</div>}
-      {purposeOpen && !isResolvingClinicalMode && selectedPatient && <PurposeOfVisitModal value={visitPurpose} patient={selectedPatient} visitDate={dateOfVisit} onProceed={applyVisitPurpose} onCancel={() => { if (visitPurpose) setPurposeOpen(false); else navigate(`/bhc/patients/${selectedPatientId}`); }} />}
       {purposeFlow && !purposeOpen && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-none border border-gray-200 bg-white p-4"><p className="text-sm font-medium">Purpose of Visit: {visitPurpose.services.map(key => VISIT_SERVICES[key]).join(" + ")}</p><button type="button" className="text-sm font-semibold text-red-700" onClick={() => setPurposeOpen(true)}>Change purpose</button></div>}
-      <div hidden={purposeOpen}>
-      <ConsultationWorkspaceBody>
-      <fieldset disabled={activeDraft?.reviewState === "review" && !(canFinalize && (currentUser?.permissions || []).includes("records.correct"))}>
-      {/* Program selection lives in a fixed column to the right of the form
-          (stacked below it on narrower screens). */}
-      <div className={showProgramPanel ? "lg:grid lg:grid-cols-[minmax(0,1fr)_264px] lg:items-start lg:gap-4" : ""}>
-      <div className="@container min-w-0">
+      <fieldset disabled={workspaceLocked} className="min-w-0">
       {isResolvingClinicalMode ? (
         <div className="ml-0 mr-auto w-full max-w-7xl">
           <HealthRecordFormSkeleton message="Loading health record..." />
@@ -4693,7 +4701,7 @@ export default function ConsultationWorkspace() {
           saveLabel="Save Record"
           savingLabel="Saving health record..."
           {...(usesConsultationSteps
-            ? { title: "", subtitle: "", indicator: stepIndicator }
+            ? { title: "", subtitle: "", indicator: stepHeadingSlot }
             : { onBack: handleStepBack, onSave: handleSave })}
         >
           {nextActionSection}
@@ -4705,7 +4713,7 @@ export default function ConsultationWorkspace() {
           sections={reviewSections.filter(section => generalSelected || section.key !== ASSESSMENT_STEP)}
           errors={reviewErrorMessages}
           onEditStep={key => { if (activeDraft?.reviewState === "review" && !(currentUser?.permissions || []).includes("records.correct")) return; goToStepKey(key); }}
-          indicator={stepIndicator}
+          indicator={stepHeadingSlot}
         />
       ) : (
       <>
@@ -4741,9 +4749,6 @@ export default function ConsultationWorkspace() {
           // one screen, no Next between them - the same card every other step
           // uses, with each section under its own heading.
           <section className={CONSULTATION_CARD_CLASS}>
-            <div className="anim-fade-up" style={stagger(2)}>
-              {stepIndicator}
-            </div>
             {/* HPI is marked required for a general consultation; whether that
                 applies is decided at Clinical Assessment, which enforces it. */}
             {!purposeFlow && (
@@ -4779,10 +4784,9 @@ export default function ConsultationWorkspace() {
             practitioner are no longer edited here - see formHeaderTitle. */}
         {usesConsultationSteps ? (
           <div className="anim-fade-up" style={stagger(2)}>
-            {stepIndicator}
             {showMaternalPatientWarning &&
               activeFormStep === programStepKey("Maternal") && (
-                <div className="-mt-2 pb-4">
+                <div className="pb-4">
                   <MaternalClassificationWarning />
                 </div>
               )}
@@ -5991,10 +5995,10 @@ export default function ConsultationWorkspace() {
       )}
       </>
       )}
-      </div>
-      {showProgramPanel && programPanel}
-      </div>
       </fieldset>
+      </div>
+      {showProgramPanel && <fieldset disabled={workspaceLocked} className="contents">{programPanel}</fieldset>}
+      </div>
       </ConsultationWorkspaceBody>
 
       {inConsultationWorkspace && (

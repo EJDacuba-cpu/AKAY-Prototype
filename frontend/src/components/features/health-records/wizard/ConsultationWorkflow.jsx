@@ -1,8 +1,7 @@
 import ButtonSpinner from "../../../common/loading/ButtonSpinner";
 
 /**
- * The New Consultation workspace: page header, the body, and the sticky action
- * bar. Styled to the EHR minimalism system - sharp corners, 1px borders instead
+ * The New Consultation workspace: the body and the sticky action bar. Styled to the EHR minimalism system - sharp corners, 1px borders instead
  * of shadows, one red (#DC2626) reserved for the primary action.
  *
  * "Completed" in the progress bar only means the user has moved past a step -
@@ -10,21 +9,6 @@ import ButtonSpinner from "../../../common/loading/ButtonSpinner";
  */
 
 const EDGE = "-mx-3 px-3 sm:-mx-4 sm:px-4 lg:-mx-5 lg:px-5";
-
-/** Compact page header: title and one-line purpose. */
-export function ConsultationWorkspaceHeader() {
-  return (
-    <div className="mb-4 min-w-0 border-b border-[#E5E7EB] pb-4">
-      <h2 className="text-2xl font-bold leading-snug tracking-tight text-[#111827]">
-        New Consultation
-      </h2>
-      <p className="mt-1 text-[13px] leading-relaxed text-[#374151]">
-        Record the patient&apos;s clinical information, assessment, treatment,
-        and next care decision for this visit.
-      </p>
-    </div>
-  );
-}
 
 /**
  * Sticky bar across the consultation content. Autosave itself is silent and
@@ -50,7 +34,7 @@ export function ConsultationActionBar({
 }) {
   return (
     <div
-      className={`sticky bottom-[-12px] z-30 mt-5 -mb-3 border-t border-[#D1D5DB] bg-white pb-3 sm:bottom-[-16px] sm:-mb-4 sm:pb-4 lg:bottom-[-20px] lg:-mb-5 lg:pb-5 ${EDGE}`}
+      className={`ehr-consult__actionbar sticky bottom-[-12px] z-30 mt-5 -mb-3 border-t border-[#D1D5DB] bg-white pb-3 sm:bottom-[-16px] sm:-mb-4 sm:pb-4 lg:bottom-[-20px] lg:-mb-5 lg:pb-5 ${EDGE}`}
     >
       <div className="flex h-14 items-center justify-between gap-3">
         <button
@@ -91,16 +75,16 @@ export function ConsultationActionBar({
  * fields clear of the sticky action bar while scrolling.
  */
 export function ConsultationWorkspaceBody({ children }) {
-  return <div className="min-w-0 pb-8">{children}</div>;
+  return <div className="ehr-consult__body min-w-0 pb-8">{children}</div>;
 }
 
 /**
  * Heading of the screen being filled in. No step counter and no progress bar:
  * the wizard still tracks position internally, it just is not displayed.
  */
-export function ConsultationStepHeading({ title, subtitle = "" }) {
+export function ConsultationStepHeading({ title, subtitle = "", className = "mb-4" }) {
   return (
-    <div className="mb-4">
+    <div className={className}>
       <h2 className="text-lg font-bold leading-snug tracking-tight text-[#111827]">
         {title}
       </h2>

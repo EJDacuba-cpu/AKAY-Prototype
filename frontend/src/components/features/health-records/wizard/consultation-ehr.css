@@ -127,3 +127,86 @@
 .ehr-consult section[role="dialog"] {
   border-color: #d1d5db;
 }
+
+/* ── Pinned layout (1024px and up) ──────────────────────────────────────────
+   Same idea as the patient directory: the page no longer scrolls. The program
+   panel stays on the right at a fixed height, the action bar stays at the
+   bottom, and only the form column on the left scrolls - its step heading
+   scrolls with it. Below 1024px the
+   panel stacks under the form and the page scrolls as before (the breakpoint
+   matches the panel's lg:grid-cols in ConsultationWorkspace).
+
+   Everything keys off `.ehr-consult--pinned`, which the workspace sets only
+   while a consultation screen is showing, so loading and legacy screens keep
+   normal page scrolling. */
+@media (min-width: 1024px) {
+  .akay-content-scroll:has(.ehr-consult--pinned) {
+    overflow-y: hidden;
+  }
+  .ehr-consult--pinned {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+  .ehr-consult--pinned > * {
+    flex: none;
+  }
+  /* The step content: everything between the title and the action bar. */
+  .ehr-consult--pinned > .ehr-consult__stage {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .ehr-consult--pinned > .ehr-consult__stage[hidden] {
+    display: none;
+  }
+  .ehr-consult--pinned .ehr-consult__body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    padding-bottom: 0;
+  }
+  .ehr-consult--pinned .ehr-consult__grid {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    min-height: 0;
+  }
+  /* The one scroll area. */
+  .ehr-consult--pinned .ehr-consult__form {
+    align-self: stretch;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 12px 0 0;
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
+  }
+  .ehr-consult--pinned .ehr-consult__form::-webkit-scrollbar {
+    width: 5px;
+  }
+  .ehr-consult--pinned .ehr-consult__form::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .ehr-consult--pinned .ehr-consult__form::-webkit-scrollbar-thumb {
+    background-color: #d1d5db;
+  }
+  .ehr-consult--pinned .ehr-consult__grid--panel {
+    grid-template-columns: minmax(0, 1fr) 264px;
+  }
+  /* The panel is pinned in place at the full height of the workspace; it only
+     scrolls itself if the list is taller than that. */
+  .ehr-consult--pinned .ehr-consult__grid > fieldset > aside {
+    align-self: stretch;
+    max-height: none;
+    overflow-y: auto;
+    position: static;
+  }
+  .ehr-consult--pinned .ehr-consult__actionbar {
+    position: static;
+    margin-top: 0;
+  }
+}
