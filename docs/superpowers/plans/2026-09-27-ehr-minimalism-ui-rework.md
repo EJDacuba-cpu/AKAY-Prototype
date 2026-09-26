@@ -684,12 +684,12 @@ Replace the block from `<div className="clinical-directory__results relative min
         title="Patient Summary"
         widthClassName="w-full sm:w-[420px]"
       >
-        {selectedPatientId && (
+        {!showInlinePreview && selectedPatientId && (
           <PatientSummaryPanel key={selectedPatientId} patientId={selectedPatientId} />
         )}
       </Drawer>
 ```
-Note: the `Drawer` is closed whenever the inline panel is showing, so the selection survives a viewport change and only one `PatientSummaryPanel` is mounted at a time. The inline panel passes `showTitle`; the drawer does not (it draws its own title bar and close button).
+Note: the shared `Drawer` keeps its children mounted even when closed, so the drawer child is gated on `!showInlinePreview && selectedPatientId` (not just `open`); that is what keeps only one `PatientSummaryPanel` mounted at a time, while the selection (parent state) survives a viewport change. (The first draft of this plan gated on `selectedPatientId` alone; that mounted two panels at >=1280px and was corrected during execution, ruling R6.) The inline panel passes `showTitle`; the drawer does not (it draws its own title bar and close button).
 
 - [ ] **Step 3a: Create the shared alert chips**
 

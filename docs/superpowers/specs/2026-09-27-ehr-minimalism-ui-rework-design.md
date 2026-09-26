@@ -75,7 +75,7 @@ old grays/reds until converted later.
   success `#059669`, warning `#F59E0B`, info `#0891B2` (with light 50/100 fills for badges).
 - **Radius**: `--radius-row/input/card/card-sm/lg/modal` → `0`; new
   `--radius-badge: 2px`. `--radius-pill` stays for dots/avatars/spinners only.
-  Tailwind's `rounded-md/lg/xl/2xl/3xl` are overridden to `0` and `rounded-sm` to
+  Tailwind's `rounded-xs/md/lg/xl/2xl/3xl/4xl` are overridden to `0` and `rounded-sm` to
   `2px` so hard-coded classes elsewhere go square too. *(Review item: confirm this
   app-wide squaring is wanted.)*
 - **Shadow**: `--shadow-2xs/xs/sm/md/card` → flat (`0 0 #0000`); `--shadow-lg/xl/2xl` keep one subtle value (`0 4px 12px rgba(17,24,39,0.08)`) for floating layers.
