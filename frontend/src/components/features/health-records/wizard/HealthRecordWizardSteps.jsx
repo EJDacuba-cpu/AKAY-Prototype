@@ -135,7 +135,7 @@ export function WizardFooter({
               onClick={onNext}
               disabled={nextDisabled || nextBusy}
               aria-busy={nextBusy}
-              className="inline-flex items-center justify-center gap-2 rounded-none bg-[#DC2626] px-4 py-2 text-[13px] font-semibold leading-tight text-white transition-colors duration-150 hover:bg-[#B91C1C] active:bg-[#991B1B] disabled:cursor-not-allowed disabled:bg-[#D1D5DB] disabled:text-[#6B7280]"
+              className="inline-flex items-center justify-center gap-2 rounded-none bg-[#DC2626] px-4 py-2 text-[13px] font-semibold leading-tight text-white transition-colors duration-150 hover:bg-red-700 active:bg-red-800 disabled:cursor-not-allowed disabled:bg-[#D1D5DB] disabled:text-[#6B7280]"
             >
               {nextBusy ? (
                 <>
@@ -240,12 +240,12 @@ export function ConsultationReviewStep({
       {errors.length > 0 && (
         <div
           role="alert"
-          className="mb-4 rounded-none border border-[#FECACA] border-l-4 border-l-[#DC2626] bg-[#FEF2F2] p-4"
+          className="mb-4 rounded-none border border-red-200 border-l-4 border-l-[#DC2626] bg-red-50 p-4"
         >
-          <p className="text-[13px] font-bold text-[#991B1B]">
+          <p className="text-[13px] font-bold text-red-700">
             Please review before saving
           </p>
-          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[13px] text-[#991B1B]">
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[13px] text-red-700">
             {errors.map((message) => (
               <li key={message}>{message}</li>
             ))}
@@ -264,7 +264,7 @@ export function ConsultationReviewStep({
                 <button
                   type="button"
                   onClick={() => onEditStep(section.stepKey)}
-                  className="text-[12px] font-semibold text-[#DC2626] hover:text-[#991B1B]"
+                  className="text-[12px] font-semibold text-[#DC2626] hover:text-red-700"
                 >
                   Edit
                 </button>

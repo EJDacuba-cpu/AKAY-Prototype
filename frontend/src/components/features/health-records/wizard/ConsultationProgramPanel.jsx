@@ -96,7 +96,7 @@ export default function ConsultationProgramPanel({
                 <div
                   key={program.key}
                   className={`border-b border-[#E5E7EB] last:border-b-0 ${
-                    active ? "border-l-4 border-l-[#DC2626] bg-[#FEF2F2]" : "border-l-4 border-l-transparent"
+                    active ? "border-l-4 border-l-[#DC2626] bg-red-50" : "border-l-4 border-l-transparent"
                   }`}
                 >
                   <label
@@ -137,7 +137,7 @@ export default function ConsultationProgramPanel({
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pb-2 pl-[38px] pr-3">
                       {info && <StatusBadge status={info.status} />}
                       {primary === program.key ? (
-                        <span className="rounded-sm border border-[#FECACA] bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#DC2626]">
+                        <span className="rounded-sm border border-red-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#DC2626]">
                           Primary
                         </span>
                       ) : (
@@ -154,7 +154,7 @@ export default function ConsultationProgramPanel({
                         <button
                           type="button"
                           onClick={() => onOpenForm(info.stepKey)}
-                          className="ml-auto text-[12px] font-semibold text-[#DC2626] hover:text-[#991B1B]"
+                          className="ml-auto text-[12px] font-semibold text-[#DC2626] hover:text-red-700"
                         >
                           Open form
                         </button>

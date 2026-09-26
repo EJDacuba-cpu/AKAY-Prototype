@@ -502,7 +502,7 @@ const MATERNAL_EYEBROW_CLASS =
   "mb-3 text-[11px] font-semibold uppercase tracking-wide text-[#DC2626]";
 // FieldInput's own input style, for a table cell whose column header labels it.
 const MATERNAL_TABLE_INPUT_CLASS =
-  "h-9 w-full rounded-none border border-[#D1D5DB] bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] focus:border-[#DC2626] focus:ring-2 focus:ring-[#FECACA]";
+  "h-9 w-full rounded-none border border-[#D1D5DB] bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] focus:border-[#DC2626] focus:ring-2 focus:ring-red-200";
 
 /**
  * OB score components, recorded as separate counts rather than one string.
@@ -4258,7 +4258,7 @@ export default function ConsultationWorkspace() {
       requireFollowUpDate={canFinalize}
       legacyStatusNote={
         showsLegacyFollowUpStatus ? (
-          <p className="mt-2 text-[11px] leading-relaxed text-[#64748B]">
+          <p className="mt-2 text-[11px] leading-relaxed text-gray-500">
             This record is currently saved as &ldquo;Routine Monitoring&rdquo;.
             It stays that way unless you choose an option above.
           </p>
@@ -4374,7 +4374,7 @@ export default function ConsultationWorkspace() {
   );
 
   const autosaveStatus = canSaveCurrentDraft ? (
-    <span role="status" aria-live="polite" className="text-xs text-slate-500">
+    <span role="status" aria-live="polite" className="text-xs text-gray-500">
       {draftSyncStatus === "syncing" ? "Syncing..." : draftAutosaveStatus === "saving" ? "Saving..." : draftAutosaveStatus === "saved" ? "Saved automatically" : ""}
     </span>
   ) : null;
@@ -4623,7 +4623,7 @@ export default function ConsultationWorkspace() {
       <div className="ehr-consult">
       <style>{keyframes}</style>
       {wizardPhase === WIZARD_NEXT && needsReferral && <ReferralDestinationPicker deferWithConsultation value={receivingRhuId} onChange={id => { setReceivingRhuId(id); setReferralForm(f => ({ ...f, preferredRhuDoctorId: "" })); }} patientId={selectedPatientId} />}
-      {activeDraft?.reviewState === "review" && canFinalize && <details className="mb-4 rounded-none border border-slate-200 p-4"><summary className="cursor-pointer text-sm font-medium">Return for Correction</summary><p className="my-2 text-sm text-slate-600">Use only when the encoder must verify or complete information.</p><textarea aria-label="Correction note" className="w-full rounded-none border border-slate-300 p-3" value={correctionNote} onChange={event => setCorrectionNote(event.target.value)} /><Button type="button" disabled={!correctionNote.trim()} onClick={async () => { try { if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) return; const identity = getDraftIdentity() || activeDraft; await transitionDraft(identity.id, "return", identity.version, correctionNote.trim()); bypassLeaveGuardRef.current = true; navigate("/bhc/patients/" + selectedPatientId); } catch (error) { toast.error(error.message); } }}>Return for Correction</Button></details>}
+      {activeDraft?.reviewState === "review" && canFinalize && <details className="mb-4 rounded-none border border-gray-200 p-4"><summary className="cursor-pointer text-sm font-medium">Return for Correction</summary><p className="my-2 text-sm text-gray-600">Use only when the encoder must verify or complete information.</p><textarea aria-label="Correction note" className="w-full rounded-none border border-gray-300 p-3" value={correctionNote} onChange={event => setCorrectionNote(event.target.value)} /><Button type="button" disabled={!correctionNote.trim()} onClick={async () => { try { if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) return; const identity = getDraftIdentity() || activeDraft; await transitionDraft(identity.id, "return", identity.version, correctionNote.trim()); bypassLeaveGuardRef.current = true; navigate("/bhc/patients/" + selectedPatientId); } catch (error) { toast.error(error.message); } }}>Return for Correction</Button></details>}
       {activeDraft?.returnNote && <div role="status" className="mb-4 rounded-none bg-amber-50 p-4 text-sm">Return for Correction: {activeDraft.returnNote}</div>}
       <UnfinishedConsultationModal
         draft={draftDecision}
@@ -4657,7 +4657,7 @@ export default function ConsultationWorkspace() {
         <ConsultationWorkspaceHeader />
       )}
       {routeLinkedFollowUpTask && (
-        <div className="mb-4 ml-0 mr-auto w-full max-w-5xl rounded-none border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm text-slate-700">
+        <div className="mb-4 ml-0 mr-auto w-full max-w-5xl rounded-none border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm text-gray-700">
           <p className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Follow-up Visit</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-3">
             <SummaryItem label="Follow-up for" value={getFollowUpTaskServiceType(routeLinkedFollowUpTask) || "Not recorded"} />
@@ -4673,7 +4673,7 @@ export default function ConsultationWorkspace() {
       )}
       {purposeOpen && !selectedPatient && <div className="rounded-none bg-white p-6"><p>{selectedPatientError ? "Unable to load the patient. Please retry." : "Loading patient eligibility..."}</p>{selectedPatientError && <button type="button" onClick={() => reloadSelectedPatient()}>Retry</button>}</div>}
       {purposeOpen && !isResolvingClinicalMode && selectedPatient && <PurposeOfVisitModal value={visitPurpose} patient={selectedPatient} visitDate={dateOfVisit} onProceed={applyVisitPurpose} onCancel={() => { if (visitPurpose) setPurposeOpen(false); else navigate(`/bhc/patients/${selectedPatientId}`); }} />}
-      {purposeFlow && !purposeOpen && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-none border border-slate-200 bg-white p-4"><p className="text-sm font-medium">Purpose of Visit: {visitPurpose.services.map(key => VISIT_SERVICES[key]).join(" + ")}</p><button type="button" className="text-sm font-semibold text-red-700" onClick={() => setPurposeOpen(true)}>Change purpose</button></div>}
+      {purposeFlow && !purposeOpen && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-none border border-gray-200 bg-white p-4"><p className="text-sm font-medium">Purpose of Visit: {visitPurpose.services.map(key => VISIT_SERVICES[key]).join(" + ")}</p><button type="button" className="text-sm font-semibold text-red-700" onClick={() => setPurposeOpen(true)}>Change purpose</button></div>}
       <div hidden={purposeOpen}>
       <ConsultationWorkspaceBody>
       <fieldset disabled={activeDraft?.reviewState === "review" && !(canFinalize && (currentUser?.permissions || []).includes("records.correct"))}>
@@ -4789,10 +4789,10 @@ export default function ConsultationWorkspace() {
           </div>
         ) : (
         <div className="anim-fade-up pb-5" style={stagger(2)}>
-          <h2 className="text-lg font-bold tracking-tight text-[#0F172A]">
+          <h2 className="text-lg font-bold tracking-tight text-gray-900">
             {formHeaderTitle}
           </h2>
-          <p className="mt-1 text-[13px] leading-relaxed text-[#64748B]">
+          <p className="mt-1 text-[13px] leading-relaxed text-gray-500">
             Complete the form below for this visit.
           </p>
           {showMaternalPatientWarning && (
@@ -4931,12 +4931,12 @@ export default function ConsultationWorkspace() {
                   rows={3}
                 />
               </div>
-              <div className="mt-5 border-t border-slate-200 pt-5">
+              <div className="mt-5 border-t border-gray-200 pt-5">
                 <div className="mb-3">
-                  <h3 className="text-sm font-bold text-[#0F172A]">
+                  <h3 className="text-sm font-bold text-gray-900">
                     Medicines / Supplies Dispensed
                   </h3>
-                  <p className="mt-0.5 text-xs leading-relaxed text-[#64748B]">
+                  <p className="mt-0.5 text-xs leading-relaxed text-gray-500">
                     Optional medicines or supplies given from BHC inventory
                     during this follow-up visit.
                   </p>
@@ -4966,7 +4966,7 @@ export default function ConsultationWorkspace() {
             placed directly in the card rather than inside a FormSection. */}
         {!patientGateLocked && isImmunization && showProgramBlock("Immunization") && (
           <div className="anim-fade-up" style={stagger(2)}>
-            {immunizationVaccineEntries.length > 0 && <section className="mb-4 space-y-3 rounded-none border border-slate-200 p-4"><h3 className="text-sm font-semibold">Vaccine Administration — Inventory</h3><p className="text-xs text-slate-600">Select the matching inventory item and its stock-unit quantity. Do not repeat it in Medicines / Supplies.</p>{immunizationVaccineEntries.map((entry, index) => <fieldset key={entry.vaccineName} disabled={!(currentUser?.permissions || []).includes("items.dispense")} className="grid gap-2 border-t border-slate-100 pt-3 @xl:grid-cols-3"><legend className="text-sm font-medium">{entry.vaccineName}</legend><select aria-label={entry.vaccineName + " inventory item"} className="rounded-none border border-slate-200 p-2" value={entry.medicineId || ""} onChange={event => updateVaccineInventory(index, "medicineId", event.target.value)}><option value="">Select inventory item</option>{bhcMedicineInventory.map(item => <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>)}</select><input aria-label={entry.vaccineName + " inventory quantity"} className="rounded-none border border-slate-200 p-2" type="number" min="1" step="1" placeholder="Stock-unit quantity" value={entry.inventoryQuantity || ""} onChange={event => updateVaccineInventory(index, "inventoryQuantity", event.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={entry.confirmedGiven === true} onChange={event => updateVaccineInventory(index, "confirmedGiven", event.target.checked)} />Confirmed Administered</label></fieldset>)}</section>}
+            {immunizationVaccineEntries.length > 0 && <section className="mb-4 space-y-3 rounded-none border border-gray-200 p-4"><h3 className="text-sm font-semibold">Vaccine Administration — Inventory</h3><p className="text-xs text-gray-600">Select the matching inventory item and its stock-unit quantity. Do not repeat it in Medicines / Supplies.</p>{immunizationVaccineEntries.map((entry, index) => <fieldset key={entry.vaccineName} disabled={!(currentUser?.permissions || []).includes("items.dispense")} className="grid gap-2 border-t border-gray-100 pt-3 @xl:grid-cols-3"><legend className="text-sm font-medium">{entry.vaccineName}</legend><select aria-label={entry.vaccineName + " inventory item"} className="rounded-none border border-gray-200 p-2" value={entry.medicineId || ""} onChange={event => updateVaccineInventory(index, "medicineId", event.target.value)}><option value="">Select inventory item</option>{bhcMedicineInventory.map(item => <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>)}</select><input aria-label={entry.vaccineName + " inventory quantity"} className="rounded-none border border-gray-200 p-2" type="number" min="1" step="1" placeholder="Stock-unit quantity" value={entry.inventoryQuantity || ""} onChange={event => updateVaccineInventory(index, "inventoryQuantity", event.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={entry.confirmedGiven === true} onChange={event => updateVaccineInventory(index, "confirmedGiven", event.target.checked)} />Confirmed Administered</label></fieldset>)}</section>}
             <ImmunizationVisitFields
               vaccineOptions={CHILD_VACCINE_OPTIONS}
               entries={immunizationVaccineEntries}
@@ -5195,7 +5195,7 @@ export default function ConsultationWorkspace() {
                 <div className="overflow-x-auto rounded-none border border-[#E8ECF0]">
                   <table className="w-full min-w-[520px] border-collapse text-left">
                     <thead>
-                      <tr className="border-b border-[#EEF2F6] bg-[#F8FAFC]">
+                      <tr className="border-b border-[#EEF2F6] bg-gray-50">
                         {["Test", "Result", "Date"].map((heading) => (
                           <th
                             key={heading}
@@ -5508,7 +5508,7 @@ export default function ConsultationWorkspace() {
                     )}
                 </FieldSelect>
                 {selectedPatientIsMale && (
-                  <p className="text-[11px] leading-relaxed text-[#64748B] sm:col-span-2">
+                  <p className="text-[11px] leading-relaxed text-gray-500 sm:col-span-2">
                     This patient is recorded as male, so only male-applicable
                     methods are listed.
                   </p>
@@ -5960,7 +5960,7 @@ export default function ConsultationWorkspace() {
             <button
               type="button"
               onClick={handleStepBack}
-              className="rounded-none border border-[#E5E7EB] bg-white px-5 py-2.5 text-[12.5px] font-semibold text-[#475569] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#DC2626]"
+              className="rounded-none border border-[#E5E7EB] bg-white px-5 py-2.5 text-[12.5px] font-semibold text-gray-600 transition hover:border-red-200 hover:bg-red-50 hover:text-[#DC2626]"
             >
               Back
             </button>
@@ -5971,7 +5971,7 @@ export default function ConsultationWorkspace() {
               type="button"
               onClick={handleContinueToNextAction}
               disabled={isPrimaryActionLoading}
-              className="inline-flex items-center justify-center gap-2 rounded-none bg-[#DC2626] px-6 py-2.5 text-[12.5px] font-bold text-white transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded-none bg-[#DC2626] px-6 py-2.5 text-[12.5px] font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isPrimaryActionLoading ? (
                 <>
@@ -6266,11 +6266,11 @@ function CareDecisionStep({
                     className={`rounded-none border p-4 text-left transition ${
                       selected
                         ? "border-[#DC2626] bg-red-50 ring-2 ring-[#DC2626]/10"
-                        : "border-[#E8ECF0] bg-white hover:border-red-100 hover:bg-[#FEF2F2]/40"
+                        : "border-[#E8ECF0] bg-white hover:border-red-100 hover:bg-red-50/40"
                     }`}
                   >
                     <span className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-bold text-[#0F172A]">
+                      <span className="text-sm font-bold text-gray-900">
                         {option.title}
                       </span>
                       {selected && (
@@ -6279,7 +6279,7 @@ function CareDecisionStep({
                         </span>
                       )}
                     </span>
-                    <span className="mt-1 block text-xs leading-relaxed text-[#64748B]">
+                    <span className="mt-1 block text-xs leading-relaxed text-gray-500">
                       {option.description}
                     </span>
                   </button>
@@ -6324,7 +6324,7 @@ function CareDecisionStep({
                       className={`rounded-none px-4 py-2.5 text-sm font-bold transition ${
                         selected
                           ? "bg-[#DC2626] text-white"
-                          : "text-[#64748B] hover:bg-red-50 hover:text-[#DC2626]"
+                          : "text-gray-500 hover:bg-red-50 hover:text-[#DC2626]"
                       }`}
                     >
                       {option.title}
@@ -6340,7 +6340,7 @@ function CareDecisionStep({
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center justify-center gap-2 rounded-none bg-[#DC2626] px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
+            className="inline-flex items-center justify-center gap-2 rounded-none bg-[#DC2626] px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {saving ? <ButtonSpinner /> : <Save size={15} />}
             {saving ? "Saving health record..." : "Save Health Record"}
@@ -6357,7 +6357,7 @@ function SummaryItem({ label, value }) {
       <p className="text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
         {label}
       </p>
-      <p className="mt-0.5 truncate font-semibold text-[#0F172A]">
+      <p className="mt-0.5 truncate font-semibold text-gray-900">
         {formatDisplayValue(value, "Not recorded")}
       </p>
     </div>
@@ -6449,7 +6449,7 @@ function MorbidityNotifiableReportingSection({ value, onChange }) {
           {MORBIDITY_REPORTING_OPTIONS.map((option) => (
             <label
               key={option.value}
-              className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#475569]"
+              className="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-600"
             >
               <input
                 type="radio"
@@ -6463,7 +6463,7 @@ function MorbidityNotifiableReportingSection({ value, onChange }) {
                 className={
                   value === option.value
                     ? "font-semibold text-[#DC2626]"
-                    : "text-[#475569]"
+                    : "text-gray-600"
                 }
               >
                 {option.label}
@@ -6485,8 +6485,8 @@ function FieldInput({
   ...props
 }) {
   const inputClass = error
-    ? "border-[#DC2626] bg-white ring-2 ring-[#FECACA]"
-    : "border-[#D1D5DB] bg-white focus:border-[#DC2626] focus:ring-2 focus:ring-[#FECACA]";
+    ? "border-[#DC2626] bg-white ring-2 ring-red-200"
+    : "border-[#D1D5DB] bg-white focus:border-[#DC2626] focus:ring-2 focus:ring-red-200";
 
   return (
     <div className={wrapperClassName}>
@@ -6515,8 +6515,8 @@ function FieldSelect({
   ...props
 }) {
   const selectClass = error
-    ? "border-[#DC2626] bg-white ring-2 ring-[#FECACA]"
-    : "border-[#D1D5DB] bg-white focus:border-[#DC2626] focus:ring-2 focus:ring-[#FECACA]";
+    ? "border-[#DC2626] bg-white ring-2 ring-red-200"
+    : "border-[#D1D5DB] bg-white focus:border-[#DC2626] focus:ring-2 focus:ring-red-200";
 
   return (
     <div className={wrapperClassName}>
@@ -6547,8 +6547,8 @@ function FieldTextarea({
   ...props
 }) {
   const textareaClass = error
-    ? "border-[#DC2626] bg-white ring-2 ring-[#FECACA]"
-    : "border-[#D1D5DB] bg-white focus:border-[#DC2626] focus:ring-2 focus:ring-[#FECACA]";
+    ? "border-[#DC2626] bg-white ring-2 ring-red-200"
+    : "border-[#D1D5DB] bg-white focus:border-[#DC2626] focus:ring-2 focus:ring-red-200";
 
   return (
     <div className={wrapperClassName}>
@@ -6578,7 +6578,7 @@ function YesNoRadioGroup({ label, name, value, onChange, disabled = false }) {
         {["No", "Yes"].map((option) => (
           <label
             key={option}
-            className={`flex items-center gap-2 text-sm font-medium text-[#475569] ${
+            className={`flex items-center gap-2 text-sm font-medium text-gray-600 ${
               disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
             }`}
           >
@@ -6595,7 +6595,7 @@ function YesNoRadioGroup({ label, name, value, onChange, disabled = false }) {
               className={
                 (value || "No") === option
                   ? "font-semibold text-[#DC2626]"
-                  : "text-[#475569]"
+                  : "text-gray-600"
               }
             >
               {option}
@@ -6627,7 +6627,7 @@ function BpInputGroup({
           placeholder="Systolic"
           value={systolic}
           onChange={(event) => onSystolicChange(event.target.value)}
-          className="h-9 w-full rounded-none border border-[#D1D5DB] bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] focus:border-[#DC2626] focus:ring-2 focus:ring-[#FECACA] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="h-9 w-full rounded-none border border-[#D1D5DB] bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] focus:border-[#DC2626] focus:ring-2 focus:ring-red-200 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
         <div className="flex h-9 w-10 shrink-0 items-center justify-center border-y border-[#E5E7EB] bg-[#F9FAFB] text-sm font-bold text-[#6B7280]">
           /
@@ -6637,7 +6637,7 @@ function BpInputGroup({
           placeholder="Diastolic"
           value={diastolic}
           onChange={(event) => onDiastolicChange(event.target.value)}
-          className="h-9 w-full rounded-none border border-[#D1D5DB] bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] focus:border-[#DC2626] focus:ring-2 focus:ring-[#FECACA] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="h-9 w-full rounded-none border border-[#D1D5DB] bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] focus:border-[#DC2626] focus:ring-2 focus:ring-red-200 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
       </div>
       {error ? (
@@ -6687,9 +6687,9 @@ function RiskCodeChecklist({ eyebrow, options, values = {}, onChange }) {
                 type="checkbox"
                 checked={checked}
                 onChange={(event) => onChange(option.key, event.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#D1D5DB] accent-[#DC2626]"
+                className="mt-0.5 h-4 w-4 shrink-0 rounded-none border-[#D1D5DB] accent-[#DC2626]"
               />
-              <span className={checked ? "font-semibold text-[#DC2626]" : "text-[#475569]"}>
+              <span className={checked ? "font-semibold text-[#DC2626]" : "text-gray-600"}>
                 {option.label}
               </span>
             </label>
@@ -6710,7 +6710,7 @@ function BmiOutputField({ weight, height }) {
         BMI
       </label>
       <div className="flex h-9 w-full items-center justify-between rounded-none border border-[#E5E7EB] bg-[#F9FAFB] px-3">
-        <span className="text-sm font-bold text-[#0F172A]">
+        <span className="text-sm font-bold text-gray-900">
           {bmi === null ? "—" : formatBmi(bmi)}
         </span>
         {category && (
