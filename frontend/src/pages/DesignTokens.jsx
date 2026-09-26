@@ -1,5 +1,5 @@
 /*
- * AKAY Design Tokens — preview & QA page (Step 1 of the design revamp).
+ * AKAY Design Tokens — preview & QA page (medical-ehr-minimalism direction).
  *
  * Self-contained: renders every color ramp, the type scale, radius samples,
  * shadow samples, and status badges straight from the CSS custom properties
@@ -100,7 +100,7 @@ function Section({ title, description, children }) {
     >
       <h2
         style={{
-          fontFamily: "var(--font-serif)",
+          fontFamily: "var(--font-sans)",
           fontSize: "var(--text-2xl)",
           fontWeight: 600,
           color: "var(--color-text)",
@@ -286,11 +286,11 @@ export default function DesignTokens() {
               textTransform: "uppercase",
             }}
           >
-            Step 1 · Tokens
+            Design Tokens
           </span>
           <h1
             style={{
-              fontFamily: "var(--font-serif)",
+              fontFamily: "var(--font-sans)",
               fontSize: "var(--text-3xl)",
               fontWeight: 600,
               margin: "14px 0 6px",
@@ -324,14 +324,14 @@ export default function DesignTokens() {
           <div
             style={{
               border: "1px solid var(--color-border)",
-              borderLeft: "3px solid var(--color-brand-500)",
+              borderLeft: "3px solid var(--color-brand-600)",
               borderRadius: "var(--radius-card)",
               background: "var(--color-surface)",
               padding: "14px 16px",
             }}
           >
             <div style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>
-              Brand red — <code style={{ fontFamily: "var(--font-mono)" }}>brand-500</code>
+              Brand red — <code style={{ fontFamily: "var(--font-mono)" }}>brand-600</code>
             </div>
             <p
               style={{
@@ -372,7 +372,7 @@ export default function DesignTokens() {
         {/* Color ramps */}
         <Section
           title="Color ramps"
-          description="Generating tokens in @theme. Utilities such as bg-brand-500 and text-neutral-600 are produced from these."
+          description="Generating tokens in @theme. Utilities such as bg-brand-600 and text-neutral-600 are produced from these."
         >
           {RAMPS.map((ramp) => (
             <Ramp key={ramp.name} ramp={ramp} />
@@ -382,7 +382,7 @@ export default function DesignTokens() {
         {/* Type scale */}
         <Section
           title="Type scale"
-          description="15px base. Body: Public Sans. Headings: Source Serif 4. Code: IBM Plex Mono."
+          description="Body text is 14px; the --text-* scale below is unchanged. Body and headings: Geiza-first sans (Public Sans fallback), headings bold. Code: IBM Plex Mono."
         >
           <div style={{ display: "grid", gap: "10px" }}>
             {TYPE_SCALE.map((t) => (
@@ -423,13 +423,13 @@ export default function DesignTokens() {
           <div style={{ marginTop: "24px", display: "grid", gap: "12px" }}>
             <h3
               style={{
-                fontFamily: "var(--font-serif)",
-                fontWeight: 600,
+                fontFamily: "var(--font-sans)",
+                fontWeight: 700,
                 fontSize: "var(--text-2xl)",
                 margin: 0,
               }}
             >
-              Source Serif 4 heading — humane and precise
+              Bold sans heading — clear and dense
             </h3>
             <p
               style={{
@@ -500,7 +500,7 @@ export default function DesignTokens() {
         {/* Shadow */}
         <Section
           title="Shadow"
-          description="One soft elevation system. shadow-sm/md/lg stay reserved for overlays (menus, modals, toasts). shadow-card pairs with a border on elevated surfaces (record headers, accordion sections, stat tiles); nested cards inside them stay border-only."
+          description="Flat by default: shadow-2xs through shadow-md and shadow-card resolve to no shadow, so cards and panels are border-only. Only shadow-lg and larger keep one subtle shadow, for floating layers (menus, popovers, modals, toasts)."
         >
           <div
             style={{
@@ -537,7 +537,7 @@ export default function DesignTokens() {
         {/* Status badges */}
         <Section
           title="Status badges"
-          description="Calm status treatment: muted tint background with a darker on-tone label. Alert red is held back for true urgency."
+          description="Status colors are saturated (success #059669, warning #F59E0B, info #0891B2) with a pale tint background and a darker on-tone label. Alert red is held back for true urgency."
         >
           <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
             {STATUS_BADGES.map((b) => (
@@ -566,8 +566,8 @@ export default function DesignTokens() {
           description="These use literal Tailwind utility classes (not inline vars). If they render styled, the @theme utilities are generating correctly."
         >
           <div className="flex flex-wrap items-center gap-3">
-            <div className="bg-brand-500 text-neutral-50 rounded-card font-serif shadow-md px-4 py-3">
-              bg-brand-500 · font-serif · rounded-card
+            <div className="bg-brand-600 text-neutral-50 rounded-card font-sans shadow-md px-4 py-3">
+              bg-brand-600 · font-sans · rounded-card
             </div>
             <div className="bg-neutral-100 text-neutral-600 rounded-lg border border-neutral-200 px-4 py-3">
               text-neutral-600 · rounded-lg
@@ -592,9 +592,10 @@ export default function DesignTokens() {
             color: "var(--color-text-muted)",
           }}
         >
-          AKAY design tokens · Step 1. Legacy <code style={{ fontFamily: "var(--font-mono)" }}>--akay-*</code>{" "}
-          variables remain aliased to these tokens. Components are restyled in
-          Step 2.
+          AKAY design tokens. Legacy <code style={{ fontFamily: "var(--font-mono)" }}>--akay-*</code>{" "}
+          variables remain aliased to these tokens. The retained{" "}
+          <code style={{ fontFamily: "var(--font-mono)" }}>--font-serif</code>{" "}
+          token is legacy and no longer used for headings.
         </footer>
       </div>
     </div>

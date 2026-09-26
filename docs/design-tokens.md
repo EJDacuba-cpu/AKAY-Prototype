@@ -1,8 +1,9 @@
 # AKAY Design Tokens
 
-**Step 1 of the design revamp — tokens only.** This document is the single source
-of truth for AKAY's color, type, radius, and elevation tokens. Components are
-**not** restyled yet; that is Step 2. Preview everything live at
+This document is the single source of truth for AKAY's color, type, radius, and
+elevation tokens. The tokens are applied to the navbar, topbar, patient module,
+patient profile and new consultation; other screens pick them up through the
+global `@theme` change. Preview everything live at
 [`/design-tokens`](../frontend/src/pages/DesignTokens.jsx).
 
 ## Design direction
@@ -23,7 +24,7 @@ tokens are defined in [`frontend/src/index.css`](../frontend/src/index.css).
 | Block     | Purpose                                                                 |
 | --------- | ----------------------------------------------------------------------- |
 | `@theme`  | **Generating tokens.** Tailwind emits these as CSS vars *and* builds utilities from them (`bg-brand-600`, `text-neutral-600`, `rounded-card`, `font-sans`, `text-2xl`, `shadow-md`). |
-| `:root`   | **Semantic role tokens.** Plain CSS vars that do *not* generate utilities. Components consume THESE in Step 2. |
+| `:root`   | **Semantic role tokens.** Plain CSS vars that do *not* generate utilities. Components consume THESE. |
 | `:root` (aliases) | Legacy `--akay-*` variables, re-pointed at the new tokens so nothing breaks. |
 
 Rule of thumb: **a value a component picks by name → `@theme`. A role that maps to
@@ -74,7 +75,7 @@ is what lets a dark theme drop in later by overriding roles only.
 | 300   | `#FCA5A5` | —                              |
 | 400   | `#F87171` | —                              |
 | 500   | `#EF4444` | **Danger** — destructive, urgent |
-| 600   | `#DC2626` | Danger hover                   |
+| 600   | `#DC2626` | Same value as `brand-600` (not used for hover; `--color-danger-hover` points here) |
 | 700   | `#B91C1C` | On-tint danger text            |
 
 ### Status
@@ -102,8 +103,9 @@ The two token families keep two different jobs:
 
 **Litmus test:** if it appears on nearly every screen, it's **brand**. If it
 should make someone's eyes snap to it because something is wrong or irreversible,
-it's **alert**. Alert red must stay rare to stay loud. Muted status colors
-(success/warning/info) carry ordinary state so alert red is never spent on it.
+it's **alert**. Alert red must stay rare to stay loud. The saturated status
+colors (success `#059669` / warning `#F59E0B` / info `#0891B2`) carry ordinary
+state so alert red is never spent on it.
 
 ---
 
@@ -117,8 +119,8 @@ it's **alert**. Alert red must stay rare to stay loud. Muted status colors
 
 Geiza is first in the stack but its files are **not shipped**; the browser falls
 back to Public Sans. Shipped fonts are **self-hosted** via `@fontsource` (no CDN —
-poor-connectivity context), imported in [`main.jsx`](../frontend/src/main.jsx). Weights: Public Sans
-400/500/600/700, Source Serif 4 500/600, IBM Plex Mono 400/500.
+poor-connectivity context), imported in [`main.jsx`](../frontend/src/main.jsx): Public Sans (variable),
+Source Serif 4 (variable, retained as a legacy token only), IBM Plex Mono 400/500.
 
 **Type scale (unchanged; `body` is 14px):**
 
@@ -169,7 +171,7 @@ popovers, modals, toasts) keep one subtle shadow via `shadow-lg/xl/2xl`.
 
 ## Semantic role tokens (`:root`)
 
-These are what components should reference in Step 2 — not raw ramp shades.
+These are what components should reference — not raw ramp shades.
 
 | Token                    | Resolves to        |
 | ------------------------ | ------------------ |
@@ -194,11 +196,11 @@ These are what components should reference in Step 2 — not raw ramp shades.
 `--akay-primary`, `--akay-primary-dark`, `--akay-primary-soft`, `--akay-bg`,
 `--akay-surface`, `--akay-text`, `--akay-muted`, `--akay-border` are re-pointed at
 the new tokens. Existing references keep working; migrate them opportunistically
-in Step 2.
+as you touch them.
 
 ---
 
-## How to consume tokens (Step 2 guide)
+## How to consume tokens
 
 Prefer, in order:
 
@@ -226,15 +228,15 @@ Prefer, in order:
 
 **Don't**
 
-- Hardcode hex (`#DC2626`, `#0f172a`) or `slate-*` utilities — those are the
-  Step 2 migration targets.
+- Hardcode hex (`#DC2626`, `#0f172a`) or `slate-*` utilities — those are
+  migration targets in screens not yet restyled.
 - Add shadows or rounded corners to cards; use `rounded-sm` on badges only.
-- Spend `alert-*` on ordinary status — that's what muted success/warning/info
-  are for.
+- Spend `alert-*` on ordinary status — that's what the saturated
+  success/warning/info colors are for.
 
 ### Dark mode (structured, not built)
 
-Not implemented in Step 1. When added, override **only the semantic roles** under
+Not implemented. When added, override **only the semantic roles** under
 a `:root[data-theme="dark"]` selector (e.g. `--color-bg`, `--color-surface`,
 `--color-text`) and remap a few ramp roles. The `@theme` ramps and every utility
 built from them stay unchanged, so components that consume roles adapt for free.

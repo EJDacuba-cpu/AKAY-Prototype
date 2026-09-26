@@ -5,16 +5,17 @@
 @custom-variant tiny (@media (max-height: 600px));
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   AKAY DESIGN TOKENS — Step 1 (tokens only; components restyled in Step 2)
-   Direction: "Calm medical sanctuary" — warm-neutral base, clay brand red,
-   a separate vivid alert red used sparingly, restrained radius, serif headings.
+   AKAY DESIGN TOKENS
+   Direction: medical-ehr-minimalism — cool gray neutrals, red primary
+   (#DC2626), flat surfaces (no shadow except floating layers), square corners
+   (2px on badges only), bold sans headings.
 
    @theme  → generating tokens. Tailwind v4 emits these as CSS vars AND builds
-             utilities from them (bg-brand-500, text-neutral-600, rounded-card,
-             font-serif, text-2xl, shadow-md, …).
+             utilities from them (bg-brand-600, text-neutral-600, rounded-card,
+             font-sans, text-2xl, rounded-md, …).
    :root   → SEMANTIC role vars. Not meant to generate utilities; components
-             consume THESE in Step 2. Structured so a dark theme can later
-             override the roles without touching the ramps.
+             consume THESE. Structured so a dark theme can later override the
+             roles without touching the ramps.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 @theme {
@@ -70,7 +71,7 @@
   --font-serif: "Source Serif 4 Variable", Georgia, serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
-  /* Type scale (15px base) */
+  /* Type scale (unchanged; body text is now 14px, set on `body` below) */
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
   --text-base: 0.9375rem;
@@ -109,7 +110,7 @@
 }
 
 :root {
-  /* ── Semantic roles (components consume THESE in Step 2) ─────────────── */
+  /* ── Semantic roles (components consume THESE) ─────────────── */
   --color-bg: var(--color-neutral-50);
   --color-surface: #ffffff;
   --color-surface-2: var(--color-neutral-100);
@@ -164,11 +165,10 @@ h4 {
   font-weight: 700;
 }
 
-/* Cards: elevated surfaces get a border + --shadow-card (top-level panels,
-   record headers, accordion sections, stat tiles). Nested/small cards living
-   inside an elevated surface (medicine rows, task cards) use border only,
-   no shadow, and --radius-card-sm — the absence of shadow is what marks them
-   as "content inside a surface" rather than a surface of their own. */
+/* Cards: flat and border-only (top-level panels, record headers, accordion
+   sections, stat tiles). --shadow-card and the radius tokens resolve to
+   nothing / square corners, so there is no elevation; --radius-card-sm is the
+   same for nested cards (medicine rows, task cards). */
 .akay-card {
   border: 1px solid var(--akay-border);
   border-radius: var(--radius-card);

@@ -1,7 +1,7 @@
 /* Opt-in clinical tokens: the existing BHC primary red remains the anchor.
    Flat and bordered (no radius, no shadow) per the clinical design system. */
 .clinical-directory {
-  --clinical-red-dark: #991b1b;
+  --clinical-red-dark: #b91c1c;
   --clinical-red: #dc2626;
   --clinical-red-pale: #fef2f2;
   --clinical-canvas: #ffffff;
@@ -26,8 +26,8 @@
   background: #ffffff;
 }
 
-/* Title + count on the left, search / filters / New Patient on the right. It
-   scrolls away with the page: nothing in the directory is sticky. */
+/* Title + count on the left, search / filters / New Patient on the right.
+   The toolbar scrolls away with the page; only the preview panel is sticky. */
 .clinical-directory .module-toolbar[data-variant="clinical"] {
   margin: 0 0 16px;
   padding: 0;
@@ -247,7 +247,7 @@
   transition: background-color 150ms ease;
 }
 .clinical-patient__open:hover { background: var(--clinical-red-dark); }
-.clinical-patient__open:active { background: #7f1d1d; }
+.clinical-patient__open:active { background: #991b1b; }
 
 .clinical-directory :is(button, a, input):focus-visible {
   outline: 2px solid var(--clinical-red);
