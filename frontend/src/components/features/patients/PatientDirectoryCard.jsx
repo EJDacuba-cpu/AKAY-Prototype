@@ -127,10 +127,10 @@ function getPatientDisplayId(patient) {
 function DetailField({ label, value }) {
   return (
     <div className="min-w-0">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#94A3B8]">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
         {label}
       </p>
-      <p className="truncate text-[11.5px] font-medium text-[#475569]">{value}</p>
+      <p className="truncate text-[11.5px] font-medium text-gray-600">{value}</p>
     </div>
   );
 }
@@ -225,24 +225,24 @@ export default function PatientDirectoryCard({ patient, basePath, variant, onSel
   }
 
   return (
-    <article className="group flex flex-col rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm shadow-black/[0.015] transition-all duration-200 hover:-translate-y-0.5 hover:border-red-100 hover:shadow-md">
+    <article className="group flex flex-col rounded-none border border-[#E5E7EB] bg-white p-3 transition-all duration-200 hover:border-red-100 ">
       <div className="flex min-w-0 items-start justify-between gap-3">
-        <h3 className="min-w-0 truncate text-[13px] font-bold leading-5 text-[#0F172A]">
+        <h3 className="min-w-0 truncate text-[13px] font-bold leading-5 text-gray-900">
           {patientName}
         </h3>
-        <span className="shrink-0 rounded-md border border-red-100 bg-white px-2 py-0.5 font-mono text-[10px] font-semibold text-[#B91C1C]">
+        <span className="shrink-0 rounded-none border border-red-100 bg-white px-2 py-0.5 font-mono text-[10px] font-semibold text-red-600">
           ID #{displayId}
         </span>
       </div>
 
       <div className="mt-2.5 grid min-w-0 grid-cols-2 gap-x-3 gap-y-2">
         <div className="min-w-0 space-y-1.5">
-          <p className="truncate text-[11.5px] font-semibold text-[#0F172A]">
+          <p className="truncate text-[11.5px] font-semibold text-gray-900">
             {sexAge}
           </p>
           {location && (
-            <p className="flex min-w-0 items-start gap-1 text-[11px] font-medium text-[#64748B]">
-              <MapPin size={12} className="mt-px shrink-0 text-[#94A3B8]" />
+            <p className="flex min-w-0 items-start gap-1 text-[11px] font-medium text-gray-500">
+              <MapPin size={12} className="mt-px shrink-0 text-gray-400" />
               <span className="min-w-0">{location}</span>
             </p>
           )}
@@ -257,7 +257,7 @@ export default function PatientDirectoryCard({ patient, basePath, variant, onSel
 
       <Link
         to={`${basePath}/patients/${routePatientId}`}
-        className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-lg bg-[#B91C1C] px-3 text-[11.5px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
+        className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-none bg-red-600 px-3 text-[11.5px] font-semibold text-white transition-colors hover:bg-red-700"
       >
         Open Profile
       </Link>

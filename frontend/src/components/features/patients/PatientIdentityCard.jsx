@@ -35,10 +35,10 @@ export function formatPatientAddress(patient = {}) {
 function IdentityField({ label, value, icon = null, className = "" }) {
   return (
     <div className={`min-w-0 ${className}`}>
-      <dt className="text-sm text-slate-500">
+      <dt className="text-sm text-gray-500">
         {label}
       </dt>
-      <dd className="m-0 mt-1 flex items-start gap-1.5 break-words text-sm font-semibold text-slate-900">
+      <dd className="m-0 mt-1 flex items-start gap-1.5 break-words text-sm font-semibold text-gray-900">
         {icon}
         <span className="min-w-0">{value}</span>
       </dd>
@@ -55,9 +55,9 @@ export default function PatientIdentityCard({
   const age = readValue(patient, ["age"]);
 
   return (
-    <Card className="bg-white rounded-2xl border border-slate-100 shadow-sm">
+    <Card className="bg-white rounded-none border border-gray-100 ">
       <CardHeader>
-        <p className="break-all text-sm font-normal text-slate-500">
+        <p className="break-all text-sm font-normal text-gray-500">
           Patient ID · {patient.patientId || patientId}
         </p>
         <CardTitle className="break-words text-xl leading-snug">
@@ -67,7 +67,7 @@ export default function PatientIdentityCard({
       </CardHeader>
 
       <CardContent>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-5 border-t border-slate-200 pt-5">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-5 border-t border-gray-200 pt-5">
           <IdentityField
             label="Sex"
             value={formatDisplayValue(readValue(patient, ["sex"]), "Not recorded")}
@@ -107,7 +107,7 @@ export default function PatientIdentityCard({
             className="col-span-2"
             icon={
               address ? (
-                <MapPin size={12} className="mt-0.5 shrink-0 text-[#94A3B8]" />
+                <MapPin size={12} className="mt-0.5 shrink-0 text-gray-400" />
               ) : null
             }
             value={formatDisplayValue(address, "Not recorded")}

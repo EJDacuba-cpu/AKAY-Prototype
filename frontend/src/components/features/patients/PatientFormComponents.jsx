@@ -14,7 +14,7 @@ export const THEME = {
 // --- SECTION HEADER COMPONENT ---
 export const SectionHeader = ({ icon: Icon, title, description }) => (
   <div className="mb-4 flex min-w-0 items-center gap-2.5">
-    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-red-50 text-[#B91C1C]">
+    <div className="flex h-6 w-6 items-center justify-center rounded-none bg-red-50 text-red-600">
       <Icon size={14} />
     </div>
     <div className="min-w-0">
@@ -29,7 +29,7 @@ export const SectionHeader = ({ icon: Icon, title, description }) => (
 // --- PHILIPPINE CONTACT INPUT ---
 function PhilippinesFlag() {
   return (
-    <span className="relative inline-block h-3 w-5 shrink-0 overflow-hidden rounded-sm shadow-sm">
+    <span className="relative inline-block h-3 w-5 shrink-0 overflow-hidden rounded-sm ">
       <span className="absolute inset-x-0 top-0 h-1/2 bg-[#0038A8]" />
       <span className="absolute inset-x-0 bottom-0 h-1/2 bg-[#CE1126]" />
       <span
@@ -58,9 +58,9 @@ export const PhilippineContactInput = ({
         {required && <span className="ml-1 text-red-500">*</span>}
       </label>
       <div
-        className={`group relative flex h-10 min-w-0 overflow-hidden rounded-lg border bg-white transition-all duration-200 focus-within:border-[#B91C1C] focus-within:ring-2 focus-within:ring-[#B91C1C]/10 ${
+        className={`group relative flex h-10 min-w-0 overflow-hidden rounded-none border bg-white transition-all duration-200 focus-within:border-red-600 focus-within:ring-2 focus-within:ring-red-600/10 ${
           error
-            ? "border-[#B91C1C] ring-2 ring-[#B91C1C]/10"
+            ? "border-red-600 ring-2 ring-red-600/10"
             : "border-[#E5E7EB] hover:border-[#D1D5DB]"
         } ${disabled ? "bg-[#F9FAFB] opacity-75" : ""}`}
       >
@@ -78,16 +78,16 @@ export const PhilippineContactInput = ({
           placeholder="912 345 6789"
           required={required}
           disabled={disabled}
-          className="min-w-0 flex-1 bg-transparent px-3.5 text-sm text-[#1F2937] outline-none placeholder:text-[#9CA3AF] disabled:cursor-not-allowed disabled:text-slate-500"
+          className="min-w-0 flex-1 bg-transparent px-3.5 text-sm text-[#1F2937] outline-none placeholder:text-[#9CA3AF] disabled:cursor-not-allowed disabled:text-gray-500"
         />
       </div>
       {error && (
-        <p className="mt-1 text-[11px] font-medium leading-relaxed text-[#B91C1C]">
+        <p className="mt-1 text-[11px] font-medium leading-relaxed text-red-600">
           {error}
         </p>
       )}
       {helperText && (
-        <p className="mt-1 text-[10px] leading-relaxed text-[#64748B]">
+        <p className="mt-1 text-[10px] leading-relaxed text-gray-500">
           {helperText}
         </p>
       )}
@@ -105,7 +105,7 @@ export const TpalHistoryGrid = ({ form, onChange }) => {
   ];
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 p-6 rounded-xl bg-[#FEF2F2] border border-[#FECACA]">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 p-6 rounded-none bg-red-50 border border-red-200">
       {fields.map((field) => (
         <FormInput
           key={field.name}

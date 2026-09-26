@@ -29,10 +29,10 @@ const RECENT_VISIT_LIMIT = 3;
 function OverviewCard({ title, icon, action, children, className = "" }) {
   return (
     <Card
-      className={`flex min-w-0 flex-col bg-white rounded-2xl border border-slate-100 shadow-sm ${className}`}
+      className={`flex min-w-0 flex-col bg-white rounded-none border border-gray-100 ${className}`}
     >
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
-        <h3 className="flex items-center gap-2 font-sans! text-sm font-semibold text-slate-900">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-5 py-4">
+        <h3 className="flex items-center gap-2 font-sans! text-sm font-semibold text-gray-900">
           {icon}
           {title}
         </h3>
@@ -45,7 +45,7 @@ function OverviewCard({ title, icon, action, children, className = "" }) {
 
 function EmptyLine({ children }) {
   return (
-    <p className="rounded-2xl border border-slate-100 bg-white px-3 py-5 text-center text-sm text-slate-500 shadow-sm">
+    <p className="rounded-none border border-gray-100 bg-white px-3 py-5 text-center text-sm text-gray-500 ">
       {children}
     </p>
   );
@@ -53,11 +53,11 @@ function EmptyLine({ children }) {
 
 function SummaryRow({ label, value }) {
   return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-slate-200 py-2 last:border-b-0">
-      <span className="text-sm text-slate-500">
+    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-gray-200 py-2 last:border-b-0">
+      <span className="text-sm text-gray-500">
         {label}
       </span>
-      <span className="min-w-0 break-words text-sm font-semibold text-slate-900">
+      <span className="min-w-0 break-words text-sm font-semibold text-gray-900">
         {value}
       </span>
     </div>
@@ -124,21 +124,21 @@ export default function PatientOverviewTab({
           detail: records.length
             ? "Routine monitoring - nothing scheduled."
             : "No visits recorded yet.",
-          tone: "border-slate-200 bg-slate-50 text-slate-600",
+          tone: "border-gray-200 bg-gray-50 text-gray-600",
         };
 
   return (
     <div className="grid min-w-0 gap-6 xl:grid-cols-2">
       <OverviewCard
         title="Recent Clinical Visits"
-        icon={<Stethoscope size={14} className="text-[#B91C1C]" />}
+        icon={<Stethoscope size={14} className="text-red-600" />}
         className="xl:col-span-2"
         action={
           records.length > 0 && (
             <button
               type="button"
               onClick={onViewAllRecords}
-              className="text-[11px] font-bold text-[#B91C1C] transition hover:text-[#991B1B]"
+              className="text-[11px] font-bold text-red-600 transition hover:text-red-700"
             >
               View All ({records.length})
             </button>
@@ -148,7 +148,7 @@ export default function PatientOverviewTab({
         {recentVisits.length === 0 ? (
           <EmptyLine>No clinical visits recorded yet.</EmptyLine>
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-gray-100">
             {recentVisits.map((record) => {
               const recordId = record.id || record._id;
               return (
@@ -157,15 +157,15 @@ export default function PatientOverviewTab({
                   className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
                 >
                   <div className="min-w-0">
-                    <p className="flex flex-wrap items-center gap-2 text-[12.5px] font-semibold text-slate-900">
+                    <p className="flex flex-wrap items-center gap-2 text-[12.5px] font-semibold text-gray-900">
                       {formatDisplayValue(record.chiefComplaint, "No complaint recorded")}
                       {isFollowUpVisitRecord(record) && (
-                        <span className="rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-1 text-[9px] font-bold uppercase tracking-wide text-[#1D4ED8]">
+                        <span className="rounded-sm border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-1 text-[9px] font-bold uppercase tracking-wide text-[#1D4ED8]">
                           Follow-up
                         </span>
                       )}
                     </p>
-                    <p className="mt-0.5 text-sm text-slate-500">
+                    <p className="mt-0.5 text-sm text-gray-500">
                       {formatLongDate(getRecordDateValue(record), "Not recorded")}
                       {" · "}
                       {getServiceTypeLabel(record)}
@@ -178,7 +178,7 @@ export default function PatientOverviewTab({
                     <button
                       type="button"
                       onClick={() => onViewRecord?.(recordId)}
-                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-600 transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
+                      className="inline-flex h-8 items-center gap-1 rounded-none border border-gray-200 bg-white px-2.5 text-[11px] font-semibold text-gray-600 transition hover:border-red-100 hover:bg-red-50 hover:text-red-600"
                     >
                       View Record
                       <ChevronRight size={13} />
@@ -193,10 +193,10 @@ export default function PatientOverviewTab({
 
       <OverviewCard
         title="Care Status"
-        icon={<CalendarClock size={14} className="text-[#B91C1C]" />}
+        icon={<CalendarClock size={14} className="text-red-600" />}
       >
         <div
-          className={`rounded-lg border px-3 py-2.5 text-[12px] font-bold ${careStatus.tone}`}
+          className={`rounded-none border px-3 py-2.5 text-[12px] font-bold ${careStatus.tone}`}
         >
           {careStatus.label}
           <p className="mt-0.5 text-[11px] font-semibold opacity-80">
@@ -216,7 +216,7 @@ export default function PatientOverviewTab({
         {activeFollowUp && (
           <Link
             to={`${basePath}/follow-ups/${activeFollowUp.id}`}
-            className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold text-[#B91C1C] transition hover:text-[#991B1B]"
+            className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold text-red-600 transition hover:text-red-700"
           >
             View Follow-up Details
             <ChevronRight size={13} />
@@ -226,7 +226,7 @@ export default function PatientOverviewTab({
 
       <OverviewCard
         title="Referral Snapshot"
-        icon={<ClipboardList size={14} className="text-[#B91C1C]" />}
+        icon={<ClipboardList size={14} className="text-red-600" />}
       >
         {!latestReferral ? (
           <EmptyLine>No active referrals.</EmptyLine>
@@ -268,7 +268,7 @@ export default function PatientOverviewTab({
                   latestReferral.trackingId || latestReferral.id,
                 )
               }
-              className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold text-[#B91C1C] transition hover:text-[#991B1B]"
+              className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold text-red-600 transition hover:text-red-700"
             >
               View Referral Details
               <ChevronRight size={13} />
@@ -279,18 +279,18 @@ export default function PatientOverviewTab({
 
       <OverviewCard
         title="Medical History"
-        icon={<HeartPulse size={14} className="text-[#B91C1C]" />}
+        icon={<HeartPulse size={14} className="text-red-600" />}
         className="xl:col-span-2"
       >
         <div className="grid gap-5 md:grid-cols-2">
           <section className="min-w-0" aria-label="Personal medical history">
-            <h4 className="font-sans! text-xs font-semibold text-slate-700">Current Diseases</h4>
+            <h4 className="font-sans! text-xs font-semibold text-gray-700">Current Diseases</h4>
             {currentDiseases.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500">None reported</p>
+              <p className="mt-2 text-sm text-gray-500">None reported</p>
             ) : (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {currentDiseases.map((disease) => (
-                  <span key={disease.name} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700">
+                  <span key={disease.name} className="rounded-sm border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700">
                     {disease.name}{disease.status ? " · " + disease.status : ""}
                   </span>
                 ))}
@@ -302,8 +302,8 @@ export default function PatientOverviewTab({
               <SummaryRow label="Surgeries" value={formatDisplayValue(background.surgeries, "Not yet recorded")} />
             </div>
           </section>
-          <section className="min-w-0 border-t border-slate-200 pt-4 md:border-t-0 md:border-l md:pt-0 md:pl-5" aria-label="Family medical history">
-            <h4 className="mb-2 font-sans! text-xs font-semibold text-slate-700">Family History</h4>
+          <section className="min-w-0 border-t border-gray-200 pt-4 md:border-t-0 md:border-l md:pt-0 md:pl-5" aria-label="Family medical history">
+            <h4 className="mb-2 font-sans! text-xs font-semibold text-gray-700">Family History</h4>
             <SummaryRow label="Similar Illness" value={formatDisplayValue(familyHistory.similarIllness, "Not yet recorded")} />
             <SummaryRow label="Chronic Illness" value={formatDisplayValue(familyHistory.chronicIllness, "Not yet recorded")} />
             <SummaryRow label="Hereditary Illness" value={formatDisplayValue(familyHistory.hereditaryIllness, "Not yet recorded")} />
@@ -311,11 +311,11 @@ export default function PatientOverviewTab({
         </div>
       </OverviewCard>
 
-      <Card className="xl:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm">
+      <Card className="xl:col-span-2 bg-white rounded-none border border-gray-100 ">
         <Accordion type="single" collapsible>
           <AccordionItem value="personal-social">
             <AccordionTrigger>
-              <span className="flex items-center gap-2"><Activity size={14} className="text-slate-500" aria-hidden="true" />Personal &amp; Social</span>
+              <span className="flex items-center gap-2"><Activity size={14} className="text-gray-500" aria-hidden="true" />Personal &amp; Social</span>
             </AccordionTrigger>
             <AccordionContent>
               <SummaryRow label="Occupation" value={formatDisplayValue(patient?.occupation, "Not recorded")} />
@@ -326,7 +326,7 @@ export default function PatientOverviewTab({
           </AccordionItem>
           <AccordionItem value="medicines">
             <AccordionTrigger>
-              <span className="flex items-center gap-2"><Pill size={14} className="text-slate-500" aria-hidden="true" />Recent Medicines Dispensed</span>
+              <span className="flex items-center gap-2"><Pill size={14} className="text-gray-500" aria-hidden="true" />Recent Medicines Dispensed</span>
             </AccordionTrigger>
             <AccordionContent>
               {dispensedMedicines.length === 0 ? (
@@ -335,11 +335,11 @@ export default function PatientOverviewTab({
                 <ul className="space-y-2">
                   {dispensedMedicines.map((medicine, index) => (
                     <li key={(medicine.medicineId || medicine.name || "medicine") + "-" + index} className="flex flex-wrap items-start justify-between gap-3">
-                      <span className="min-w-0 text-sm font-medium text-slate-700">
+                      <span className="min-w-0 text-sm font-medium text-gray-700">
                         {formatDisplayValue(medicine.medicineName || medicine.name, "Medicine")}
-                        <span className="ml-1 font-normal text-slate-500">x{formatDisplayValue(medicine.quantity, "1")}</span>
+                        <span className="ml-1 font-normal text-gray-500">x{formatDisplayValue(medicine.quantity, "1")}</span>
                       </span>
-                      <span className="shrink-0 text-sm text-slate-500">{formatLongDate(medicine.recordDate, "")}</span>
+                      <span className="shrink-0 text-sm text-gray-500">{formatLongDate(medicine.recordDate, "")}</span>
                     </li>
                   ))}
                 </ul>
@@ -351,7 +351,7 @@ export default function PatientOverviewTab({
 
       <OverviewCard
         title="Visit Summary"
-        icon={<FileText size={14} className="text-[#B91C1C]" />}
+        icon={<FileText size={14} className="text-red-600" />}
       >
         <SummaryRow label="Total Visits" value={String(records.length)} />
         <SummaryRow

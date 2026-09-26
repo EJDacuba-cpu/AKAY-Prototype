@@ -11,7 +11,7 @@ export default function SummarySection({ title, rows, variant = "soft" }) {
     </section>;
   }
 
-  return <section className="mt-5"><h3 className="mb-2 text-[10px] uppercase tracking-wider text-slate-400">{title}</h3>
-    <dl className="space-y-3 rounded-lg border border-slate-100 bg-slate-50/70 p-3">{rows.map(([label, value]) => <div key={label}><dt className="text-[11px] text-slate-500">{label}</dt><dd className="mt-1 break-words text-xs text-slate-900">{value || "Not recorded"}</dd></div>)}</dl>
+  return <section className="mt-5"><h3 className="mb-2 text-[10px] uppercase tracking-wider text-gray-400">{title}</h3>
+    <dl className="space-y-3 rounded-none border border-gray-100 bg-gray-50/70 p-3">{rows.map(([label, value]) => <div key={label}><dt className="text-[11px] text-gray-500">{label}</dt><dd className="mt-1 break-words text-xs text-gray-900">{value || "Not recorded"}</dd></div>)}</dl>
   </section>;
 }

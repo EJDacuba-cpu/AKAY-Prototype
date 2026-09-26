@@ -3,7 +3,7 @@ import { Lock } from "lucide-react";
 
 import { DottedSpinner } from "../../common/loading/SoftLoadingOverlay";
 import SummarySection from "./SummarySection";
-import { BACKGROUND_SECTIONS } from "./PatientBackgroundTab";
+import PatientAlertChips from "./PatientAlertChips";
 import { formatPatientAddress } from "./PatientIdentityCard";
 import usePatientSummary from "../../../hooks/usePatientSummary";
 import { getCurrentUser } from "../../../utils/auth";
@@ -85,18 +85,20 @@ function VitalsGrid({ records }) {
 }
 
 /**
- * Read-only Patient Summary opened from the BHC patient directory. It renders
- * inside the sliding right Drawer, which supplies the title bar and close button.
+ * Read-only Patient Summary for the BHC patient directory. Short by design:
+ * identity, alerts, profile details, current vitals and the latest consultation;
+ * everything else lives on the full profile. It renders in the permanent preview
+ * panel (`showTitle`) or inside the slide-in Drawer, which draws its own title bar.
  */
-export default function PatientSummaryPanel({ patientId, basePath = "/bhc" }) {
+export default function PatientSummaryPanel({ patientId, basePath = "/bhc", showTitle = false }) {
   const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
-  const { patient, records, latest, maternalSummary, isPending, error, refetch } = usePatientSummary(patientId);
+  const { patient, records, latest, isPending, error, refetch } = usePatientSummary(patientId);
 
   if (isPending) {
     return (
       <div role="status" className="flex flex-col items-center justify-center gap-2 px-4 py-16">
         <DottedSpinner label="Loading patient summary" />
-        <span className="text-[11px] font-medium text-gray-400">Loading patient summary...</span>
+        <span className="text-[11px] font-medium text-gray-500">Loading patient summary...</span>
       </div>
     );
   }
@@ -113,21 +115,41 @@ export default function PatientSummaryPanel({ patientId, basePath = "/bhc" }) {
   }
 
   const patientName = formatPatientName(patient, "Unnamed Patient");
-  const background = patient.medicalBackground;
   const ageSex = joinParts([patient.age !== "" && patient.age != null ? `${patient.age} yrs` : "", patient.sex], " / ");
   const philHealth = joinParts([patient.philHealthStatus, patient.philHealthNumber]);
 
   return (
     <div className="patient-summary flex min-h-full flex-col">
-      <header className="flex items-start gap-3 border-b border-gray-200 px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <p className="break-words text-base font-bold leading-tight text-gray-900">{patientName}</p>
-          <p className="mt-1 break-all text-[11px] font-semibold uppercase tracking-wide text-red-600">Patient ID #{patient.patientId || patientId}</p>
+      {showTitle && (
+        <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
+          <h2 className="text-sm font-bold text-gray-900 font-sans!">Patient Summary</h2>
+          <StatusBadge status={patient.status} />
         </div>
-        <StatusBadge status={patient.status} />
+      )}
+
+      <header className="border-b border-gray-200 px-4 py-4 text-center">
+        <p className="break-words text-lg font-bold leading-tight text-gray-900">{patientName}</p>
+        <p className="mt-1 break-all font-mono text-xs text-gray-600">Patient ID #{patient.patientId || patientId}</p>
+        {ageSex && <p className="mt-0.5 text-xs tabular-nums text-gray-600">{ageSex}</p>}
+        {!showTitle && (
+          <div className="mt-2 flex justify-center">
+            <StatusBadge status={patient.status} />
+          </div>
+        )}
       </header>
 
       <div className="flex-1 px-4 pb-4">
+        {canViewHistory && (
+          <section aria-labelledby="summary-alerts-title" className="mt-4 border border-gray-200 bg-white">
+            <h3 id="summary-alerts-title" className="border-b border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-700">
+              Alerts
+            </h3>
+            <div className="px-3 py-2">
+              <PatientAlertChips background={patient.medicalBackground} />
+            </div>
+          </section>
+        )}
+
         <SummarySection variant="clinical" title="Profile Details" rows={[
           ["Age / Sex", formatDisplayValue(ageSex)],
           ["Date of Birth", formatLongDate(patient.birthDate, "Not recorded")],
@@ -141,23 +163,6 @@ export default function PatientSummaryPanel({ patientId, basePath = "/bhc" }) {
         {canViewHistory ? (
           <>
             <VitalsGrid records={records} />
-            <SummarySection variant="clinical" title={BACKGROUND_SECTIONS.medical.label} rows={[
-              ["Current Diseases", background.currentDiseases.length ? <span className="flex flex-wrap gap-1">{background.currentDiseases.map((disease, index) => <span key={index} className="rounded-sm bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-800">{disease.name}</span>)}</span> : "Not recorded"],
-              ["Allergies", background.allergies],
-              ["Hospitalizations", background.hospitalizations],
-              ["Surgeries", background.surgeries],
-            ]} />
-            <SummarySection variant="clinical" title={BACKGROUND_SECTIONS.family.label} rows={[
-              ["Similar Illness", background.familyHistory.similarIllness],
-              ["Chronic Illness", background.familyHistory.chronicIllness],
-              ["Hereditary Illness", background.familyHistory.hereditaryIllness],
-            ]} />
-            <SummarySection variant="clinical" title={BACKGROUND_SECTIONS.social.label} rows={[
-              ["Diet", background.personalSocial.diet],
-              ["Smoking", background.personalSocial.smoking],
-              ["Alcohol", background.personalSocial.alcohol],
-              ["Other Notes", background.personalSocial.notes],
-            ]} />
             <SummarySection variant="clinical" title="Latest Consultation" rows={latest ? [
               ["Date", formatLongDate(getRecordDateValue(latest))],
               ["Program", getServiceTypeLabel(latest)],
@@ -166,12 +171,6 @@ export default function PatientSummaryPanel({ patientId, basePath = "/bhc" }) {
               ["Medicine / Treatment", latest.medication || latest.treatmentNotes],
               ["Outcome", latest.outcome],
             ] : [["Consultation", "No consultation recorded yet"]]} />
-            {maternalSummary && (
-              <SummarySection variant="clinical" title="Maternal / Prenatal" rows={[
-                ["Latest Immunization", maternalSummary.latestImmunization ? `${maternalSummary.latestImmunization[0].toUpperCase()} · ${formatLongDate(maternalSummary.latestImmunization[1])}` : "No immunization record yet"],
-                ["Latest Ultrasound", maternalSummary.latestUltrasoundDate ? formatLongDate(maternalSummary.latestUltrasoundDate) : "No ultrasound record yet"],
-              ]} />
-            )}
           </>
         ) : (
           <p className="mt-4 flex items-center gap-2 border border-gray-200 border-l-4 border-l-red-600 bg-gray-50 p-3 text-xs text-gray-700">
@@ -184,7 +183,7 @@ export default function PatientSummaryPanel({ patientId, basePath = "/bhc" }) {
       <footer className="patient-summary__footer">
         <Link
           to={`${basePath}/patients/${patientId}`}
-          className="flex h-9 w-full items-center justify-center bg-[#B91C1C] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#991B1B] active:bg-red-900"
+          className="flex h-9 w-full items-center justify-center rounded-none bg-red-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800"
         >
           View Full Profile
         </Link>

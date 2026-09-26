@@ -1,8 +1,8 @@
 /* Opt-in clinical tokens: the existing BHC primary red remains the anchor.
    Flat and bordered (no radius, no shadow) per the clinical design system. */
 .clinical-directory {
-  --clinical-red-dark: #7f1d1d;
-  --clinical-red: #b91c1c;
+  --clinical-red-dark: #991b1b;
+  --clinical-red: #dc2626;
   --clinical-red-pale: #fef2f2;
   --clinical-canvas: #ffffff;
   --clinical-surface: #ffffff;
@@ -13,7 +13,7 @@
   --clinical-border-strong: #d1d5db;
   --clinical-radius: 0;
   --clinical-gap: 12px;
-  --clinical-focus: 0 0 0 3px #b91c1c26;
+  --clinical-focus: 0 0 0 3px #dc262626;
   container-type: inline-size;
   min-width: 0;
   display: block;
@@ -24,10 +24,6 @@
 /* Keep the BHC directory canvas clean and neutral. */
 .akay-content-scroll:has(.clinical-directory) {
   background: #ffffff;
-}
-/* Only the application title above the BHC patient directory. */
-main:has(> .akay-content-scroll .clinical-directory) > header h2 {
-  color: #b91c1c;
 }
 
 /* Title + count on the left, search / filters / New Patient on the right. It
@@ -42,7 +38,7 @@ main:has(> .akay-content-scroll .clinical-directory) > header h2 {
 }
 .clinical-directory__heading { min-width: 0; padding-block: 0; }
 .clinical-directory__title {
-  color: var(--clinical-red);
+  color: var(--clinical-ink);
   font-family: var(--font-sans);
   font-size: 22px;
   font-weight: 650;
@@ -69,11 +65,62 @@ main:has(> .akay-content-scroll .clinical-directory) > header h2 {
   background: var(--clinical-red-dark);
 }
 
-/* Two wide cards per row, like the reference. */
+/* Results area is its own container so the grid reacts to the room left beside
+   the preview panel, not to the viewport. */
+.clinical-directory__results {
+  container: directory-results / inline-size;
+}
+/* One column on phones, two cards per row once there is room (the reference). */
 .clinical-directory__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--clinical-gap);
+}
+@container directory-results (min-width: 560px) {
+  .clinical-directory__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Results + permanent preview panel (xl and up, decided in PatientsModule). */
+.clinical-directory__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+.clinical-directory__layout--preview {
+  grid-template-columns: minmax(0, 1fr) 380px;
+  align-items: start;
+}
+/* 62px topbar + 2 x 1.25rem content padding. */
+.clinical-directory__preview {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 62px - 2.5rem);
+  overflow-y: auto;
+  border: 1px solid var(--clinical-border);
+  background: var(--clinical-surface);
+}
+.clinical-directory__preview-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 64px 24px;
+  text-align: center;
+}
+.clinical-directory__preview-empty-title {
+  color: var(--clinical-ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+.clinical-directory__preview-empty-hint {
+  color: var(--clinical-muted);
+  font-size: 12px;
 }
 .clinical-patient {
   position: relative;
@@ -143,7 +190,7 @@ main:has(> .akay-content-scroll .clinical-directory) > header h2 {
 }
 .clinical-patient__id {
   margin-top: 2px;
-  color: var(--clinical-red);
+  color: var(--clinical-muted);
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.4;
@@ -200,7 +247,7 @@ main:has(> .akay-content-scroll .clinical-directory) > header h2 {
   transition: background-color 150ms ease;
 }
 .clinical-patient__open:hover { background: var(--clinical-red-dark); }
-.clinical-patient__open:active { background: #450a0a; }
+.clinical-patient__open:active { background: #7f1d1d; }
 
 .clinical-directory :is(button, a, input):focus-visible {
   outline: 2px solid var(--clinical-red);
@@ -208,7 +255,7 @@ main:has(> .akay-content-scroll .clinical-directory) > header h2 {
   box-shadow: var(--clinical-focus);
 }
 
-/* Footer of the sliding Patient Summary drawer. */
+/* Sticky footer of the Patient Summary (drawer and inline preview). */
 .patient-summary__footer {
   position: sticky;
   bottom: 0;

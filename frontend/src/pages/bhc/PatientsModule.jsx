@@ -13,7 +13,13 @@ import {
 import PatientDirectoryCard from "../../components/features/patients/PatientDirectoryCard";
 import PatientSummaryPanel from "../../components/features/patients/PatientSummaryPanel";
 import usePatients from "../../hooks/usePatients";
+import useMediaQuery from "../../hooks/useMediaQuery";
 import { isConnectionError } from "../../services/apiClient";
+import {
+  getPatientKey,
+  reconcileSelection,
+  toggleSelection,
+} from "../../utils/directorySelection";
 import { formatDisplayValue } from "../../utils/formatters";
 import "../../components/features/patients/clinical-directory.css";
 
@@ -25,6 +31,8 @@ const DEFAULT_FILTERS = {
   civilStatus: "All Civil Status",
   dateRegistered: "",
 };
+// Wide enough for the results grid AND a permanent preview panel.
+const PREVIEW_QUERY = "(min-width: 1280px)";
 const PATIENTS_BATCH_SIZE = 12;
 
 function uniqueOptions(items, selectors, fallback) {
@@ -52,6 +60,7 @@ export default function PatientsModule() {
   const [loadingMore, setLoadingMore] = useState(false);
   const loadMoreRef = useRef(null);
   const [selectedPatientId, setSelectedPatientId] = useState(null);
+  const showInlinePreview = useMediaQuery(PREVIEW_QUERY);
 
   const barangayOptions = uniqueOptions(
     patients,
@@ -136,12 +145,9 @@ export default function PatientsModule() {
     setLoadingMore(false);
   }, [filters]);
 
-  // Close the summary once its patient is filtered out of the directory.
+  // Close the preview once its patient is filtered out of the directory.
   const selectedStillListed =
-    !selectedPatientId ||
-    filteredPatients.some(
-      (patient) => String(patient.id || patient.patientId) === selectedPatientId,
-    );
+    reconcileSelection(selectedPatientId, filteredPatients) === selectedPatientId;
   useEffect(() => {
     if (!selectedStillListed) setSelectedPatientId(null);
   }, [selectedStillListed]);
@@ -156,7 +162,7 @@ export default function PatientsModule() {
   }, [selectedPatientId]);
 
   function toggleSelectedPatient(patientId) {
-    setSelectedPatientId((current) => (current === patientId ? null : patientId));
+    setSelectedPatientId((current) => toggleSelection(current, patientId));
   }
 
   function closeSummary() {
@@ -269,27 +275,48 @@ export default function PatientsModule() {
           </>
         )}
 
-        <div className="clinical-directory__results relative min-w-0">
-          {showRefreshOverlay && (
-            <div className="pointer-events-none absolute right-0 top-0 z-10">
-              <RefreshingIndicator label="Updating patients..." />
-            </div>
-          )}
-          {!showInitialLoading && (
-            <PatientDirectory
-              patients={visiblePatients}
-              hasAnyFilter={hasAnyFilter}
-              hasMorePatients={hasMorePatients}
-              loadingMore={loadingMore}
-              loadMoreRef={loadMoreRef}
-              selectedPatientId={selectedPatientId}
-              onSelectPatient={toggleSelectedPatient}
-            />
+        <div
+          className={`clinical-directory__layout${
+            showInlinePreview && !showInitialLoading ? " clinical-directory__layout--preview" : ""
+          }`}
+        >
+          <div className="clinical-directory__results relative min-w-0">
+            {showRefreshOverlay && (
+              <div className="pointer-events-none absolute right-0 top-0 z-10">
+                <RefreshingIndicator label="Updating patients..." />
+              </div>
+            )}
+            {!showInitialLoading && (
+              <PatientDirectory
+                patients={visiblePatients}
+                hasAnyFilter={hasAnyFilter}
+                hasMorePatients={hasMorePatients}
+                loadingMore={loadingMore}
+                loadMoreRef={loadMoreRef}
+                selectedPatientId={selectedPatientId}
+                onSelectPatient={toggleSelectedPatient}
+              />
+            )}
+          </div>
+
+          {showInlinePreview && !showInitialLoading && (
+            <aside className="clinical-directory__preview" aria-label="Patient preview">
+              {selectedPatientId ? (
+                <PatientSummaryPanel key={selectedPatientId} patientId={selectedPatientId} showTitle />
+              ) : (
+                <div className="clinical-directory__preview-empty">
+                  <p className="clinical-directory__preview-empty-title">Select a patient to preview</p>
+                  <p className="clinical-directory__preview-empty-hint">
+                    Click a patient card to see their summary here.
+                  </p>
+                </div>
+              )}
+            </aside>
           )}
         </div>
       </SoftLoadingArea>
       <Drawer
-        open={Boolean(selectedPatientId)}
+        open={!showInlinePreview && Boolean(selectedPatientId)}
         onClose={closeSummary}
         title="Patient Summary"
         widthClassName="w-full sm:w-[420px]"
@@ -316,7 +343,7 @@ function PatientDirectory({
       <div>
         {patients.length === 0 ? (
           <PatientDirectoryState
-            icon={<Users size={22} className="text-[#94A3B8]" />}
+            icon={<Users size={22} className="text-gray-400" />}
             title={hasAnyFilter ? "No patients found." : "No patients yet."}
             description={
               hasAnyFilter
@@ -327,7 +354,7 @@ function PatientDirectory({
               !hasAnyFilter && (
                 <Link
                   to="/bhc/patients/add"
-                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#B91C1C] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
+                  className="mt-4 inline-flex items-center gap-2 rounded-none bg-red-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-700"
                 >
                   <Plus size={13} />
                   New Patient
@@ -345,9 +372,7 @@ function PatientDirectory({
                   basePath="/bhc"
                   variant="clinical"
                   onSelect={onSelectPatient}
-                  selected={
-                    String(patient.id || patient.patientId) === selectedPatientId
-                  }
+                  selected={getPatientKey(patient) === selectedPatientId}
                 />
               ))}
             </div>
@@ -357,13 +382,13 @@ function PatientDirectory({
                 {loadingMore ? (
                   <div className="flex flex-col items-center justify-center gap-2 py-5">
                     <DottedSpinner label="Loading more patients" />
-                    <span className="text-[11px] font-medium text-[#94A3B8]">
+                    <span className="text-[11px] font-medium text-gray-400">
                       Loading more patients...
                     </span>
                   </div>
                 ) : (
                   <div className="flex justify-center py-3">
-                    <span className="text-[11px] font-medium text-[#94A3B8]">
+                    <span className="text-[11px] font-medium text-gray-400">
                       Scroll to load more patients
                     </span>
                   </div>
@@ -385,7 +410,7 @@ function PatientDirectoryState({ icon, title, description, action }) {
           {icon}
         </div>
         <p className="text-[13px] font-semibold text-[#334155]">{title}</p>
-        <p className="mt-1 text-[11.5px] text-[#94A3B8]">{description}</p>
+        <p className="mt-1 text-[11.5px] text-gray-400">{description}</p>
         {action}
       </div>
     </div>

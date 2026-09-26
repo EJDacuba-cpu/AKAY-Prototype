@@ -29,33 +29,33 @@ export default function CurrentVitalSignsCard({ records = [], isLoading = false 
   ] : [];
 
   return (
-    <Card className="bg-white rounded-2xl border border-slate-100 shadow-sm" aria-labelledby="current-vitals-title" aria-busy={isLoading}>
+    <Card className="bg-white rounded-none border border-gray-100 " aria-labelledby="current-vitals-title" aria-busy={isLoading}>
       <CardHeader>
         <CardTitle id="current-vitals-title" className="flex items-center gap-2">
-          <HeartPulse size={16} className="shrink-0 text-slate-500" aria-hidden="true" />
+          <HeartPulse size={16} className="shrink-0 text-gray-500" aria-hidden="true" />
           Current Vital Signs &amp; BMI
         </CardTitle>
-        <p className="text-sm text-slate-500">Today’s measurements · Philippine time</p>
+        <p className="text-sm text-gray-500">Today’s measurements · Philippine time</p>
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <p role="status" className="py-6 text-center text-sm text-slate-500">Loading current vital signs...</p>
+          <p role="status" className="py-6 text-center text-sm text-gray-500">Loading current vital signs...</p>
         ) : !record ? (
-          <div className="flex flex-col items-center gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-8 text-center shadow-sm">
-            <Activity size={24} className="text-slate-500" aria-hidden="true" />
-            <p className="text-sm text-slate-500">No current vital signs recorded</p>
+          <div className="flex flex-col items-center gap-3 rounded-none border border-gray-100 bg-white px-4 py-8 text-center ">
+            <Activity size={24} className="text-gray-500" aria-hidden="true" />
+            <p className="text-sm text-gray-500">No current vital signs recorded</p>
           </div>
         ) : (
           <>
-            <dl className="divide-y divide-slate-200">
+            <dl className="divide-y divide-gray-200">
               {measurements.map(([label, value]) => (
                 <div key={label} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-3 first:pt-0">
-                  <dt className="text-sm text-slate-500">{label}</dt>
-                  <dd className="m-0 text-sm font-semibold tabular-nums text-slate-900">{value}</dd>
+                  <dt className="text-sm text-gray-500">{label}</dt>
+                  <dd className="m-0 text-sm font-semibold tabular-nums text-gray-900">{value}</dd>
                 </div>
               ))}
             </dl>
-            <p className="mt-3 border-t border-slate-200 pt-3 text-sm text-slate-500">
+            <p className="mt-3 border-t border-gray-200 pt-3 text-sm text-gray-500">
               Recorded {getVitalRecordDate(record).toLocaleString("en-PH", {
                 timeZone: "Asia/Manila", month: "short", day: "numeric",
                 year: "numeric", hour: "numeric", minute: "2-digit",

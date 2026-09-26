@@ -59,12 +59,12 @@ export const AREA_CONFIG = {
 
 function PendingSection({ title, detail }) {
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-      <h4 className="flex items-center gap-2 text-[12.5px] font-bold text-slate-600 font-sans!">
-        <Info size={13} className="text-slate-500" />
+    <div className="rounded-none border border-gray-100 bg-white p-4 ">
+      <h4 className="flex items-center gap-2 text-[12.5px] font-bold text-gray-600 font-sans!">
+        <Info size={13} className="text-gray-500" />
         {title}
       </h4>
-      <p className="mt-1 text-sm leading-relaxed text-slate-500">
+      <p className="mt-1 text-sm leading-relaxed text-gray-500">
         {detail}
       </p>
     </div>
@@ -86,16 +86,16 @@ export default function PatientProgramTab({
 
   return (
     <div className="space-y-5">
-      <header className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
-        <h3 className="flex items-center gap-2 text-[13px] font-semibold text-slate-900 font-sans!">
-          <Icon size={15} className="text-[#B91C1C]" />
+      <header className="rounded-none border border-gray-100 bg-white px-4 py-3 ">
+        <h3 className="flex items-center gap-2 text-[13px] font-semibold text-gray-900 font-sans!">
+          <Icon size={15} className="text-red-600" />
           {config.title}
         </h3>
-        <p className="mt-0.5 text-sm text-slate-500">{config.subtitle}</p>
+        <p className="mt-0.5 text-sm text-gray-500">{config.subtitle}</p>
 
         {historyOnly && (
-          <p className="mt-2 inline-flex items-center gap-2 rounded-2xl border border-slate-100 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm">
-            <Info size={12} className="text-slate-500" />
+          <p className="mt-2 inline-flex items-center gap-2 rounded-none border border-gray-100 bg-white px-3 py-1.5 text-[11px] font-semibold text-gray-600 ">
+            <Info size={12} className="text-gray-500" />
             Kept for the record - this patient is no longer eligible for new
             services in this program, but past records remain available.
           </p>
@@ -113,14 +113,14 @@ export default function PatientProgramTab({
           />
         ))
       ) : (
-        <p className="rounded-2xl border border-slate-100 bg-white px-4 py-10 text-center text-sm text-slate-500 shadow-sm">
+        <p className="rounded-none border border-gray-100 bg-white px-4 py-10 text-center text-sm text-gray-500 ">
           {config.emptyText}
         </p>
       )}
 
       {config.pending.length > 0 && (
         <section>
-          <h4 className="mb-2 text-sm font-normal r text-slate-500 font-sans!">
+          <h4 className="mb-2 text-sm font-normal r text-gray-500 font-sans!">
             Not yet captured
           </h4>
           <div className="grid gap-3 sm:grid-cols-2">
