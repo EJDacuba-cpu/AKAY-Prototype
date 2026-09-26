@@ -259,7 +259,7 @@ export default function DashboardLayout({
   };
 
   return (
-    <div className="relative flex h-dvh overflow-hidden bg-[#F8FAFC] text-[#0F172A]">
+    <div className="relative flex h-dvh overflow-hidden bg-gray-50 text-gray-900">
       <style>
         {`
           .akay-sidebar-scroll {
@@ -286,7 +286,7 @@ export default function DashboardLayout({
 
           .akay-content-scroll::-webkit-scrollbar-thumb {
             background-color: #D1D5DB;
-            border-radius: 999px;
+            border-radius: 0;
           }
         `}
       </style>
@@ -305,7 +305,7 @@ export default function DashboardLayout({
           {mobileDrawerOpen && (
             <div
               onClick={() => setMobileDrawerOpen(false)}
-              className="fixed inset-0 z-40 bg-slate-950/25 backdrop-blur-sm transition-opacity md:hidden"
+              className="fixed inset-0 z-40 bg-gray-950/25 transition-opacity md:hidden"
             />
           )}
 
