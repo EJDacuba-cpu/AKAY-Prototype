@@ -33,6 +33,9 @@ const DEFAULT_FILTERS = {
 };
 // Wide enough for the results grid AND a permanent preview panel.
 const PREVIEW_QUERY = "(min-width: 1280px)";
+// From here up the header stays pinned and only the card list scrolls; below it
+// (phones) the whole page scrolls as usual. Keep in sync with clinical-directory.css.
+const PINNED_QUERY = "(min-width: 768px)";
 const PATIENTS_BATCH_SIZE = 12;
 
 function uniqueOptions(items, selectors, fallback) {
@@ -59,8 +62,10 @@ export default function PatientsModule() {
   const [visibleCount, setVisibleCount] = useState(PATIENTS_BATCH_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
   const loadMoreRef = useRef(null);
+  const resultsRef = useRef(null);
   const [selectedPatientId, setSelectedPatientId] = useState(null);
   const showInlinePreview = useMediaQuery(PREVIEW_QUERY);
+  const pinnedHeader = useMediaQuery(PINNED_QUERY);
 
   const barangayOptions = uniqueOptions(
     patients,
@@ -143,6 +148,8 @@ export default function PatientsModule() {
   useEffect(() => {
     setVisibleCount(PATIENTS_BATCH_SIZE);
     setLoadingMore(false);
+    // The card list scrolls on its own: a new search/filter starts at the top.
+    if (resultsRef.current) resultsRef.current.scrollTop = 0;
   }, [filters]);
 
   // Close the preview once its patient is filtered out of the directory.
@@ -187,7 +194,9 @@ export default function PatientsModule() {
           setLoadingMore(false);
         }, 220);
       },
-      { rootMargin: "240px 0px" },
+      // With a pinned header the card list is its own scroll area, so it is the
+      // observer root (rootMargin only widens a root, not the page scroller).
+      { root: pinnedHeader ? resultsRef.current : null, rootMargin: "240px 0px" },
     );
 
     observer.observe(loadMoreRef.current);
@@ -196,7 +205,7 @@ export default function PatientsModule() {
       observer.disconnect();
       if (loadTimer) window.clearTimeout(loadTimer);
     };
-  }, [filteredPatients.length, hasMorePatients, loadingMore]);
+  }, [filteredPatients.length, hasMorePatients, loadingMore, pinnedHeader]);
 
   function applyDropdownFilters(nextFilters) {
     setFilters((prev) => ({ ...prev, ...nextFilters }));
@@ -246,57 +255,62 @@ export default function PatientsModule() {
         scope="area"
         className="clinical-directory"
       >
-        {!showInitialLoading && (
-          <>
-          <ModuleToolbar
-            variant="clinical"
-            heading={
-              <div className="clinical-directory__heading min-w-0">
-                <h1 className="clinical-directory__title">Patients</h1>
-                <p className="clinical-directory__count">{patientCountLabel}</p>
-              </div>
-            }
-            searchValue={filters.search}
-            onSearchChange={(value) =>
-              setFilters((prev) => ({ ...prev, search: value }))
-            }
-            searchPlaceholder="Search name, ID, or contact number..."
-            filters={dropdownFilters}
-            activeFilterCount={activeFilterCount}
-            activeFilters={activeFilters}
-            onApplyFilters={applyDropdownFilters}
-            onClearFilters={clearFilters}
-            onRemoveFilter={removeFilter}
-            filterDescription="Narrow the patient directory."
-            primaryActionTo="/bhc/patients/add"
-            primaryActionLabel="New Patient"
-            primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
-          />
-          </>
-        )}
-
         <div
           className={`clinical-directory__layout${
             showInlinePreview && !showInitialLoading ? " clinical-directory__layout--preview" : ""
           }`}
         >
-          <div className="clinical-directory__results relative min-w-0">
-            {showRefreshOverlay && (
-              <div className="pointer-events-none absolute right-0 top-0 z-10">
-                <RefreshingIndicator label="Updating patients..." />
-              </div>
-            )}
+          {/* Left column: the pinned header (title, search, filters, New Patient)
+              above the card list, which is the only part that scrolls. */}
+          <div className="clinical-directory__main">
             {!showInitialLoading && (
-              <PatientDirectory
-                patients={visiblePatients}
-                hasAnyFilter={hasAnyFilter}
-                hasMorePatients={hasMorePatients}
-                loadingMore={loadingMore}
-                loadMoreRef={loadMoreRef}
-                selectedPatientId={selectedPatientId}
-                onSelectPatient={toggleSelectedPatient}
+              <ModuleToolbar
+                variant="clinical"
+                heading={
+                  <div className="clinical-directory__heading min-w-0">
+                    <h1 className="clinical-directory__title">Patients</h1>
+                    <p className="clinical-directory__count">{patientCountLabel}</p>
+                  </div>
+                }
+                searchValue={filters.search}
+                onSearchChange={(value) =>
+                  setFilters((prev) => ({ ...prev, search: value }))
+                }
+                searchPlaceholder="Search name, ID, or contact number..."
+                filters={dropdownFilters}
+                activeFilterCount={activeFilterCount}
+                activeFilters={activeFilters}
+                onApplyFilters={applyDropdownFilters}
+                onClearFilters={clearFilters}
+                onRemoveFilter={removeFilter}
+                filterDescription="Narrow the patient directory."
+                primaryActionTo="/bhc/patients/add"
+                primaryActionLabel="New Patient"
+                primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
               />
             )}
+
+            <div
+              ref={resultsRef}
+              className="clinical-directory__results akay-scrollbar relative min-w-0"
+            >
+              {showRefreshOverlay && (
+                <div className="pointer-events-none sticky top-0 z-10 flex h-0 justify-end">
+                  <RefreshingIndicator label="Updating patients..." />
+                </div>
+              )}
+              {!showInitialLoading && (
+                <PatientDirectory
+                  patients={visiblePatients}
+                  hasAnyFilter={hasAnyFilter}
+                  hasMorePatients={hasMorePatients}
+                  loadingMore={loadingMore}
+                  loadMoreRef={loadMoreRef}
+                  selectedPatientId={selectedPatientId}
+                  onSelectPatient={toggleSelectedPatient}
+                />
+              )}
+            </div>
           </div>
 
           {showInlinePreview && !showInitialLoading && (
