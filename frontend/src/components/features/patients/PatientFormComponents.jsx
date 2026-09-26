@@ -4,9 +4,9 @@ import { getPhilippineLocalNumber } from "../../../utils/patientUtils";
 
 // --- THEME CONSTANTS ---
 export const THEME = {
-  primary: "#B91C1C", // Red
+  primary: "#DC2626", // Red
   primaryLight: "#FEF2F2",
-  primaryDark: "#991B1B",
+  primaryDark: "#B91C1C",
   border: "#E5E7EB",
   textMuted: "#6B7280",
 };
