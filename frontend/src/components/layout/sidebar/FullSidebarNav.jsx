@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import {
+  SECTION_LABEL_CLASS,
+  childLinkClass,
+  navItemClass,
+} from "./sidebarStyles";
 
 export default function FullSidebarNav({ menuSections, isMenuActive, onNavigate }) {
   const [expandedGroups, setExpandedGroups] = useState({});
@@ -24,12 +29,10 @@ export default function FullSidebarNav({ menuSections, isMenuActive, onNavigate 
   return (
     <nav className="akay-sidebar-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3">
       {menuSections.map((section) => (
-        <div key={section.section} className="mb-5">
-          <p className="mb-2 px-2 text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            {section.section}
-          </p>
+        <div key={section.section} className="mb-4">
+          <p className={`mb-1.5 ${SECTION_LABEL_CLASS}`}>{section.section}</p>
 
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {section.items.map((item) => {
               const Icon = item.icon;
               const active = isMenuActive(item.path);
@@ -38,32 +41,23 @@ export default function FullSidebarNav({ menuSections, isMenuActive, onNavigate 
 
               if (hasChildren) {
                 return (
-                  <div key={`${section.section}-${item.label}`} className="space-y-1">
+                  <div key={`${section.section}-${item.label}`} className="space-y-0.5">
                     <button
                       type="button"
+                      aria-expanded={expanded}
                       onClick={() =>
                         setExpandedGroups((current) => ({
                           ...current,
                           [item.path]: !expanded,
                         }))
                       }
-                      className={`group relative flex h-10 w-full items-center gap-2.5 rounded-lg px-3 text-left text-[12px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 transition-colors duration-200 ${
-                        active
-                          ? "bg-slate-100 text-slate-900"
-                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                      }`}
-                      aria-expanded={expanded}
+                      className={`${navItemClass(active)} gap-2.5 pl-2.5 pr-3 text-left`}
                     >
-                      {active && (
-                        <span className="absolute left-0 top-1.5 h-7 w-1 rounded-r-full bg-slate-300" />
-                      )}
-
                       <Icon
-                        size={17}
-                        strokeWidth={active ? 2.3 : 1.9}
-                        className="shrink-0 transition-colors duration-200"
+                        size={16}
+                        strokeWidth={active ? 2.25 : 1.9}
+                        className="shrink-0"
                       />
-
                       <span className="min-w-0 flex-1 truncate">{item.label}</span>
                       {expanded ? (
                         <ChevronDown size={14} className="shrink-0" />
@@ -73,7 +67,7 @@ export default function FullSidebarNav({ menuSections, isMenuActive, onNavigate 
                     </button>
 
                     {expanded && (
-                      <div className="space-y-1 pl-8">
+                      <div className="ml-[22px] space-y-0.5 border-l border-gray-200">
                         {item.children.map((child) => {
                           const childActive = isMenuActive(child.path);
                           return (
@@ -81,12 +75,11 @@ export default function FullSidebarNav({ menuSections, isMenuActive, onNavigate 
                               key={child.path}
                               to={child.path}
                               onClick={onNavigate}
-                              className={`block rounded-lg px-3 py-2 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 transition ${
-                                childActive
-                                  ? "bg-slate-100 text-slate-900"
-                                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                              }`}
+                              className={childLinkClass(childActive)}
                             >
+                              {childActive && (
+                                <span className="absolute -left-px top-0 h-full w-0.5 bg-red-600" />
+                              )}
                               {child.label}
                             </Link>
                           );
@@ -102,22 +95,13 @@ export default function FullSidebarNav({ menuSections, isMenuActive, onNavigate 
                   key={`${section.section}-${item.label}`}
                   to={item.path}
                   onClick={onNavigate}
-                  className={`group relative flex h-10 items-center gap-2.5 rounded-lg px-3 text-[12px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 transition-colors duration-200 ${
-                active
-                  ? "bg-slate-100 text-slate-900"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                  }`}
+                  className={`${navItemClass(active)} gap-2.5 pl-2.5 pr-3`}
                 >
-                  {active && (
-                    <span className="absolute left-0 top-1.5 h-7 w-1 rounded-r-full bg-slate-300" />
-                  )}
-
                   <Icon
-                    size={17}
-                    strokeWidth={active ? 2.3 : 1.9}
-                    className="shrink-0 transition-colors duration-200"
+                    size={16}
+                    strokeWidth={active ? 2.25 : 1.9}
+                    className="shrink-0"
                   />
-
                   <span className="truncate">{item.label}</span>
                 </Link>
               );

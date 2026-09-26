@@ -4,12 +4,14 @@ import { Plus, Users } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ConnectionErrorState, RefreshingIndicator } from "../../components/common";
+import Drawer from "../../components/common/drawer/Drawer";
 import ModuleToolbar from "../../components/common/list/ModuleToolbar";
 import {
   DottedSpinner,
   SoftLoadingArea,
 } from "../../components/common/loading/SoftLoadingOverlay";
 import PatientDirectoryCard from "../../components/features/patients/PatientDirectoryCard";
+import PatientSummaryPanel from "../../components/features/patients/PatientSummaryPanel";
 import usePatients from "../../hooks/usePatients";
 import { isConnectionError } from "../../services/apiClient";
 import { formatDisplayValue } from "../../utils/formatters";
@@ -49,6 +51,7 @@ export default function PatientsModule() {
   const [visibleCount, setVisibleCount] = useState(PATIENTS_BATCH_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
   const loadMoreRef = useRef(null);
+  const [selectedPatientId, setSelectedPatientId] = useState(null);
 
   const barangayOptions = uniqueOptions(
     patients,
@@ -133,6 +136,33 @@ export default function PatientsModule() {
     setLoadingMore(false);
   }, [filters]);
 
+  // Close the summary once its patient is filtered out of the directory.
+  const selectedStillListed =
+    !selectedPatientId ||
+    filteredPatients.some(
+      (patient) => String(patient.id || patient.patientId) === selectedPatientId,
+    );
+  useEffect(() => {
+    if (!selectedStillListed) setSelectedPatientId(null);
+  }, [selectedStillListed]);
+
+  useEffect(() => {
+    if (!selectedPatientId) return undefined;
+    function onKeyDown(event) {
+      if (event.key === "Escape") setSelectedPatientId(null);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedPatientId]);
+
+  function toggleSelectedPatient(patientId) {
+    setSelectedPatientId((current) => (current === patientId ? null : patientId));
+  }
+
+  function closeSummary() {
+    setSelectedPatientId(null);
+  }
+
   useEffect(() => {
     if (!loadMoreRef.current || !hasMorePatients || loadingMore) {
       return undefined;
@@ -212,19 +242,14 @@ export default function PatientsModule() {
       >
         {!showInitialLoading && (
           <>
-              <div className="clinical-directory__heading min-w-0">
-                <h1 className="clinical-directory__title">
-                  Patients
-                </h1>
-                <p className="mt-0.5 text-[12px] text-[#64748B]">
-                  Register, search, and manage patient profiles.
-                </p>
-                <p className="clinical-directory__count">
-                  {patientCountLabel}
-                </p>
-              </div>
           <ModuleToolbar
             variant="clinical"
+            heading={
+              <div className="clinical-directory__heading min-w-0">
+                <h1 className="clinical-directory__title">Patients</h1>
+                <p className="clinical-directory__count">{patientCountLabel}</p>
+              </div>
+            }
             searchValue={filters.search}
             onSearchChange={(value) =>
               setFilters((prev) => ({ ...prev, search: value }))
@@ -257,10 +282,22 @@ export default function PatientsModule() {
               hasMorePatients={hasMorePatients}
               loadingMore={loadingMore}
               loadMoreRef={loadMoreRef}
+              selectedPatientId={selectedPatientId}
+              onSelectPatient={toggleSelectedPatient}
             />
           )}
         </div>
       </SoftLoadingArea>
+      <Drawer
+        open={Boolean(selectedPatientId)}
+        onClose={closeSummary}
+        title="Patient Summary"
+        widthClassName="w-full sm:w-[420px]"
+      >
+        {selectedPatientId && (
+          <PatientSummaryPanel key={selectedPatientId} patientId={selectedPatientId} />
+        )}
+      </Drawer>
     </DashboardLayout>
   );
 }
@@ -271,9 +308,11 @@ function PatientDirectory({
   hasMorePatients,
   loadingMore,
   loadMoreRef,
+  selectedPatientId,
+  onSelectPatient,
 }) {
   return (
-    <section className="anim-fade-up">
+    <section className="anim-fade-up min-w-0">
       <div>
         {patients.length === 0 ? (
           <PatientDirectoryState
@@ -305,6 +344,10 @@ function PatientDirectory({
                   patient={patient}
                   basePath="/bhc"
                   variant="clinical"
+                  onSelect={onSelectPatient}
+                  selected={
+                    String(patient.id || patient.patientId) === selectedPatientId
+                  }
                 />
               ))}
             </div>

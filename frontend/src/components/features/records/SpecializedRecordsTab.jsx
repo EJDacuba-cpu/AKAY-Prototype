@@ -1,3 +1,4 @@
+import { createContext, useContext } from "react";
 import { Link } from "react-router";
 import { Baby, ClipboardList, HeartPulse, UsersRound } from "lucide-react";
 
@@ -27,11 +28,15 @@ const EMPTY_MARK = "Not recorded";
 const SOURCE_EMPTY_MARK = "\u2014";
 const TT_TD_DOSES = [1, 2, 3, 4, 5];
 
+// The flat patient profile renders these histories without the card chrome.
+const FlatContext = createContext(false);
+
 export default function SpecializedRecordsTab({
   records = [],
   patient = null,
   basePath = "/bhc",
   program,
+  flat = false,
 }) {
   const programRecords = records.filter(
     (record) =>
@@ -42,7 +47,8 @@ export default function SpecializedRecordsTab({
   if (programRecords.length === 0) return null;
 
   return (
-    <div className="space-y-6">
+    <FlatContext.Provider value={flat}>
+    <div className={flat ? "space-y-5 [&_.px-6]:px-3" : "space-y-6"}>
       {program === "epi" && (
         <SpecializedSection
           icon={<Baby size={15} />}
@@ -93,10 +99,25 @@ export default function SpecializedRecordsTab({
         </SpecializedSection>
       )}
     </div>
+    </FlatContext.Provider>
   );
 }
 
 function SpecializedSection({ icon, title, subtitle, children }) {
+  const flat = useContext(FlatContext);
+
+  if (flat) {
+    return (
+      <section className="border-t border-slate-200 pt-4">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 font-sans!">
+          {title}
+        </h3>
+        <p className="mb-2 mt-0.5 text-xs text-slate-400">{subtitle}</p>
+        {children}
+      </section>
+    );
+  }
+
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm in-[.bhc-patient-profile]:border-slate-100">
       <div className="flex items-start gap-3 bg-slate-50/50 px-6 py-4">

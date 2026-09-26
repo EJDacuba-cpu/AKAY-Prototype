@@ -3,6 +3,11 @@ import { Plus, X } from "lucide-react";
 
 import { formatLongDate } from "../../../utils/formatters";
 import { EMPTY_MEDICAL_BACKGROUND } from "../../../services/patientService";
+import {
+  ProfileSection,
+  SectionEditActions,
+  TextAction,
+} from "./profile/ProfileSection";
 
 const DISEASE_STATUS_OPTIONS = ["Active", "Controlled", "Resolved"];
 
@@ -82,7 +87,16 @@ function readValue(background, field) {
     : background?.[field.key] || "";
 }
 
-function Row({ label, children, compact }) {
+function Row({ label, children, compact, flat }) {
+  if (flat) {
+    return (
+      <div className="flex flex-col gap-0.5 py-1 sm:flex-row sm:items-baseline sm:gap-4">
+        <span className="w-full shrink-0 text-sm text-slate-500 sm:w-36">{label}</span>
+        <div className="min-w-0 flex-1">{children}</div>
+      </div>
+    );
+  }
+
   return (
     <div className={`flex flex-col gap-1 border-b border-slate-100 px-4 py-3 last:border-b-0 ${compact ? "" : "sm:flex-row sm:items-center sm:gap-4"}`}>
       <span className={`w-full shrink-0 text-[10.5px] font-bold uppercase tracking-wider text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r in-[.bhc-patient-profile]:text-slate-500 ${compact ? "" : "sm:w-48"}`}>
@@ -150,12 +164,14 @@ export default function PatientBackgroundTab({
   saving = false,
   onSave,
   compact = false,
+  variant = "card",
   startEditing = false,
   onEditingDone,
   sharedDraft,
   onDraftChange,
 }) {
   const config = BACKGROUND_SECTIONS[section];
+  const flat = variant === "flat";
   const [isEditing, setIsEditing] = useState(startEditing);
   const [newDisease, setNewDisease] = useState("");
 
@@ -258,7 +274,7 @@ export default function PatientBackgroundTab({
       },
     };
 
-    const saved = await onSave?.(stamped);
+    const saved = await onSave?.(stamped, section);
     if (saved !== false) {
       setNewDisease("");
       setIsEditing(false);
@@ -269,6 +285,176 @@ export default function PatientBackgroundTab({
   const fields = TEXT_FIELDS[section] || [];
   const diseases = draft.currentDiseases;
   const lastUpdated = background?.updatedAt?.[section] || "";
+
+  const rowsContent = (
+    <div className="bg-white">
+      {section === "medical" && (
+        <Row label="Current Diseases" compact={compact} flat={flat}>
+          {!isEditing ? (
+            <div className={`flex flex-wrap gap-1.5 ${flat ? "" : "sm:justify-end"}`}>
+              {diseases.length ? (
+                diseases.map((disease, index) => (
+                  <span
+                    key={`${disease.name}-${index}`}
+                    className={flat ? "rounded-md border border-slate-200 px-2 py-0.5 text-xs text-slate-800" : "rounded-full bg-red-50 px-2.5 py-1 text-[11.5px] font-semibold text-[#B91C1C] in-[.bhc-patient-profile]:px-3"}
+                  >
+                    {disease.name}
+                    {disease.status ? ` · ${disease.status}` : ""}
+                  </span>
+                ))
+              ) : (
+                <span className="text-[12.5px] text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:text-slate-500">
+                  Not yet recorded
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2 sm:text-left">
+              {diseases.map((disease, index) => (
+                <div
+                  key={`${disease.name}-${index}`}
+                  className={flat ? "rounded-md border border-slate-200 p-3 text-left" : "rounded-lg border border-slate-200 p-3 text-left in-[.bhc-patient-profile]:rounded-2xl in-[.bhc-patient-profile]:border-slate-100 in-[.bhc-patient-profile]:bg-white in-[.bhc-patient-profile]:shadow-sm"}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[12.5px] font-bold text-[#0F172A] in-[.bhc-patient-profile]:font-semibold in-[.bhc-patient-profile]:text-slate-900">
+                      {disease.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeDisease(index)}
+                      aria-label={`Remove ${disease.name}`}
+                      className="text-slate-400 transition hover:text-[#B91C1C] in-[.bhc-patient-profile]:text-slate-500"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div className={`mt-2 grid gap-2 ${compact ? "" : "sm:grid-cols-3"}`}>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r in-[.bhc-patient-profile]:text-slate-500">
+                      Status
+                      <select
+                        value={disease.status || ""}
+                        onChange={(event) =>
+                          updateDisease(index, "status", event.target.value)
+                        }
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-slate-700 outline-none focus:border-[#B91C1C]"
+                      >
+                        <option value="">Select...</option>
+                        {DISEASE_STATUS_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r in-[.bhc-patient-profile]:text-slate-500">
+                      First Recorded
+                      <input
+                        type="date"
+                        value={disease.firstRecorded || ""}
+                        onChange={(event) =>
+                          updateDisease(
+                            index,
+                            "firstRecorded",
+                            event.target.value,
+                          )
+                        }
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-slate-700 outline-none focus:border-[#B91C1C]"
+                      />
+                    </label>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r in-[.bhc-patient-profile]:text-slate-500">
+                      Last Confirmed
+                      <input
+                        type="date"
+                        value={disease.lastConfirmed || ""}
+                        onChange={(event) =>
+                          updateDisease(
+                            index,
+                            "lastConfirmed",
+                            event.target.value,
+                          )
+                        }
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-slate-700 outline-none focus:border-[#B91C1C]"
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))}
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newDisease}
+                  placeholder="Add other disease..."
+                  onChange={(event) => setNewDisease(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addDisease();
+                    }
+                  }}
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-[12.5px] outline-none transition focus:border-[#B91C1C]"
+                />
+                <button
+                  type="button"
+                  onClick={addDisease}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
+                >
+                  <Plus size={13} />
+                  Add
+                </button>
+              </div>
+            </div>
+          )}
+        </Row>
+      )}
+
+      {fields.map((field) => (
+        <Row key={field.key} label={field.label} compact={compact} flat={flat}>
+          {isEditing ? (
+            <TextInput
+              value={readValue(draft, field)}
+              placeholder={field.placeholder || "Not yet recorded"}
+              onChange={(value) => setField(field, value)}
+            />
+          ) : (
+            <span
+              className={`text-[12.5px] ${readValue(background, field) ? "text-[#0F172A] in-[.bhc-patient-profile]:text-slate-900" : "text-slate-400 in-[.bhc-patient-profile]:text-slate-500"}`}
+            >
+              {readValue(background, field) || "Not yet recorded"}
+            </span>
+          )}
+        </Row>
+      ))}
+    </div>
+  );
+
+  if (flat) {
+    return (
+      <ProfileSection
+        id={`background-${section}`}
+        title={config.label}
+        meta={
+          lastUpdated
+            ? `Updated ${formatLongDate(lastUpdated, "")}`
+            : "Not yet recorded"
+        }
+        actions={
+          isEditing ? (
+            <SectionEditActions saving={saving} onCancel={cancel} onSave={save} />
+          ) : (
+            <TextAction
+              onClick={() => setIsEditing(true)}
+              aria-label={`Edit ${config.label}`}
+            >
+              Edit
+            </TextAction>
+          )
+        }
+      >
+        {rowsContent}
+      </ProfileSection>
+    );
+  }
 
   return (
     <div>
@@ -319,145 +505,7 @@ export default function PatientBackgroundTab({
           </div>
         </header>
 
-        <div className="bg-white">
-          {section === "medical" && (
-            <Row label="Current Diseases" compact={compact}>
-              {!isEditing ? (
-                <div className="flex flex-wrap gap-1.5 sm:justify-end">
-                  {diseases.length ? (
-                    diseases.map((disease, index) => (
-                      <span
-                        key={`${disease.name}-${index}`}
-                        className="rounded-full bg-red-50 px-2.5 py-1 text-[11.5px] font-semibold text-[#B91C1C] in-[.bhc-patient-profile]:px-3"
-                      >
-                        {disease.name}
-                        {disease.status ? ` · ${disease.status}` : ""}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-[12.5px] text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:text-slate-500">
-                      Not yet recorded
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-2 sm:text-left">
-                  {diseases.map((disease, index) => (
-                    <div
-                      key={`${disease.name}-${index}`}
-                      className="rounded-lg border border-slate-200 p-3 text-left in-[.bhc-patient-profile]:rounded-2xl in-[.bhc-patient-profile]:border-slate-100 in-[.bhc-patient-profile]:bg-white in-[.bhc-patient-profile]:shadow-sm"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-[12.5px] font-bold text-[#0F172A] in-[.bhc-patient-profile]:font-semibold in-[.bhc-patient-profile]:text-slate-900">
-                          {disease.name}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeDisease(index)}
-                          aria-label={`Remove ${disease.name}`}
-                          className="text-slate-400 transition hover:text-[#B91C1C] in-[.bhc-patient-profile]:text-slate-500"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                      <div className={`mt-2 grid gap-2 ${compact ? "" : "sm:grid-cols-3"}`}>
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r in-[.bhc-patient-profile]:text-slate-500">
-                          Status
-                          <select
-                            value={disease.status || ""}
-                            onChange={(event) =>
-                              updateDisease(index, "status", event.target.value)
-                            }
-                            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-slate-700 outline-none focus:border-[#B91C1C]"
-                          >
-                            <option value="">Select...</option>
-                            {DISEASE_STATUS_OPTIONS.map((option) => (
-                              <option key={option} value={option}>
-                                {option}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r in-[.bhc-patient-profile]:text-slate-500">
-                          First Recorded
-                          <input
-                            type="date"
-                            value={disease.firstRecorded || ""}
-                            onChange={(event) =>
-                              updateDisease(
-                                index,
-                                "firstRecorded",
-                                event.target.value,
-                              )
-                            }
-                            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-slate-700 outline-none focus:border-[#B91C1C]"
-                          />
-                        </label>
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r in-[.bhc-patient-profile]:text-slate-500">
-                          Last Confirmed
-                          <input
-                            type="date"
-                            value={disease.lastConfirmed || ""}
-                            onChange={(event) =>
-                              updateDisease(
-                                index,
-                                "lastConfirmed",
-                                event.target.value,
-                              )
-                            }
-                            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-slate-700 outline-none focus:border-[#B91C1C]"
-                          />
-                        </label>
-                      </div>
-                    </div>
-                  ))}
-
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newDisease}
-                      placeholder="Add other disease..."
-                      onChange={(event) => setNewDisease(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          addDisease();
-                        }
-                      }}
-                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-[12.5px] outline-none transition focus:border-[#B91C1C]"
-                    />
-                    <button
-                      type="button"
-                      onClick={addDisease}
-                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-                    >
-                      <Plus size={13} />
-                      Add
-                    </button>
-                  </div>
-                </div>
-              )}
-            </Row>
-          )}
-
-          {fields.map((field) => (
-            <Row key={field.key} label={field.label} compact={compact}>
-              {isEditing ? (
-                <TextInput
-                  value={readValue(draft, field)}
-                  placeholder={field.placeholder || "Not yet recorded"}
-                  onChange={(value) => setField(field, value)}
-                />
-              ) : (
-                <span
-                  className={`text-[12.5px] ${readValue(background, field) ? "text-[#0F172A] in-[.bhc-patient-profile]:text-slate-900" : "text-slate-400 in-[.bhc-patient-profile]:text-slate-500"}`}
-                >
-                  {readValue(background, field) || "Not yet recorded"}
-                </span>
-              )}
-            </Row>
-          ))}
-        </div>
+        {rowsContent}
       </div>
 
       {!compact && (

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Bell, Menu } from "lucide-react";
 import WorkingFacility from "./WorkingFacility";
+import TopBarBreadcrumbs from "./TopBarBreadcrumbs";
+import { getBreadcrumbs } from "../../utils/breadcrumbs";
 import { navigationAllowed } from "../../utils/dashboardAccess";
 import { useLocation, useNavigate } from "react-router";
 import { getCurrentUser, logoutUser } from "../../utils/auth";
@@ -323,27 +325,21 @@ export default function DashboardLayout({
           hideSidebar ? "" : sidebarExpanded ? "md:ml-60" : "md:ml-[72px]"
         }`}
       >
-<header className="no-print relative z-30 shrink-0 border-b border-slate-200 bg-white/95 font-sans antialiased backdrop-blur-xl">
+<header className="no-print relative z-30 shrink-0 border-b border-gray-200 bg-white font-sans antialiased">
   <div className="flex h-14 items-center justify-between px-3.5 sm:h-[62px] sm:px-5">
 <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
   {!hideSidebar && (
     <button
       type="button"
       onClick={() => setMobileDrawerOpen(true)}
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 md:hidden"
+      className="flex h-9 w-9 shrink-0 items-center justify-center border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 md:hidden"
       aria-label="Open sidebar"
     >
-      <Menu size={17} />
+      <Menu size={16} />
     </button>
   )}
 
-  <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
-    <span className="h-5 w-1 shrink-0 rounded-full bg-[#B91C1C] sm:h-6" />
-
-    <h2 className="truncate font-sans! text-sm font-semibold tracking-tight text-slate-900 sm:text-base">
-      {title}
-    </h2>
-  </div>
+  <TopBarBreadcrumbs crumbs={getBreadcrumbs(location.pathname, title)} />
 </div>
 
             <div className="flex items-center gap-2">
@@ -352,13 +348,17 @@ export default function DashboardLayout({
                 <button
                   type="button"
                   onClick={() => setIsNotifOpen((prev) => !prev)}
-                  className="relative flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 sm:h-9 sm:w-9 sm:rounded-lg"
-                  aria-label="Notifications"
+                  className="relative flex h-9 w-9 items-center justify-center text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                  aria-label={
+                    unreadCount > 0
+                      ? `Notifications, ${unreadCount} unread`
+                      : "Notifications"
+                  }
                 >
-                  <Bell size={15} />
+                  <Bell size={16} />
                   {unreadCount > 0 && (
-                    <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#B91C1C] text-[8px] font-bold text-white ring-2 ring-white">
-                      {unreadCount}
+                    <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-sm bg-red-600 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
                     </span>
                   )}
                 </button>

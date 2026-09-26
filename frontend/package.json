@@ -18,7 +18,9 @@
     "test:local-draft-vault": "node --test src/services/localDraftCrypto.test.js",
     "test:saved-drafts": "node --test src/utils/savedDrafts.test.js",
     "test:consultation-identity": "node --test src/utils/consultationIdentity.test.js",
-    "test:prenatal-form": "node --test src/utils/prenatalForm.test.js"
+    "test:prenatal-form": "node --test src/utils/prenatalForm.test.js",
+    "test:breadcrumbs": "node --test src/utils/breadcrumbs.test.js",
+    "test:patient-profile": "node --test src/utils/patientProfile.test.js src/utils/currentPatientVitals.test.js"
   },
   "dependencies": {
     "@fontsource-variable/public-sans": "^5.3.0",

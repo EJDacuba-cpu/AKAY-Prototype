@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Viewport-height breakpoints for full-screen, no-scroll layouts (e.g. login). */
+@custom-variant short (@media (max-height: 760px));
+@custom-variant tiny (@media (max-height: 600px));
+
 /* ═══════════════════════════════════════════════════════════════════════════
    AKAY DESIGN TOKENS — Step 1 (tokens only; components restyled in Step 2)
    Direction: "Calm medical sanctuary" — warm-neutral base, clay brand red,

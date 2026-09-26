@@ -13,7 +13,7 @@ import SpecializedRecordsTab from "../records/SpecializedRecordsTab";
  * gap is, instead of silently looking complete.
  */
 
-const AREA_CONFIG = {
+export const AREA_CONFIG = {
   womensHealth: {
     icon: HeartPulse,
     title: "Women's Health",

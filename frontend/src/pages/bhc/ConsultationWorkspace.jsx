@@ -1,6 +1,4 @@
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "../../components/ui/accordion";
 import { programReviewRows } from "../../utils/consultationReview";
-import ConsultationHistoryCheck from "../../components/features/health-records/ConsultationHistoryCheck";
 import { Button } from "../../components/ui/button";
 import ReferralDestinationPicker from "../../components/features/health-records/ReferralDestinationPicker";
 import PregnancyConfirmation from "../../components/features/health-records/PregnancyConfirmation";
@@ -23,6 +21,7 @@ import {
   Zap,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import "../../components/features/health-records/wizard/consultation-ehr.css";
 import {
   ConnectionIssueModal,
   HealthRecordFormSkeleton,
@@ -69,7 +68,6 @@ import {
   getFpMethodRestriction,
 } from "../../utils/familyPlanning";
 import { calculateBmi, formatBmi, getBmiCategory } from "../../utils/bmi";
-import PatientSummaryDrawer from "../../components/features/health-records/PatientSummaryDrawer";
 import UnfinishedConsultationModal from "../../components/features/health-records/UnfinishedConsultationModal";
 import {
   locationToPath,
@@ -95,8 +93,8 @@ import NextActionSection from "../../components/features/health-records/NextActi
 import {
   NextActionStep,
   ConsultationReviewStep,
-  ProgramServicePicker,
 } from "../../components/features/health-records/wizard/HealthRecordWizardSteps";
+import ConsultationProgramPanel from "../../components/features/health-records/wizard/ConsultationProgramPanel";
 import {
   ConsultationActionBar,
   ConsultationStepHeading,
@@ -194,8 +192,9 @@ const keyframes = `
 const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 
 // The one card every consultation step sits in.
-const CONSULTATION_CARD_CLASS =
-  "space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8";
+// Flat stack: each section inside it is its own bordered card (FormSection).
+const CONSULTATION_CARD_CLASS = "space-y-4";
+
 
 const WIZARD_FORM = "form";
 const WIZARD_NEXT = "next";
@@ -500,10 +499,10 @@ const EMPTY_MATERNAL_DATA = {
 
 // The red sub-heading the prenatal form uses inside a section.
 const MATERNAL_EYEBROW_CLASS =
-  "mb-3 text-[10.5px] font-bold uppercase tracking-[0.08em] text-[#B91C1C]";
+  "mb-3 text-[11px] font-semibold uppercase tracking-wide text-[#DC2626]";
 // FieldInput's own input style, for a table cell whose column header labels it.
 const MATERNAL_TABLE_INPUT_CLASS =
-  "h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10";
+  "h-9 w-full rounded-none border border-[#D1D5DB] bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] focus:border-[#DC2626] focus:ring-2 focus:ring-[#FECACA]";
 
 /**
  * OB score components, recorded as separate counts rather than one string.
@@ -1035,7 +1034,6 @@ export default function ConsultationWorkspace() {
   const [formStep, setFormStep] = useState(
     routeContext.kind === "new" ? INTERVIEW_STEP : "",
   );
-  const [summaryOpen, setSummaryOpen] = useState(false);
   const [correctionNote, setCorrectionNote] = useState("");
   const resumedRouteDraft = useRef("");
   const classificationRef = useRef(null);
@@ -4221,16 +4219,6 @@ export default function ConsultationWorkspace() {
     setValidationErrors({});
   }
 
-  function removeProgramForm(step) {
-    const remaining = selectedPrograms.filter(key => !step.programs.includes(key));
-    const primary = remaining.includes(primaryProgram) ? primaryProgram : remaining[0] || "";
-    setVisitPurpose(null);
-    setSelectedPrograms(remaining);
-    setPrimaryProgram(primary);
-    setConsultationMode(remaining.length ? "program" : "general");
-    setHealthRecordType(PROGRAM_CLASSIFICATIONS[primary] || "General Consultation");
-  }
-
   function handleProgramSelect(option) {
     if (wizardPrograms.find(program => program.key === option)?.disabled) return;
     setVisitPurpose(null);
@@ -4340,7 +4328,7 @@ export default function ConsultationWorkspace() {
   // they are decided together.
   const reportingDecisions = (
     <div
-      className="anim-fade-up grid gap-8 border-t border-[#F1F5F9] pt-5 pb-1 lg:grid-cols-2"
+      className="anim-fade-up grid gap-8 border-t border-[#E5E7EB] pt-5 pb-1 @3xl:grid-cols-2"
       style={stagger(7)}
     >
       <div>
@@ -4435,6 +4423,48 @@ export default function ConsultationWorkspace() {
     steps: consultationSteps,
     subtitles: stepSubtitles,
   });
+  // Program panel: one status per form step (Hypertension and Diabetes share a
+  // step), attached to each selected program that step covers.
+  const showProgramPanel =
+    usesConsultationSteps &&
+    !isResolvingClinicalMode &&
+    !(activeDraft?.reviewState === "review" && !canFinalize);
+  const programStatusByKey = {};
+  if (showProgramPanel && programFormSteps.length > 0) {
+    const invalidKeys = Object.keys(getClinicalValidationErrors({ finalizing: true }));
+    programFormSteps.forEach((step) => {
+      const incomplete = invalidKeys.some(
+        (key) =>
+          getErrorOwnerStepKey(key) === step.key ||
+          (step.classification === "Hypertension / Diabetic Monitoring" && key === "hypertensionDiabeticData.bp"),
+      );
+      const started =
+        step.classification === "Family Planning" ? Boolean(familyPlanningData.methodUsed || familyPlanningData.remarks || familyPlanningData.concern)
+        : step.classification === "TB DOTS / TB Monitoring" ? Boolean(tbData.diagnosis.tbCaseNumber || tbData.phases.intensiveStart)
+        : step.classification === "Immunization" ? Boolean(immunizationVaccineEntries.length || consultationNotes.trim())
+        : step.classification === "Hypertension / Diabetic Monitoring" ? Boolean(systolicBp || diastolicBp)
+        : true;
+      const status = incomplete ? (started ? "Incomplete" : "Not Started") : "Completed";
+      step.programs.forEach((programKey) => {
+        programStatusByKey[programKey] = { status, stepKey: step.key };
+      });
+    });
+  }
+  const programPanel = (
+    <ConsultationProgramPanel
+      programs={wizardPrograms}
+      selected={selectedPrograms}
+      primary={primaryProgram}
+      statusByProgram={programStatusByKey}
+      onSelect={handleProgramSelect}
+      onPrimaryChange={(key) => {
+        setPrimaryProgram(key);
+        setHealthRecordType(PROGRAM_CLASSIFICATIONS[key]);
+      }}
+      onOpenForm={goToStepKey}
+    />
+  );
+
   const stepIndicator = (
     <ConsultationStepHeading
       title={stepHeading.title}
@@ -4590,18 +4620,11 @@ export default function ConsultationWorkspace() {
 
   return (
     <DashboardLayout role={userRole} title={pageTitle}>
+      <div className="ehr-consult">
       <style>{keyframes}</style>
       {wizardPhase === WIZARD_NEXT && needsReferral && <ReferralDestinationPicker deferWithConsultation value={receivingRhuId} onChange={id => { setReceivingRhuId(id); setReferralForm(f => ({ ...f, preferredRhuDoctorId: "" })); }} patientId={selectedPatientId} />}
-      {activeDraft?.reviewState === "review" && canFinalize && <details className="mb-4 rounded-lg border border-slate-200 p-4"><summary className="cursor-pointer text-sm font-medium">Return for Correction</summary><p className="my-2 text-sm text-slate-600">Use only when the encoder must verify or complete information.</p><textarea aria-label="Correction note" className="w-full rounded-md border border-slate-300 p-3" value={correctionNote} onChange={event => setCorrectionNote(event.target.value)} /><Button type="button" disabled={!correctionNote.trim()} onClick={async () => { try { if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) return; const identity = getDraftIdentity() || activeDraft; await transitionDraft(identity.id, "return", identity.version, correctionNote.trim()); bypassLeaveGuardRef.current = true; navigate("/bhc/patients/" + selectedPatientId); } catch (error) { toast.error(error.message); } }}>Return for Correction</Button></details>}
-      {activeDraft?.returnNote && <div role="status" className="mb-4 rounded-lg bg-amber-50 p-4 text-sm">Return for Correction: {activeDraft.returnNote}</div>}
-      {selectedPatientId && (currentUser?.permissions || []).includes("clinical.history") && <>
-        {/* Outside the consultation workspace (follow-up visits) this is still
-            the way into the summary; inside it, the snapshot panel owns that. */}
-        {!inConsultationWorkspace && (
-          <button type="button" onClick={() => setSummaryOpen(true)} className="fixed bottom-4 right-4 z-[90] inline-flex items-center gap-2 rounded-full bg-[#B91C1C] px-4 py-3 text-xs font-semibold text-white shadow-lg"><Users size={15} />Patient Summary</button>
-        )}
-        <PatientSummaryDrawer key={selectedPatientId} patientId={selectedPatientId} open={summaryOpen} onClose={() => setSummaryOpen(false)} basePath={basePath} />
-      </>}
+      {activeDraft?.reviewState === "review" && canFinalize && <details className="mb-4 rounded-none border border-slate-200 p-4"><summary className="cursor-pointer text-sm font-medium">Return for Correction</summary><p className="my-2 text-sm text-slate-600">Use only when the encoder must verify or complete information.</p><textarea aria-label="Correction note" className="w-full rounded-none border border-slate-300 p-3" value={correctionNote} onChange={event => setCorrectionNote(event.target.value)} /><Button type="button" disabled={!correctionNote.trim()} onClick={async () => { try { if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) return; const identity = getDraftIdentity() || activeDraft; await transitionDraft(identity.id, "return", identity.version, correctionNote.trim()); bypassLeaveGuardRef.current = true; navigate("/bhc/patients/" + selectedPatientId); } catch (error) { toast.error(error.message); } }}>Return for Correction</Button></details>}
+      {activeDraft?.returnNote && <div role="status" className="mb-4 rounded-none bg-amber-50 p-4 text-sm">Return for Correction: {activeDraft.returnNote}</div>}
       <UnfinishedConsultationModal
         draft={draftDecision}
         selectedPatientName={getPatientName(selectedPatient)}
@@ -4615,7 +4638,7 @@ export default function ConsultationWorkspace() {
 
       {draftMedicineWarnings.length > 0 && (
         <div
-          className="mb-4 ml-0 mr-auto flex w-full max-w-7xl items-start gap-3 rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-900"
+          className="mb-4 ml-0 mr-auto flex w-full max-w-7xl items-start gap-3 rounded-none border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-900"
           role="status"
         >
           <AlertCircle size={17} className="mt-0.5 shrink-0 text-amber-600" />
@@ -4631,10 +4654,10 @@ export default function ConsultationWorkspace() {
       )}
 
       {inConsultationWorkspace && (
-        <ConsultationWorkspaceHeader onOpenSummary={() => setSummaryOpen(true)} />
+        <ConsultationWorkspaceHeader />
       )}
       {routeLinkedFollowUpTask && (
-        <div className="mb-4 ml-0 mr-auto w-full max-w-5xl rounded-xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm text-slate-700">
+        <div className="mb-4 ml-0 mr-auto w-full max-w-5xl rounded-none border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm text-slate-700">
           <p className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Follow-up Visit</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-3">
             <SummaryItem label="Follow-up for" value={getFollowUpTaskServiceType(routeLinkedFollowUpTask) || "Not recorded"} />
@@ -4648,27 +4671,16 @@ export default function ConsultationWorkspace() {
           )}
         </div>
       )}
-      {purposeOpen && !selectedPatient && <div className="rounded-xl bg-white p-6"><p>{selectedPatientError ? "Unable to load the patient. Please retry." : "Loading patient eligibility..."}</p>{selectedPatientError && <button type="button" onClick={() => reloadSelectedPatient()}>Retry</button>}</div>}
+      {purposeOpen && !selectedPatient && <div className="rounded-none bg-white p-6"><p>{selectedPatientError ? "Unable to load the patient. Please retry." : "Loading patient eligibility..."}</p>{selectedPatientError && <button type="button" onClick={() => reloadSelectedPatient()}>Retry</button>}</div>}
       {purposeOpen && !isResolvingClinicalMode && selectedPatient && <PurposeOfVisitModal value={visitPurpose} patient={selectedPatient} visitDate={dateOfVisit} onProceed={applyVisitPurpose} onCancel={() => { if (visitPurpose) setPurposeOpen(false); else navigate(`/bhc/patients/${selectedPatientId}`); }} />}
-      {purposeFlow && !purposeOpen && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4"><p className="text-sm font-medium">Purpose of Visit: {visitPurpose.services.map(key => VISIT_SERVICES[key]).join(" + ")}</p><button type="button" className="text-sm font-semibold text-red-700" onClick={() => setPurposeOpen(true)}>Change purpose</button></div>}
+      {purposeFlow && !purposeOpen && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-none border border-slate-200 bg-white p-4"><p className="text-sm font-medium">Purpose of Visit: {visitPurpose.services.map(key => VISIT_SERVICES[key]).join(" + ")}</p><button type="button" className="text-sm font-semibold text-red-700" onClick={() => setPurposeOpen(true)}>Change purpose</button></div>}
       <div hidden={purposeOpen}>
       <ConsultationWorkspaceBody>
       <fieldset disabled={activeDraft?.reviewState === "review" && !(canFinalize && (currentUser?.permissions || []).includes("records.correct"))}>
-      {usesConsultationSteps && !isResolvingClinicalMode && !(activeDraft?.reviewState === "review" && !canFinalize) && <Accordion type="single" collapsible className="mb-4 rounded-xl border border-slate-200 bg-white"><AccordionItem value="additional-forms">
-        <AccordionTrigger>Additional Concern / Program Forms ({programFormSteps.length})</AccordionTrigger>
-        <AccordionContent>
-        <div className="mt-4 space-y-4">
-          <ProgramServicePicker programs={wizardPrograms} selected={selectedPrograms} primary={primaryProgram} onSelect={handleProgramSelect} onPrimaryChange={key => { setPrimaryProgram(key); setHealthRecordType(PROGRAM_CLASSIFICATIONS[key]); }} />
-          {programFormSteps.map(step => {
-            const incomplete = Object.keys(getClinicalValidationErrors({ finalizing: true })).some(key => getErrorOwnerStepKey(key) === step.key || (step.classification === "Hypertension / Diabetic Monitoring" && key === "hypertensionDiabeticData.bp"));
-            const started = step.classification === "Family Planning" ? Boolean(familyPlanningData.methodUsed || familyPlanningData.remarks || familyPlanningData.concern)
-              : step.classification === "TB DOTS / TB Monitoring" ? Boolean(tbData.diagnosis.tbCaseNumber || tbData.phases.intensiveStart)
-              : step.classification === "Immunization" ? Boolean(immunizationVaccineEntries.length || consultationNotes.trim())
-              : step.classification === "Hypertension / Diabetic Monitoring" ? Boolean(systolicBp || diastolicBp) : true;
-            return <div key={step.key} className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3"><span className="mr-auto text-sm">{step.label} · {incomplete ? (started ? "Incomplete" : "Not Started") : "Completed"}</span><Button type="button" size="sm" variant="ghost" onClick={() => goToStepKey(step.key)}>Open Form</Button><Button type="button" size="sm" variant="ghost" onClick={() => removeProgramForm(step)}>Remove</Button></div>;
-          })}
-        </div>
-        </AccordionContent></AccordionItem></Accordion>}
+      {/* Program selection lives in a fixed column to the right of the form
+          (stacked below it on narrower screens). */}
+      <div className={showProgramPanel ? "lg:grid lg:grid-cols-[minmax(0,1fr)_264px] lg:items-start lg:gap-4" : ""}>
+      <div className="@container min-w-0">
       {isResolvingClinicalMode ? (
         <div className="ml-0 mr-auto w-full max-w-7xl">
           <HealthRecordFormSkeleton message="Loading health record..." />
@@ -4729,30 +4741,25 @@ export default function ConsultationWorkspace() {
           // one screen, no Next between them - the same card every other step
           // uses, with each section under its own heading.
           <section className={CONSULTATION_CARD_CLASS}>
-            <ConsultationHistoryCheck key={selectedPatientId} patient={selectedPatient} canEdit={(currentUser?.permissions || []).includes("clinical.history")} />
             <div className="anim-fade-up" style={stagger(2)}>
               {stepIndicator}
             </div>
             {/* HPI is marked required for a general consultation; whether that
                 applies is decided at Clinical Assessment, which enforces it. */}
-            {!purposeFlow && <>
-            <div className="anim-fade-up grid gap-4 pb-1 sm:grid-cols-2" style={stagger(3)}>
+            {!purposeFlow && (
+            <FormSection title="Chief Complaint" subtitle="Why the patient is here today, in their own words and yours." delay={3}>
+            <div className="grid gap-4 @xl:grid-cols-2">
               <FieldTextarea label="Chief Complaint" required name="chiefComplaint" error={validationErrors.chiefComplaint} value={chiefComplaint} onChange={event => { clearValidationError("chiefComplaint"); setChiefComplaint(event.target.value); }} placeholder="Describe the patient's chief complaint..." rows={3} />
               <FieldTextarea label="History of Present Illness / Present Concern" name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }}  rows={3} />
             </div>
-
-            </>}
+            </FormSection>
+            )}
 
             {/* Vital Signs: recorded once, here. Program forms do not repeat
                 them. Three columns on desktop: BP | Pulse | SpO2, then Weight |
                 Height | Temperature, then BMI. */}
-            <div className="anim-fade-up border-t border-[#F1F5F9] pt-5" style={stagger(3)}>
-              <ConsultationStepHeading
-                title="Vital Signs"
-                subtitle="Record the patient's current measurements for this visit."
-              />
-            </div>
-            <div className="anim-fade-up grid gap-4 pb-1 sm:grid-cols-2 lg:grid-cols-3" style={stagger(4)}>
+            <FormSection title="Vital Signs" subtitle="Record the patient's current measurements for this visit." delay={4}>
+            <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
               {/* Blood pressure is required when Hypertension / Diabetes is
                   chosen; that program's own form no longer repeats it, so its
                   error shows here. */}
@@ -4764,6 +4771,7 @@ export default function ConsultationWorkspace() {
               <FieldInput label="Temperature" name="temp" error={validationErrors.temp} value={temp} onChange={event => setTemp(event.target.value)} placeholder="°C" />
               <BmiOutputField weight={weight} height={height} />
             </div>
+            </FormSection>
           </section>
         ) : (
         <div className={CONSULTATION_CARD_CLASS}>
@@ -4802,7 +4810,7 @@ export default function ConsultationWorkspace() {
               subtitle="Record the patient's current complaint, condition, and updated clinical findings."
               delay={3}
             >
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-4 @3xl:grid-cols-2">
                 <FieldSelect
                   label="Current Condition"
                   value={patientCondition}
@@ -4860,7 +4868,7 @@ export default function ConsultationWorkspace() {
               subtitle="Record updated physiological measurements for this follow-up visit."
               delay={4}
             >
-              <div className="grid gap-4 lg:grid-cols-[1.35fr_repeat(5,minmax(0,1fr))]">
+              <div className="grid gap-4 @3xl:grid-cols-[1.35fr_repeat(5,minmax(0,1fr))]">
                 <BpInputGroup
                   systolic={systolicBp}
                   diastolic={diastolicBp}
@@ -4909,7 +4917,7 @@ export default function ConsultationWorkspace() {
               subtitle="Document what was done during the follow-up visit."
               delay={5}
             >
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-4 @3xl:grid-cols-2">
                 <FieldInput
                   label="Treatment / Action Taken"
                   value={medication}
@@ -4958,7 +4966,7 @@ export default function ConsultationWorkspace() {
             placed directly in the card rather than inside a FormSection. */}
         {!patientGateLocked && isImmunization && showProgramBlock("Immunization") && (
           <div className="anim-fade-up" style={stagger(2)}>
-            {immunizationVaccineEntries.length > 0 && <section className="mb-4 space-y-3 rounded-lg border border-slate-200 p-4"><h3 className="text-sm font-semibold">Vaccine Administration — Inventory</h3><p className="text-xs text-slate-600">Select the matching inventory item and its stock-unit quantity. Do not repeat it in Medicines / Supplies.</p>{immunizationVaccineEntries.map((entry, index) => <fieldset key={entry.vaccineName} disabled={!(currentUser?.permissions || []).includes("items.dispense")} className="grid gap-2 border-t border-slate-100 pt-3 sm:grid-cols-3"><legend className="text-sm font-medium">{entry.vaccineName}</legend><select aria-label={entry.vaccineName + " inventory item"} className="rounded-md border border-slate-200 p-2" value={entry.medicineId || ""} onChange={event => updateVaccineInventory(index, "medicineId", event.target.value)}><option value="">Select inventory item</option>{bhcMedicineInventory.map(item => <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>)}</select><input aria-label={entry.vaccineName + " inventory quantity"} className="rounded-md border border-slate-200 p-2" type="number" min="1" step="1" placeholder="Stock-unit quantity" value={entry.inventoryQuantity || ""} onChange={event => updateVaccineInventory(index, "inventoryQuantity", event.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={entry.confirmedGiven === true} onChange={event => updateVaccineInventory(index, "confirmedGiven", event.target.checked)} />Confirmed Administered</label></fieldset>)}</section>}
+            {immunizationVaccineEntries.length > 0 && <section className="mb-4 space-y-3 rounded-none border border-slate-200 p-4"><h3 className="text-sm font-semibold">Vaccine Administration — Inventory</h3><p className="text-xs text-slate-600">Select the matching inventory item and its stock-unit quantity. Do not repeat it in Medicines / Supplies.</p>{immunizationVaccineEntries.map((entry, index) => <fieldset key={entry.vaccineName} disabled={!(currentUser?.permissions || []).includes("items.dispense")} className="grid gap-2 border-t border-slate-100 pt-3 @xl:grid-cols-3"><legend className="text-sm font-medium">{entry.vaccineName}</legend><select aria-label={entry.vaccineName + " inventory item"} className="rounded-none border border-slate-200 p-2" value={entry.medicineId || ""} onChange={event => updateVaccineInventory(index, "medicineId", event.target.value)}><option value="">Select inventory item</option>{bhcMedicineInventory.map(item => <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>)}</select><input aria-label={entry.vaccineName + " inventory quantity"} className="rounded-none border border-slate-200 p-2" type="number" min="1" step="1" placeholder="Stock-unit quantity" value={entry.inventoryQuantity || ""} onChange={event => updateVaccineInventory(index, "inventoryQuantity", event.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={entry.confirmedGiven === true} onChange={event => updateVaccineInventory(index, "confirmedGiven", event.target.checked)} />Confirmed Administered</label></fieldset>)}</section>}
             <ImmunizationVisitFields
               vaccineOptions={CHILD_VACCINE_OPTIONS}
               entries={immunizationVaccineEntries}
@@ -5021,7 +5029,7 @@ export default function ConsultationWorkspace() {
                 <div className="space-y-5">
                   {prenatalSelected && <div>
                     <p className={MATERNAL_EYEBROW_CLASS}>Pregnancy Information</p>
-                    <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="grid gap-4 @xl:grid-cols-3">
                       <DatePickerField
                         label="Visit Date"
                         value={dateOfVisit}
@@ -5041,7 +5049,7 @@ export default function ConsultationWorkspace() {
                     </div>
                   </div>}
 
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-4 @xl:grid-cols-2">
                     {OB_SCORE_GP_FIELDS.map((field) => (
                       <FieldInput
                         key={field.key}
@@ -5059,7 +5067,7 @@ export default function ConsultationWorkspace() {
 
                   <div>
                     <p className={MATERNAL_EYEBROW_CLASS}>OB Score (TPAL)</p>
-                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    <div className="grid grid-cols-2 gap-4 @xl:grid-cols-4">
                       {OB_SCORE_TPAL_FIELDS.map((field) => (
                         <FieldInput
                           key={field.key}
@@ -5078,7 +5086,7 @@ export default function ConsultationWorkspace() {
 
                   {prenatalSelected && <div>
                     <p className={MATERNAL_EYEBROW_CLASS}>Current Prenatal Information</p>
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid gap-4 @xl:grid-cols-2">
                       {/* Calculated from LMP and the visit date, and still editable. */}
                       <FieldInput
                         label="AOG (Age of Gestation)"
@@ -5109,7 +5117,7 @@ export default function ConsultationWorkspace() {
                 delay={3}
               >
                 <LockedFormContent locked={patientGateLocked}>
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
                     <BpInputGroup
                       systolic={systolicBp}
                       diastolic={diastolicBp}
@@ -5163,7 +5171,7 @@ export default function ConsultationWorkspace() {
               delay={4}
             >
               <LockedFormContent locked={patientGateLocked}>
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-6 @xl:grid-cols-2 @3xl:grid-cols-3">
                   {MATERNAL_RISK_GROUPS.map((group) => (
                     <RiskCodeChecklist
                       key={group.key}
@@ -5184,7 +5192,7 @@ export default function ConsultationWorkspace() {
               delay={5}
             >
               <LockedFormContent locked={patientGateLocked}>
-                <div className="overflow-x-auto rounded-xl border border-[#E8ECF0]">
+                <div className="overflow-x-auto rounded-none border border-[#E8ECF0]">
                   <table className="w-full min-w-[520px] border-collapse text-left">
                     <thead>
                       <tr className="border-b border-[#EEF2F6] bg-[#F8FAFC]">
@@ -5192,7 +5200,7 @@ export default function ConsultationWorkspace() {
                           <th
                             key={heading}
                             scope="col"
-                            className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]"
+                            className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-[#374151]"
                           >
                             {heading}
                           </th>
@@ -5255,7 +5263,7 @@ export default function ConsultationWorkspace() {
               delay={6}
             >
               <LockedFormContent locked={patientGateLocked}>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 @xl:grid-cols-2">
                   <FieldSelect
                     label="Previous FP Method Used"
                     value={maternalData.previousFpMethodUsed}
@@ -5296,7 +5304,7 @@ export default function ConsultationWorkspace() {
               delay={7}
             >
               <LockedFormContent locked={patientGateLocked}>
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 @xl:grid-cols-3">
                   <FieldSelect
                     label="Immunization Type"
                     value={maternalData.immunizationThisVisit?.type || ""}
@@ -5350,7 +5358,7 @@ export default function ConsultationWorkspace() {
               delay={8}
             >
               <LockedFormContent locked={patientGateLocked}>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 @xl:grid-cols-2">
                   <FieldInput
                     label="Ultrasound Result"
                     value={maternalData.ultrasound?.result || ""}
@@ -5429,7 +5437,7 @@ export default function ConsultationWorkspace() {
             delay={3}
           >
             <LockedFormContent locked={patientGateLocked}>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 @xl:grid-cols-2">
                 <FieldSelect
                   label="Type of Client"
                   required
@@ -5573,7 +5581,7 @@ export default function ConsultationWorkspace() {
               subtitle="Record the official Hypertension and Diabetic Club monitoring sheet details for this visit."
               delay={3}
             >
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-4 @3xl:grid-cols-2">
                 {/* Blood pressure, pulse and SpO2 are recorded once, on the Vital Signs step. */}
                 {!usesConsultationSteps && (
                 <BpInputGroup
@@ -5683,7 +5691,7 @@ export default function ConsultationWorkspace() {
         {usesConsultationSteps && generalSelected && activeFormStep === ASSESSMENT_STEP && (
           <>
             {purposeFlow && <>
-            <div className="anim-fade-up grid gap-4 pb-1 sm:grid-cols-2" style={stagger(3)}>
+            <div className="anim-fade-up grid gap-4 pb-1 @xl:grid-cols-2" style={stagger(3)}>
               <FieldTextarea label="Chief Complaint" required name="chiefComplaint" error={validationErrors.chiefComplaint} value={chiefComplaint} onChange={event => { clearValidationError("chiefComplaint"); setChiefComplaint(event.target.value); }} placeholder="Describe the patient's chief complaint..." rows={3} />
               <FieldTextarea label="History of Present Illness / Present Concern" name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }}  rows={3} />
             </div>
@@ -5853,7 +5861,7 @@ export default function ConsultationWorkspace() {
               delay={4}
             >
               <LockedFormContent locked={patientGateLocked}>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
                   <BpInputGroup
                     systolic={systolicBp}
                     diastolic={diastolicBp}
@@ -5952,7 +5960,7 @@ export default function ConsultationWorkspace() {
             <button
               type="button"
               onClick={handleStepBack}
-              className="rounded-xl border border-[#E5E7EB] bg-white px-5 py-2.5 text-[12.5px] font-semibold text-[#475569] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
+              className="rounded-none border border-[#E5E7EB] bg-white px-5 py-2.5 text-[12.5px] font-semibold text-[#475569] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#DC2626]"
             >
               Back
             </button>
@@ -5963,7 +5971,7 @@ export default function ConsultationWorkspace() {
               type="button"
               onClick={handleContinueToNextAction}
               disabled={isPrimaryActionLoading}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-[12.5px] font-bold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded-none bg-[#DC2626] px-6 py-2.5 text-[12.5px] font-bold text-white transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isPrimaryActionLoading ? (
                 <>
@@ -5983,6 +5991,9 @@ export default function ConsultationWorkspace() {
       )}
       </>
       )}
+      </div>
+      {showProgramPanel && programPanel}
+      </div>
       </fieldset>
       </ConsultationWorkspaceBody>
 
@@ -6149,6 +6160,7 @@ export default function ConsultationWorkspace() {
         onContinue={() => setConnectionIssue(null)}
         onRetry={handleRetryFailedHealthRecord}
       />
+      </div>
     </DashboardLayout>
   );
 }
@@ -6221,12 +6233,12 @@ function CareDecisionStep({
       className="anim-fade-up ml-0 mr-auto w-full max-w-7xl"
       style={stagger(2)}
     >
-      <div className="rounded-2xl border border-[#E8ECF0] bg-white p-5 shadow-sm sm:p-6">
-        <div className="rounded-xl border border-[#F1F5F9] bg-[#FAFBFC] px-4 py-3">
+      <div className="rounded-none border border-[#E8ECF0] bg-white p-5 sm:p-6">
+        <div className="rounded-none border border-[#F1F5F9] bg-[#FAFBFC] px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
             Patient Summary
           </p>
-          <div className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-3 grid gap-x-6 gap-y-2 text-sm @xl:grid-cols-2 @3xl:grid-cols-4">
             <SummaryItem label="Patient" value={patientName || "Selected patient"} />
             <SummaryItem label="Classification" value={classification || "Not selected"} />
             <SummaryItem label="Date of Visit" value={formattedVisitDate} />
@@ -6243,7 +6255,7 @@ function CareDecisionStep({
             <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
               Follow-up Plan
             </p>
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 @2xl:grid-cols-3">
               {statusOptions.map((option) => {
                 const selected = normalizedStatus === option.value;
                 return (
@@ -6251,9 +6263,9 @@ function CareDecisionStep({
                     key={option.value}
                     type="button"
                     onClick={() => onStatusChange(option.value)}
-                    className={`rounded-xl border p-4 text-left transition ${
+                    className={`rounded-none border p-4 text-left transition ${
                       selected
-                        ? "border-[#B91C1C] bg-red-50 ring-2 ring-[#B91C1C]/10"
+                        ? "border-[#DC2626] bg-red-50 ring-2 ring-[#DC2626]/10"
                         : "border-[#E8ECF0] bg-white hover:border-red-100 hover:bg-[#FEF2F2]/40"
                     }`}
                   >
@@ -6262,7 +6274,7 @@ function CareDecisionStep({
                         {option.title}
                       </span>
                       {selected && (
-                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#B91C1C] text-white">
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#DC2626] text-white">
                           <Check size={12} strokeWidth={3} />
                         </span>
                       )}
@@ -6275,7 +6287,7 @@ function CareDecisionStep({
               })}
             </div>
             {errors.followUpStatus && (
-              <p className="mt-2 text-[11px] font-medium text-[#B91C1C]">
+              <p className="mt-2 text-[11px] font-medium text-[#DC2626]">
                 {errors.followUpStatus}
               </p>
             )}
@@ -6298,7 +6310,7 @@ function CareDecisionStep({
               <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[#9CA3AF]">
                 {referralLabel}
               </p>
-              <div className="inline-grid w-full max-w-sm grid-cols-2 overflow-hidden rounded-xl border border-[#E8ECF0] bg-white p-1">
+              <div className="inline-grid w-full max-w-sm grid-cols-2 overflow-hidden rounded-none border border-[#E8ECF0] bg-white p-1">
                 {[
                   { value: false, title: "No" },
                   { value: true, title: "Yes" },
@@ -6309,10 +6321,10 @@ function CareDecisionStep({
                       key={String(option.value)}
                       type="button"
                       onClick={() => onNeedsReferralChange(option.value)}
-                      className={`rounded-lg px-4 py-2.5 text-sm font-bold transition ${
+                      className={`rounded-none px-4 py-2.5 text-sm font-bold transition ${
                         selected
-                          ? "bg-[#B91C1C] text-white shadow-sm"
-                          : "text-[#64748B] hover:bg-red-50 hover:text-[#B91C1C]"
+                          ? "bg-[#DC2626] text-white"
+                          : "text-[#64748B] hover:bg-red-50 hover:text-[#DC2626]"
                       }`}
                     >
                       {option.title}
@@ -6328,7 +6340,7 @@ function CareDecisionStep({
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
+            className="inline-flex items-center justify-center gap-2 rounded-none bg-[#DC2626] px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-70"
           >
             {saving ? <ButtonSpinner /> : <Save size={15} />}
             {saving ? "Saving health record..." : "Save Health Record"}
@@ -6361,16 +6373,14 @@ function SummaryItem({ label, value }) {
    ═══════════════════════════════════════════════════════════════ */
 function FormSection({ title, subtitle, children, delay = 0, accent }) {
   return (
-    <div
-      className="anim-fade-up space-y-4 border-t border-[#F1F5F9] pt-5 pb-1"
+    <section
+      className={`anim-fade-up rounded-none border border-[#E5E7EB] bg-white ${
+        accent === "pink" ? "border-l-4 border-l-[#DC2626]" : ""
+      }`}
       style={stagger(delay)}
     >
-      <div>
-        <h2
-          className={`text-sm font-bold ${
-            accent === "pink" ? "text-pink-800" : "text-[#1A1A1A]"
-          }`}
-        >
+      <div className="border-b border-[#E5E7EB] px-4 py-2.5">
+        <h2 className="text-[14px] font-bold leading-snug text-[#111827]">
           {title}
         </h2>
 
@@ -6381,8 +6391,8 @@ function FormSection({ title, subtitle, children, delay = 0, accent }) {
         )}
       </div>
 
-      <div>{children}</div>
-    </div>
+      <div className="p-4">{children}</div>
+    </section>
   );
 }
 
@@ -6391,7 +6401,7 @@ function LockedFormContent({ locked, children }) {
 
   return (
     <fieldset disabled className="space-y-4">
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
+      <div className="rounded-none border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
         Select a patient first to continue.
       </div>
       <div className="pointer-events-none opacity-60">{children}</div>
@@ -6404,7 +6414,7 @@ function LockedFormContent({ locked, children }) {
 
 function MaternalClassificationWarning() {
   return (
-    <div className="mt-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
+    <div className="mt-4 flex items-start gap-3 rounded-none border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
       <AlertCircle size={16} className="mt-0.5 shrink-0" />
       <p className="text-xs leading-relaxed">
         Please verify the selected patient before creating a maternal record.
@@ -6432,7 +6442,7 @@ function MorbidityNotifiableReportingSection({ value, onChange }) {
   return (
     <div className="space-y-4">
       <div data-field="morbidityReportingStatus">
-        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[#374151]">
           Reporting Status
         </p>
         <div className="grid gap-2">
@@ -6447,12 +6457,12 @@ function MorbidityNotifiableReportingSection({ value, onChange }) {
                 value={option.value}
                 checked={value === option.value}
                 onChange={() => onChange(option.value)}
-                className="h-4 w-4 accent-[#B91C1C]"
+                className="h-4 w-4 accent-[#DC2626]"
               />
               <span
                 className={
                   value === option.value
-                    ? "font-semibold text-[#B91C1C]"
+                    ? "font-semibold text-[#DC2626]"
                     : "text-[#475569]"
                 }
               >
@@ -6475,21 +6485,21 @@ function FieldInput({
   ...props
 }) {
   const inputClass = error
-    ? "border-[#B91C1C] bg-white ring-2 ring-[#B91C1C]/10"
-    : "border-[#E5E7EB] bg-white focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10";
+    ? "border-[#DC2626] bg-white ring-2 ring-[#FECACA]"
+    : "border-[#D1D5DB] bg-white focus:border-[#DC2626] focus:ring-2 focus:ring-[#FECACA]";
 
   return (
     <div className={wrapperClassName}>
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
       <input
         {...props}
         aria-invalid={Boolean(error)}
-        className={`h-10 w-full rounded-lg border px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] disabled:cursor-not-allowed disabled:opacity-60 ${inputClass} ${className}`}
+        className={`h-9 w-full rounded-none border px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] disabled:cursor-not-allowed disabled:opacity-60 ${inputClass} ${className}`}
       />
       {error && (
-        <p className="mt-1 text-[11px] font-medium text-[#B91C1C]">{error}</p>
+        <p className="mt-1 text-[11px] font-medium text-[#DC2626]">{error}</p>
       )}
     </div>
   );
@@ -6505,23 +6515,23 @@ function FieldSelect({
   ...props
 }) {
   const selectClass = error
-    ? "border-[#B91C1C] bg-white ring-2 ring-[#B91C1C]/10"
-    : "border-[#E5E7EB] bg-white focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10";
+    ? "border-[#DC2626] bg-white ring-2 ring-[#FECACA]"
+    : "border-[#D1D5DB] bg-white focus:border-[#DC2626] focus:ring-2 focus:ring-[#FECACA]";
 
   return (
     <div className={wrapperClassName}>
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
       <select
         {...props}
         aria-invalid={Boolean(error)}
-        className={`h-10 w-full appearance-none rounded-lg border px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 ${selectClass} ${className}`}
+        className={`h-9 w-full appearance-none rounded-none border px-3 text-sm text-[#111827] outline-none transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60 ${selectClass} ${className}`}
       >
         {children}
       </select>
       {error && (
-        <p className="mt-1 text-[11px] font-medium text-[#B91C1C]">{error}</p>
+        <p className="mt-1 text-[11px] font-medium text-[#DC2626]">{error}</p>
       )}
     </div>
   );
@@ -6537,22 +6547,22 @@ function FieldTextarea({
   ...props
 }) {
   const textareaClass = error
-    ? "border-[#B91C1C] bg-white ring-2 ring-[#B91C1C]/10"
-    : "border-[#E5E7EB] bg-white focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10";
+    ? "border-[#DC2626] bg-white ring-2 ring-[#FECACA]"
+    : "border-[#D1D5DB] bg-white focus:border-[#DC2626] focus:ring-2 focus:ring-[#FECACA]";
 
   return (
     <div className={wrapperClassName}>
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
       <textarea
         {...props}
         aria-invalid={Boolean(error)}
         rows={rows}
-        className={`w-full resize-none rounded-lg border px-3.5 py-3 text-sm leading-relaxed text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] ${textareaClass} ${className}`}
+        className={`w-full resize-none rounded-none border px-3 py-2 text-sm leading-relaxed text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] ${textareaClass} ${className}`}
       />
       {error && (
-        <p className="mt-1 text-[11px] font-medium text-[#B91C1C]">{error}</p>
+        <p className="mt-1 text-[11px] font-medium text-[#DC2626]">{error}</p>
       )}
     </div>
   );
@@ -6561,7 +6571,7 @@ function FieldTextarea({
 function YesNoRadioGroup({ label, name, value, onChange, disabled = false }) {
   return (
     <div data-field={name}>
-      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[#374151]">
         {label}
       </p>
       <div className="flex min-h-10 flex-wrap items-center gap-x-6 gap-y-2">
@@ -6579,12 +6589,12 @@ function YesNoRadioGroup({ label, name, value, onChange, disabled = false }) {
               checked={(value || "No") === option}
               onChange={() => onChange(option)}
               disabled={disabled}
-              className="h-4 w-4 accent-[#B91C1C]"
+              className="h-4 w-4 accent-[#DC2626]"
             />
             <span
               className={
                 (value || "No") === option
-                  ? "font-semibold text-[#B91C1C]"
+                  ? "font-semibold text-[#DC2626]"
                   : "text-[#475569]"
               }
             >
@@ -6608,7 +6618,7 @@ function BpInputGroup({
 }) {
   return (
     <div data-field={name} tabIndex={error ? -1 : undefined}>
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">
         Blood Pressure (mmHg) {required && <span className="text-red-500">*</span>}
       </label>
       <div className="flex items-center gap-0">
@@ -6617,9 +6627,9 @@ function BpInputGroup({
           placeholder="Systolic"
           value={systolic}
           onChange={(event) => onSystolicChange(event.target.value)}
-          className="h-10 w-full rounded-l-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="h-9 w-full rounded-none border border-[#D1D5DB] bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] focus:border-[#DC2626] focus:ring-2 focus:ring-[#FECACA] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center border-y border-[#E5E7EB] bg-[#F9FAFB] text-sm font-bold text-[#6B7280]">
+        <div className="flex h-9 w-10 shrink-0 items-center justify-center border-y border-[#E5E7EB] bg-[#F9FAFB] text-sm font-bold text-[#6B7280]">
           /
         </div>
         <input
@@ -6627,11 +6637,11 @@ function BpInputGroup({
           placeholder="Diastolic"
           value={diastolic}
           onChange={(event) => onDiastolicChange(event.target.value)}
-          className="h-10 w-full rounded-r-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="h-9 w-full rounded-none border border-[#D1D5DB] bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] focus:border-[#DC2626] focus:ring-2 focus:ring-[#FECACA] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
       </div>
       {error ? (
-        <p className="mt-1 text-[11px] font-medium text-[#B91C1C]">{error}</p>
+        <p className="mt-1 text-[11px] font-medium text-[#DC2626]">{error}</p>
       ) : (
         <p className="mt-1 text-[9px] text-[#BFBFBF]">Systolic / Diastolic</p>
       )}
@@ -6677,9 +6687,9 @@ function RiskCodeChecklist({ eyebrow, options, values = {}, onChange }) {
                 type="checkbox"
                 checked={checked}
                 onChange={(event) => onChange(option.key, event.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#D1D5DB] accent-[#B91C1C]"
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#D1D5DB] accent-[#DC2626]"
               />
-              <span className={checked ? "font-semibold text-[#B91C1C]" : "text-[#475569]"}>
+              <span className={checked ? "font-semibold text-[#DC2626]" : "text-[#475569]"}>
                 {option.label}
               </span>
             </label>
@@ -6696,15 +6706,15 @@ function BmiOutputField({ weight, height }) {
 
   return (
     <div>
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">
         BMI
       </label>
-      <div className="flex h-10 w-full items-center justify-between rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3.5">
+      <div className="flex h-9 w-full items-center justify-between rounded-none border border-[#E5E7EB] bg-[#F9FAFB] px-3">
         <span className="text-sm font-bold text-[#0F172A]">
           {bmi === null ? "—" : formatBmi(bmi)}
         </span>
         {category && (
-          <span className="text-[11px] font-bold uppercase text-[#B91C1C]">
+          <span className="text-[11px] font-bold uppercase text-[#DC2626]">
             {category}
           </span>
         )}

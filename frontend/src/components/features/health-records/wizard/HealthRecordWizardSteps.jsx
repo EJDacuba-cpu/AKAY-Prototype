@@ -1,6 +1,5 @@
 import {
   CalendarDays,
-  Check,
   Clock,
 } from "lucide-react";
 
@@ -12,6 +11,9 @@ import ButtonSpinner from "../../../common/loading/ButtonSpinner";
  * The "Visit Overview" strip is part of the shell rather than each step because
  * the date and time it shows are properties of the visit being recorded, not of
  * whichever step happens to be on screen.
+ *
+ * Styled to the EHR minimalism system: sharp corners, 1px borders, no shadows,
+ * red (#DC2626) only for the primary action and the active/selected state.
  */
 export function WizardCard({
   title,
@@ -26,21 +28,21 @@ export function WizardCard({
 }) {
   return (
     <section className="anim-fade-up ml-0 mr-auto w-full max-w-6xl">
-      <div className={unboxed ? "" : "rounded-xl border border-[#E8ECF0] bg-white px-5 py-5 shadow-sm sm:px-6"}>
+      <div className={unboxed ? "" : "rounded-none border border-[#E5E7EB] bg-white p-4 sm:p-5"}>
         {backAction}
         {/* The step-based consultation carries its title above the card, so the
             heading here is optional; the Visit Overview strip stays either way. */}
         {(title || subtitle || showVisitOverview || headerActions) && (
-        <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           {title || subtitle ? (
           <div className="min-w-0">
             {title && (
-              <h2 className="text-lg font-bold tracking-tight text-[#0F172A]">
+              <h2 className="text-lg font-bold leading-snug tracking-tight text-[#111827]">
                 {title}
               </h2>
             )}
             {subtitle && (
-              <p className="mt-1 text-[13px] leading-relaxed text-[#64748B]">
+              <p className="mt-0.5 text-[13px] leading-relaxed text-[#374151]">
                 {subtitle}
               </p>
             )}
@@ -51,20 +53,20 @@ export function WizardCard({
           {(showVisitOverview || headerActions) && (
             <div className="flex w-full min-w-0 flex-col gap-3 sm:w-auto sm:items-end">
               {showVisitOverview && (
-                <div className="flex flex-none flex-wrap items-center gap-3.5">
-                  <span className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-[#94A3B8]">
+                <div className="flex flex-none flex-wrap items-center gap-3">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[#6B7280]">
                     Visit Overview
                   </span>
-                  <span className="h-4 w-px bg-[#E2E8F0]" aria-hidden="true" />
+                  <span className="h-4 w-px bg-[#D1D5DB]" aria-hidden="true" />
                   <span className="flex items-center gap-1.5">
-                    <CalendarDays size={14} className="text-[#B91C1C]" />
-                    <span className="text-[12.5px] font-bold text-[#0F172A]">
+                    <CalendarDays size={14} className="text-[#DC2626]" />
+                    <span className="text-[13px] font-semibold text-[#111827]">
                       {visitDate}
                     </span>
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <Clock size={14} className="text-[#B91C1C]" />
-                    <span className="text-[12.5px] font-bold text-[#0F172A]">
+                    <Clock size={14} className="text-[#DC2626]" />
+                    <span className="text-[13px] font-semibold text-[#111827]">
                       {visitTime}
                     </span>
                   </span>
@@ -105,7 +107,7 @@ export function WizardFooter({
 
   return (
     <div
-      className={`mt-8 flex items-center gap-3 ${
+      className={`mt-6 flex items-center gap-3 ${
         align === "between" ? "justify-between" : "justify-end"
       }`}
     >
@@ -113,12 +115,12 @@ export function WizardFooter({
         <button
           type="button"
           onClick={onBack}
-          className="rounded-xl border border-[#E5E7EB] bg-white px-5 py-2.5 text-[12.5px] font-semibold text-[#475569] transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C]"
+          className="rounded-none border border-[#D1D5DB] bg-white px-4 py-2 text-[13px] font-semibold leading-tight text-[#111827] transition-colors duration-150 hover:bg-[#F9FAFB] active:bg-[#F3F4F6]"
         >
           {backLabel}
         </button>
       ) : helper ? (
-        <p className="hidden min-w-0 truncate text-[11px] font-medium text-[#94A3B8] sm:block">
+        <p className="hidden min-w-0 truncate text-[12px] text-[#6B7280] sm:block">
           {helper}
         </p>
       ) : (
@@ -133,7 +135,7 @@ export function WizardFooter({
               onClick={onNext}
               disabled={nextDisabled || nextBusy}
               aria-busy={nextBusy}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-[12.5px] font-bold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded-none bg-[#DC2626] px-4 py-2 text-[13px] font-semibold leading-tight text-white transition-colors duration-150 hover:bg-[#B91C1C] active:bg-[#991B1B] disabled:cursor-not-allowed disabled:bg-[#D1D5DB] disabled:text-[#6B7280]"
             >
               {nextBusy ? (
                 <>
@@ -147,68 +149,6 @@ export function WizardFooter({
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * The six programs / services, grouped for scanning only. Grouping is visual:
- * it does not change what selecting one does, and nothing is ever selected on
- * the encoder's behalf from the diagnosis or vitals.
- */
-const PROGRAM_GROUPS = [
-  { key: "services", title: "Services", programs: ["Maternal", "Family Planning", "EPI"] },
-  {
-    key: "monitoring",
-    title: "Condition Monitoring / Evaluation",
-    programs: ["TB", "Hypertension", "Diabetes"],
-  },
-];
-
-/**
- * Program / service selection at the end of Clinical Assessment. Optional:
- * selecting nothing is a general consultation. Cards, eligibility, and the
- * primary toggle are exactly the ones Current Visit used; only their grouping
- * is new.
- */
-export function ProgramServicePicker({ programs, selected = [], primary, onSelect, onPrimaryChange, error }) {
-  const grouped = new Set(PROGRAM_GROUPS.flatMap((group) => group.programs));
-  // Anything not assigned a group is still offered - a program is never
-  // silently hidden because the grouping list was not updated.
-  const groups = [
-    ...PROGRAM_GROUPS.map((group) => ({
-      ...group,
-      items: programs.filter((program) => group.programs.includes(program.key)),
-    })),
-    { key: "other", title: "Other", items: programs.filter((program) => !grouped.has(program.key)) },
-  ].filter((group) => group.items.length > 0);
-
-  return (
-    <div data-field="healthRecordType" className="space-y-5">
-      {groups.map((group) => (
-        <div key={group.key}>
-          <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">
-            {group.title}
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {group.items.map((program) => {
-              const Icon = program.icon;
-              const active = selected.includes(program.key);
-              return <div key={program.key} className={"relative rounded-xl border " + (active ? "border-red-600 bg-red-50" : "border-slate-200 bg-white")}>
-                <button type="button" disabled={program.disabled} title={program.disabledReason} aria-pressed={active} onClick={() => onSelect(program.key)} className="flex h-full min-h-[112px] w-full flex-col items-start p-3 text-left disabled:cursor-not-allowed disabled:opacity-40">
-                  <span className="mb-2 rounded-md border border-slate-200 bg-white p-1.5"><Icon size={15} className="text-red-700" /></span>
-                  <span className="text-xs font-semibold text-slate-900">{program.title}</span>
-                  <span className="mt-1 text-[11px] text-slate-500">{program.description}</span>
-                  {program.disabled && <span className="mt-2 text-[10px] italic">Not applicable to this patient</span>}
-                  {active && <Check size={14} className="absolute bottom-3 right-3 text-red-700" />}
-                </button>
-                {active && <button type="button" onClick={() => onPrimaryChange(program.key)} aria-label={"Make " + program.title + " primary"} className="absolute right-2 top-2 rounded border border-red-200 bg-white px-1.5 py-0.5 text-[9px] text-red-700">{primary === program.key ? "PRIMARY" : "Make primary"}</button>}
-              </div>;
-            })}
-          </div>
-        </div>
-      ))}
-      {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
     </div>
   );
 }
@@ -245,8 +185,8 @@ export function NextActionStep({
       {indicator}
       {!indicator && (
         <>
-          <h3 className="text-[15px] font-bold text-[#0F172A]">Next Action</h3>
-          <p className="mb-4 mt-0.5 text-[12.5px] text-[#64748B]">
+          <h3 className="text-[15px] font-semibold text-[#111827]">Next Action</h3>
+          <p className="mb-4 mt-0.5 text-[13px] text-[#374151]">
             What should be done next?
           </p>
         </>
@@ -286,6 +226,7 @@ export function ConsultationReviewStep({
 }) {
   return (
     <WizardCard
+      unboxed
       title={indicator ? "" : "Review & Confirm"}
       subtitle={
         indicator ? "" : "Confirm the consultation details below before saving."
@@ -299,12 +240,12 @@ export function ConsultationReviewStep({
       {errors.length > 0 && (
         <div
           role="alert"
-          className="mb-4 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3"
+          className="mb-4 rounded-none border border-[#FECACA] border-l-4 border-l-[#DC2626] bg-[#FEF2F2] p-4"
         >
-          <p className="text-[12.5px] font-bold text-[#B91C1C]">
+          <p className="text-[13px] font-bold text-[#991B1B]">
             Please review before saving
           </p>
-          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12px] text-[#B91C1C]">
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[13px] text-[#991B1B]">
             {errors.map((message) => (
               <li key={message}>{message}</li>
             ))}
@@ -315,31 +256,31 @@ export function ConsultationReviewStep({
         {sections.map((section) => (
           <section
             key={section.key}
-            className="rounded-xl border border-[#E8ECF0] bg-white"
+            className="rounded-none border border-[#E5E7EB] bg-white"
           >
-            <div className="flex items-center justify-between gap-3 border-b border-[#F1F5F9] px-4 py-2.5">
-              <h3 className="text-[13px] font-bold text-[#0F172A]">{section.title}</h3>
+            <div className="flex items-center justify-between gap-3 border-b border-[#E5E7EB] bg-[#F9FAFB] px-4 py-2">
+              <h3 className="text-[12px] font-semibold uppercase tracking-wide text-[#111827]">{section.title}</h3>
               {section.stepKey && (
                 <button
                   type="button"
                   onClick={() => onEditStep(section.stepKey)}
-                  className="text-[11.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]"
+                  className="text-[12px] font-semibold text-[#DC2626] hover:text-[#991B1B]"
                 >
                   Edit
                 </button>
               )}
             </div>
-            <dl className="divide-y divide-[#F1F5F9]">
+            <dl className="divide-y divide-[#E5E7EB]">
               {section.rows.map(({ label, value }) => (
                 <div
                   key={label}
-                  className="grid gap-1 px-4 py-2.5 sm:grid-cols-[180px_minmax(0,1fr)] sm:gap-4"
+                  className="grid gap-1 px-4 py-2 sm:grid-cols-[180px_minmax(0,1fr)] sm:gap-4"
                 >
-                  <dt className="text-[10.5px] font-bold uppercase tracking-wider text-[#94A3B8]">
+                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-[#6B7280]">
                     {label}
                   </dt>
-                  <dd className="min-w-0 whitespace-pre-line break-words text-[12.5px] text-[#0F172A]">
-                    {value || <span className="text-[#94A3B8]">Not recorded</span>}
+                  <dd className="min-w-0 whitespace-pre-line break-words text-[13px] text-[#111827]">
+                    {value || <span className="text-[#9CA3AF]">Not recorded</span>}
                   </dd>
                 </div>
               ))}

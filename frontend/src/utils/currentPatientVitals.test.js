@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getCurrentVitalRecord, getVitalRecordDate } from "./currentPatientVitals.js";
+import {
+  getCurrentVitalRecord,
+  getLatestVitalRecord,
+  getVitalRecordDate,
+  isVitalRecordToday,
+} from "./currentPatientVitals.js";
 import { calculateBmi } from "./bmi.js";
 
 const now = new Date("2026-09-24T04:00:00Z");
@@ -49,4 +54,16 @@ test("partial current vitals never borrow old height or weight for BMI", () => {
   assert.equal(selected, current);
   assert.equal(calculateBmi(selected.weight, selected.height), null);
   assert.equal(calculateBmi(60, 160).toFixed(1), "23.4");
+});
+
+test("latest vitals ignore the day and skip records with no measurements", () => {
+  const older = { dateRecorded: "2026-09-10T08:00:00+08:00", pulse: 80 };
+  const newer = { dateRecorded: "2026-09-18T08:00:00+08:00", weight: 60 };
+  const empty = { dateRecorded: "2026-09-22T08:00:00+08:00" };
+  assert.equal(getLatestVitalRecord([older, empty, newer]), newer);
+  assert.equal(getLatestVitalRecord([empty]), null);
+  assert.equal(getLatestVitalRecord([]), null);
+  assert.equal(isVitalRecordToday(newer, now), false);
+  assert.equal(isVitalRecordToday({ dateRecorded: "2026-09-24T09:00:00+08:00", pulse: 70 }, now), true);
+  assert.equal(isVitalRecordToday(null, now), false);
 });

@@ -110,6 +110,16 @@ function getRegisteredDate(patient) {
   );
 }
 
+/** Registration is either "child" or "general"; the backend defaults to general. */
+function getRegistrationType(patient) {
+  const value = String(
+    patient.registrationType || patient.registration_type || patient.patientType || "",
+  )
+    .trim()
+    .toLowerCase();
+  return value === "child" ? "Child" : "General";
+}
+
 function getPatientDisplayId(patient) {
   return formatDisplayValue(patient.patientId || patient.id, "Not recorded");
 }
@@ -125,7 +135,7 @@ function DetailField({ label, value }) {
   );
 }
 
-export default function PatientDirectoryCard({ patient, basePath, variant }) {
+export default function PatientDirectoryCard({ patient, basePath, variant, onSelect, selected = false }) {
   const routePatientId = formatDisplayValue(patient.id || patient.patientId, "");
   const patientName = formatPatientName(patient, "Unnamed Patient");
   const displayId = getPatientDisplayId(patient);
@@ -135,6 +145,7 @@ export default function PatientDirectoryCard({ patient, basePath, variant }) {
   const contact = getPatientContact(patient);
   const location = getPatientLocation(patient);
   const occupation = formatDisplayValue(patient.occupation, "Not recorded");
+  const registrationType = getRegistrationType(patient);
   const birthDate = formatDate(getBirthDate(patient));
   const registeredDate = formatDate(getRegisteredDate(patient));
   // Sex and age head the card on their own now; the barangay moved down to the
@@ -143,8 +154,43 @@ export default function PatientDirectoryCard({ patient, basePath, variant }) {
     [sex, age].filter(Boolean).join(` ${String.fromCharCode(183)} `) || ageSex;
 
   if (variant === "clinical") {
+    // With onSelect the whole card opens the directory's summary panel; the
+    // Open Profile link below still navigates straight to the full profile.
+    const selectProps = onSelect
+      ? {
+          role: "button",
+          tabIndex: 0,
+          "aria-pressed": selected,
+          "aria-label": `View summary: ${patientName}, ID ${displayId}`,
+          "data-selected": selected,
+          onClick: () => onSelect(routePatientId),
+          onKeyDown: (event) => {
+            if (event.target !== event.currentTarget) return;
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onSelect(routePatientId);
+            }
+          },
+        }
+      : {};
+
     return (
-      <article className="clinical-patient">
+      <article className="clinical-patient" {...selectProps}>
+        <div className="clinical-patient__top">
+          <span className="clinical-patient__barangay">
+            <MapPin size={12} aria-hidden="true" />
+            <span>
+              <span className="sr-only">Barangay: </span>
+              {formatDisplayValue(location, "Barangay not recorded")}
+            </span>
+          </span>
+          <span
+            className="clinical-patient__badge"
+            data-type={registrationType.toLowerCase()}
+          >
+            {registrationType}
+          </span>
+        </div>
         <header className="clinical-patient__identity">
           <h3 className="clinical-patient__name">{patientName}</h3>
           <p className="clinical-patient__id">Patient ID #{displayId}</p>
@@ -152,17 +198,13 @@ export default function PatientDirectoryCard({ patient, basePath, variant }) {
         <dl className="clinical-patient__fields">
           {[
             ["Age", formatDisplayValue(age, "Not recorded")],
-            ["Barangay", formatDisplayValue(location, "Not recorded")],
             ["Sex", formatDisplayValue(sex, "Not recorded")],
             ["Occupation", occupation],
             ["Date of birth", birthDate],
             ["Contact", contact],
             ["Registered", registeredDate],
           ].map(([label, value]) => (
-            <div
-              key={label}
-              className={label === "Registered" ? "clinical-patient__registered" : undefined}
-            >
+            <div key={label}>
               <dt>{label}</dt>
               <dd>{value}</dd>
             </div>
@@ -172,6 +214,7 @@ export default function PatientDirectoryCard({ patient, basePath, variant }) {
           <Link
             to={`${basePath}/patients/${routePatientId}`}
             className="clinical-patient__open"
+            onClick={(event) => event.stopPropagation()}
             aria-label={`Open Profile: ${patientName}, ID ${displayId}`}
           >
             Open Profile

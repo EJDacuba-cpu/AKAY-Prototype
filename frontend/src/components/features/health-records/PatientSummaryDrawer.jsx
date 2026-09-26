@@ -1,20 +1,15 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router";
 import Drawer from "../../common/drawer/Drawer";
 import PatientBackgroundTab from "../patients/PatientBackgroundTab";
-import { getBhcPatientById, updatePatientMedicalBackground } from "../../../services/patientService";
-import { getHealthRecordsByPatient } from "../../../services/healthRecordService";
+import SummarySection from "../patients/SummarySection";
+import usePatientSummary, { patientSummaryQueryKey } from "../../../hooks/usePatientSummary";
+import { updatePatientMedicalBackground } from "../../../services/patientService";
 import { formatLongDate, formatPatientName } from "../../../utils/formatters";
-import { getRecordDateValue, getServiceTypeLabel, isMaternalRecord } from "../../../utils/healthRecordPrograms";
+import { getRecordDateValue, getServiceTypeLabel } from "../../../utils/healthRecordPrograms";
 import { queryKeys } from "../../../utils/queryKeys";
 import { buildConsultationProfileState } from "../../../utils/profileNavigation";
-
-function SummarySection({ title, rows }) {
-  return <section className="mt-5"><h3 className="mb-2 text-[10px] uppercase tracking-wider text-slate-400">{title}</h3>
-    <dl className="space-y-3 rounded-lg border border-slate-100 bg-slate-50/70 p-3">{rows.map(([label, value]) => <div key={label}><dt className="text-[11px] text-slate-500">{label}</dt><dd className="mt-1 break-words text-xs text-slate-900">{value || "Not recorded"}</dd></div>)}</dl>
-  </section>;
-}
 
 export default function PatientSummaryDrawer({ patientId, open, onClose, basePath = "/bhc" }) {
   const client = useQueryClient();
@@ -35,20 +30,13 @@ export default function PatientSummaryDrawer({ patientId, open, onClose, basePat
   const [section, setSection] = useState("medical");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const { data, isPending, error, refetch } = useQuery({
-    queryKey: ["consultation-patient-summary", patientId],
-    enabled: Boolean(open && patientId),
-    queryFn: async () => {
-      const [patient, records] = await Promise.all([getBhcPatientById(patientId), getHealthRecordsByPatient(patientId)]);
-      return { patient, records: [...records].sort((a, b) => new Date(getRecordDateValue(b)) - new Date(getRecordDateValue(a))) };
-    },
-  });
+  const { data, isPending, error, refetch, latest, maternalSummary: maternal } = usePatientSummary(patientId, { enabled: open });
   async function saveBackground(background) {
     setSaving(true);
     setSaveError("");
     try {
       const patient = await updatePatientMedicalBackground(patientId, background);
-      client.setQueryData(["consultation-patient-summary", patientId], current => ({ ...current, patient }));
+      client.setQueryData(patientSummaryQueryKey(patientId), current => ({ ...current, patient }));
       await Promise.all([
         client.invalidateQueries({ queryKey: queryKeys.patientDetails("bhc", patientId) }),
         client.invalidateQueries({ queryKey: queryKeys.patients("bhc") }),
@@ -60,14 +48,6 @@ export default function PatientSummaryDrawer({ patientId, open, onClose, basePat
     } finally { setSaving(false); }
   }
   const background = data?.patient.medicalBackground;
-  const latest = data?.records[0];
-  const maternal = data?.records.find(isMaternalRecord);
-  const maternalData = maternal?.maternalData || maternal?.maternal_data || {};
-  const immunizations = [
-    ...Object.entries(maternalData.tetanusToxoidStatus || {}),
-    ...Object.entries(maternalData.tetanusDiphtheriaStatus || {}),
-  ].filter(([, value]) => value).sort((a, b) => new Date(b[1]) - new Date(a[1]));
-  const ultrasound = maternalData.ultrasound || {};
   return <Drawer open={open} onClose={saving ? undefined : onClose} title="Patient Summary" widthClassName="w-full sm:w-[400px]">
     <div className="flex min-h-full flex-col p-4">
       {isPending ? <p role="status" className="text-sm text-slate-500">Loading patient summary...</p> : error ? <div role="alert"><p>Unable to load patient summary.</p><button type="button" onClick={() => refetch()} className="mt-2 text-sm text-red-700">Retry</button></div> : <>
@@ -80,7 +60,7 @@ export default function PatientSummaryDrawer({ patientId, open, onClose, basePat
           <SummarySection title="Family History" rows={[["Similar Illness", background.familyHistory.similarIllness], ["Chronic Illness", background.familyHistory.chronicIllness], ["Hereditary Illness", background.familyHistory.hereditaryIllness]]} />
           <SummarySection title="Latest Consultation" rows={latest ? [["Date", formatLongDate(getRecordDateValue(latest))], ["Program", getServiceTypeLabel(latest)], ["Chief Complaint", latest.chiefComplaint], ["Initial Diagnosis", latest.diagnosis], ["Medicine / Treatment", latest.medication || latest.treatmentNotes], ["Outcome", latest.outcome]] : [["Consultation", "No consultation recorded yet"]]} />
         </>}
-        {maternal && <SummarySection title="Maternal / Prenatal" rows={[["Latest Immunization", immunizations.length ? `${immunizations[0][0].toUpperCase()} · ${formatLongDate(immunizations[0][1])}` : "No immunization record yet"], ["Latest Ultrasound", ultrasound.date || ultrasound.datePerformed ? formatLongDate(ultrasound.date || ultrasound.datePerformed) : "No ultrasound record yet"]]} />}
+        {maternal && <SummarySection title="Maternal / Prenatal" rows={[["Latest Immunization", maternal.latestImmunization ? `${maternal.latestImmunization[0].toUpperCase()} · ${formatLongDate(maternal.latestImmunization[1])}` : "No immunization record yet"], ["Latest Ultrasound", maternal.latestUltrasoundDate ? formatLongDate(maternal.latestUltrasoundDate) : "No ultrasound record yet"]]} />}
         {editing && <div className="mt-5">
           <div className="mb-3 flex gap-2">{[["medical", "Past Medical History"], ["family", "Family History"]].map(([key, label]) => <button key={key} type="button" onClick={() => setSection(key)} className={`rounded border px-2 py-2 text-xs ${section === key ? "border-red-200 text-red-700" : "border-slate-200 text-slate-500"}`}>{label}</button>)}</div>
           {["medical", "family"].map(key => <div key={key} hidden={section !== key}><PatientBackgroundTab section={key} background={background} saving={saving} onSave={saveBackground} compact startEditing sharedDraft={draft} onDraftChange={setDraft} onEditingDone={() => setEditing(false)} /></div>)}

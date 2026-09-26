@@ -51,3 +51,32 @@ export function getCurrentVitalRecord(records = [], now = new Date()) {
 
   return latest;
 }
+
+/**
+ * The most recent record with any vital measurement, whatever day it was
+ * taken. The profile header shows this with its date so a reading from last
+ * week is never presented as today's; getCurrentVitalRecord stays the
+ * today-only source for screens that must not show stale values.
+ */
+export function getLatestVitalRecord(records = []) {
+  let latest = null;
+  let latestTime = -Infinity;
+
+  for (const record of records) {
+    if (!record || !vitalFields.some((key) => hasVitalValue(record[key]))) continue;
+    const date = getVitalRecordDate(record);
+    if (!date) continue;
+    if (date.getTime() > latestTime) {
+      latest = record;
+      latestTime = date.getTime();
+    }
+  }
+
+  return latest;
+}
+
+/** True when the record's measurement was taken on the clinic's current day. */
+export function isVitalRecordToday(record, now = new Date()) {
+  const date = record ? getVitalRecordDate(record) : null;
+  return Boolean(date) && dayFormatter.format(date) === dayFormatter.format(now);
+}

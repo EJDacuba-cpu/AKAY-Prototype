@@ -104,101 +104,102 @@ export default function Login() {
 
   return (
     <div
-      className="flex min-h-dvh flex-col items-center justify-center bg-slate-50 px-4 py-8 font-sans text-slate-900 sm:px-6"
+      className="flex h-dvh flex-col overflow-y-auto bg-white px-4 py-8 font-sans text-slate-900 short:py-4 tiny:py-3 sm:px-6"
       style={{ "--color-primary": "#B91C1C", "--color-primary-hover": "#991B1B", "--color-ring": "#B91C1C33" }}
     >
-      <main aria-labelledby="login-title" className="w-full max-w-[420px] rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-        <header className="text-center">
-          <img src="/akay-logo-only.svg" alt="AKAY logo" className="mx-auto size-16 rounded-full object-contain" draggable="false" />
-          <p className="mt-3 text-2xl font-bold tracking-tight text-[var(--color-primary)]">AKAY</p>
-          <p className="mt-1 text-sm font-medium leading-5 text-slate-700">Community Electronic Health Records<br />&amp; Referral Tracking System</p>
-          <p className="mt-2 text-xs text-slate-500">Bulakan, Bulacan</p>
-        </header>
+      <div className="m-auto w-full max-w-[420px]">
+        <main aria-labelledby="login-title">
+          <header className="text-center">
+            <img src="/akay-logo-only.svg" alt="AKAY logo" className="mx-auto size-16 rounded-full short:size-12 tiny:size-10 object-contain" draggable="false" />
+            <p className="mt-3 text-2xl font-bold short:mt-2 short:text-xl tracking-tight text-[var(--color-primary)]">AKAY</p>
+            <p className="mt-1 text-sm font-medium leading-5 text-slate-700">Community Electronic Health Records<br />&amp; Referral Tracking System</p>
+            <p className="mt-2 text-xs text-slate-500 short:mt-1">Bulakan, Bulacan</p>
+          </header>
 
-        <div className="my-6 border-t border-slate-100" />
-        <h1 id="login-title" style={{ fontFamily: "var(--font-sans)" }} className="text-xl font-semibold tracking-tight">
-          {isReset ? "Request password reset" : "Sign in"}
-        </h1>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          {isReset
-            ? "Enter your registered email address. An administrator must approve your request before you can reset your password."
-            : "Access patient health records and track referrals."}
-        </p>
-        {sessionNotice && <p role="status" className="mt-4 rounded-md bg-slate-50 p-3 text-sm leading-5 text-slate-600">{sessionNotice}</p>}
+          <h1 id="login-title" style={{ fontFamily: "var(--font-sans)" }} className="mt-8 text-center text-xl short:mt-5 tiny:mt-3 font-semibold tracking-tight">
+            {isReset ? "Request password reset" : "Sign in"}
+          </h1>
+          <p className="mt-2 text-center text-sm leading-6 short:mt-1 text-slate-600">
+            {isReset
+              ? "Enter your registered email address. An administrator must approve your request before you can reset your password."
+              : "Access patient health records and track referrals."}
+          </p>
+          {sessionNotice && <p role="status" className="mt-4 rounded-md bg-slate-50 p-3 text-sm leading-5 text-slate-600">{sessionNotice}</p>}
 
-        <form onSubmit={isReset ? handleResetRequest : handleSubmit} noValidate aria-busy={isLoading} className="mt-6 space-y-4">
-          <div>
-            <label htmlFor={isReset ? "resetEmail" : "email"} className="mb-2 block text-sm font-medium">Email address</label>
-            <Input
-              id={isReset ? "resetEmail" : "email"}
-              name={isReset ? "resetEmail" : "email"}
-              type="email"
-              autoComplete={isReset ? "email" : "username"}
-              autoCapitalize="none"
-              spellCheck={false}
-              required
-              disabled={isLoading || (isReset && Boolean(resetSuccess))}
-              value={isReset ? resetEmail : email}
-              onChange={(e) => {
-                if (isReset) setResetEmail(e.target.value);
-                else setEmail(e.target.value);
-                clearFieldError(isReset ? "resetEmail" : "email");
-              }}
-              aria-invalid={Boolean(isReset ? fieldErrors.resetEmail : fieldErrors.email)}
-              aria-describedby={(isReset ? fieldErrors.resetEmail : fieldErrors.email) ? "email-error" : undefined}
-              placeholder="Enter your registered email"
-            />
-            {(isReset ? fieldErrors.resetEmail : fieldErrors.email) && (
-              <p id="email-error" role="alert" className="mt-2 text-xs text-red-700">{isReset ? fieldErrors.resetEmail : fieldErrors.email}</p>
-            )}
-          </div>
-
-          {!isReset && (
+          <form onSubmit={isReset ? handleResetRequest : handleSubmit} noValidate aria-busy={isLoading} className="mt-6 space-y-4 short:mt-4 short:space-y-3">
             <div>
-              <label htmlFor="password" className="mb-2 block text-sm font-medium">Password</label>
-              <div className="relative">
-                <Input
-                  id="password" name="password" type={showPassword ? "text" : "password"}
-                  autoComplete="current-password" required disabled={isLoading}
-                  value={password} onChange={(e) => { setPassword(e.target.value); clearFieldError("password"); }}
-                  aria-invalid={Boolean(fieldErrors.password)}
-                  aria-describedby={fieldErrors.password ? "password-error" : undefined}
-                  placeholder="Enter your password" className="pr-12"
-                />
-                <Button type="button" variant="ghost" size="icon" className="absolute right-0.5 top-0.5" disabled={isLoading}
-                  aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword}
-                  onClick={() => setShowPassword((current) => !current)}>
-                  {showPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
-                </Button>
+              <label htmlFor={isReset ? "resetEmail" : "email"} className="mb-2 block text-sm font-medium">Email address</label>
+              <Input
+                id={isReset ? "resetEmail" : "email"}
+                name={isReset ? "resetEmail" : "email"}
+                type="email"
+                autoComplete={isReset ? "email" : "username"}
+                autoCapitalize="none"
+                spellCheck={false}
+                required
+                disabled={isLoading || (isReset && Boolean(resetSuccess))}
+                value={isReset ? resetEmail : email}
+                onChange={(e) => {
+                  if (isReset) setResetEmail(e.target.value);
+                  else setEmail(e.target.value);
+                  clearFieldError(isReset ? "resetEmail" : "email");
+                }}
+                aria-invalid={Boolean(isReset ? fieldErrors.resetEmail : fieldErrors.email)}
+                aria-describedby={(isReset ? fieldErrors.resetEmail : fieldErrors.email) ? "email-error" : undefined}
+                placeholder="Enter your registered email"
+              />
+              {(isReset ? fieldErrors.resetEmail : fieldErrors.email) && (
+                <p id="email-error" role="alert" className="mt-2 text-xs text-red-700">{isReset ? fieldErrors.resetEmail : fieldErrors.email}</p>
+              )}
+            </div>
+
+            {!isReset && (
+              <div>
+                <label htmlFor="password" className="mb-2 block text-sm font-medium">Password</label>
+                <div className="relative">
+                  <Input
+                    id="password" name="password" type={showPassword ? "text" : "password"}
+                    autoComplete="current-password" required disabled={isLoading}
+                    value={password} onChange={(e) => { setPassword(e.target.value); clearFieldError("password"); }}
+                    aria-invalid={Boolean(fieldErrors.password)}
+                    aria-describedby={fieldErrors.password ? "password-error" : undefined}
+                    placeholder="Enter your password" className="pr-12"
+                  />
+                  <Button type="button" variant="ghost" size="icon" className="absolute right-0.5 top-0.5" disabled={isLoading}
+                    aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword}
+                    onClick={() => setShowPassword((current) => !current)}>
+                    {showPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
+                  </Button>
+                </div>
+                {fieldErrors.password && <p id="password-error" role="alert" className="mt-2 text-xs text-red-700">{fieldErrors.password}</p>}
               </div>
-              {fieldErrors.password && <p id="password-error" role="alert" className="mt-2 text-xs text-red-700">{fieldErrors.password}</p>}
-            </div>
-          )}
+            )}
 
-          {error && <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-5 text-red-800">{error}</p>}
-          {resetSuccess && (
-            <div role="status" className="flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm leading-5 text-emerald-800">
-              <CheckCircle2 size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
-              <p>{resetSuccess}</p>
-            </div>
-          )}
-          <Button type="submit" className="w-full" disabled={isLoading || (isReset && Boolean(resetSuccess))}>
-            {isLoading && <ButtonSpinner />}
-            {isReset ? (isLoading ? "Submitting request…" : "Submit reset request") : (isLoading ? "Signing in…" : "Sign in")}
-          </Button>
-        </form>
+            {error && <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-5 text-red-800">{error}</p>}
+            {resetSuccess && (
+              <div role="status" className="flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm leading-5 text-emerald-800">
+                <CheckCircle2 size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+                <p>{resetSuccess}</p>
+              </div>
+            )}
+            <Button type="submit" className="w-full" disabled={isLoading || (isReset && Boolean(resetSuccess))}>
+              {isLoading && <ButtonSpinner />}
+              {isReset ? (isLoading ? "Submitting request…" : "Submit reset request") : (isLoading ? "Signing in…" : "Sign in")}
+            </Button>
+          </form>
 
-        <div className="mt-2 text-center">
-          <Button type="button" variant="link" disabled={isLoading} onClick={switchMode}>
-            {isReset ? "Back to sign in" : "Forgot password?"}
-          </Button>
-        </div>
-        <div className="mt-5 flex items-start justify-center gap-2 border-t border-slate-100 pt-5 text-center text-xs leading-5 text-slate-500">
-          <LockKeyhole size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-          <p>For authorized BHC and RHU personnel only.</p>
-        </div>
-      </main>
-      <footer className="mt-5 text-center text-xs text-slate-500">&copy; {new Date().getFullYear()} AKAY</footer>
+          <div className="mt-2 text-center short:mt-0">
+            <Button type="button" variant="link" disabled={isLoading} onClick={switchMode}>
+              {isReset ? "Back to sign in" : "Forgot password?"}
+            </Button>
+          </div>
+          <div className="mt-6 flex items-start justify-center gap-2 short:mt-3 text-center text-xs leading-5 text-slate-500">
+            <LockKeyhole size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <p>For authorized BHC and RHU personnel only.</p>
+          </div>
+        </main>
+        <footer className="mt-5 text-center text-xs text-slate-500 short:mt-3">&copy; {new Date().getFullYear()} AKAY</footer>
+      </div>
     </div>
   );
 }

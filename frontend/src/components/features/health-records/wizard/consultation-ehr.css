@@ -1,0 +1,136 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   New Consultation - Medical EHR minimalism
+
+   Everything is scoped to `.ehr-consult`, the wrapper ConsultationWorkspace puts
+   around its page content, so no other screen changes.
+
+   The consultation-only files (workspace, wizard shell, modals) carry the new
+   look in their own classes. This sheet exists for what they do NOT own:
+   components shared with the RHU and referral pages (ClinicalFields,
+   NextActionSection, ImmunizationVisitFields, ReferralDestinationPicker) and
+   the common Drawer / modals / date picker. Rather than fork those, it maps
+   them onto the same system: sharp corners, borders instead of shadows, one
+   red.
+
+   Palette   red #DC2626 (hover #991B1B, tint #FEE2E2) · text #111827/#374151
+   Shape     rounded-none by default; small pills/badges 2px
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Geiza is used when installed; Public Sans (the app font) is the fallback.
+   To ship it, add an @font-face for "Geiza" - nothing else needs to change. */
+.ehr-consult {
+  font-family: "Geiza", var(--font-sans);
+}
+
+/* The app sets serif on every heading; the EHR system is sans throughout. */
+.ehr-consult :is(h1, h2, h3, h4) {
+  font-family: inherit;
+}
+
+/* ── Shape: sharp, flat ─────────────────────────────────────────────────── */
+.ehr-consult :is([class*="rounded-"], .rounded) {
+  border-radius: 0;
+}
+
+/* Text pills (status chips, tags) keep a 2px corner; icon dots, spinners and
+   avatars - rounded-full without horizontal padding - stay round. */
+.ehr-consult [class~="rounded-full"][class*="px-"] {
+  border-radius: 2px;
+}
+.ehr-consult [class~="rounded-full"]:not([class*="px-"]) {
+  border-radius: 9999px;
+}
+
+/* Checkboxes keep the small softening the skill allows. */
+.ehr-consult input[type="checkbox"] {
+  border-radius: 2px;
+}
+
+/* Depth comes from borders, not shadows. Focus rings are `ring-*`, not
+   `shadow-*`, so they are unaffected. */
+.ehr-consult [class*="shadow"] {
+  box-shadow: none;
+}
+.ehr-consult [class*="backdrop-blur"] {
+  backdrop-filter: none;
+}
+
+/* ── One red ────────────────────────────────────────────────────────────── */
+/* Shared components hard-code the app's #B91C1C. Exact-token matches (`~=`)
+   so `hover:` / `focus:` variants are not caught by accident. */
+.ehr-consult [class~="text-[#B91C1C]"] {
+  color: #dc2626;
+}
+.ehr-consult [class~="bg-[#B91C1C]"] {
+  background-color: #dc2626;
+}
+.ehr-consult [class~="border-[#B91C1C]"] {
+  border-color: #dc2626;
+}
+.ehr-consult [class~="accent-[#B91C1C]"] {
+  accent-color: #dc2626;
+}
+.ehr-consult [class~="focus:border-[#B91C1C]"]:focus {
+  border-color: #dc2626;
+}
+.ehr-consult [class~="hover:text-[#B91C1C]"]:hover {
+  color: #dc2626;
+}
+.ehr-consult [class~="hover:bg-[#FEF2F2]"]:hover {
+  background-color: #fee2e2;
+}
+
+/* ── Inputs ─────────────────────────────────────────────────────────────── */
+/* Shared field primitives use a 10% ring and a hairline border; the EHR
+   system wants a visible focus state (red border + 2px red-200 ring). */
+.ehr-consult :is(input, select, textarea):not([type="checkbox"], [type="radio"]) {
+  border-color: #d1d5db;
+}
+.ehr-consult
+  :is(input, select, textarea):not([type="checkbox"], [type="radio"]):focus {
+  border-color: #dc2626;
+  outline: none;
+  box-shadow: 0 0 0 2px #fecaca;
+}
+.ehr-consult
+  :is(input, select, textarea)[aria-invalid="true"]:not(:focus) {
+  border-color: #dc2626;
+  box-shadow: none;
+}
+
+/* Field labels: uppercase, semibold, readable gray (was 10px #9CA3AF). */
+.ehr-consult label[class*="uppercase"],
+.ehr-consult p[class*="uppercase"][class*="text-[#9CA3AF]"] {
+  color: #374151;
+}
+
+/* ── Modals ─────────────────────────────────────────────────────────────── */
+/* ModalShell paints a solid red header bar. In this system red marks the
+   action and the alert, not every dialog's chrome: a white header with a
+   hairline rule, dark title, and the primary button carrying the red. */
+.ehr-consult section[role="dialog"] > header {
+  background-color: #ffffff;
+  color: #111827;
+  border-bottom: 1px solid #e5e7eb;
+}
+.ehr-consult section[role="dialog"] > header h2 {
+  color: #111827;
+  font-weight: 700;
+}
+.ehr-consult section[role="dialog"] > header p {
+  color: #6b7280;
+}
+.ehr-consult section[role="dialog"] > header > span {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+.ehr-consult section[role="dialog"] > header button {
+  color: #6b7280;
+}
+.ehr-consult section[role="dialog"] > header button:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+.ehr-consult section[role="dialog"] {
+  border-color: #d1d5db;
+}

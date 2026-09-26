@@ -54,7 +54,7 @@ export default function UnfinishedConsultationModal({
           this patient?
         </p>
         {error && (
-          <p role="alert" className="text-red-700">
+          <p role="alert" className="text-[#DC2626]">
             {error}
           </p>
         )}
