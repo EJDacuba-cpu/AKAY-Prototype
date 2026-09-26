@@ -99,7 +99,7 @@ function Row({ label, children, compact, flat }) {
 
   return (
     <div className={`flex flex-col gap-1 border-b border-gray-100 px-4 py-3 last:border-b-0 ${compact ? "" : "sm:flex-row sm:items-center sm:gap-4"}`}>
-      <span className={`w-full shrink-0 text-[10.5px] font-bold uppercase tracking-wider text-gray-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r in-[.bhc-patient-profile]:text-gray-500 ${compact ? "" : "sm:w-48"}`}>
+      <span className={`w-full shrink-0 text-[10.5px] font-bold uppercase tracking-wider text-gray-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:text-gray-500 ${compact ? "" : "sm:w-48"}`}>
         {label}
       </span>
       <div className={`min-w-0 flex-1 ${compact ? "" : "sm:text-right"}`}>{children}</div>
@@ -138,7 +138,7 @@ function BackgroundUpdateLog({ config, lastUpdated }) {
         time.
       </p>
 
-      <div className="mt-3 overflow-hidden rounded-none border border-gray-200 bg-white in-[.bhc-patient-profile]:rounded-none in-[.bhc-patient-profile]:border-gray-100 in-[.bhc-patient-profile]:">
+      <div className="mt-3 overflow-hidden rounded-none border border-gray-200 bg-white in-[.bhc-patient-profile]:rounded-none in-[.bhc-patient-profile]:border-gray-100">
         {lastUpdated ? (
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
             <span className="text-[12.5px] font-semibold text-gray-900 in-[.bhc-patient-profile]:text-gray-900">
@@ -313,7 +313,7 @@ export default function PatientBackgroundTab({
               {diseases.map((disease, index) => (
                 <div
                   key={`${disease.name}-${index}`}
-                  className={flat ? "rounded-none border border-gray-200 p-3 text-left" : "rounded-none border border-gray-200 p-3 text-left in-[.bhc-patient-profile]:rounded-none in-[.bhc-patient-profile]:border-gray-100 in-[.bhc-patient-profile]:bg-white in-[.bhc-patient-profile]:"}
+                  className={flat ? "rounded-none border border-gray-200 p-3 text-left" : "rounded-none border border-gray-200 p-3 text-left in-[.bhc-patient-profile]:rounded-none in-[.bhc-patient-profile]:border-gray-100 in-[.bhc-patient-profile]:bg-white"}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-[12.5px] font-bold text-gray-900 in-[.bhc-patient-profile]:font-semibold in-[.bhc-patient-profile]:text-gray-900">
@@ -329,7 +329,7 @@ export default function PatientBackgroundTab({
                     </button>
                   </div>
                   <div className={`mt-2 grid gap-2 ${compact ? "" : "sm:grid-cols-3"}`}>
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r in-[.bhc-patient-profile]:text-gray-500">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:text-gray-500">
                       Status
                       <select
                         value={disease.status || ""}
@@ -346,7 +346,7 @@ export default function PatientBackgroundTab({
                         ))}
                       </select>
                     </label>
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r in-[.bhc-patient-profile]:text-gray-500">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:text-gray-500">
                       First Recorded
                       <input
                         type="date"
@@ -361,7 +361,7 @@ export default function PatientBackgroundTab({
                         className="mt-1 w-full rounded-none border border-gray-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-gray-700 outline-none focus:border-red-600"
                       />
                     </label>
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r in-[.bhc-patient-profile]:text-gray-500">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:text-gray-500">
                       Last Confirmed
                       <input
                         type="date"
@@ -458,7 +458,7 @@ export default function PatientBackgroundTab({
 
   return (
     <div>
-      <div className="overflow-hidden rounded-none border border-gray-200 in-[.bhc-patient-profile]:rounded-none in-[.bhc-patient-profile]:border-gray-100 in-[.bhc-patient-profile]:bg-white in-[.bhc-patient-profile]:">
+      <div className="overflow-hidden rounded-none border border-gray-200 in-[.bhc-patient-profile]:rounded-none in-[.bhc-patient-profile]:border-gray-100 in-[.bhc-patient-profile]:bg-white">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3">
           <div>
             <h3 className="text-[13px] font-bold text-gray-900 in-[.bhc-patient-profile]:font-semibold in-[.bhc-patient-profile]:text-gray-900 in-[.bhc-patient-profile]:font-sans!">

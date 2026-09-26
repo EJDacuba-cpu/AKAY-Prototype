@@ -6,6 +6,7 @@ import { ConfirmationModal, RefreshingIndicator } from "../../../common";
 import usePatientConsultation from "../../../../hooks/usePatientConsultation";
 import { FollowUpStateBadge } from "./FollowUpsAndReferrals";
 import { SECTION_LABEL_CLASS, TextAction } from "./ProfileSection";
+import PatientAlertChips, { Chip } from "../PatientAlertChips";
 import { formatPatientAddress } from "../PatientIdentityCard";
 import { calculateBmi, formatBmi } from "../../../../utils/bmi";
 import {
@@ -17,31 +18,16 @@ import {
 import { formatDate, formatPatientName } from "../../../../utils/formatters";
 import { getPatientAge } from "../../../../utils/patientProfile";
 
-const NO_ALLERGY_PATTERN = /^(none|n\/a|na|nka|nkda|no known.*|no allergies?|-+)$/i;
-const MAX_DISEASE_CHIPS = 3;
-
-const CHIP_BASE = "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium";
-
-function Chip({ tone = "neutral", children, title }) {
-  const tones = {
-    alert: "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
-    neutral: "border-slate-200 bg-white text-slate-700",
-    program: "border-slate-200 bg-slate-50 text-slate-700",
-    muted: "border-transparent px-0 font-normal text-slate-400",
-  };
+/** One labelled block of the panel, separated from the previous by a hairline. */
+function PanelSection({ id, label, meta, children }) {
   return (
-    <span title={title} className={`${CHIP_BASE} ${tones[tone]}`}>
+    <section aria-labelledby={`${id}-title`} className="border-t border-gray-200 px-4 py-3">
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <h2 id={`${id}-title`} className={SECTION_LABEL_CLASS}>{label}</h2>
+        {meta ? <span className="text-xs tabular-nums text-gray-500">{meta}</span> : null}
+      </div>
       {children}
-    </span>
-  );
-}
-
-function ChipGroup({ label, children }) {
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className={`${SECTION_LABEL_CLASS} mr-0.5`}>{label}</span>
-      {children}
-    </div>
+    </section>
   );
 }
 
@@ -49,15 +35,15 @@ function ConsultationButton({ consultation }) {
   const { isPending, isError, discarding, primaryLabel, startPath } = consultation;
   const disabled = isPending || isError || discarding;
   const className =
-    "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-[#B91C1C] px-3.5 text-sm font-semibold text-white transition hover:bg-[#991B1B] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B91C1C]/40 focus-visible:ring-offset-2";
+    "inline-flex h-9 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-none bg-red-600 px-3.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40 focus-visible:ring-offset-2 disabled:bg-gray-300 disabled:text-gray-500";
 
   if (disabled) {
     return (
       <button
         type="button"
         disabled
-        title={isError ? "Unable to check unfinished consultations. Retry from the banner below." : undefined}
-        className={`${className} disabled:bg-red-300`}
+        title={isError ? "Unable to check unfinished consultations. Retry from the notice below." : undefined}
+        className={className}
       >
         {isPending ? "Checking consultation..." : primaryLabel}
       </button>
@@ -72,14 +58,14 @@ function ConsultationButton({ consultation }) {
   );
 }
 
-/** Slim status line under the header: an unfinished draft, or a failed draft check. */
+/** Status block under the button: an unfinished draft, or a failed draft check. */
 function ConsultationNotice({ consultation }) {
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const { draft, isError, discarding, retry, discard, startPath } = consultation;
 
   if (isError) {
     return (
-      <p role="status" className="mt-3 flex items-center gap-3 border-y border-slate-200 py-2 text-sm text-slate-500">
+      <p role="status" className="flex items-center gap-3 border-t border-gray-200 px-4 py-2 text-sm text-gray-600">
         Unable to check for an unfinished consultation.
         <TextAction onClick={retry}>Retry</TextAction>
       </p>
@@ -90,17 +76,17 @@ function ConsultationNotice({ consultation }) {
 
   return (
     <>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-y border-amber-200 bg-amber-50/60 px-3 py-2 text-sm text-amber-900">
+      <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
         <p>
           <span className="font-semibold">Unfinished consultation</span>
           {draft.lastSavedAt ? (
-            <span className="text-amber-800/80"> · saved {formatDate(draft.lastSavedAt, "")}</span>
+            <span className="text-amber-800"> · saved {formatDate(draft.lastSavedAt, "")}</span>
           ) : null}
         </p>
-        <div className="flex items-center gap-4">
+        <div className="mt-1 flex items-center gap-4">
           <Link
             to={startPath}
-            className="text-sm font-semibold text-[#B91C1C] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B91C1C]/40"
+            className="text-sm font-semibold text-red-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40"
           >
             Resume
           </Link>
@@ -108,7 +94,7 @@ function ConsultationNotice({ consultation }) {
             type="button"
             disabled={discarding}
             onClick={() => setConfirmingDiscard(true)}
-            className="text-sm text-slate-500 transition hover:text-red-700 hover:underline disabled:opacity-50"
+            className="text-sm text-gray-600 transition-colors hover:text-red-700 hover:underline disabled:opacity-50"
           >
             {discarding ? "Discarding..." : "Discard"}
           </button>
@@ -136,31 +122,7 @@ function ConsultationNotice({ consultation }) {
   );
 }
 
-function AlertChips({ background = {} }) {
-  const allergies = String(background.allergies || "").trim();
-  const activeDiseases = (Array.isArray(background.currentDiseases) ? background.currentDiseases : [])
-    .filter((disease) => disease?.name && String(disease.status || "Active").toLowerCase() === "active");
-  const shownDiseases = activeDiseases.slice(0, MAX_DISEASE_CHIPS);
-  const hiddenCount = activeDiseases.length - shownDiseases.length;
-
-  return (
-    <ChipGroup label="Alerts">
-      {!allergies ? (
-        <Chip tone="muted">Allergies not recorded</Chip>
-      ) : NO_ALLERGY_PATTERN.test(allergies) ? (
-        <Chip tone="muted">No known allergies</Chip>
-      ) : (
-        <Chip tone="alert" title={allergies}>Allergy: {allergies}</Chip>
-      )}
-      {shownDiseases.map((disease) => (
-        <Chip key={disease.name} tone="neutral">{disease.name}</Chip>
-      ))}
-      {hiddenCount > 0 && <Chip tone="muted">+{hiddenCount} more</Chip>}
-    </ChipGroup>
-  );
-}
-
-function VitalsStrip({ records, isLoading }) {
+function VitalsGrid({ records, isLoading }) {
   const record = getLatestVitalRecord(records);
   const bmi = record ? calculateBmi(record.weight, record.height) : null;
   const recordedAt = record ? getVitalRecordDate(record) : null;
@@ -187,37 +149,39 @@ function VitalsStrip({ records, isLoading }) {
     : "";
 
   return (
-    <section aria-labelledby="latest-vitals-title" aria-busy={isLoading} className="mt-4 border-t border-slate-200 pt-3">
-      <div className="mb-2 flex items-baseline justify-between gap-3">
-        <h2 id="latest-vitals-title" className={SECTION_LABEL_CLASS}>Latest Vitals &amp; BMI</h2>
-        {when && <span className="text-xs tabular-nums text-slate-400">{when}</span>}
+    <PanelSection id="latest-vitals" label="Latest Vitals & BMI" meta={when}>
+      <div aria-busy={isLoading}>
+        {isLoading ? (
+          <p role="status" className="text-sm text-gray-600">Loading vital signs...</p>
+        ) : !record ? (
+          <p className="text-sm text-gray-600">No vital signs recorded yet.</p>
+        ) : (
+          <dl className="grid grid-cols-2 border border-gray-200">
+            {cells.map(([label, reading, unit], index) => (
+              <div
+                key={label}
+                className={`min-w-0 px-2 py-1.5 ${index % 2 === 0 ? "border-r border-gray-200" : ""} ${index >= 2 ? "border-t border-gray-200" : ""}`}
+              >
+                <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">{label}</dt>
+                <dd className="m-0 truncate text-base font-bold tabular-nums text-gray-900">
+                  {reading}
+                  <span className="ml-1 text-[11px] font-normal text-gray-500">{unit}</span>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
       </div>
-      {isLoading ? (
-        <p role="status" className="text-sm text-slate-500">Loading vital signs...</p>
-      ) : !record ? (
-        <p className="text-sm text-slate-500">No vital signs recorded yet.</p>
-      ) : (
-        <dl className="grid grid-cols-4 gap-x-4 gap-y-3 sm:grid-cols-8">
-          {cells.map(([label, reading, unit]) => (
-            <div key={label} className="min-w-0">
-              <dt className="text-[11px] uppercase tracking-wide text-slate-500">{label}</dt>
-              <dd className="m-0 mt-0.5 truncate text-base font-semibold tabular-nums text-slate-900">
-                {reading}
-                <span className="ml-1 text-[11px] font-normal text-slate-400">{unit}</span>
-              </dd>
-            </div>
-          ))}
-        </dl>
-      )}
-    </section>
+    </PanelSection>
   );
 }
 
 /**
- * Identity, status and vitals for the patient, replacing the old sidebar
- * cards and action menu. The identity bar (name, ID, Start / Resume
- * Consultation) scrolls away with the page; the alerts, programs, care status
- * and vitals sit beneath it.
+ * Left identity panel of the patient profile: identity, the Start / Resume
+ * Consultation controls, then alerts, programs, care status and latest vitals.
+ * A flat bordered column (no shadow, square corners), like the reference's
+ * profile panel. Sections that need clinical history stay gated by
+ * `canViewHistory`, exactly as before.
  */
 export default function PatientProfileHeader({
   patient,
@@ -237,48 +201,53 @@ export default function PatientProfileHeader({
   const ageText = age !== "" ? `${age} yrs` : "";
   const address = patient.barangay || formatPatientAddress(patient);
   const nextFollowUp = activeFollowUps[0] || null;
-  const meta = [`Patient ID ${patient.patientId || patientId}`, [ageText, patient.sex].filter(Boolean).join(" / "), address]
-    .filter(Boolean)
-    .join(" · ");
+  const ageSex = [ageText, patient.sex].filter(Boolean).join(" / ");
 
   return (
-    <header>
-      <div className="-mx-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-slate-200 px-4 py-3 sm:-mx-6 sm:px-6">
-        <div className="flex min-w-0 items-center gap-3">
-          <Link
-            to={backPath}
-            aria-label="Back"
-            className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
-          >
-            <ArrowLeft size={16} aria-hidden="true" />
-          </Link>
-          <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold leading-tight text-slate-900 font-sans!">
-              {formatPatientName(patient, "Unnamed Patient")}
-            </h1>
-            <p className="truncate text-xs tabular-nums text-slate-500">{meta}</p>
-          </div>
+    <header className="border border-gray-200 bg-white">
+      <div className="flex items-start gap-3 px-4 py-3">
+        <Link
+          to={backPath}
+          aria-label="Back"
+          className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-none text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+        >
+          <ArrowLeft size={16} aria-hidden="true" />
+        </Link>
+        <div className="min-w-0">
+          <h1 className="break-words text-lg font-bold leading-tight text-gray-900 font-sans!">
+            {formatPatientName(patient, "Unnamed Patient")}
+          </h1>
+          <p className="mt-1 break-all font-mono text-xs text-gray-600">
+            Patient ID {patient.patientId || patientId}
+          </p>
+          {ageSex && <p className="mt-0.5 text-xs tabular-nums text-gray-600">{ageSex}</p>}
+          {address && <p className="mt-0.5 break-words text-xs text-gray-600">{address}</p>}
         </div>
-        <div className="flex items-center gap-3">
-          {updating && <RefreshingIndicator label="Updating patient details..." />}
-          <ConsultationButton consultation={consultation} />
-        </div>
+      </div>
+
+      <div className="space-y-2 px-4 pb-3">
+        {updating && <RefreshingIndicator label="Updating patient details..." />}
+        <ConsultationButton consultation={consultation} />
       </div>
 
       <ConsultationNotice consultation={consultation} />
 
       {canViewHistory && (
         <>
-          <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2">
-            <AlertChips background={patient.medicalBackground} />
-            {programLabels.length > 0 && (
-              <ChipGroup label="Programs">
+          <PanelSection id="profile-alerts" label="Alerts">
+            <PatientAlertChips background={patient.medicalBackground} />
+          </PanelSection>
+          {programLabels.length > 0 && (
+            <PanelSection id="profile-programs" label="Programs">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {programLabels.map((label) => (
                   <Chip key={label} tone="program">{label}</Chip>
                 ))}
-              </ChipGroup>
-            )}
-            <ChipGroup label="Care">
+              </div>
+            </PanelSection>
+          )}
+          <PanelSection id="profile-care" label="Care">
+            <div className="flex flex-wrap items-center gap-1.5">
               {nextFollowUp && (
                 <FollowUpStateBadge state={nextFollowUp.effectiveState} date={nextFollowUp.dueDate} />
               )}
@@ -291,9 +260,9 @@ export default function PatientProfileHeader({
               {!nextFollowUp && openReferralCount === 0 && (
                 <Chip tone="muted">{followUps.length ? "Nothing pending" : "No follow-ups"}</Chip>
               )}
-            </ChipGroup>
-          </div>
-          <VitalsStrip records={records} isLoading={recordsLoading} />
+            </div>
+          </PanelSection>
+          <VitalsGrid records={records} isLoading={recordsLoading} />
         </>
       )}
     </header>

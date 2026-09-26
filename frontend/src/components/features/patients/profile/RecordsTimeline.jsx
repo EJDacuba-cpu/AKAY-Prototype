@@ -30,35 +30,35 @@ function FilterChip({ active, count, children, onClick }) {
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B91C1C]/40 ${
+      className={`inline-flex h-7 items-center gap-1.5 rounded-none border px-2.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40 ${
         active
-          ? "border-[#B91C1C] bg-[#B91C1C] text-white"
-          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900"
+          ? "border-red-600 bg-red-600 text-white"
+          : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-900"
       }`}
     >
       {children}
-      <span className={`tabular-nums ${active ? "text-white/80" : "text-slate-400"}`}>{count}</span>
+      <span className={`tabular-nums ${active ? "text-white/80" : "text-gray-400"}`}>{count}</span>
     </button>
   );
 }
 
 const OUTCOME_TEXT = {
   Referred: "text-amber-700",
-  "Follow-up": "text-[#B91C1C]",
-  Routine: "text-slate-500",
+  "Follow-up": "text-red-600",
+  Routine: "text-gray-500",
 };
 
 /** Flat disposition label: coloured text, no pill. Shows a dash for legacy rows. */
 function Outcome({ record }) {
   const outcome = getRecordOutcome(record);
-  if (!outcome) return <span className="text-slate-300">—</span>;
+  if (!outcome) return <span className="text-gray-300">—</span>;
   const subLabel = getRecordOutcomeSubLabel(record);
   return (
     <span className="flex flex-col items-end">
       <span className={`text-[11px] font-semibold uppercase tracking-wide ${OUTCOME_TEXT[outcome]}`}>
         {outcome}
       </span>
-      {subLabel && <span className="text-[11px] text-slate-400">{subLabel}</span>}
+      {subLabel && <span className="text-[11px] text-gray-400">{subLabel}</span>}
     </span>
   );
 }
@@ -71,13 +71,13 @@ function TimelineRow({ record, onView }) {
         type="button"
         onClick={() => onView(recordId)}
         aria-label={`View health record ${getRecordIdLabel(record)}`}
-        className="group grid w-full grid-cols-[6.25rem_minmax(0,1fr)_auto] items-center gap-x-4 py-3 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#B91C1C]/40"
+        className="group grid w-full grid-cols-[6.25rem_minmax(0,1fr)_auto] items-center gap-x-4 py-3 text-left transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-600/40"
       >
-        <span className="text-xs tabular-nums text-slate-500">
+        <span className="text-xs tabular-nums text-gray-500">
           {formatShortDate(getRecordDateValue(record))}
         </span>
         <span className="min-w-0">
-          <span className="flex flex-wrap items-center gap-x-2 text-sm font-medium text-slate-900">
+          <span className="flex flex-wrap items-center gap-x-2 text-sm font-medium text-gray-900">
             {formatDisplayValue(record.chiefComplaint, "No complaint recorded")}
             {isFollowUpVisitRecord(record) && (
               <span className="text-[11px] font-semibold uppercase tracking-wide text-[#1D4ED8]">
@@ -85,13 +85,13 @@ function TimelineRow({ record, onView }) {
               </span>
             )}
           </span>
-          <span className="mt-0.5 block truncate text-xs text-slate-500">
+          <span className="mt-0.5 block truncate text-xs text-gray-500">
             {[getServiceTypeLabel(record, ""), getRecordIdLabel(record)].filter(Boolean).join(" · ")}
           </span>
         </span>
         <span className="flex items-center gap-3">
           <Outcome record={record} />
-          <ChevronRight size={14} className="text-slate-300 transition group-hover:text-slate-600" aria-hidden="true" />
+          <ChevronRight size={14} className="text-gray-300 transition group-hover:text-gray-600" aria-hidden="true" />
         </span>
       </button>
     </li>
@@ -104,14 +104,14 @@ function ProgramDetail({ program, records, patient, area }) {
   return (
     <div className="mt-5">
       {area?.historyOnly && (
-        <p className="mb-3 flex items-start gap-2 text-xs text-slate-500">
+        <p className="mb-3 flex items-start gap-2 text-xs text-gray-500">
           <Info size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
           Kept for the record — this patient is no longer eligible for new services in this program, but past records remain available.
         </p>
       )}
       <SpecializedRecordsTab records={records} patient={patient} basePath="/bhc" program={program} flat />
       {config?.pending?.length > 0 && (
-        <p className="mt-4 text-xs text-slate-400">
+        <p className="mt-4 text-xs text-gray-400">
           Not yet captured: {config.pending.map((item) => item.title).join(", ")}.
         </p>
       )}
@@ -186,7 +186,7 @@ export default function RecordsTimeline({
             </div>
           )}
 
-          <ul className="divide-y divide-slate-100 border-y border-slate-100">
+          <ul className="divide-y divide-gray-100 border-y border-gray-100">
             {visible.map((record) => (
               <TimelineRow key={getRecordKey(record)} record={record} onView={onView} />
             ))}

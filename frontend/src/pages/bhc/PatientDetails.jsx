@@ -54,10 +54,10 @@ function ProfileShell({ children }) {
 }
 
 /**
- * BHC patient profile: one tab-free chart. An identity bar and a header
- * of alerts, programs, care status and vitals sit above two columns - the
- * patient's registration and history on the left (each section edits inline),
- * the records timeline, follow-ups and referrals on the right.
+ * BHC patient profile: one tab-free chart. A left identity panel (alerts,
+ * programs, care status and vitals) sits beside the chart: the patient's
+ * registration and history (each section edits inline) on one side, the
+ * records timeline, follow-ups and referrals on the other.
  */
 export default function PatientDetails() {
   const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
@@ -370,10 +370,10 @@ export default function PatientDetails() {
     return (
       <ProfileShell>
         <div className="mx-auto max-w-md bg-white p-10 text-center">
-          <h1 className="text-xl font-semibold text-slate-900 font-sans!">Patient not found</h1>
+          <h1 className="text-xl font-semibold text-gray-900 font-sans!">Patient not found</h1>
           <Link
             to="/bhc/patients"
-            className="mt-4 inline-flex rounded-md bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#991B1B]"
+            className="mt-4 inline-flex rounded-none bg-red-600 px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-red-700"
           >
             Back to Patients
           </Link>
@@ -401,83 +401,91 @@ export default function PatientDetails() {
   return (
     <>
       <ProfileShell>
-        <div className="bhc-patient-profile min-h-[520px] bg-white px-4 pb-8 font-sans sm:px-6 [&_h1]:font-sans! [&_h2]:font-sans! [&_h3]:font-sans! [&_h4]:font-sans!">
-          <PatientProfileHeader
-            patient={patient}
-            patientId={patientId}
-            backPath={backPath}
-            updating={patientUpdating}
-            canViewHistory={canViewHistory}
-            records={records}
-            recordsLoading={recordsLoading}
-            programLabels={programLabels}
-            followUps={patientFollowUps}
-            activeFollowUps={activeFollowUps}
-            openReferralCount={openReferralCount}
-          />
-
-          <div className="mt-6 grid grid-cols-1 gap-x-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-            {/* On narrow screens the records come first: recent visits matter
-                more at the bedside than registration details. */}
-            <div className="@container order-2 min-w-0 max-lg:mt-2 max-lg:border-t max-lg:border-slate-200 max-lg:pt-5 lg:order-1">
-              <RegistrationSections
+        <div className="bhc-patient-profile min-h-[520px] bg-white px-4 py-4 pb-8 font-sans sm:px-6 [&_h1]:font-sans! [&_h2]:font-sans! [&_h3]:font-sans! [&_h4]:font-sans!">
+          <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-[288px_minmax(0,1fr)] lg:items-start">
+            {/* 62px topbar + 2 x 1.25rem content padding. */}
+            <aside
+              aria-label="Patient summary"
+              className="min-w-0 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-62px-2.5rem)] lg:overflow-y-auto"
+            >
+              <PatientProfileHeader
                 patient={patient}
-                form={form}
-                editingSection={editingSection}
-                onEdit={handleEditSection}
-                onCancel={handleCancelEdit}
-                onSave={handleRequestSave}
-                onChange={handleChange}
-                fieldErrors={fieldErrors}
-                saving={saving}
-                motherSearch={motherSearch}
-                motherPatientOptions={motherPatientOptions}
-                onMotherSearchChange={setMotherSearch}
-                onMotherPatientChange={handleMotherPatientChange}
+                patientId={patientId}
+                backPath={backPath}
+                updating={patientUpdating}
+                canViewHistory={canViewHistory}
+                records={records}
+                recordsLoading={recordsLoading}
+                programLabels={programLabels}
+                followUps={patientFollowUps}
+                activeFollowUps={activeFollowUps}
+                openReferralCount={openReferralCount}
               />
-              {canViewHistory &&
-                BACKGROUND_SECTION_KEYS.map((section) => (
-                  <PatientBackgroundTab
-                    key={section}
-                    variant="flat"
-                    section={section}
-                    background={patient.medicalBackground}
-                    saving={savingBackground}
-                    onSave={handleBackgroundSave}
-                  />
-                ))}
-            </div>
+            </aside>
 
-            <div className="order-1 min-w-0 lg:order-2 lg:border-l lg:border-slate-200 lg:pl-10">
-              {canViewHistory ? (
-                <>
-                  <RecordsTimeline
-                    records={records}
-                    patient={patient}
-                    conditionalAreas={conditionalProgramAreas}
-                    isLoading={recordsLoading}
-                    isFetching={recordsFetching}
-                    isError={Boolean(recordsError)}
-                    onView={(recordId) => navigate(`/bhc/health-records/${recordId}`)}
-                  />
-                  <FollowUpsSection
-                    followUps={patientFollowUps}
-                    onViewFollowUp={(taskId) => navigate(`/bhc/follow-ups/${taskId}`)}
-                  />
-                  <ReferralsSection
-                    referrals={referrals}
-                    isLoading={referralsLoading}
-                    isFetching={referralsFetching}
-                    isError={Boolean(referralsError)}
-                    onView={(trackingId) => navigate(`/bhc/referrals/${trackingId}`)}
-                  />
-                </>
-              ) : (
-                <p className="flex items-center gap-2 py-2 text-sm text-slate-500">
-                  <Lock size={14} className="shrink-0" aria-hidden="true" />
-                  Clinical history is restricted for your role.
-                </p>
-              )}
+            <div className="grid min-w-0 grid-cols-1 gap-x-8 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+              {/* On narrow screens the records come first: recent visits matter
+                  more at the bedside than registration details. */}
+              <div className="@container order-2 min-w-0 max-xl:mt-2 max-xl:border-t max-xl:border-gray-200 max-xl:pt-5 xl:order-1">
+                <RegistrationSections
+                  patient={patient}
+                  form={form}
+                  editingSection={editingSection}
+                  onEdit={handleEditSection}
+                  onCancel={handleCancelEdit}
+                  onSave={handleRequestSave}
+                  onChange={handleChange}
+                  fieldErrors={fieldErrors}
+                  saving={saving}
+                  motherSearch={motherSearch}
+                  motherPatientOptions={motherPatientOptions}
+                  onMotherSearchChange={setMotherSearch}
+                  onMotherPatientChange={handleMotherPatientChange}
+                />
+                {canViewHistory &&
+                  BACKGROUND_SECTION_KEYS.map((section) => (
+                    <PatientBackgroundTab
+                      key={section}
+                      variant="flat"
+                      section={section}
+                      background={patient.medicalBackground}
+                      saving={savingBackground}
+                      onSave={handleBackgroundSave}
+                    />
+                  ))}
+              </div>
+
+              <div className="order-1 min-w-0 xl:order-2 xl:border-l xl:border-gray-200 xl:pl-8">
+                {canViewHistory ? (
+                  <>
+                    <RecordsTimeline
+                      records={records}
+                      patient={patient}
+                      conditionalAreas={conditionalProgramAreas}
+                      isLoading={recordsLoading}
+                      isFetching={recordsFetching}
+                      isError={Boolean(recordsError)}
+                      onView={(recordId) => navigate(`/bhc/health-records/${recordId}`)}
+                    />
+                    <FollowUpsSection
+                      followUps={patientFollowUps}
+                      onViewFollowUp={(taskId) => navigate(`/bhc/follow-ups/${taskId}`)}
+                    />
+                    <ReferralsSection
+                      referrals={referrals}
+                      isLoading={referralsLoading}
+                      isFetching={referralsFetching}
+                      isError={Boolean(referralsError)}
+                      onView={(trackingId) => navigate(`/bhc/referrals/${trackingId}`)}
+                    />
+                  </>
+                ) : (
+                  <p className="flex items-center gap-2 py-2 text-sm text-gray-600">
+                    <Lock size={14} className="shrink-0" aria-hidden="true" />
+                    Clinical history is restricted for your role.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </div>

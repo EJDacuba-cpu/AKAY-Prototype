@@ -18,7 +18,7 @@ export function FollowUpStateBadge({ state, date }) {
   const config = getStateConfig(state);
   const dateText = date ? formatDate(date, "") : "";
   return (
-    <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${config.badge}`}>
+    <span className={`inline-flex items-center rounded-none border px-2 py-0.5 text-xs font-medium ${config.badge}`}>
       {dateText ? `${config.label} · ${dateText}` : config.label}
     </span>
   );
@@ -54,7 +54,7 @@ function ExpandableList({ items, noun, children }) {
   const visible = showAll ? items : items.slice(0, INITIAL_VISIBLE);
   return (
     <>
-      <ul className="divide-y divide-slate-100 border-y border-slate-100">
+      <ul className="divide-y divide-gray-100 border-y border-gray-100">
         {visible.map(children)}
       </ul>
       {items.length > INITIAL_VISIBLE && (
@@ -82,14 +82,14 @@ export function FollowUpsSection({ followUps = [], onViewFollowUp }) {
           {(task) => (
             <li key={task.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3">
               <div className="min-w-0">
-                <p className="flex items-center gap-2 text-sm text-slate-900">
-                  <CalendarClock size={13} className="shrink-0 text-slate-400" aria-hidden="true" />
+                <p className="flex items-center gap-2 text-sm text-gray-900">
+                  <CalendarClock size={13} className="shrink-0 text-gray-400" aria-hidden="true" />
                   <span className="tabular-nums">
                     {formatDate(task.dueDate, "Not recorded")}
                     {task.dueTime ? ` · ${task.dueTime}` : ""}
                   </span>
                 </p>
-                <p className="mt-0.5 text-xs text-slate-500">
+                <p className="mt-0.5 text-xs text-gray-500">
                   Task #{task.id} · from record #{formatDisplayValue(task.healthRecordId, "-")}
                 </p>
               </div>
@@ -98,7 +98,7 @@ export function FollowUpsSection({ followUps = [], onViewFollowUp }) {
                 {isActiveFollowUpState(task.effectiveState) && (
                   <Link
                     to={buildRecordFollowUpVisitPath(task)}
-                    className="rounded-md bg-[#B91C1C] px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-[#991B1B]"
+                    className="rounded-none bg-red-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-red-700"
                   >
                     Record Visit
                   </Link>
@@ -146,13 +146,13 @@ export function ReferralsSection({
                   type="button"
                   onClick={() => onView(trackingId)}
                   aria-label={`View referral ${trackingId}`}
-                  className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-3 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#B91C1C]/40"
+                  className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-3 text-left transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-600/40"
                 >
                   <span className="min-w-0">
-                    <span className="block text-sm text-slate-900">
+                    <span className="block text-sm text-gray-900">
                       {formatDisplayValue(getReferralDestination(referral), "Destination not recorded")}
                     </span>
-                    <span className="mt-0.5 block truncate text-xs text-slate-500">
+                    <span className="mt-0.5 block truncate text-xs text-gray-500">
                       <span className="tabular-nums">{getReferralDate(referral)}</span>
                       {" · "}
                       {trackingId}
@@ -162,7 +162,7 @@ export function ReferralsSection({
                   </span>
                   <span className="flex items-center gap-3">
                     <StatusBadge status={referral.status} />
-                    <ChevronRight size={14} className="text-slate-300 transition group-hover:text-slate-600" aria-hidden="true" />
+                    <ChevronRight size={14} className="text-gray-300 transition group-hover:text-gray-600" aria-hidden="true" />
                   </span>
                 </button>
               </li>

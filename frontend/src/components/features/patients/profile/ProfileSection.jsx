@@ -10,20 +10,20 @@ import { formatDisplayValue } from "../../../../utils/formatters";
  */
 
 export const SECTION_LABEL_CLASS =
-  "text-[11px] font-semibold uppercase tracking-wider text-slate-500 font-sans!";
+  "text-xs font-semibold uppercase tracking-wide text-gray-600 font-sans!";
 
 export function ProfileSection({ id, title, meta, actions, children, className }) {
   return (
     <section
       aria-labelledby={`${id}-title`}
-      className={cn("border-t border-slate-200 py-5 first:border-t-0 first:pt-0", className)}
+      className={cn("border-t border-gray-200 py-5 first:border-t-0 first:pt-0", className)}
     >
       <header className="mb-3 flex min-h-6 items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
           <h2 id={`${id}-title`} className={SECTION_LABEL_CLASS}>
             {title}
           </h2>
-          {meta ? <span className="text-xs text-slate-400">{meta}</span> : null}
+          {meta ? <span className="text-xs text-gray-400">{meta}</span> : null}
         </div>
         {actions ? <div className="shrink-0">{actions}</div> : null}
       </header>
@@ -39,7 +39,7 @@ export function TextAction({ children, className, ...props }) {
       type="button"
       {...props}
       className={cn(
-        "rounded-sm text-xs font-medium text-[#B91C1C] transition hover:text-[#7F1D1D] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B91C1C]/40 disabled:cursor-not-allowed disabled:text-slate-300 disabled:no-underline",
+        "rounded-sm text-xs font-medium text-red-600 transition hover:text-red-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40 disabled:cursor-not-allowed disabled:text-gray-300 disabled:no-underline",
         className,
       )}
     >
@@ -56,7 +56,7 @@ export function SectionEditActions({ saving = false, onCancel, onSave, saveLabel
         type="button"
         onClick={onCancel}
         disabled={saving}
-        className="inline-flex items-center gap-1 rounded-sm text-xs font-medium text-slate-500 transition hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 disabled:opacity-50"
+        className="inline-flex items-center gap-1 rounded-sm text-xs font-medium text-gray-500 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 disabled:opacity-50"
       >
         <X size={12} aria-hidden="true" />
         Cancel
@@ -65,7 +65,7 @@ export function SectionEditActions({ saving = false, onCancel, onSave, saveLabel
         type="button"
         onClick={onSave}
         disabled={saving}
-        className="inline-flex h-7 items-center gap-1 rounded-md bg-[#B91C1C] px-2.5 text-xs font-semibold text-white transition hover:bg-[#991B1B] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B91C1C]/40 focus-visible:ring-offset-1 disabled:bg-red-300"
+        className="inline-flex h-7 items-center gap-1 rounded-none bg-red-600 px-2.5 text-xs font-semibold text-white transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40 focus-visible:ring-offset-1 disabled:bg-red-300"
       >
         <Check size={12} aria-hidden="true" />
         {saving ? "Saving..." : saveLabel}
@@ -84,9 +84,9 @@ export function FieldList({ rows }) {
           : value;
         return (
           <div key={label} className="contents">
-            <dt className="text-slate-500">{label}</dt>
-            <dd className="m-0 min-w-0 break-words tabular-nums text-slate-900">
-              {text || <span className="text-slate-400">Not recorded</span>}
+            <dt className="text-gray-500">{label}</dt>
+            <dd className="m-0 min-w-0 break-words tabular-nums text-gray-900">
+              {text || <span className="text-gray-400">Not recorded</span>}
             </dd>
           </div>
         );
@@ -96,5 +96,5 @@ export function FieldList({ rows }) {
 }
 
 export function EmptyNote({ children }) {
-  return <p className="py-2 text-sm text-slate-500">{children}</p>;
+  return <p className="py-2 text-sm text-gray-500">{children}</p>;
 }

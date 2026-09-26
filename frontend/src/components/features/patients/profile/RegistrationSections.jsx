@@ -33,13 +33,13 @@ const BIRTH_FIELDS = [
 ];
 
 const INPUT_CLASS =
-  "mt-1 h-9 w-full min-w-0 rounded-md border bg-white px-2.5 text-sm text-slate-900 outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/15";
+  "mt-1 h-9 w-full min-w-0 rounded-none border bg-white px-2.5 text-sm text-gray-900 outline-none transition focus:border-red-600 focus:ring-2 focus:ring-red-600/15";
 
 function EditField({ label, required, readOnly, error, value, ...props }) {
   return (
-    <label className="min-w-0 text-xs text-slate-500">
+    <label className="min-w-0 text-xs text-gray-500">
       {label}
-      {required && <span className="text-[#B91C1C]"> *</span>}
+      {required && <span className="text-red-600"> *</span>}
       <input
         {...props}
         value={value ?? ""}
@@ -48,32 +48,32 @@ function EditField({ label, required, readOnly, error, value, ...props }) {
         aria-invalid={Boolean(error)}
         className={`${INPUT_CLASS} ${
           error
-            ? "border-[#B91C1C]"
+            ? "border-red-600"
             : readOnly
-              ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-500"
-              : "border-slate-300"
+              ? "cursor-not-allowed border-gray-200 bg-gray-50 text-gray-500"
+              : "border-gray-300"
         }`}
       />
-      {error && <span className="mt-1 block text-[11px] font-medium text-[#B91C1C]">{error}</span>}
+      {error && <span className="mt-1 block text-[11px] font-medium text-red-600">{error}</span>}
     </label>
   );
 }
 
 function EditSelect({ label, required, error, children, value, ...props }) {
   return (
-    <label className="min-w-0 text-xs text-slate-500">
+    <label className="min-w-0 text-xs text-gray-500">
       {label}
-      {required && <span className="text-[#B91C1C]"> *</span>}
+      {required && <span className="text-red-600"> *</span>}
       <select
         {...props}
         value={value ?? ""}
         required={required}
         aria-invalid={Boolean(error)}
-        className={`${INPUT_CLASS} ${error ? "border-[#B91C1C]" : "border-slate-300"}`}
+        className={`${INPUT_CLASS} ${error ? "border-red-600" : "border-gray-300"}`}
       >
         {children}
       </select>
-      {error && <span className="mt-1 block text-[11px] font-medium text-[#B91C1C]">{error}</span>}
+      {error && <span className="mt-1 block text-[11px] font-medium text-red-600">{error}</span>}
     </label>
   );
 }
@@ -90,7 +90,7 @@ function getMotherPatientLabel(patient = {}) {
 
 function EditLinkedMotherSelect({ value, search, options, onSearchChange, onChange }) {
   return (
-    <div className="min-w-0 text-xs text-slate-500 @sm:col-span-2">
+    <div className="min-w-0 text-xs text-gray-500 @sm:col-span-2">
       <label>
         Registered mother link
         <input
@@ -98,14 +98,14 @@ function EditLinkedMotherSelect({ value, search, options, onSearchChange, onChan
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder="Search registered mother"
-          className={`${INPUT_CLASS} border-slate-300`}
+          className={`${INPUT_CLASS} border-gray-300`}
         />
       </label>
       <select
         aria-label="Linked mother"
         value={value || ""}
         onChange={(event) => onChange(event.target.value)}
-        className={`${INPUT_CLASS} mt-2 border-slate-300`}
+        className={`${INPUT_CLASS} mt-2 border-gray-300`}
       >
         <option value="">No linked mother selected</option>
         {options.map((option) => (
