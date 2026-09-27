@@ -65,3 +65,16 @@ export function teenagePrenatal(purpose, patient, date) {
   const age = visitAge(patient?.birthdate || patient?.birthDate || patient?.date_of_birth, date);
   return Boolean(purpose?.services?.includes('Prenatal') && age && age.years >= 11 && age.years <= 17);
 }
+
+/**
+ * A purpose restored from a saved draft may name a service that no longer
+ * exists (Hypertension / Diabetes were removed). Keep the known ones; if that
+ * leaves nothing, fall back to a general consultation, as the server-side
+ * migration does, so the visit can still be saved or changed.
+ */
+export function knownVisitPurpose(purpose) {
+  if (!purpose) return null;
+  const services = Array.isArray(purpose.services) ? purpose.services : [];
+  const known = services.filter(service => Object.hasOwn(VISIT_SERVICES, service));
+  return { ...purpose, services: known.length || !services.length ? known : ['General'] };
+}

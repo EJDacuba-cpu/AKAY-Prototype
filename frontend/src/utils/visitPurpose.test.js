@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { VISIT_SERVICES, emptyVisitPurpose, serviceEligibility, purposePrograms, purposeErrors, teenagePrenatal, visitAge } from './visitPurpose.js';
+import { VISIT_SERVICES, knownVisitPurpose, emptyVisitPurpose, serviceEligibility, purposePrograms, purposeErrors, teenagePrenatal, visitAge } from './visitPurpose.js';
 import { buildConsultationSteps, getFormSequence, getProgramFormSteps } from './consultationSteps.js';
 
 const patient = birthdate => ({ birthdate, sex: 'Female' });
@@ -51,4 +51,12 @@ test('program-only flow skips General but retains vitals, treatment and final ac
 test('Hypertension and Diabetes are no longer visit services', () => {
   assert.deepEqual(Object.keys(VISIT_SERVICES), ['General', 'Prenatal', 'Postpartum', 'EPI', 'Family Planning', 'TB']);
   assert.equal(serviceEligibility('Hypertension', patient('1980-01-01'), date).eligible, false);
+});
+
+test('a restored purpose drops removed services and never ends up empty', () => {
+  assert.equal(knownVisitPurpose(null), null);
+  assert.deepEqual(knownVisitPurpose({ version: 1, services: ['Prenatal', 'Hypertension'] }).services, ['Prenatal']);
+  assert.deepEqual(knownVisitPurpose({ version: 1, services: ['Hypertension', 'Diabetes'] }).services, ['General']);
+  assert.deepEqual(knownVisitPurpose({ version: 1, services: [] }).services, []);
+  assert.equal(purposeErrors(knownVisitPurpose({ version: 1, services: ['Diabetes'] }), patient('1990-01-01'), date), '');
 });

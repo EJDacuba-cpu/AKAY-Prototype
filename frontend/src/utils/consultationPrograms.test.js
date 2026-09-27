@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "./consultationPrograms.js";
+import { PROGRAM_CLASSIFICATIONS, restoredClassification, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "./consultationPrograms.js";
 import { getSpecializedRecordPrograms, getServiceTypeLabel } from "./healthRecordPrograms.js";
 
 test("removing the primary selects a remaining program without losing the others", () => {
@@ -30,4 +30,11 @@ test("a stale removed program is ignored, never shown", () => {
   assert.equal(getServiceTypeLabel(record), "Maternal / Prenatal");
   assert.equal(getSpecializedRecordPrograms([record]).length, 1);
   assert.deepEqual(getConsultationPrograms({ category: "Hypertension / Diabetic Monitoring" }), []);
+});
+
+test("a restored draft with a removed classification follows its remaining primary", () => {
+  assert.equal(restoredClassification("Hypertension / Diabetic Monitoring", "Maternal"), "Maternal");
+  assert.equal(restoredClassification("Hypertension / Diabetic Monitoring", ""), "General Consultation");
+  assert.equal(restoredClassification("TB DOTS / TB Monitoring", "TB"), "TB DOTS / TB Monitoring");
+  assert.equal(restoredClassification("General Consultation", ""), "General Consultation");
 });

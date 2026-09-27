@@ -22,3 +22,13 @@ export function toggleConsultationProgram(programs, primary, key) {
   const selectedPrograms = programs.includes(key) ? programs.filter((item) => item !== key) : [...programs, key];
   return { selectedPrograms, primaryProgram: selectedPrograms.includes(primary) ? primary : selectedPrograms[0] || "" };
 }
+
+/**
+ * The classification to resume a saved draft with. A classification that no
+ * longer belongs to any program (the removed Hypertension / Diabetic
+ * Monitoring) follows the restored primary program instead.
+ */
+export function restoredClassification(classification, primaryProgram) {
+  const known = classification === "General Consultation" || Object.values(PROGRAM_CLASSIFICATIONS).includes(classification);
+  return known ? classification : PROGRAM_CLASSIFICATIONS[primaryProgram] || "General Consultation";
+}

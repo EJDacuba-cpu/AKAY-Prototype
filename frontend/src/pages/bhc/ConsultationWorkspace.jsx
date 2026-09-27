@@ -3,7 +3,7 @@ import { Button } from "../../components/ui/button";
 import ReferralDestinationPicker from "../../components/features/health-records/ReferralDestinationPicker";
 import PregnancyConfirmation from "../../components/features/health-records/PregnancyConfirmation";
 import PurposeOfVisitModal from "../../components/features/health-records/PurposeOfVisitModal";
-import { purposePrograms, purposeErrors, teenagePrenatal, VISIT_SERVICES } from "../../utils/visitPurpose";
+import { knownVisitPurpose, purposePrograms, purposeErrors, teenagePrenatal, VISIT_SERVICES } from "../../utils/visitPurpose";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBlocker, useLocation, useNavigate, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -71,7 +71,7 @@ import UnfinishedConsultationModal from "../../components/features/health-record
 import {
   locationToPath,
 } from "../../utils/profileNavigation";
-import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "../../utils/consultationPrograms";
+import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, restoredClassification, toggleConsultationProgram } from "../../utils/consultationPrograms";
 import {
   MATERNAL_LAB_TEST_KEYS,
   MATERNAL_LAB_TESTS,
@@ -1826,7 +1826,7 @@ export default function ConsultationWorkspace() {
   function restoreHealthRecordDraft(draft) {
     const payload = draft.payload || {};
     setReceivingRhuId(payload.receivingRhuId || "");
-    setVisitPurpose(payload.visitPurpose || null);
+    setVisitPurpose(knownVisitPurpose(payload.visitPurpose));
     setPurposeOpen(false);
     setSelectedPatientId(draft.patient.id);
     // Adopt the consultation's existing identity - never mint a fresh one for
@@ -1834,10 +1834,12 @@ export default function ConsultationWorkspace() {
     // identities existed has none, so it gains one now; the server adopts it
     // on the next save (and never reassigns one that is already set).
     setConsultationUuid(adoptConsultationUuid(draft));
-    setHealthRecordType(normalizeRecordType(draft.classification));
-    setSelectedPrograms(getConsultationPrograms({ ...payload, classification: draft.classification }));
-    setPrimaryProgram(getPrimaryProgram({ ...payload, classification: draft.classification }));
-    setConsultationMode(payload.consultationMode || (draft.classification === "General Consultation" ? "general" : "program"));
+    const restoredPrograms = getConsultationPrograms({ ...payload, classification: draft.classification });
+    const restoredPrimary = getPrimaryProgram({ ...payload, classification: draft.classification });
+    setHealthRecordType(normalizeRecordType(restoredClassification(draft.classification, restoredPrimary)));
+    setSelectedPrograms(restoredPrograms);
+    setPrimaryProgram(restoredPrimary);
+    setConsultationMode(restoredPrograms.length ? payload.consultationMode || (draft.classification === "General Consultation" ? "general" : "program") : "general");
     setConsultationType("new");
     setDateOfVisit(payload.dateOfVisit || toDateInputValue());
     setTimeOfVisit(payload.timeOfVisit || toTimeInputValue());
