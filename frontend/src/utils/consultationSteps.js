@@ -115,7 +115,7 @@ export function buildConsultationSteps({ selectedPrograms, primaryProgram, gener
   const programSteps = getProgramFormSteps(selectedPrograms, primaryProgram);
 
   return [
-    { key: INTERVIEW_STEP, phase: "form", label: "Chief Complaint & HPI" },
+    { key: INTERVIEW_STEP, phase: "form", label: "Concern & Vital Signs" },
     ...(generalSelected ? [{ key: ASSESSMENT_STEP, phase: "form", label: "Physical Examination" }] : []),
     ...(programSteps.length > 0
       ? [{ key: PROGRAMS_STEP, phase: "form", label: "Program / Service Details" }]

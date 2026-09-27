@@ -1515,7 +1515,7 @@ export default function ConsultationWorkspace() {
     () => buildConsultationSteps({ selectedPrograms, primaryProgram, generalSelected, purposeFlow }),
     [selectedPrograms, primaryProgram, generalSelected, purposeFlow],
   );
-  // The programs nested inside the single "Program Forms" step.
+  // The programs nested inside the single "Programs & Monitoring" step.
   const programFormSteps = useMemo(
     () => getProgramFormSteps(selectedPrograms, primaryProgram).map(step => step.classification === "Maternal" && postpartumSelected ? { ...step, label: prenatalSelected ? "Prenatal / Postpartum" : "Postpartum", headerDescription: "Record maternal care provided during this visit." } : step),
     [selectedPrograms, primaryProgram, postpartumSelected, prenatalSelected],
@@ -3880,7 +3880,7 @@ export default function ConsultationWorkspace() {
 
   /**
    * Accepts either a screen key (a program form, assessment, treatment) or a
-   * global progress-bar key; "Program Forms" opens the first program.
+   * global progress-bar key; "Programs & Monitoring" opens the first program.
    */
   function goToStepKey(key, { scroll = true } = {}) {
     const target = key === PROGRAMS_STEP ? programFormSteps[0]?.key : key;
@@ -4281,7 +4281,7 @@ export default function ConsultationWorkspace() {
   const reviewSections = [
     {
       key: INTERVIEW_STEP,
-      title: "Chief Complaint & HPI",
+      title: "Concern",
       stepKey: INTERVIEW_STEP,
       rows: [
         {
@@ -4527,7 +4527,7 @@ export default function ConsultationWorkspace() {
             <FormSection title="Chief Complaint" subtitle="Why the patient is here today, in their own words and yours." delay={3}>
             <div className="grid gap-4 @xl:grid-cols-2">
               <FieldTextarea label="Chief Complaint" required name="chiefComplaint" error={validationErrors.chiefComplaint} value={chiefComplaint} onChange={event => { clearValidationError("chiefComplaint"); setChiefComplaint(event.target.value); }} placeholder="Describe the patient's chief complaint..." rows={3} />
-              <FieldTextarea label="History of Present Illness / Present Concern" name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }}  rows={3} />
+              <FieldTextarea label="History of Present Illness" name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }}  rows={3} />
             </div>
             </FormSection>
             )}
@@ -5353,7 +5353,7 @@ export default function ConsultationWorkspace() {
             {purposeFlow && <>
             <div className="anim-fade-up grid gap-4 pb-1 @xl:grid-cols-2" style={stagger(3)}>
               <FieldTextarea label="Chief Complaint" required name="chiefComplaint" error={validationErrors.chiefComplaint} value={chiefComplaint} onChange={event => { clearValidationError("chiefComplaint"); setChiefComplaint(event.target.value); }} placeholder="Describe the patient's chief complaint..." rows={3} />
-              <FieldTextarea label="History of Present Illness / Present Concern" name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }}  rows={3} />
+              <FieldTextarea label="History of Present Illness" name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }}  rows={3} />
             </div>
 
             </>}

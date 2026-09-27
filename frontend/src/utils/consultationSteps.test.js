@@ -136,7 +136,7 @@ test("the global steps read in the new order with the new names", () => {
   assert.deepEqual(
     steps.map((step) => step.label),
     [
-      "Chief Complaint & HPI",
+      "Concern & Vital Signs",
       "Physical Examination",
       "Program / Service Details",
       "BHC Assessment & Actions Taken",
@@ -255,7 +255,7 @@ for (const [label, programs, primary] of [
     assert.equal(getProgramFormSteps(programs, primary).length > 0, programs.length > 0);
 
     assert.deepEqual(headingFor(INTERVIEW_STEP, programs, primary), {
-      title: "Chief Complaint & HPI",
+      title: "Concern & Vital Signs",
       subtitle: SUBTITLES[INTERVIEW_STEP],
     });
     assert.deepEqual(headingFor(ASSESSMENT_STEP, programs, primary), {

@@ -43,7 +43,7 @@ test('program-only flow skips General but retains vitals, treatment and final ac
   assert.deepEqual(getFormSequence(programs, false), ['interview', 'program:Maternal', 'treatment']);
   assert.deepEqual(getFormSequence(programs, true), ['interview', 'assessment', 'program:Maternal', 'treatment']);
   const steps = buildConsultationSteps({ selectedPrograms: ['EPI'], generalSelected: false });
-  assert.equal(steps[0].label, 'Chief Complaint & HPI');
+  assert.equal(steps[0].label, 'Concern & Vital Signs');
   assert.equal(steps.some(step => step.key === 'assessment'), false);
   assert.equal(steps.at(-1).key, 'review');
 });

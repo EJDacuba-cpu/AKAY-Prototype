@@ -64,17 +64,17 @@ export default function ConsultationProgramPanel({
 
   return (
     <aside
-      aria-label="Program forms"
+      aria-label="Programs & Monitoring"
       data-field="healthRecordType"
       className="min-w-0 rounded-none border border-[#E5E7EB] bg-white lg:sticky lg:top-3 lg:max-h-[calc(100dvh-13rem)] lg:overflow-y-auto"
     >
       <div className="flex items-start justify-between gap-2 border-b border-[#E5E7EB] px-4 py-2.5">
         <div className="min-w-0">
           <h2 className="text-[14px] font-bold leading-snug text-[#111827]">
-            Program Forms
+            Programs & Monitoring
           </h2>
           <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
-            Optional. Select none for a general consultation.
+            Select any program or monitoring service related to this visit. Leave unselected for a general consultation.
           </p>
         </div>
         <span className="mt-0.5 inline-flex min-w-[20px] flex-none items-center justify-center rounded-sm bg-[#F3F4F6] px-1.5 py-0.5 text-[11px] font-semibold text-[#374151]">
