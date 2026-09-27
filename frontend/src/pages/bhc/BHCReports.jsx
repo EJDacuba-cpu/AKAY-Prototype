@@ -39,18 +39,14 @@ import {
 } from "../../utils/filterUtils";
 import {
   getEpiVaccineEntries,
-  getHypertensionDiabeticData,
   getRecordDateValue,
   getRecordId,
   getServiceTypeLabel,
   formatServiceType,
-  formatHypertensionDiabeticClientStatus,
-  formatHypertensionDiabeticCondition,
   getTbData,
   isEpiRecord,
   isFamilyPlanningRecord,
   isMaternalRecord,
-  isNcdRecord,
   isTbRecord,
   normalizeVaccineName,
 } from "../../utils/healthRecordPrograms";
@@ -95,13 +91,6 @@ const REPORT_TYPES = [
     slug: "family-planning",
     label: "Family Planning Target Client List",
     description: "Family planning visits, methods, and client classifications.",
-  },
-  {
-    key: "ncd",
-    slug: "ncd",
-    label: "Hypertension and Diabetes Monitoring",
-    description:
-      "Hypertension and Diabetes (NCD Club) monitoring sheet for enrolled clients.",
   },
   {
     key: "maternal",
@@ -159,7 +148,6 @@ const EMPTY_FILTERS = {
   ageMonths: "",
   vaccine: "",
   vaccineStatus: "",
-  conditionType: "",
   aogRange: "",
   disease: "",
   notifiableStatus: "",
@@ -465,8 +453,6 @@ function SelectedReport(props) {
       return <CommunitySurveillanceReportView {...props} />;
     case "followups":
       return <FollowUpReportView {...props} />;
-    case "ncd":
-      return <NcdReportView {...props} />;
     case "maternal":
       return <MaternalReportView {...props} />;
     case "tb":
@@ -495,9 +481,6 @@ function normalizeReportSlug(value) {
     "community-surveillance": "community-based-surveillance",
     "community-based-surveillance": "community-based-surveillance",
     hfmd: "community-based-surveillance",
-    "ncd-monitoring": "ncd",
-    "hypertension-diabetic-monitoring": "ncd",
-    "hypertension-and-diabetic-monitoring": "ncd",
     "maternal-prenatal": "maternal",
     "tb-dots": "tb",
     "tb-monitoring": "tb",
@@ -894,64 +877,6 @@ function FollowUpReportView({ followUps, filters }) {
         ])}
         emptyTitle="No follow-up tasks"
         emptyMessage="No follow-up tasks match the selected filters."
-      />
-    </>
-  );
-}
-
-function NcdReportView({ records, filters, patientMap }) {
-  const rows = records
-    .filter(isNcdRecord)
-    .map((record, index) =>
-      normalizeHypertensionDiabeticReportRow(record, patientMap, index + 1),
-    )
-    .filter(
-      (row) =>
-        matchesDateRange(row.date, filters) &&
-        matchesValue(row.barangay, filters.barangay) &&
-        matchesCondition(row.conditionType, filters.conditionType) &&
-        matchesValue(row.status, filters.status),
-    );
-  const hpnCount = rows.filter((row) => row.conditionType === "hpn").length;
-  const dmCount = rows.filter((row) => row.conditionType === "dm").length;
-  const bothCount = rows.filter((row) => row.conditionType === "both").length;
-
-  return (
-    <>
-      <SummaryGrid>
-        <SummaryCard label="Target Clients" value={rows.length} icon={<HeartPulse size={16} />} />
-        <SummaryCard label="HPN" value={hpnCount} icon={<FileHeart size={16} />} />
-        <SummaryCard label="DM" value={dmCount} tone="amber" icon={<ClipboardList size={16} />} />
-        <SummaryCard label="BOTH" value={bothCount} tone="emerald" icon={<UsersRound size={16} />} />
-      </SummaryGrid>
-      <ReportTable
-        columns={[
-          "No.",
-          "Name",
-          "Address",
-          "Age",
-          "BP",
-          "FBS",
-          "HPN / DM / BOTH",
-          "Old / New",
-          "Date of Last Consultation",
-          "Date of Follow-up Check-up",
-        ]}
-        rows={rows.map((row, index) => [
-          index + 1,
-          row.patientName,
-          row.address || EMPTY_MARK,
-          row.age || EMPTY_MARK,
-          row.bp || EMPTY_MARK,
-          row.fbs || EMPTY_MARK,
-          formatHypertensionDiabeticCondition(row.conditionType) || EMPTY_MARK,
-          formatHypertensionDiabeticClientStatus(row.clientStatus) || EMPTY_MARK,
-          formatDate(row.dateOfLastConsultation, EMPTY_MARK),
-          formatDate(row.followUpDate, EMPTY_MARK),
-        ])}
-        emptyTitle="No Hypertension / Diabetic Monitoring records"
-        emptyMessage="No hypertension or diabetic monitoring records match the selected filters."
-        minWidth="min-w-[1180px]"
       />
     </>
   );
@@ -1433,7 +1358,6 @@ function getReportFilterFields(type, barangays, facilities) {
       "Child Health / EPI",
       "Maternal / Prenatal",
       "Family Planning",
-      "Hypertension / Diabetic Monitoring",
       "TB DOTS / TB Monitoring",
     ],
   };
@@ -1506,13 +1430,6 @@ function getReportFilterFields(type, barangays, facilities) {
         serviceType,
         status(["Pending", "Due Today", "No Show", "Completed", "Cancelled"]),
       ];
-    case "ncd":
-      return [
-        dateField,
-        barangay,
-        { key: "conditionType", label: "Condition Type", type: "select", resetValue: "", placeholder: "All Conditions", options: ["HPN", "DM", "BOTH"] },
-        status(["Pending", "Active", "Completed"]),
-      ];
     case "maternal":
       return [
         dateField,
@@ -1545,44 +1462,6 @@ function normalizeProgramRecord(record, patientMap) {
     date: getRecordDateValue(record),
     familyPlanningData:
       record.familyPlanningData || record.family_planning_data || {},
-  };
-}
-
-function normalizeHypertensionDiabeticReportRow(record, patientMap, number) {
-  const normalized = normalizeProgramRecord(record, patientMap);
-  const patient =
-    record.patient && typeof record.patient === "object"
-      ? record.patient
-      : patientMap.get(normalized.patientId) || {};
-  const data = getHypertensionDiabeticData(record);
-  const birthday = getPatientBirthDate(patient, record);
-
-  return {
-    ...normalized,
-    number,
-    patientName: normalized.patientName,
-    address: firstFilledValue(
-      patient.address,
-      patient.completeAddress,
-      patient.complete_address,
-      record.patientAddress,
-      record.patient_address,
-      normalized.barangay,
-    ),
-    age: getPatientAge(patient, record, birthday),
-    bp: data.bp,
-    fbs: data.fbs,
-    conditionType: data.conditionType,
-    clientStatus: data.clientStatus,
-    dateOfLastConsultation: data.dateOfLastConsultation,
-    followUpDate:
-      record.followUpDate ||
-      record.follow_up_date ||
-      record.monitoringData?.followUpDate ||
-      record.monitoring_data?.followUpDate ||
-      record.monitoring_data?.follow_up_date ||
-      "",
-    status: record.status || record.followUpStatus || record.follow_up_status || "",
   };
 }
 
@@ -2424,16 +2303,6 @@ function matchesAgeRange(age, range) {
   if (range === "15-19") return value >= 15 && value <= 19;
   if (range === "20-49") return value >= 20 && value <= 49;
   return value >= 50;
-}
-
-function matchesCondition(value, condition) {
-  if (!condition) return true;
-  const normalizedValue = normalizeText(value);
-  const normalizedCondition = normalizeText(condition);
-  if (normalizedCondition === "hpn") return normalizedValue === "hpn";
-  if (normalizedCondition === "dm") return normalizedValue === "dm";
-  if (normalizedCondition === "both") return normalizedValue === "both";
-  return normalizedValue === normalizedCondition;
 }
 
 function matchesAog(value, range) {

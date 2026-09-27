@@ -19,7 +19,6 @@ export const reportNavItems = [
   { label: "Morbidity and Notifiable Diseases", slug: "morbidity" },
   { label: "Community-Based Disease Surveillance", slug: "community-based-surveillance" },
   { label: "Follow-up and Monitoring", slug: "follow-ups" },
-  { label: "Hypertension and Diabetes Monitoring", slug: "ncd" },
   { label: "Maternal and Prenatal Care Target Client List", slug: "maternal" },
   { label: "TB Program Register", slug: "tb" },
 ];
