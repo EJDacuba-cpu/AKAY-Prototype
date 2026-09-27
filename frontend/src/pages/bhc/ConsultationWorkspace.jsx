@@ -18,7 +18,6 @@ import {
   Stethoscope,
   Syringe,
   Users,
-  Zap,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import "../../components/features/health-records/wizard/consultation-ehr.css";
@@ -212,7 +211,6 @@ const DRAFT_SUPPORTED_RECORD_TYPES = new Set([
   "Immunization",
   "Maternal",
   "Family Planning",
-  "Hypertension / Diabetic Monitoring",
   "TB DOTS / TB Monitoring",
 ]);
 
@@ -245,11 +243,6 @@ const RECORD_TYPE_DETAILS = {
     title: "Family Planning",
     description: "Contraceptive counselling and reproductive health.",
     icon: Users,
-  },
-  "Hypertension / Diabetic Monitoring": {
-    title: "Hypertension / Diabetic",
-    description: "Monitoring and management of chronic NCDs.",
-    icon: Zap,
   },
   "TB DOTS / TB Monitoring": {
     title: "TB DOTS",
@@ -391,21 +384,6 @@ const EMPTY_FAMILY_PLANNING_DATA = {
   adviceGiven: "",
   medicinesSupplies: "",
 };
-
-const EMPTY_HYPERTENSION_DIABETIC_DATA = {
-  bp: "",
-  fbs: "",
-  conditionType: "",
-  clientStatus: "",
-  dateOfLastConsultation: "",
-  treatmentActionTaken: "",
-};
-
-const HYPERTENSION_DIABETIC_CONDITION_OPTIONS = [
-  { value: "hpn", label: "HPN" },
-  { value: "dm", label: "DM" },
-  { value: "both", label: "BOTH" },
-];
 
 const EMPTY_MATERNAL_DATA = {
   lmp: "",
@@ -684,96 +662,11 @@ function normalizeRecordType(value) {
   if (lower.includes("immun")) return "Immunization";
   if (lower.includes("maternal") || lower.includes("prenatal")) return "Maternal";
   if (lower.includes("family") || lower.includes("planning")) return "Family Planning";
-  if (
-    lower.includes("senior") ||
-    lower.includes("ncd") ||
-    lower.includes("hypertension") ||
-    lower.includes("diabetic") ||
-    lower.includes("diabetes") ||
-    lower.includes("non communicable")
-  ) {
-    return "Hypertension / Diabetic Monitoring";
-  }
   if (lower.includes("general") || lower.includes("consult")) {
     return "General Consultation";
   }
 
   return raw;
-}
-
-function normalizeHypertensionDiabeticCondition(value = "") {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (!normalized) return "";
-  if (["hpn", "hypertension", "high blood pressure"].includes(normalized)) {
-    return "hpn";
-  }
-  if (["dm", "diabetes", "diabetic", "diabetes mellitus"].includes(normalized)) {
-    return "dm";
-  }
-  if (["both", "hpn/dm", "hpn dm", "hypertension diabetes"].includes(normalized)) {
-    return "both";
-  }
-  return normalized;
-}
-
-function normalizeHypertensionDiabeticClientStatus(value = "") {
-  const normalized = String(value || "").trim().toLowerCase();
-  return ["new", "old"].includes(normalized) ? normalized : normalized;
-}
-
-function mergeHypertensionDiabeticData(data = {}, fallback = {}) {
-  const source = data || {};
-  return {
-    ...EMPTY_HYPERTENSION_DIABETIC_DATA,
-    ...source,
-    bp:
-      source.bp ||
-      source.bloodPressure ||
-      source.blood_pressure ||
-      fallback.bp ||
-      "",
-    fbs:
-      source.fbs ||
-      source.fastingBloodSugar ||
-      source.fasting_blood_sugar ||
-      source.bloodSugar ||
-      source.blood_sugar ||
-      fallback.fbs ||
-      "",
-    conditionType: normalizeHypertensionDiabeticCondition(
-      source.conditionType ||
-        source.condition_type ||
-        fallback.conditionType ||
-        fallback.condition_type ||
-        "",
-    ),
-    clientStatus: normalizeHypertensionDiabeticClientStatus(
-      source.clientStatus ||
-        source.client_status ||
-        fallback.clientStatus ||
-        fallback.client_status ||
-        "",
-    ),
-    dateOfLastConsultation:
-      source.dateOfLastConsultation ||
-      source.date_of_last_consultation ||
-      source.lastConsultationDate ||
-      source.last_consultation_date ||
-      fallback.dateOfLastConsultation ||
-      fallback.date_of_last_consultation ||
-      "",
-    treatmentActionTaken:
-      source.treatmentActionTaken ||
-      source.treatment_action_taken ||
-      source.actionTaken ||
-      source.action_taken ||
-      source.treatment ||
-      source.medication ||
-      fallback.treatmentActionTaken ||
-      fallback.treatment_action_taken ||
-      fallback.medication ||
-      "",
-  };
 }
 
 function closeDateTimePopovers() {
@@ -1255,9 +1148,6 @@ export default function ConsultationWorkspace() {
   const [familyPlanningData, setFamilyPlanningData] = useState(
     EMPTY_FAMILY_PLANNING_DATA,
   );
-  const [hypertensionDiabeticData, setHypertensionDiabeticData] = useState(
-    EMPTY_HYPERTENSION_DIABETIC_DATA,
-  );
   const [tbData, setTbData] = useState(EMPTY_TB_DATA);
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
   const [aog, setAog] = useState("");
@@ -1384,17 +1274,8 @@ export default function ConsultationWorkspace() {
         ),
       );
       setHfmdSurveillance(getHfmdSurveillanceValue(found));
-      // Older Hypertension/Diabetic records stored the reading only as a
-      // "120/80" string, with no systolic/diastolic vital signs to load from.
-      const [legacySystolic = "", legacyDiastolic = ""] = String(
-        found.hypertensionDiabeticData?.bp ||
-          found.hypertension_diabetic_data?.bp ||
-          "",
-      )
-        .split("/")
-        .map((part) => part.replace(/[^\d.]/g, "").trim());
-      setSystolicBp(found.systolicBp || legacySystolic);
-      setDiastolicBp(found.diastolicBp || legacyDiastolic);
+      setSystolicBp(found.systolicBp || "");
+      setDiastolicBp(found.diastolicBp || "");
       setTemp(found.temperature || found.temp || "");
       setPulse(found.pulse || "");
       setSpo2(found.spo2 || "");
@@ -1471,20 +1352,6 @@ export default function ConsultationWorkspace() {
           existingFamilyPlanningData.advice_given ||
           "",
       });
-      const existingMonitoringData = found.monitoringData || found.monitoring_data || {};
-      const existingHypertensionDiabeticData =
-        found.hypertensionDiabeticData ||
-        found.hypertension_diabetic_data ||
-        existingMonitoringData.hypertensionDiabeticData ||
-        existingMonitoringData.hypertension_diabetic_data ||
-        {};
-      setHypertensionDiabeticData(
-        mergeHypertensionDiabeticData(existingHypertensionDiabeticData, {
-          ...existingMonitoringData,
-          ...found,
-          medication: found.medication || found.initialActionsTaken || "",
-        }),
-      );
       setHealthRecordType(
         normalizeRecordType(
           found.category ||
@@ -1619,8 +1486,6 @@ export default function ConsultationWorkspace() {
   const isImmunization = recordTypeKey === "immunization" || selectedPrograms.includes("EPI");
   const isMaternal = recordTypeKey === "maternal" || selectedPrograms.includes("Maternal");
   const isFamilyPlanning = recordTypeKey === "family planning" || selectedPrograms.includes("Family Planning");
-  const isHypertensionDiabetic =
-    recordTypeKey === "hypertension / diabetic monitoring" || selectedPrograms.includes("Hypertension") || selectedPrograms.includes("Diabetes");
   const isTb = recordTypeKey === "tb dots / tb monitoring" || selectedPrograms.includes("TB");
   const effectiveLinkedFollowUpTask = routeLinkedFollowUpTask;
   const effectiveFollowUpParentRecordId = isFollowUp
@@ -1936,14 +1801,6 @@ export default function ConsultationWorkspace() {
         "adviceGiven",
         "medicinesSupplies",
       ]),
-      hypertensionDiabeticData: pickDraftFields(hypertensionDiabeticData, [
-        "bp",
-        "fbs",
-        "conditionType",
-        "clientStatus",
-        "dateOfLastConsultation",
-        "treatmentActionTaken",
-      ]),
       tbData,
       referralForm: pickDraftFields(referralForm, [
         "urgencyLevel",
@@ -2023,10 +1880,6 @@ export default function ConsultationWorkspace() {
     setFamilyPlanningData({
       ...EMPTY_FAMILY_PLANNING_DATA,
       ...(payload.familyPlanningData || {}),
-    });
-    setHypertensionDiabeticData({
-      ...EMPTY_HYPERTENSION_DIABETIC_DATA,
-      ...(payload.hypertensionDiabeticData || {}),
     });
     setTbData(normalizeTbData(payload.tbData));
     setReferralForm((current) => ({
@@ -2662,22 +2515,6 @@ export default function ConsultationWorkspace() {
       }
     }
 
-    if (isHypertensionDiabetic) {
-      // The reading is entered as two numbers now, so require both rather than
-      // the composed string - which is derived from them at save time.
-      if (
-        !String(systolicBp || "").trim() ||
-        !String(diastolicBp || "").trim()
-      ) {
-        errors["hypertensionDiabeticData.bp"] =
-          "Systolic and diastolic blood pressure are required.";
-      }
-      if (!String(hypertensionDiabeticData.conditionType || "").trim()) {
-        errors["hypertensionDiabeticData.conditionType"] =
-          "Condition type is required.";
-      }
-    }
-
 
     if (isTb) {
       if (!String(tbData.diagnosis.tbCaseNumber || "").trim()) {
@@ -2689,7 +2526,7 @@ export default function ConsultationWorkspace() {
       }
     }
 
-    if ((purposeFlow ? generalSelected : !isImmunization && !isFamilyPlanning && !isHypertensionDiabetic && !isMaternal && !isTb) && !chiefComplaint.trim()) {
+    if ((purposeFlow ? generalSelected : !isImmunization && !isFamilyPlanning && !isMaternal && !isTb) && !chiefComplaint.trim()) {
       errors.chiefComplaint = "Chief complaint is required.";
     }
 
@@ -2850,11 +2687,6 @@ export default function ConsultationWorkspace() {
         ? { concern: "", findings: "", adviceGiven: "" }
         : {}),
     }));
-  }
-
-  function handleHypertensionDiabeticChange(field, value) {
-    clearValidationError(`hypertensionDiabeticData.${field}`);
-    setHypertensionDiabeticData((prev) => ({ ...prev, [field]: value }));
   }
 
   function beginOfficialSubmission(formData) {
@@ -3406,9 +3238,6 @@ export default function ConsultationWorkspace() {
               : "Family Planning Visit"
           : effectiveHealthRecordType === "Maternal" && !chiefComplaint
             ? "Prenatal Visit"
-          : effectiveHealthRecordType === "Hypertension / Diabetic Monitoring" &&
-              !chiefComplaint
-            ? "Hypertension / Diabetic Monitoring Visit"
           : effectiveHealthRecordType === "TB DOTS / TB Monitoring" &&
               !chiefComplaint
             ? "TB DOTS / TB Monitoring Visit"
@@ -3503,35 +3332,6 @@ export default function ConsultationWorkspace() {
       medicines_supplies: familyPlanningData.medicinesSupplies || "",
     };
 
-    // The pair is authoritative; a legacy record that only stored the composed
-    // string keeps it when no parts were entered.
-    const composedBloodPressure =
-      systolicBp && diastolicBp ? `${systolicBp}/${diastolicBp}` : "";
-    const recordHypertensionDiabeticData = {
-      ...hypertensionDiabeticData,
-      bp: composedBloodPressure || hypertensionDiabeticData.bp || "",
-      conditionType: normalizeHypertensionDiabeticCondition(
-        hypertensionDiabeticData.conditionType,
-      ),
-      condition_type: normalizeHypertensionDiabeticCondition(
-        hypertensionDiabeticData.conditionType,
-      ),
-      clientStatus: normalizeHypertensionDiabeticClientStatus(
-        hypertensionDiabeticData.clientStatus,
-      ),
-      client_status: normalizeHypertensionDiabeticClientStatus(
-        hypertensionDiabeticData.clientStatus,
-      ),
-      dateOfLastConsultation:
-        hypertensionDiabeticData.dateOfLastConsultation || "",
-      date_of_last_consultation:
-        hypertensionDiabeticData.dateOfLastConsultation || "",
-      treatmentActionTaken:
-        hypertensionDiabeticData.treatmentActionTaken || "",
-      treatment_action_taken:
-        hypertensionDiabeticData.treatmentActionTaken || "",
-    };
-
     const finalPatientStatus =
       effectiveHealthRecordType === "Immunization"
         ? effectiveFollowUpDate
@@ -3580,8 +3380,6 @@ export default function ConsultationWorkspace() {
       medication:
         effectiveHealthRecordType === "Maternal"
           ? recordMaternalData.treatment || medication
-          : isHypertensionDiabetic
-            ? recordHypertensionDiabeticData.treatmentActionTaken || medication
           : medication,
       attendingStaff: attendingStaff || currentUserName,
       consultationNotes,
@@ -3623,20 +3421,12 @@ export default function ConsultationWorkspace() {
         isFamilyPlanning
           ? recordFamilyPlanningData
           : null,
-      hypertensionDiabeticData:
-        isHypertensionDiabetic
-          ? recordHypertensionDiabeticData
-          : null,
       tbData:
         isTb ? tbData : null,
       ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
       monitoringData: {
         ...(visitPurpose ? { visitPurpose: { ...visitPurpose, pregnancyConfirmed: teenagePrenatal(visitPurpose, selectedPatient, dateOfVisit) ? visitPurpose.pregnancyConfirmed : "" } } : {}),
         ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
-        hypertensionDiabeticData:
-          isHypertensionDiabetic
-            ? recordHypertensionDiabeticData
-            : null,
       },
       createdByRole: userRole,
       linkedTrackingId: isFollowUpVisitMode
@@ -4165,7 +3955,7 @@ export default function ConsultationWorkspace() {
       : key === "Family Planning" ? familyPlanningEligibility
       : key === "EPI" && immunizationPatientInfo.mode === "adult" ? { eligible: false, message: getAdultImmunizationMessage(immunizationPatientInfo.age) }
       : { eligible: true, message: "" };
-    return { key, title: key, description: key === "Hypertension" ? "Monitoring and management of high blood pressure." : key === "Diabetes" ? "Monitoring and management of diabetes." : key === "EPI" ? "Immunization and child vaccination services." : RECORD_TYPE_DETAILS[classification]?.description,
+    return { key, title: key, description: key === "EPI" ? "Immunization and child vaccination services." : RECORD_TYPE_DETAILS[classification]?.description,
       icon: RECORD_TYPE_DETAILS[classification]?.icon || Stethoscope, disabled: !eligibility.eligible, disabledReason: eligibility.message };
   });
 
@@ -4210,9 +4000,6 @@ export default function ConsultationWorkspace() {
     setPrimaryProgram(primary);
     setConsultationMode(programs.length ? "program" : "general");
     setHealthRecordType(PROGRAM_CLASSIFICATIONS[primary] || "General Consultation");
-    if (programs.includes("Hypertension") || programs.includes("Diabetes")) {
-      setHypertensionDiabeticData(current => ({ ...current, conditionType: programs.includes("Hypertension") && programs.includes("Diabetes") ? "both" : programs.includes("Diabetes") ? "dm" : "hpn" }));
-    }
     setPurposeOpen(false);
     setWizardPhase(WIZARD_FORM);
     setFormStep(INTERVIEW_STEP);
@@ -4230,9 +4017,6 @@ export default function ConsultationWorkspace() {
     // draft payload and the saved record read it exactly as before.
     setConsultationMode(next.selectedPrograms.length ? "program" : "general");
     setHealthRecordType(PROGRAM_CLASSIFICATIONS[next.primaryProgram] || "General Consultation");
-    if (next.selectedPrograms.includes("Hypertension") || next.selectedPrograms.includes("Diabetes")) {
-      setHypertensionDiabeticData(current => ({ ...current, conditionType: next.selectedPrograms.includes("Hypertension") && next.selectedPrograms.includes("Diabetes") ? "both" : next.selectedPrograms.includes("Diabetes") ? "dm" : "hpn" }));
-    }
   }
 
   /**
@@ -4283,12 +4067,11 @@ export default function ConsultationWorkspace() {
     !isImmunization &&
     !isFamilyPlanning &&
     !isMaternal &&
-    !isHypertensionDiabetic &&
     !isTb;
 
   // The Treatment step has ONE "Treatment / Action Taken" field. It keeps writing
-  // exactly what each selected program's own field wrote before (Maternal and
-  // Hypertension also mirror into `medication`, as they always did), so saved
+  // exactly what each selected program's own field wrote before (Maternal also
+  // mirrors into `medication`, as it always did), so saved
   // records and drafts keep the same shape. The first binding - the primary
   // program's - supplies the value that is displayed.
   const treatmentBindingFor = {
@@ -4296,13 +4079,6 @@ export default function ConsultationWorkspace() {
       value: maternalData.treatment,
       set: (value) => {
         handleMaternalChange("treatment", value);
-        setMedication(value);
-      },
-    },
-    "Hypertension / Diabetic Monitoring": {
-      value: hypertensionDiabeticData.treatmentActionTaken,
-      set: (value) => {
-        handleHypertensionDiabeticChange("treatmentActionTaken", value);
         setMedication(value);
       },
     },
@@ -4423,8 +4199,8 @@ export default function ConsultationWorkspace() {
     steps: consultationSteps,
     subtitles: stepSubtitles,
   });
-  // Program panel: one status per form step (Hypertension and Diabetes share a
-  // step), attached to each selected program that step covers.
+  // Program panel: one status per form step, attached to each selected program
+  // that step covers.
   const showProgramPanel =
     usesConsultationSteps &&
     !isResolvingClinicalMode &&
@@ -4433,16 +4209,11 @@ export default function ConsultationWorkspace() {
   if (showProgramPanel && programFormSteps.length > 0) {
     const invalidKeys = Object.keys(getClinicalValidationErrors({ finalizing: true }));
     programFormSteps.forEach((step) => {
-      const incomplete = invalidKeys.some(
-        (key) =>
-          getErrorOwnerStepKey(key) === step.key ||
-          (step.classification === "Hypertension / Diabetic Monitoring" && key === "hypertensionDiabeticData.bp"),
-      );
+      const incomplete = invalidKeys.some((key) => getErrorOwnerStepKey(key) === step.key);
       const started =
         step.classification === "Family Planning" ? Boolean(familyPlanningData.methodUsed || familyPlanningData.remarks || familyPlanningData.concern)
         : step.classification === "TB DOTS / TB Monitoring" ? Boolean(tbData.diagnosis.tbCaseNumber || tbData.phases.intensiveStart)
         : step.classification === "Immunization" ? Boolean(immunizationVaccineEntries.length || consultationNotes.trim())
-        : step.classification === "Hypertension / Diabetic Monitoring" ? Boolean(systolicBp || diastolicBp)
         : true;
       const status = incomplete ? (started ? "Incomplete" : "Not Started") : "Completed";
       step.programs.forEach((programKey) => {
@@ -4558,7 +4329,6 @@ export default function ConsultationWorkspace() {
         Immunization: { vaccineEntries: immunizationVaccineEntries, breastfeedingMonitoring: immunizationData.breastfeedingMonitoring },
         "Family Planning": familyPlanningData,
         "TB DOTS / TB Monitoring": tbData,
-        "Hypertension / Diabetic Monitoring": hypertensionDiabeticData,
       }[step.classification]),
     })),
     {
@@ -4765,10 +4535,7 @@ export default function ConsultationWorkspace() {
                 Height | Temperature, then BMI. */}
             <FormSection title="Vital Signs" subtitle="Record the patient's current measurements for this visit." delay={4}>
             <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
-              {/* Blood pressure is required when Hypertension / Diabetes is
-                  chosen; that program's own form no longer repeats it, so its
-                  error shows here. */}
-              <BpInputGroup required={isHypertensionDiabetic} name="hypertensionDiabeticData.bp" error={validationErrors["hypertensionDiabeticData.bp"]} systolic={systolicBp} diastolic={diastolicBp} onSystolicChange={(value) => { clearValidationError("hypertensionDiabeticData.bp"); setSystolicBp(value); }} onDiastolicChange={(value) => { clearValidationError("hypertensionDiabeticData.bp"); setDiastolicBp(value); }} />
+              <BpInputGroup name="bloodPressure" systolic={systolicBp} diastolic={diastolicBp} onSystolicChange={setSystolicBp} onDiastolicChange={setDiastolicBp} />
               <FieldInput label="Pulse Rate" name="pulse" error={validationErrors.pulse} type="number" value={pulse} onChange={event => setPulse(event.target.value)} placeholder="bpm" />
               <FieldInput label="SpO₂" name="spo2" error={validationErrors.spo2} type="number" value={spo2} onChange={event => setSpo2(event.target.value)} placeholder="%" />
               <FieldInput label="Weight" name="weight" error={validationErrors.weight} type="number" value={weight} onChange={event => setWeight(event.target.value)} placeholder="kg" />
@@ -5578,119 +5345,6 @@ export default function ConsultationWorkspace() {
           </FormSection>
         )}
 
-        {!patientGateLocked && isHypertensionDiabetic && showProgramBlock("Hypertension / Diabetic Monitoring") && (
-          <>
-            <FormSection
-              title="Monitoring Details"
-              subtitle="Record the official Hypertension and Diabetic Club monitoring sheet details for this visit."
-              delay={3}
-            >
-              <div className="grid gap-4 @3xl:grid-cols-2">
-                {/* Blood pressure, pulse and SpO2 are recorded once, on the Vital Signs step. */}
-                {!usesConsultationSteps && (
-                <BpInputGroup
-                  required
-                  name="hypertensionDiabeticData.bp"
-                  error={validationErrors["hypertensionDiabeticData.bp"]}
-                  systolic={systolicBp}
-                  diastolic={diastolicBp}
-                  onSystolicChange={(value) => {
-                    clearValidationError("hypertensionDiabeticData.bp");
-                    setSystolicBp(value);
-                  }}
-                  onDiastolicChange={(value) => {
-                    clearValidationError("hypertensionDiabeticData.bp");
-                    setDiastolicBp(value);
-                  }}
-                />
-                )}
-                <FieldInput
-                  label="Fasting Blood Sugar (FBS)"
-                  value={hypertensionDiabeticData.fbs}
-                  onChange={(event) =>
-                    handleHypertensionDiabeticChange("fbs", event.target.value)
-                  }
-                  placeholder="e.g. 95 mg/dL"
-                />
-                {!usesConsultationSteps && (
-                  <>
-                <FieldInput
-                  label="Pulse Rate"
-                  type="number"
-                  placeholder="e.g. 78 bpm"
-                  value={pulse}
-                  onChange={(event) => setPulse(event.target.value)}
-                />
-                <FieldInput
-                  label="SpO2"
-                  type="number"
-                  placeholder="e.g. 98%"
-                  value={spo2}
-                  onChange={(event) => setSpo2(event.target.value)}
-                />
-                  </>
-                )}
-                <RadioChoiceGroup
-                  label="Condition Type"
-                  name="hypertensionDiabeticData.conditionType"
-                  required
-                  value={hypertensionDiabeticData.conditionType}
-                  error={validationErrors["hypertensionDiabeticData.conditionType"]}
-                  helperText="Select HPN for hypertension, DM for diabetes, or BOTH if both conditions apply."
-                  options={HYPERTENSION_DIABETIC_CONDITION_OPTIONS}
-                  onChange={(value) =>
-                    handleHypertensionDiabeticChange("conditionType", value)
-                  }
-                />
-              </div>
-            </FormSection>
-
-            {/* Treatment and medicines move to the shared Treatment / Medicine step. */}
-            {!usesConsultationSteps && (
-            <>
-            <FormSection
-              title="Treatment / Action Taken"
-              subtitle="Record clinical action, advice, or care plan for this monitoring visit."
-              delay={4}
-            >
-              <FieldTextarea
-                label="Treatment / Action Taken"
-                value={hypertensionDiabeticData.treatmentActionTaken}
-                onChange={(event) => {
-                  handleHypertensionDiabeticChange(
-                    "treatmentActionTaken",
-                    event.target.value,
-                  );
-                  setMedication(event.target.value);
-                }}
-                placeholder="Record advice, treatment, monitoring plan, or care instructions..."
-                rows={4}
-              />
-            </FormSection>
-
-            <FormSection
-              title="Medicines / Supplies Dispensed"
-              subtitle="Optional medicines or supplies given from BHC inventory."
-              delay={5}
-            >
-              <DispensedMedicinesSection
-                inventory={bhcMedicineInventory}
-                value={dispensedMedicines}
-                onChange={handleDispensedMedicinesChange}
-                pendingDraftError={validationErrors.dispensedMedicines}
-                onPendingDraftChange={handlePendingDispensedMedicineChange}
-                disabled={isEditingRecord || !(currentUser?.permissions || []).includes("items.dispense")}
-                loading={bhcMedicineInventoryLoading}
-                error={bhcMedicineInventoryError}
-                onRetry={() => setBhcMedicineInventoryReloadKey((key) => key + 1)}
-              />
-            </FormSection>
-            </>
-            )}
-
-          </>
-        )}
-
         {/* Clinical Assessment: one screen for every consultation. */}
         {usesConsultationSteps && generalSelected && activeFormStep === ASSESSMENT_STEP && (
           <>
@@ -5810,7 +5464,7 @@ export default function ConsultationWorkspace() {
           </>
         )}
 
-        {!usesConsultationSteps && !isFollowUpVisitMode && !isImmunization && !isFamilyPlanning && !isMaternal && !isHypertensionDiabetic && !isTb && (
+        {!usesConsultationSteps && !isFollowUpVisitMode && !isImmunization && !isFamilyPlanning && !isMaternal && !isTb && (
           <>
             <FormSection
               title="Clinical Assessment"
