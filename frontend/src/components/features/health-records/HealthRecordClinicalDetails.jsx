@@ -90,6 +90,7 @@ export default function HealthRecordClinicalDetails({
     record.followUpStatus || record.status || "Consultation",
   );
   const followUpDateValue = getRecordValue(record, ["followUpDate", "follow_up_date"], "");
+  const followUpReasonValue = getRecordValue(record, ["followUpReason"], "");
   const patientConditionValue = getRecordValue(record, [
     "patientCondition",
     "patient_condition",
@@ -250,6 +251,7 @@ export default function HealthRecordClinicalDetails({
       hasFamilyPlanningDetails={hasFamilyPlanningDetails}
       familyPlanningDetails={familyPlanningDetails}
       followUpDateValue={followUpDateValue}
+      followUpReasonValue={followUpReasonValue}
       needsRhuReferral={needsRhuReferral}
       patientConditionValue={patientConditionValue}
       status={status}
@@ -383,6 +385,7 @@ function GenericRecordDetails({
   hasFamilyPlanningDetails,
   familyPlanningDetails,
   followUpDateValue,
+  followUpReasonValue,
   needsRhuReferral,
   patientConditionValue,
   status,
@@ -530,6 +533,12 @@ function GenericRecordDetails({
             label="Needs RHU Referral"
             value={needsRhuReferral ? "Yes" : "No"}
           />
+          {followUpReasonValue && (
+            <PatientDetailItem
+              label="Follow-up Reason"
+              value={followUpReasonValue}
+            />
+          )}
           {(patientConditionValue || status === "Follow-up Required") && (
             <PatientDetailItem
               label="Patient Condition"
@@ -686,13 +695,21 @@ function GeneralConsultationRecordDetails({
       id: "followup",
       ...RECORD_DETAIL_TABS.followUp,
       content: (
-        <FollowUpEpisodeContent
-          episode={record.followUpEpisode}
-          currentRecord={record}
-          sourceRecordId={record.id || record._id}
-          showRecordNavigation={false}
-          showVisitChain={false}
-        />
+        <div className="space-y-4">
+          {getRecordValue(record, ["followUpReason"], "") && (
+            <TabbedNarrativeBlock
+              label="Follow-up Reason"
+              value={getRecordValue(record, ["followUpReason"], "")}
+            />
+          )}
+          <FollowUpEpisodeContent
+            episode={record.followUpEpisode}
+            currentRecord={record}
+            sourceRecordId={record.id || record._id}
+            showRecordNavigation={false}
+            showVisitChain={false}
+          />
+        </div>
       ),
     },
   ];
@@ -853,6 +870,12 @@ function FamilyPlanningRecordDetails({
             label="Next Follow-up Date"
             value={formatLongDate(followUpDate, "Not recorded")}
           />
+          {getRecordValue(record, ["followUpReason"], "") && (
+            <TabbedDetailItem
+              label="Follow-up Reason"
+              value={getRecordValue(record, ["followUpReason"], "")}
+            />
+          )}
           <TabbedDetailItem
             label="Needs RHU Referral"
             value={needsReferral ? "Yes" : "No"}
@@ -1124,6 +1147,12 @@ function MaternalPrenatalRecordDetails({
               label="Next Follow-up Date"
               value={formatLongDate(followUpDate, EMPTY_VALUE)}
             />
+            {getRecordValue(record, ["followUpReason"], "") && (
+              <TabbedDetailItem
+                label="Follow-up Reason"
+                value={getRecordValue(record, ["followUpReason"], "")}
+              />
+            )}
             <TabbedDetailItem
               label="Needs RHU Referral"
               value={needsReferral ? "Yes" : "No"}
@@ -1283,6 +1312,12 @@ function EpiRecordDetails({
               label="Next Follow-up Date"
               value={formatLongDate(followUpDate, "Not recorded")}
             />
+            {getRecordValue(record, ["followUpReason"], "") && (
+              <TabbedDetailItem
+                label="Follow-up Reason"
+                value={getRecordValue(record, ["followUpReason"], "")}
+              />
+            )}
             <TabbedDetailItem
               label="Needs RHU Referral"
               value={needsReferral ? "Yes" : "No"}

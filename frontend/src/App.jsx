@@ -242,7 +242,7 @@ function SessionRestoreUnavailable({ onRetry }) {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-white px-6">
       <div className="w-full max-w-sm text-center">
-        <img src="/akay-logo-splash.svg" alt="" className="mx-auto h-24 w-24" />
+        <img src="/akay-logo.png" alt="AKAY" className="mx-auto h-16 w-auto max-w-full object-contain" />
         <h1 className="mt-5 text-lg font-bold text-slate-900">
           Unable to restore your secure session
         </h1>

@@ -54,11 +54,7 @@ class Referral extends Model
         'initial_diagnosis',
         'initial_action_taken',
         'referring_practitioner',
-        'preferred_doctor',
-        'preferred_provider_id',
-        'preferred_provider_snapshot',
         'availability_snapshot',
-        'preference_acknowledged_at',
         'rescheduled_to',
         'reschedule_reason',
         'rescheduled_by',
@@ -70,9 +66,7 @@ class Referral extends Model
 
     protected $casts = [
         'referral_datetime' => 'datetime',
-        'preferred_provider_snapshot' => 'array',
         'availability_snapshot' => 'array',
-        'preference_acknowledged_at' => 'datetime',
         'rescheduled_to' => 'datetime',
         'rescheduled_at' => 'datetime',
         'qr_token_issued_at' => 'datetime',

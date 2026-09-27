@@ -1,4 +1,4 @@
-const LOGO_SRC = "/akay-logo-only.svg";
+const LOGO_SRC = "/akay-mark.png";
 const BRAND_LETTERS = ["A", "K", "A", "Y"];
 
 const sizeClasses = {

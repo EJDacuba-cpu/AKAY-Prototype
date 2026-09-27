@@ -343,10 +343,6 @@ function ReferralHeader({ referral, patient, isUpdating = false }) {
           label="Referring Practitioner"
           value={getReferringPractitioner(referral)}
         />
-        <HeaderDetail
-          label="Preferred Doctor"
-          value={formatDisplayValue(referral.preferredDoctor, "RHU to assign")}
-        />
       </div>
     </header>
   );

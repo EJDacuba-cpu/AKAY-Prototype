@@ -524,6 +524,8 @@ function normalizeRecord(record = {}) {
       record.followUpTime ||
       record.follow_up_time ||
       "",
+    followUpReason:
+      monitoringData.followUpReason || record.followUpReason || "",
     monitoringNotes:
       monitoringData.monitoringNotes ||
       monitoringData.monitoring_notes ||
@@ -644,6 +646,7 @@ function toPayload(record = {}, { partial = false } = {}) {
     followUpDate: record.followUpDate || null,
     followUpTime: record.followUpTime || null,
     follow_up_time: record.followUpTime || null,
+    followUpReason: record.followUpReason || null,
     monitoringNotes: record.monitoringNotes || null,
     patientCondition: record.patientCondition || null,
     attendingStaff: record.attendingStaff || record.nameOfPractitioner || null,
@@ -948,16 +951,6 @@ function toPayload(record = {}, { partial = false } = {}) {
             record.referral.referringPractitioner ||
             record.referral.referring_practitioner ||
             null,
-          preferred_doctor:
-            record.referral.preferredDoctor ||
-            record.referral.preferred_doctor ||
-            null,
-          preferred_provider_id:
-            record.referral.preferredProviderId ||
-            record.referral.preferred_provider_id ||
-            null,
-          acknowledged_unavailable_preference:
-            record.referral.acknowledgedUnavailablePreference === true,
           referral_datetime:
             record.referral.referralDateTime ||
             record.referral.referral_datetime ||
@@ -1043,6 +1036,7 @@ function toPayload(record = {}, { partial = false } = {}) {
       "status",
       "followUpDate",
       "followUpTime",
+      "followUpReason",
       "monitoringNotes",
       "patientCondition",
       "attendingStaff",

@@ -392,10 +392,6 @@ function ReferralHeader({
           label="Referring Practitioner"
           value={getReferringPractitioner(referral)}
         />
-        <HeaderDetail
-          label="Preferred Doctor"
-          value={formatDisplayValue(referral.preferredDoctor, "RHU to assign")}
-        />
       </div>
     </header>
   );
@@ -493,10 +489,6 @@ function ReferralRecord({ referral, patient, healthRecord }) {
           <Detail
             label="Name and Signature of Referring Practitioner"
             value={getReferringPractitioner(referral)}
-          />
-          <Detail
-            label="Preferred Doctor"
-            value={formatDisplayValue(referral.preferredDoctor, "RHU to assign")}
           />
           {referral.rescheduledTo && (
             <Detail

@@ -69,7 +69,7 @@ class FollowUpTaskSchedulingTest extends TestCase
                 'followUpStatus' => 'Follow-up Required',
                 'followUpDate' => '2026-08-07',
                 'followUpTime' => '11:30',
-                'followUpReason' => 'Deprecated camel-case reason.',
+                'followUpReason' => 'Recheck blood pressure.',
                 'follow_up_reason' => 'Deprecated snake-case reason.',
             ],
         ])->assertCreated();
@@ -83,7 +83,7 @@ class FollowUpTaskSchedulingTest extends TestCase
         $monitoringData = HealthRecord::findOrFail(
             $response->json('data.id')
         )->monitoring_data;
-        $this->assertArrayNotHasKey('followUpReason', $monitoringData);
+        $this->assertSame('Recheck blood pressure.', $monitoringData['followUpReason']);
         $this->assertArrayNotHasKey('follow_up_reason', $monitoringData);
         $this->assertFalse(Schema::hasColumn('follow_up_tasks', 'reason'));
     }

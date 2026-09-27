@@ -46,12 +46,12 @@ class ReferralCreationService
             );
         }
 
-        // DOC-14 then REF-SLIP-05c. Placed here rather than in the
+        // DOC-14. Placed here rather than in the
         // controllers so both submission paths are covered by one call site,
         // and so it sits after the client_submission_id replay checks: a retry
         // of an already-created referral must not be blocked by an availability
         // change that happened after the original submission.
-        $gate = $this->submissionGate->assertCanSubmit($route['rhu'], $data);
+        $gate = $this->submissionGate->assertCanSubmit($route['rhu']);
 
         $referral = Referral::create([
             ...$data,

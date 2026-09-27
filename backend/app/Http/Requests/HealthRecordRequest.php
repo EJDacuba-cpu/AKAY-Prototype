@@ -14,10 +14,7 @@ class HealthRecordRequest extends FormRequest
     {
         $monitoringData = $this->input('monitoring_data');
         if (is_array($monitoringData)) {
-            unset(
-                $monitoringData['followUpReason'],
-                $monitoringData['follow_up_reason']
-            );
+            unset($monitoringData['follow_up_reason']);
             $this->merge(['monitoring_data' => $monitoringData]);
         }
 
@@ -143,6 +140,7 @@ class HealthRecordRequest extends FormRequest
             'monitoring_data.follow_up_date' => ['nullable', 'date'],
             'monitoring_data.followUpTime' => ['nullable', 'date_format:H:i'],
             'monitoring_data.follow_up_time' => ['nullable', 'date_format:H:i'],
+            'monitoring_data.followUpReason' => ['nullable', 'string', 'max:1000'],
             'monitoring_data.followUpTaskId' => ['nullable', 'integer', 'exists:follow_up_tasks,id'],
             'monitoring_data.follow_up_task_id' => ['nullable', 'integer', 'exists:follow_up_tasks,id'],
             // Physical examination findings. Stored in the existing JSON column
@@ -286,9 +284,6 @@ class HealthRecordRequest extends FormRequest
             'referral.initial_diagnosis' => ['nullable', 'string'],
             'referral.initial_action_taken' => ['nullable', 'string'],
             'referral.referring_practitioner' => ['nullable', 'string', 'max:255'],
-            'referral.preferred_doctor' => ['nullable', 'string', 'max:255'],
-            'referral.preferred_provider_id' => ['nullable', 'integer', 'exists:rhu_providers,id'],
-            'referral.acknowledged_unavailable_preference' => ['nullable', 'boolean'],
             'referral.referral_datetime' => ['nullable', 'date'],
             'referral.remarks' => ['nullable', 'string'],
         ];

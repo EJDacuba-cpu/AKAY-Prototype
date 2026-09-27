@@ -133,7 +133,6 @@ class ReferralController extends Controller
                 $referralHolds->recordBlockedAttempt($user, $patient, $route['bhc']->id, $route['rhu'], [
                     'health_record_id' => $record?->id,
                     'urgency_level' => $data['urgency_level'] ?? null,
-                    'preferred_provider_id' => $data['preferred_provider_id'] ?? null,
                 ]);
             }
 

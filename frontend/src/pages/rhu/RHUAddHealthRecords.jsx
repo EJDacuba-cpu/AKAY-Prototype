@@ -869,7 +869,7 @@ export default function AddHealthRecord() {
   const usesCareDecisionStep = false;
   const monitoringNotesLabel =
     normalizedPatientStatus === "Completed"
-      ? "Outcome Notes"
+      ? "Additional Notes"
       : showFollowUpMonitoringFields
         ? "Monitoring and Follow-up Notes"
         : "Monitoring Notes";

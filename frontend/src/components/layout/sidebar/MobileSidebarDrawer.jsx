@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import FullSidebarNav from "./FullSidebarNav";
-import LogoMark from "./LogoMark";
+import { LogoWordmark } from "./LogoMark";
 import SidebarUserFooter from "./SidebarUserFooter";
 import { FOCUS_RING } from "./sidebarStyles";
 
@@ -19,17 +19,8 @@ export default function MobileSidebarDrawer({
       }`}
     >
       <div className="flex h-[62px] shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <LogoMark />
-
-          <div className="min-w-0">
-            <p className="text-[15px] font-bold leading-tight tracking-tight text-red-700">
-              AKAY
-            </p>
-            <p className="mt-0.5 whitespace-nowrap text-[9px] font-semibold uppercase leading-tight tracking-wider text-gray-500">
-              Community EHR System
-            </p>
-          </div>
+        <div className="flex min-w-0 items-center">
+          <LogoWordmark />
         </div>
 
         <button

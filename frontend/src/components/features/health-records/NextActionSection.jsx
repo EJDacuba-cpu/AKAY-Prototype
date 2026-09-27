@@ -5,7 +5,12 @@ import {
   ClinicalFieldGroup,
   FieldInput,
   FieldTextarea,
+  RadioChoiceGroup,
 } from "./fields/ClinicalFields";
+import {
+  ATTENTION_LEVELS,
+  DEFAULT_ATTENTION,
+} from "../../../utils/referralAttention";
 import {
   NEXT_ACTION_NONE,
   NEXT_ACTION_REFERRAL,
@@ -23,7 +28,7 @@ function buildActionCards({ referralTitle, referralBody }) {
     {
       key: NEXT_ACTION_SCHEDULE,
       icon: CalendarClock,
-      title: "BHC Follow-up Required",
+      title: "Follow-up Required",
       body: "Schedule a return visit for this patient.",
     },
     {
@@ -89,10 +94,15 @@ export default function NextActionSection({
   action,
   followUpDate,
   followUpTime,
+  followUpReason = "",
+  showFollowUpReason = false,
   monitoringNotes,
   monitoringNotesLabel = "Monitoring and Follow-up Notes",
   monitoringNotesPlaceholder = "Write the monitoring plan or return-visit instructions...",
   referralForm = {},
+  // Receiving-facility picker plus its read-only availability panel; supplied
+  // by the page because it owns the facility state.
+  referralFacilityField = null,
   errors = {},
   disabled = false,
   requireFollowUpTime = false,
@@ -109,6 +119,7 @@ export default function NextActionSection({
   onActionChange,
   onFollowUpDateChange,
   onFollowUpTimeChange,
+  onFollowUpReasonChange,
   onMonitoringNotesChange,
   onReferralFieldChange,
 }) {
@@ -140,8 +151,8 @@ export default function NextActionSection({
 
       {scheduling && (
         <ClinicalFieldGroup
-          title="Follow-up Schedule"
-          subtitle="Set when this patient should return."
+          title="Follow-up Details"
+          subtitle="Set when and why this patient should return."
         >
           {scheduleNotice || (
             <>
@@ -167,34 +178,25 @@ export default function NextActionSection({
                   />
                 )}
               </div>
-              <div className="mt-4">
-                <FieldTextarea
-                  label={monitoringNotesLabel}
-                  value={monitoringNotes}
-                  onChange={(event) =>
-                    onMonitoringNotesChange(event.target.value)
-                  }
-                  placeholder={monitoringNotesPlaceholder}
-                  rows={3}
-                />
-              </div>
+              {showFollowUpReason && (
+                <div className="mt-4">
+                  <FieldTextarea
+                    label="Follow-up Reason"
+                    required
+                    name="followUpReason"
+                    value={followUpReason}
+                    error={errors.followUpReason}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      onFollowUpReasonChange(event.target.value)
+                    }
+                    placeholder="Why should the patient return?"
+                    rows={2}
+                  />
+                </div>
+              )}
             </>
           )}
-        </ClinicalFieldGroup>
-      )}
-
-      {action === NEXT_ACTION_NONE && (
-        <ClinicalFieldGroup
-          title="Visit Notes"
-          subtitle="Optional closing notes for this visit."
-        >
-          <FieldTextarea
-            label={monitoringNotesLabel}
-            value={monitoringNotes}
-            onChange={(event) => onMonitoringNotesChange(event.target.value)}
-            placeholder={monitoringNotesPlaceholder}
-            rows={3}
-          />
         </ClinicalFieldGroup>
       )}
 
@@ -204,15 +206,25 @@ export default function NextActionSection({
           subtitle="The RHU receives the referral and assigns the practitioner. RHU staff determine queue order."
         >
           <div className="space-y-4">
-            <label className="block text-sm font-medium">Queue Priority
-              <select className="mt-2 block h-10 w-full rounded-md border border-slate-200 bg-white px-3" value={referralForm.urgencyLevel || "Routine"} disabled={disabled} onChange={event => onReferralFieldChange("urgencyLevel", event.target.value)}><option value="Routine">Regular</option><option value="Priority">Priority</option></select>
-            </label>
+            {referralFacilityField}
+            <RadioChoiceGroup
+              label="Referral Priority"
+              name="urgencyLevel"
+              required
+              inline
+              options={ATTENTION_LEVELS}
+              value={referralForm.urgencyLevel || DEFAULT_ATTENTION}
+              error={errors.urgencyLevel}
+              onChange={(value) => onReferralFieldChange("urgencyLevel", value)}
+              helperText="Workflow handling only. The RHU decides queue order."
+            />
             <FieldTextarea
               label="Reason for Referral"
               required
               name="reasonForReferral"
               value={referralForm.reasonForReferral || ""}
               error={errors.reasonForReferral}
+              disabled={disabled}
               onChange={(event) =>
                 onReferralFieldChange("reasonForReferral", event.target.value)
               }
@@ -220,6 +232,21 @@ export default function NextActionSection({
               rows={3}
             />
           </div>
+        </ClinicalFieldGroup>
+      )}
+
+      {action && (
+        <ClinicalFieldGroup
+          title="Additional Clinical Notes"
+          subtitle="Optional internal notes for this consultation."
+        >
+          <FieldTextarea
+            label={monitoringNotesLabel}
+            value={monitoringNotes}
+            onChange={(event) => onMonitoringNotesChange(event.target.value)}
+            placeholder={monitoringNotesPlaceholder}
+            rows={3}
+          />
         </ClinicalFieldGroup>
       )}
     </div>

@@ -27,13 +27,6 @@ class ReferralRequest extends FormRequest
             'initial_diagnosis' => ['nullable', 'string'],
             'initial_action_taken' => ['nullable', 'string'],
             'referring_practitioner' => ['nullable', 'string', 'max:255'],
-            'preferred_doctor' => ['nullable', 'string', 'max:255'],
-            // REF-SLIP-05 - a non-binding preference (REF-SLIP-05b). Existence
-            // is checked here; that it belongs to the receiving RHU and is
-            // active is enforced by the submission gate (DOC-15).
-            'preferred_provider_id' => ['nullable', 'integer', 'exists:rhu_providers,id'],
-            // REF-SLIP-05c - resubmission flag after the Decision A warning.
-            'acknowledged_unavailable_preference' => ['nullable', 'boolean'],
             'referral_datetime' => ['nullable', 'date'],
             'remarks' => ['nullable', 'string'],
             // Set when this submission resumes a DOC-14 blocked attempt

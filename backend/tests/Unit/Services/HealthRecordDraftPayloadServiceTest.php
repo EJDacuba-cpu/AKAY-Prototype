@@ -29,25 +29,28 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $this->assertIsArray($sanitized);
     }
 
-    public function test_reverting_followup_time_and_preferred_doctor_naming_reproduces_the_original_bug(): void
+    public function test_unknown_referral_form_fields_are_rejected(): void
     {
-        // Guards against the exact regression this test suite was written for:
-        // if these two field names ever drift back out of sync, this test
-        // (not just production) must fail.
         $service = new HealthRecordDraftPayloadService();
 
-        $withoutFollowUpTimeSupport = $this->fullFrontendPayload();
-        // Simulate the pre-fix backend by sending a payload shaped like the
-        // pre-fix frontend would never produce: renaming the fields back to
-        // what the broken schema expected shows the allowlist genuinely
-        // discriminates between the two names rather than accepting anything.
-        $withoutFollowUpTimeSupport['referralForm']['preferredDoctor'] =
-            $withoutFollowUpTimeSupport['referralForm']['preferredRhuDoctorId'];
-        unset($withoutFollowUpTimeSupport['referralForm']['preferredRhuDoctorId']);
+        $payload = $this->fullFrontendPayload();
+        $payload['referralForm']['preferredDoctor'] = 'Dr. Anyone';
 
         $this->expectException(ValidationException::class);
 
-        $service->sanitize($withoutFollowUpTimeSupport);
+        $service->sanitize($payload);
+    }
+
+    public function test_retired_preferred_doctor_field_is_dropped_from_old_drafts(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+
+        $payload = $this->fullFrontendPayload();
+        $payload['referralForm']['preferredRhuDoctorId'] = '42';
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertArrayNotHasKey('preferredRhuDoctorId', $sanitized['referralForm']);
     }
 
     private function fullFrontendPayload(): array
@@ -310,7 +313,6 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
                 'initialActionsTaken' => 'Symptomatic treatment given',
                 'reasonForReferral' => 'Needs further evaluation',
                 'clinicalSummary' => 'Stable, ambulatory patient',
-                'preferredRhuDoctorId' => '42',
             ],
             'dispensedMedicines' => [
                 [

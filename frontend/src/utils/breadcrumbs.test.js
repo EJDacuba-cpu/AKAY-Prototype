@@ -29,6 +29,39 @@ test("referral details map to the incoming referrals inbox", () => {
   ]);
 });
 
+test("a consultation for a patient sits under that patient's profile", () => {
+  assert.deepEqual(
+    getBreadcrumbs(
+      "/bhc/health-records/add",
+      "New Consultation",
+      "?patientId=17&mode=new",
+    ),
+    [
+      { label: "Patients", path: "/bhc/patients" },
+      { label: "Patient Profile", path: "/bhc/patients/17" },
+      { label: "New Consultation" },
+    ],
+  );
+  assert.deepEqual(
+    getBreadcrumbs("/rhu/health-records/add", "New Consultation", "?patientId=5"),
+    [
+      { label: "Patients", path: "/rhu/patients" },
+      { label: "Patient Profile", path: "/rhu/patients/5" },
+      { label: "New Consultation" },
+    ],
+  );
+});
+
+test("a consultation without a patient keeps the Health Records trail", () => {
+  assert.deepEqual(
+    getBreadcrumbs("/bhc/health-records/add", "New Consultation", ""),
+    [
+      { label: "Health Records", path: "/bhc/health-records" },
+      { label: "New Consultation" },
+    ],
+  );
+});
+
 test("unknown routes fall back to the current page", () => {
   assert.deepEqual(getBreadcrumbs("/somewhere/else", "Notifications"), [
     { label: "Notifications" },

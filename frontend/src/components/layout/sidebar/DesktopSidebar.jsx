@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 import { useEffect, useState } from "react";
-import LogoMark from "./LogoMark";
+import LogoMark, { LogoWordmark } from "./LogoMark";
 import {
   FOCUS_RING,
   SECTION_LABEL_CLASS,
@@ -83,17 +83,32 @@ export default function DesktopSidebar({
           expanded ? "gap-3 px-4" : "justify-center px-0"
         }`}
       >
-        <LogoMark />
+        {!expanded && (
+          <button
+            type="button"
+            onClick={() => {
+              hideCollapsedLabel();
+              onToggle();
+            }}
+            aria-label={toggleLabel}
+            {...tooltipHandlers(toggleLabel)}
+            className={`group relative flex h-10 w-10 items-center justify-center text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 focus-visible:bg-gray-100 ${FOCUS_RING}`}
+          >
+            <span className="flex transition-opacity duration-150 ease-out group-hover:opacity-0 group-focus-visible:opacity-0 motion-reduce:transition-none">
+              <LogoMark />
+            </span>
+            <ToggleIcon
+              size={18}
+              aria-hidden="true"
+              className="absolute opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+            />
+          </button>
+        )}
 
         {expanded && (
           <>
-            <div className="min-w-0 flex-1">
-              <p className="text-[15px] font-bold leading-tight tracking-tight text-red-700">
-                AKAY
-              </p>
-              <p className="mt-0.5 whitespace-nowrap text-[9px] font-semibold uppercase leading-tight tracking-wider text-gray-500">
-                Community EHR System
-              </p>
+            <div className="flex min-w-0 flex-1 items-center">
+              <LogoWordmark />
             </div>
 
             <button
@@ -108,18 +123,6 @@ export default function DesktopSidebar({
           </>
         )}
       </div>
-
-      {!expanded && (
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-label={toggleLabel}
-          {...tooltipHandlers(toggleLabel)}
-          className={`flex h-9 w-full shrink-0 items-center justify-center border-b border-gray-200 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900 ${FOCUS_RING}`}
-        >
-          <ToggleIcon size={16} />
-        </button>
-      )}
 
       <nav className="akay-sidebar-scroll min-h-0 flex-1 overflow-y-auto overflow-x-visible px-3 py-3">
         {menuSections.map((section, sectionIndex) => (

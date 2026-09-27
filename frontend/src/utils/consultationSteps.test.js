@@ -137,9 +137,9 @@ test("the global steps read in the new order with the new names", () => {
     steps.map((step) => step.label),
     [
       "Concern & Vital Signs",
-      "Physical Examination",
+      "Physical Exam & Assessment",
       "Program / Service Details",
-      "BHC Assessment & Actions Taken",
+      "Actions Taken",
       "Disposition",
       "Review & Confirm",
     ],
@@ -229,14 +229,14 @@ const SUBTITLES = {
   [NEXT_STEP]: "What should be done next?",
 };
 
-function headingFor(stepKey, selectedPrograms, primaryProgram = "", activeIndex = 0) {
+function headingFor(stepKey, selectedPrograms, primaryProgram = "", activeIndex = 0, generalSelected = true) {
   const programSteps = getProgramFormSteps(selectedPrograms, primaryProgram);
   return resolveStepHeading({
     currentGlobalStepKey: getGlobalStepKey(stepKey),
     // The page derives this from formStep, which can point at a program while
     // another screen shows - exactly the case the gating exists for.
     activeProgramStep: programSteps[activeIndex] || null,
-    steps: buildConsultationSteps({ selectedPrograms, primaryProgram }),
+    steps: buildConsultationSteps({ selectedPrograms, primaryProgram, generalSelected }),
     subtitles: SUBTITLES,
   });
 }
@@ -259,7 +259,7 @@ for (const [label, programs, primary] of [
       subtitle: SUBTITLES[INTERVIEW_STEP],
     });
     assert.deepEqual(headingFor(ASSESSMENT_STEP, programs, primary), {
-      title: "Physical Examination",
+      title: "Physical Exam & Assessment",
       subtitle: SUBTITLES[ASSESSMENT_STEP],
     });
   });
@@ -290,9 +290,16 @@ test("later steps never show a program title", () => {
     const heading = headingFor(stepKey, ["Family Planning"], "Family Planning");
     assert.doesNotMatch(heading.title, /Family Planning|Program \d/);
   }
-  assert.equal(headingFor(TREATMENT_STEP, ["EPI"], "EPI").title, "BHC Assessment & Actions Taken");
+  assert.equal(headingFor(TREATMENT_STEP, ["EPI"], "EPI").title, "Actions Taken");
   assert.equal(headingFor(NEXT_STEP, ["EPI"], "EPI").title, "Disposition");
   assert.equal(headingFor(REVIEW_STEP, ["EPI"], "EPI").title, "Review & Confirm");
+});
+
+test("Treatment keeps naming and collecting BHC Assessment when there is no earlier Assessment step", () => {
+  assert.equal(
+    headingFor(TREATMENT_STEP, ["EPI"], "EPI", 0, false).title,
+    "BHC Assessment & Actions Taken",
+  );
 });
 
 /* ── Validation ownership ────────────────────────────────────────────── */
@@ -307,6 +314,9 @@ test("each validation error is owned by the screen that shows its field", () => 
   assert.equal(getErrorOwnerStepKey("vaccineEntries"), EPI);
   assert.equal(getErrorOwnerStepKey("dispensedMedicines"), TREATMENT_STEP);
   assert.equal(getErrorOwnerStepKey("followUpDate"), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("followUpReason"), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("receivingRhuId"), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("urgencyLevel"), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("somethingElse"), null);
 });
 
@@ -369,10 +379,10 @@ function payloadFor(wizardPhase, formStep) {
 
 for (const [stage, formStep] of [
   ["Interview & Vital Signs", INTERVIEW_STEP],
-  ["Physical Examination", ASSESSMENT_STEP],
+  ["Physical Exam & Assessment", ASSESSMENT_STEP],
   ["Program 1 (Maternal)", MATERNAL],
   ["Program 2 (TB)", TB],
-  ["BHC Assessment & Actions Taken", TREATMENT_STEP],
+  ["Actions Taken", TREATMENT_STEP],
 ]) {
   test(`DRAFT RESTORE: a draft saved on ${stage} reopens on ${stage}`, () => {
     assert.deepEqual(resolveRestoredPosition(payloadFor("form", formStep)), {

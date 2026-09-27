@@ -49,12 +49,37 @@ const PARENT_TRAILS = [
   ],
 ];
 
+// A consultation opened for a specific patient lives under that patient, even
+// though its route is /health-records/add; the patient comes from ?patientId=.
+function getPatientConsultationTrail(pathname, search) {
+  const match = matchPath(
+    { path: "/:facility/health-records/add", end: true },
+    pathname,
+  );
+  if (!match || !["bhc", "rhu"].includes(match.params.facility)) return null;
+
+  const patientId = new URLSearchParams(search).get("patientId")?.trim();
+  if (!patientId) return null;
+
+  const base = `/${match.params.facility}`;
+  return [
+    { label: "Patients", path: `${base}/patients` },
+    {
+      label: "Patient Profile",
+      path: `${base}/patients/${encodeURIComponent(patientId)}`,
+    },
+  ];
+}
+
 /**
  * Returns [{ label, path? }] for the top bar. Ancestors carry a `path` (link);
  * the final crumb is the current page and has none.
  */
-export function getBreadcrumbs(pathname, title) {
+export function getBreadcrumbs(pathname, title, search = "") {
   const current = { label: title };
+  const patientTrail = getPatientConsultationTrail(pathname, search);
+  if (patientTrail) return [...patientTrail, current];
+
   const match = PARENT_TRAILS.find(([pattern]) =>
     matchPath({ path: pattern, end: true }, pathname),
   );

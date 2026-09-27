@@ -339,7 +339,7 @@ export default function DashboardLayout({
     </button>
   )}
 
-  <TopBarBreadcrumbs crumbs={getBreadcrumbs(location.pathname, title)} />
+  <TopBarBreadcrumbs crumbs={getBreadcrumbs(location.pathname, title, location.search)} />
 </div>
 
             <div className="flex items-center gap-2">

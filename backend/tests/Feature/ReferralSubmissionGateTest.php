@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -112,131 +113,17 @@ class ReferralSubmissionGateTest extends TestCase
             ->assertJsonPath('code', 'NO_PROVIDER_AVAILABLE');
     }
 
-    /** QA 19 - REF-SLIP-05c: unavailable preference + others available = 409 warning. */
-    public function test_unavailable_preference_warns_without_acknowledgment(): void
+    /** The BHC never names a doctor; a stray provider id is ignored, not stored. */
+    public function test_a_named_provider_is_ignored(): void
     {
-        $preferred = $this->provider('Dr. Preferred', RhuProvider::STATUS_UNAVAILABLE);
-        $preferred->update(['remarks' => 'Back Monday']);
-        $this->provider('Dr. Free');
+        $unavailable = $this->provider('Dr. Away', RhuProvider::STATUS_UNAVAILABLE);
+        $this->provider('Dr. Here');
 
-        $this->postReferral(['preferred_provider_id' => $preferred->id])
-            ->assertConflict()
-            ->assertJsonPath('code', 'PREFERRED_PROVIDER_UNAVAILABLE')
-            ->assertJsonPath('provider.name', 'Dr. Preferred')
-            ->assertJsonPath('provider.remarks', 'Back Monday')
-            ->assertJsonPath('available_alternatives.0.name', 'Dr. Free');
-
-        $this->assertDatabaseCount('referrals', 0);
-    }
-
-    /** QA 20 - acknowledging proceeds and records the REL-01 trace. */
-    public function test_acknowledged_unavailable_preference_proceeds_and_is_traced(): void
-    {
-        $preferred = $this->provider('Dr. Preferred', RhuProvider::STATUS_UNAVAILABLE);
-        $this->provider('Dr. Free');
-
-        $this->postReferral([
-            'preferred_provider_id' => $preferred->id,
-            'acknowledged_unavailable_preference' => true,
-        ])->assertCreated();
-
-        $referral = Referral::query()->sole();
-        $this->assertSame($preferred->id, $referral->preferred_provider_id);
-        $this->assertNotNull(
-            $referral->preference_acknowledged_at,
-            'REF-SLIP-05c requires a durable server-side trace of the warning.'
-        );
-        $this->assertSame('Dr. Preferred', $referral->preferred_provider_snapshot['name']);
-        // The legacy string column stays in sync for the detail screens.
-        $this->assertSame('Dr. Preferred', $referral->preferred_doctor);
-    }
-
-    /**
-     * QA 21 - the acknowledgment flag cannot bypass DOC-14. The two rules are
-     * independent and DOC-14 is evaluated first.
-     */
-    public function test_acknowledgment_cannot_bypass_the_hard_block(): void
-    {
-        $preferred = $this->provider('Dr. Only', RhuProvider::STATUS_UNAVAILABLE);
-
-        $this->postReferral([
-            'preferred_provider_id' => $preferred->id,
-            'acknowledged_unavailable_preference' => true,
-        ])
-            ->assertUnprocessable()
-            ->assertJsonPath('code', 'NO_PROVIDER_AVAILABLE');
-
-        $this->assertDatabaseCount('referrals', 0);
-    }
-
-    /** QA 22 - DOC-15: a provider from another RHU is never a valid preference. */
-    public function test_preferred_provider_from_another_rhu_is_rejected(): void
-    {
-        $this->provider('Dr. Free');
-        $foreign = RhuProvider::create([
-            'rural_health_unit_id' => $this->otherRhu->id,
-            'name' => 'Dr. Foreign',
-            'availability_status' => RhuProvider::STATUS_AVAILABLE,
-            'is_active' => true,
-        ]);
-
-        $this->postReferral(['preferred_provider_id' => $foreign->id])
-            ->assertUnprocessable()
-            ->assertJsonPath('code', 'PREFERRED_PROVIDER_INVALID');
-
-        $this->assertDatabaseCount('referrals', 0);
-    }
-
-    /** A deactivated provider is not a valid preference either. */
-    public function test_inactive_provider_is_not_a_valid_preference(): void
-    {
-        $this->provider('Dr. Free');
-        $retired = $this->provider('Dr. Retired');
-        $retired->update(['is_active' => false]);
-
-        $this->postReferral(['preferred_provider_id' => $retired->id])
-            ->assertUnprocessable()
-            ->assertJsonPath('code', 'PREFERRED_PROVIDER_INVALID');
-    }
-
-    /** An available preference needs no acknowledgment. */
-    public function test_available_preference_is_accepted_directly(): void
-    {
-        $preferred = $this->provider('Dr. Preferred');
-
-        $this->postReferral(['preferred_provider_id' => $preferred->id])
+        $this->postReferral(['preferred_provider_id' => $unavailable->id])
             ->assertCreated();
 
-        $referral = Referral::query()->sole();
-        $this->assertSame($preferred->id, $referral->preferred_provider_id);
-        $this->assertNull(
-            $referral->preference_acknowledged_at,
-            'No warning was shown, so nothing should be acknowledged.'
-        );
-    }
-
-    /**
-     * QA 23 / REL-01 - the referral keeps what the BHW saw at submission time,
-     * even after the RHU renames the provider or flips availability.
-     */
-    public function test_snapshot_survives_later_roster_changes(): void
-    {
-        $preferred = $this->provider('Dr. Original');
-
-        $this->postReferral(['preferred_provider_id' => $preferred->id])->assertCreated();
-
-        $preferred->update([
-            'name' => 'Dr. Renamed',
-            'availability_status' => RhuProvider::STATUS_UNAVAILABLE,
-        ]);
-
-        $referral = Referral::query()->sole();
-        $this->assertSame('Dr. Original', $referral->preferred_provider_snapshot['name']);
-        $this->assertSame(
-            RhuProvider::STATUS_AVAILABLE,
-            $referral->preferred_provider_snapshot['availability_status']
-        );
-        $this->assertSame(1, $referral->availability_snapshot['available_count']);
+        $this->assertFalse(Schema::hasColumn('referrals', 'preferred_provider_id'));
+        $this->assertFalse(Schema::hasColumn('referrals', 'preferred_doctor'));
     }
 
     /** The availability snapshot uses the canonical service shape (B6). */

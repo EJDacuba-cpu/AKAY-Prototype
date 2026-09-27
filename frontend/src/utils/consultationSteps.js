@@ -116,11 +116,14 @@ export function buildConsultationSteps({ selectedPrograms, primaryProgram, gener
 
   return [
     { key: INTERVIEW_STEP, phase: "form", label: "Concern & Vital Signs" },
-    ...(generalSelected ? [{ key: ASSESSMENT_STEP, phase: "form", label: "Physical Examination" }] : []),
+    ...(generalSelected ? [{ key: ASSESSMENT_STEP, phase: "form", label: "Physical Exam & Assessment" }] : []),
     ...(programSteps.length > 0
       ? [{ key: PROGRAMS_STEP, phase: "form", label: "Program / Service Details" }]
       : []),
-    { key: TREATMENT_STEP, phase: "form", label: "BHC Assessment & Actions Taken" },
+    // The Assessment field above already covers the diagnosis for a General
+    // Consultation; a program-only visit has no earlier step to have captured
+    // it, so this step keeps naming and collecting it.
+    { key: TREATMENT_STEP, phase: "form", label: generalSelected ? "Actions Taken" : "BHC Assessment & Actions Taken" },
     { key: NEXT_STEP, phase: "next", label: "Disposition" },
     { key: REVIEW_STEP, phase: "review", label: "Review & Confirm" },
   ];
@@ -294,7 +297,7 @@ export function getErrorOwnerStepKey(errorKey) {
   }
   if (key === "vaccineEntries") return programStepKey("Immunization");
   if (key === "diagnosis" || key === "dispensedMedicines") return TREATMENT_STEP;
-  if (key === "reasonForReferral" || key === "followUpDate" || key === "followUpTime" || key === "followUpStatus") {
+  if (key === "reasonForReferral" || key === "receivingRhuId" || key === "urgencyLevel" || key === "followUpDate" || key === "followUpTime" || key === "followUpReason" || key === "followUpStatus") {
     return NEXT_STEP;
   }
   return null;

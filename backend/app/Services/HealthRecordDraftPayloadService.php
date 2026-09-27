@@ -51,6 +51,7 @@ class HealthRecordDraftPayloadService
         'followUpStatus' => self::SCALAR,
         'followUpDate' => self::SCALAR,
         'followUpTime' => self::SCALAR,
+        'followUpReason' => self::SCALAR,
         'monitoringNotes' => self::SCALAR,
         'patientCondition' => self::SCALAR,
         'morbidityReportingStatus' => self::SCALAR,
@@ -338,7 +339,6 @@ class HealthRecordDraftPayloadService
             'initialActionsTaken' => self::SCALAR,
             'reasonForReferral' => self::SCALAR,
             'clinicalSummary' => self::SCALAR,
-            'preferredRhuDoctorId' => self::SCALAR,
         ],
         'dispensedMedicines' => ['*' => [
             'confirmedGiven' => self::SCALAR,
@@ -352,6 +352,12 @@ class HealthRecordDraftPayloadService
 
     public function sanitize(array $payload): array
     {
+        // Drafts saved before the BHC preferred-doctor field was removed still
+        // carry it; drop it so they stay readable.
+        if (is_array($payload['referralForm'] ?? null)) {
+            unset($payload['referralForm']['preferredRhuDoctorId']);
+        }
+
         $sanitized = $this->sanitizeNode($payload, self::SCHEMA, 'payload');
 
         $validator = Validator::make(['payload' => $sanitized], $this->rules());
@@ -448,6 +454,7 @@ class HealthRecordDraftPayloadService
             'payload.timeOfVisit' => ['nullable', 'date_format:H:i'],
             'payload.followUpDate' => ['nullable', 'date_format:Y-m-d'],
             'payload.followUpTime' => ['nullable', 'date_format:H:i'],
+            'payload.followUpReason' => ['nullable', 'string', 'max:1000'],
             'payload.expectedDeliveryDate' => ['nullable', 'date_format:Y-m-d'],
             'payload.hfmdSurveillance' => ['nullable', 'boolean'],
             'payload.needsReferral' => ['nullable', 'boolean'],

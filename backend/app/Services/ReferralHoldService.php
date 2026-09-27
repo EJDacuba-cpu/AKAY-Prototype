@@ -26,7 +26,7 @@ class ReferralHoldService
     }
 
     /**
-     * @param  array{health_record_id?: int|null, urgency_level?: string|null, preferred_provider_id?: int|null}  $data
+     * @param  array{health_record_id?: int|null, urgency_level?: string|null}  $data
      */
     public function recordBlockedAttempt(
         User $bhw,
@@ -42,7 +42,6 @@ class ReferralHoldService
             'created_by' => $bhw->id,
             'health_record_id' => $data['health_record_id'] ?? null,
             'urgency_level' => $data['urgency_level'] ?? null,
-            'preferred_provider_id' => $data['preferred_provider_id'] ?? null,
             'status' => ReferralHold::STATUS_WAITING,
         ]));
     }

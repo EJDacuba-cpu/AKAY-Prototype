@@ -8,12 +8,7 @@ import { refreshNotifications } from "./notificationService";
 import { queryKeys } from "../utils/queryKeys";
 // Re-exported so existing call sites keep importing gate helpers from the
 // referral service, while the contract itself stays dependency-free.
-export {
-  isNoProviderAvailableError,
-  isPreferredProviderInvalidError,
-  isPreferredProviderUnavailableError,
-  getAvailableAlternatives,
-} from "../utils/referralGateErrors";
+export { isNoProviderAvailableError } from "../utils/referralGateErrors";
 
 export function normalizeReferralStatus(status) {
   const original = String(status || "").trim();
@@ -133,16 +128,8 @@ function normalizeReferral(referral = {}) {
     initialActionsTaken: referral.initial_action_taken || referral.initialActionsTaken || "",
     referringPractitioner:
       referral.referring_practitioner || referral.referringPractitioner || "",
-    preferredDoctor: referral.preferred_doctor || referral.preferredDoctor || "",
-    preferredProviderId: referral.preferred_provider_id
-      ? String(referral.preferred_provider_id)
-      : "",
-    preferredProviderSnapshot:
-      referral.preferred_provider_snapshot || referral.preferredProviderSnapshot || null,
     availabilitySnapshot:
       referral.availability_snapshot || referral.availabilitySnapshot || null,
-    preferenceAcknowledgedAt:
-      referral.preference_acknowledged_at || referral.preferenceAcknowledgedAt || "",
     rescheduledTo: referral.rescheduled_to || referral.rescheduledTo || "",
     rescheduleReason:
       referral.reschedule_reason || referral.rescheduleReason || "",
@@ -174,13 +161,6 @@ function toPayload(referral = {}) {
     initial_action_taken:
       referral.initialActionsTaken || referral.initialActionTaken || referral.medication || null,
     referring_practitioner: referral.referringPractitioner || null,
-    preferred_doctor:
-      referral.preferredDoctor || referral.preferredRhuDoctorName || null,
-    // REF-SLIP-05 / REF-SLIP-05c - the preference and the Decision A
-    // acknowledgment. The server owns both rules; these only carry intent.
-    preferred_provider_id: referral.preferredRhuDoctorId || null,
-    acknowledged_unavailable_preference:
-      referral.acknowledgedUnavailablePreference === true,
     referral_datetime:
       referral.referralDateTime ||
       (referral.referralDate

@@ -23,9 +23,6 @@ function normalizeReferralHold(hold = {}) {
       ? String(hold.health_record_id)
       : hold.healthRecordId || "",
     urgencyLevel: hold.urgency_level || hold.urgencyLevel || "",
-    preferredProviderId: hold.preferred_provider_id
-      ? String(hold.preferred_provider_id)
-      : hold.preferredProviderId || "",
     status: hold.status || "waiting",
     createdAt: hold.created_at || hold.createdAt || "",
   };

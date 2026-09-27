@@ -10,7 +10,8 @@ import {
   Users,
 } from "lucide-react";
 
-export const LOGO_SRC = "/akay-logo-only.svg";
+export const LOGO_SRC = "/akay-mark.png";
+export const LOGO_WORDMARK_SRC = "/akay-wordmark.png";
 
 export const reportNavItems = [
   { label: "Referral Tracking", slug: "referrals" },

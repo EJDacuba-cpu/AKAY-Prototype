@@ -25,7 +25,6 @@ class ReferralHold extends Model
         'created_by',
         'health_record_id',
         'urgency_level',
-        'preferred_provider_id',
         'status',
         'last_notified_at',
         'resolved_at',

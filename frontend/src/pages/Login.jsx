@@ -110,10 +110,8 @@ export default function Login() {
       <div className="m-auto w-full max-w-[420px]">
         <main aria-labelledby="login-title">
           <header className="text-center">
-            <img src="/akay-logo-only.svg" alt="AKAY logo" className="mx-auto size-16 rounded-full short:size-12 tiny:size-10 object-contain" draggable="false" />
-            <p className="mt-3 text-2xl font-bold short:mt-2 short:text-xl tracking-tight text-[var(--color-primary)]">AKAY</p>
-            <p className="mt-1 text-sm font-medium leading-5 text-slate-700">Community Electronic Health Records<br />&amp; Referral Tracking System</p>
-            <p className="mt-2 text-xs text-slate-500 short:mt-1">Bulakan, Bulacan</p>
+            <img src="/akay-logo.png" alt="AKAY — Medical EHR and Referral System" className="mx-auto h-16 w-auto max-w-full object-contain short:h-12 tiny:h-10" draggable="false" />
+            <p className="mt-3 text-xs text-slate-500 short:mt-2">Bulakan, Bulacan</p>
           </header>
 
           <h1 id="login-title" style={{ fontFamily: "var(--font-sans)" }} className="mt-8 text-center text-xl short:mt-5 tiny:mt-3 font-semibold tracking-tight">

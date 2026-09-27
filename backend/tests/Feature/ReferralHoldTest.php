@@ -78,18 +78,6 @@ class ReferralHoldTest extends TestCase
         $this->assertSame(ReferralHold::STATUS_WAITING, $hold->status);
     }
 
-    /** REF-SLIP-05c / PREFERRED_PROVIDER_UNAVAILABLE must not create a hold - only the DOC-14 block does. */
-    public function test_preferred_provider_unavailable_warning_does_not_create_a_hold(): void
-    {
-        $preferred = $this->provider(RhuProvider::STATUS_UNAVAILABLE);
-        $this->provider(RhuProvider::STATUS_AVAILABLE);
-
-        $this->postReferral(['preferred_provider_id' => $preferred->id])
-            ->assertConflict();
-
-        $this->assertDatabaseCount('referral_holds', 0);
-    }
-
     /** DOC-14 is unaffected by an existing waiting hold - it stays a live, uncached check. */
     public function test_existing_waiting_hold_does_not_change_the_gate_decision(): void
     {

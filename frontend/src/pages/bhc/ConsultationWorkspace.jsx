@@ -1,6 +1,6 @@
 import { programReviewRows } from "../../utils/consultationReview";
 import { Button } from "../../components/ui/button";
-import ReferralDestinationPicker from "../../components/features/health-records/ReferralDestinationPicker";
+import ReferralFacilityField from "../../components/features/health-records/ReferralFacilityField";
 import PregnancyConfirmation from "../../components/features/health-records/PregnancyConfirmation";
 import PurposeOfVisitModal from "../../components/features/health-records/PurposeOfVisitModal";
 import { knownVisitPurpose, purposePrograms, purposeErrors, teenagePrenatal, VISIT_SERVICES } from "../../utils/visitPurpose";
@@ -46,12 +46,9 @@ import {
   listLocalDrafts,
 } from "../../services/localDraftVault";
 import useDraftAutosave from "../../hooks/useDraftAutosave";
+import { isNoProviderAvailableError } from "../../services/referrals";
 import {
-  isNoProviderAvailableError,
-  isPreferredProviderInvalidError,
-  isPreferredProviderUnavailableError,
-} from "../../services/referrals";
-import {
+  ATTENTION_LEVELS,
   DEFAULT_ATTENTION,
   normalizeAttention,
 } from "../../utils/referralAttention";
@@ -965,15 +962,13 @@ export default function ConsultationWorkspace() {
   const [followUpStatus, setFollowUpStatus] = useState("Completed");
   const [followUpDate, setFollowUpDate] = useState("");
   const [followUpTime, setFollowUpTime] = useState("");
+  const [followUpReason, setFollowUpReason] = useState("");
   const [monitoringNotes, setMonitoringNotes] = useState("");
   const [patientCondition, setPatientCondition] = useState("Improving");
   const [careDecisionStep, setCareDecisionStep] = useState(false);
   const [needsReferral, setNeedsReferral] = useState(false);
   // Same server-backed source the BHC dashboard and CreateReferral use.
   const [receivingRhuId, setReceivingRhuId] = useState("");
-  // The last referral submission, kept in a ref so the Decision A retry can
-  // resubmit the exact same payload without re-deriving it from form state.
-  const lastReferralAttemptRef = useRef(null);
   const [referralForm, setReferralForm] = useState({
     receivingFacility: "",
     urgencyLevel: DEFAULT_ATTENTION,
@@ -992,7 +987,6 @@ export default function ConsultationWorkspace() {
     initialActionsTaken: "",
     reasonForReferral: "",
     clinicalSummary: "",
-    preferredRhuDoctorId: "",
   });
 
   const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
@@ -1283,6 +1277,7 @@ export default function ConsultationWorkspace() {
       setHeight(found.height || "");
       setFollowUpStatus(normalizePatientStatus(found.followUpStatus));
       setFollowUpDate(found.followUpDate || "");
+      setFollowUpReason(found.followUpReason || "");
       setMonitoringNotes(found.monitoringNotes || "");
       setPatientCondition(found.patientCondition || "Improving");
       const existingMaternalData = found.maternalData || found.maternal_data || {};
@@ -1662,6 +1657,7 @@ export default function ConsultationWorkspace() {
       followUpStatus,
       followUpDate,
       followUpTime,
+      followUpReason,
       monitoringNotes,
       patientCondition,
       morbidityReportingStatus,
@@ -1812,7 +1808,6 @@ export default function ConsultationWorkspace() {
         "initialActionsTaken",
         "reasonForReferral",
         "clinicalSummary",
-        "preferredRhuDoctorId",
       ]),
       dispensedMedicines: dispensedMedicines.map((item) => ({
         medicineId: Number(item.medicineId),
@@ -1860,6 +1855,7 @@ export default function ConsultationWorkspace() {
     setFollowUpStatus(payload.followUpStatus || "Routine Monitoring");
     setFollowUpDate(payload.followUpDate || "");
     setFollowUpTime(payload.followUpTime || "");
+    setFollowUpReason(payload.followUpReason || "");
     setMonitoringNotes(payload.monitoringNotes || "");
     setPatientCondition(payload.patientCondition || "Improving");
     setMorbidityReportingStatus(payload.morbidityReportingStatus || "not_included");
@@ -2380,6 +2376,7 @@ export default function ConsultationWorkspace() {
     if (isFollowUp && !showFollowUpMonitoringFields) {
       setFollowUpDate("");
       setFollowUpTime("");
+      setFollowUpReason("");
       if (!isFollowUp) setPatientCondition("");
     }
   }, [showFollowUpMonitoringFields, isFollowUp]);
@@ -2394,6 +2391,7 @@ export default function ConsultationWorkspace() {
     if (normalizedStatus !== "Follow-up Required") {
       setFollowUpDate("");
       setFollowUpTime("");
+      setFollowUpReason("");
       if (!isFollowUp) setPatientCondition("");
     }
   }
@@ -2410,11 +2408,25 @@ export default function ConsultationWorkspace() {
     setNeedsReferral(patch.needsReferral);
     setFollowUpStatus(patch.followUpStatus);
 
+    if (!patch.needsReferral) {
+      clearValidationError("receivingRhuId");
+      clearValidationError("urgencyLevel");
+      clearValidationError("reasonForReferral");
+      setReceivingRhuId("");
+      setReferralForm((prev) => ({
+        ...prev,
+        urgencyLevel: DEFAULT_ATTENTION,
+        reasonForReferral: "",
+      }));
+    }
+
     if (patch.clearFollowUpSchedule) {
       clearValidationError("followUpDate");
       clearValidationError("followUpTime");
+      clearValidationError("followUpReason");
       setFollowUpDate("");
       setFollowUpTime("");
+      setFollowUpReason("");
       if (!isFollowUp) setPatientCondition("");
     }
   }
@@ -2465,6 +2477,8 @@ export default function ConsultationWorkspace() {
     if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
     if (!finalizing) return errors;
     if ((needsReferral || normalizePatientStatus(followUpStatus) === "Follow-up Required") && !diagnosis.trim()) errors.diagnosis = "BHC Assessment is required for follow-up or referral.";
+    if (needsReferral && !receivingRhuId) errors.receivingRhuId = "Receiving facility is required.";
+    if (needsReferral && !ATTENTION_LEVELS.includes(referralForm.urgencyLevel)) errors.urgencyLevel = "Referral priority is required.";
     if (needsReferral && !referralForm.reasonForReferral?.trim()) errors.reasonForReferral = "Reason for referral is required.";
     const requiresFollowUp =
       !needsReferral &&
@@ -2472,6 +2486,13 @@ export default function ConsultationWorkspace() {
         Boolean(followUpDate));
     if (requiresFollowUp && !followUpDate) {
       errors.followUpDate = "Follow-up date is required.";
+    }
+    if (
+      !needsReferral &&
+      normalizePatientStatus(followUpStatus) === "Follow-up Required" &&
+      !followUpReason.trim()
+    ) {
+      errors.followUpReason = "Follow-up reason is required.";
     }
 
     if (hasPendingDispensedMedicineDraft) {
@@ -3388,6 +3409,11 @@ export default function ConsultationWorkspace() {
       followUpStatus: finalPatientStatus,
       followUpDate: effectiveFollowUpDate,
       followUpTime: effectiveFollowUpTime,
+      followUpReason:
+        !finalNeedsReferral &&
+        normalizePatientStatus(finalPatientStatus) === "Follow-up Required"
+          ? followUpReason.trim()
+          : "",
       monitoringNotes,
       patientCondition:
         isLinkedFollowUpVisit || effectiveFollowUpDate ? patientCondition : "",
@@ -3472,7 +3498,7 @@ export default function ConsultationWorkspace() {
       // The approved flow saves the referral straight from Next Action, so the
       // logistics that used to be collected on a dedicated step are defaulted
       // above (facility is assigned server-side from the patient's BHC,
-      // urgency falls back to the default, no doctor is preferred).
+      // urgency falls back to the default; the RHU assigns the doctor).
       //
       // The DOC-14 no-provider gate is NOT bypassed by this: it is enforced by
       // ReferralSubmissionGate inside the same server transaction, so a blocked
@@ -3590,21 +3616,17 @@ export default function ConsultationWorkspace() {
    *
    * Takes the record payload explicitly rather than reading pendingReferralDraft,
    * because Next Action now saves in the same tick it builds the payload and
-   * would otherwise race React state. The last attempt is remembered so the
-   * REF-SLIP-05c "Continue Anyway" retry can resubmit it unchanged.
+   * would otherwise race React state.
    */
   async function submitHealthRecordWithReferral({
     formData,
     referralOverrides = {},
-    acknowledgeUnavailable = false,
   } = {}) {
     closeDateTimePopovers();
 
-    const attempt = formData
-      ? { formData, referralOverrides }
-      : lastReferralAttemptRef.current;
+    const attempt = { formData, referralOverrides };
 
-    if (!attempt?.formData) {
+    if (!attempt.formData) {
       setNoticeModal({
         title: "Health Record Draft Missing",
         message:
@@ -3613,7 +3635,6 @@ export default function ConsultationWorkspace() {
       return;
     }
 
-    lastReferralAttemptRef.current = attempt;
     const referral = { ...referralForm, ...attempt.referralOverrides };
 
     if (!String(referral.reasonForReferral || "").trim()) {
@@ -3640,11 +3661,6 @@ export default function ConsultationWorkspace() {
           referral.initialActionsTaken || attempt.formData.medication,
         referringPractitioner:
           referral.referringPractitioner || attempt.formData.attendingStaff,
-        preferredDoctor: null,
-        // REF-SLIP-05 / REF-SLIP-05c - the preference and, on a retry past the
-        // Decision A warning, the acknowledgment the server records.
-        preferredProviderId: null,
-        acknowledgedUnavailablePreference: acknowledgeUnavailable,
         referralDate: referral.dateOfReferral,
         referralTime: referral.timeOfReferral,
         remarks: referralRemarks || null,
@@ -3694,7 +3710,6 @@ export default function ConsultationWorkspace() {
         queryKey: queryKeys.healthRecordData(userRole, savedRecordId),
       });
 
-      lastReferralAttemptRef.current = null;
       setCareDecisionStep(false);
       setLastFailedSubmit(null);
       clearOfficialSubmission();
@@ -3720,53 +3735,6 @@ export default function ConsultationWorkspace() {
         setNoticeModal({
           title: "Referral Submission Unavailable",
           message: error?.message || noProviderMessage,
-        });
-        return;
-      }
-      // REF-SLIP-05c (Decision A) - warn, then continue or reselect.
-      if (isPreferredProviderUnavailableError(error)) {
-        clearOfficialSubmission();
-        const provider = error.payload?.provider || {};
-        setNoticeModal({
-          title: "Doctor Currently Unavailable",
-          message: `${provider.name || "The selected doctor"} is currently unavailable${
-            provider.remarks ? ` - ${provider.remarks}` : ""
-          }. The RHU may assign another doctor on arrival. You can continue with this preference or choose another.`,
-          actions: [
-            {
-              label: "Choose Another Doctor",
-              onClick: () => {
-                setReferralForm((prev) => ({
-                  ...prev,
-                  preferredRhuDoctorId: "",
-                }));
-                setNoticeModal(null);
-              },
-            },
-            {
-              label: "Continue Anyway",
-              variant: "primary",
-              onClick: () => {
-                setNoticeModal(null);
-                // Resubmit with the acknowledgment. DOC-14 is re-checked on
-                // this attempt too, so continuing cannot bypass the hard block.
-                void submitHealthRecordWithReferral({
-                  acknowledgeUnavailable: true,
-                });
-              },
-            },
-          ],
-        });
-        return;
-      }
-      if (isPreferredProviderInvalidError(error)) {
-        clearOfficialSubmission();
-        setReferralForm((prev) => ({ ...prev, preferredRhuDoctorId: "" }));
-        setNoticeModal({
-          title: "Doctor No Longer Available",
-          message:
-            error?.message ||
-            "The selected doctor is no longer available at the receiving RHU. Please choose another.",
         });
         return;
       }
@@ -3824,7 +3792,7 @@ export default function ConsultationWorkspace() {
     : "New Consultation";
   const monitoringNotesLabel =
     normalizedPatientStatus === "Completed"
-      ? "Outcome Notes"
+      ? "Additional Notes"
       : showFollowUpMonitoringFields
         ? "Monitoring and Follow-up Notes"
         : "Monitoring Notes";
@@ -3858,6 +3826,7 @@ export default function ConsultationWorkspace() {
     const clinicalErrors = { ...getClinicalValidationErrors() };
     delete clinicalErrors.followUpDate;
     delete clinicalErrors.followUpTime;
+    delete clinicalErrors.followUpReason;
     delete clinicalErrors.followUpStatus;
 
     if (setValidationErrorsAndFocus(clinicalErrors)) return;
@@ -4031,10 +4000,23 @@ export default function ConsultationWorkspace() {
       action={nextAction}
       followUpDate={followUpDate}
       followUpTime={followUpTime}
+      followUpReason={followUpReason}
+      showFollowUpReason
       monitoringNotes={monitoringNotes}
       monitoringNotesLabel={monitoringNotesLabel}
       monitoringNotesPlaceholder={monitoringNotesPlaceholder}
       referralForm={referralForm}
+      referralFacilityField={
+        <ReferralFacilityField
+          value={receivingRhuId}
+          error={validationErrors.receivingRhuId}
+          disabled={patientGateLocked}
+          onChange={(id) => {
+            clearValidationError("receivingRhuId");
+            setReceivingRhuId(id);
+          }}
+        />
+      }
       errors={validationErrors}
       disabled={patientGateLocked}
       // The server only requires a follow-up time for General Consultation
@@ -4058,6 +4040,10 @@ export default function ConsultationWorkspace() {
       onFollowUpTimeChange={(value) => {
         clearValidationError("followUpTime");
         setFollowUpTime(value);
+      }}
+      onFollowUpReasonChange={(value) => {
+        clearValidationError("followUpReason");
+        setFollowUpReason(value);
       }}
       onMonitoringNotesChange={setMonitoringNotes}
       onReferralFieldChange={handleReferralFormChange}
@@ -4100,53 +4086,93 @@ export default function ConsultationWorkspace() {
     treatmentBindings.forEach((binding) => binding.set(value));
   };
 
-  // Two reporting decisions, side by side, shared by the Clinical Assessment
-  // step and the legacy single-screen general form. They are one row rather
-  // than two stacked FormSections because each is a single short control and
-  // they are decided together.
+  // Records & Surveillance, shared by the Clinical Assessment step and the
+  // legacy single-screen general form. Two independent decisions: Morbidity /
+  // Notifiable Disease Record is its own classification, and HFMD surveillance
+  // is a separate community-based record entirely - a visit can belong to
+  // both at once, so neither checkbox gates the other. Both reuse this same
+  // consultation's patient/encounter data; nothing extra is created.
+  const includeInReporting = morbidityReportingStatus !== "not_included";
+  // Checking the box reveals Record Type further down the screen - easy to
+  // miss below the fold. The handler flags that a reveal just happened; the
+  // effect below scrolls it into view once the DOM has it, without firing on
+  // unrelated re-renders or on a draft that loads with it already set.
+  const recordTypeFieldRef = useRef(null);
+  const pendingRevealScrollRef = useRef(null);
+  function handleIncludeInReportingChange(checked) {
+    setMorbidityReportingStatus(checked ? "morbidity" : "not_included");
+    if (checked) pendingRevealScrollRef.current = "recordType";
+  }
+  useEffect(() => {
+    if (pendingRevealScrollRef.current !== "recordType") return;
+    pendingRevealScrollRef.current = null;
+    recordTypeFieldRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
   const reportingDecisions = (
     <div
-      className="anim-fade-up grid gap-8 border-t border-[#E5E7EB] pt-5 pb-1 @3xl:grid-cols-2"
+      className="anim-fade-up border-t border-[#E5E7EB] pt-5 pb-1"
       style={stagger(7)}
     >
-      <div>
-        <h2 className="text-sm font-bold text-[#1A1A1A]">
-          Morbidity / Notifiable Disease Record
-        </h2>
-        <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
-          Choose whether this visit should appear in the morbidity or
-          notifiable diseases daily log.
-        </p>
-        <div className="mt-4">
-          <LockedFormContent locked={patientGateLocked}>
-            <MorbidityNotifiableReportingSection
-              value={morbidityReportingStatus}
-              onChange={setMorbidityReportingStatus}
-            />
-          </LockedFormContent>
-        </div>
-      </div>
+      <h2 className="text-sm font-bold text-[#1A1A1A]">
+        Records & Surveillance
+      </h2>
+      <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
+        Classify this visit for reporting when applicable.
+      </p>
+      <div className="mt-4">
+        <LockedFormContent locked={patientGateLocked}>
+          <div className="space-y-5">
+            <div data-field="morbidityReportingStatus">
+              <label className="flex cursor-pointer items-start gap-2.5 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={includeInReporting}
+                  onChange={(event) => handleIncludeInReportingChange(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded-none border-[#D1D5DB] accent-[#DC2626]"
+                />
+                <span className={includeInReporting ? "font-semibold text-[#DC2626]" : "text-gray-600"}>
+                  Include in Morbidity / Notifiable Disease Record
+                </span>
+              </label>
+              <p className="mt-1 pl-6 text-xs leading-relaxed text-[#6B7280]">
+                This visit can be classified for reporting when applicable.
+              </p>
 
-      <div>
-        <h2 className="text-sm font-bold text-[#1A1A1A]">
-          Community-Based Surveillance
-        </h2>
-        <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
-          Decide whether this visit should be included in the HFMD
-          surveillance list.
-        </p>
-        <div className="mt-4">
-          <LockedFormContent locked={patientGateLocked}>
-            <YesNoRadioGroup
-              label="Include in HFMD Surveillance List?"
-              name="hfmdSurveillance"
-              value={hfmdSurveillance ? "Yes" : "No"}
-              onChange={(value) =>
-                setHfmdSurveillance(value === "Yes" || value === true)
-              }
-            />
-          </LockedFormContent>
-        </div>
+              {includeInReporting && (
+                <div className="mt-4 pl-6" ref={recordTypeFieldRef}>
+                  <FieldSelect
+                    label="Record Type"
+                    value={morbidityReportingStatus}
+                    onChange={(event) => setMorbidityReportingStatus(event.target.value)}
+                    wrapperClassName="max-w-xs"
+                  >
+                    <option value="morbidity">Morbidity</option>
+                    <option value="notifiable">Notifiable Disease</option>
+                  </FieldSelect>
+                </div>
+              )}
+            </div>
+
+            <div data-field="hfmdSurveillance">
+              <label className="flex cursor-pointer items-start gap-2.5 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={hfmdSurveillance}
+                  onChange={(event) => setHfmdSurveillance(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded-none border-[#D1D5DB] accent-[#DC2626]"
+                />
+                <span className={hfmdSurveillance ? "font-semibold text-[#DC2626]" : "text-gray-600"}>
+                  Include in HFMD Community-Based Surveillance
+                </span>
+              </label>
+              <p className="mt-1 pl-6 text-xs leading-relaxed text-[#6B7280]">
+                Hand, Foot and Mouth Disease cases are tracked in the separate
+                Community-Based Surveillance record; this visit can be included
+                there regardless of its Morbidity / Notifiable Disease status.
+              </p>
+            </div>
+          </div>
+        </LockedFormContent>
       </div>
     </div>
   );
@@ -4203,9 +4229,13 @@ export default function ConsultationWorkspace() {
   });
   // Program panel: one status per form step, attached to each selected program
   // that step covers.
+  // Program selection is locked once the visit reaches Disposition/Review; the
+  // review summary lists the chosen programs read-only.
   const showProgramPanel =
     usesConsultationSteps &&
     !isResolvingClinicalMode &&
+    wizardPhase !== WIZARD_NEXT &&
+    wizardPhase !== WIZARD_REVIEW &&
     !(activeDraft?.reviewState === "review" && !canFinalize);
   const programStatusByKey = {};
   if (showProgramPanel && programFormSteps.length > 0) {
@@ -4267,7 +4297,7 @@ export default function ConsultationWorkspace() {
   const nextActionSummary = {
     [NEXT_ACTION_NONE]: "No Follow-up or Referral Required",
     [NEXT_ACTION_SCHEDULE]: [
-      "BHC Follow-up Required",
+      "Follow-up Required",
       followUpDate && formatLongDate(followUpDate, ""),
       followUpTime && formatDisplayTime(followUpTime),
     ]
@@ -4309,11 +4339,12 @@ export default function ConsultationWorkspace() {
     },
     {
       key: ASSESSMENT_STEP,
-      title: "Physical Examination",
+      title: "Physical Exam & Assessment",
       stepKey: ASSESSMENT_STEP,
       rows: [
         ...(purposeFlow ? [{ label: "Chief Complaint", value: chiefComplaint }, { label: "History of Present Illness", value: summaryOfPresentIllness }] : []),
         { label: "Physical Exam", value: physicalExam },
+        { label: "Assessment", value: diagnosis },
 
         // The selection itself is listed under Program / Service Details
         // when there is one; only its absence is stated here.
@@ -4335,10 +4366,12 @@ export default function ConsultationWorkspace() {
     })),
     {
       key: TREATMENT_STEP,
-      title: "BHC Assessment & Actions Taken",
+      title: generalSelected ? "Actions Taken" : "BHC Assessment & Actions Taken",
       stepKey: TREATMENT_STEP,
       rows: [
-        { label: "BHC Assessment", value: diagnosis },
+        // A General Consultation already shows its diagnosis under Physical
+        // Exam & Assessment; a program-only visit has no other place for it.
+        ...(generalSelected ? [] : [{ label: "BHC Assessment", value: diagnosis }]),
         { label: "Actions Taken", value: treatmentValue },
         { label: "Medicines / Supplies", value: dispensedMedicines.map(item => item.medicineName + " · " + item.quantity + " " + item.unit + " · " + (item.confirmedGiven ? "Dispensed/Given" : "Planned")).join("\n") },
       ],
@@ -4349,7 +4382,8 @@ export default function ConsultationWorkspace() {
       stepKey: NEXT_STEP,
       rows: [
         { label: "Disposition", value: nextActionSummary },
-        ...(needsReferral ? [{ label: "Reason for Referral", value: referralForm.reasonForReferral }, { label: "Queue Priority", value: referralForm.urgencyLevel === "Priority" ? "Priority" : "Regular" }] : []),
+        ...(nextAction === NEXT_ACTION_SCHEDULE ? [{ label: "Follow-up Reason", value: followUpReason }] : []),
+        ...(needsReferral ? [{ label: "Reason for Referral", value: referralForm.reasonForReferral }, { label: "Referral Priority", value: normalizeAttention(referralForm.urgencyLevel) }] : []),
         { label: "Notes", value: monitoringNotes },
       ],
     },
@@ -4425,7 +4459,6 @@ export default function ConsultationWorkspace() {
       <div className={`ehr-consult__grid${showProgramPanel ? " ehr-consult__grid--panel lg:grid lg:grid-cols-[minmax(0,1fr)_264px] lg:items-start lg:gap-4" : ""}`}>
       <div className="@container min-w-0 ehr-consult__form" data-consult-scroll>
       {inConsultationWorkspace && stepIndicator}
-      {wizardPhase === WIZARD_NEXT && needsReferral && <ReferralDestinationPicker deferWithConsultation value={receivingRhuId} onChange={id => { setReceivingRhuId(id); setReferralForm(f => ({ ...f, preferredRhuDoctorId: "" })); }} patientId={selectedPatientId} />}
       {activeDraft?.reviewState === "review" && canFinalize && <details className="mb-4 rounded-none border border-gray-200 p-4"><summary className="cursor-pointer text-sm font-medium">Return for Correction</summary><p className="my-2 text-sm text-gray-600">Use only when the encoder must verify or complete information.</p><textarea aria-label="Correction note" className="w-full rounded-none border border-gray-300 p-3" value={correctionNote} onChange={event => setCorrectionNote(event.target.value)} /><Button type="button" disabled={!correctionNote.trim()} onClick={async () => { try { if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) return; const identity = getDraftIdentity() || activeDraft; await transitionDraft(identity.id, "return", identity.version, correctionNote.trim()); bypassLeaveGuardRef.current = true; navigate("/bhc/patients/" + selectedPatientId); } catch (error) { toast.error(error.message); } }}>Return for Correction</Button></details>}
       {activeDraft?.returnNote && <div role="status" className="mb-4 rounded-none bg-amber-50 p-4 text-sm">Return for Correction: {activeDraft.returnNote}</div>}
       {draftMedicineWarnings.length > 0 && (
@@ -5359,7 +5392,7 @@ export default function ConsultationWorkspace() {
             </>}
             <FormSection
               title="Physical Examination"
-              subtitle="Record the examination findings for this visit."
+              subtitle="Record relevant examination findings for this visit."
               delay={3}
             >
               <LockedFormContent locked={patientGateLocked}>
@@ -5373,9 +5406,28 @@ export default function ConsultationWorkspace() {
               </LockedFormContent>
             </FormSection>
 
-            {/* The morbidity and HFMD decisions apply to a general consultation
-                only, exactly as before. */}
-            {(purposeFlow ? generalSelected : isGeneralOnly) && reportingDecisions}
+            <FormSection
+              title="Assessment"
+              subtitle="Record the clinical impression or diagnosis for this visit."
+              delay={3}
+            >
+              <LockedFormContent locked={patientGateLocked}>
+                <FieldTextarea
+                  label="Diagnosis"
+                  value={diagnosis}
+                  onChange={(event) => { clearValidationError("diagnosis"); setDiagnosis(event.target.value); }}
+                  placeholder="Record the clinical impression or diagnosis for this visit."
+                  name="diagnosis" error={validationErrors.diagnosis}
+                  rows={4}
+                />
+              </LockedFormContent>
+            </FormSection>
+
+            {/* Records & Surveillance always follows Assessment/Diagnosis,
+                whatever programs are selected: morbidity, notifiable disease,
+                and HFMD surveillance are independent of program/service
+                selection. */}
+            {reportingDecisions}
 
             {/* The program decision, made after the assessment it follows from.
                 Optional: none selected is a general consultation, and Program /
@@ -5387,21 +5439,26 @@ export default function ConsultationWorkspace() {
         {/* Treatment / Medicine: treatment given and inventory dispensed, once. */}
         {usesConsultationSteps && activeFormStep === TREATMENT_STEP && (
           <>
-            <FormSection
-              title="BHC Assessment"
-              subtitle="Summarize the findings from this encounter and its additional forms."
-              delay={4}
-            >
-              <LockedFormContent locked={patientGateLocked}>
-                <FieldTextarea
-                  label="BHC Assessment"
-                  value={diagnosis}
-                  onChange={(event) => { clearValidationError("diagnosis"); setDiagnosis(event.target.value); }}
-                  name="diagnosis" error={validationErrors.diagnosis}
-                  rows={4}
-                />
-              </LockedFormContent>
-            </FormSection>
+            {/* A General Consultation already captured this under Physical
+                Exam & Assessment; a program-only visit has no earlier step
+                for it, so this is its only entry point. */}
+            {!generalSelected && (
+              <FormSection
+                title="BHC Assessment"
+                subtitle="Summarize the findings from this encounter and its additional forms."
+                delay={4}
+              >
+                <LockedFormContent locked={patientGateLocked}>
+                  <FieldTextarea
+                    label="BHC Assessment"
+                    value={diagnosis}
+                    onChange={(event) => { clearValidationError("diagnosis"); setDiagnosis(event.target.value); }}
+                    name="diagnosis" error={validationErrors.diagnosis}
+                    rows={4}
+                  />
+                </LockedFormContent>
+              </FormSection>
+            )}
 
             {(purposeFlow || treatmentBindings.length > 0) && (
               <FormSection
@@ -6083,59 +6140,6 @@ function MaternalClassificationWarning() {
   );
 }
 
-const MORBIDITY_REPORTING_OPTIONS = [
-  {
-    value: "not_included",
-    label: "Not included",
-  },
-  {
-    value: "morbidity",
-    label: "Include in Morbidity Log",
-  },
-  {
-    value: "notifiable",
-    label: "Mark as Notifiable Disease",
-  },
-];
-
-function MorbidityNotifiableReportingSection({ value, onChange }) {
-  return (
-    <div className="space-y-4">
-      <div data-field="morbidityReportingStatus">
-        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[#374151]">
-          Reporting Status
-        </p>
-        <div className="grid gap-2">
-          {MORBIDITY_REPORTING_OPTIONS.map((option) => (
-            <label
-              key={option.value}
-              className="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-600"
-            >
-              <input
-                type="radio"
-                name="morbidityReportingStatus"
-                value={option.value}
-                checked={value === option.value}
-                onChange={() => onChange(option.value)}
-                className="h-4 w-4 accent-[#DC2626]"
-              />
-              <span
-                className={
-                  value === option.value
-                    ? "font-semibold text-[#DC2626]"
-                    : "text-gray-600"
-                }
-              >
-                {option.label}
-              </span>
-            </label>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function FieldInput({
   label,
   required,
@@ -6224,45 +6228,6 @@ function FieldTextarea({
       {error && (
         <p className="mt-1 text-[11px] font-medium text-[#DC2626]">{error}</p>
       )}
-    </div>
-  );
-}
-
-function YesNoRadioGroup({ label, name, value, onChange, disabled = false }) {
-  return (
-    <div data-field={name}>
-      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[#374151]">
-        {label}
-      </p>
-      <div className="flex min-h-10 flex-wrap items-center gap-x-6 gap-y-2">
-        {["No", "Yes"].map((option) => (
-          <label
-            key={option}
-            className={`flex items-center gap-2 text-sm font-medium text-gray-600 ${
-              disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-            }`}
-          >
-            <input
-              type="radio"
-              name={name}
-              value={option}
-              checked={(value || "No") === option}
-              onChange={() => onChange(option)}
-              disabled={disabled}
-              className="h-4 w-4 accent-[#DC2626]"
-            />
-            <span
-              className={
-                (value || "No") === option
-                  ? "font-semibold text-[#DC2626]"
-                  : "text-gray-600"
-              }
-            >
-              {option}
-            </span>
-          </label>
-        ))}
-      </div>
     </div>
   );
 }
