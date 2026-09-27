@@ -253,7 +253,6 @@ export default function FollowUps() {
         "General Consultation",
         "Maternal / Prenatal",
         "Child Health / EPI",
-        "Hypertension / Diabetic Monitoring",
         "Family Planning",
         "TB DOTS / TB Monitoring",
       ],

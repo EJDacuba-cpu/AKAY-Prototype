@@ -187,8 +187,8 @@ export default function PatientDetails() {
     () => (patient ? getConditionalProgramTabs(patient, records) : []),
     [patient, records],
   );
-  // Programs Women's Health and Pediatric/EPI already own, so NCD and TB (which
-  // only appear once records exist) are the only extra enrollments to list.
+  // Programs Women's Health and Pediatric/EPI already own, so TB (which only
+  // appears once records exist) is the only extra enrollment to list.
   const programLabels = useMemo(() => {
     const claimed = new Set(conditionalProgramAreas.flatMap((area) => area.programs));
     return [

@@ -18,10 +18,7 @@ import PatientDetailItem from "../patients/PatientDetailItem";
 import { formatDisplayValue, formatLongDate } from "../../../utils/formatters";
 import { FollowUpEpisodeContent } from "./FollowUpEpisodePanel";
 import {
-  formatHypertensionDiabeticCondition,
-  getHypertensionDiabeticData,
   getServiceTypeLabel,
-  isNcdRecord as isNcdProgramRecord,
   isMaternalRecord as isMaternalProgramRecord,
 } from "../../../utils/healthRecordPrograms";
 import {
@@ -67,7 +64,7 @@ import {
 /* ─────────────────────────────────────────────
    HealthRecordClinicalDetails
    Renders the full clinical record — vital signs, program-specific data
-   (Prenatal, EPI, Family Planning, NCD, TB, General Consultation), treatment,
+   (Prenatal, EPI, Family Planning, TB, General Consultation), treatment,
    and follow-up — the same way pages/bhc/HealthRecordDetails.jsx does.
    Shared by the health record details page and both referral details pages.
 ──────────────────────────────────────────── */
@@ -138,14 +135,9 @@ export default function HealthRecordClinicalDetails({
   const hasTreatmentDetails = Boolean(
     initialActionsValue || treatmentNotesValue || medicalNotesValue,
   );
-  const isHypertensionDiabeticRecord =
-    patientClassification === "Hypertension / Diabetic Monitoring" ||
-    (!isImmunizationRecord && isNcdProgramRecord(record));
   const isMaternalRecord =
     patientClassification === "Maternal / Prenatal" ||
-    (!isImmunizationRecord &&
-      !isHypertensionDiabeticRecord &&
-      isMaternalProgramRecord(record));
+    (!isImmunizationRecord && isMaternalProgramRecord(record));
   const dispensedMedicines = getDispensedMedicines(record);
   const isGeneralConsultationRecord =
     patientClassification === "General Consultation";
@@ -191,18 +183,6 @@ export default function HealthRecordClinicalDetails({
   if (isMaternalRecord) {
     return (
       <MaternalPrenatalRecordDetails
-        record={record}
-        dispensedMedicines={dispensedMedicines}
-        followUpDate={followUpDateValue}
-        needsReferral={needsRhuReferral}
-        linkedReferral={linkedReferral}
-      />
-    );
-  }
-
-  if (isHypertensionDiabeticRecord) {
-    return (
-      <HypertensionDiabeticRecordDetails
         record={record}
         dispensedMedicines={dispensedMedicines}
         followUpDate={followUpDateValue}
@@ -281,20 +261,6 @@ export default function HealthRecordClinicalDetails({
 /* ─────────────────────────────────────────────
    LOCAL HELPERS / PRESENTATIONAL PRIMITIVES
 ──────────────────────────────────────────── */
-
-function DetailSection({ title, children }) {
-  return (
-    <section className="py-5 first:pt-0 last:pb-0">
-      <div className="mb-4 flex items-center gap-3">
-        <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          {title}
-        </span>
-        <div className="h-px flex-1 bg-slate-100" />
-      </div>
-      <div className="space-y-4">{children}</div>
-    </section>
-  );
-}
 
 export function DispensedMedicinesList({ medicines }) {
   if (!medicines.length) {
@@ -383,12 +349,6 @@ function PreviousPregnancyHistoryTable({ rows = [] }) {
   );
 }
 
-function HypertensionDiabeticRecordDetails(props) {
-  return (
-    <HypertensionDiabeticTabbedRecordDetails {...props} />
-  );
-}
-
 /**
  * One naming scheme for every record-details layout.
  *
@@ -402,167 +362,6 @@ const RECORD_DETAIL_TABS = {
   treatment: { label: "Treatment & Supplies", icon: ClipboardCheck },
   followUp: { label: "Follow-ups for This Record", icon: CalendarClock },
 };
-
-function HypertensionDiabeticLegacyDetails({
-  record,
-  patientName,
-  serviceType,
-  displayDate,
-  displayTime,
-  practitioner,
-  dispensedMedicines,
-  followUpDate,
-  needsReferral,
-  linkedReferral,
-}) {
-  const data = getHypertensionDiabeticData(record);
-  const referralStatus =
-    linkedReferral?.status ||
-    record.referralStatus ||
-    record.referral_status ||
-    "";
-
-  return (
-    <div className="divide-y divide-slate-100">
-      <DetailSection title="Visit Overview">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <PatientDetailItem label="Patient Full Name" value={patientName} />
-          <PatientDetailItem label="Service Type" value={serviceType} />
-          <PatientDetailItem label="Date of Visit" value={displayDate} />
-          <PatientDetailItem
-            label="Time of Visit"
-            value={displayTime || "Not recorded"}
-          />
-          <PatientDetailItem
-            label="Name of Practitioner"
-            value={practitioner}
-          />
-        </div>
-      </DetailSection>
-
-      <DetailSection title="Monitoring Details">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <PatientDetailItem label="BP" value={data.bp || "—"} />
-          <PatientDetailItem label="FBS" value={data.fbs || "—"} />
-          <PatientDetailItem
-            label="Condition Type"
-            value={formatHypertensionDiabeticCondition(data.conditionType) || "—"}
-          />
-        </div>
-      </DetailSection>
-
-      <DetailSection title="Treatment / Action Taken">
-        {data.treatmentActionTaken ? (
-          <NarrativeBox
-            label="Treatment / Action Taken"
-            value={data.treatmentActionTaken}
-          />
-        ) : (
-          <SectionEmptyState text="No treatment or action taken recorded." />
-        )}
-      </DetailSection>
-
-      <DetailSection title="Medicines / Supplies Dispensed">
-        <DispensedMedicinesList medicines={dispensedMedicines} />
-      </DetailSection>
-
-      <DetailSection title="Follow-up & Referral">
-        <div className="grid gap-4 md:grid-cols-3">
-          <PatientDetailItem
-            label="Next Follow-up Date"
-            value={formatLongDate(followUpDate, "—")}
-          />
-          <PatientDetailItem
-            label="Needs RHU Referral"
-            value={needsReferral ? "Yes" : "No"}
-          />
-          <PatientDetailItem
-            label="Referral Status"
-            value={referralStatus || "—"}
-          />
-        </div>
-      </DetailSection>
-    </div>
-  );
-}
-
-HypertensionDiabeticRecordDetails.Legacy = HypertensionDiabeticLegacyDetails;
-
-function HypertensionDiabeticTabbedRecordDetails({
-  record,
-  dispensedMedicines,
-  followUpDate,
-  needsReferral,
-  linkedReferral,
-}) {
-  const data = getHypertensionDiabeticData(record);
-  const referralStatus =
-    linkedReferral?.status ||
-    record.referralStatus ||
-    record.referral_status ||
-    "";
-
-  const tabs = [
-    {
-      id: "monitoring",
-      ...RECORD_DETAIL_TABS.clinical,
-      content: (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <TabbedDetailItem label="BP" value={data.bp} />
-          <TabbedDetailItem label="FBS" value={data.fbs} />
-          <TabbedDetailItem
-            label="Condition Type"
-            value={formatHypertensionDiabeticCondition(data.conditionType)}
-          />
-        </div>
-      ),
-    },
-    {
-      id: "management",
-      ...RECORD_DETAIL_TABS.treatment,
-      content: (
-        <div className="space-y-6">
-          {data.treatmentActionTaken ? (
-            <TabbedNarrativeBlock
-              label="Treatment / Action Taken"
-              value={data.treatmentActionTaken}
-            />
-          ) : (
-            <SectionEmptyState text="No treatment or action taken recorded." />
-          )}
-          <TabbedSubsection title="Medicines Dispensed">
-            <DispensedMedicinesList medicines={dispensedMedicines} />
-          </TabbedSubsection>
-        </div>
-      ),
-    },
-    {
-      id: "followup",
-      ...RECORD_DETAIL_TABS.followUp,
-      content: (
-        <div className="grid gap-4 md:grid-cols-3">
-          <TabbedDetailItem
-            label="Next Follow-up Date"
-            value={formatLongDate(followUpDate, "Not recorded")}
-          />
-          <TabbedDetailItem
-            label="Needs RHU Referral"
-            value={needsReferral ? "Yes" : "No"}
-          />
-          <TabbedDetailItem label="Referral Status" value={referralStatus} />
-        </div>
-      ),
-    },
-  ];
-
-  return (
-    <RecordTabs
-      key={record?.id || record?._id}
-      tabs={tabs}
-      defaultTabId="monitoring"
-    />
-  );
-}
 
 function GenericRecordDetails({
   record,

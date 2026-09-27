@@ -6,7 +6,6 @@ import {
   formatDisplayTime,
   getConfirmedBreastfeedingMonths,
   getEpiBreastfeedingMonitoring,
-  getHypertensionDiabeticData,
   getTbData,
   getRecordClassificationText,
   getRecordDateValue,
@@ -14,8 +13,6 @@ import {
   getRecordTimeValue,
   getRecordValue,
   getSpecializedRecordType,
-  formatHypertensionDiabeticClientStatus,
-  formatHypertensionDiabeticCondition,
 } from "../../../utils/healthRecordPrograms";
 import {
   REQUIRED_EPI_ITEMS,
@@ -76,16 +73,6 @@ export default function SpecializedRecordsTab({
           subtitle="Family planning visits, methods, concerns, and appointments."
         >
           <FamilyPlanningHistory records={programRecords} basePath={basePath} />
-        </SpecializedSection>
-      )}
-
-      {program === "ncd" && (
-        <SpecializedSection
-          icon={<HeartPulse size={15} />}
-          title="Hypertension / Diabetic Monitoring History"
-          subtitle="Compiled BP, FBS, HPN/DM status, treatment, and follow-up visits."
-        >
-          <NcdHistory records={programRecords} />
         </SpecializedSection>
       )}
 
@@ -393,40 +380,6 @@ function FamilyPlanningHistory({ records, basePath }) {
   );
 }
 
-function NcdHistory({ records }) {
-  return (
-    <ResponsiveTable minWidth="min-w-[1040px]">
-      <thead>
-        <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r">
-          <TableHead>Visit Date</TableHead>
-          <TableHead>BP</TableHead>
-          <TableHead>FBS</TableHead>
-          <TableHead>Condition</TableHead>
-          <TableHead>Client Status</TableHead>
-          <TableHead>Next Follow-up</TableHead>
-          <TableHead>Remarks / Action Taken</TableHead>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-slate-100 text-sm">
-        {records.map((record) => {
-          const data = getHypertensionDiabeticData(record);
-          return (
-            <tr key={getRecordId(record)} className="transition-colors hover:bg-slate-50/80">
-              <TableCell>{formatDate(getRecordDateValue(record), EMPTY_MARK)}</TableCell>
-              <TableCell>{data.bp || formatBp(record)}</TableCell>
-              <TableCell>{data.fbs || EMPTY_MARK}</TableCell>
-              <TableCell>{formatHypertensionDiabeticCondition(data.conditionType) || EMPTY_MARK}</TableCell>
-              <TableCell>{formatHypertensionDiabeticClientStatus(data.clientStatus) || EMPTY_MARK}</TableCell>
-              <TableCell>{formatDate(getFollowUpDate(record), EMPTY_MARK)}</TableCell>
-              <TableCell>{data.treatmentActionTaken || getActionTaken(record)}</TableCell>
-            </tr>
-          );
-        })}
-      </tbody>
-    </ResponsiveTable>
-  );
-}
-
 function TbHistory({ records, basePath }) {
   return (
     <ResponsiveTable minWidth="min-w-[1020px]">
@@ -617,19 +570,6 @@ function getNotes(record = {}) {
     record.historyOfPresentIllness ||
     record.medicalHistory ||
     record.medical_history,
-    EMPTY_MARK,
-  );
-}
-
-function getActionTaken(record = {}) {
-  return formatDisplayValue(
-    record.initialActionsTaken ||
-      record.initial_actions_taken ||
-      record.treatmentNotes ||
-      record.treatment_notes ||
-      record.medication ||
-      record.actionTaken ||
-      record.action_taken,
     EMPTY_MARK,
   );
 }

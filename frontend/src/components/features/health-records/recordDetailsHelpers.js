@@ -236,9 +236,6 @@ export function getHealthRecordDetailsTitle(serviceType = "") {
   if (normalized === "Maternal / Prenatal") return "Maternal / Prenatal Record";
   if (normalized === "Child Health / EPI") return "Child Health / EPI Record";
   if (normalized === "Family Planning") return "Family Planning Record";
-  if (normalized === "Hypertension / Diabetic Monitoring") {
-    return "Hypertension / Diabetic Monitoring Record";
-  }
   if (normalized === "TB DOTS / TB Monitoring") return "TB Follow-up Record";
   if (normalized === "General Consultation") return "General Consultation Record";
   return normalized ? `${normalized} Record` : "Health Record Details";
