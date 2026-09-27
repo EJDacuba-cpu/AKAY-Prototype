@@ -126,14 +126,15 @@ Setup → Interview & Vital Signs → Clinical Assessment
 
 Interview and Vital Signs share the first step: two cards on one screen, with no
 Next between them. Next from that step proceeds only when both cards satisfy the
-existing validation, including blood pressure when Hypertension / Diabetes is
-selected.
+existing validation.
 
 Setup answers only which patient and what type of visit. Programs and services
 are chosen at the end of Clinical Assessment, grouped as *Services* (Maternal,
-Family Planning, EPI) and *Condition Monitoring / Evaluation* (TB,
-Hypertension, Diabetes). Selecting none is a general consultation, and Program /
-Service Details is skipped. With several, their existing forms follow one at a
+Family Planning, EPI) and *Condition Monitoring / Evaluation* (TB). Selecting
+none is a general consultation, and Program / Service Details is skipped.
+
+The Hypertension / Diabetes program was removed on 2026-09-27; migration
+2026_09_27_000001 stripped its data from records and drafts. With several, their existing forms follow one at a
 time, primary first, headed "Program 1 of N · <name>". Previous reverses the
 exact forward order.
 

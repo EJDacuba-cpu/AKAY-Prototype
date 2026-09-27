@@ -138,6 +138,7 @@ Approved Option A, not a full form builder:
 Admin/MHO can register approved program names, descriptions, and active status.
 New programs use a standard monitoring form.
 TB DOTS and NCD retain specialized forms.
+(2026-09-27: the NCD / Hypertension / Diabetes program was since removed; TB DOTS keeps its specialized form.)
 New specialized forms may require development.
 Do not claim that a database-driven dropdown automatically supports arbitrary disease-specific forms.
 Initial scope:
