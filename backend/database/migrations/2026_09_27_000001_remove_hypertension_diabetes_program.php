@@ -50,9 +50,11 @@ return new class extends Migration
                         continue;
                     }
 
+                    // A value that does not decode to an object is left exactly
+                    // as stored; only the category can still be corrected.
                     DB::table('health_records')->where('id', $row->id)->update([
                         'category' => $category,
-                        'monitoring_data' => $monitoring === null ? null : $this->encode($cleaned),
+                        ...($monitoring === null ? [] : ['monitoring_data' => $this->encode($cleaned)]),
                         ...($vitalsChanged ? ['vital_signs' => $this->encode($backfilled)] : []),
                     ]);
                     $records++;
@@ -155,7 +157,7 @@ return new class extends Migration
         return [$data, $category, $changed];
     }
 
-    /** Copies a blob-only "120/80" reading into vital_signs; never overwrites. */
+    /** Copies a blob-only "120/80" (units allowed) reading into vital_signs; never overwrites. */
     private function backfillBloodPressure(array $vitals, array $monitoring): array
     {
         $bp = $monitoring['hypertensionDiabeticData']['bp']
@@ -165,7 +167,7 @@ return new class extends Migration
         if (! is_string($bp) || filled($vitals['systolicBp'] ?? null) || filled($vitals['diastolicBp'] ?? null)) {
             return $vitals;
         }
-        if (preg_match('/^\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*$/', $bp, $match) !== 1) {
+        if (preg_match('/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/', $bp, $match) !== 1) {
             return $vitals;
         }
 

@@ -212,6 +212,48 @@ class RemoveHypertensionDiabetesProgramMigrationTest extends TestCase
         $this->assertArrayNotHasKey('hypertensionDiabeticData', $payload);
     }
 
+    public function test_unreadable_monitoring_data_is_never_overwritten(): void
+    {
+        $id = $this->record('Hypertension / Diabetic Monitoring', null);
+        DB::table('health_records')->where('id', $id)->update(['monitoring_data' => '"{\\"double\\":\\"encoded\\"}"']);
+
+        $this->runMigration();
+
+        $this->assertSame('"{\\"double\\":\\"encoded\\"}"', DB::table('health_records')->where('id', $id)->value('monitoring_data'));
+        $this->assertSame('General Consultation', DB::table('health_records')->where('id', $id)->value('category'));
+    }
+
+    public function test_blob_blood_pressure_with_units_is_backfilled(): void
+    {
+        $id = $this->record('General Consultation', [
+            'hypertensionDiabeticData' => ['bp' => '120/80 mmHg'],
+        ], []);
+
+        $this->runMigration();
+
+        $vitals = json_decode(DB::table('health_records')->where('id', $id)->value('vital_signs'), true);
+        $this->assertSame(['systolicBp' => '120', 'diastolicBp' => '80'], $vitals);
+    }
+
+    public function test_hd_only_draft_with_visit_purpose_still_opens(): void
+    {
+        $draft = $this->draft('Hypertension / Diabetic Monitoring', [
+            'selectedPrograms' => ['Hypertension'],
+            'primaryProgram' => 'Hypertension',
+            'consultationMode' => 'program',
+            'visitPurpose' => ['version' => 1, 'services' => ['Hypertension']],
+            'hypertensionDiabeticData' => ['conditionType' => 'hpn'],
+        ]);
+
+        $this->runMigration();
+
+        $payload = app(HealthRecordDraftService::class)->payload($draft->fresh());
+        $this->assertSame(['General'], $payload['visitPurpose']['services']);
+        $this->assertNull($payload['primaryProgram']);
+        $this->assertSame('general', $payload['consultationMode']);
+        $this->assertSame('General Consultation', $draft->fresh()->classification);
+    }
+
     public function test_undecryptable_draft_is_left_untouched(): void
     {
         $draft = $this->draft('General Consultation', []);
