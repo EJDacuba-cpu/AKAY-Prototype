@@ -386,6 +386,11 @@ const EMPTY_MATERNAL_DATA = {
   lmp: "",
   pmp: "",
   cycleDuration: "",
+  // Actual date of delivery, recorded on a Postpartum visit. Drives the
+  // Care & Programs "Postpartum" -> "Completed" transition; EDD alone never
+  // does. Optional - a Postpartum visit without it stays "Postpartum" with a
+  // "Delivery date not recorded" flag on the patient's Care & Programs tab.
+  deliveryDate: "",
   gravida: "",
   para: "",
   term: "",
@@ -2605,6 +2610,21 @@ export default function ConsultationWorkspace() {
     const dayStr = days > 0 ? ` and ${days} day${days > 1 ? "s" : ""}` : "";
     setAog(`${weekStr}${dayStr}`);
   }, [maternalData.lmp, dateOfVisit]);
+
+  // Deep-linked from the patient's Care & Programs tab ("Start Postpartum
+  // Follow-up", ?focus=deliveryDate) once the Date of Delivery field is on
+  // screen (i.e. Postpartum has been picked in the Purpose of Visit modal).
+  useEffect(() => {
+    if (searchParams.get("focus") !== "deliveryDate" || !postpartumSelected) return;
+    const field = document.getElementById("maternal-delivery-date-field");
+    if (!field) return;
+    field.scrollIntoView({ behavior: "smooth", block: "center" });
+    field.classList.add("ring-2", "ring-red-500", "rounded-md");
+    const timeout = setTimeout(() => {
+      field.classList.remove("ring-2", "ring-red-500", "rounded-md");
+    }, 4000);
+    return () => clearTimeout(timeout);
+  }, [searchParams, postpartumSelected]);
 
   useEffect(() => {
     if (!isMaternal || !weight || !height) return;
@@ -4835,12 +4855,7 @@ export default function ConsultationWorkspace() {
                 <div className="space-y-5">
                   {prenatalSelected && <div>
                     <p className={MATERNAL_EYEBROW_CLASS}>Pregnancy Information</p>
-                    <div className="grid gap-4 @xl:grid-cols-3">
-                      <DatePickerField
-                        label="Visit Date"
-                        value={dateOfVisit}
-                        onChange={setDateOfVisit}
-                      />
+                    <div className="grid gap-4 @xl:grid-cols-2">
                       <DatePickerField
                         label="LMP"
                         value={maternalData.lmp}
@@ -4854,6 +4869,20 @@ export default function ConsultationWorkspace() {
                       />
                     </div>
                   </div>}
+
+                  {postpartumSelected && (
+                    <div id="maternal-delivery-date-field">
+                      <p className={MATERNAL_EYEBROW_CLASS}>Delivery Information</p>
+                      <div className="grid gap-4 @xl:grid-cols-2">
+                        <DatePickerField
+                          label="Date of Delivery"
+                          value={maternalData.deliveryDate}
+                          onChange={(value) => handleMaternalChange("deliveryDate", value)}
+                          max={toDateInputValue()}
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid gap-4 @xl:grid-cols-2">
                     {OB_SCORE_GP_FIELDS.map((field) => (

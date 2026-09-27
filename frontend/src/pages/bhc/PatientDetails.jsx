@@ -14,6 +14,7 @@ import PatientBackgroundTab from "../../components/features/patients/PatientBack
 import PatientProfileHeader from "../../components/features/patients/profile/PatientProfileHeader";
 import RegistrationSections from "../../components/features/patients/profile/RegistrationSections";
 import RecordsTimeline from "../../components/features/patients/profile/RecordsTimeline";
+import CareAndProgramsTab from "../../components/features/patients/profile/CareAndProgramsTab";
 import {
   FollowUpsByStatus,
   ReferralsSection,
@@ -31,6 +32,7 @@ import {
 } from "../../services/patientService";
 import { getProfileReturnPath } from "../../utils/profileNavigation";
 import { getSpecializedRecordPrograms } from "../../utils/healthRecordPrograms";
+import { getCareTracking } from "../../utils/careTracking";
 import { calculateAge, normalizePhilippineContact } from "../../utils/patientUtils";
 import { queryKeys } from "../../utils/queryKeys";
 import { getCurrentUser } from "../../utils/auth";
@@ -119,6 +121,9 @@ export default function PatientDetails() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [motherSearch, setMotherSearch] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
+  // Set by "View records" on a Care & Programs card so Health Records opens
+  // pre-filtered to that program; "all" the rest of the time.
+  const [recordsFilter, setRecordsFilter] = useState("all");
   const editingSectionRef = useRef(null);
 
   const {
@@ -241,15 +246,29 @@ export default function PatientDetails() {
     ];
   }, [conditionalProgramAreas, records]);
   const openReferralCount = referrals.filter((referral) => !referral.completedAt).length;
+  const careTracking = useMemo(
+    () => (patient ? getCareTracking(patient, records) : []),
+    [patient, records],
+  );
 
   const tabs = canViewHistory
     ? [
         { key: "overview", label: "Overview" },
+        {
+          key: "programs",
+          label: "Care & Programs",
+          count: careTracking.filter((entry) => entry.records.length > 0).length || null,
+        },
         { key: "follow-ups", label: "Follow-ups", count: activeFollowUps.length || null },
         { key: "records", label: "Health Records", count: recordsLoading ? null : records.length },
         { key: "referrals", label: "Referrals", count: referralsLoading ? null : referrals.length },
       ]
     : [{ key: "overview", label: "Overview" }];
+
+  function handleViewProgramRecords(programKey) {
+    setRecordsFilter(programKey || "all");
+    setActiveTab("records");
+  }
 
   function retryPatientDetails() {
     refetchPatient();
@@ -279,6 +298,7 @@ export default function PatientDetails() {
     setPendingSaveSection(null);
     setFieldErrors({});
     setActiveTab("overview");
+    setRecordsFilter("all");
   }, [patientId]);
 
   function handleChange(event) {
@@ -520,6 +540,16 @@ export default function PatientDetails() {
                   </>
                 )}
 
+                {activeTab === "programs" && canViewHistory && (
+                  <CareAndProgramsTab
+                    patient={patient}
+                    patientId={patientId}
+                    records={records}
+                    basePath="/bhc"
+                    onViewProgramRecords={handleViewProgramRecords}
+                  />
+                )}
+
                 {activeTab === "follow-ups" && canViewHistory && (
                   <FollowUpsByStatus
                     followUps={patientFollowUps}
@@ -536,6 +566,7 @@ export default function PatientDetails() {
                     isFetching={recordsFetching}
                     isError={Boolean(recordsError)}
                     onView={(recordId) => navigate(`/bhc/health-records/${recordId}`)}
+                    initialFilter={recordsFilter}
                   />
                 )}
 

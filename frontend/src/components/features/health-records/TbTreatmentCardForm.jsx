@@ -3,6 +3,7 @@ import { Download, Plus, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { DatePickerField } from "../../common/forms/DatePickerField";
 import { downloadTbCardPdf } from "../../../services/healthRecordService";
+import { TB_OUTCOMES } from "../../../utils/careTrackingConfig";
 import TbDoseCalendar, {
   createEmptyMonth,
   normalizeMonth,
@@ -179,6 +180,10 @@ export const EMPTY_TB_DATA = {
   },
   adverseEvents: [],
   doseCalendar: { months: [createEmptyMonth(0)], adherencePercent: 0 },
+  // Final NTP treatment outcome. Optional and set once treatment closes -
+  // until then, the patient's Care & Programs tab shows the latest treatment
+  // phase instead of guessing an outcome from dates.
+  outcome: { status: "", date: "" },
 };
 
 function mergeGroup(empty, source) {
@@ -232,6 +237,7 @@ export function normalizeTbData(source) {
       : [],
     // Recompute totals on load so stored/derived values are always consistent.
     doseCalendar: recomputeCalendar(months),
+    outcome: mergeGroup(EMPTY_TB_DATA.outcome, data.outcome),
   };
 }
 
@@ -820,6 +826,27 @@ export default function TbTreatmentCardForm({
             label="Continuation Phase End"
             value={data.phases.continuationEnd}
             onChange={(v) => setGroupField("phases", "continuationEnd", v)}
+          />
+        </div>
+      </SectionCard>
+
+      {/* Treatment Outcome */}
+      <SectionCard
+        title="Treatment Outcome"
+        subtitle="Optional - set once treatment closes. Until recorded, the patient's Care & Programs tab shows the latest treatment phase instead."
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <SelectField
+            label="Outcome"
+            value={data.outcome.status}
+            onChange={(v) => setGroupField("outcome", "status", v)}
+            options={TB_OUTCOMES}
+            placeholder="Not yet recorded"
+          />
+          <DateField
+            label="Outcome Date"
+            value={data.outcome.date}
+            onChange={(v) => setGroupField("outcome", "date", v)}
           />
         </div>
       </SectionCard>

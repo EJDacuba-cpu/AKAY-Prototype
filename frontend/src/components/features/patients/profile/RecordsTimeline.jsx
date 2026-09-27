@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Info } from "lucide-react";
 
 import { RefreshingIndicator, SoftLoadingArea } from "../../../common";
@@ -133,9 +133,17 @@ export default function RecordsTimeline({
   isFetching = false,
   isError = false,
   onView,
+  // Lets another tab (e.g. Care & Programs' "View records") land here
+  // pre-filtered to one program. A later prop change re-applies the filter.
+  initialFilter = "all",
 }) {
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState(initialFilter);
   const [showAll, setShowAll] = useState(false);
+
+  useEffect(() => {
+    setFilter(initialFilter);
+    setShowAll(false);
+  }, [initialFilter]);
 
   const programs = useMemo(() => getSpecializedRecordPrograms(records), [records]);
   // A stale selection (records reassigned, patient changed) falls back to All.
