@@ -194,14 +194,6 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
                 'findings' => '',
                 'adviceGiven' => 'Continue current method',
             ],
-            'hypertensionDiabeticData' => [
-                'bp' => '130/85',
-                'fbs' => '95',
-                'conditionType' => 'Hypertension',
-                'clientStatus' => 'Controlled',
-                'dateOfLastConsultation' => '2026-08-01',
-                'treatmentActionTaken' => 'Continue current medication',
-            ],
             'tbData' => [
                 'caseFinding' => [
                     'diagnosingFacility' => 'Sample RHU',

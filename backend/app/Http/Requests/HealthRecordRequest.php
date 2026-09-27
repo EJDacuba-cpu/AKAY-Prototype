@@ -314,7 +314,7 @@ class HealthRecordRequest extends FormRequest
         // (Validator::$excludeUnvalidatedArrayKeys, on by default). Every
         // clinical column here is a free-form JSON blob whose shape the client
         // owns, so that default silently discarded whole sub-objects on save -
-        // monitoring_data.hypertensionDiabeticData is how it was found, but
+        // a since-removed monitoring_data sub-object is how it was found, but
         // maternal_data, family_planning_data, tb_data and referral were all
         // losing every key that had no explicit rule.
         //
@@ -389,9 +389,6 @@ class HealthRecordRequest extends FormRequest
             }
             if (in_array('TB', $programs)) {
                 $required = [...$required, 'tb_data.diagnosis.tbCaseNumber', 'tb_data.phases.intensiveStart'];
-            }
-            if (array_intersect(['Hypertension', 'Diabetes'], $programs)) {
-                $required = [...$required, 'monitoring_data.hypertensionDiabeticData.conditionType', 'vital_signs.systolicBp', 'vital_signs.diastolicBp'];
             }
             foreach ($required as $field) {
                 if (blank($this->input($field))) {

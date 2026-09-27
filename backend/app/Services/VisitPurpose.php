@@ -8,14 +8,14 @@ use Illuminate\Validation\Rule;
 /** Versioned BHC purpose metadata. Legacy and RHU payloads remain unchanged. */
 class VisitPurpose
 {
-    public const SERVICES = ['General', 'Prenatal', 'Postpartum', 'EPI', 'Family Planning', 'TB', 'Hypertension', 'Diabetes'];
+    public const SERVICES = ['General', 'Prenatal', 'Postpartum', 'EPI', 'Family Planning', 'TB'];
 
     public static function rules(string $prefix): array
     {
         return [
             $prefix => ['sometimes', 'array:version,services,overrideReason,pregnancyConfirmed'],
             "$prefix.version" => ["required_with:$prefix", 'integer', 'in:1'],
-            "$prefix.services" => ["required_with:$prefix", 'array', 'list', 'min:1', 'max:8'],
+            "$prefix.services" => ["required_with:$prefix", 'array', 'list', 'min:1', 'max:6'],
             "$prefix.services.*" => ['required', 'string', 'distinct', Rule::in(self::SERVICES)],
             "$prefix.overrideReason" => ['nullable', 'string', 'max:1000'],
             "$prefix.pregnancyConfirmed" => ['nullable', Rule::in(['Yes', 'No'])],
@@ -109,13 +109,6 @@ class VisitPurpose
             foreach (['tb_data.diagnosis.tbCaseNumber', 'tb_data.phases.intensiveStart'] as $field) {
                 if (blank($request->input($field))) {
                     $validator->errors()->add($field, 'This field is required for TB monitoring.');
-                }
-            }
-        }
-        if (array_intersect(['Hypertension', 'Diabetes'], $services)) {
-            foreach (['vital_signs.systolicBp', 'vital_signs.diastolicBp', 'monitoring_data.hypertensionDiabeticData.conditionType'] as $field) {
-                if (blank($request->input($field))) {
-                    $validator->errors()->add($field, 'This field is required for Hypertension / Diabetic monitoring.');
                 }
             }
         }

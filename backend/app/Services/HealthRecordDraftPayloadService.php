@@ -217,14 +217,6 @@ class HealthRecordDraftPayloadService
             // dispensed_medicines, which is the inventory-linked deduction.
             'medicinesSupplies' => self::SCALAR,
         ],
-        'hypertensionDiabeticData' => [
-            'bp' => self::SCALAR,
-            'fbs' => self::SCALAR,
-            'conditionType' => self::SCALAR,
-            'clientStatus' => self::SCALAR,
-            'dateOfLastConsultation' => self::SCALAR,
-            'treatmentActionTaken' => self::SCALAR,
-        ],
         'tbData' => [
             'caseFinding' => [
                 'diagnosingFacility' => self::SCALAR,

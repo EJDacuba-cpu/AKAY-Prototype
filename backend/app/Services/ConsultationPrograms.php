@@ -10,15 +10,13 @@ class ConsultationPrograms
         'Maternal' => 'Maternal',
         'TB' => 'TB DOTS / TB Monitoring',
         'Family Planning' => 'Family Planning',
-        'Hypertension' => 'Hypertension / Diabetic Monitoring',
-        'Diabetes' => 'Hypertension / Diabetic Monitoring',
         'EPI' => 'Immunization',
     ];
 
     public static function rules(string $prefix): array
     {
         return [
-            "$prefix.selectedPrograms" => ['sometimes', 'array', 'list', 'max:6'],
+            "$prefix.selectedPrograms" => ['sometimes', 'array', 'list', 'max:4'],
             "$prefix.selectedPrograms.*" => ['required', 'string', 'distinct', Rule::in(array_keys(self::CLASSIFICATIONS))],
             "$prefix.primaryProgram" => ['nullable', 'string', Rule::in(array_keys(self::CLASSIFICATIONS))],
         ];
