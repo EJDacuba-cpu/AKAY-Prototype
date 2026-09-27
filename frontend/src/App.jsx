@@ -56,6 +56,8 @@ import MedicineAvailability from "./pages/bhc/MedicineAvailability";
 import BHCReports from "./pages/bhc/BHCReports";
 import PatientDetails from "./pages/bhc/PatientDetails";
 import HealthRecordDetails from "./pages/bhc/HealthRecordDetails";
+import Programs from "./pages/bhc/Programs";
+import ProgramDetails from "./pages/bhc/ProgramDetails";
 
 // RHU Pages
 import RHUDashboard from "./pages/rhu/RHUDashboard";
@@ -578,6 +580,22 @@ export default function App() {
         element={
           <ProtectedPage allowedRole="bhc">
             <ReferralDetails />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/bhc/programs"
+        element={
+          <ProtectedPage allowedRole="bhc">
+            <Programs />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/bhc/programs/:programId"
+        element={
+          <ProtectedPage allowedRole="bhc">
+            <ProgramDetails />
           </ProtectedPage>
         }
       />

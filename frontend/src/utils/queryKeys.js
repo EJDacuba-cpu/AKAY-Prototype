@@ -52,6 +52,11 @@ export const queryKeys = {
     ...(page === undefined ? [] : [Number(page) || 1]),
   ],
   communityPrograms: () => ["community-programs"],
+  communityProgramDetails: (programId) => ["community-program-details", programId],
+  communityProgramParticipants: (programId) => [
+    "community-program-participants",
+    programId,
+  ],
   patientCommunityEnrollments: (patientId) => [
     "patient-community-enrollments",
     patientId,

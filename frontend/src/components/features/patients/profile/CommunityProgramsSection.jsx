@@ -3,9 +3,7 @@ import { Plus } from "lucide-react";
 
 import ActionMenu from "../../../common/tables/ActionMenu";
 import ConfirmationModal from "../../../common/modals/ConfirmationModal";
-import ModalShell, { ModalButton } from "../../../common/modals/ModalShell";
-import ButtonSpinner from "../../../common/loading/ButtonSpinner";
-import FormTextarea from "../../../common/forms/FormTextarea";
+import WithdrawReasonModal from "../../programs/WithdrawReasonModal";
 import { EmptyNote, ProfileSection } from "./ProfileSection";
 import { formatShortDate } from "../../../../utils/patientProfile";
 
@@ -24,45 +22,6 @@ function StatusPill({ status }) {
     >
       {status}
     </span>
-  );
-}
-
-function WithdrawModal({ open, submitting, onConfirm, onCancel }) {
-  const [reason, setReason] = useState("");
-
-  return (
-    <ModalShell
-      open={open}
-      title="Withdraw from Program"
-      size="sm"
-      onClose={submitting ? undefined : onCancel}
-      closeDisabled={submitting}
-      dismissOnBackdrop={!submitting}
-      dismissOnEscape={!submitting}
-      footer={
-        <>
-          <ModalButton onClick={onCancel} disabled={submitting}>
-            Cancel
-          </ModalButton>
-          <ModalButton
-            variant="destructive"
-            onClick={() => reason.trim() && onConfirm(reason.trim())}
-            disabled={submitting || !reason.trim()}
-          >
-            {submitting && <ButtonSpinner />}
-            {submitting ? "Withdrawing..." : "Withdraw"}
-          </ModalButton>
-        </>
-      }
-    >
-      <FormTextarea
-        label="Reason"
-        name="reason"
-        value={reason}
-        onChange={(event) => setReason(event.target.value)}
-        placeholder="Why is the patient being withdrawn from this program?"
-      />
-    </ModalShell>
   );
 }
 
@@ -140,7 +99,7 @@ export default function CommunityProgramsSection({
                 </div>
                 <p className="mt-0.5 truncate text-xs text-gray-500">
                   {[
-                    enrollment.programType,
+                    enrollment.programCategory,
                     enrollment.runStart && enrollment.runEnd
                       ? `${formatShortDate(enrollment.runStart)} – ${formatShortDate(enrollment.runEnd)}`
                       : null,
@@ -160,7 +119,7 @@ export default function CommunityProgramsSection({
               {enrollment.status === "Enrolled" && (
                 <ActionMenu
                   title={enrollment.programName}
-                  subtitle={enrollment.programType}
+                  subtitle={enrollment.programCategory}
                   actions={[
                     { label: "Mark completed", onClick: () => setPendingComplete(enrollment) },
                     { label: "Withdraw", onClick: () => setPendingWithdraw(enrollment) },
@@ -182,7 +141,7 @@ export default function CommunityProgramsSection({
         loading={actionPending}
       />
 
-      <WithdrawModal
+      <WithdrawReasonModal
         open={Boolean(pendingWithdraw)}
         submitting={actionPending}
         onConfirm={handleWithdraw}

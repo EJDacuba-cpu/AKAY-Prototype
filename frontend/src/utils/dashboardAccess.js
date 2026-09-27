@@ -20,7 +20,7 @@ export async function loadAuthorizedDashboardCollections(user, loaders) {
 export function navigationAllowed(user, path = "") {
   if (user?.role === "admin") return true;
   const permissions = user?.permissions || [];
-  const permission = /health-records|follow-ups|referrals|qr-scanner/.test(path)
+  const permission = /health-records|follow-ups|referrals|qr-scanner|programs/.test(path)
     ? "clinical.history"
     : /patients/.test(path) ? "patients.register"
       : /reports/.test(path) ? "reports.view"

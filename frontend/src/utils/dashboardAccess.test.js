@@ -31,7 +31,7 @@ test("sidebar hides restricted modules but keeps assigned modules and admin navi
   const encoder = { permissions: ["patients.register", "inventory.view"] };
   assert.equal(navigationAllowed(encoder, "/bhc/patients"), true);
   assert.equal(navigationAllowed(encoder, "/bhc/medicine-availability"), true);
-  for (const path of ["health-records", "referrals", "follow-ups", "reports"]) {
+  for (const path of ["health-records", "referrals", "follow-ups", "reports", "programs"]) {
     assert.equal(navigationAllowed(encoder, `/bhc/${path}`), false);
   }
   assert.equal(navigationAllowed({ role: "admin" }, "/admin/reports"), true);

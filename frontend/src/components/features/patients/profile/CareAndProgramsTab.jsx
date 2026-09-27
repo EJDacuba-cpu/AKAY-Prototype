@@ -60,8 +60,13 @@ export default function CareAndProgramsTab({
     });
   }
 
+  const patientName =
+    patient?.name || patient?.fullName ||
+    [patient?.firstName, patient?.lastName].filter(Boolean).join(" ") ||
+    "Unknown Patient";
+
   const enrollMutation = useMutation({
-    mutationFn: (payload) => enrollPatient(patientId, payload),
+    mutationFn: (payload) => enrollPatient({ ...payload, patientId, patientName }),
     onSuccess: async () => {
       await invalidateEnrollments();
       setEnrollOpen(false);
@@ -69,12 +74,12 @@ export default function CareAndProgramsTab({
   });
 
   const completeMutation = useMutation({
-    mutationFn: (enrollmentId) => completeEnrollment(patientId, enrollmentId),
+    mutationFn: (enrollmentId) => completeEnrollment(enrollmentId),
     onSuccess: invalidateEnrollments,
   });
 
   const withdrawMutation = useMutation({
-    mutationFn: ({ enrollmentId, reason }) => withdrawEnrollment(patientId, enrollmentId, reason),
+    mutationFn: ({ enrollmentId, reason }) => withdrawEnrollment(enrollmentId, reason),
     onSuccess: invalidateEnrollments,
   });
 

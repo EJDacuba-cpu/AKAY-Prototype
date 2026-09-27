@@ -109,7 +109,7 @@ export default function EnrollProgramModal({
           >
             {availablePrograms.map((program) => (
               <option key={program.id} value={program.id}>
-                {program.name} ({program.type})
+                {program.name} ({program.category})
               </option>
             ))}
           </FormSelect>
