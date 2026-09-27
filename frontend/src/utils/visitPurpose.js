@@ -5,8 +5,6 @@ export const VISIT_SERVICES = {
   EPI: 'EPI / Immunization',
   'Family Planning': 'Family Planning',
   TB: 'TB DOTS / TB Monitoring',
-  Hypertension: 'Hypertension Monitoring',
-  Diabetes: 'Diabetes Monitoring',
 };
 
 export const TEENAGE_PREGNANCY_MESSAGE = 'Teenage pregnancy: please confirm the patient’s pregnancy status and review the applicable care protocol.';

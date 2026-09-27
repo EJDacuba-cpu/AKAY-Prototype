@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyVisitPurpose, serviceEligibility, purposePrograms, purposeErrors, teenagePrenatal, visitAge } from './visitPurpose.js';
+import { VISIT_SERVICES, emptyVisitPurpose, serviceEligibility, purposePrograms, purposeErrors, teenagePrenatal, visitAge } from './visitPurpose.js';
 import { buildConsultationSteps, getFormSequence, getProgramFormSteps } from './consultationSteps.js';
 
 const patient = birthdate => ({ birthdate, sex: 'Female' });
@@ -46,4 +46,9 @@ test('program-only flow skips General but retains vitals, treatment and final ac
   assert.equal(steps[0].label, 'Chief Complaint & HPI');
   assert.equal(steps.some(step => step.key === 'assessment'), false);
   assert.equal(steps.at(-1).key, 'review');
+});
+
+test('Hypertension and Diabetes are no longer visit services', () => {
+  assert.deepEqual(Object.keys(VISIT_SERVICES), ['General', 'Prenatal', 'Postpartum', 'EPI', 'Family Planning', 'TB']);
+  assert.equal(serviceEligibility('Hypertension', patient('1980-01-01'), date).eligible, false);
 });

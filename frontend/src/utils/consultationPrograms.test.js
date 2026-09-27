@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "./consultationPrograms.js";
+import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "./consultationPrograms.js";
 import { getSpecializedRecordPrograms, getServiceTypeLabel } from "./healthRecordPrograms.js";
 
 test("removing the primary selects a remaining program without losing the others", () => {
@@ -15,20 +15,19 @@ test("server metadata restores primary and all selected programs", () => {
   assert.deepEqual(getSpecializedRecordPrograms([record]).map(program => program.key), ["maternal", "tb"]);
 });
 
+test("only the four remaining programs are selectable", () => {
+  assert.deepEqual(Object.keys(PROGRAM_CLASSIFICATIONS), ["Maternal", "TB", "Family Planning", "EPI"]);
+});
+
 test("legacy classifications still work and explicit general visits stay general", () => {
   assert.deepEqual(getConsultationPrograms({ category: "Family Planning" }), ["Family Planning"]);
-  assert.deepEqual(getConsultationPrograms({ category: "Hypertension / Diabetic Monitoring", hypertensionDiabeticData: { conditionType: "both" } }), ["Hypertension", "Diabetes"]);
   assert.deepEqual(getConsultationPrograms({ category: "General Consultation", selectedPrograms: [] }), []);
 });
 
-test("one encounter exposes every program in patient history without duplicating the record", () => {
+test("a stale removed program is ignored, never shown", () => {
   const record = { id: 42, category: "Maternal", monitoring_data: { selectedPrograms: ["Maternal", "Hypertension", "Diabetes"] } };
-  assert.equal(getServiceTypeLabel(record), "Maternal / Hypertension / Diabetes");
-  assert.equal(getSpecializedRecordPrograms([record]).length, 2);
-  assert.equal(record.id, 42);
-});
-
-test("legacy DM metadata is not displayed as hypertension", () => {
-  assert.deepEqual(getConsultationPrograms({ recordType: "Hypertension / Diabetic Monitoring", monitoring_data: { hypertension_diabetic_data: { condition_type: "dm" } } }), ["Diabetes"]);
-  assert.equal(getServiceTypeLabel({ category: "General Consultation" }), "General Consultation");
+  assert.deepEqual(getConsultationPrograms(record), ["Maternal"]);
+  assert.equal(getServiceTypeLabel(record), "Maternal / Prenatal");
+  assert.equal(getSpecializedRecordPrograms([record]).length, 1);
+  assert.deepEqual(getConsultationPrograms({ category: "Hypertension / Diabetic Monitoring" }), []);
 });

@@ -48,11 +48,6 @@ const PROGRAM_STEP_DETAILS = {
     label: "Family Planning",
     description: "Complete the family planning information for this visit.",
   },
-  "Hypertension / Diabetic Monitoring": {
-    label: "Hypertension / Diabetic",
-    description:
-      "Complete the hypertension / diabetic monitoring details for this visit.",
-  },
   Immunization: {
     label: "Child Health / EPI",
     description: "Complete the immunization information for this visit.",
@@ -69,8 +64,7 @@ export function isProgramStepKey(key) {
 
 /**
  * One form per distinct classification, primary first, then the rest in the
- * order they were selected. Hypertension and Diabetes are two programs but one
- * form, so picking both yields a single form.
+ * order they were selected. Programs that share a classification share one form.
  */
 export function getProgramFormSteps(selectedPrograms = [], primaryProgram = "") {
   const selected = Array.isArray(selectedPrograms) ? selectedPrograms : [];
@@ -286,19 +280,13 @@ export function resolveFormStep(current, formSequence) {
 export function getErrorOwnerStepKey(errorKey) {
   const key = String(errorKey || "");
 
-  // Interview and Vital Signs share the first step. BP is recorded once, in
-  // its Vital Signs card; the Hypertension / Diabetic form does not repeat it,
-  // so its error is shown there.
+  // Interview and Vital Signs share the first step.
   if (
     ["pulse", "spo2", "weight", "height", "temp"].includes(key) ||
     key === "chiefComplaint" ||
-    key === "summaryOfPresentIllness" ||
-    key === "hypertensionDiabeticData.bp"
+    key === "summaryOfPresentIllness"
   ) {
     return INTERVIEW_STEP;
-  }
-  if (key.startsWith("hypertensionDiabeticData.")) {
-    return programStepKey("Hypertension / Diabetic Monitoring");
   }
   if (key.startsWith("tbData.")) return programStepKey("TB DOTS / TB Monitoring");
   if (key === "familyPlanningMethodUsed" || key.startsWith("familyPlanningData.")) {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import * as programModule from "./healthRecordPrograms.js";
 import {
   getSpecializedRecordPrograms,
   SPECIALIZED_RECORD_PROGRAMS,
@@ -36,7 +37,6 @@ test("returns all applicable programs once and in the configured order", () => {
   const records = [
     { id: 1, category: "TB DOTS / TB Monitoring" },
     { id: 2, category: "Family Planning" },
-    { id: 3, category: "Hypertension / Diabetic Monitoring" },
     { id: 4, category: "Immunization" },
     { id: 5, category: "Maternal" },
     { id: 6, category: "Immunization" },
@@ -50,6 +50,21 @@ test("returns all applicable programs once and in the configured order", () => {
   );
   assert.deepEqual(
     programs.map(({ count }) => count),
-    [2, 1, 1, 1, 1],
+    [2, 1, 1, 1],
   );
+});
+
+test("the Hypertension / Diabetic program is gone from specialized records", () => {
+  assert.deepEqual(SPECIALIZED_RECORD_PROGRAMS.map(({ key }) => key), ["epi", "maternal", "familyPlanning", "tb"]);
+  for (const name of [
+    "isNcdRecord",
+    "getHypertensionDiabeticData",
+    "normalizeHypertensionDiabeticCondition",
+    "formatHypertensionDiabeticCondition",
+    "normalizeHypertensionDiabeticClientStatus",
+    "formatHypertensionDiabeticClientStatus",
+  ]) {
+    assert.equal(programModule[name], undefined, name);
+  }
+  assert.deepEqual(getSpecializedRecordPrograms([{ id: 9, monitoring_data: { selectedPrograms: ["Hypertension"] } }]), []);
 });

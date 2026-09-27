@@ -30,7 +30,6 @@ const keysOf = (steps) => steps.map((step) => step.key);
 const MATERNAL = programStepKey("Maternal");
 const TB = programStepKey("TB DOTS / TB Monitoring");
 const FP = programStepKey("Family Planning");
-const HPN_DM = programStepKey("Hypertension / Diabetic Monitoring");
 const EPI = programStepKey("Immunization");
 
 /** Every screen from Interview to Review, following Next the way the page does. */
@@ -68,12 +67,12 @@ test("MATERNAL: the program form sits between Assessment and Treatment", () => {
   ]);
 });
 
-test("MATERNAL + DIABETES: Program 1 Maternal, Program 2 Diabetes, then Treatment", () => {
-  assert.deepEqual(walkForward(["Maternal", "Diabetes"], "Maternal"), [
+test("MATERNAL + TB: Program 1 Maternal, Program 2 TB, then Treatment", () => {
+  assert.deepEqual(walkForward(["Maternal", "TB"], "Maternal"), [
     INTERVIEW_STEP,
     ASSESSMENT_STEP,
     MATERNAL,
-    HPN_DM,
+    TB,
     TREATMENT_STEP,
     NEXT_STEP,
     REVIEW_STEP,
@@ -87,7 +86,7 @@ test("NO PROGRAM: the Program / Service Details step is skipped entirely", () =>
 });
 
 test("BACKWARD: Previous reverses the exact forward order, out to patient context", () => {
-  const programs = getProgramFormSteps(["Maternal", "Diabetes"], "Maternal");
+  const programs = getProgramFormSteps(["Maternal", "TB"], "Maternal");
   const sequence = getFormSequence(programs);
 
   const back = [];
@@ -100,7 +99,7 @@ test("BACKWARD: Previous reverses the exact forward order, out to patient contex
 
   assert.deepEqual(back, [
     TREATMENT_STEP,
-    HPN_DM, // last program
+    TB, // last program
     MATERNAL, // previous program
     ASSESSMENT_STEP,
     INTERVIEW_STEP,
@@ -199,10 +198,9 @@ test("the nested program list puts the primary first, then selected order", () =
   );
 });
 
-test("Hypertension and Diabetes share one nested form", () => {
-  const forms = getProgramFormSteps(["Diabetes", "Maternal", "Hypertension"], "Maternal");
-  assert.equal(forms.length, 2);
-  assert.deepEqual(forms[1].programs, ["Diabetes", "Hypertension"]);
+test("removed programs never produce a form", () => {
+  assert.deepEqual(getProgramFormSteps(["Hypertension", "Diabetes"], "Hypertension"), []);
+  assert.deepEqual(getProgramFormSteps(["Diabetes", "Maternal"], "Diabetes").map((step) => step.classification), ["Maternal"]);
 });
 
 test("a primary that is not selected falls back to the first selected program", () => {
@@ -248,8 +246,6 @@ for (const [label, programs, primary] of [
   ["Maternal / Prenatal", ["Maternal"], "Maternal"],
   ["TB", ["TB"], "TB"],
   ["Family Planning", ["Family Planning"], "Family Planning"],
-  ["Hypertension", ["Hypertension"], "Hypertension"],
-  ["Diabetes", ["Diabetes"], "Diabetes"],
   ["EPI", ["EPI"], "EPI"],
   ["several programs", ["TB", "Maternal"], "Maternal"],
 ]) {
@@ -280,12 +276,12 @@ test("a single program shows just its own title", () => {
 
 test("several programs say where in the set the form is", () => {
   assert.equal(
-    headingFor(MATERNAL, ["Maternal", "Diabetes"], "Maternal", 0).title,
+    headingFor(MATERNAL, ["Maternal", "TB"], "Maternal", 0).title,
     "Program 1 of 2 · Prenatal",
   );
   assert.equal(
-    headingFor(HPN_DM, ["Maternal", "Diabetes"], "Maternal", 1).title,
-    "Program 2 of 2 · Hypertension / Diabetic",
+    headingFor(TB, ["Maternal", "TB"], "Maternal", 1).title,
+    "Program 2 of 2 · TB DOTS",
   );
 });
 
@@ -305,8 +301,7 @@ test("each validation error is owned by the screen that shows its field", () => 
   assert.equal(getErrorOwnerStepKey("chiefComplaint"), INTERVIEW_STEP);
   assert.equal(getErrorOwnerStepKey("summaryOfPresentIllness"), INTERVIEW_STEP);
   // Vital Signs is a card on the first step, so BP belongs to that step.
-  assert.equal(getErrorOwnerStepKey("hypertensionDiabeticData.bp"), INTERVIEW_STEP);
-  assert.equal(getErrorOwnerStepKey("hypertensionDiabeticData.conditionType"), HPN_DM);
+  assert.equal(getErrorOwnerStepKey("hypertensionDiabeticData.conditionType"), null);
   assert.equal(getErrorOwnerStepKey("tbData.diagnosis.tbCaseNumber"), TB);
   assert.equal(getErrorOwnerStepKey("familyPlanningMethodUsed"), FP);
   assert.equal(getErrorOwnerStepKey("vaccineEntries"), EPI);
@@ -337,7 +332,7 @@ test("the earliest failing screen is revealed, in the NEW order", () => {
     INTERVIEW_STEP,
   );
   assert.equal(
-    findFirstErrorStepKey({ dispensedMedicines: "x", "hypertensionDiabeticData.bp": "y" }, order),
+    findFirstErrorStepKey({ dispensedMedicines: "x", pulse: "y" }, order),
     INTERVIEW_STEP,
   );
   assert.equal(findFirstErrorStepKey({}, order), "");
@@ -358,10 +353,10 @@ test("HPI IS enforced once the program decision is made", () => {
 });
 
 test("deferral never touches unrelated errors, and never mutates its input", () => {
-  const errors = { "hypertensionDiabeticData.bp": "BP required.", summaryOfPresentIllness: "x" };
+  const errors = { pulse: "Pulse required.", summaryOfPresentIllness: "x" };
   const deferred = deferUntilProgramDecision(errors, INTERVIEW_STEP);
-  assert.deepEqual(Object.keys(deferred), ["hypertensionDiabeticData.bp"]);
-  assert.deepEqual(Object.keys(errors), ["hypertensionDiabeticData.bp", "summaryOfPresentIllness"]);
+  assert.deepEqual(Object.keys(deferred), ["pulse"]);
+  assert.deepEqual(Object.keys(errors), ["pulse", "summaryOfPresentIllness"]);
   assert.deepEqual(deferUntilProgramDecision(undefined, INTERVIEW_STEP), {});
 });
 
@@ -376,7 +371,7 @@ for (const [stage, formStep] of [
   ["Interview & Vital Signs", INTERVIEW_STEP],
   ["Physical Examination", ASSESSMENT_STEP],
   ["Program 1 (Maternal)", MATERNAL],
-  ["Program 2 (Hypertension / Diabetic)", HPN_DM],
+  ["Program 2 (TB)", TB],
   ["BHC Assessment & Actions Taken", TREATMENT_STEP],
 ]) {
   test(`DRAFT RESTORE: a draft saved on ${stage} reopens on ${stage}`, () => {
@@ -399,11 +394,11 @@ test("DRAFT RESTORE: a draft saved on Review reopens on Next Care", () => {
 });
 
 test("DRAFT RESTORE: the current program index survives the round trip", () => {
-  const selected = ["Maternal", "Diabetes"];
+  const selected = ["Maternal", "TB"];
   const sequence = getFormSequence(getProgramFormSteps(selected, "Maternal"));
-  const restored = resolveRestoredPosition(payloadFor("form", HPN_DM));
-  assert.equal(resolveFormStep(restored.formStep, sequence), HPN_DM);
-  assert.equal(sequence.indexOf(HPN_DM) - sequence.indexOf(MATERNAL), 1, "still Program 2");
+  const restored = resolveRestoredPosition(payloadFor("form", TB));
+  assert.equal(resolveFormStep(restored.formStep, sequence), TB);
+  assert.equal(sequence.indexOf(TB) - sequence.indexOf(MATERNAL), 1, "still Program 2");
 });
 
 test("DRAFT RESTORE: a draft from the old Current Visit screen opens on Interview", () => {
@@ -448,10 +443,10 @@ test("there is no separate Vital Signs screen to click Next through", () => {
 });
 
 test("vitals errors stop the user on the first step", () => {
-  const errors = { "hypertensionDiabeticData.bp": "BP required.", chiefComplaint: "Required." };
+  const errors = { pulse: "Pulse required.", chiefComplaint: "Required." };
   assert.deepEqual(
     Object.keys(pickErrorsForStep(deferUntilProgramDecision(errors, INTERVIEW_STEP), INTERVIEW_STEP)).sort(),
-    ["chiefComplaint", "hypertensionDiabeticData.bp"],
+    ["chiefComplaint", "pulse"],
   );
 });
 
@@ -462,4 +457,10 @@ test("DRAFT RESTORE: a draft saved on the former Vital Signs screen reopens on t
   });
   // Even without the mapping, a stale key would still land there.
   assert.equal(resolveFormStep("vitals", getFormSequence([])), INTERVIEW_STEP);
+});
+
+test("a draft saved on the removed Hypertension / Diabetic form reopens on a real screen", () => {
+  const sequence = getFormSequence(getProgramFormSteps(["Maternal"], "Maternal"));
+  const stale = programStepKey("Hypertension / Diabetic Monitoring");
+  assert.ok(sequence.includes(resolveFormStep(stale, sequence)));
 });
