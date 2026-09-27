@@ -5,6 +5,8 @@ import {
   unwrapList,
 } from "./apiClient";
 import { getConsultationPrograms } from "../utils/consultationPrograms";
+import { normalizeBodyFindings } from "../utils/bodyFindings";
+import { normalizeDiagnoses } from "../utils/diagnoses";
 import { API_BASE_URL } from "../config/environment";
 import { normalizePatient } from "./patientService";
 import { createIdempotencyKey } from "../utils/idempotency";
@@ -357,6 +359,8 @@ function normalizeRecord(record = {}) {
       record.outcome_sub_label || record.outcomeSubLabel || "",
     chiefComplaint: record.chief_complaint || record.chiefComplaint || "",
     diagnosis: record.diagnosis || "",
+    diagnoses: normalizeDiagnoses(record.diagnoses),
+    assessmentNotes: record.assessment_notes || record.assessmentNotes || "",
     treatmentNotes: record.treatment_notes || record.treatmentNotes || "",
     medication: record.treatment_notes || record.treatmentNotes || record.medication || "",
     initialActionsTaken:
@@ -392,6 +396,7 @@ function normalizeRecord(record = {}) {
       monitoringData.physicalExam,
       monitoringData.physical_exam,
     ]),
+    bodyFindings: normalizeBodyFindings(record.body_findings || record.bodyFindings),
     consultationNotes: record.notes || record.consultationNotes || "",
     medicalHistory: record.medical_history || record.medicalHistory || "",
     attendingStaff:
@@ -482,18 +487,6 @@ function normalizeRecord(record = {}) {
     temp: vitalSigns.temperature || record.temperature || record.temp || "",
     pulse: vitalSigns.pulse || record.pulse || "",
     spo2: vitalSigns.spo2 || record.spo2 || "",
-    respiratoryRate:
-      vitalSigns.respiratoryRate ||
-      vitalSigns.respiratory_rate ||
-      record.respiratoryRate ||
-      record.respiratory_rate ||
-      "",
-    respiratory_rate:
-      vitalSigns.respiratoryRate ||
-      vitalSigns.respiratory_rate ||
-      record.respiratoryRate ||
-      record.respiratory_rate ||
-      "",
     weight: vitalSigns.weight || record.weight || "",
     height: vitalSigns.height || record.height || "",
     status:
@@ -876,7 +869,6 @@ function toPayload(record = {}, { partial = false } = {}) {
       temperature: record.temperature || record.temp || null,
       pulse: record.pulse || null,
       spo2: record.spo2 || null,
-      respiratoryRate: record.respiratoryRate || record.respiratory_rate || null,
       weight: record.weight || null,
       height: record.height || null,
     },
@@ -898,8 +890,15 @@ function toPayload(record = {}, { partial = false } = {}) {
     needs_referral: needsReferral,
     chief_complaint: record.chiefComplaint || null,
     physical_exam: record.physicalExam || null,
+    body_findings: normalizeBodyFindings(record.bodyFindings).length
+      ? normalizeBodyFindings(record.bodyFindings).map(({ id, region, finding, note }) => ({
+          id, region, finding, note: note || null,
+        }))
+      : null,
     history_of_present_illness: record.summaryOfPresentIllness || null,
     diagnosis: record.diagnosis || null,
+    diagnoses: normalizeDiagnoses(record.diagnoses).length ? normalizeDiagnoses(record.diagnoses) : null,
+    assessment_notes: record.assessmentNotes || null,
     treatment_notes:
       record.treatmentNotes ||
       record.medication ||
@@ -974,8 +973,6 @@ function toPayload(record = {}, { partial = false } = {}) {
       "diastolicBp",
       "temperature",
       "temp",
-      "respiratoryRate",
-      "respiratory_rate",
       "weight",
       "height",
       "vitalSigns",
@@ -1081,6 +1078,8 @@ function toPayload(record = {}, { partial = false } = {}) {
   if (!record.referral) delete payload.referral;
   if (!hasAny(record, ["chiefComplaint"])) delete payload.chief_complaint;
   if (!hasAny(record, ["diagnosis"])) delete payload.diagnosis;
+  if (!hasAny(record, ["diagnoses"])) delete payload.diagnoses;
+  if (!hasAny(record, ["assessmentNotes"])) delete payload.assessment_notes;
   if (
     !hasAny(record, [
       "treatmentNotes",
@@ -1099,6 +1098,9 @@ function toPayload(record = {}, { partial = false } = {}) {
   }
   if (!hasAny(record, ["physicalExam"])) {
     delete payload.physical_exam;
+  }
+  if (!hasAny(record, ["bodyFindings"])) {
+    delete payload.body_findings;
   }
   if (!hasAny(record, ["consultationNotes", "monitoringNotes"])) {
     delete payload.notes;

@@ -8,7 +8,7 @@ const dayFormatter = new Intl.DateTimeFormat("en-CA", {
 
 const vitalFields = [
   "systolicBp", "diastolicBp", "temperature", "pulse", "spo2",
-  "respiratoryRate", "weight", "height",
+  "weight", "height",
 ];
 
 export function hasVitalValue(value) {

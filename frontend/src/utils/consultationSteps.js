@@ -17,8 +17,9 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
  *  - The PROGRAM forms nested inside that step, walked one at a time, primary
  *    first, then in the order they were selected.
  *
- * Programs are chosen at the END of Clinical Assessment, so their forms follow
- * the assessment rather than precede it.
+ * Programs are chosen in the Programs & Monitoring panel beside Interview &
+ * Vital Signs (Clinical Assessment shows the body preview there instead); their
+ * forms still follow the assessment rather than precede it.
  *
  * Pure UI bookkeeping: it never touches the program data itself -
  * selectedPrograms / primaryProgram stay the single source of truth and every
@@ -296,7 +297,11 @@ export function getErrorOwnerStepKey(errorKey) {
     return programStepKey("Family Planning");
   }
   if (key === "vaccineEntries") return programStepKey("Immunization");
-  if (key === "diagnosis" || key === "dispensedMedicines") return TREATMENT_STEP;
+  // Every step-based consultation is a General Consultation (generalSelected
+  // is always true), so its diagnosis list lives on Physical Exam &
+  // Assessment - the Treatment step's "BHC Assessment" field never renders.
+  if (key === "diagnosis") return ASSESSMENT_STEP;
+  if (key === "dispensedMedicines") return TREATMENT_STEP;
   if (key === "reasonForReferral" || key === "receivingRhuId" || key === "urgencyLevel" || key === "followUpDate" || key === "followUpTime" || key === "followUpReason" || key === "followUpStatus") {
     return NEXT_STEP;
   }

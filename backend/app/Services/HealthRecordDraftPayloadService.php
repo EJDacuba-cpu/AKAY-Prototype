@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\HealthRecord;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class HealthRecordDraftPayloadService
@@ -35,8 +37,22 @@ class HealthRecordDraftPayloadService
         'timeOfVisit' => self::SCALAR,
         'chiefComplaint' => self::SCALAR,
         'physicalExam' => self::SCALAR,
+        // Findings pinned on the assessment step's 2D body preview.
+        'bodyFindings' => ['*' => [
+            'id' => self::SCALAR,
+            'region' => self::SCALAR,
+            'finding' => self::SCALAR,
+            'note' => self::SCALAR,
+        ]],
         'summaryOfPresentIllness' => self::SCALAR,
         'diagnosis' => self::SCALAR,
+        'diagnoses' => ['*' => [
+            'id' => self::SCALAR,
+            'name' => self::SCALAR,
+            'addToConditions' => self::SCALAR,
+            'conditionStatus' => self::SCALAR,
+        ]],
+        'assessmentNotes' => self::SCALAR,
         'medication' => self::SCALAR,
         'attendingStaff' => self::SCALAR,
         'consultationNotes' => self::SCALAR,
@@ -45,7 +61,6 @@ class HealthRecordDraftPayloadService
         'temp' => self::SCALAR,
         'pulse' => self::SCALAR,
         'spo2' => self::SCALAR,
-        'respiratoryRate' => self::SCALAR,
         'weight' => self::SCALAR,
         'height' => self::SCALAR,
         'followUpStatus' => self::SCALAR,
@@ -450,6 +465,17 @@ class HealthRecordDraftPayloadService
             'payload.wizardPhase' => ['nullable', 'in:program,form,next,review'],
             'payload.formStep' => ['nullable', 'string', 'max:100'],
             'payload.physicalExam' => ['nullable', 'string'],
+            'payload.bodyFindings' => ['nullable', 'array', 'max:50'],
+            'payload.bodyFindings.*.id' => ['nullable', 'string', 'max:64'],
+            'payload.bodyFindings.*.region' => ['required', 'string', Rule::in(HealthRecord::BODY_REGIONS)],
+            'payload.bodyFindings.*.finding' => ['required', 'string', 'max:150'],
+            'payload.bodyFindings.*.note' => ['nullable', 'string', 'max:500'],
+            'payload.diagnoses' => ['nullable', 'array', 'max:20'],
+            'payload.diagnoses.*.id' => ['nullable', 'string', 'max:64'],
+            'payload.diagnoses.*.name' => ['required', 'string', 'max:150'],
+            'payload.diagnoses.*.addToConditions' => ['nullable', 'boolean'],
+            'payload.diagnoses.*.conditionStatus' => ['nullable', 'string', Rule::in(CurrentConditionsSync::STATUSES)],
+            'payload.assessmentNotes' => ['nullable', 'string', 'max:5000'],
             'payload.dateOfVisit' => ['nullable', 'date_format:Y-m-d'],
             'payload.timeOfVisit' => ['nullable', 'date_format:H:i'],
             'payload.followUpDate' => ['nullable', 'date_format:Y-m-d'],

@@ -310,6 +310,7 @@ test("each validation error is owned by the screen that shows its field", () => 
   // Vital Signs is a card on the first step, so BP belongs to that step.
   assert.equal(getErrorOwnerStepKey("hypertensionDiabeticData.conditionType"), null);
   assert.equal(getErrorOwnerStepKey("tbData.diagnosis.tbCaseNumber"), TB);
+  assert.equal(getErrorOwnerStepKey("diagnosis"), ASSESSMENT_STEP);
   assert.equal(getErrorOwnerStepKey("familyPlanningMethodUsed"), FP);
   assert.equal(getErrorOwnerStepKey("vaccineEntries"), EPI);
   assert.equal(getErrorOwnerStepKey("dispensedMedicines"), TREATMENT_STEP);

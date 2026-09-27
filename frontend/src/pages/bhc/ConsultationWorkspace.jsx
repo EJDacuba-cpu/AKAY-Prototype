@@ -91,6 +91,10 @@ import {
   ConsultationReviewStep,
 } from "../../components/features/health-records/wizard/HealthRecordWizardSteps";
 import ConsultationProgramPanel from "../../components/features/health-records/wizard/ConsultationProgramPanel";
+import BodyPreviewPanel, { BodyFindingsList, getBodyRegionAnchor } from "../../components/features/health-records/wizard/BodyPreviewPanel";
+import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindings";
+import DiagnosisListField from "../../components/features/health-records/wizard/DiagnosisListField";
+import { formatDiagnoses, joinDiagnosisNames, normalizeDiagnoses, restoreDiagnoses } from "../../utils/diagnoses";
 import {
   ConsultationActionBar,
   ConsultationStepHeading,
@@ -941,9 +945,17 @@ export default function ConsultationWorkspace() {
   const [chiefComplaint, setChiefComplaint] = useState("");
   const [summaryOfPresentIllness, setSummaryOfPresentIllness] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
+  // Assessment step: structured diagnoses (the `diagnosis` text above is kept
+  // as their joined names) and optional longer assessment notes.
+  const [diagnoses, setDiagnoses] = useState([]);
+  const [assessmentNotes, setAssessmentNotes] = useState("");
   // Physical examination findings. Persisted in the existing monitoring_data
   // JSON column, so no health-record column was added for it.
   const [physicalExam, setPhysicalExam] = useState("");
+  // Findings pinned on the assessment step's 2D body preview.
+  const [bodyFindings, setBodyFindings] = useState([]);
+  // The body preview's input while open: { region, anchor, editingId }.
+  const [bodyFindingDialog, setBodyFindingDialog] = useState(null);
   const [medication, setMedication] = useState("");
   const [attendingStaff, setAttendingStaff] = useState(currentUserName);
   const [consultationNotes, setConsultationNotes] = useState("");
@@ -1256,7 +1268,10 @@ export default function ConsultationWorkspace() {
       setChiefComplaint(found.chiefComplaint || "");
       setSummaryOfPresentIllness(found.summaryOfPresentIllness || "");
       setPhysicalExam(found.physicalExam || "");
+      setBodyFindings(normalizeBodyFindings(found.bodyFindings));
       setDiagnosis(found.diagnosis || "");
+      setDiagnoses(normalizeDiagnoses(found.diagnoses));
+      setAssessmentNotes(found.assessmentNotes || "");
       setMedication(found.medication || found.initialActionsTaken || "");
       setAttendingStaff(found.attendingStaff || found.recordedBy || "");
       setConsultationNotes(found.consultationNotes || "");
@@ -1648,7 +1663,10 @@ export default function ConsultationWorkspace() {
       chiefComplaint,
       summaryOfPresentIllness,
       physicalExam,
+      bodyFindings,
       diagnosis,
+      diagnoses,
+      assessmentNotes,
       medication,
       attendingStaff,
       consultationNotes,
@@ -1846,7 +1864,15 @@ export default function ConsultationWorkspace() {
     setChiefComplaint(payload.chiefComplaint || "");
     setSummaryOfPresentIllness(payload.summaryOfPresentIllness || "");
     setPhysicalExam(payload.physicalExam || "");
-    setDiagnosis(payload.diagnosis || "");
+    setBodyFindings(normalizeBodyFindings(payload.bodyFindings));
+    {
+      // Drafts from before the structured list keep their typed text: one
+      // diagnosis when it fits, otherwise moved to the assessment notes.
+      const restored = restoreDiagnoses(payload);
+      setDiagnoses(restored.diagnoses);
+      setAssessmentNotes(restored.assessmentNotes);
+      setDiagnosis(joinDiagnosisNames(restored.diagnoses));
+    }
     setMedication(payload.medication || "");
     setAttendingStaff(payload.attendingStaff || currentUserName);
     setConsultationNotes(payload.consultationNotes || "");
@@ -2434,6 +2460,13 @@ export default function ConsultationWorkspace() {
       setFollowUpReason("");
       if (!isFollowUp) setPatientCondition("");
     }
+  }
+
+  /** Assessment-step diagnoses; the plain-text `diagnosis` follows them. */
+  function updateDiagnoses(next) {
+    setDiagnoses(next);
+    setDiagnosis(joinDiagnosisNames(next));
+    clearValidationError("diagnosis");
   }
 
   function clearValidationError(field) {
@@ -3411,7 +3444,11 @@ export default function ConsultationWorkspace() {
       chiefComplaint: finalChiefComplaint,
       summaryOfPresentIllness: purposeFlow && !generalSelected ? "" : summaryOfPresentIllness,
       physicalExam: purposeFlow && !generalSelected ? "" : physicalExam,
+      bodyFindings: purposeFlow && !generalSelected ? [] : bodyFindings,
       diagnosis: purposeFlow && !generalSelected ? "" : diagnosis,
+      // Only the step-based Assessment screen edits the structured list.
+      diagnoses: usesConsultationSteps ? diagnoses : [],
+      assessmentNotes: usesConsultationSteps ? assessmentNotes : "",
       vitalSigns: consultationVitalSigns,
       systolicBp: systolicBp || null,
       diastolicBp: diastolicBp || null,
@@ -4247,16 +4284,20 @@ export default function ConsultationWorkspace() {
     steps: consultationSteps,
     subtitles: stepSubtitles,
   });
-  // Program panel: one status per form step, attached to each selected program
-  // that step covers.
-  // Program selection is locked once the visit reaches Disposition/Review; the
-  // review summary lists the chosen programs read-only.
-  const showProgramPanel =
+  // The fixed right-hand column changes with the step: Programs & Monitoring
+  // (the visit's service context) is chosen on Interview & Vital Signs only;
+  // Physical Exam & Assessment shows the 2D body preview instead. Every other
+  // step runs full width. The review summary lists the chosen programs.
+  const sidePanelAllowed =
     usesConsultationSteps &&
     !isResolvingClinicalMode &&
-    wizardPhase !== WIZARD_NEXT &&
-    wizardPhase !== WIZARD_REVIEW &&
+    wizardPhase === WIZARD_FORM &&
     !(activeDraft?.reviewState === "review" && !canFinalize);
+  const showProgramPanel = sidePanelAllowed && activeFormStep === INTERVIEW_STEP;
+  const showBodyPanel = sidePanelAllowed && generalSelected && activeFormStep === ASSESSMENT_STEP;
+  const showSidePanel = showProgramPanel || showBodyPanel;
+  // Program panel: one status per form step, attached to each selected program
+  // that step covers.
   const programStatusByKey = {};
   if (showProgramPanel && programFormSteps.length > 0) {
     const invalidKeys = Object.keys(getClinicalValidationErrors({ finalizing: true }));
@@ -4364,7 +4405,9 @@ export default function ConsultationWorkspace() {
       rows: [
         ...(purposeFlow ? [{ label: "Chief Complaint", value: chiefComplaint }, { label: "History of Present Illness", value: summaryOfPresentIllness }] : []),
         { label: "Physical Exam", value: physicalExam },
-        { label: "Assessment", value: diagnosis },
+        { label: "Body Findings", value: formatBodyFindings(bodyFindings) },
+        { label: "Diagnosis", value: formatDiagnoses(diagnoses) || diagnosis },
+        { label: "Assessment Notes", value: assessmentNotes },
 
         // The selection itself is listed under Program / Service Details
         // when there is one; only its absence is stated here.
@@ -4471,12 +4514,13 @@ export default function ConsultationWorkspace() {
       {purposeOpen && !isResolvingClinicalMode && selectedPatient && <PurposeOfVisitModal value={visitPurpose} patient={selectedPatient} visitDate={dateOfVisit} onProceed={applyVisitPurpose} onCancel={() => { if (visitPurpose) setPurposeOpen(false); else navigate(`/bhc/patients/${selectedPatientId}`); }} />}
       <div hidden={purposeOpen} className="ehr-consult__stage">
       <ConsultationWorkspaceBody>
-      {/* Program selection lives in a fixed column to the right of the form.
+      {/* Programs & Monitoring (Interview step) or the Body Preview (Assessment
+          step) lives in a fixed column to the right of the form.
           From 1024px this column stays put and only the form column
           (heading included) scrolls (see consultation-ehr.css); below that everything
           stacks and the page scrolls. Notices scroll with the form and sit
           outside the fieldset so a locked review does not disable them. */}
-      <div className={`ehr-consult__grid${showProgramPanel ? " ehr-consult__grid--panel lg:grid lg:grid-cols-[minmax(0,1fr)_264px] lg:items-start lg:gap-4" : ""}`}>
+      <div className={`ehr-consult__grid${showSidePanel ? " ehr-consult__grid--panel lg:grid lg:grid-cols-[minmax(0,1fr)_264px] lg:items-start lg:gap-4" : ""}`}>
       <div className="@container min-w-0 ehr-consult__form" data-consult-scroll>
       {inConsultationWorkspace && stepIndicator}
       {activeDraft?.reviewState === "review" && canFinalize && <details className="mb-4 rounded-none border border-gray-200 p-4"><summary className="cursor-pointer text-sm font-medium">Return for Correction</summary><p className="my-2 text-sm text-gray-600">Use only when the encoder must verify or complete information.</p><textarea aria-label="Correction note" className="w-full rounded-none border border-gray-300 p-3" value={correctionNote} onChange={event => setCorrectionNote(event.target.value)} /><Button type="button" disabled={!correctionNote.trim()} onClick={async () => { try { if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) return; const identity = getDraftIdentity() || activeDraft; await transitionDraft(identity.id, "return", identity.version, correctionNote.trim()); bypassLeaveGuardRef.current = true; navigate("/bhc/patients/" + selectedPatientId); } catch (error) { toast.error(error.message); } }}>Return for Correction</Button></details>}
@@ -5432,6 +5476,16 @@ export default function ConsultationWorkspace() {
                   placeholder="Document relevant physical examination findings for this visit."
                   rows={4}
                 />
+                <BodyFindingsList
+                  findings={bodyFindings}
+                  readOnly={workspaceLocked}
+                  onEdit={(item) => setBodyFindingDialog({
+                    region: item.region,
+                    anchor: getBodyRegionAnchor(item.region),
+                    editingId: item.id,
+                  })}
+                  onRemove={(id) => setBodyFindings((current) => current.filter((item) => item.id !== id))}
+                />
               </LockedFormContent>
             </FormSection>
 
@@ -5441,13 +5495,22 @@ export default function ConsultationWorkspace() {
               delay={3}
             >
               <LockedFormContent locked={patientGateLocked}>
+                <div data-field="diagnosis" tabIndex={-1} className="outline-none">
+                  <DiagnosisListField
+                    diagnoses={diagnoses}
+                    onChange={updateDiagnoses}
+                    canAddToConditions={(currentUser?.permissions || []).includes("clinical.history")}
+                    error={validationErrors.diagnosis}
+                  />
+                </div>
                 <FieldTextarea
-                  label="Diagnosis"
-                  value={diagnosis}
-                  onChange={(event) => { clearValidationError("diagnosis"); setDiagnosis(event.target.value); }}
-                  placeholder="Record the clinical impression or diagnosis for this visit."
-                  name="diagnosis" error={validationErrors.diagnosis}
-                  rows={4}
+                  label="Additional Assessment Notes"
+                  wrapperClassName="mt-4"
+                  value={assessmentNotes}
+                  onChange={(event) => setAssessmentNotes(event.target.value)}
+                  placeholder="Optional. Longer explanation that does not belong in the diagnosis name."
+                  maxLength={5000}
+                  rows={3}
                 />
               </LockedFormContent>
             </FormSection>
@@ -5739,7 +5802,19 @@ export default function ConsultationWorkspace() {
       )}
       </fieldset>
       </div>
-      {showProgramPanel && <fieldset disabled={workspaceLocked} className="contents">{programPanel}</fieldset>}
+      {showSidePanel && (
+        <fieldset disabled={workspaceLocked} className="contents">
+          {showProgramPanel ? programPanel : (
+            <BodyPreviewPanel
+              findings={bodyFindings}
+              onChange={setBodyFindings}
+              readOnly={workspaceLocked || patientGateLocked}
+              dialog={bodyFindingDialog}
+              onDialogChange={setBodyFindingDialog}
+            />
+          )}
+        </fieldset>
+      )}
       </div>
       </ConsultationWorkspaceBody>
 

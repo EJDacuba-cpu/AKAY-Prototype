@@ -23,7 +23,7 @@ export function ProfileSection({ id, title, meta, actions, children, className }
         className,
       )}
     >
-      <header className="mb-3 flex min-h-6 items-center justify-between gap-3">
+      <header className="mb-2 flex min-h-6 items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
           <h2 id={`${id}-title`} className={SECTION_LABEL_CLASS}>
             {title}

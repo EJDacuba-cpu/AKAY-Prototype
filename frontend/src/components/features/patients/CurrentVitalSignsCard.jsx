@@ -21,7 +21,6 @@ export default function CurrentVitalSignsCard({ records = [], isLoading = false 
       : "Not recorded"],
     ["Pulse rate", measurement(record.pulse, "bpm")],
     ["Temperature", measurement(record.temperature, "°C")],
-    ["Respiratory rate", measurement(record.respiratoryRate, "breaths/min")],
     ["Oxygen saturation", measurement(record.spo2, "%")],
     ["Weight", measurement(record.weight, "kg")],
     ["Height", measurement(record.height, "cm")],

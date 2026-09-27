@@ -1,4 +1,4 @@
-const NO_ALLERGY_PATTERN = /^(none|n\/a|na|nka|nkda|no known.*|no allergies?|-+)$/i;
+export const NO_ALLERGY_PATTERN = /^(none|n\/a|na|nka|nkda|no known.*|no allergies?|-+)$/i;
 const MAX_DISEASE_CHIPS = 3;
 
 const CHIP_BASE =

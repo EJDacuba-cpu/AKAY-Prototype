@@ -31,7 +31,10 @@ class HealthRecord extends Model
         'chief_complaint',
         'physical_exam',
         'history_of_present_illness',
+        'body_findings',
         'diagnosis',
+        'diagnoses',
+        'assessment_notes',
         'treatment_notes',
         'medical_history',
         'notes',
@@ -41,6 +44,15 @@ class HealthRecord extends Model
     // Internal identity, never part of a clinical response. consultation_uuid
     // is hidden for the same reason as the idempotency fields: it is written by
     // the client and read by the draft pipeline, not by record consumers.
+    /**
+     * Regions of the consultation's front-facing 2D body preview. A body
+     * finding records where a symptom was noted - documentation, not diagnosis.
+     */
+    public const BODY_REGIONS = [
+        'head', 'chest', 'abdomen', 'pelvis',
+        'right_arm', 'left_arm', 'right_leg', 'left_leg',
+    ];
+
     protected $hidden = [
         'idempotency_key',
         'idempotency_hash',
@@ -60,6 +72,8 @@ class HealthRecord extends Model
         'monitoring_data' => 'array',
         'family_planning_data' => 'array',
         'tb_data' => 'array',
+        'body_findings' => 'array',
+        'diagnoses' => 'array',
         'needs_referral' => 'boolean',
         'items_planned' => 'array',
         'finalized_at' => 'datetime',

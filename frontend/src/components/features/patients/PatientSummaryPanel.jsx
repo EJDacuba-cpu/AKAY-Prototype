@@ -47,7 +47,6 @@ function VitalsGrid({ records }) {
     ["BP", hasVitalValue(record.systolicBp) || hasVitalValue(record.diastolicBp) ? `${value(record.systolicBp)}/${value(record.diastolicBp)}` : "—", "mmHg"],
     ["HR", value(record.pulse), "bpm"],
     ["Temp", value(record.temperature), "°C"],
-    ["RR", value(record.respiratoryRate), "/min"],
     ["SpO₂", value(record.spo2), "%"],
     ["Wt", value(record.weight), "kg"],
     ["Ht", value(record.height), "cm"],

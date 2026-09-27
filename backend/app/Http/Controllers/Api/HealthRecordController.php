@@ -12,6 +12,7 @@ use App\Models\HealthRecordDraft;
 use App\Models\Patient;
 use App\Services\AkayCacheService;
 use App\Services\AuditLogger;
+use App\Services\CurrentConditionsSync;
 use App\Services\FacilityAccessService;
 use App\Services\FollowUpEpisodeService;
 use App\Services\FollowUpTaskSyncService;
@@ -77,11 +78,13 @@ class HealthRecordController extends Controller
         FollowUpTaskSyncService $followUpTasks,
         HealthRecordIdempotencyService $idempotency,
         ReferralCreationService $referralCreation,
-        HealthRecordDraftService $drafts
+        HealthRecordDraftService $drafts,
+        CurrentConditionsSync $currentConditions
     ) {
         $data = $request->validated();
         $patient = Patient::findOrFail($data['patient_id']);
         $this->facilityAccess->authorizePatientModification($request->user(), $patient);
+        $currentConditions->assertAllowed($request->user(), $data['diagnoses'] ?? []);
         $draftPublicId = $data['draft_public_id'] ?? null;
         unset($data['draft_public_id']);
         $idempotencyKey = $data['idempotency_key'];
@@ -158,7 +161,8 @@ class HealthRecordController extends Controller
                 $auditLogger,
                 $idempotencyKey,
                 $drafts,
-                $draftPublicId
+                $draftPublicId,
+                $currentConditions
             ) {
                 $lockedDraft = $draftPublicId
                     ? $drafts->lockForOfficialSave(
@@ -174,6 +178,8 @@ class HealthRecordController extends Controller
                     $request->user()
                 );
                 $record = HealthRecord::create([...$data, 'encoded_by' => $lockedDraft?->owner_user_id ?? $request->user()->id]);
+                // Only diagnoses the user ticked "Add to Current Conditions" for.
+                $currentConditions->sync($patient, $data['diagnoses'] ?? [], $record->date_recorded->toDateString());
                 $confirmedItems = array_values(array_filter($dispensedMedicines, fn ($item) => ($item['confirmed_given'] ?? false) === true));
                 foreach ($data['immunization_data']['vaccineEntries'] ?? [] as $entry) {
                     if (($entry['confirmedGiven'] ?? false) === true) {

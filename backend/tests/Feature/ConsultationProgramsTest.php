@@ -185,6 +185,78 @@ class ConsultationProgramsTest extends TestCase
         ]);
     }
 
+    public function test_body_findings_save_to_their_own_column(): void
+    {
+        $findings = [
+            ['id' => 'f1', 'region' => 'head', 'finding' => 'Headache', 'note' => 'Frontal, 2 days'],
+            ['id' => 'f2', 'region' => 'left_leg', 'finding' => 'Swelling', 'note' => null],
+        ];
+
+        $id = $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
+            'patient_id' => $this->patient->id,
+            'category' => 'General Consultation',
+            'chief_complaint' => 'Headache',
+            'body_findings' => $findings,
+        ])->assertCreated()->json('data.id');
+
+        $this->getJson("/api/health-records/$id")->assertOk()
+            ->assertJsonPath('data.body_findings.0.region', 'head')
+            ->assertJsonPath('data.body_findings.0.finding', 'Headache')
+            ->assertJsonPath('data.body_findings.1.region', 'left_leg');
+    }
+
+    public function test_body_findings_reject_unknown_regions_and_blank_findings(): void
+    {
+        $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
+            'patient_id' => $this->patient->id,
+            'category' => 'General Consultation',
+            'chief_complaint' => 'Pain',
+            'body_findings' => [
+                ['region' => 'tail', 'finding' => 'Pain'],
+                ['region' => 'chest', 'finding' => ''],
+            ],
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['body_findings.0.region', 'body_findings.1.finding']);
+    }
+
+    public function test_body_findings_round_trip_through_a_draft(): void
+    {
+        $draft = $this->postJson('/api/health-record-drafts', [
+            'patient_id' => $this->patient->id, 'classification' => 'General Consultation',
+            'payload' => [
+                'chiefComplaint' => 'Abdominal pain',
+                'bodyFindings' => [['id' => 'f1', 'region' => 'abdomen', 'finding' => 'Abdominal pain', 'note' => 'RLQ']],
+                'wizardPhase' => 'program',
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $this->getJson("/api/health-record-drafts/$draft")->assertOk()
+            ->assertJsonPath('data.payload.bodyFindings.0.region', 'abdomen')
+            ->assertJsonPath('data.payload.bodyFindings.0.note', 'RLQ');
+    }
+
+    public function test_diagnoses_and_assessment_notes_round_trip_through_a_draft(): void
+    {
+        $draft = $this->postJson('/api/health-record-drafts', [
+            'patient_id' => $this->patient->id, 'classification' => 'General Consultation',
+            'payload' => [
+                'chiefComplaint' => 'Wheezing',
+                'diagnoses' => [
+                    ['id' => 'd1', 'name' => 'Bronchial asthma', 'addToConditions' => true, 'conditionStatus' => 'Active'],
+                    ['id' => 'd2', 'name' => 'Allergic rhinitis', 'addToConditions' => false, 'conditionStatus' => null],
+                ],
+                'assessmentNotes' => 'Mild exacerbation; no distress.',
+                'wizardPhase' => 'program',
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $this->getJson("/api/health-record-drafts/$draft")->assertOk()
+            ->assertJsonPath('data.payload.diagnoses.0.name', 'Bronchial asthma')
+            ->assertJsonPath('data.payload.diagnoses.0.addToConditions', true)
+            ->assertJsonPath('data.payload.diagnoses.1.addToConditions', false)
+            ->assertJsonPath('data.payload.assessmentNotes', 'Mild exacerbation; no distress.');
+    }
+
     public function test_legacy_records_keep_their_history_of_present_illness(): void
     {
         // Pre-column rows: one with HPI in medical_history, one older still

@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests;
 
+use App\Models\HealthRecord;
 use App\Models\Referral;
 use App\Services\ConsultationPrograms;
+use App\Services\CurrentConditionsSync;
 use App\Services\VisitPurpose;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -265,7 +267,20 @@ class HealthRecordRequest extends FormRequest
             'chief_complaint' => [$this->isMethod('post') ? 'required' : 'sometimes', 'string'],
             'physical_exam' => ['nullable', 'string'],
             'history_of_present_illness' => ['nullable', 'string'],
+            'body_findings' => ['nullable', 'array', 'max:50'],
+            'body_findings.*.id' => ['nullable', 'string', 'max:64'],
+            'body_findings.*.region' => ['required', 'string', Rule::in(HealthRecord::BODY_REGIONS)],
+            'body_findings.*.finding' => ['required', 'string', 'max:150'],
+            'body_findings.*.note' => ['nullable', 'string', 'max:500'],
             'diagnosis' => ['nullable', 'string'],
+            // Structured diagnoses typed on the Assessment step. `diagnosis`
+            // above stays the plain-text copy every reader already uses.
+            'diagnoses' => ['nullable', 'array', 'max:20'],
+            'diagnoses.*.id' => ['nullable', 'string', 'max:64'],
+            'diagnoses.*.name' => ['required', 'string', 'max:150'],
+            'diagnoses.*.addToConditions' => ['nullable', 'boolean'],
+            'diagnoses.*.conditionStatus' => ['nullable', 'string', Rule::in(CurrentConditionsSync::STATUSES)],
+            'assessment_notes' => ['nullable', 'string', 'max:5000'],
             'treatment_notes' => ['nullable', 'string'],
             'medical_history' => ['nullable', 'string'],
             'notes' => ['nullable', 'string'],
