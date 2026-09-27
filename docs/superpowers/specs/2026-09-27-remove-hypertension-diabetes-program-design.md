@@ -44,6 +44,20 @@ keep working exactly as before.
 - `classification = 'Hypertension / Diabetic Monitoring'` →
   `'General Consultation'`.
 - A payload that fails to decrypt is left untouched and counted in the log.
+- This cleanup is required, not cosmetic: the draft sanitizer rejects unknown
+  keys, so once `hypertensionDiabeticData` leaves the schema any draft still
+  holding it would fail to open.
+
+Selection repair (records and drafts alike):
+
+- If the removed program was primary, the first remaining program becomes
+  primary (or `null` when none remain), and the category / classification
+  follows the new primary (`General Consultation` when none remain).
+- `visitPurpose.services` loses `Hypertension` / `Diabetes`; if nothing is left
+  it becomes `['General']` (the rule requires at least one service).
+- `consultationMode` `'program'` becomes `'general'` when no program remains.
+- A record whose BP exists only in the removed blob (`"120/80"`) and not in
+  `vital_signs` has it copied into `vital_signs.systolicBp/diastolicBp` first.
 - Log the affected row counts.
 - `down()` is a documented no-op; the removed data is not restorable.
 
@@ -89,7 +103,11 @@ change.
 - `pages/bhc/HealthRecords.jsx`, `pages/bhc/FollowUps.jsx`,
   `followUpStatusStyles.jsx`, `pages/rhu/RHUHealthRecords.jsx`: remove the
   filter options, badge style and category detection.
-- `pages/rhu/RHUAddHealthRecords.jsx`: remove the "NCD Monitoring" card.
+- **RHU is out of scope and left untouched.** The RHU "NCD Monitoring" card is
+  the display name of the RHU "Senior Citizen" record type, which is shared
+  with patient classification and referral categories; it has no Hypertension /
+  Diabetes form or data. `RHUAddHealthRecords.jsx` and `RHUHealthRecords.jsx`
+  do not change.
 - `pages/bhc/BHCReports.jsx`: delete the NCD report (definition entry,
   `NcdReportView`, `normalizeHypertensionDiabeticReportRow`, slug aliases,
   category option, switch cases, imports).
@@ -116,7 +134,7 @@ change.
   `hypertensionDiabeticData|hypertension_diabetic_data|isNcdRecord|Hypertension / Diabetic|NcdReport`
   finds nothing outside this spec and the new migration; the remaining
   `hypertens|diabet` hits are only the kept clinical fields.
-- Backend (`php artisan test`) and frontend test suites pass.
+- Backend (`php artisan test`) and frontend test suites pass; `npm run lint` and `npm run build` pass.
 - A consultation with TB, Maternal, EPI or Family Planning still saves and
   displays normally; the program panel no longer shows Hypertension or Diabetes.
 - After migrating, no row in `health_records` / `health_record_drafts` contains
