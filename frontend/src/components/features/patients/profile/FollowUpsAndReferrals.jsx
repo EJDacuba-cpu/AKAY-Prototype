@@ -9,7 +9,7 @@ import {
 } from "../../followups/followUpStatusStyles.jsx";
 import { EmptyNote, ProfileSection, TextAction } from "./ProfileSection";
 import { formatDate, formatDisplayValue } from "../../../../utils/formatters";
-import { isActiveFollowUpState } from "../../../../utils/patientProfile";
+import { groupFollowUpsByStatus, isActiveFollowUpState } from "../../../../utils/patientProfile";
 
 const INITIAL_VISIBLE = 3;
 
@@ -68,49 +68,72 @@ function ExpandableList({ items, noun, children }) {
   );
 }
 
-export function FollowUpsSection({ followUps = [], onViewFollowUp }) {
+function FollowUpRow({ task, onViewFollowUp }) {
   return (
-    <ProfileSection
-      id="follow-ups"
-      title="Follow-ups"
-      meta={followUps.length ? `${followUps.length} total` : null}
-    >
-      {followUps.length === 0 ? (
+    <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3">
+      <div className="min-w-0">
+        <p className="flex items-center gap-2 text-sm text-gray-900">
+          <CalendarClock size={13} className="shrink-0 text-gray-400" aria-hidden="true" />
+          <span className="tabular-nums">
+            {formatDate(task.dueDate, "Not recorded")}
+            {task.dueTime ? ` · ${task.dueTime}` : ""}
+          </span>
+        </p>
+        <p className="mt-0.5 text-xs text-gray-500">
+          Task #{task.id} · from record #{formatDisplayValue(task.healthRecordId, "-")}
+        </p>
+      </div>
+      <div className="flex items-center gap-3">
+        <FollowUpStateBadge state={task.effectiveState} />
+        {isActiveFollowUpState(task.effectiveState) && (
+          <Link
+            to={buildRecordFollowUpVisitPath(task)}
+            className="rounded-none bg-red-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-red-700"
+          >
+            Record Visit
+          </Link>
+        )}
+        <TextAction onClick={() => onViewFollowUp?.(task.id)}>Details</TextAction>
+      </div>
+    </li>
+  );
+}
+
+/**
+ * Follow-ups tab: the patient's tasks as separate Overdue / Pending /
+ * Completed cards (and Cancelled, only when there are any), each its own
+ * ProfileSection card. Expects tasks already carrying `effectiveState` and
+ * ordered by `orderFollowUps`.
+ */
+export function FollowUpsByStatus({ followUps = [], onViewFollowUp }) {
+  if (followUps.length === 0) {
+    return (
+      <ProfileSection id="follow-ups" title="Follow-ups">
         <EmptyNote>No follow-ups scheduled for this patient yet.</EmptyNote>
+      </ProfileSection>
+    );
+  }
+
+  const groups = groupFollowUpsByStatus(followUps).filter(
+    (group) => group.key !== "cancelled" || group.items.length > 0,
+  );
+
+  return groups.map((group) => (
+    <ProfileSection
+      key={group.key}
+      id={`follow-ups-${group.key}`}
+      title={group.label}
+      meta={`${group.items.length}`}
+    >
+      {group.items.length === 0 ? (
+        <EmptyNote>{group.empty}</EmptyNote>
       ) : (
-        <ExpandableList items={followUps} noun="follow-ups">
-          {(task) => (
-            <li key={task.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3">
-              <div className="min-w-0">
-                <p className="flex items-center gap-2 text-sm text-gray-900">
-                  <CalendarClock size={13} className="shrink-0 text-gray-400" aria-hidden="true" />
-                  <span className="tabular-nums">
-                    {formatDate(task.dueDate, "Not recorded")}
-                    {task.dueTime ? ` · ${task.dueTime}` : ""}
-                  </span>
-                </p>
-                <p className="mt-0.5 text-xs text-gray-500">
-                  Task #{task.id} · from record #{formatDisplayValue(task.healthRecordId, "-")}
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <FollowUpStateBadge state={task.effectiveState} />
-                {isActiveFollowUpState(task.effectiveState) && (
-                  <Link
-                    to={buildRecordFollowUpVisitPath(task)}
-                    className="rounded-none bg-red-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-red-700"
-                  >
-                    Record Visit
-                  </Link>
-                )}
-                <TextAction onClick={() => onViewFollowUp?.(task.id)}>Details</TextAction>
-              </div>
-            </li>
-          )}
+        <ExpandableList items={group.items} noun={`${group.label.toLowerCase()} follow-ups`}>
+          {(task) => <FollowUpRow key={task.id} task={task} onViewFollowUp={onViewFollowUp} />}
         </ExpandableList>
       )}
     </ProfileSection>
-  );
+  ));
 }
 
 export function ReferralsSection({

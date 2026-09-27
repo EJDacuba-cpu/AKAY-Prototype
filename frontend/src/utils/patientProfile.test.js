@@ -8,6 +8,7 @@ import {
   getPatientValue,
   getSectionErrors,
   getTodayIsoDate,
+  groupFollowUpsByStatus,
   mergeBackgroundSection,
   orderFollowUps,
   validatePatientForm,
@@ -134,4 +135,27 @@ test("age falls back to the birth date when the row carries none", () => {
   tenYearsAgo.setDate(tenYearsAgo.getDate() - 2);
   assert.equal(getPatientAge({ birthDate: getTodayIsoDate(tenYearsAgo) }), 10);
   assert.equal(getPatientAge({}), "");
+});
+
+test("follow-ups group into overdue, pending, completed and cancelled", () => {
+  const { ordered } = orderFollowUps(
+    [
+      { id: 1, state: "pending", dueDate: "2026-09-01" },
+      { id: 2, state: "pending", dueDate: "2026-09-27" },
+      { id: 3, state: "rescheduled", dueDate: "2026-10-05" },
+      { id: 4, state: "fulfilled", dueDate: "2026-08-01" },
+      { id: 5, state: "cancelled", dueDate: "2026-08-02" },
+      { id: 6, state: "no_show", dueDate: "2026-09-10" },
+    ],
+    "2026-09-27",
+  );
+  const ids = Object.fromEntries(
+    groupFollowUpsByStatus(ordered).map((group) => [group.key, group.items.map((task) => task.id)]),
+  );
+  assert.deepEqual(ids, {
+    overdue: [1, 6],
+    pending: [2, 3],
+    completed: [4],
+    cancelled: [5],
+  });
 });

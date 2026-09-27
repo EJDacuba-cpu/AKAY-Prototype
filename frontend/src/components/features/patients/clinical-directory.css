@@ -1,5 +1,6 @@
 /* Opt-in clinical tokens: the existing BHC primary red remains the anchor.
-   Flat and bordered (no radius, no shadow) per the clinical design system. */
+   Square-cornered per the clinical design system (no radius), with a soft
+   card elevation (--clinical-shadow) matching the rest of the app's cards. */
 .clinical-directory {
   --clinical-red-dark: #b91c1c;
   --clinical-red: #dc2626;
@@ -12,6 +13,7 @@
   --clinical-border: #e5e7eb;
   --clinical-border-strong: #d1d5db;
   --clinical-radius: 0;
+  --clinical-shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 1px 3px rgba(17, 24, 39, 0.03);
   --clinical-gap: 12px;
   --clinical-focus: 0 0 0 3px #dc262626;
   container-type: inline-size;
@@ -102,7 +104,9 @@
   min-height: 0;
   overflow-y: auto;
   border: 1px solid var(--clinical-border);
+  border-radius: var(--clinical-radius);
   background: var(--clinical-surface);
+  box-shadow: var(--clinical-shadow);
 }
 
 /* Pinned layout (768px and up; keep in sync with PINNED_QUERY in
@@ -167,13 +171,14 @@
   border: 1px solid var(--clinical-border);
   border-radius: 0;
   background: var(--clinical-surface);
+  box-shadow: var(--clinical-shadow);
   transition: border-color 160ms ease;
 }
 .clinical-patient:hover { border-color: var(--clinical-border-strong); }
 .clinical-patient[role="button"] { cursor: pointer; }
 .clinical-patient[data-selected="true"] {
   border-color: var(--clinical-red);
-  box-shadow: inset 4px 0 0 var(--clinical-red);
+  box-shadow: inset 4px 0 0 var(--clinical-red), var(--clinical-shadow);
 }
 .clinical-patient[role="button"]:focus-visible {
   outline: 2px solid var(--clinical-red);

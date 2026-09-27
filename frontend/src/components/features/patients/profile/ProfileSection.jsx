@@ -4,9 +4,11 @@ import { cn } from "../../../../lib/utils";
 import { formatDisplayValue } from "../../../../utils/formatters";
 
 /**
- * Flat building blocks for the patient profile: hairline-separated sections,
- * small uppercase labels, label/value rows. No cards, shadows or pills - the
- * page reads as one continuous chart, divided by 1px rules.
+ * Building blocks for the patient profile: each section is its own card
+ * (reusing the same `rounded-card` / `shadow-card` tokens as RecordTabs and
+ * the rest of the AKAY design system - square corners, hairline border, no
+ * real shadow), stacked with a consistent gap. Small uppercase labels,
+ * label/value rows inside.
  */
 
 export const SECTION_LABEL_CLASS =
@@ -16,7 +18,10 @@ export function ProfileSection({ id, title, meta, actions, children, className }
   return (
     <section
       aria-labelledby={`${id}-title`}
-      className={cn("border-t border-gray-200 py-5 first:border-t-0 first:pt-0", className)}
+      className={cn(
+        "mb-4 rounded-card border border-[#E5E7EB] bg-white p-5 shadow-card last:mb-0",
+        className,
+      )}
     >
       <header className="mb-3 flex min-h-6 items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">

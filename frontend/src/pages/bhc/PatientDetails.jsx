@@ -15,7 +15,7 @@ import PatientProfileHeader from "../../components/features/patients/profile/Pat
 import RegistrationSections from "../../components/features/patients/profile/RegistrationSections";
 import RecordsTimeline from "../../components/features/patients/profile/RecordsTimeline";
 import {
-  FollowUpsSection,
+  FollowUpsByStatus,
   ReferralsSection,
 } from "../../components/features/patients/profile/FollowUpsAndReferrals";
 import { getConditionalProgramTabs } from "../../utils/programApplicability";
@@ -54,10 +54,51 @@ function ProfileShell({ children }) {
 }
 
 /**
- * BHC patient profile: one tab-free chart. A left identity panel (alerts,
- * programs, care status and vitals) sits beside the chart: the patient's
- * registration and history (each section edits inline) on one side, the
- * records timeline, follow-ups and referrals on the other.
+ * Underlined tab strip for the profile's main content, in the same visual
+ * language as RecordTabs (rounded-card/shadow-card box, red active underline,
+ * slate inactive text).
+ */
+function ProfileTabs({ tabs, activeTab, onSelect }) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Patient profile"
+      className="mb-4 overflow-x-auto rounded-card border border-[#E5E7EB] bg-white shadow-card"
+    >
+      <nav className="flex">
+        {tabs.map((tab) => {
+          const active = tab.key === activeTab;
+          const count = tab.count === undefined || tab.count === null ? "" : ` (${tab.count})`;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              id={`profile-tab-${tab.key}`}
+              aria-selected={active}
+              aria-controls={`profile-panel-${tab.key}`}
+              onClick={() => onSelect(tab.key)}
+              className={`whitespace-nowrap border-b-2 px-4 py-3 text-xs font-semibold transition-colors duration-150 ${
+                active
+                  ? "border-[#B91C1C] text-[#B91C1C]"
+                  : "border-transparent text-slate-400 hover:border-slate-300 hover:text-slate-600"
+              }`}
+            >
+              {tab.label}
+              {count}
+            </button>
+          );
+        })}
+      </nav>
+    </div>
+  );
+}
+
+/**
+ * BHC patient profile: a left identity panel (alerts, programs, care status
+ * and vitals) sits beside the chart. The chart itself is split into Overview
+ * (registration + background, edited inline), Health Records, Follow-ups and
+ * Referrals tabs, each section rendered as its own card.
  */
 export default function PatientDetails() {
   const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
@@ -77,6 +118,7 @@ export default function PatientDetails() {
   const [form, setForm] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
   const [motherSearch, setMotherSearch] = useState("");
+  const [activeTab, setActiveTab] = useState("overview");
   const editingSectionRef = useRef(null);
 
   const {
@@ -200,6 +242,15 @@ export default function PatientDetails() {
   }, [conditionalProgramAreas, records]);
   const openReferralCount = referrals.filter((referral) => !referral.completedAt).length;
 
+  const tabs = canViewHistory
+    ? [
+        { key: "overview", label: "Overview" },
+        { key: "follow-ups", label: "Follow-ups", count: activeFollowUps.length || null },
+        { key: "records", label: "Health Records", count: recordsLoading ? null : records.length },
+        { key: "referrals", label: "Referrals", count: referralsLoading ? null : referrals.length },
+      ]
+    : [{ key: "overview", label: "Overview" }];
+
   function retryPatientDetails() {
     refetchPatient();
     refetchRecords();
@@ -227,6 +278,7 @@ export default function PatientDetails() {
     setEditingSection(null);
     setPendingSaveSection(null);
     setFieldErrors({});
+    setActiveTab("overview");
   }, [patientId]);
 
   function handleChange(event) {
@@ -401,7 +453,7 @@ export default function PatientDetails() {
   return (
     <>
       <ProfileShell>
-        <div className="bhc-patient-profile min-h-[520px] bg-white px-4 py-4 pb-8 font-sans sm:px-6 [&_h1]:font-sans! [&_h2]:font-sans! [&_h3]:font-sans! [&_h4]:font-sans!">
+        <div className="bhc-patient-profile min-h-[520px] px-4 py-4 pb-8 font-sans sm:px-6 [&_h1]:font-sans! [&_h2]:font-sans! [&_h3]:font-sans! [&_h4]:font-sans!">
           <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-[288px_minmax(0,1fr)] lg:items-start">
             {/* 62px topbar + 2 x 1.25rem content padding. */}
             <aside
@@ -423,67 +475,78 @@ export default function PatientDetails() {
               />
             </aside>
 
-            <div className="grid min-w-0 grid-cols-1 gap-x-8 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-              {/* On narrow screens the records come first: recent visits matter
-                  more at the bedside than registration details. */}
-              <div className="@container order-2 min-w-0 max-xl:mt-2 max-xl:border-t max-xl:border-gray-200 max-xl:pt-5 xl:order-1">
-                <RegistrationSections
-                  patient={patient}
-                  form={form}
-                  editingSection={editingSection}
-                  onEdit={handleEditSection}
-                  onCancel={handleCancelEdit}
-                  onSave={handleRequestSave}
-                  onChange={handleChange}
-                  fieldErrors={fieldErrors}
-                  saving={saving}
-                  motherSearch={motherSearch}
-                  motherPatientOptions={motherPatientOptions}
-                  onMotherSearchChange={setMotherSearch}
-                  onMotherPatientChange={handleMotherPatientChange}
-                />
-                {canViewHistory &&
-                  BACKGROUND_SECTION_KEYS.map((section) => (
-                    <PatientBackgroundTab
-                      key={section}
-                      variant="flat"
-                      section={section}
-                      background={patient.medicalBackground}
-                      saving={savingBackground}
-                      onSave={handleBackgroundSave}
-                    />
-                  ))}
-              </div>
+            <div className="@container min-w-0">
+              <ProfileTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} />
 
-              <div className="order-1 min-w-0 xl:order-2 xl:border-l xl:border-gray-200 xl:pl-8">
-                {canViewHistory ? (
+              <div
+                role="tabpanel"
+                id={`profile-panel-${activeTab}`}
+                aria-labelledby={`profile-tab-${activeTab}`}
+              >
+                {activeTab === "overview" && (
                   <>
-                    <RecordsTimeline
-                      records={records}
+                    <RegistrationSections
                       patient={patient}
-                      conditionalAreas={conditionalProgramAreas}
-                      isLoading={recordsLoading}
-                      isFetching={recordsFetching}
-                      isError={Boolean(recordsError)}
-                      onView={(recordId) => navigate(`/bhc/health-records/${recordId}`)}
+                      form={form}
+                      editingSection={editingSection}
+                      onEdit={handleEditSection}
+                      onCancel={handleCancelEdit}
+                      onSave={handleRequestSave}
+                      onChange={handleChange}
+                      fieldErrors={fieldErrors}
+                      saving={saving}
+                      motherSearch={motherSearch}
+                      motherPatientOptions={motherPatientOptions}
+                      onMotherSearchChange={setMotherSearch}
+                      onMotherPatientChange={handleMotherPatientChange}
                     />
-                    <FollowUpsSection
-                      followUps={patientFollowUps}
-                      onViewFollowUp={(taskId) => navigate(`/bhc/follow-ups/${taskId}`)}
-                    />
-                    <ReferralsSection
-                      referrals={referrals}
-                      isLoading={referralsLoading}
-                      isFetching={referralsFetching}
-                      isError={Boolean(referralsError)}
-                      onView={(trackingId) => navigate(`/bhc/referrals/${trackingId}`)}
-                    />
+                    {canViewHistory &&
+                      BACKGROUND_SECTION_KEYS.map((section) => (
+                        <PatientBackgroundTab
+                          key={section}
+                          variant="flat"
+                          section={section}
+                          background={patient.medicalBackground}
+                          saving={savingBackground}
+                          onSave={handleBackgroundSave}
+                        />
+                      ))}
+                    {!canViewHistory && (
+                      <p className="flex items-center gap-2 py-2 text-sm text-gray-600">
+                        <Lock size={14} className="shrink-0" aria-hidden="true" />
+                        Clinical history is restricted for your role.
+                      </p>
+                    )}
                   </>
-                ) : (
-                  <p className="flex items-center gap-2 py-2 text-sm text-gray-600">
-                    <Lock size={14} className="shrink-0" aria-hidden="true" />
-                    Clinical history is restricted for your role.
-                  </p>
+                )}
+
+                {activeTab === "follow-ups" && canViewHistory && (
+                  <FollowUpsByStatus
+                    followUps={patientFollowUps}
+                    onViewFollowUp={(taskId) => navigate(`/bhc/follow-ups/${taskId}`)}
+                  />
+                )}
+
+                {activeTab === "records" && canViewHistory && (
+                  <RecordsTimeline
+                    records={records}
+                    patient={patient}
+                    conditionalAreas={conditionalProgramAreas}
+                    isLoading={recordsLoading}
+                    isFetching={recordsFetching}
+                    isError={Boolean(recordsError)}
+                    onView={(recordId) => navigate(`/bhc/health-records/${recordId}`)}
+                  />
+                )}
+
+                {activeTab === "referrals" && canViewHistory && (
+                  <ReferralsSection
+                    referrals={referrals}
+                    isLoading={referralsLoading}
+                    isFetching={referralsFetching}
+                    isError={Boolean(referralsError)}
+                    onView={(trackingId) => navigate(`/bhc/referrals/${trackingId}`)}
+                  />
                 )}
               </div>
             </div>

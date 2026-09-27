@@ -265,3 +265,23 @@ export function orderFollowUps(tasks = [], today) {
     .sort(sortByDateDesc);
   return { ordered: [...open, ...resolved], open };
 }
+
+const FOLLOW_UP_STATUS_GROUPS = [
+  { key: "overdue", label: "Overdue", states: ["no_show"], empty: "No overdue follow-ups." },
+  { key: "pending", label: "Pending", states: ["due_today", "upcoming", "rescheduled"], empty: "No pending follow-ups." },
+  { key: "completed", label: "Completed", states: ["fulfilled"], empty: "No completed follow-ups yet." },
+  { key: "cancelled", label: "Cancelled", states: ["cancelled"], empty: "No cancelled follow-ups." },
+];
+
+/**
+ * Splits tasks (already carrying `effectiveState`, as `orderFollowUps`
+ * produces) into the Follow-ups tab's groups, keeping their incoming order.
+ * Past-due pending tasks count as overdue because `getEffectiveFollowUpState`
+ * folds them into `no_show`.
+ */
+export function groupFollowUpsByStatus(tasks = []) {
+  return FOLLOW_UP_STATUS_GROUPS.map((group) => ({
+    ...group,
+    items: tasks.filter((task) => group.states.includes(task.effectiveState)),
+  }));
+}
