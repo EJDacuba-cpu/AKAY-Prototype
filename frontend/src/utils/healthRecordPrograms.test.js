@@ -3,6 +3,7 @@ import test from "node:test";
 
 import * as programModule from "./healthRecordPrograms.js";
 import {
+  getServiceTypeLabel,
   getSpecializedRecordPrograms,
   SPECIALIZED_RECORD_PROGRAMS,
 } from "./healthRecordPrograms.js";
@@ -67,4 +68,8 @@ test("the Hypertension / Diabetic program is gone from specialized records", () 
     assert.equal(programModule[name], undefined, name);
   }
   assert.deepEqual(getSpecializedRecordPrograms([{ id: 9, monitoring_data: { selectedPrograms: ["Hypertension"] } }]), []);
+});
+
+test("RHU Senior Citizen records keep their pre-existing label untouched", () => {
+  assert.equal(getServiceTypeLabel({ category: "Senior Citizen" }), "Hypertension / Diabetic Monitoring");
 });

@@ -167,6 +167,12 @@ export function normalizeServiceType(value = "") {
   ) {
     return "Family Planning";
   }
+  // RHU still has its own "Senior Citizen" record type, unrelated to and kept
+  // apart from the BHC Hypertension / Diabetes program that this module used
+  // to share this string with. Kept verbatim so RHU stays untouched.
+  if (normalized.includes("senior citizen")) {
+    return "Hypertension / Diabetic Monitoring";
+  }
   if (
     normalized === "tb" ||
     normalized.includes("tuberculosis") ||
