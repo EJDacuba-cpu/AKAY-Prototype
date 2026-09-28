@@ -2,28 +2,29 @@ import { useId, useRef, useState } from "react";
 import { Star, X } from "lucide-react";
 import {
   DIAGNOSIS_LIMITS,
+  DIAGNOSIS_SUGGESTIONS,
   addDiagnosis,
   filterDiagnosisSuggestions,
   findCurrentCondition,
   getAddDiagnosisError,
+  normalizeNameKey,
   removeDiagnosis,
   toggleDiagnosisCondition,
 } from "../../../../utils/diagnoses";
-import { findOrphanedPathway, findStructuredDiagnosis } from "../../../../utils/carePathways";
 
 /**
  * Diagnosis / Clinical Impression for the Assessment step: one always-visible
  * searchable field with an Add button, and the added diagnoses as chips.
  *
- * The field suggests only the registry's structured diagnoses
- * (carePathways.js); anything else is added exactly as typed. Nothing is
- * fuzzy-matched, autocorrected or inferred. A chip's star marks it for the
- * patient's Current Conditions (Active) when the consultation is saved; × removes
- * it. There is no edit - a mistake is removed and typed again.
+ * The field suggests only DIAGNOSIS_SUGGESTIONS (diagnoses.js); anything else
+ * is added exactly as typed. Nothing is fuzzy-matched, autocorrected or
+ * inferred. A chip's star marks it for the patient's Current Conditions
+ * (Active) when the consultation is saved; × removes it. There is no edit -
+ * a mistake is removed and typed again.
  *
- * Care pathways are not chosen here (see CarePathwaySuggestions). The only
- * link is a guard: removing the last diagnosis behind a pathway that was
- * already started asks first, and never turns the pathway off.
+ * Care pathways are a separate, later step (see
+ * docs/superpowers/specs/2026-09-29-diagnosis-monitoring-surveillance-registry-design.md)
+ * - this component only adds, marks and removes diagnoses.
  */
 
 const LABEL_CLASS = "mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]";
@@ -39,8 +40,6 @@ const ERROR_TEXT = {
  * @param currentConditions  the patient's medical_background.currentDiseases,
  *                           used only to say a marked diagnosis will be linked
  *                           rather than duplicated
- * @param selectedPrograms   the consultation's programs, to know which care
- *                           pathways are already started
  * @param error              validation message for the diagnosis
  */
 export default function DiagnosisListField({
@@ -48,7 +47,6 @@ export default function DiagnosisListField({
   onChange,
   canAddToConditions = false,
   currentConditions = [],
-  selectedPrograms = [],
   error,
 }) {
   const inputRef = useRef(null);
@@ -56,8 +54,6 @@ export default function DiagnosisListField({
   const [text, setText] = useState("");
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  // { item, pathway } - a removal waiting for "Remove anyway".
-  const [pendingRemoval, setPendingRemoval] = useState(null);
 
   const trimmed = text.trim();
   const addError = getAddDiagnosisError(diagnoses, trimmed);
@@ -66,7 +62,9 @@ export default function DiagnosisListField({
   // added as it is.
   const options = [
     ...filterDiagnosisSuggestions(text).map((value) => ({ kind: "suggestion", value })),
-    ...(trimmed && !findStructuredDiagnosis(trimmed) ? [{ kind: "custom", value: trimmed }] : []),
+    ...(trimmed && !DIAGNOSIS_SUGGESTIONS.some((s) => normalizeNameKey(s) === normalizeNameKey(trimmed))
+      ? [{ kind: "custom", value: trimmed }]
+      : []),
   ];
   const showOptions = optionsOpen && options.length > 0;
 
@@ -87,13 +85,7 @@ export default function DiagnosisListField({
   }
 
   function remove(item) {
-    const next = removeDiagnosis(diagnoses, item.id);
-    const pathway = findOrphanedPathway(diagnoses, next, selectedPrograms);
-    if (pathway) {
-      setPendingRemoval({ item, pathway });
-      return;
-    }
-    onChange(next);
+    onChange(removeDiagnosis(diagnoses, item.id));
   }
 
   function handleKeyDown(event) {
@@ -275,37 +267,6 @@ export default function DiagnosisListField({
         </p>
       )}
 
-      {pendingRemoval && (
-        <div
-          role="alert"
-          className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 border border-amber-300 bg-amber-50 px-3 py-2"
-        >
-          <p className="min-w-0 flex-1 text-xs leading-snug text-[#111827]">
-            <span className="font-semibold">{pendingRemoval.item.name}</span> is the only diagnosis linked to{" "}
-            {pendingRemoval.pathway.label}, which is already started. It will stay selected - turn it off in Programs
-            &amp; Monitoring if it no longer applies.
-          </p>
-          <div className="flex flex-none items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setPendingRemoval(null)}
-              className="h-7 px-2.5 text-xs font-semibold text-[#374151] hover:bg-white"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                onChange(removeDiagnosis(diagnoses, pendingRemoval.item.id));
-                setPendingRemoval(null);
-              }}
-              className="h-7 bg-[#DC2626] px-2.5 text-xs font-semibold text-white hover:bg-red-700"
-            >
-              Remove anyway
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

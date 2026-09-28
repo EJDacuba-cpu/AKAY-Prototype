@@ -15,9 +15,8 @@ test("server metadata restores primary and all selected programs", () => {
   assert.deepEqual(getSpecializedRecordPrograms([record]).map(program => program.key), ["maternal", "tb"]);
 });
 
-test("the selectable programs, NCD Monitoring included", () => {
-  assert.deepEqual(Object.keys(PROGRAM_CLASSIFICATIONS), ["Maternal", "TB", "Family Planning", "EPI", "NCD"]);
-  assert.equal(PROGRAM_CLASSIFICATIONS.NCD, "NCD Monitoring");
+test("the selectable programs", () => {
+  assert.deepEqual(Object.keys(PROGRAM_CLASSIFICATIONS), ["Maternal", "TB", "Family Planning", "EPI"]);
 });
 
 test("legacy classifications still work and explicit general visits stay general", () => {

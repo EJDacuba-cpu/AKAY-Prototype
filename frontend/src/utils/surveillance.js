@@ -12,7 +12,7 @@
  * (HealthRecordController::normalizeSurveillanceData) or, for backward
  * compatibility with older code paths, alongside a save's own payload.
  */
-import { normalizeNameKey } from "./carePathways.js";
+import { normalizeNameKey } from "./diagnoses.js";
 
 function firstPresent(candidates) {
   for (const value of candidates) {

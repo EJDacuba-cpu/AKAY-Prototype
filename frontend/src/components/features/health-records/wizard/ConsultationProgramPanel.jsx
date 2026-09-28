@@ -15,7 +15,7 @@ const PROGRAM_GROUPS = [
   {
     key: "monitoring",
     title: "Condition Monitoring / Evaluation",
-    programs: ["TB", "NCD"],
+    programs: ["TB"],
   },
 ];
 

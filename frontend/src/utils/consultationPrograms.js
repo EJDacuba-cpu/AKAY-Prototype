@@ -3,9 +3,6 @@ export const PROGRAM_CLASSIFICATIONS = Object.freeze({
   TB: "TB DOTS / TB Monitoring",
   "Family Planning": "Family Planning",
   EPI: "Immunization",
-  // Started from a diagnosis' care-pathway suggestion (see carePathways.js)
-  // or from the Programs & Monitoring panel, like any other program.
-  NCD: "NCD Monitoring",
 });
 
 export function getConsultationPrograms(record = {}) {

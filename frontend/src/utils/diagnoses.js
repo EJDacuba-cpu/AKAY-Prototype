@@ -6,10 +6,20 @@
  *
  * The record's plain-text `diagnosis` stays the copy every existing reader
  * uses (reports, referrals, follow-ups): it is the names joined with "; ".
+ *
+ * DIAGNOSIS_SUGGESTIONS below is a plain typing-shortcut list, independent
+ * of any Care Pathway - the backend's ClinicalRegistry (config/clinical_registry.php)
+ * is the source of truth for which diagnoses are registered monitored
+ * conditions and what auto-syncs to Current Conditions; this list is not
+ * wired to that registry yet (a frontend follow-up - see
+ * docs/superpowers/specs/2026-09-29-diagnosis-monitoring-surveillance-registry-design.md
+ * section 2).
  */
-import { findStructuredDiagnosis, getStructuredDiagnosisNames, normalizeNameKey } from "./carePathways.js";
 
-export { normalizeNameKey };
+/** Case/whitespace-insensitive key for comparing diagnosis or condition names. */
+export function normalizeNameKey(name) {
+  return String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
 
 /** Same statuses as the Patient Profile's Current Conditions editor. */
 export const CONDITION_STATUSES = ["Active", "Controlled", "Resolved"];
@@ -17,13 +27,19 @@ export const CONDITION_STATUSES = ["Active", "Controlled", "Resolved"];
 export const DIAGNOSIS_LIMITS = { name: 150, count: 20, notes: 5000 };
 
 /**
- * Structured suggestions offered while typing a diagnosis - the registry's
- * structured diagnoses (carePathways.js), never a second list. Picking one is
- * a shortcut for typing it; any other diagnosis (Asthma, UTI, ...) is typed
- * and saved exactly as entered. No fuzzy matching, autocorrection or
- * automatic inference is layered on top of this list.
+ * Structured suggestions offered while typing a diagnosis - currently
+ * standardized diagnosis names. Picking one is a shortcut for typing it; any
+ * other diagnosis (Asthma, UTI, ...) is typed and saved exactly as entered.
+ * No fuzzy matching, autocorrection or automatic inference is layered on top
+ * of this list, and it does not imply any care pathway.
  */
-export const DIAGNOSIS_SUGGESTIONS = Object.freeze(getStructuredDiagnosisNames());
+export const DIAGNOSIS_SUGGESTIONS = Object.freeze(["Hypertension", "Diabetes Mellitus"]);
+
+/** Exact match ignoring case/extra spaces - keeps a structured name's one spelling. */
+function findStructuredDiagnosisName(name) {
+  const key = normalizeNameKey(name);
+  return DIAGNOSIS_SUGGESTIONS.find((suggestion) => normalizeNameKey(suggestion) === key) || null;
+}
 
 export function createDiagnosisId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -92,7 +108,7 @@ export function addDiagnosis(diagnoses, name) {
     ...list,
     {
       id: createDiagnosisId(),
-      name: findStructuredDiagnosis(text)?.name || text,
+      name: findStructuredDiagnosisName(text) || text,
       addToConditions: false,
       conditionStatus: null,
     },

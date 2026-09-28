@@ -9,7 +9,6 @@ import { useBlocker, useLocation, useNavigate, useSearchParams } from "react-rou
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
-  Activity,
   AlertCircle,
   Check,
   ClipboardList,
@@ -95,13 +94,9 @@ import ConsultationProgramPanel from "../../components/features/health-records/w
 import BodyPreviewPanel, { BodyFindingsList, getBodyRegionAnchor } from "../../components/features/health-records/wizard/BodyPreviewPanel";
 import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindings";
 import DiagnosisListField from "../../components/features/health-records/wizard/DiagnosisListField";
-import CarePathwaySuggestions from "../../components/features/health-records/wizard/CarePathwaySuggestions";
-import NcdMonitoringForm from "../../components/features/health-records/wizard/NcdMonitoringForm";
 import { formatDiagnoses, joinDiagnosisNames, normalizeDiagnoses, restoreDiagnoses } from "../../utils/diagnoses";
-import { CARE_PATHWAYS } from "../../utils/carePathways";
 import { getSurveillanceTags, hasSurveillanceTag, matchSurveillanceDisease } from "../../utils/surveillance";
 import useClinicalRegistry from "../../hooks/useClinicalRegistry";
-import { EMPTY_NCD_DATA, buildNcdData, ncdReviewRows, normalizeNcdData } from "../../utils/ncdMonitoring";
 import {
   ConsultationActionBar,
   ConsultationStepHeading,
@@ -256,11 +251,6 @@ const RECORD_TYPE_DETAILS = {
     title: "TB DOTS",
     description: "Directly observed treatment for tuberculosis.",
     icon: Syringe,
-  },
-  "NCD Monitoring": {
-    title: "NCD Monitoring",
-    description: "Ongoing monitoring for hypertension and diabetes mellitus.",
-    icon: Activity,
   },
 };
 
@@ -1128,11 +1118,6 @@ export default function ConsultationWorkspace() {
     EMPTY_FAMILY_PLANNING_DATA,
   );
   const [tbData, setTbData] = useState(EMPTY_TB_DATA);
-  // NCD Monitoring's own fields; saved as monitoring_data.ncdData.
-  const [ncdData, setNcdData] = useState(EMPTY_NCD_DATA);
-  // Care-pathway suggestions the worker chose Not Now for. Screen state only:
-  // never saved, so a suggestion that still applies comes back after reload.
-  const [dismissedCarePathways, setDismissedCarePathways] = useState([]);
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
   const [aog, setAog] = useState("");
   const [followUpRecord, setFollowUpRecord] = useState(null);
@@ -1288,7 +1273,6 @@ export default function ConsultationWorkspace() {
       );
       setAog(existingMaternalData.aog || found.aog || "");
       setTbData(normalizeTbData(found.tbData || found.tb_data));
-      setNcdData(normalizeNcdData(found.monitoringData?.ncdData || found.monitoring_data?.ncdData));
       const existingFamilyPlanningData =
         found.familyPlanningData || found.family_planning_data || {};
       setFamilyPlanningData({
@@ -1476,7 +1460,6 @@ export default function ConsultationWorkspace() {
   const isMaternal = recordTypeKey === "maternal" || selectedPrograms.includes("Maternal");
   const isFamilyPlanning = recordTypeKey === "family planning" || selectedPrograms.includes("Family Planning");
   const isTb = recordTypeKey === "tb dots / tb monitoring" || selectedPrograms.includes("TB");
-  const isNcd = recordTypeKey === "ncd monitoring" || selectedPrograms.includes("NCD");
   const effectiveLinkedFollowUpTask = routeLinkedFollowUpTask;
   const effectiveFollowUpParentRecordId = isFollowUp
     ? recordId
@@ -1796,7 +1779,6 @@ export default function ConsultationWorkspace() {
         "medicinesSupplies",
       ]),
       tbData,
-      ncdData: normalizeNcdData(ncdData),
       referralForm: pickDraftFields(referralForm, [
         "urgencyLevel",
         "dateOfReferral",
@@ -1887,7 +1869,6 @@ export default function ConsultationWorkspace() {
       ...(payload.familyPlanningData || {}),
     });
     setTbData(normalizeTbData(payload.tbData));
-    setNcdData(normalizeNcdData(payload.ncdData));
     setReferralForm((current) => ({
       ...current,
       ...(payload.referralForm || {}),
@@ -3491,8 +3472,6 @@ export default function ConsultationWorkspace() {
       monitoringData: {
         ...(visitPurpose ? { visitPurpose: { ...visitPurpose, pregnancyConfirmed: teenagePrenatal(visitPurpose, selectedPatient, dateOfVisit) ? visitPurpose.pregnancyConfirmed : "" } } : {}),
         ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
-        // Only NCD-specific data; vital signs stay in vital_signs.
-        ...(isNcd ? { ncdData: buildNcdData(ncdData, diagnoses) } : {}),
       },
       createdByRole: userRole,
       linkedTrackingId: isFollowUpVisitMode
@@ -4029,17 +4008,6 @@ export default function ConsultationWorkspace() {
   }
 
   /**
-   * Start Monitoring on a care-pathway suggestion: selects the pathway's
-   * program exactly as the Programs & Monitoring panel would. Never toggles a
-   * started pathway off, and never runs without the worker's click.
-   */
-  function handleStartCarePathway(pathwayKey) {
-    const pathway = CARE_PATHWAYS[pathwayKey];
-    if (!pathway || selectedPrograms.includes(pathway.programKey)) return;
-    handleProgramSelect(pathway.programKey);
-  }
-
-  /**
    * One Next Action step, rendered by every program that used to carry its own
    * "Follow-up & Referral" block. Built once here so the programs cannot drift
    * apart again the way the five previous copies did.
@@ -4458,7 +4426,7 @@ export default function ConsultationWorkspace() {
     // form; Next from there walks the rest in order.
     ...programFormSteps.map(step => ({
       key: step.key, title: step.label, stepKey: step.key,
-      rows: step.classification === "NCD Monitoring" ? ncdReviewRows(ncdData, diagnoses) : programReviewRows({
+      rows: programReviewRows({
         Maternal: maternalData,
         Immunization: { vaccineEntries: immunizationVaccineEntries, breastfeedingMonitoring: immunizationData.breastfeedingMonitoring },
         "Family Planning": familyPlanningData,
@@ -5491,24 +5459,6 @@ export default function ConsultationWorkspace() {
           </FormSection>
         )}
 
-        {!patientGateLocked && isNcd && showProgramBlock("NCD Monitoring") && (
-          <FormSection
-            title="NCD Monitoring"
-            subtitle="Monitoring for the NCD conditions diagnosed at this visit. Vital signs come from this consultation."
-            delay={3}
-          >
-            <LockedFormContent locked={patientGateLocked}>
-              <NcdMonitoringForm
-                value={ncdData}
-                onChange={setNcdData}
-                diagnoses={diagnoses}
-                vitals={{ systolicBp, diastolicBp, pulse, spo2, weight, height, temp }}
-                onEditVitals={usesConsultationSteps ? () => goToStepKey(INTERVIEW_STEP) : undefined}
-              />
-            </LockedFormContent>
-          </FormSection>
-        )}
-
         {/* Clinical Assessment: one screen for every consultation. */}
         {usesConsultationSteps && generalSelected && activeFormStep === ASSESSMENT_STEP && (
           <>
@@ -5557,7 +5507,6 @@ export default function ConsultationWorkspace() {
                     onChange={updateDiagnoses}
                     canAddToConditions={(currentUser?.permissions || []).includes("clinical.history")}
                     currentConditions={selectedPatient?.medicalBackground?.currentDiseases}
-                    selectedPrograms={selectedPrograms}
                     error={validationErrors.diagnosis}
                   />
                 </div>
@@ -5582,14 +5531,6 @@ export default function ConsultationWorkspace() {
                     ))}
                   </div>
                 )}
-                <CarePathwaySuggestions
-                  diagnoses={diagnoses}
-                  selectedPrograms={selectedPrograms}
-                  dismissed={dismissedCarePathways}
-                  onStart={handleStartCarePathway}
-                  onDismiss={(key) => setDismissedCarePathways((prev) => (prev.includes(key) ? prev : [...prev, key]))}
-                  onOpenForm={(key) => goToStepKey(programStepKey(PROGRAM_CLASSIFICATIONS[CARE_PATHWAYS[key].programKey]))}
-                />
 
                 <FieldTextarea
                   label="Additional Assessment Notes"

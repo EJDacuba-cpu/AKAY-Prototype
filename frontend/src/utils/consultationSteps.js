@@ -53,10 +53,6 @@ const PROGRAM_STEP_DETAILS = {
     label: "Child Health / EPI",
     description: "Complete the immunization information for this visit.",
   },
-  "NCD Monitoring": {
-    label: "NCD Monitoring",
-    description: "Record NCD monitoring details for the conditions diagnosed at this visit.",
-  },
 };
 
 export function programStepKey(classification) {
@@ -297,7 +293,6 @@ export function getErrorOwnerStepKey(errorKey) {
     return INTERVIEW_STEP;
   }
   if (key.startsWith("tbData.")) return programStepKey("TB DOTS / TB Monitoring");
-  if (key.startsWith("ncdData.") || key.startsWith("monitoring_data.ncdData.")) return programStepKey("NCD Monitoring");
   if (key === "familyPlanningMethodUsed" || key.startsWith("familyPlanningData.")) {
     return programStepKey("Family Planning");
   }
