@@ -181,6 +181,12 @@ class HealthRecordRequest extends FormRequest
             'monitoring_data.activeCarePathways.*.remove_condition_names.*' => ['string', 'max:150'],
             'monitoring_data.followUpForPathways' => ['nullable', 'array'],
             'monitoring_data.followUpForPathways.*' => ['string'],
+            // Registry-driven Community-Based Surveillance tags. Coexists with
+            // the legacy hfmdSurveillance/surveillanceCategory keys, which
+            // HealthRecordController::normalizeSurveillanceData derives from
+            // this when present.
+            'monitoring_data.surveillanceTags' => ['nullable', 'array'],
+            'monitoring_data.surveillanceTags.*' => ['string'],
             'family_planning_data' => ['nullable', 'array'],
             'family_planning_data.clientType' => ['nullable', 'string', 'max:100'],
             'family_planning_data.client_type' => ['nullable', 'string', 'max:100'],
@@ -390,6 +396,11 @@ class HealthRecordRequest extends FormRequest
                     if ($fieldSetKey !== null && ! $clinicalRegistry->pathwayHasFieldSet($pathwayKey, $fieldSetKey)) {
                         $validator->errors()->add("monitoring_data.activeCarePathways.$index.conditions.$conditionIndex.field_set_key", 'This monitoring form is not configured for this pathway.');
                     }
+                }
+            }
+            foreach ($this->input('monitoring_data.surveillanceTags', []) as $index => $tagKey) {
+                if (! is_string($tagKey) || ! $clinicalRegistry->isValidSurveillanceKey($tagKey)) {
+                    $validator->errors()->add("monitoring_data.surveillanceTags.$index", 'This surveillance disease is not configured.');
                 }
             }
             $status = $monitoringData['followUpStatus']

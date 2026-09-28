@@ -143,6 +143,7 @@ class HealthRecordController extends Controller
         $this->normalizeVisitTypeData($request, $data, true);
         $this->normalizeMaternalSupplements($request, $data);
         $this->normalizeFamilyPlanningData($data);
+        $this->normalizeSurveillanceData($data);
         $dispensedMedicines = $data['dispensed_medicines'] ?? [];
         unset($data['dispensed_medicines']);
 
@@ -521,6 +522,40 @@ class HealthRecordController extends Controller
             ],
             $supplements
         ));
+    }
+
+    /**
+     * When the client sends monitoring_data.surveillanceTags (the registry-
+     * driven checkbox list), it is authoritative: the legacy single-value
+     * mirrors (hfmdSurveillance, surveillanceCategory, diseaseSurveillanceCategory,
+     * and their snake_case aliases) are derived from it here, server-side, so
+     * every existing reader (BHCReports, healthRecordService.js) keeps
+     * working unmodified even if a client sent an inconsistent legacy value
+     * alongside the new one. A save with no surveillanceTags key at all
+     * (older client) leaves the legacy keys exactly as the client sent them -
+     * nothing is inferred backwards from legacy-only input.
+     */
+    private function normalizeSurveillanceData(array &$data): void
+    {
+        if (! array_key_exists('monitoring_data', $data) || ! is_array($data['monitoring_data'])) {
+            return;
+        }
+        if (! array_key_exists('surveillanceTags', $data['monitoring_data'])) {
+            return;
+        }
+
+        $tags = $data['monitoring_data']['surveillanceTags'];
+        $tags = is_array($tags) ? array_values(array_unique(array_filter($tags, 'is_string'))) : [];
+        $data['monitoring_data']['surveillanceTags'] = $tags;
+
+        $hfmd = in_array('hfmd', $tags, true);
+        $category = $hfmd ? 'hfmd' : null;
+        $data['monitoring_data']['hfmdSurveillance'] = $hfmd;
+        $data['monitoring_data']['hfmd_surveillance'] = $hfmd;
+        $data['monitoring_data']['surveillanceCategory'] = $category;
+        $data['monitoring_data']['surveillance_category'] = $category;
+        $data['monitoring_data']['diseaseSurveillanceCategory'] = $category;
+        $data['monitoring_data']['disease_surveillance_category'] = $category;
     }
 
     private function normalizeFamilyPlanningData(array &$data, ?HealthRecord $record = null): void

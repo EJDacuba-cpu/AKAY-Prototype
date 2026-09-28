@@ -72,6 +72,7 @@ class HealthRecordDraftPayloadService
         'patientCondition' => self::SCALAR,
         'morbidityReportingStatus' => self::SCALAR,
         'hfmdSurveillance' => self::SCALAR,
+        'surveillanceTags' => ['*' => self::SCALAR],
         'needsReferral' => self::SCALAR,
         'careDecisionStep' => self::SCALAR,
         'referralDetailsStep' => self::SCALAR,
