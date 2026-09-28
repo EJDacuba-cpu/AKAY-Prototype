@@ -346,17 +346,9 @@ class HealthRecordDraftPayloadService
                 ]],
             ],
         ],
-        // NCD Monitoring's own fields (saved as monitoring_data.ncdData). No
-        // vitals: those are the draft's systolicBp/diastolicBp/... above.
-        'ncdData' => [
-            'conditions' => ['*' => self::SCALAR],
-            'diabetes' => [
-                'fbs' => self::SCALAR,
-            ],
-        ],
         // Care Pathway activation staged on this consultation - see
-        // CarePathwayActivationService for what each key means. Coexists
-        // with ncdData above until the old NCD prototype form is retired.
+        // CarePathwayActivationService for what each key means. Replaces the
+        // retired ncdData (the old NCD-as-a-program prototype).
         'activeCarePathways' => ['*' => [
             'pathway_key' => self::SCALAR,
             'conditions' => ['*' => [

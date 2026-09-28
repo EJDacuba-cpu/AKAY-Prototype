@@ -155,17 +155,10 @@ class HealthRecordRequest extends FormRequest
             'monitoring_data.patient_condition' => ['nullable', 'string', 'max:100'],
             'monitoring_data.attendingStaff' => ['nullable', 'string', 'max:150'],
             'monitoring_data.attending_staff' => ['nullable', 'string', 'max:150'],
-            // NCD Monitoring: only NCD-specific data, keyed by condition so
-            // another condition's fields can sit beside `diabetes` later.
-            'monitoring_data.ncdData' => ['nullable', 'array:conditions,diabetes'],
-            'monitoring_data.ncdData.conditions' => ['nullable', 'array', 'list', 'max:'.count(ConsultationPrograms::NCD_CONDITIONS)],
-            'monitoring_data.ncdData.conditions.*' => ['required', 'string', 'distinct', Rule::in(ConsultationPrograms::NCD_CONDITIONS)],
-            'monitoring_data.ncdData.diabetes' => ['nullable', 'array:fbs'],
-            'monitoring_data.ncdData.diabetes.fbs' => ['nullable', 'string', 'max:100'],
             // Care Pathway activation staged on this consultation - see
-            // CarePathwayActivationService for what each key means. Coexists
-            // with ncdData above until the old NCD prototype form is retired
-            // in the same change that stops sending it.
+            // CarePathwayActivationService for what each key means. Replaces
+            // the retired monitoring_data.ncdData (the old NCD-as-a-program
+            // prototype - its form and ConsultationPrograms entry are gone).
             'monitoring_data.activeCarePathways' => ['nullable', 'array'],
             'monitoring_data.activeCarePathways.*.pathway_key' => ['required', 'string'],
             'monitoring_data.activeCarePathways.*.conditions' => ['required', 'array', 'min:1'],

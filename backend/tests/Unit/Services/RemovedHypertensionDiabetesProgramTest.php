@@ -14,9 +14,10 @@ class RemovedHypertensionDiabetesProgramTest extends TestCase
 {
     public function test_remaining_programs_and_services_are_exact(): void
     {
-        // NCD Monitoring is the redesigned successor (started from a diagnosis'
-        // care-pathway suggestion, data in ncdData); the old keys stay gone.
-        $this->assertSame(['Maternal', 'TB', 'Family Planning', 'EPI', 'NCD'], array_keys(ConsultationPrograms::CLASSIFICATIONS));
+        // NCD Monitoring is now a generic Care Pathway (ClinicalRegistry, key
+        // "ncd"), not a ConsultationPrograms entry; the old removed keys stay
+        // gone from this list either way.
+        $this->assertSame(['Maternal', 'TB', 'Family Planning', 'EPI'], array_keys(ConsultationPrograms::CLASSIFICATIONS));
         $this->assertSame(['General', 'Prenatal', 'Postpartum', 'EPI', 'Family Planning', 'TB'], VisitPurpose::SERVICES);
         $this->assertNotContains('Hypertension / Diabetic Monitoring', HealthRecordDraftRequest::CLASSIFICATIONS);
     }
@@ -42,6 +43,16 @@ class RemovedHypertensionDiabetesProgramTest extends TestCase
             );
             $this->assertTrue($validator->fails(), "$service should be rejected");
         }
+    }
+
+    public function test_ncd_is_rejected_as_a_program(): void
+    {
+        $validator = Validator::make(
+            ['monitoring_data' => ['selectedPrograms' => ['NCD'], 'primaryProgram' => 'NCD']],
+            ConsultationPrograms::rules('monitoring_data')
+        );
+        $this->assertTrue($validator->fails());
+        $this->assertArrayHasKey('monitoring_data.selectedPrograms.0', $validator->errors()->toArray());
     }
 
     public function test_remaining_programs_still_validate(): void

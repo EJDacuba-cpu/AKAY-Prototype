@@ -6,22 +6,16 @@ use Illuminate\Validation\Rule;
 
 class ConsultationPrograms
 {
+    // NCD Monitoring is now a generic Care Pathway (ClinicalRegistry, key
+    // "ncd"), started from a diagnosis' automatic Current Conditions sync and
+    // an explicit Start Monitoring action - not a ConsultationPrograms entry.
+    // See CarePathwayActivationService and config/clinical_registry.php.
     public const CLASSIFICATIONS = [
         'Maternal' => 'Maternal',
         'TB' => 'TB DOTS / TB Monitoring',
         'Family Planning' => 'Family Planning',
         'EPI' => 'Immunization',
-        // Offered by the consultation's care-pathway suggestion when an NCD
-        // diagnosis is recorded; the worker starts it, never the system.
-        'NCD' => 'NCD Monitoring',
     ];
-
-    /**
-     * Conditions NCD Monitoring covers - the frontend registry's structured
-     * diagnoses for the NCD pathway (utils/carePathways.js). Its data lives in
-     * monitoring_data.ncdData; vital signs stay in vital_signs.
-     */
-    public const NCD_CONDITIONS = ['Hypertension', 'Diabetes Mellitus'];
 
     public static function rules(string $prefix): array
     {
