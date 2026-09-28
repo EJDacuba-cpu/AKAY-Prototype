@@ -15,8 +15,10 @@ use Illuminate\Support\Carbon;
 
 class PatientController extends Controller
 {
-    public function __construct(private readonly FacilityAccessService $facilityAccess)
-    {
+    public function __construct(
+        private readonly FacilityAccessService $facilityAccess,
+        private readonly \App\Services\ClinicalRegistry $clinicalRegistry
+    ) {
     }
 
     public function index(Request $request)
@@ -215,6 +217,15 @@ class PatientController extends Controller
 
     private function normalizeProfileFields(array $data, ?Patient $patient = null): array
     {
+        // Same registry resolution the consultation path uses (ClinicalRegistry),
+        // so a Current Condition typed directly on the profile ("PTB") is
+        // normalized to the official spelling ("Tuberculosis") and tagged with
+        // conditionKey exactly as a diagnosis-driven sync would produce.
+        if (isset($data['medical_background']['currentDiseases']) && is_array($data['medical_background']['currentDiseases'])) {
+            $data['medical_background']['currentDiseases'] = $this->clinicalRegistry
+                ->resolveConditionEntries($data['medical_background']['currentDiseases']);
+        }
+
         foreach ([
             'occupation',
             'philhealth_status',

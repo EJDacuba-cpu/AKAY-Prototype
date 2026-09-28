@@ -85,6 +85,10 @@ class PatientRequest extends FormRequest
             'medical_background.currentDiseases.*.firstRecorded' => ['nullable', 'date'],
             'medical_background.currentDiseases.*.lastConfirmed' => ['nullable', 'date'],
             'medical_background.currentDiseases.*.source' => ['nullable', 'string', 'max:100'],
+            // Server-resolved from the name by ClinicalRegistry on save
+            // (PatientController::normalizeProfileFields); any value sent here
+            // is accepted by validation but always discarded and recomputed.
+            'medical_background.currentDiseases.*.conditionKey' => ['nullable', 'string', 'max:64'],
             'medical_background.allergies' => ['nullable', 'string', 'max:1000'],
             'medical_background.hospitalizations' => ['nullable', 'string', 'max:1000'],
             'medical_background.surgeries' => ['nullable', 'string', 'max:1000'],
