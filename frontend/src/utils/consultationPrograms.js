@@ -3,6 +3,9 @@ export const PROGRAM_CLASSIFICATIONS = Object.freeze({
   TB: "TB DOTS / TB Monitoring",
   "Family Planning": "Family Planning",
   EPI: "Immunization",
+  // Started from a diagnosis' care-pathway suggestion (see carePathways.js)
+  // or from the Programs & Monitoring panel, like any other program.
+  NCD: "NCD Monitoring",
 });
 
 export function getConsultationPrograms(record = {}) {
@@ -22,7 +25,7 @@ export function toggleConsultationProgram(programs, primary, key) {
   const selectedPrograms = programs.includes(key) ? programs.filter((item) => item !== key) : [...programs, key];
   return { selectedPrograms, primaryProgram: selectedPrograms.includes(primary) ? primary : selectedPrograms[0] || "" };
 }
-
+
 /**
  * The classification to resume a saved draft with. A classification that no
  * longer belongs to any program (the removed Hypertension / Diabetic

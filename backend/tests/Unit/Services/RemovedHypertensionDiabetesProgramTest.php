@@ -14,7 +14,9 @@ class RemovedHypertensionDiabetesProgramTest extends TestCase
 {
     public function test_remaining_programs_and_services_are_exact(): void
     {
-        $this->assertSame(['Maternal', 'TB', 'Family Planning', 'EPI'], array_keys(ConsultationPrograms::CLASSIFICATIONS));
+        // NCD Monitoring is the redesigned successor (started from a diagnosis'
+        // care-pathway suggestion, data in ncdData); the old keys stay gone.
+        $this->assertSame(['Maternal', 'TB', 'Family Planning', 'EPI', 'NCD'], array_keys(ConsultationPrograms::CLASSIFICATIONS));
         $this->assertSame(['General', 'Prenatal', 'Postpartum', 'EPI', 'Family Planning', 'TB'], VisitPurpose::SERVICES);
         $this->assertNotContains('Hypertension / Diabetic Monitoring', HealthRecordDraftRequest::CLASSIFICATIONS);
     }

@@ -50,7 +50,8 @@ class HealthRecord extends Model
      */
     public const BODY_REGIONS = [
         'head', 'chest', 'abdomen', 'pelvis',
-        'right_arm', 'left_arm', 'right_leg', 'left_leg',
+        'right_arm', 'left_arm', 'right_hand', 'left_hand',
+        'right_leg', 'left_leg', 'right_foot', 'left_foot',
     ];
 
     protected $hidden = [

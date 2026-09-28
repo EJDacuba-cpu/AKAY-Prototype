@@ -55,7 +55,7 @@ class CurrentConditionsSyncTest extends TestCase
         $this->assertSame('Consultation', $asthma['source']);
     }
 
-    public function test_an_existing_condition_is_updated_not_duplicated(): void
+    public function test_an_existing_condition_is_linked_not_duplicated(): void
     {
         app(CurrentConditionsSync::class)->sync($this->patient, [
             ['name' => '  hypertension ', 'addToConditions' => true, 'conditionStatus' => 'Active'],
@@ -64,11 +64,24 @@ class CurrentConditionsSyncTest extends TestCase
         $conditions = $this->conditions();
         $this->assertCount(1, $conditions);
         $this->assertSame('Hypertension', $conditions[0]['name']);
-        $this->assertSame('Active', $conditions[0]['status']);
+        // The existing status (set on the Patient Profile) is left alone -
+        // only the linked visit's date moves it forward.
+        $this->assertSame('Controlled', $conditions[0]['status']);
         $this->assertSame('2026-01-10', $conditions[0]['firstRecorded']);
         $this->assertSame('2026-09-28', $conditions[0]['lastConfirmed']);
         // The rest of the background is untouched.
         $this->assertSame('None', $this->patient->fresh()->medical_background['allergies']);
+    }
+
+    public function test_the_same_diagnosis_twice_in_one_consultation_is_not_duplicated(): void
+    {
+        app(CurrentConditionsSync::class)->sync($this->patient, [
+            ['name' => 'Asthma', 'addToConditions' => true, 'conditionStatus' => 'Active'],
+            ['name' => ' asthma ', 'addToConditions' => true, 'conditionStatus' => 'Active'],
+        ], '2026-09-28');
+
+        $names = array_column($this->conditions(), 'name');
+        $this->assertSame(['Hypertension', 'Asthma'], $names);
     }
 
     public function test_an_unknown_status_falls_back_to_active(): void

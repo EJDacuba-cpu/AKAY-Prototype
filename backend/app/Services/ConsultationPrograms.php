@@ -11,12 +11,22 @@ class ConsultationPrograms
         'TB' => 'TB DOTS / TB Monitoring',
         'Family Planning' => 'Family Planning',
         'EPI' => 'Immunization',
+        // Offered by the consultation's care-pathway suggestion when an NCD
+        // diagnosis is recorded; the worker starts it, never the system.
+        'NCD' => 'NCD Monitoring',
     ];
+
+    /**
+     * Conditions NCD Monitoring covers - the frontend registry's structured
+     * diagnoses for the NCD pathway (utils/carePathways.js). Its data lives in
+     * monitoring_data.ncdData; vital signs stay in vital_signs.
+     */
+    public const NCD_CONDITIONS = ['Hypertension', 'Diabetes Mellitus'];
 
     public static function rules(string $prefix): array
     {
         return [
-            "$prefix.selectedPrograms" => ['sometimes', 'array', 'list', 'max:4'],
+            "$prefix.selectedPrograms" => ['sometimes', 'array', 'list', 'max:'.count(self::CLASSIFICATIONS)],
             "$prefix.selectedPrograms.*" => ['required', 'string', 'distinct', Rule::in(array_keys(self::CLASSIFICATIONS))],
             "$prefix.primaryProgram" => ['nullable', 'string', Rule::in(array_keys(self::CLASSIFICATIONS))],
         ];

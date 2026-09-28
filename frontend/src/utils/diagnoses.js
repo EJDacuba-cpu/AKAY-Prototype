@@ -1,23 +1,115 @@
 /**
  * Structured diagnoses typed on the consultation's Assessment step. Every
- * entry is written by the user - nothing is suggested or inferred - and only
+ * entry is chosen by the user - nothing is inferred - and only
  * entries with addToConditions go to the patient's Current Conditions, when
  * the consultation is saved (see CurrentConditionsSync on the backend).
  *
  * The record's plain-text `diagnosis` stays the copy every existing reader
  * uses (reports, referrals, follow-ups): it is the names joined with "; ".
  */
+import { findStructuredDiagnosis, getStructuredDiagnosisNames, normalizeNameKey } from "./carePathways.js";
+
+export { normalizeNameKey };
 
 /** Same statuses as the Patient Profile's Current Conditions editor. */
 export const CONDITION_STATUSES = ["Active", "Controlled", "Resolved"];
 
 export const DIAGNOSIS_LIMITS = { name: 150, count: 20, notes: 5000 };
 
+/**
+ * Structured suggestions offered while typing a diagnosis - the registry's
+ * structured diagnoses (carePathways.js), never a second list. Picking one is
+ * a shortcut for typing it; any other diagnosis (Asthma, UTI, ...) is typed
+ * and saved exactly as entered. No fuzzy matching, autocorrection or
+ * automatic inference is layered on top of this list.
+ */
+export const DIAGNOSIS_SUGGESTIONS = Object.freeze(getStructuredDiagnosisNames());
+
 export function createDiagnosisId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
   return `dx-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * The suggestions matching what has been typed so far - a plain
+ * case-insensitive "contains" filter, nothing fuzzy. An empty query returns
+ * every suggestion (the full list shown on focus).
+ */
+export function filterDiagnosisSuggestions(query) {
+  const key = normalizeNameKey(query);
+  if (!key) return DIAGNOSIS_SUGGESTIONS;
+  return DIAGNOSIS_SUGGESTIONS.filter((suggestion) => normalizeNameKey(suggestion).includes(key));
+}
+
+/**
+ * The patient's existing Current Condition with this exact name (ignoring
+ * case and extra spaces), if any - used only to tell the user it will be
+ * linked rather than duplicated. Never used to alter what they typed.
+ */
+export function findCurrentCondition(currentConditions, name) {
+  const key = normalizeNameKey(name);
+  if (!key || !Array.isArray(currentConditions)) return null;
+  return currentConditions.find((condition) => normalizeNameKey(condition?.name) === key) || null;
+}
+
+/**
+ * True when another diagnosis already in this consultation has the same name
+ * (ignoring case and extra spaces). excludeId lets an entry being edited skip
+ * comparing against itself.
+ */
+export function isDuplicateDiagnosisName(diagnoses, name, excludeId) {
+  const key = normalizeNameKey(name);
+  if (!key) return false;
+  return (diagnoses || []).some(
+    (entry) => entry.id !== excludeId && normalizeNameKey(entry.name) === key,
+  );
+}
+
+/**
+ * Why `name` cannot be added right now, or null when it can:
+ * "empty" | "duplicate" | "full".
+ */
+export function getAddDiagnosisError(diagnoses, name) {
+  if (!String(name || "").trim()) return "empty";
+  if (isDuplicateDiagnosisName(diagnoses, name)) return "duplicate";
+  if ((diagnoses || []).length >= DIAGNOSIS_LIMITS.count) return "full";
+  return null;
+}
+
+/**
+ * The list with `name` appended as a new diagnosis, or the list unchanged if
+ * it cannot be added. A structured diagnosis keeps its one spelling
+ * ("hypertension" -> "Hypertension"); anything else is kept exactly as typed.
+ * New entries are not Current Conditions until the worker marks them.
+ */
+export function addDiagnosis(diagnoses, name) {
+  const list = diagnoses || [];
+  if (getAddDiagnosisError(list, name)) return list;
+  const text = String(name).trim().slice(0, DIAGNOSIS_LIMITS.name);
+  return [
+    ...list,
+    {
+      id: createDiagnosisId(),
+      name: findStructuredDiagnosis(text)?.name || text,
+      addToConditions: false,
+      conditionStatus: null,
+    },
+  ];
+}
+
+/** Marks or unmarks one diagnosis as a Current Condition (always Active). */
+export function toggleDiagnosisCondition(diagnoses, id) {
+  return (diagnoses || []).map((entry) =>
+    entry.id === id
+      ? { ...entry, addToConditions: !entry.addToConditions, conditionStatus: entry.addToConditions ? null : "Active" }
+      : entry,
+  );
+}
+
+export function removeDiagnosis(diagnoses, id) {
+  return (diagnoses || []).filter((entry) => entry.id !== id);
 }
 
 /** Keeps only named entries, trimmed to the backend's limits. */

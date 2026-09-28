@@ -188,8 +188,9 @@ class ConsultationProgramsTest extends TestCase
     public function test_body_findings_save_to_their_own_column(): void
     {
         $findings = [
-            ['id' => 'f1', 'region' => 'head', 'finding' => 'Headache', 'note' => 'Frontal, 2 days'],
+            ['id' => 'f1', 'region' => 'head', 'location' => 'Forehead', 'finding' => 'Headache', 'note' => 'Frontal, 2 days'],
             ['id' => 'f2', 'region' => 'left_leg', 'finding' => 'Swelling', 'note' => null],
+            ['id' => 'f3', 'region' => 'left_hand', 'location' => 'Palm', 'finding' => 'Rash'],
         ];
 
         $id = $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
@@ -201,8 +202,11 @@ class ConsultationProgramsTest extends TestCase
 
         $this->getJson("/api/health-records/$id")->assertOk()
             ->assertJsonPath('data.body_findings.0.region', 'head')
+            ->assertJsonPath('data.body_findings.0.location', 'Forehead')
             ->assertJsonPath('data.body_findings.0.finding', 'Headache')
-            ->assertJsonPath('data.body_findings.1.region', 'left_leg');
+            ->assertJsonPath('data.body_findings.1.region', 'left_leg')
+            ->assertJsonPath('data.body_findings.2.region', 'left_hand')
+            ->assertJsonPath('data.body_findings.2.location', 'Palm');
     }
 
     public function test_body_findings_reject_unknown_regions_and_blank_findings(): void
@@ -214,9 +218,10 @@ class ConsultationProgramsTest extends TestCase
             'body_findings' => [
                 ['region' => 'tail', 'finding' => 'Pain'],
                 ['region' => 'chest', 'finding' => ''],
+                ['region' => 'chest', 'location' => str_repeat('x', 101), 'finding' => 'Pain'],
             ],
         ])->assertUnprocessable()
-            ->assertJsonValidationErrors(['body_findings.0.region', 'body_findings.1.finding']);
+            ->assertJsonValidationErrors(['body_findings.0.region', 'body_findings.1.finding', 'body_findings.2.location']);
     }
 
     public function test_body_findings_round_trip_through_a_draft(): void
@@ -225,13 +230,17 @@ class ConsultationProgramsTest extends TestCase
             'patient_id' => $this->patient->id, 'classification' => 'General Consultation',
             'payload' => [
                 'chiefComplaint' => 'Abdominal pain',
-                'bodyFindings' => [['id' => 'f1', 'region' => 'abdomen', 'finding' => 'Abdominal pain', 'note' => 'RLQ']],
+                'bodyFindings' => [[
+                    'id' => 'f1', 'region' => 'abdomen', 'location' => 'Right lower quadrant',
+                    'finding' => 'Abdominal pain', 'note' => 'RLQ',
+                ]],
                 'wizardPhase' => 'program',
             ],
         ])->assertCreated()->json('data.id');
 
         $this->getJson("/api/health-record-drafts/$draft")->assertOk()
             ->assertJsonPath('data.payload.bodyFindings.0.region', 'abdomen')
+            ->assertJsonPath('data.payload.bodyFindings.0.location', 'Right lower quadrant')
             ->assertJsonPath('data.payload.bodyFindings.0.note', 'RLQ');
     }
 

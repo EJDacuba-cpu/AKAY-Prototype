@@ -13,8 +13,10 @@ use Illuminate\Validation\ValidationException;
  *
  * Runs inside the health record's save transaction, so a consultation that
  * fails to save never touches the profile. A condition already on the list
- * (same name, ignoring case and outer spaces) is updated - status and last
- * confirmed date - instead of being added twice.
+ * (same name, ignoring case and outer spaces) is linked rather than added
+ * twice: only its last confirmed date moves to this visit - its existing
+ * status is left as the Patient Profile or a prior visit set it, since the
+ * consultation modal no longer offers a status choice for an existing match.
  */
 class CurrentConditionsSync
 {
@@ -78,7 +80,6 @@ class CurrentConditionsSync
             }
 
             if ($existing !== null) {
-                $conditions[$existing]['status'] = $status;
                 $conditions[$existing]['lastConfirmed'] = $date;
             } elseif (count($conditions) < self::MAX_CONDITIONS) {
                 $conditions[] = [

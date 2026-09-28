@@ -155,6 +155,13 @@ class HealthRecordRequest extends FormRequest
             'monitoring_data.patient_condition' => ['nullable', 'string', 'max:100'],
             'monitoring_data.attendingStaff' => ['nullable', 'string', 'max:150'],
             'monitoring_data.attending_staff' => ['nullable', 'string', 'max:150'],
+            // NCD Monitoring: only NCD-specific data, keyed by condition so
+            // another condition's fields can sit beside `diabetes` later.
+            'monitoring_data.ncdData' => ['nullable', 'array:conditions,diabetes'],
+            'monitoring_data.ncdData.conditions' => ['nullable', 'array', 'list', 'max:'.count(ConsultationPrograms::NCD_CONDITIONS)],
+            'monitoring_data.ncdData.conditions.*' => ['required', 'string', 'distinct', Rule::in(ConsultationPrograms::NCD_CONDITIONS)],
+            'monitoring_data.ncdData.diabetes' => ['nullable', 'array:fbs'],
+            'monitoring_data.ncdData.diabetes.fbs' => ['nullable', 'string', 'max:100'],
             'family_planning_data' => ['nullable', 'array'],
             'family_planning_data.clientType' => ['nullable', 'string', 'max:100'],
             'family_planning_data.client_type' => ['nullable', 'string', 'max:100'],
@@ -270,6 +277,7 @@ class HealthRecordRequest extends FormRequest
             'body_findings' => ['nullable', 'array', 'max:50'],
             'body_findings.*.id' => ['nullable', 'string', 'max:64'],
             'body_findings.*.region' => ['required', 'string', Rule::in(HealthRecord::BODY_REGIONS)],
+            'body_findings.*.location' => ['nullable', 'string', 'max:100'],
             'body_findings.*.finding' => ['required', 'string', 'max:150'],
             'body_findings.*.note' => ['nullable', 'string', 'max:500'],
             'diagnosis' => ['nullable', 'string'],

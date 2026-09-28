@@ -41,6 +41,7 @@ class HealthRecordDraftPayloadService
         'bodyFindings' => ['*' => [
             'id' => self::SCALAR,
             'region' => self::SCALAR,
+            'location' => self::SCALAR,
             'finding' => self::SCALAR,
             'note' => self::SCALAR,
         ]],
@@ -344,6 +345,14 @@ class HealthRecordDraftPayloadService
                 ]],
             ],
         ],
+        // NCD Monitoring's own fields (saved as monitoring_data.ncdData). No
+        // vitals: those are the draft's systolicBp/diastolicBp/... above.
+        'ncdData' => [
+            'conditions' => ['*' => self::SCALAR],
+            'diabetes' => [
+                'fbs' => self::SCALAR,
+            ],
+        ],
         'referralForm' => [
             'urgencyLevel' => self::SCALAR,
             'dateOfReferral' => self::SCALAR,
@@ -468,6 +477,7 @@ class HealthRecordDraftPayloadService
             'payload.bodyFindings' => ['nullable', 'array', 'max:50'],
             'payload.bodyFindings.*.id' => ['nullable', 'string', 'max:64'],
             'payload.bodyFindings.*.region' => ['required', 'string', Rule::in(HealthRecord::BODY_REGIONS)],
+            'payload.bodyFindings.*.location' => ['nullable', 'string', 'max:100'],
             'payload.bodyFindings.*.finding' => ['required', 'string', 'max:150'],
             'payload.bodyFindings.*.note' => ['nullable', 'string', 'max:500'],
             'payload.diagnoses' => ['nullable', 'array', 'max:20'],
