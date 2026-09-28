@@ -18,6 +18,7 @@ class EnforceActionPermissions
             str_contains($path, 'dispensed-medicines') => 'items.dispense',
             str_contains($path, '/health-record-drafts') => 'consultations.encode',
             str_contains($path, '/health-records') => $read ? 'clinical.history' : 'consultations.finalize',
+            str_contains($path, '/care-pathway-enrollments') => 'clinical.history',
             str_contains($path, '/patients') => $read ? 'patients.register' : 'patients.register',
             str_contains($path, '/medicines') => $read ? 'inventory.view' : 'inventory.manage',
             str_contains($path, '/rhu-providers') => $read ? 'inventory.view' : 'rhu.manage',

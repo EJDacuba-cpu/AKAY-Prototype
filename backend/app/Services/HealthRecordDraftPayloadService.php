@@ -353,6 +353,23 @@ class HealthRecordDraftPayloadService
                 'fbs' => self::SCALAR,
             ],
         ],
+        // Care Pathway activation staged on this consultation - see
+        // CarePathwayActivationService for what each key means. Coexists
+        // with ncdData above until the old NCD prototype form is retired.
+        'activeCarePathways' => ['*' => [
+            'pathway_key' => self::SCALAR,
+            'conditions' => ['*' => [
+                'condition_name' => self::SCALAR,
+                'field_set_key' => self::SCALAR,
+                'diagnosis_ref' => self::SCALAR,
+                'field_values' => ['*' => self::SCALAR],
+            ]],
+            'link_legacy_health_record_ids' => ['*' => self::SCALAR],
+            'status' => self::SCALAR,
+            'end_reason' => self::SCALAR,
+            'remove_condition_names' => ['*' => self::SCALAR],
+        ]],
+        'followUpForPathways' => ['*' => self::SCALAR],
         'referralForm' => [
             'urgencyLevel' => self::SCALAR,
             'dateOfReferral' => self::SCALAR,

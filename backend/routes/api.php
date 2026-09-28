@@ -43,6 +43,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         ->middleware('auth.session-request');
 
     Route::middleware('facility.assigned')->group(function () {
+    Route::get('/clinical-registry', [\App\Http\Controllers\Api\ClinicalRegistryController::class, 'index']);
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::get('/notifications/counts', [NotificationController::class, 'counts']);
     Route::get('/notifications/trash', [NotificationController::class, 'trashed']);
@@ -59,6 +60,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
     Route::middleware(['facility.assigned', 'actions.allowed'])->group(function () {
         Route::apiResource('patients', PatientController::class);
         Route::apiResource('health-records', HealthRecordController::class);
+        Route::get('patients/{patient}/care-pathway-enrollments', [\App\Http\Controllers\Api\CarePathwayEnrollmentController::class, 'index']);
         Route::get('health-records/{healthRecord}/corrections', [\App\Http\Controllers\Api\RecordCorrectionController::class, 'index']);
         Route::post('health-records/{healthRecord}/corrections', [\App\Http\Controllers\Api\RecordCorrectionController::class, 'store']);
         Route::get('health-records/{healthRecord}/tb-card-pdf', [HealthRecordController::class, 'tbCardPdf']);
