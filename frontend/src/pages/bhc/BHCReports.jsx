@@ -28,6 +28,8 @@ import {
   formatDisplayValue,
   formatPatientName,
 } from "../../utils/formatters";
+import { getSurveillanceTags, hasSurveillanceTag } from "../../utils/surveillance";
+import useClinicalRegistry from "../../hooks/useClinicalRegistry";
 import {
   ATTENTION_FILTER_ALL,
   ATTENTION_LEVELS,
@@ -266,10 +268,12 @@ export default function BHCReports() {
     [safeReferrals],
   );
 
+  const { registry: clinicalRegistry } = useClinicalRegistry();
   const reportFields = getReportFilterFields(
     selectedReport,
     barangayOptions,
     receivingFacilities,
+    clinicalRegistry.surveillance_diseases,
   );
   const activeFilters = createActiveFilterChips(filters, reportFields);
   const loading =
@@ -432,6 +436,7 @@ export default function BHCReports() {
               referrals={safeReferrals}
               followUps={safeFollowUps}
               patientMap={patientMap}
+              clinicalRegistry={clinicalRegistry}
             />
           </main>
         </div>
@@ -789,8 +794,9 @@ function MorbidityReportView({ records, filters, patientMap }) {
   );
 }
 
-function CommunitySurveillanceReportView({ records, filters, patientMap }) {
+function CommunitySurveillanceReportView({ records, filters, patientMap, clinicalRegistry }) {
   const selectedList = filters.surveillanceList || "hfmd";
+  const diseaseLabel = clinicalRegistry?.surveillance_diseases?.[selectedList]?.name || "Cases";
   const rows = records
     .filter((record) => isCommunitySurveillanceRecord(record, selectedList))
     .filter(
@@ -805,7 +811,7 @@ function CommunitySurveillanceReportView({ records, filters, patientMap }) {
   return (
     <>
       <SummaryGrid>
-        <SummaryCard label="HFMD Cases" value={rows.length} icon={<ClipboardList size={16} />} />
+        <SummaryCard label={`${diseaseLabel} Cases`} value={rows.length} icon={<ClipboardList size={16} />} />
         <SummaryCard
           label="Areas / Sitios"
           value={new Set(rows.map((row) => row.areaSitio).filter(Boolean)).size}
@@ -1325,7 +1331,7 @@ function HeaderAction({ icon, label, count, onClick }) {
   );
 }
 
-function getReportFilterFields(type, barangays, facilities) {
+function getReportFilterFields(type, barangays, facilities, surveillanceDiseases = {}) {
   const dateField = {
     key: "dateRange",
     label: type === "epi" ? "Registration Date Range" : "Date Range",
@@ -1418,9 +1424,10 @@ function getReportFilterFields(type, barangays, facilities) {
           label: "Surveillance List",
           type: "select",
           resetValue: "hfmd",
-          options: [
-            { value: "hfmd", label: "Hand, Foot, and Mouth Disease" },
-          ],
+          options: Object.entries(surveillanceDiseases).map(([key, disease]) => ({
+            value: key,
+            label: disease.name,
+          })),
         },
       ];
     case "followups":
@@ -1511,8 +1518,7 @@ function isMorbidityReportRecord(record = {}) {
 }
 
 function isCommunitySurveillanceRecord(record = {}, surveillanceList = "hfmd") {
-  if (surveillanceList !== "hfmd") return false;
-  return getHfmdSurveillance(record) || getSurveillanceCategory(record) === "hfmd";
+  return hasSurveillanceTag(getSurveillanceTags(record), surveillanceList);
 }
 
 function getMorbidityReportingStatus(record = {}) {
@@ -1554,53 +1560,9 @@ function getMorbidityReportingStatus(record = {}) {
   return notifiable ? "notifiable" : "morbidity";
 }
 
-function getSurveillanceCategory(record = {}) {
-  const monitoringData = record.monitoringData || record.monitoring_data || {};
-  return normalizeSurveillanceCategory(
-    firstFilledValue(
-      record.surveillanceCategory,
-      record.surveillance_category,
-      record.diseaseSurveillanceCategory,
-      record.disease_surveillance_category,
-      record.diseaseCategory,
-      record.disease_category,
-      monitoringData.surveillanceCategory,
-      monitoringData.surveillance_category,
-      monitoringData.diseaseSurveillanceCategory,
-      monitoringData.disease_surveillance_category,
-      monitoringData.diseaseCategory,
-      monitoringData.disease_category,
-    ),
-  );
-}
-
-function getHfmdSurveillance(record = {}) {
-  const monitoringData = record.monitoringData || record.monitoring_data || {};
-  const explicit = firstFilledValue(
-    record.hfmdSurveillance,
-    record.hfmd_surveillance,
-    monitoringData.hfmdSurveillance,
-    monitoringData.hfmd_surveillance,
-  );
-
-  if (explicit !== "") return toReportBoolean(explicit);
-  return getSurveillanceCategory(record) === "hfmd";
-}
-
-function normalizeSurveillanceCategory(value = "") {
-  const normalized = normalizeText(value);
-  if (!normalized) return "";
-  if (
-    normalized === "hfmd" ||
-    normalized.includes("hand, foot") ||
-    normalized.includes("hand foot") ||
-    normalized.includes("mouth disease")
-  ) {
-    return "hfmd";
-  }
-  if (normalized === "other") return "other";
-  return normalized;
-}
+// Surveillance tag reads go through utils/surveillance.js's shared
+// getSurveillanceTags - see healthRecordService.js for the same
+// consolidation note.
 
 function normalizeMorbidityStatus(value) {
   const normalized = normalizeText(value).replace(/\s+/g, "_");

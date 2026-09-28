@@ -99,6 +99,8 @@ import CarePathwaySuggestions from "../../components/features/health-records/wiz
 import NcdMonitoringForm from "../../components/features/health-records/wizard/NcdMonitoringForm";
 import { formatDiagnoses, joinDiagnosisNames, normalizeDiagnoses, restoreDiagnoses } from "../../utils/diagnoses";
 import { CARE_PATHWAYS } from "../../utils/carePathways";
+import { getSurveillanceTags, hasSurveillanceTag, matchSurveillanceDisease } from "../../utils/surveillance";
+import useClinicalRegistry from "../../hooks/useClinicalRegistry";
 import { EMPTY_NCD_DATA, buildNcdData, ncdReviewRows, normalizeNcdData } from "../../utils/ncdMonitoring";
 import {
   ConsultationActionBar,
@@ -321,54 +323,9 @@ function deriveMorbidityReportingStatus(source = {}, fallback = "not_included") 
   return notifiable ? "notifiable" : "morbidity";
 }
 
-function getSurveillanceCategoryValue(source = {}) {
-  const monitoringData = source.monitoringData || source.monitoring_data || {};
-  const value =
-    source.surveillanceCategory ||
-    source.surveillance_category ||
-    source.diseaseSurveillanceCategory ||
-    source.disease_surveillance_category ||
-    source.diseaseCategory ||
-    source.disease_category ||
-    monitoringData.surveillanceCategory ||
-    monitoringData.surveillance_category ||
-    monitoringData.diseaseSurveillanceCategory ||
-    monitoringData.disease_surveillance_category ||
-    monitoringData.diseaseCategory ||
-    monitoringData.disease_category ||
-    "";
-  return normalizeSurveillanceCategoryValue(value);
-}
-
-function getHfmdSurveillanceValue(source = {}) {
-  const monitoringData = source.monitoringData || source.monitoring_data || {};
-  const explicit =
-    source.hfmdSurveillance ??
-    source.hfmd_surveillance ??
-    monitoringData.hfmdSurveillance ??
-    monitoringData.hfmd_surveillance;
-
-  if (explicit !== undefined && explicit !== null && explicit !== "") {
-    return toBooleanYesNo(explicit);
-  }
-
-  return getSurveillanceCategoryValue(source) === "hfmd";
-}
-
-function normalizeSurveillanceCategoryValue(value = "") {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (!normalized) return "";
-  if (
-    normalized === "hfmd" ||
-    normalized.includes("hand, foot") ||
-    normalized.includes("hand foot") ||
-    normalized.includes("mouth disease")
-  ) {
-    return "hfmd";
-  }
-  if (normalized === "other") return "other";
-  return normalized;
-}
+// Surveillance tag reads go through utils/surveillance.js's shared
+// getSurveillanceTags - see healthRecordService.js for the same
+// consolidation note.
 
 function getMorbidityDecisionFlags(status) {
   const normalized = normalizeMorbidityReportingStatus(status);
@@ -976,7 +933,8 @@ export default function ConsultationWorkspace() {
   const [morbidityReportingStatus, setMorbidityReportingStatus] = useState(
     getDefaultMorbidityReportingStatus(preselectedClassification),
   );
-  const [hfmdSurveillance, setHfmdSurveillance] = useState(false);
+  const [surveillanceTags, setSurveillanceTags] = useState([]);
+  const { registry: clinicalRegistry } = useClinicalRegistry();
 
   const [systolicBp, setSystolicBp] = useState("");
   const [diastolicBp, setDiastolicBp] = useState("");
@@ -1302,7 +1260,7 @@ export default function ConsultationWorkspace() {
           ),
         ),
       );
-      setHfmdSurveillance(getHfmdSurveillanceValue(found));
+      setSurveillanceTags(getSurveillanceTags(found));
       setSystolicBp(found.systolicBp || "");
       setDiastolicBp(found.diastolicBp || "");
       setTemp(found.temperature || found.temp || "");
@@ -1701,7 +1659,7 @@ export default function ConsultationWorkspace() {
       monitoringNotes,
       patientCondition,
       morbidityReportingStatus,
-      hfmdSurveillance,
+      surveillanceTags,
       needsReferral,
       careDecisionStep,
       expectedDeliveryDate,
@@ -1908,7 +1866,7 @@ export default function ConsultationWorkspace() {
     setMonitoringNotes(payload.monitoringNotes || "");
     setPatientCondition(payload.patientCondition || "Improving");
     setMorbidityReportingStatus(payload.morbidityReportingStatus || "not_included");
-    setHfmdSurveillance(Boolean(payload.hfmdSurveillance));
+    setSurveillanceTags(getSurveillanceTags(payload, payload));
     setNeedsReferral(Boolean(payload.needsReferral));
     setCareDecisionStep(Boolean(payload.careDecisionStep));
     setExpectedDeliveryDate(payload.expectedDeliveryDate || "");
@@ -3440,7 +3398,8 @@ export default function ConsultationWorkspace() {
     const morbidityDecision = getMorbidityDecisionFlags(
       morbidityReportingStatus,
     );
-    const finalHfmdSurveillance = Boolean(hfmdSurveillance);
+    const finalSurveillanceTags = Array.isArray(surveillanceTags) ? surveillanceTags : [];
+    const finalHfmdSurveillance = hasSurveillanceTag(finalSurveillanceTags, "hfmd");
     const finalSurveillanceCategory = finalHfmdSurveillance ? "hfmd" : null;
 
     const formData = {
@@ -3496,6 +3455,7 @@ export default function ConsultationWorkspace() {
       morbidityReportingStatus,
       includeInMorbidityReport: morbidityDecision.includeInMorbidityReport,
       isNotifiableDisease: morbidityDecision.isNotifiableDisease,
+      surveillanceTags: finalSurveillanceTags,
       surveillanceCategory: finalSurveillanceCategory,
       surveillance_category: finalSurveillanceCategory,
       diseaseSurveillanceCategory: finalSurveillanceCategory,
@@ -4185,18 +4145,45 @@ export default function ConsultationWorkspace() {
   // Checking the box reveals Record Type further down the screen - easy to
   // miss below the fold. The handler flags that a reveal just happened; the
   // effect below scrolls it into view once the DOM has it, without firing on
-  // unrelated re-renders or on a draft that loads with it already set.
+  // unrelated re-renders or on a draft that loads with it already set. The
+  // same mechanism reveals the surveillance checklist when a diagnosis
+  // suggests one (see the Assessment step's surveillance suggestion prompt).
   const recordTypeFieldRef = useRef(null);
+  const surveillanceFieldRef = useRef(null);
   const pendingRevealScrollRef = useRef(null);
   function handleIncludeInReportingChange(checked) {
     setMorbidityReportingStatus(checked ? "morbidity" : "not_included");
     if (checked) pendingRevealScrollRef.current = "recordType";
   }
   useEffect(() => {
-    if (pendingRevealScrollRef.current !== "recordType") return;
-    pendingRevealScrollRef.current = null;
-    recordTypeFieldRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    if (pendingRevealScrollRef.current === "recordType") {
+      pendingRevealScrollRef.current = null;
+      recordTypeFieldRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } else if (pendingRevealScrollRef.current === "surveillance") {
+      pendingRevealScrollRef.current = null;
+      surveillanceFieldRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
   });
+  // The worker must explicitly confirm a diagnosis-suggested surveillance
+  // tag (never auto-ticked) - see the suggestion prompt under Diagnosis.
+  function handleAddSurveillanceTag(key) {
+    setSurveillanceTags((current) => (hasSurveillanceTag(current, key) ? current : [...current, key]));
+    pendingRevealScrollRef.current = "surveillance";
+  }
+  // Diagnoses that match a registry surveillance disease and are not already
+  // ticked - a suggestion only, per the spec's "never auto-tag" decision.
+  const surveillanceDiagnosisSuggestions = useMemo(() => {
+    const suggestions = [];
+    const seen = new Set();
+    for (const entry of diagnoses) {
+      const match = matchSurveillanceDisease(entry?.name, clinicalRegistry.surveillance_diseases);
+      if (match && !seen.has(match.key) && !hasSurveillanceTag(surveillanceTags, match.key)) {
+        seen.add(match.key);
+        suggestions.push(match);
+      }
+    }
+    return suggestions;
+  }, [diagnoses, clinicalRegistry.surveillance_diseases, surveillanceTags]);
   const reportingDecisions = (
     <div
       className="anim-fade-up border-t border-[#E5E7EB] pt-5 pb-1"
@@ -4242,23 +4229,42 @@ export default function ConsultationWorkspace() {
               )}
             </div>
 
-            <div data-field="hfmdSurveillance">
-              <label className="flex cursor-pointer items-start gap-2.5 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  checked={hfmdSurveillance}
-                  onChange={(event) => setHfmdSurveillance(event.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded-none border-[#D1D5DB] accent-[#DC2626]"
-                />
-                <span className={hfmdSurveillance ? "font-semibold text-[#DC2626]" : "text-gray-600"}>
-                  Include in HFMD Community-Based Surveillance
-                </span>
-              </label>
-              <p className="mt-1 pl-6 text-xs leading-relaxed text-[#6B7280]">
-                Hand, Foot and Mouth Disease cases are tracked in the separate
-                Community-Based Surveillance record; this visit can be included
-                there regardless of its Morbidity / Notifiable Disease status.
+            <div data-field="surveillanceTags" ref={surveillanceFieldRef}>
+              <p className="text-sm font-medium text-gray-600">
+                Include in Community-Based Surveillance:
               </p>
+              <p className="mt-1 text-xs leading-relaxed text-[#6B7280]">
+                Tracked in the separate Community-Based Surveillance record;
+                this visit can be included there regardless of its Morbidity /
+                Notifiable Disease status. A visit may belong to more than one.
+              </p>
+              <div className="mt-2.5 space-y-2">
+                {Object.entries(clinicalRegistry.surveillance_diseases || {}).map(([key, disease]) => {
+                  const checked = hasSurveillanceTag(surveillanceTags, key);
+                  return (
+                    <label key={key} className="flex cursor-pointer items-start gap-2.5 text-sm font-medium">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(event) =>
+                          setSurveillanceTags((current) =>
+                            event.target.checked
+                              ? (hasSurveillanceTag(current, key) ? current : [...current, key])
+                              : current.filter((tag) => tag !== key),
+                          )
+                        }
+                        className="mt-0.5 h-4 w-4 shrink-0 rounded-none border-[#D1D5DB] accent-[#DC2626]"
+                      />
+                      <span className={checked ? "font-semibold text-[#DC2626]" : "text-gray-600"}>
+                        {disease.name}
+                      </span>
+                    </label>
+                  );
+                })}
+                {Object.keys(clinicalRegistry.surveillance_diseases || {}).length === 0 && (
+                  <p className="text-xs text-gray-400">No surveillance diseases are configured.</p>
+                )}
+              </div>
             </div>
           </div>
         </LockedFormContent>
@@ -5555,6 +5561,27 @@ export default function ConsultationWorkspace() {
                     error={validationErrors.diagnosis}
                   />
                 </div>
+                {surveillanceDiagnosisSuggestions.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    {surveillanceDiagnosisSuggestions.map((match) => (
+                      <p
+                        key={match.key}
+                        className="flex flex-wrap items-center gap-2 border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-[#111827]"
+                      >
+                        <span>
+                          <span className="font-semibold">{match.name}</span> matches a surveillance workflow.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleAddSurveillanceTag(match.key)}
+                          className="ml-auto h-6 flex-none bg-[#DC2626] px-2 text-[11px] font-semibold text-white hover:bg-red-700"
+                        >
+                          Add to Surveillance
+                        </button>
+                      </p>
+                    ))}
+                  </div>
+                )}
                 <CarePathwaySuggestions
                   diagnoses={diagnoses}
                   selectedPrograms={selectedPrograms}

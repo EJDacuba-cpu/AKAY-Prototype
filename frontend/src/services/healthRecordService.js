@@ -11,6 +11,7 @@ import { API_BASE_URL } from "../config/environment";
 import { normalizePatient } from "./patientService";
 import { createIdempotencyKey } from "../utils/idempotency";
 import { normalizeAttention } from "../utils/referralAttention";
+import { getSurveillanceTags } from "../utils/surveillance";
 
 /**
  * Download the DS-TB Treatment Card (DOH Form 4b) PDF for a health record.
@@ -98,24 +99,10 @@ function deriveMorbidityReportingStatus(record = {}, monitoringData = {}) {
   return notifiable ? "notifiable" : "morbidity";
 }
 
-function getSurveillanceCategory(record = {}, monitoringData = {}) {
-  return normalizeSurveillanceCategory(
-    firstPresent([
-    record.surveillanceCategory,
-    record.surveillance_category,
-    record.diseaseSurveillanceCategory,
-    record.disease_surveillance_category,
-    record.diseaseCategory,
-    record.disease_category,
-    monitoringData.surveillanceCategory,
-    monitoringData.surveillance_category,
-    monitoringData.diseaseSurveillanceCategory,
-    monitoringData.disease_surveillance_category,
-    monitoringData.diseaseCategory,
-    monitoringData.disease_category,
-    ]),
-  );
-}
+// Surveillance tag/category reads now go through utils/surveillance.js's
+// shared getSurveillanceTags - the single reader ConsultationWorkspace,
+// this file, and BHCReports all use, replacing what used to be three
+// separate copies of this same legacy-fallback logic.
 
 function getOtherSurveillanceCategory(record = {}, monitoringData = {}) {
   return firstPresent([
@@ -128,33 +115,6 @@ function getOtherSurveillanceCategory(record = {}, monitoringData = {}) {
     monitoringData.otherDiseaseCondition,
     monitoringData.other_disease_condition,
   ]);
-}
-
-function getHfmdSurveillance(record = {}, monitoringData = {}) {
-  const explicit = firstPresent([
-    record.hfmdSurveillance,
-    record.hfmd_surveillance,
-    monitoringData.hfmdSurveillance,
-    monitoringData.hfmd_surveillance,
-  ]);
-
-  if (explicit !== "") return toBoolean(explicit);
-  return getSurveillanceCategory(record, monitoringData) === "hfmd";
-}
-
-function normalizeSurveillanceCategory(value = "") {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (!normalized) return "";
-  if (
-    normalized === "hfmd" ||
-    normalized.includes("hand, foot") ||
-    normalized.includes("hand foot") ||
-    normalized.includes("mouth disease")
-  ) {
-    return "hfmd";
-  }
-  if (normalized === "other") return "other";
-  return normalized;
 }
 
 function normalizeSupplementsGiven(record = {}, maternalData = {}) {
@@ -298,8 +258,9 @@ function normalizeRecord(record = {}) {
     record,
     monitoringData,
   );
+  const surveillanceTags = getSurveillanceTags(record, monitoringData);
   const surveillanceCategory =
-    getHfmdSurveillance(record, monitoringData) ? "hfmd" : "";
+    surveillanceTags.includes("hfmd") ? "hfmd" : "";
   const hfmdSurveillance = surveillanceCategory === "hfmd";
   const otherSurveillanceCategory =
     surveillanceCategory === "other"
@@ -467,6 +428,7 @@ function normalizeRecord(record = {}) {
     include_in_morbidity_report: morbidityReportingStatus !== "not_included",
     isNotifiableDisease: morbidityReportingStatus === "notifiable",
     is_notifiable_disease: morbidityReportingStatus === "notifiable",
+    surveillanceTags,
     surveillanceCategory,
     surveillance_category: surveillanceCategory,
     diseaseSurveillanceCategory: surveillanceCategory,
@@ -592,8 +554,9 @@ function toPayload(record = {}, { partial = false } = {}) {
       ...(record.monitoringData || record.monitoring_data || {}),
     });
   const sourceMonitoringData = record.monitoringData || record.monitoring_data || {};
+  const surveillanceTags = getSurveillanceTags(record, sourceMonitoringData);
   const surveillanceCategory =
-    getHfmdSurveillance(record, sourceMonitoringData) ? "hfmd" : null;
+    surveillanceTags.includes("hfmd") ? "hfmd" : null;
   const hfmdSurveillance = surveillanceCategory === "hfmd";
   const otherSurveillanceCategory =
     surveillanceCategory === "other"
@@ -658,6 +621,7 @@ function toPayload(record = {}, { partial = false } = {}) {
     include_in_morbidity_report: morbidityReportingStatus !== "not_included",
     isNotifiableDisease: morbidityReportingStatus === "notifiable",
     is_notifiable_disease: morbidityReportingStatus === "notifiable",
+    surveillanceTags,
     surveillanceCategory,
     surveillance_category: surveillanceCategory,
     diseaseSurveillanceCategory: surveillanceCategory,
@@ -1057,6 +1021,7 @@ function toPayload(record = {}, { partial = false } = {}) {
       "include_in_morbidity_report",
       "isNotifiableDisease",
       "is_notifiable_disease",
+      "surveillanceTags",
       "surveillanceCategory",
       "surveillance_category",
       "diseaseSurveillanceCategory",
