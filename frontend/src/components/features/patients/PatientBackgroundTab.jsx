@@ -3,6 +3,8 @@ import { Plus, X } from "lucide-react";
 
 import { formatLongDate } from "../../../utils/formatters";
 import { EMPTY_MEDICAL_BACKGROUND } from "../../../services/patientService";
+import { groupCurrentDiseases } from "../../../utils/currentConditions";
+import useClinicalRegistry from "../../../hooks/useClinicalRegistry";
 import {
   ProfileSection,
   SectionEditActions,
@@ -158,6 +160,133 @@ function BackgroundUpdateLog({ config, lastUpdated }) {
   );
 }
 
+function GroupHeading({ children }) {
+  return (
+    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 in-[.bhc-patient-profile]:text-[11px] in-[.bhc-patient-profile]:font-semibold in-[.bhc-patient-profile]:text-gray-500">
+      {children}
+    </p>
+  );
+}
+
+/**
+ * The two Current Conditions groups, per
+ * docs/superpowers/specs/2026-09-29-diagnosis-monitoring-surveillance-registry-design.md:
+ * Monitored Conditions (registry-recognized, shows its pathway + enrollment
+ * status) and Other Conditions (free-text). Condition presence and
+ * enrollment are shown together but stay separate facts - this component
+ * never starts or edits an enrollment.
+ */
+function DiseaseGroupView({ title, diseases, emptyText, flat, monitored = false }) {
+  return (
+    <div>
+      <GroupHeading>{title}</GroupHeading>
+      <div className={`mt-1 flex flex-wrap gap-1.5 ${flat ? "" : "sm:justify-end"}`}>
+        {diseases.length ? (
+          diseases.map((disease) => (
+            <span
+              key={`${disease.conditionKey || disease.name}-${disease.index}`}
+              className={
+                flat
+                  ? "inline-flex items-center gap-1.5 rounded-none border border-gray-200 px-2 py-0.5 text-xs text-gray-800"
+                  : "inline-flex items-center gap-1.5 rounded-sm bg-red-50 px-2.5 py-1 text-[11.5px] font-semibold text-red-600 in-[.bhc-patient-profile]:px-3"
+              }
+            >
+              <span>
+                {disease.name}
+                {disease.status ? ` · ${disease.status}` : ""}
+              </span>
+              {monitored && disease.pathwayLabel && (
+                <span className="rounded-none border border-red-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-gray-500">
+                  {disease.pathwayLabel} · {disease.enrollmentStatus}
+                </span>
+              )}
+            </span>
+          ))
+        ) : (
+          <span className="text-[12.5px] text-gray-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:text-gray-500">
+            {emptyText}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DiseaseGroupEdit({ title, diseases, emptyText, flat, compact, onUpdate, onRemove, monitored = false }) {
+  return (
+    <div>
+      <GroupHeading>{title}</GroupHeading>
+      <div className="mt-1.5 space-y-2">
+        {diseases.length === 0 && <p className="text-[12px] text-gray-400">{emptyText}</p>}
+        {diseases.map((disease) => (
+          <div
+            key={`${disease.conditionKey || disease.name}-${disease.index}`}
+            className={
+              flat
+                ? "rounded-none border border-gray-200 p-3 text-left"
+                : "rounded-none border border-gray-200 p-3 text-left in-[.bhc-patient-profile]:rounded-none in-[.bhc-patient-profile]:border-gray-100 in-[.bhc-patient-profile]:bg-white"
+            }
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[12.5px] font-bold text-gray-900 in-[.bhc-patient-profile]:font-semibold in-[.bhc-patient-profile]:text-gray-900">
+                {disease.name}
+                {monitored && disease.pathwayLabel && (
+                  <span className="ml-2 rounded-none border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                    {disease.pathwayLabel} · {disease.enrollmentStatus}
+                  </span>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => onRemove(disease.index)}
+                aria-label={`Remove ${disease.name}`}
+                className="text-gray-400 transition hover:text-red-600 in-[.bhc-patient-profile]:text-gray-500"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className={`mt-2 grid gap-2 ${compact ? "" : "sm:grid-cols-3"}`}>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:text-gray-500">
+                Status
+                <select
+                  value={disease.status || ""}
+                  onChange={(event) => onUpdate(disease.index, "status", event.target.value)}
+                  className="mt-1 w-full rounded-none border border-gray-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-gray-700 outline-none focus:border-red-600"
+                >
+                  <option value="">Select...</option>
+                  {DISEASE_STATUS_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:text-gray-500">
+                First Recorded
+                <input
+                  type="date"
+                  value={disease.firstRecorded || ""}
+                  onChange={(event) => onUpdate(disease.index, "firstRecorded", event.target.value)}
+                  className="mt-1 w-full rounded-none border border-gray-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-gray-700 outline-none focus:border-red-600"
+                />
+              </label>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:text-gray-500">
+                Last Confirmed
+                <input
+                  type="date"
+                  value={disease.lastConfirmed || ""}
+                  onChange={(event) => onUpdate(disease.index, "lastConfirmed", event.target.value)}
+                  className="mt-1 w-full rounded-none border border-gray-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-gray-700 outline-none focus:border-red-600"
+                />
+              </label>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function PatientBackgroundTab({
   section,
   background,
@@ -284,6 +413,10 @@ export default function PatientBackgroundTab({
 
   const fields = TEXT_FIELDS[section] || [];
   const diseases = draft.currentDiseases;
+  const { registry } = useClinicalRegistry();
+  // Enrollment status is a placeholder ("Not started" for everything) until
+  // Care Pathway enrollment data is wired in - see groupCurrentDiseases.
+  const { monitored: monitoredDiseases, other: otherDiseases } = groupCurrentDiseases(diseases, registry);
   const lastUpdated = background?.updatedAt?.[section] || "";
 
   const rowsContent = (
@@ -291,94 +424,42 @@ export default function PatientBackgroundTab({
       {section === "medical" && (
         <Row label="Current Diseases" compact={compact} flat={flat}>
           {!isEditing ? (
-            <div className={`flex flex-wrap gap-1.5 ${flat ? "" : "sm:justify-end"}`}>
-              {diseases.length ? (
-                diseases.map((disease, index) => (
-                  <span
-                    key={`${disease.name}-${index}`}
-                    className={flat ? "rounded-none border border-gray-200 px-2 py-0.5 text-xs text-gray-800" : "rounded-sm bg-red-50 px-2.5 py-1 text-[11.5px] font-semibold text-red-600 in-[.bhc-patient-profile]:px-3"}
-                  >
-                    {disease.name}
-                    {disease.status ? ` · ${disease.status}` : ""}
-                  </span>
-                ))
-              ) : (
-                <span className="text-[12.5px] text-gray-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:text-gray-500">
-                  Not yet recorded
-                </span>
-              )}
+            <div className="space-y-3">
+              <DiseaseGroupView
+                title="Monitored Conditions"
+                diseases={monitoredDiseases}
+                emptyText="None recorded"
+                flat={flat}
+                monitored
+              />
+              <DiseaseGroupView
+                title="Other Conditions"
+                diseases={otherDiseases}
+                emptyText="Not yet recorded"
+                flat={flat}
+              />
             </div>
           ) : (
-            <div className="space-y-2 sm:text-left">
-              {diseases.map((disease, index) => (
-                <div
-                  key={`${disease.name}-${index}`}
-                  className={flat ? "rounded-none border border-gray-200 p-3 text-left" : "rounded-none border border-gray-200 p-3 text-left in-[.bhc-patient-profile]:rounded-none in-[.bhc-patient-profile]:border-gray-100 in-[.bhc-patient-profile]:bg-white"}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-[12.5px] font-bold text-gray-900 in-[.bhc-patient-profile]:font-semibold in-[.bhc-patient-profile]:text-gray-900">
-                      {disease.name}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeDisease(index)}
-                      aria-label={`Remove ${disease.name}`}
-                      className="text-gray-400 transition hover:text-red-600 in-[.bhc-patient-profile]:text-gray-500"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                  <div className={`mt-2 grid gap-2 ${compact ? "" : "sm:grid-cols-3"}`}>
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:text-gray-500">
-                      Status
-                      <select
-                        value={disease.status || ""}
-                        onChange={(event) =>
-                          updateDisease(index, "status", event.target.value)
-                        }
-                        className="mt-1 w-full rounded-none border border-gray-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-gray-700 outline-none focus:border-red-600"
-                      >
-                        <option value="">Select...</option>
-                        {DISEASE_STATUS_OPTIONS.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:text-gray-500">
-                      First Recorded
-                      <input
-                        type="date"
-                        value={disease.firstRecorded || ""}
-                        onChange={(event) =>
-                          updateDisease(
-                            index,
-                            "firstRecorded",
-                            event.target.value,
-                          )
-                        }
-                        className="mt-1 w-full rounded-none border border-gray-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-gray-700 outline-none focus:border-red-600"
-                      />
-                    </label>
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:text-gray-500">
-                      Last Confirmed
-                      <input
-                        type="date"
-                        value={disease.lastConfirmed || ""}
-                        onChange={(event) =>
-                          updateDisease(
-                            index,
-                            "lastConfirmed",
-                            event.target.value,
-                          )
-                        }
-                        className="mt-1 w-full rounded-none border border-gray-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-gray-700 outline-none focus:border-red-600"
-                      />
-                    </label>
-                  </div>
-                </div>
-              ))}
+            <div className="space-y-4 sm:text-left">
+              <DiseaseGroupEdit
+                title="Monitored Conditions"
+                diseases={monitoredDiseases}
+                emptyText="None recorded - added automatically from a matching diagnosis."
+                flat={flat}
+                compact={compact}
+                onUpdate={updateDisease}
+                onRemove={removeDisease}
+                monitored
+              />
+              <DiseaseGroupEdit
+                title="Other Conditions"
+                diseases={otherDiseases}
+                emptyText="None recorded."
+                flat={flat}
+                compact={compact}
+                onUpdate={updateDisease}
+                onRemove={removeDisease}
+              />
 
               <div className="flex gap-2">
                 <input
@@ -403,6 +484,10 @@ export default function PatientBackgroundTab({
                   Add
                 </button>
               </div>
+              <p className="text-[11px] text-gray-400">
+                A name matching a monitored condition (e.g. &ldquo;HTN&rdquo;, &ldquo;PTB&rdquo;) is recognized and
+                filed under Monitored Conditions once saved.
+              </p>
             </div>
           )}
         </Row>
