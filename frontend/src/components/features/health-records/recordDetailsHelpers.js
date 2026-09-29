@@ -310,57 +310,7 @@ export function getNestedRecordValue(record = {}, directKeys = [], nestedKeys = 
   return "";
 }
 
-export function normalizeMorbidityReportingStatus(value = "") {
-  const normalized = String(value || "").trim().toLowerCase();
-  return ["not_included", "morbidity", "notifiable"].includes(normalized)
-    ? normalized
-    : "";
-}
-
-export function getMorbidityReportingStatus(record = {}) {
-  const explicitStatus = normalizeMorbidityReportingStatus(
-    getNestedRecordValue(
-      record,
-      ["morbidityReportingStatus", "morbidity_reporting_status"],
-      ["monitoringData", "monitoring_data"],
-    ),
-  );
-  if (explicitStatus) return explicitStatus;
-
-  const included = String(
-    getNestedRecordValue(
-      record,
-      ["includeInMorbidityReport", "include_in_morbidity_report"],
-      ["monitoringData", "monitoring_data"],
-    ),
-  ).toLowerCase();
-  const notifiable = String(
-    getNestedRecordValue(
-      record,
-      ["isNotifiableDisease", "is_notifiable_disease"],
-      ["monitoringData", "monitoring_data"],
-    ),
-  ).toLowerCase();
-
-  if (included === "true" || included === "yes") {
-    return notifiable === "true" || notifiable === "yes"
-      ? "notifiable"
-      : "morbidity";
-  }
-
-  return "not_included";
-}
-
-export function formatMorbidityReportingStatus(status = "") {
-  switch (normalizeMorbidityReportingStatus(status)) {
-    case "morbidity":
-      return "Include in Morbidity Log";
-    case "notifiable":
-      return "Mark as Notifiable Disease";
-    default:
-      return "Not included";
-  }
-}
+// Morbidity / notifiable reads live in utils/diagnosisReporting.js.
 
 export function getSurveillanceCategoryValue(record = {}) {
   const raw = getNestedRecordValue(

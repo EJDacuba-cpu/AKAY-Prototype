@@ -1,5 +1,6 @@
 import { queryClient } from "../lib/queryClient";
 import { API_BASE_URL } from "../config/environment";
+import { fetchWithTimeout } from "./requestTimeout";
 import {
   clearSensitiveSessionState,
   isForcedSessionInvalidation,
@@ -135,6 +136,15 @@ function createOfflineError() {
   return error;
 }
 
+function createTimeoutError() {
+  const error = new Error(
+    "The server took too long to respond. Please check the API connection and try again.",
+  );
+  error.code = "TIMEOUT";
+  error.isTimeout = true;
+  return error;
+}
+
 async function sendRequest(endpoint, options = {}) {
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
     throw createOfflineError();
@@ -157,31 +167,23 @@ async function sendRequest(endpoint, options = {}) {
     if (authenticatedUser?.working_facility_key) headers["X-Working-Facility"] = authenticatedUser.working_facility_key;
   }
 
-  const controller = new AbortController();
-  let timeoutId;
-  const timeoutError = new Error(
-    "The server took too long to respond. Please check the API connection and try again.",
-  );
-  timeoutError.code = "TIMEOUT";
-  timeoutError.isTimeout = true;
-  const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = window.setTimeout(() => {
-      controller.abort();
-      reject(timeoutError);
-    }, REQUEST_TIMEOUT_MS);
-  });
-  const requestPromise = fetch(url, {
-    ...options,
-    headers,
-    cache: options.cache || "no-store",
-    credentials: options.credentials || "omit",
-    signal: options.signal || controller.signal,
-    body:
-      options.body && !(options.body instanceof FormData)
-        ? JSON.stringify(options.body)
-        : options.body,
-  }).catch((error) => {
-    if (error.name === "AbortError") throw timeoutError;
+  const response = await fetchWithTimeout(
+    (signal) =>
+      fetch(url, {
+        ...options,
+        headers,
+        cache: options.cache || "no-store",
+        credentials: options.credentials || "omit",
+        signal,
+        body:
+          options.body && !(options.body instanceof FormData)
+            ? JSON.stringify(options.body)
+            : options.body,
+      }),
+    { signal: options.signal, timeoutMs: REQUEST_TIMEOUT_MS, createTimeoutError },
+  ).catch((error) => {
+    // Timeouts and the caller's own cancellations pass through untouched.
+    if (error.isTimeout || options.signal?.aborted) throw error;
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       throw createOfflineError();
     }
@@ -189,9 +191,6 @@ async function sendRequest(endpoint, options = {}) {
     error.code ||= "NETWORK_ERROR";
     error.isNetworkError = true;
     throw error;
-  });
-  const response = await Promise.race([requestPromise, timeoutPromise]).finally(() => {
-    window.clearTimeout(timeoutId);
   });
 
   if (response.status === 204) return null;

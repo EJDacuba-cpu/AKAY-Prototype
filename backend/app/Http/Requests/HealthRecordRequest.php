@@ -310,6 +310,9 @@ class HealthRecordRequest extends FormRequest
             // (HealthRecordController::store); any value sent here is accepted
             // by validation but always discarded and recomputed, never trusted.
             'diagnoses.*.conditionKey' => ['nullable', 'string', 'max:64'],
+            // Which report this diagnosis is included in; null = not reported.
+            // Drives the derived monitoring_data.morbidityReportingStatus.
+            'diagnoses.*.reportAs' => ['nullable', 'string', Rule::in(HealthRecord::DIAGNOSIS_REPORT_TYPES)],
             'assessment_notes' => ['nullable', 'string', 'max:5000'],
             'treatment_notes' => ['nullable', 'string'],
             'medical_history' => ['nullable', 'string'],

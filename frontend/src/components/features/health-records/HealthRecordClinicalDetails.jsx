@@ -17,6 +17,7 @@ import { RecordTabs } from "../../common";
 import PatientDetailItem from "../patients/PatientDetailItem";
 import { formatDisplayValue, formatLongDate } from "../../../utils/formatters";
 import { FollowUpEpisodeContent } from "./FollowUpEpisodePanel";
+import { formatRecordReporting, getMorbidityReportingStatus } from "../../../utils/diagnosisReporting";
 import {
   getServiceTypeLabel,
   isMaternalRecord as isMaternalProgramRecord,
@@ -32,8 +33,6 @@ import {
   getFamilyPlanningDetails,
   normalizeHealthRecordStatus,
   getRecordValue,
-  getMorbidityReportingStatus,
-  formatMorbidityReportingStatus,
   getHfmdSurveillance,
   getMaternalData,
   getDispensedMedicines,
@@ -152,6 +151,7 @@ export default function HealthRecordClinicalDetails({
     isGeneralConsultationRecord ||
     morbidityReportingStatus === "morbidity" ||
     morbidityReportingStatus === "notifiable";
+  const reportingSummary = formatRecordReporting(record);
   const hfmdSurveillance = getHfmdSurveillance(record);
   const generalVitalItems = getVitalSignItems(record);
   const linkedReferralTarget =
@@ -219,7 +219,7 @@ export default function HealthRecordClinicalDetails({
         treatmentNotes={treatmentNotesValue}
         medicalNotes={medicalNotesValue}
         shouldShowReporting={shouldShowMorbidityReporting}
-        morbidityReportingStatus={morbidityReportingStatus}
+        reportingSummary={reportingSummary}
         hfmdSurveillance={hfmdSurveillance}
         dispensedMedicines={dispensedMedicines}
         needsReferral={needsRhuReferral}
@@ -243,7 +243,7 @@ export default function HealthRecordClinicalDetails({
       treatmentNotesValue={treatmentNotesValue}
       medicalNotesValue={medicalNotesValue}
       shouldShowMorbidityReporting={shouldShowMorbidityReporting}
-      morbidityReportingStatus={morbidityReportingStatus}
+      reportingSummary={reportingSummary}
       isGeneralConsultationRecord={isGeneralConsultationRecord}
       hfmdSurveillance={hfmdSurveillance}
       dispensedMedicines={dispensedMedicines}
@@ -377,7 +377,7 @@ function GenericRecordDetails({
   treatmentNotesValue,
   medicalNotesValue,
   shouldShowMorbidityReporting,
-  morbidityReportingStatus,
+  reportingSummary,
   isGeneralConsultationRecord,
   hfmdSurveillance,
   dispensedMedicines,
@@ -459,12 +459,12 @@ function GenericRecordDetails({
     careContent.push(
       <div key="morbidity">
         <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          Morbidity / Notifiable Disease Record
+          Morbidity / Notifiable Disease Reports
         </p>
         <div className="grid gap-4 md:grid-cols-2">
           <PatientDetailItem
-            label="Reporting Status"
-            value={formatMorbidityReportingStatus(morbidityReportingStatus)}
+            label="Reported Diagnoses"
+            value={reportingSummary}
           />
         </div>
       </div>,
@@ -573,7 +573,7 @@ function GeneralConsultationRecordDetails({
   treatmentNotes,
   medicalNotes,
   shouldShowReporting,
-  morbidityReportingStatus,
+  reportingSummary,
   hfmdSurveillance,
   dispensedMedicines = [],
   needsReferral,
@@ -678,8 +678,8 @@ function GeneralConsultationRecordDetails({
             <TabbedSubsection title="Reporting Decision">
               <div className="grid gap-4 md:grid-cols-2">
                 <TabbedDetailItem
-                  label="Morbidity / Notifiable Status"
-                  value={formatMorbidityReportingStatus(morbidityReportingStatus)}
+                  label="Morbidity / Notifiable Reports"
+                  value={reportingSummary}
                 />
                 <TabbedDetailItem
                   label="HFMD Surveillance"

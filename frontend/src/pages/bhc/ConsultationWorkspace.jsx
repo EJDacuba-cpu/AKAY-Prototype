@@ -94,7 +94,9 @@ import ConsultationProgramPanel from "../../components/features/health-records/w
 import BodyPreviewPanel, { BodyFindingsList, getBodyRegionAnchor } from "../../components/features/health-records/wizard/BodyPreviewPanel";
 import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindings";
 import DiagnosisListField from "../../components/features/health-records/wizard/DiagnosisListField";
+import DiagnosisReportingField from "../../components/features/health-records/wizard/DiagnosisReportingField";
 import { formatDiagnoses, joinDiagnosisNames, normalizeDiagnoses, restoreDiagnoses } from "../../utils/diagnoses";
+import { applyLegacyReportingStatus, deriveReportingStatus, getMorbidityReportingStatus, normalizeReportAs, setDiagnosisReportAs } from "../../utils/diagnosisReporting";
 import { getSurveillanceTags, hasSurveillanceTag, matchSurveillanceDisease } from "../../utils/surveillance";
 import useClinicalRegistry from "../../hooks/useClinicalRegistry";
 import {
@@ -254,15 +256,13 @@ const RECORD_TYPE_DETAILS = {
   },
 };
 
-function getDefaultMorbidityReportingStatus(recordType = "") {
-  return normalizeRecordType(recordType) === "General Consultation"
-    ? "morbidity"
-    : "not_included";
-}
-
-function toBooleanYesNo(value) {
-  const normalized = String(value || "").toLowerCase();
-  return value === true || normalized === "yes" || normalized === "true";
+/**
+ * The report a diagnosis starts with on this visit: Morbidity on a General
+ * Consultation, not reported on a program visit. The worker changes it per
+ * diagnosis under Records & Surveillance (see utils/diagnosisReporting.js).
+ */
+function getDefaultReportAs(recordType = "") {
+  return normalizeRecordType(recordType) === "General Consultation" ? "morbidity" : null;
 }
 
 function getHealthRecordPatientId(record = {}) {
@@ -276,54 +276,10 @@ function getHealthRecordPatientId(record = {}) {
   );
 }
 
-function normalizeMorbidityReportingStatus(value, fallback = "not_included") {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (["not_included", "morbidity", "notifiable"].includes(normalized)) {
-    return normalized;
-  }
-  return fallback;
-}
-
-function deriveMorbidityReportingStatus(source = {}, fallback = "not_included") {
-  const monitoringData = source.monitoringData || source.monitoring_data || {};
-  const status = normalizeMorbidityReportingStatus(
-    source.morbidityReportingStatus ||
-      source.morbidity_reporting_status ||
-      monitoringData.morbidityReportingStatus ||
-      monitoringData.morbidity_reporting_status,
-    "",
-  );
-
-  if (status) return status;
-
-  const included = toBooleanYesNo(
-    source.includeInMorbidityReport ??
-      source.include_in_morbidity_report ??
-      monitoringData.includeInMorbidityReport ??
-      monitoringData.include_in_morbidity_report,
-  );
-  const notifiable = toBooleanYesNo(
-    source.isNotifiableDisease ??
-      source.is_notifiable_disease ??
-      monitoringData.isNotifiableDisease ??
-      monitoringData.is_notifiable_disease,
-  );
-
-  if (!included) return fallback;
-  return notifiable ? "notifiable" : "morbidity";
-}
-
 // Surveillance tag reads go through utils/surveillance.js's shared
-// getSurveillanceTags - see healthRecordService.js for the same
+// getSurveillanceTags, and morbidity / notifiable reads through
+// utils/diagnosisReporting.js - see healthRecordService.js for the same
 // consolidation note.
-
-function getMorbidityDecisionFlags(status) {
-  const normalized = normalizeMorbidityReportingStatus(status);
-  return {
-    includeInMorbidityReport: normalized !== "not_included",
-    isNotifiableDisease: normalized === "notifiable",
-  };
-}
 
 const EMPTY_FAMILY_PLANNING_DATA = {
   clientType: "",
@@ -920,8 +876,11 @@ export default function ConsultationWorkspace() {
     preselectedClassification ||
       (routeContext.kind === "new" ? "General Consultation" : ""),
   );
+  // Visit-level Morbidity / Notifiable status. Chosen directly only on the
+  // follow-up form (free-text assessment, no diagnosis list); the step-based
+  // Assessment derives it from each diagnosis' reportAs instead.
   const [morbidityReportingStatus, setMorbidityReportingStatus] = useState(
-    getDefaultMorbidityReportingStatus(preselectedClassification),
+    getDefaultReportAs(preselectedClassification) || "not_included",
   );
   const [surveillanceTags, setSurveillanceTags] = useState([]);
   const { registry: clinicalRegistry } = useClinicalRegistry();
@@ -1233,18 +1192,7 @@ export default function ConsultationWorkspace() {
       setMedication(found.medication || found.initialActionsTaken || "");
       setAttendingStaff(found.attendingStaff || found.recordedBy || "");
       setConsultationNotes(found.consultationNotes || "");
-      setMorbidityReportingStatus(
-        deriveMorbidityReportingStatus(
-          found,
-          getDefaultMorbidityReportingStatus(
-            found.category ||
-              found.recordType ||
-              found.patientClassification ||
-              found.patient?.patientClassification ||
-              found.patient?.category,
-          ),
-        ),
-      );
+      setMorbidityReportingStatus(getMorbidityReportingStatus(found));
       setSurveillanceTags(getSurveillanceTags(found));
       setSystolicBp(found.systolicBp || "");
       setDiastolicBp(found.diastolicBp || "");
@@ -1484,6 +1432,13 @@ export default function ConsultationWorkspace() {
   // the single long form they always had.
   const usesConsultationSteps =
     !isFollowUpVisitMode && !isEditingRecord && consultationType === "new";
+  // What this visit reports, whichever form is in use: the Assessment step's
+  // per-diagnosis choices, or the follow-up form's single visit-level choice.
+  // The server re-derives the same value from the diagnoses on save.
+  const effectiveReportingStatus = usesConsultationSteps
+    ? deriveReportingStatus(diagnoses)
+    : morbidityReportingStatus;
+  const defaultReportAs = getDefaultReportAs(normalizedHealthRecordType);
   const consultationSteps = useMemo(
     () => buildConsultationSteps({ selectedPrograms, primaryProgram, generalSelected, purposeFlow }),
     [selectedPrograms, primaryProgram, generalSelected, purposeFlow],
@@ -1641,7 +1596,7 @@ export default function ConsultationWorkspace() {
       followUpReason,
       monitoringNotes,
       patientCondition,
-      morbidityReportingStatus,
+      morbidityReportingStatus: effectiveReportingStatus,
       surveillanceTags,
       needsReferral,
       careDecisionStep,
@@ -1826,8 +1781,10 @@ export default function ConsultationWorkspace() {
     {
       // Drafts from before the structured list keep their typed text: one
       // diagnosis when it fits, otherwise moved to the assessment notes.
+      // Drafts from before per-diagnosis reporting carry one visit-level
+      // status instead; each diagnosis takes it, keeping what was chosen.
       const restored = restoreDiagnoses(payload);
-      setDiagnoses(restored.diagnoses);
+      setDiagnoses(applyLegacyReportingStatus(restored.diagnoses, payload.morbidityReportingStatus));
       setAssessmentNotes(restored.assessmentNotes);
       setDiagnosis(joinDiagnosisNames(restored.diagnoses));
     }
@@ -2356,10 +2313,8 @@ export default function ConsultationWorkspace() {
 
   useEffect(() => {
     if (isEditingRecord) return;
-    setMorbidityReportingStatus(
-      getDefaultMorbidityReportingStatus(normalizedHealthRecordType),
-    );
-  }, [isEditingRecord, normalizedHealthRecordType]);
+    setMorbidityReportingStatus(defaultReportAs || "not_included");
+  }, [isEditingRecord, defaultReportAs]);
 
   useEffect(() => {
     if (isFollowUp && !showFollowUpMonitoringFields) {
@@ -3376,9 +3331,6 @@ export default function ConsultationWorkspace() {
         : effectiveFollowUpDate
           ? "Follow-up Required"
           : "Completed";
-    const morbidityDecision = getMorbidityDecisionFlags(
-      morbidityReportingStatus,
-    );
     const finalSurveillanceTags = Array.isArray(surveillanceTags) ? surveillanceTags : [];
     const finalHfmdSurveillance = hasSurveillanceTag(finalSurveillanceTags, "hfmd");
     const finalSurveillanceCategory = finalHfmdSurveillance ? "hfmd" : null;
@@ -3433,9 +3385,9 @@ export default function ConsultationWorkspace() {
       monitoringNotes,
       patientCondition:
         isLinkedFollowUpVisit || effectiveFollowUpDate ? patientCondition : "",
-      morbidityReportingStatus,
-      includeInMorbidityReport: morbidityDecision.includeInMorbidityReport,
-      isNotifiableDisease: morbidityDecision.isNotifiableDisease,
+      // healthRecordService derives the legacy include/notifiable flags from
+      // this; the server re-derives all three from diagnoses[].reportAs.
+      morbidityReportingStatus: effectiveReportingStatus,
       surveillanceTags: finalSurveillanceTags,
       surveillanceCategory: finalSurveillanceCategory,
       surveillance_category: finalSurveillanceCategory,
@@ -4104,30 +4056,33 @@ export default function ConsultationWorkspace() {
   };
 
   // Records & Surveillance, shared by the Clinical Assessment step and the
-  // legacy single-screen general form. Two independent decisions: Morbidity /
-  // Notifiable Disease Record is its own classification, and HFMD surveillance
-  // is a separate community-based record entirely - a visit can belong to
-  // both at once, so neither checkbox gates the other. Both reuse this same
-  // consultation's patient/encounter data; nothing extra is created.
-  const includeInReporting = morbidityReportingStatus !== "not_included";
-  // Checking the box reveals Record Type further down the screen - easy to
-  // miss below the fold. The handler flags that a reveal just happened; the
-  // effect below scrolls it into view once the DOM has it, without firing on
-  // unrelated re-renders or on a draft that loads with it already set. The
-  // same mechanism reveals the surveillance checklist when a diagnosis
-  // suggests one (see the Assessment step's surveillance suggestion prompt).
-  const recordTypeFieldRef = useRef(null);
+  // legacy single-screen form. Two independent decisions: each diagnosis is
+  // reported as Morbidity or Notifiable (or not at all), and Community-Based
+  // Surveillance is a separate record entirely - a visit can belong to both,
+  // so neither gates the other. Both reuse this same consultation's
+  // patient/encounter data; nothing extra is created.
+  //
+  // The Assessment step reports each diagnosis in its list; the follow-up
+  // form has only a free-text assessment, so it reports that as one row
+  // (the visit-level status, as every record before this change did).
+  const reportingRows = usesConsultationSteps
+    ? diagnoses
+    : [{ id: "visit", name: diagnosis.trim() || "This visit's assessment", reportAs: normalizeReportAs(morbidityReportingStatus) }];
+  function handleReportAsChange(id, reportAs) {
+    if (usesConsultationSteps) {
+      setDiagnoses((current) => setDiagnosisReportAs(current, id, reportAs));
+    } else {
+      setMorbidityReportingStatus(reportAs || "not_included");
+    }
+  }
+  // A diagnosis-suggested surveillance tag reveals the checklist below the
+  // fold: the handler flags that a reveal just happened, and the effect
+  // scrolls it into view once the DOM has it, without firing on unrelated
+  // re-renders or on a draft that loads with a tag already set.
   const surveillanceFieldRef = useRef(null);
   const pendingRevealScrollRef = useRef(null);
-  function handleIncludeInReportingChange(checked) {
-    setMorbidityReportingStatus(checked ? "morbidity" : "not_included");
-    if (checked) pendingRevealScrollRef.current = "recordType";
-  }
   useEffect(() => {
-    if (pendingRevealScrollRef.current === "recordType") {
-      pendingRevealScrollRef.current = null;
-      recordTypeFieldRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    } else if (pendingRevealScrollRef.current === "surveillance") {
+    if (pendingRevealScrollRef.current === "surveillance") {
       pendingRevealScrollRef.current = null;
       surveillanceFieldRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
@@ -4167,34 +4122,18 @@ export default function ConsultationWorkspace() {
         <LockedFormContent locked={patientGateLocked}>
           <div className="space-y-5">
             <div data-field="morbidityReportingStatus">
-              <label className="flex cursor-pointer items-start gap-2.5 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  checked={includeInReporting}
-                  onChange={(event) => handleIncludeInReportingChange(event.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded-none border-[#D1D5DB] accent-[#DC2626]"
-                />
-                <span className={includeInReporting ? "font-semibold text-[#DC2626]" : "text-gray-600"}>
-                  Include in Morbidity / Notifiable Disease Record
-                </span>
-              </label>
-              <p className="mt-1 pl-6 text-xs leading-relaxed text-[#6B7280]">
-                This visit can be classified for reporting when applicable.
+              <p className="text-sm font-medium text-gray-600">
+                Include in Morbidity / Notifiable Disease Reports:
               </p>
-
-              {includeInReporting && (
-                <div className="mt-4 pl-6" ref={recordTypeFieldRef}>
-                  <FieldSelect
-                    label="Record Type"
-                    value={morbidityReportingStatus}
-                    onChange={(event) => setMorbidityReportingStatus(event.target.value)}
-                    wrapperClassName="max-w-xs"
-                  >
-                    <option value="morbidity">Morbidity</option>
-                    <option value="notifiable">Notifiable Disease</option>
-                  </FieldSelect>
-                </div>
-              )}
+              <p className="mt-1 mb-2.5 text-xs leading-relaxed text-[#6B7280]">
+                Choose the report for each diagnosis. A diagnosis goes to one
+                report, or none.
+              </p>
+              <DiagnosisReportingField
+                rows={reportingRows}
+                onChange={handleReportAsChange}
+                emptyText="Add a diagnosis under Assessment above to include it in a report."
+              />
             </div>
 
             <div data-field="surveillanceTags" ref={surveillanceFieldRef}>
@@ -5508,6 +5447,7 @@ export default function ConsultationWorkspace() {
                     canAddToConditions={(currentUser?.permissions || []).includes("clinical.history")}
                     currentConditions={selectedPatient?.medicalBackground?.currentDiseases}
                     error={validationErrors.diagnosis}
+                    defaultReportAs={defaultReportAs}
                   />
                 </div>
                 {surveillanceDiagnosisSuggestions.length > 0 && (

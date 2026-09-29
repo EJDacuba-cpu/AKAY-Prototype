@@ -21,7 +21,9 @@
     "test:prenatal-form": "node --test src/utils/prenatalForm.test.js",
     "test:breadcrumbs": "node --test src/utils/breadcrumbs.test.js",
     "test:patient-profile": "node --test src/utils/patientProfile.test.js src/utils/currentPatientVitals.test.js",
-    "test:current-conditions": "node --test src/utils/currentConditions.test.js"
+    "test:current-conditions": "node --test src/utils/currentConditions.test.js",
+    "test:diagnosis-reporting": "node --test src/utils/diagnoses.test.js src/utils/diagnosisReporting.test.js",
+    "test:request-timeout": "node --test src/services/requestTimeout.test.js"
   },
   "dependencies": {
     "@fontsource-variable/public-sans": "^5.3.0",

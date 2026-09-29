@@ -8,6 +8,7 @@ use App\Http\Middleware\EnsureTrustedSessionRequest;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\EnsureValidFacilityAssignment;
 use App\Http\Middleware\PreventSensitiveResponseCaching;
+use App\Http\Middleware\TraceRequestTiming;
 use App\Http\Middleware\TrustAkayProxies;
 use App\Services\UserSessionRevocationService;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -33,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->prepend(ApplySecurityHeaders::class);
+        $middleware->prepend(TraceRequestTiming::class);
         $middleware->append(EnforceProductionHttps::class);
         $middleware->replace(
             TrustProxies::class,

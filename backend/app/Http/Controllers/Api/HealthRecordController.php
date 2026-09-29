@@ -144,6 +144,7 @@ class HealthRecordController extends Controller
         $this->normalizeMaternalSupplements($request, $data);
         $this->normalizeFamilyPlanningData($data);
         $this->normalizeSurveillanceData($data);
+        $this->normalizeDiagnosisReporting($data);
         $dispensedMedicines = $data['dispensed_medicines'] ?? [];
         unset($data['dispensed_medicines']);
 
@@ -556,6 +557,40 @@ class HealthRecordController extends Controller
         $data['monitoring_data']['surveillance_category'] = $category;
         $data['monitoring_data']['diseaseSurveillanceCategory'] = $category;
         $data['monitoring_data']['disease_surveillance_category'] = $category;
+    }
+
+    /**
+     * When the diagnoses carry reportAs (the per-diagnosis Morbidity /
+     * Notifiable choice), they are authoritative: the visit-level mirrors
+     * (morbidityReportingStatus, includeInMorbidityReport, isNotifiableDisease
+     * and their snake_case aliases) are derived from them here - notifiable if
+     * any diagnosis is notifiable, else morbidity if any is morbidity, else
+     * not_included - so every existing reader keeps working. A save whose
+     * diagnoses carry no reportAs key at all (the follow-up form's free-text
+     * assessment, or an older client) leaves the visit-level keys exactly as
+     * the client sent them, mirroring normalizeSurveillanceData.
+     */
+    private function normalizeDiagnosisReporting(array &$data): void
+    {
+        $diagnoses = array_values(array_filter($data['diagnoses'] ?? [], 'is_array'));
+        $reported = array_filter($diagnoses, fn (array $diagnosis) => array_key_exists('reportAs', $diagnosis));
+        if ($reported === []) {
+            return;
+        }
+
+        $types = array_column($reported, 'reportAs');
+        $status = in_array('notifiable', $types, true)
+            ? 'notifiable'
+            : (in_array('morbidity', $types, true) ? 'morbidity' : 'not_included');
+
+        $monitoringData = is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : [];
+        $monitoringData['morbidityReportingStatus'] = $status;
+        $monitoringData['morbidity_reporting_status'] = $status;
+        $monitoringData['includeInMorbidityReport'] = $status !== 'not_included';
+        $monitoringData['include_in_morbidity_report'] = $status !== 'not_included';
+        $monitoringData['isNotifiableDisease'] = $status === 'notifiable';
+        $monitoringData['is_notifiable_disease'] = $status === 'notifiable';
+        $data['monitoring_data'] = $monitoringData;
     }
 
     private function normalizeFamilyPlanningData(array &$data, ?HealthRecord $record = null): void

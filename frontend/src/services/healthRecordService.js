@@ -7,6 +7,7 @@ import {
 import { getConsultationPrograms } from "../utils/consultationPrograms";
 import { normalizeBodyFindings } from "../utils/bodyFindings";
 import { normalizeDiagnoses } from "../utils/diagnoses";
+import { getMorbidityReportingStatus } from "../utils/diagnosisReporting";
 import { API_BASE_URL } from "../config/environment";
 import { normalizePatient } from "./patientService";
 import { createIdempotencyKey } from "../utils/idempotency";
@@ -56,53 +57,11 @@ function firstPresent(values = []) {
   return values.find((value) => value !== undefined && value !== null && value !== "") || "";
 }
 
-function toBoolean(value) {
-  const normalized = String(value || "").toLowerCase();
-  return value === true || normalized === "true" || normalized === "yes";
-}
-
-function normalizeMorbidityReportingStatus(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-  return ["not_included", "morbidity", "notifiable"].includes(normalized)
-    ? normalized
-    : "";
-}
-
-function deriveMorbidityReportingStatus(record = {}, monitoringData = {}) {
-  const explicitStatus = normalizeMorbidityReportingStatus(
-    record.morbidityReportingStatus ||
-      record.morbidity_reporting_status ||
-      monitoringData.morbidityReportingStatus ||
-      monitoringData.morbidity_reporting_status,
-  );
-
-  if (explicitStatus) return explicitStatus;
-
-  const included = toBoolean(
-    firstPresent([
-      record.includeInMorbidityReport,
-      record.include_in_morbidity_report,
-      monitoringData.includeInMorbidityReport,
-      monitoringData.include_in_morbidity_report,
-    ]),
-  );
-  const notifiable = toBoolean(
-    firstPresent([
-      record.isNotifiableDisease,
-      record.is_notifiable_disease,
-      monitoringData.isNotifiableDisease,
-      monitoringData.is_notifiable_disease,
-    ]),
-  );
-
-  if (!included) return "not_included";
-  return notifiable ? "notifiable" : "morbidity";
-}
-
 // Surveillance tag/category reads now go through utils/surveillance.js's
 // shared getSurveillanceTags - the single reader ConsultationWorkspace,
 // this file, and BHCReports all use, replacing what used to be three
-// separate copies of this same legacy-fallback logic.
+// separate copies of this same legacy-fallback logic. Morbidity /
+// notifiable status reads go through utils/diagnosisReporting.js the same way.
 
 function getOtherSurveillanceCategory(record = {}, monitoringData = {}) {
   return firstPresent([
@@ -254,10 +213,7 @@ function normalizeRecord(record = {}) {
   };
   const immunizationData = record.immunization_data || record.immunizationData || {};
   const monitoringData = record.monitoring_data || record.monitoringData || {};
-  const morbidityReportingStatus = deriveMorbidityReportingStatus(
-    record,
-    monitoringData,
-  );
+  const morbidityReportingStatus = getMorbidityReportingStatus(record);
   const surveillanceTags = getSurveillanceTags(record, monitoringData);
   const surveillanceCategory =
     surveillanceTags.includes("hfmd") ? "hfmd" : "";
@@ -543,16 +499,7 @@ function toPayload(record = {}, { partial = false } = {}) {
     record.visitType ||
     record.visit_type ||
     (record.isFollowUp || parentHealthRecordId ? "follow_up_visit" : "initial_consultation");
-  const morbidityReportingStatus =
-    normalizeMorbidityReportingStatus(
-      record.morbidityReportingStatus ||
-        record.morbidity_reporting_status ||
-        record.monitoringData?.morbidityReportingStatus ||
-        record.monitoring_data?.morbidity_reporting_status,
-    ) ||
-    deriveMorbidityReportingStatus(record, {
-      ...(record.monitoringData || record.monitoring_data || {}),
-    });
+  const morbidityReportingStatus = getMorbidityReportingStatus(record);
   const sourceMonitoringData = record.monitoringData || record.monitoring_data || {};
   const surveillanceTags = getSurveillanceTags(record, sourceMonitoringData);
   const surveillanceCategory =

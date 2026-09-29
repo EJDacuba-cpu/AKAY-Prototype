@@ -29,6 +29,7 @@ import {
   formatPatientName,
 } from "../../utils/formatters";
 import { getSurveillanceTags, hasSurveillanceTag } from "../../utils/surveillance";
+import { getReportedDiagnoses } from "../../utils/diagnosisReporting";
 import useClinicalRegistry from "../../hooks/useClinicalRegistry";
 import {
   ATTENTION_FILTER_ALL,
@@ -77,9 +78,16 @@ const REPORT_TYPES = [
   {
     key: "morbidity",
     slug: "morbidity",
-    label: "Morbidity and Notifiable Diseases",
+    label: "Morbidity Report",
     description:
-      "Diagnosis and notifiable condition reporting from health records.",
+      "Diagnoses marked for the morbidity report, one row per diagnosis.",
+  },
+  {
+    key: "notifiable",
+    slug: "notifiable-diseases",
+    label: "Notifiable Disease Report",
+    description:
+      "Diagnoses marked as notifiable diseases, one row per diagnosis.",
   },
   {
     key: "community_surveillance",
@@ -152,7 +160,6 @@ const EMPTY_FILTERS = {
   vaccineStatus: "",
   aogRange: "",
   disease: "",
-  notifiableStatus: "",
   surveillanceList: "hfmd",
 };
 
@@ -453,7 +460,8 @@ function SelectedReport(props) {
     case "epi":
       return <EpiTargetClientListReportView {...props} />;
     case "morbidity":
-      return <MorbidityReportView {...props} />;
+    case "notifiable":
+      return <DiagnosisReportView {...props} reportType={props.type} />;
     case "community_surveillance":
       return <CommunitySurveillanceReportView {...props} />;
     case "followups":
@@ -482,6 +490,8 @@ function normalizeReportSlug(value) {
     "follow-up": "follow-ups",
     "follow-up-monitoring": "follow-ups",
     "morbidity-notifiable": "morbidity",
+    notifiable: "notifiable-diseases",
+    "notifiable-disease": "notifiable-diseases",
     surveillance: "community-based-surveillance",
     "community-surveillance": "community-based-surveillance",
     "community-based-surveillance": "community-based-surveillance",
@@ -762,34 +772,44 @@ return (
 );
 }
 
-function MorbidityReportView({ records, filters, patientMap }) {
+/**
+ * Morbidity Report / Notifiable Disease Report: one row per diagnosis the
+ * worker marked for this report (utils/diagnosisReporting.js). A record
+ * saved before per-diagnosis reporting, or a follow-up visit, contributes
+ * one row with its plain-text diagnosis when its visit-level status matches.
+ */
+function DiagnosisReportView({ records, filters, patientMap, reportType }) {
   const rows = records
-    .filter(isMorbidityReportRecord)
-    .map((record) => normalizeMorbidityLogRow(record, patientMap))
+    .flatMap((record) => {
+      const names = getReportedDiagnoses(record, reportType);
+      if (names.length === 0) return [];
+      const row = normalizeMorbidityLogRow(record, patientMap);
+      return names.map((name) => ({ ...row, diagnosis: name }));
+    })
     .filter(
-      (record) =>
-        matchesDateRange(record.date, filters) &&
-        matchesValue(record.barangay, filters.barangay) &&
-        matchesDisease(record.raw, filters.disease) &&
-        matchesNotifiableStatus(record.raw, filters.notifiableStatus),
+      (row) =>
+        matchesDateRange(row.date, filters) &&
+        matchesValue(row.barangay, filters.barangay) &&
+        (!filters.disease || normalizeText(row.diagnosis).includes(normalizeText(filters.disease))),
     );
-  const conditions = new Set(
-    rows
-      .map((row) => row.diagnosis)
-      .filter(Boolean),
+  const visits = new Set(rows.map((row) => getRecordId(row.raw) || row.raw)).size;
+  const distinctDiagnoses = new Set(
+    rows.map((row) => normalizeText(row.diagnosis)).filter(Boolean),
   ).size;
-  const notifiable = rows.filter(
-    (row) => row.morbidityReportingStatus === "notifiable",
-  ).length;
+  const notifiable = reportType === "notifiable";
 
   return (
     <>
       <SummaryGrid>
-        <SummaryCard label="Recorded Visits" value={rows.length} icon={<Stethoscope size={16} />} />
-        <SummaryCard label="Conditions" value={conditions} icon={<ClipboardList size={16} />} />
-        <SummaryCard label="Notifiable" value={notifiable} tone="amber" icon={<FileHeart size={16} />} />
+        <SummaryCard label="Reported Diagnoses" value={rows.length} tone={notifiable ? "amber" : undefined} icon={<FileHeart size={16} />} />
+        <SummaryCard label="Visits" value={visits} icon={<Stethoscope size={16} />} />
+        <SummaryCard label="Distinct Diagnoses" value={distinctDiagnoses} icon={<ClipboardList size={16} />} />
       </SummaryGrid>
-      <MorbidityDailyLogTable rows={rows} />
+      <MorbidityDailyLogTable
+        rows={rows}
+        title={notifiable ? "Notifiable Diseases Record" : "Morbidity Record"}
+        emptyTitle={notifiable ? "No notifiable disease records" : "No morbidity records"}
+      />
     </>
   );
 }
@@ -833,18 +853,6 @@ function CommunitySurveillanceReportView({ records, filters, patientMap, clinica
       <CommunitySurveillanceTable rows={rows} />
     </>
   );
-}
-
-function matchesDisease(record, disease) {
-  if (!disease) return true;
-  return recordContains(record, disease);
-}
-
-function matchesNotifiableStatus(record, status) {
-  if (!status) return true;
-  const notifiable = getMorbidityReportingStatus(record) === "notifiable";
-
-  return status === "Notifiable" ? notifiable : !notifiable;
 }
 
 function FollowUpReportView({ followUps, filters }) {
@@ -1130,7 +1138,7 @@ function EpiTargetClientTable({ rows }) {
   );
 }
 
-function MorbidityDailyLogTable({ rows }) {
+function MorbidityDailyLogTable({ rows, title, emptyTitle }) {
   const columns = [
     "Date",
     "Name",
@@ -1150,7 +1158,7 @@ function MorbidityDailyLogTable({ rows }) {
           Daily Log Sheet
         </p>
         <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
-          Morbidity-Notifiable Diseases Record
+          {title}
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -1170,10 +1178,10 @@ function MorbidityDailyLogTable({ rows }) {
                 <td colSpan={columns.length} className="px-6 py-16 text-center">
                   <FileText className="mx-auto text-slate-300" size={28} />
                   <p className="mt-3 font-semibold text-slate-600">
-                    No morbidity records
+                    {emptyTitle}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
-                    No included morbidity or notifiable disease records match the selected filters.
+                    No reported diagnoses match the selected filters.
                   </p>
                 </td>
               </tr>
@@ -1254,7 +1262,7 @@ function CommunitySurveillanceTable({ rows }) {
                     No HFMD surveillance cases
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
-                    No notifiable records marked for the HFMD surveillance list match the selected filters.
+                    No visits marked for this surveillance list match the selected filters.
                   </p>
                 </td>
               </tr>
@@ -1409,11 +1417,11 @@ function getReportFilterFields(type, barangays, facilities, surveillanceDiseases
         { key: "vaccine", label: "Vaccine", type: "select", resetValue: "", placeholder: "All vaccines", options: EPI_CHILD_VACCINE_COLUMNS },
       ];
     case "morbidity":
+    case "notifiable":
       return [
         dateField,
         barangay,
         { key: "disease", label: "Disease / Diagnosis", type: "text", placeholder: "Search diagnosis" },
-        { key: "notifiableStatus", label: "Notifiable Status", type: "select", resetValue: "", placeholder: "All Records", options: ["Notifiable", "Non-notifiable"] },
       ];
     case "community_surveillance":
       return [
@@ -1490,7 +1498,6 @@ function normalizeMorbidityLogRow(record, patientMap) {
     signsSymptoms: getMorbiditySignsSymptoms(record),
     diagnosis: getMorbidityDiagnosis(record),
     medicationTreatment: getMorbidityMedicationTreatment(record),
-    morbidityReportingStatus: getMorbidityReportingStatus(record),
   };
 }
 
@@ -1511,70 +1518,14 @@ function normalizeCommunitySurveillanceRow(record, patientMap, number) {
   };
 }
 
-function isMorbidityReportRecord(record = {}) {
-  return ["morbidity", "notifiable"].includes(
-    getMorbidityReportingStatus(record),
-  );
-}
-
 function isCommunitySurveillanceRecord(record = {}, surveillanceList = "hfmd") {
   return hasSurveillanceTag(getSurveillanceTags(record), surveillanceList);
 }
 
-function getMorbidityReportingStatus(record = {}) {
-  const monitoringData = record.monitoringData || record.monitoring_data || {};
-  const explicitStatus = normalizeMorbidityStatus(
-    firstFilledValue(
-      record.morbidityReportingStatus,
-      record.morbidity_reporting_status,
-      monitoringData.morbidityReportingStatus,
-      monitoringData.morbidity_reporting_status,
-    ),
-  );
-
-  if (explicitStatus) return explicitStatus;
-
-  const included = toReportBoolean(
-    firstFilledValue(
-      record.includeInMorbidityReport,
-      record.include_in_morbidity_report,
-      monitoringData.includeInMorbidityReport,
-      monitoringData.include_in_morbidity_report,
-    ),
-  );
-
-  if (!included) return "not_included";
-
-  const notifiable = toReportBoolean(
-    firstFilledValue(
-      record.isNotifiableDisease,
-      record.is_notifiable_disease,
-      record.isNotifiable,
-      record.is_notifiable,
-      record.notifiable,
-      monitoringData.isNotifiableDisease,
-      monitoringData.is_notifiable_disease,
-    ),
-  );
-
-  return notifiable ? "notifiable" : "morbidity";
-}
-
 // Surveillance tag reads go through utils/surveillance.js's shared
-// getSurveillanceTags - see healthRecordService.js for the same
+// getSurveillanceTags, and morbidity / notifiable reads through
+// utils/diagnosisReporting.js - see healthRecordService.js for the same
 // consolidation note.
-
-function normalizeMorbidityStatus(value) {
-  const normalized = normalizeText(value).replace(/\s+/g, "_");
-  return ["not_included", "morbidity", "notifiable"].includes(normalized)
-    ? normalized
-    : "";
-}
-
-function toReportBoolean(value) {
-  const normalized = normalizeText(value);
-  return value === true || ["true", "yes", "1"].includes(normalized);
-}
 
 function getWeekNumber(value) {
   const date = parseDateOnly(value);
@@ -2273,32 +2224,6 @@ function matchesAog(value, range) {
   if (Number.isNaN(weeks)) return false;
   const [from, to] = range.split("-").map(Number);
   return weeks >= from && weeks <= to;
-}
-
-function recordContains(record, term) {
-  return normalizeText(
-    [
-      record.category,
-      record.recordType,
-      record.diagnosis,
-      record.initialDiagnosis,
-      record.initial_diagnosis,
-      record.chiefComplaint,
-      record.chief_complaint,
-      record.summaryOfPresentIllness,
-      record.summary_of_present_illness,
-      record.signsSymptoms,
-      record.signs_symptoms,
-      record.medication,
-      record.treatment,
-      record.initialActionsTaken,
-      record.initial_actions_taken,
-      record.consultationNotes,
-      formatDispensedMedicinesForReport(record),
-    ]
-      .filter(Boolean)
-      .join(" "),
-  ).includes(normalizeText(term));
 }
 
 function formatBloodPressure(record) {

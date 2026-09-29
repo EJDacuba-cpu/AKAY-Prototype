@@ -54,6 +54,14 @@ class HealthRecord extends Model
         'right_leg', 'left_leg', 'right_foot', 'left_foot',
     ];
 
+    /**
+     * The report a diagnosis may be included in (diagnoses.*.reportAs). One
+     * choice per diagnosis; null means it is not reported. The visit-level
+     * monitoring_data.morbidityReportingStatus is derived from these on save
+     * (HealthRecordController::normalizeDiagnosisReporting).
+     */
+    public const DIAGNOSIS_REPORT_TYPES = ['morbidity', 'notifiable'];
+
     protected $hidden = [
         'idempotency_key',
         'idempotency_hash',

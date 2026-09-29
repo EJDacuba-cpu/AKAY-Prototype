@@ -14,7 +14,11 @@
  * wired to that registry yet (a frontend follow-up - see
  * docs/superpowers/specs/2026-09-29-diagnosis-monitoring-surveillance-registry-design.md
  * section 2).
+ *
+ * `reportAs` (Morbidity / Notifiable / not reported) is chosen per diagnosis
+ * under Records & Surveillance - see diagnosisReporting.js.
  */
+import { normalizeReportAs } from "./diagnosisReporting.js";
 
 /** Case/whitespace-insensitive key for comparing diagnosis or condition names. */
 export function normalizeNameKey(name) {
@@ -98,9 +102,10 @@ export function getAddDiagnosisError(diagnoses, name) {
  * The list with `name` appended as a new diagnosis, or the list unchanged if
  * it cannot be added. A structured diagnosis keeps its one spelling
  * ("hypertension" -> "Hypertension"); anything else is kept exactly as typed.
- * New entries are not Current Conditions until the worker marks them.
+ * New entries are not Current Conditions until the worker marks them; their
+ * report choice starts at `reportAs` (the caller's default for this visit).
  */
-export function addDiagnosis(diagnoses, name) {
+export function addDiagnosis(diagnoses, name, reportAs = null) {
   const list = diagnoses || [];
   if (getAddDiagnosisError(list, name)) return list;
   const text = String(name).trim().slice(0, DIAGNOSIS_LIMITS.name);
@@ -111,6 +116,7 @@ export function addDiagnosis(diagnoses, name) {
       name: findStructuredDiagnosisName(text) || text,
       addToConditions: false,
       conditionStatus: null,
+      reportAs: normalizeReportAs(reportAs),
     },
   ];
 }
@@ -128,7 +134,12 @@ export function removeDiagnosis(diagnoses, id) {
   return (diagnoses || []).filter((entry) => entry.id !== id);
 }
 
-/** Keeps only named entries, trimmed to the backend's limits. */
+/**
+ * Keeps only named entries, trimmed to the backend's limits. `reportAs` is
+ * kept only when the source entry had the key: its presence is what marks a
+ * list as recorded with per-diagnosis reporting (usesDiagnosisReporting), so
+ * a record saved before that must not gain it here.
+ */
 export function normalizeDiagnoses(list) {
   if (!Array.isArray(list)) return [];
   return list
@@ -143,6 +154,7 @@ export function normalizeDiagnoses(list) {
         conditionStatus: addToConditions
           ? (CONDITION_STATUSES.includes(item.conditionStatus) ? item.conditionStatus : "Active")
           : null,
+        ...(Object.hasOwn(item, "reportAs") ? { reportAs: normalizeReportAs(item.reportAs) } : {}),
       };
     });
 }

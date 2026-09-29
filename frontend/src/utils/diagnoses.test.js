@@ -102,6 +102,24 @@ test("addDiagnosis appends a chip, keeping manual text exactly and structured na
   assert.equal(new Set(list.map((item) => item.id)).size, 3);
 });
 
+test("addDiagnosis starts the report choice at the caller's default", () => {
+  assert.equal(addDiagnosis([], "Asthma")[0].reportAs, null);
+  assert.equal(addDiagnosis([], "Asthma", "morbidity")[0].reportAs, "morbidity");
+  assert.equal(addDiagnosis([], "Asthma", "bogus")[0].reportAs, null);
+});
+
+test("normalizeDiagnoses keeps reportAs only when the entry had it", () => {
+  const [withChoice, withNull, without] = normalizeDiagnoses([
+    { id: "a", name: "Dengue fever", reportAs: "notifiable" },
+    { id: "b", name: "Asthma", reportAs: null },
+    { id: "c", name: "Rhinitis" },
+  ]);
+  assert.equal(withChoice.reportAs, "notifiable");
+  assert.equal(Object.hasOwn(withNull, "reportAs"), true);
+  assert.equal(withNull.reportAs, null);
+  assert.equal(Object.hasOwn(without, "reportAs"), false);
+});
+
 test("a duplicate, blank or over-limit diagnosis is not added and says why", () => {
   const list = addDiagnosis([], "Pneumonia");
   assert.equal(getAddDiagnosisError(list, "  pneumonia "), "duplicate");

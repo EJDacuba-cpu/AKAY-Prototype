@@ -41,6 +41,8 @@ const ERROR_TEXT = {
  *                           used only to say a marked diagnosis will be linked
  *                           rather than duplicated
  * @param error              validation message for the diagnosis
+ * @param defaultReportAs    the report choice a newly added diagnosis starts
+ *                           with (changed under Records & Surveillance)
  */
 export default function DiagnosisListField({
   diagnoses = [],
@@ -48,6 +50,7 @@ export default function DiagnosisListField({
   canAddToConditions = false,
   currentConditions = [],
   error,
+  defaultReportAs = null,
 }) {
   const inputRef = useRef(null);
   const listboxId = useId();
@@ -78,7 +81,7 @@ export default function DiagnosisListField({
       inputRef.current?.focus();
       return;
     }
-    onChange(addDiagnosis(diagnoses, value));
+    onChange(addDiagnosis(diagnoses, value, defaultReportAs));
     setText("");
     closeOptions();
     inputRef.current?.focus();

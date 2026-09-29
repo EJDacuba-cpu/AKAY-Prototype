@@ -130,19 +130,24 @@ Do not skip the approval gate.
 At the end of a substantial Claude Code session, update this section.
 
 ### Last task
-_Not started_
+2026-09-29: per-diagnosis Morbidity / Notifiable reporting under Records & Surveillance (New Consultation). Before that: the read-only Programs / Monitoring audit (`docs/ai/PROGRAMS-MONITORING-AUDIT.md`).
 
 ### Changes made
-_None yet_
+- Each diagnosis now carries `reportAs` (`morbidity` | `notifiable` | null) in `health_records.diagnoses`. It is stored in the existing JSON column, so there is no migration.
+- The server derives the visit-level `monitoring_data.morbidityReportingStatus` and its legacy flags from those choices (`HealthRecordController::normalizeDiagnosisReporting`). Records saved earlier, and follow-up visits (free-text assessment, no diagnosis list), keep using the visit-level status directly.
+- `frontend/src/utils/diagnosisReporting.js` is now the single reader. It replaced four duplicate copies (the workspace, `healthRecordService`, `recordDetailsHelpers`, `BHCReports`).
+- BHC Reports: "Morbidity and Notifiable Diseases" is split into a **Morbidity Report** and a **Notifiable Disease Report**, each with one row per reported diagnosis.
 
 ### Tests/checks run
-_None yet_
+- Backend: new `DiagnosisReportingTest` passes (6/6). Full suite: 202 failures, identical before and after this change (pre-existing; mostly response status-code mismatches).
+- Frontend: 259/259 node tests pass, eslint is clean (one pre-existing warning), and the vite build succeeds.
 
 ### Open risks
 - Repository has not yet been fully audited.
 - Existing `docs/` files may conflict with current implementation.
-- Dead/outdated code has not yet been identified systematically.
 - Security controls are present but have not yet received an end-to-end audit.
+- 202 pre-existing backend test failures need investigation.
+- Care Pathway migrations have not been run against the real database. `link_legacy_health_record_ids` has no same-patient check. See the audit doc for the rest.
 
 ### Next action
-Run the read-only repository audit after developer approval.
+Investigate the pre-existing backend test failures. Then the developer decides the open questions in the Programs / Monitoring audit.
