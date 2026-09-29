@@ -86,6 +86,20 @@ class ClinicalRegistry
         return $key !== null && array_key_exists($key, $this->surveillanceDiseases());
     }
 
+    /** What "same condition" means for monitoring: the registry key, else the normalized name. */
+    public function conditionIdentity(?string $conditionKey, string $name): string
+    {
+        return $conditionKey !== null && $this->isValidConditionKey($conditionKey)
+            ? $conditionKey
+            : 'name:'.self::normalizeNameKey($name);
+    }
+
+    /** The Monitoring Details form key a monitored condition needs, or null. */
+    public function monitoringDetailsFor(?string $conditionKey): ?string
+    {
+        return $this->monitoredConditions()[$conditionKey]['monitoring_details'] ?? null;
+    }
+
     /**
      * $entries (a consultation's diagnoses, or a patient's Current
      * Conditions) with conditionKey resolved server-side from each entry's

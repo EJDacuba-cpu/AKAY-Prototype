@@ -9,7 +9,8 @@
 |
 | - monitored_conditions: diagnoses that, once recorded, automatically sync
 |   to the patient's Current Conditions (App\Services\ClinicalRegistry /
-|   App\Services\CurrentConditionsSync).
+|   App\Services\CurrentConditionsSync). An entry may declare monitoring_details:
+|   the key of the extra form a monitored visit needs.
 | - surveillance_diseases: diseases a visit can be tagged for under Records
 |   & Surveillance. A matching diagnosis only SUGGESTS the tag.
 |
@@ -43,6 +44,9 @@ return [
                 'Extrapulmonary TB',
                 'Extrapulmonary Tuberculosis',
             ],
+            // Extra fields the ITR does not hold: Monitoring Details renders the
+            // DS-TB Treatment Card (health_records.tb_data) for this key.
+            'monitoring_details' => 'tb_dots',
         ],
     ],
 

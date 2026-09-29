@@ -87,4 +87,19 @@ class ClinicalRegistryTest extends TestCase
         $this->assertArrayHasKey('hypertension', $all['monitored_conditions']);
         $this->assertArrayHasKey('hfmd', $all['surveillance_diseases']);
     }
+
+    public function test_condition_identity_prefers_the_registry_key(): void
+    {
+        $registry = $this->registry();
+        $this->assertSame('hypertension', $registry->conditionIdentity('hypertension', 'HTN'));
+        $this->assertSame('name:post-op wound care', $registry->conditionIdentity(null, '  Post-op   Wound Care '));
+    }
+
+    public function test_only_tuberculosis_declares_monitoring_details(): void
+    {
+        $registry = $this->registry();
+        $this->assertSame('tb_dots', $registry->monitoringDetailsFor('tuberculosis'));
+        $this->assertNull($registry->monitoringDetailsFor('hypertension'));
+        $this->assertNull($registry->monitoringDetailsFor(null));
+    }
 }
