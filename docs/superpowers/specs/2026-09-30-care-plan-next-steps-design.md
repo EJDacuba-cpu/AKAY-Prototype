@@ -70,6 +70,15 @@ Every consultation, new or continued, uses the one step-based flow:
    Hypertension and Diabetes need none (BP and FBS come from Vital Signs).
    When nothing qualifies, the step is skipped and the flow goes straight to
    Review.
+
+   **Extensible by declaration.** A `monitored_conditions` registry entry may
+   declare `monitoring_details: '<key>'` (Tuberculosis declares `tb_dots`).
+   The frontend keeps a map from that key to its form component (`tb_dots` →
+   `TbTreatmentCardForm`) and its save/validation hooks. The step appears when
+   any condition monitored in this visit (started or continued) declares a
+   key, with one section per distinct key. Adding a specialized workflow is a
+   registry entry plus a component in that map — no change to the step logic.
+   Free-text conditions never declare one.
 7. **Review & Confirm** → save one ITR.
 
 ### Category
@@ -144,9 +153,13 @@ For each monitoring record selected in the modal:
   **Continue monitoring** (default) or **Stop monitoring** (free-text reason
   required).
 - If its condition **is** among this visit's diagnoses, it is handled on that
-  diagnosis row: *Monitor at BHC* / *Monitor at BHC + Refer to RHU* continue
-  it; *No Ongoing Tracking* / *Refer to RHU* stop it, and a stop reason is
-  then required.
+  diagnosis row, which then **defaults to *Monitor at BHC*** instead of No
+  Ongoing Tracking: *Monitor at BHC* / *Monitor at BHC + Refer to RHU*
+  continue it; *No Ongoing Tracking* / *Refer to RHU* stop it, and a stop
+  reason is then required.
+
+Continued monitoring therefore stays active unless the worker explicitly
+stops it.
 
 Stopping monitoring does not change the Current Conditions status, and
 changing that status does not stop monitoring.
@@ -222,6 +235,8 @@ task to each monitoring record it covers (`condition_monitoring_id`,
   - `carePlan`: `none | monitor | refer | monitor_refer` (server-validated),
   - `includeInSurveillance`: boolean.
   The ITR permanently records what was decided.
+- `config/clinical_registry.php`: the `tuberculosis` entry gains
+  `'monitoring_details' => 'tb_dots'` (served by `/api/clinical-registry`).
 - `health_records.vital_signs.fbs`: nullable number, mg/dL, validated
   numeric and non-negative.
 - Continued follow-up tasks get `fulfilled_by_health_record_id` = the new
@@ -268,10 +283,20 @@ Monitoring changes are part of saving a consultation and are covered by
 
 ### API
 
-- `GET /api/patients/{patient}/care-overview` — pending follow-ups (with
-  linked conditions and source ITR) and active monitoring records with no
-  pending follow-up. Used by the Start Consultation modal (and later the
-  Patient Profile). Allowed for users with `consultations.encode` or
+- `GET /api/patients/{patient}/care-overview` — only what the Start
+  Consultation modal needs, nothing clinical beyond condition names:
+
+  ```
+  {
+    pending_follow_ups: [{ id, due_date, due_time, state, is_overdue, reason,
+                           source_health_record_id, source_date,
+                           conditions: [{ monitoring_id, condition_name }] }],
+    monitoring_without_follow_up: [{ id, condition_name, condition_key,
+                                     started_at, last_visit_date }]
+  }
+  ```
+
+  No ITR bodies, vitals, diagnoses lists or referral data. Allowed for users with `consultations.encode` or
   `clinical.history` (an encoder must be able to start a consultation), plus
   the usual facility access check.
 - `POST /api/health-records` — gains `care_plan`, `diagnoses.*.carePlan`,
@@ -354,8 +379,10 @@ Frontend unit tests:
   pre-filled referral reason.
 - Modal skip logic (no pending follow-ups and no active monitoring → no
   modal).
-- Monitoring Details appears only when a monitored condition needs extra
-  fields (TB).
+- Monitoring Details appears only when a monitored (started or continued)
+  condition declares `monitoring_details`; one section per distinct key; a
+  test registry entry with a second key renders through the same map.
+- A continued condition that is re-diagnosed defaults to *Monitor at BHC*.
 - The simplified step sequence (no `generalSelected`, no legacy form).
 
 Regression: backend suite stays at its current baseline (201 failures that
