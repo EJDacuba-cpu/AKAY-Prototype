@@ -106,6 +106,11 @@ class FollowUpTask extends Model
         return $this->belongsTo(self::class, 'rescheduled_to_id');
     }
 
+    public function conditionMonitorings(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(ConditionMonitoring::class, 'condition_monitoring_follow_up_task');
+    }
+
     public function isSuperseded(): bool
     {
         return $this->rescheduled_to_id !== null;
