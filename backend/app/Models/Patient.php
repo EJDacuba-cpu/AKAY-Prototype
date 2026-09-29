@@ -108,11 +108,6 @@ class Patient extends Model
         return $this->hasMany(HealthRecord::class);
     }
 
-    public function carePathwayEnrollments(): HasMany
-    {
-        return $this->hasMany(CarePathwayEnrollment::class);
-    }
-
     public function referrals(): HasMany
     {
         return $this->hasMany(Referral::class);

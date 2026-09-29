@@ -14,7 +14,6 @@ class HealthRecordDraftRequest extends FormRequest
         'Maternal',
         'Family Planning',
         'TB DOTS / TB Monitoring',
-        'NCD Monitoring',
     ];
 
     public function authorize(): bool

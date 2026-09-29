@@ -147,7 +147,8 @@ At the end of a substantial Claude Code session, update this section.
 - Existing `docs/` files may conflict with current implementation.
 - Security controls are present but have not yet received an end-to-end audit.
 - 202 pre-existing backend test failures need investigation.
-- Care Pathway migrations have not been run against the real database. `link_legacy_health_record_ids` has no same-patient check. See the audit doc for the rest.
+- The Care Pathway enrollment layer was removed on 2026-09-30 (it had been migrated to Supabase, with zero rows). `2026_09_30_000001_drop_care_pathway_tables` drops the four empty tables and has **not** been run against Supabase yet.
+- `docs/ai/PROGRAMS-MONITORING-AUDIT.md`, referenced by earlier handoffs, does not exist in the repo.
 
 ### Next action
 Investigate the pre-existing backend test failures. Then the developer decides the open questions in the Programs / Monitoring audit.

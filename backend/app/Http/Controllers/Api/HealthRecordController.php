@@ -12,7 +12,6 @@ use App\Models\HealthRecordDraft;
 use App\Models\Patient;
 use App\Services\AkayCacheService;
 use App\Services\AuditLogger;
-use App\Services\CarePathwayActivationService;
 use App\Services\ClinicalRegistry;
 use App\Services\CurrentConditionsSync;
 use App\Services\FacilityAccessService;
@@ -82,8 +81,7 @@ class HealthRecordController extends Controller
         ReferralCreationService $referralCreation,
         HealthRecordDraftService $drafts,
         CurrentConditionsSync $currentConditions,
-        ClinicalRegistry $clinicalRegistry,
-        CarePathwayActivationService $carePathways
+        ClinicalRegistry $clinicalRegistry
     ) {
         $data = $request->validated();
         $patient = Patient::findOrFail($data['patient_id']);
@@ -92,7 +90,6 @@ class HealthRecordController extends Controller
         // any client-sent conditionKey is discarded and replaced, never trusted.
         $data['diagnoses'] = $clinicalRegistry->resolveConditionEntries($data['diagnoses'] ?? []);
         $currentConditions->assertAllowed($request->user(), $data['diagnoses']);
-        $carePathways->assertAllowed($request->user(), $data['monitoring_data']['activeCarePathways'] ?? []);
         $draftPublicId = $data['draft_public_id'] ?? null;
         unset($data['draft_public_id']);
         $idempotencyKey = $data['idempotency_key'];
@@ -172,8 +169,7 @@ class HealthRecordController extends Controller
                 $idempotencyKey,
                 $drafts,
                 $draftPublicId,
-                $currentConditions,
-                $carePathways
+                $currentConditions
             ) {
                 $lockedDraft = $draftPublicId
                     ? $drafts->lockForOfficialSave(
@@ -192,7 +188,6 @@ class HealthRecordController extends Controller
                 // Registered diagnoses (conditionKey set) always sync; free-text
                 // diagnoses sync only when the user ticked "Add to Current Conditions".
                 $currentConditions->sync($patient, $data['diagnoses'] ?? [], $record->date_recorded->toDateString());
-                $carePathways->activate($patient, $record, $data['monitoring_data']['activeCarePathways'] ?? [], $request->user());
                 $confirmedItems = array_values(array_filter($dispensedMedicines, fn ($item) => ($item['confirmed_given'] ?? false) === true));
                 foreach ($data['immunization_data']['vaccineEntries'] ?? [] as $entry) {
                     if (($entry['confirmedGiven'] ?? false) === true) {
@@ -204,24 +199,6 @@ class HealthRecordController extends Controller
                 }
                 $followUpTasks->syncRecord($record, $request->user(), $lockedFollowUpTask);
                 $followUpTasks->fulfillParentTask($record, $request->user(), $lockedFollowUpTask);
-
-                // Links the just-synced follow-up task to only the pathways
-                // the worker explicitly ticked in Disposition ("This follow-up
-                // is for:") - never every active pathway automatically.
-                $pathwaysForFollowUp = $data['monitoring_data']['followUpForPathways'] ?? [];
-                if ($pathwaysForFollowUp !== []) {
-                    $task = \App\Models\FollowUpTask::where('health_record_id', $record->id)
-                        ->whereNull('rescheduled_to_id')
-                        ->first();
-                    if ($task !== null) {
-                        $enrollmentIds = \App\Models\CarePathwayEnrollment::query()
-                            ->where('patient_id', $patient->id)
-                            ->whereIn('pathway_key', $pathwaysForFollowUp)
-                            ->where('status', \App\Models\CarePathwayEnrollment::STATUS_ACTIVE)
-                            ->pluck('id');
-                        $task->carePathwayEnrollments()->syncWithoutDetaching($enrollmentIds);
-                    }
-                }
 
                 if (is_array($referralData)) {
                     try {
@@ -295,10 +272,6 @@ class HealthRecordController extends Controller
                     ->first();
 
                 return $this->consultationAlreadyRecordedResponse($recorded);
-            }
-
-            if ($this->isCarePathwayEnrollmentConflict($exception)) {
-                return $this->carePathwayEnrollmentConflictResponse();
             }
 
             if (! $this->isIdempotencyConflict($exception)) {
@@ -745,32 +718,6 @@ class HealthRecordController extends Controller
 
         return in_array($sqlState, ['23505', '23000'], true)
             && str_contains($message, 'consultation_uuid');
-    }
-
-    /**
-     * Two concurrent "start" requests can both pass CarePathwayActivationService's
-     * lockForUpdate() check before either has inserted, and the second then
-     * collides with care_pathway_enrollments_one_active_idx. The whole
-     * transaction has already rolled back by the time this is caught - retrying
-     * the save is always the correct next step, since the enrollment the other
-     * request created is now visible and this request's own retry will
-     * correctly join it as "continued" instead of racing to start a new one.
-     */
-    private function isCarePathwayEnrollmentConflict(QueryException $exception): bool
-    {
-        $sqlState = $exception->errorInfo[0] ?? null;
-        $message = strtolower($exception->getMessage());
-
-        return in_array($sqlState, ['23505', '23000'], true)
-            && str_contains($message, 'care_pathway_enrollments_one_active_idx');
-    }
-
-    private function carePathwayEnrollmentConflictResponse()
-    {
-        return response()->json([
-            'message' => 'A care pathway enrollment for this patient was just started by another request. Please retry saving this consultation.',
-            'code' => 'CARE_PATHWAY_ENROLLMENT_CONFLICT',
-        ], 409);
     }
 
     /**

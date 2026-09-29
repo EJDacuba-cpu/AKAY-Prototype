@@ -21,7 +21,7 @@ class ClinicalRegistryTest extends TestCase
     public function test_matches_condition_by_official_name(): void
     {
         $match = $this->registry()->matchCondition('Hypertension');
-        $this->assertSame(['key' => 'hypertension', 'name' => 'Hypertension', 'pathway' => 'ncd'], $match);
+        $this->assertSame(['key' => 'hypertension', 'name' => 'Hypertension'], $match);
     }
 
     public function test_matches_condition_by_alias(): void
@@ -33,7 +33,6 @@ class ClinicalRegistryTest extends TestCase
         $match = $this->registry()->matchCondition('PTB');
         $this->assertSame('tuberculosis', $match['key']);
         $this->assertSame('Tuberculosis', $match['name']);
-        $this->assertSame('tb_dots', $match['pathway']);
     }
 
     public function test_matching_ignores_case_and_extra_whitespace(): void
@@ -70,16 +69,6 @@ class ClinicalRegistryTest extends TestCase
         $this->assertNull($this->registry()->matchSurveillance('Dengue'));
     }
 
-    public function test_pathway_for_condition_key(): void
-    {
-        $registry = $this->registry();
-        $this->assertSame('ncd', $registry->pathwayFor('hypertension'));
-        $this->assertSame('ncd', $registry->pathwayFor('diabetes_mellitus'));
-        $this->assertSame('tb_dots', $registry->pathwayFor('tuberculosis'));
-        $this->assertNull($registry->pathwayFor('unknown_key'));
-        $this->assertNull($registry->pathwayFor(null));
-    }
-
     public function test_validity_checks(): void
     {
         $registry = $this->registry();
@@ -89,18 +78,13 @@ class ClinicalRegistryTest extends TestCase
 
         $this->assertTrue($registry->isValidSurveillanceKey('hfmd'));
         $this->assertFalse($registry->isValidSurveillanceKey('unknown'));
-
-        $this->assertTrue($registry->isValidPathwayKey('ncd'));
-        $this->assertTrue($registry->isValidPathwayKey('tb_dots'));
-        $this->assertFalse($registry->isValidPathwayKey('unknown'));
     }
 
-    public function test_all_returns_the_three_lists(): void
+    public function test_all_returns_both_lists(): void
     {
         $all = $this->registry()->all();
-        $this->assertSame(['monitored_conditions', 'surveillance_diseases', 'care_pathways'], array_keys($all));
+        $this->assertSame(['monitored_conditions', 'surveillance_diseases'], array_keys($all));
         $this->assertArrayHasKey('hypertension', $all['monitored_conditions']);
         $this->assertArrayHasKey('hfmd', $all['surveillance_diseases']);
-        $this->assertArrayHasKey('ncd', $all['care_pathways']);
     }
 }

@@ -4,7 +4,7 @@ namespace App\Services;
 
 /**
  * Reads config('clinical_registry') - the single source of truth for
- * monitored conditions, surveillance diseases, and care pathways. See
+ * monitored conditions and surveillance diseases. See
  * docs/superpowers/specs/2026-09-29-diagnosis-monitoring-surveillance-registry-design.md.
  *
  * Every match here is exact, case- and whitespace-insensitive, against a
@@ -31,24 +31,18 @@ class ClinicalRegistry
         return config('clinical_registry.surveillance_diseases', []);
     }
 
-    public function carePathways(): array
-    {
-        return config('clinical_registry.care_pathways', []);
-    }
-
     /** The whole registry, as served by GET /api/clinical-registry. */
     public function all(): array
     {
         return [
             'monitored_conditions' => $this->monitoredConditions(),
             'surveillance_diseases' => $this->surveillanceDiseases(),
-            'care_pathways' => $this->carePathways(),
         ];
     }
 
     /**
      * The monitored condition $text names or is an alias of, or null.
-     * Returns ['key' => 'hypertension', 'name' => 'Hypertension', 'pathway' => 'ncd'].
+     * Returns ['key' => 'hypertension', 'name' => 'Hypertension'].
      */
     public function matchCondition(?string $text): ?array
     {
@@ -58,11 +52,7 @@ class ClinicalRegistry
         }
         foreach ($this->monitoredConditions() as $conditionKey => $entry) {
             if ($this->nameOrAliasMatches($entry, $key)) {
-                return [
-                    'key' => $conditionKey,
-                    'name' => $entry['name'],
-                    'pathway' => $entry['pathway'] ?? null,
-                ];
+                return ['key' => $conditionKey, 'name' => $entry['name']];
             }
         }
         return null;
@@ -86,12 +76,6 @@ class ClinicalRegistry
         return null;
     }
 
-    /** The Care Pathway key a monitored condition key belongs to, or null. */
-    public function pathwayFor(?string $conditionKey): ?string
-    {
-        return $this->monitoredConditions()[$conditionKey]['pathway'] ?? null;
-    }
-
     public function isValidConditionKey(?string $conditionKey): bool
     {
         return $conditionKey !== null && array_key_exists($conditionKey, $this->monitoredConditions());
@@ -100,43 +84,6 @@ class ClinicalRegistry
     public function isValidSurveillanceKey(?string $key): bool
     {
         return $key !== null && array_key_exists($key, $this->surveillanceDiseases());
-    }
-
-    public function isValidPathwayKey(?string $key): bool
-    {
-        return $key !== null && array_key_exists($key, $this->carePathways());
-    }
-
-    public function pathwayCategory(string $pathwayKey): ?string
-    {
-        return $this->carePathways()[$pathwayKey]['category'] ?? null;
-    }
-
-    public function pathwayUsesDedicatedForm(string $pathwayKey): bool
-    {
-        return (bool) ($this->carePathways()[$pathwayKey]['uses_dedicated_form'] ?? false);
-    }
-
-    /** @return array<int, string> */
-    public function pathwayFieldSetKeys(string $pathwayKey): array
-    {
-        return array_keys($this->carePathways()[$pathwayKey]['field_sets'] ?? []);
-    }
-
-    public function pathwayHasFieldSet(string $pathwayKey, string $fieldSetKey): bool
-    {
-        return in_array($fieldSetKey, $this->pathwayFieldSetKeys($pathwayKey), true);
-    }
-
-    /** @return array<int, string> */
-    public function pathwayFieldSetFieldKeys(string $pathwayKey, string $fieldSetKey): array
-    {
-        return array_keys($this->carePathways()[$pathwayKey]['field_sets'][$fieldSetKey]['fields'] ?? []);
-    }
-
-    public function pathwayFieldSetFieldConfig(string $pathwayKey, string $fieldSetKey, string $fieldKey): ?array
-    {
-        return $this->carePathways()[$pathwayKey]['field_sets'][$fieldSetKey]['fields'][$fieldKey] ?? null;
     }
 
     /**

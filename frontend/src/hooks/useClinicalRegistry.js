@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getClinicalRegistry } from "../services/clinicalRegistryService";
 import { queryKeys } from "../utils/queryKeys";
 
-const EMPTY_REGISTRY = { monitored_conditions: {}, surveillance_diseases: {}, care_pathways: {} };
+const EMPTY_REGISTRY = { monitored_conditions: {}, surveillance_diseases: {} };
 
 /**
  * The clinical registry, cached for the session - it only changes on

@@ -7,8 +7,7 @@
  * The record's plain-text `diagnosis` stays the copy every existing reader
  * uses (reports, referrals, follow-ups): it is the names joined with "; ".
  *
- * DIAGNOSIS_SUGGESTIONS below is a plain typing-shortcut list, independent
- * of any Care Pathway - the backend's ClinicalRegistry (config/clinical_registry.php)
+ * DIAGNOSIS_SUGGESTIONS below is a plain typing-shortcut list - the backend's ClinicalRegistry (config/clinical_registry.php)
  * is the source of truth for which diagnoses are registered monitored
  * conditions and what auto-syncs to Current Conditions; this list is not
  * wired to that registry yet (a frontend follow-up - see
@@ -35,7 +34,7 @@ export const DIAGNOSIS_LIMITS = { name: 150, count: 20, notes: 5000 };
  * standardized diagnosis names. Picking one is a shortcut for typing it; any
  * other diagnosis (Asthma, UTI, ...) is typed and saved exactly as entered.
  * No fuzzy matching, autocorrection or automatic inference is layered on top
- * of this list, and it does not imply any care pathway.
+ * of this list.
  */
 export const DIAGNOSIS_SUGGESTIONS = Object.freeze(["Hypertension", "Diabetes Mellitus"]);
 

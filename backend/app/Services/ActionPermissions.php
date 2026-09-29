@@ -7,10 +7,10 @@ use Illuminate\Database\Eloquent\Collection;
 
 class ActionPermissions
 {
-    public const ALL = ['patients.register', 'consultations.encode', 'clinical.history', 'consultations.finalize', 'records.correct', 'followups.manage', 'referrals.submit', 'inventory.view', 'inventory.manage', 'items.dispense', 'rhu.manage', 'reports.view', 'care_pathways.manage'];
+    public const ALL = ['patients.register', 'consultations.encode', 'clinical.history', 'consultations.finalize', 'records.correct', 'followups.manage', 'referrals.submit', 'inventory.view', 'inventory.manage', 'items.dispense', 'rhu.manage', 'reports.view'];
 
     public const PRESETS = [
-        'clinical' => ['patients.register', 'consultations.encode', 'clinical.history', 'consultations.finalize', 'records.correct', 'followups.manage', 'referrals.submit', 'items.dispense', 'inventory.view', 'reports.view', 'care_pathways.manage'],
+        'clinical' => ['patients.register', 'consultations.encode', 'clinical.history', 'consultations.finalize', 'records.correct', 'followups.manage', 'referrals.submit', 'items.dispense', 'inventory.view', 'reports.view'],
         'encoder' => ['patients.register', 'consultations.encode', 'inventory.view'],
         'inventory' => ['inventory.view', 'inventory.manage'],
         'rhu' => ['patients.register', 'clinical.history', 'rhu.manage', 'inventory.view', 'reports.view'],

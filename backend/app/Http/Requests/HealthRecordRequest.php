@@ -155,25 +155,6 @@ class HealthRecordRequest extends FormRequest
             'monitoring_data.patient_condition' => ['nullable', 'string', 'max:100'],
             'monitoring_data.attendingStaff' => ['nullable', 'string', 'max:150'],
             'monitoring_data.attending_staff' => ['nullable', 'string', 'max:150'],
-            // Care Pathway activation staged on this consultation - see
-            // CarePathwayActivationService for what each key means. Replaces
-            // the retired monitoring_data.ncdData (the old NCD-as-a-program
-            // prototype - its form and ConsultationPrograms entry are gone).
-            'monitoring_data.activeCarePathways' => ['nullable', 'array'],
-            'monitoring_data.activeCarePathways.*.pathway_key' => ['required', 'string'],
-            'monitoring_data.activeCarePathways.*.conditions' => ['required', 'array', 'min:1'],
-            'monitoring_data.activeCarePathways.*.conditions.*.condition_name' => ['required', 'string', 'max:150'],
-            'monitoring_data.activeCarePathways.*.conditions.*.field_set_key' => ['nullable', 'string'],
-            'monitoring_data.activeCarePathways.*.conditions.*.diagnosis_ref' => ['nullable', 'string', 'max:64'],
-            'monitoring_data.activeCarePathways.*.conditions.*.field_values' => ['nullable', 'array'],
-            'monitoring_data.activeCarePathways.*.link_legacy_health_record_ids' => ['nullable', 'array'],
-            'monitoring_data.activeCarePathways.*.link_legacy_health_record_ids.*' => ['integer', 'exists:health_records,id'],
-            'monitoring_data.activeCarePathways.*.status' => ['nullable', 'string', Rule::in(['active', 'completed', 'discontinued'])],
-            'monitoring_data.activeCarePathways.*.end_reason' => ['required_if:monitoring_data.activeCarePathways.*.status,completed,discontinued', 'nullable', 'string', 'max:500'],
-            'monitoring_data.activeCarePathways.*.remove_condition_names' => ['nullable', 'array'],
-            'monitoring_data.activeCarePathways.*.remove_condition_names.*' => ['string', 'max:150'],
-            'monitoring_data.followUpForPathways' => ['nullable', 'array'],
-            'monitoring_data.followUpForPathways.*' => ['string'],
             // Registry-driven Community-Based Surveillance tags. Coexists with
             // the legacy hfmdSurveillance/surveillanceCategory keys, which
             // HealthRecordController::normalizeSurveillanceData derives from
@@ -381,19 +362,6 @@ class HealthRecordRequest extends FormRequest
                 $this->input('category', $this->route('health_record')?->category)
             );
             $clinicalRegistry = app(\App\Services\ClinicalRegistry::class);
-            foreach ($this->input('monitoring_data.activeCarePathways', []) as $index => $activation) {
-                $pathwayKey = $activation['pathway_key'] ?? null;
-                if (! is_string($pathwayKey) || ! $clinicalRegistry->isValidPathwayKey($pathwayKey)) {
-                    $validator->errors()->add("monitoring_data.activeCarePathways.$index.pathway_key", 'This care pathway is not configured.');
-                    continue;
-                }
-                foreach ($activation['conditions'] ?? [] as $conditionIndex => $condition) {
-                    $fieldSetKey = $condition['field_set_key'] ?? null;
-                    if ($fieldSetKey !== null && ! $clinicalRegistry->pathwayHasFieldSet($pathwayKey, $fieldSetKey)) {
-                        $validator->errors()->add("monitoring_data.activeCarePathways.$index.conditions.$conditionIndex.field_set_key", 'This monitoring form is not configured for this pathway.');
-                    }
-                }
-            }
             foreach ($this->input('monitoring_data.surveillanceTags', []) as $index => $tagKey) {
                 if (! is_string($tagKey) || ! $clinicalRegistry->isValidSurveillanceKey($tagKey)) {
                     $validator->errors()->add("monitoring_data.surveillanceTags.$index", 'This surveillance disease is not configured.');

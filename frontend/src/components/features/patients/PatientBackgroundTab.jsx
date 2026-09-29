@@ -171,12 +171,9 @@ function GroupHeading({ children }) {
 /**
  * The two Current Conditions groups, per
  * docs/superpowers/specs/2026-09-29-diagnosis-monitoring-surveillance-registry-design.md:
- * Monitored Conditions (registry-recognized, shows its pathway + enrollment
- * status) and Other Conditions (free-text). Condition presence and
- * enrollment are shown together but stay separate facts - this component
- * never starts or edits an enrollment.
+ * Monitored Conditions (registry-recognized) and Other Conditions (free-text).
  */
-function DiseaseGroupView({ title, diseases, emptyText, flat, monitored = false }) {
+function DiseaseGroupView({ title, diseases, emptyText, flat }) {
   return (
     <div>
       <GroupHeading>{title}</GroupHeading>
@@ -195,11 +192,6 @@ function DiseaseGroupView({ title, diseases, emptyText, flat, monitored = false 
                 {disease.name}
                 {disease.status ? ` · ${disease.status}` : ""}
               </span>
-              {monitored && disease.pathwayLabel && (
-                <span className="rounded-none border border-red-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-gray-500">
-                  {disease.pathwayLabel} · {disease.enrollmentStatus}
-                </span>
-              )}
             </span>
           ))
         ) : (
@@ -212,7 +204,7 @@ function DiseaseGroupView({ title, diseases, emptyText, flat, monitored = false 
   );
 }
 
-function DiseaseGroupEdit({ title, diseases, emptyText, flat, compact, onUpdate, onRemove, monitored = false }) {
+function DiseaseGroupEdit({ title, diseases, emptyText, flat, compact, onUpdate, onRemove }) {
   return (
     <div>
       <GroupHeading>{title}</GroupHeading>
@@ -230,11 +222,6 @@ function DiseaseGroupEdit({ title, diseases, emptyText, flat, compact, onUpdate,
             <div className="flex items-center justify-between gap-3">
               <span className="text-[12.5px] font-bold text-gray-900 in-[.bhc-patient-profile]:font-semibold in-[.bhc-patient-profile]:text-gray-900">
                 {disease.name}
-                {monitored && disease.pathwayLabel && (
-                  <span className="ml-2 rounded-none border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-                    {disease.pathwayLabel} · {disease.enrollmentStatus}
-                  </span>
-                )}
               </span>
               <button
                 type="button"
@@ -414,8 +401,6 @@ export default function PatientBackgroundTab({
   const fields = TEXT_FIELDS[section] || [];
   const diseases = draft.currentDiseases;
   const { registry } = useClinicalRegistry();
-  // Enrollment status is a placeholder ("Not started" for everything) until
-  // Care Pathway enrollment data is wired in - see groupCurrentDiseases.
   const { monitored: monitoredDiseases, other: otherDiseases } = groupCurrentDiseases(diseases, registry);
   const lastUpdated = background?.updatedAt?.[section] || "";
 
@@ -430,7 +415,6 @@ export default function PatientBackgroundTab({
                 diseases={monitoredDiseases}
                 emptyText="None recorded"
                 flat={flat}
-                monitored
               />
               <DiseaseGroupView
                 title="Other Conditions"
@@ -449,7 +433,6 @@ export default function PatientBackgroundTab({
                 compact={compact}
                 onUpdate={updateDisease}
                 onRemove={removeDisease}
-                monitored
               />
               <DiseaseGroupEdit
                 title="Other Conditions"

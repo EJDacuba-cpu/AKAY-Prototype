@@ -22,9 +22,7 @@ import {
  * (Active) when the consultation is saved; × removes it. There is no edit -
  * a mistake is removed and typed again.
  *
- * Care pathways are a separate, later step (see
- * docs/superpowers/specs/2026-09-29-diagnosis-monitoring-surveillance-registry-design.md)
- * - this component only adds, marks and removes diagnoses.
+ * This component only adds, marks and removes diagnoses.
  */
 
 const LABEL_CLASS = "mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]";

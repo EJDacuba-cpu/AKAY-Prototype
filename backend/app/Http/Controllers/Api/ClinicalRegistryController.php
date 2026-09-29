@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Services\ClinicalRegistry;
 
 /**
- * Serves the clinical registry (monitored conditions, surveillance diseases,
- * care pathways) read-only. Authenticated, no special permission - everyone
+ * Serves the clinical registry (monitored conditions and surveillance
+ * diseases) read-only. Authenticated, no special permission - everyone
  * who can open a consultation needs to see what's available. The frontend
  * keeps zero copy of any of these lists; it always renders from this
  * response. See

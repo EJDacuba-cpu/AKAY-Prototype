@@ -14,12 +14,12 @@ class RemovedHypertensionDiabetesProgramTest extends TestCase
 {
     public function test_remaining_programs_and_services_are_exact(): void
     {
-        // NCD Monitoring is now a generic Care Pathway (ClinicalRegistry, key
-        // "ncd"), not a ConsultationPrograms entry; the old removed keys stay
-        // gone from this list either way.
+        // Neither the old Hypertension / Diabetes programs nor the retired
+        // NCD Monitoring pathway may come back as a classification.
         $this->assertSame(['Maternal', 'TB', 'Family Planning', 'EPI'], array_keys(ConsultationPrograms::CLASSIFICATIONS));
         $this->assertSame(['General', 'Prenatal', 'Postpartum', 'EPI', 'Family Planning', 'TB'], VisitPurpose::SERVICES);
         $this->assertNotContains('Hypertension / Diabetic Monitoring', HealthRecordDraftRequest::CLASSIFICATIONS);
+        $this->assertNotContains('NCD Monitoring', HealthRecordDraftRequest::CLASSIFICATIONS);
     }
 
     public function test_hypertension_and_diabetes_are_rejected_as_programs(): void

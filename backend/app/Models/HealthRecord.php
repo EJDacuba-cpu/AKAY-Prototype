@@ -123,16 +123,6 @@ class HealthRecord extends Model
         return $this->hasMany(HealthRecordMedicine::class);
     }
 
-    public function carePathwayEnrollmentsStarted(): HasMany
-    {
-        return $this->hasMany(CarePathwayEnrollment::class, 'started_health_record_id');
-    }
-
-    public function carePathwayEncounters(): HasMany
-    {
-        return $this->hasMany(CarePathwayEncounter::class, 'health_record_id');
-    }
-
     public function referrals(): HasMany
     {
         return $this->hasMany(Referral::class);

@@ -84,23 +84,6 @@ class SurveillanceRegistryTest extends TestCase
             ->assertJsonValidationErrors(['monitoring_data.surveillanceTags.0']);
     }
 
-    public function test_active_care_pathways_and_surveillance_tags_coexist(): void
-    {
-        $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
-            'patient_id' => $this->patient->id,
-            'category' => 'NCD Monitoring',
-            'chief_complaint' => 'Follow-up',
-            'diagnoses' => [['id' => 'd1', 'name' => 'Hypertension', 'addToConditions' => false]],
-            'monitoring_data' => [
-                'activeCarePathways' => [[
-                    'pathway_key' => 'ncd',
-                    'conditions' => [['condition_name' => 'Hypertension', 'field_set_key' => null, 'diagnosis_ref' => 'd1', 'field_values' => []]],
-                ]],
-                'surveillanceTags' => ['hfmd'],
-            ],
-        ])->assertCreated();
-    }
-
     public function test_surveillance_tags_round_trip_through_a_draft(): void
     {
         $draft = $this->postJson('/api/health-record-drafts', [

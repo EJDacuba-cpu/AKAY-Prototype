@@ -6,10 +6,6 @@ use Illuminate\Validation\Rule;
 
 class ConsultationPrograms
 {
-    // NCD Monitoring is now a generic Care Pathway (ClinicalRegistry, key
-    // "ncd"), started from a diagnosis' automatic Current Conditions sync and
-    // an explicit Start Monitoring action - not a ConsultationPrograms entry.
-    // See CarePathwayActivationService and config/clinical_registry.php.
     public const CLASSIFICATIONS = [
         'Maternal' => 'Maternal',
         'TB' => 'TB DOTS / TB Monitoring',

@@ -106,11 +106,6 @@ class FollowUpTask extends Model
         return $this->belongsTo(self::class, 'rescheduled_to_id');
     }
 
-    public function carePathwayEnrollments(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
-    {
-        return $this->belongsToMany(CarePathwayEnrollment::class, 'care_pathway_enrollment_follow_up_task', 'follow_up_task_id', 'enrollment_id');
-    }
-
     public function isSuperseded(): bool
     {
         return $this->rescheduled_to_id !== null;
