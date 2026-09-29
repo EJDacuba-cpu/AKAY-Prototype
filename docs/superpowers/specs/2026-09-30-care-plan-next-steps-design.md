@@ -22,8 +22,8 @@ Every decision below was made explicitly by the developer during design.
 
 ## Principles
 
-1. One visit = one ITR (`health_records` row). A saved ITR is never edited
-   ([[health-records-immutable-after-save]]).
+1. One visit = one ITR (`health_records` row). A saved ITR is never edited;
+   a correction is a new record.
 2. Care-plan decisions are per diagnosis; the resulting referral and
    follow-up are per consultation (at most one of each).
 3. BHC monitoring is a separate patient-condition tracking record. Current
@@ -34,8 +34,7 @@ Every decision below was made explicitly by the developer during design.
 5. Specialized fields appear only when a monitored condition needs data the
    ITR does not already hold or let you derive. Today that is only TB.
 6. Nothing clinical is inferred: no diagnosis, alert, monitoring status or
-   referral is derived from a measurement or a diagnosis name
-   ([[no-clinical-suggestions]]).
+   referral is derived from a measurement or a diagnosis name.
 
 ## Consultation flow
 
@@ -272,8 +271,9 @@ Monitoring changes are part of saving a consultation and are covered by
 - `GET /api/patients/{patient}/care-overview` — pending follow-ups (with
   linked conditions and source ITR) and active monitoring records with no
   pending follow-up. Used by the Start Consultation modal (and later the
-  Patient Profile). Gated like other patient clinical reads
-  (`clinical.history`) and facility access.
+  Patient Profile). Allowed for users with `consultations.encode` or
+  `clinical.history` (an encoder must be able to start a consultation), plus
+  the usual facility access check.
 - `POST /api/health-records` — gains `care_plan`, `diagnoses.*.carePlan`,
   `diagnoses.*.includeInSurveillance`, `vital_signs.fbs`.
 
