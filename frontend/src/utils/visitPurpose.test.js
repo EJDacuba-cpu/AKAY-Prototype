@@ -38,13 +38,12 @@ test('teenage confirmation is scoped to Prenatal, not postpartum or adult visits
   assert.equal(teenagePrenatal({ services: ['Postpartum'] }, patient('2010-01-01'), date), false);
   assert.equal(teenagePrenatal(purpose, patient('2000-01-01'), date), false);
 });
-test('program-only flow skips General but retains vitals, treatment and final actions', () => {
+test('every flow, program-only included, keeps assessment, vitals, treatment and final actions', () => {
   const programs = getProgramFormSteps(['Maternal'], 'Maternal');
-  assert.deepEqual(getFormSequence(programs, false), ['interview', 'program:Maternal', 'treatment']);
-  assert.deepEqual(getFormSequence(programs, true), ['interview', 'assessment', 'program:Maternal', 'treatment']);
-  const steps = buildConsultationSteps({ selectedPrograms: ['EPI'], generalSelected: false });
+  assert.deepEqual(getFormSequence(programs), ['interview', 'assessment', 'program:Maternal', 'treatment']);
+  const steps = buildConsultationSteps({ selectedPrograms: ['EPI'], primaryProgram: 'EPI' });
   assert.equal(steps[0].label, 'Concern & Vital Signs');
-  assert.equal(steps.some(step => step.key === 'assessment'), false);
+  assert.equal(steps.some(step => step.key === 'assessment'), true);
   assert.equal(steps.at(-1).key, 'review');
 });
 

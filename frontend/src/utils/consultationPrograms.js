@@ -1,6 +1,5 @@
 export const PROGRAM_CLASSIFICATIONS = Object.freeze({
   Maternal: "Maternal",
-  TB: "TB DOTS / TB Monitoring",
   "Family Planning": "Family Planning",
   EPI: "Immunization",
 });

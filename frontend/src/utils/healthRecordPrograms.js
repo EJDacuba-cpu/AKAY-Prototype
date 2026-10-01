@@ -1,4 +1,5 @@
 import { getConsultationPrograms } from "./consultationPrograms.js";
+import { isTbRecord as hasTbData } from "./tbRecords.js";
 
 export const EPI_VACCINE_ROWS = [
   "Newborn Screening",
@@ -345,7 +346,8 @@ export function getSpecializedRecordPrograms(records = []) {
 
   for (const record of Array.isArray(records) ? records : []) {
     const selected = getConsultationPrograms(record);
-    const keys = selected.length ? [...new Set(selected.map(key => ({ EPI: "epi", Maternal: "maternal", "Family Planning": "familyPlanning", TB: "tb" })[key]))] : [getSpecializedRecordType(record)];
+    const keys = selected.length ? [...new Set(selected.map(key => ({ EPI: "epi", Maternal: "maternal", "Family Planning": "familyPlanning" })[key]))] : [getSpecializedRecordType(record)];
+    if (hasTbData(record) && !keys.includes("tb")) keys.push("tb");
     keys.forEach(key => groupedRecords.get(key)?.push(record));
   }
 

@@ -438,11 +438,6 @@ class HealthRecordRequest extends FormRequest
             if (in_array('Family Planning', $programs)) {
                 $required[] = 'family_planning_data.methodUsed';
             }
-            // A TB program added to the visit still carries its own TB card,
-            // whether or not a diagnosis is being monitored.
-            if (in_array('TB', $programs)) {
-                $required = [...$required, ...\App\Services\MonitoringDetails::REQUIRED_FIELDS['tb_dots']];
-            }
             foreach ($this->monitoringDetailKeys() as $detailsKey) {
                 $required = [...$required, ...(\App\Services\MonitoringDetails::REQUIRED_FIELDS[$detailsKey] ?? [])];
             }

@@ -16,7 +16,7 @@ class RemovedHypertensionDiabetesProgramTest extends TestCase
     {
         // Neither the old Hypertension / Diabetes programs nor the retired
         // NCD Monitoring pathway may come back as a classification.
-        $this->assertSame(['Maternal', 'TB', 'Family Planning', 'EPI'], array_keys(ConsultationPrograms::CLASSIFICATIONS));
+        $this->assertSame(['Maternal', 'Family Planning', 'EPI'], array_keys(ConsultationPrograms::CLASSIFICATIONS));
         $this->assertSame(['General', 'Prenatal', 'Postpartum', 'EPI', 'Family Planning', 'TB'], VisitPurpose::SERVICES);
         $this->assertNotContains('Hypertension / Diabetic Monitoring', HealthRecordDraftRequest::CLASSIFICATIONS);
         $this->assertNotContains('NCD Monitoring', HealthRecordDraftRequest::CLASSIFICATIONS);
@@ -58,7 +58,7 @@ class RemovedHypertensionDiabetesProgramTest extends TestCase
     public function test_remaining_programs_still_validate(): void
     {
         $validator = Validator::make(
-            ['monitoring_data' => ['selectedPrograms' => ['Maternal', 'TB', 'Family Planning', 'EPI'], 'primaryProgram' => 'TB']],
+            ['monitoring_data' => ['selectedPrograms' => ['Maternal', 'Family Planning', 'EPI'], 'primaryProgram' => 'Maternal']],
             ConsultationPrograms::rules('monitoring_data')
         );
         $this->assertFalse($validator->fails());

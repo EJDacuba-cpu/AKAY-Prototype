@@ -31,7 +31,7 @@ class ConsultationProgramsTest extends TestCase
         $response = $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
             'patient_id' => $this->patient->id,
             'category' => 'Maternal',
-            'monitoring_data' => ['selectedPrograms' => ['Maternal', 'Family Planning', 'TB'], 'primaryProgram' => 'Maternal'],
+            'monitoring_data' => ['selectedPrograms' => ['Maternal', 'Family Planning'], 'primaryProgram' => 'Maternal'],
             'maternal_data' => ['lmp' => '2026-08-01'],
             'family_planning_data' => ['methodUsed' => 'Condom'],
             'tb_data' => ['diagnosis' => ['tbCaseNumber' => 'TEST-001']],
@@ -39,7 +39,7 @@ class ConsultationProgramsTest extends TestCase
         $id = $response->json('data.id');
         $this->getJson("/api/health-records/$id")->assertOk()
             ->assertJsonPath('data.category', 'Maternal')
-            ->assertJsonPath('data.monitoring_data.selectedPrograms', ['Maternal', 'Family Planning', 'TB'])
+            ->assertJsonPath('data.monitoring_data.selectedPrograms', ['Maternal', 'Family Planning'])
             ->assertJsonPath('data.family_planning_data.methodUsed', 'Condom')
             ->assertJsonPath('data.tb_data.diagnosis.tbCaseNumber', 'TEST-001');
     }
@@ -49,17 +49,17 @@ class ConsultationProgramsTest extends TestCase
         $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
             'patient_id' => $this->patient->id, 'category' => 'Maternal',
             'monitoring_data' => ['selectedPrograms' => ['Maternal'], 'primaryProgram' => 'TB'],
-        ])->assertUnprocessable()->assertJsonValidationErrors(['monitoring_data.primaryProgram', 'category']);
+        ])->assertUnprocessable()->assertJsonValidationErrors(['monitoring_data.primaryProgram']);
     }
 
     public function test_program_selection_and_current_visit_resume_from_encrypted_draft(): void
     {
         $draft = $this->postJson('/api/health-record-drafts', [
             'patient_id' => $this->patient->id, 'classification' => 'Maternal',
-            'payload' => ['selectedPrograms' => ['Maternal', 'TB'], 'primaryProgram' => 'Maternal', 'consultationMode' => 'program', 'wizardPhase' => 'program', 'chiefComplaint' => 'Test complaint'],
+            'payload' => ['selectedPrograms' => ['Maternal', 'Family Planning'], 'primaryProgram' => 'Maternal', 'consultationMode' => 'program', 'wizardPhase' => 'program', 'chiefComplaint' => 'Test complaint'],
         ])->assertCreated()->json('data.id');
         $this->getJson("/api/health-record-drafts/$draft")->assertOk()
-            ->assertJsonPath('data.payload.selectedPrograms', ['Maternal', 'TB'])
+            ->assertJsonPath('data.payload.selectedPrograms', ['Maternal', 'Family Planning'])
             ->assertJsonPath('data.payload.primaryProgram', 'Maternal')
             ->assertJsonPath('data.payload.wizardPhase', 'program');
         $this->deleteJson("/api/health-record-drafts/$draft")->assertSuccessful();
@@ -69,9 +69,9 @@ class ConsultationProgramsTest extends TestCase
     public function test_draft_remembers_the_active_program_step_in_the_same_draft(): void
     {
         $payload = [
-            'selectedPrograms' => ['Maternal', 'TB'], 'primaryProgram' => 'Maternal',
+            'selectedPrograms' => ['Maternal', 'Family Planning'], 'primaryProgram' => 'Maternal',
             'consultationMode' => 'program', 'wizardPhase' => 'form',
-            'formStep' => 'program:TB DOTS / TB Monitoring', 'chiefComplaint' => 'Cough',
+            'formStep' => 'program:Family Planning', 'chiefComplaint' => 'Cough',
             'maternalData' => ['lmp' => '2026-08-01'],
             'tbData' => ['diagnosis' => ['tbCaseNumber' => 'TEST-002']],
         ];
@@ -81,7 +81,7 @@ class ConsultationProgramsTest extends TestCase
 
         // Every program's data and the current step live in ONE draft.
         $this->getJson("/api/health-record-drafts/{$draft['id']}")->assertOk()
-            ->assertJsonPath('data.payload.formStep', 'program:TB DOTS / TB Monitoring')
+            ->assertJsonPath('data.payload.formStep', 'program:Family Planning')
             ->assertJsonPath('data.payload.maternalData.lmp', '2026-08-01')
             ->assertJsonPath('data.payload.tbData.diagnosis.tbCaseNumber', 'TEST-002');
 

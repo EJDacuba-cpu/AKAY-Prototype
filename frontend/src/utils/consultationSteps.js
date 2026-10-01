@@ -3,9 +3,11 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
 /**
  * Step model for the New Consultation workspace.
  *
- *   Interview & Vital Signs -> Clinical Assessment
- *       -> Program / Service Details (only when a program is selected)
- *       -> Treatment & Management -> Next Care Decision -> Review & Save
+ *   Concern & Vital Signs -> Physical Exam & Assessment
+ *       -> Service Details (when a service is selected)
+ *       -> Actions Taken -> Care Plan & Next Steps
+ *       -> Monitoring Details (when a monitored condition needs it)
+ *       -> Review & Confirm
  *
  * Interview and Vital Signs are one step: two cards on the same screen,
  * with no Next between them. The step's key is INTERVIEW_STEP.
@@ -17,9 +19,8 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
  *  - The PROGRAM forms nested inside that step, walked one at a time, primary
  *    first, then in the order they were selected.
  *
- * Programs are chosen in the Programs & Monitoring panel beside Interview &
- * Vital Signs (Clinical Assessment shows the body preview there instead); their
- * forms still follow the assessment rather than precede it.
+ * Programs are chosen in the Barangay Health Services panel; their forms still
+ * follow the assessment rather than precede it.
  *
  * Pure UI bookkeeping: it never touches the program data itself -
  * selectedPrograms / primaryProgram stay the single source of truth and every
@@ -32,6 +33,7 @@ export const ASSESSMENT_STEP = "assessment";
 export const TREATMENT_STEP = "treatment";
 export const NEXT_STEP = "next";
 export const REVIEW_STEP = "review";
+export const MONITORING_STEP = "monitoring";
 
 const PROGRAM_PREFIX = "program:";
 
@@ -40,10 +42,6 @@ const PROGRAM_STEP_DETAILS = {
     label: "Prenatal",
     description:
       "Record the patient's pregnancy and obstetric information for this prenatal consultation.",
-  },
-  "TB DOTS / TB Monitoring": {
-    label: "TB DOTS",
-    description: "Complete the TB-related information for this visit.",
   },
   "Family Planning": {
     label: "Family Planning",
@@ -108,24 +106,25 @@ export function getProgramFormSteps(selectedPrograms = [], primaryProgram = "") 
 }
 
 /**
- * The global steps, one heading each. "Program / Service Details" appears only
+ * The global steps, one heading each. "Service Details" appears only
  * when at least one program is selected, so a General Consultation goes
  * straight from Clinical Assessment to Treatment & Management.
  */
-export function buildConsultationSteps({ selectedPrograms, primaryProgram, generalSelected = true } = {}) {
+export function buildConsultationSteps({ selectedPrograms, primaryProgram, monitoringDetailKeys = [] } = {}) {
   const programSteps = getProgramFormSteps(selectedPrograms, primaryProgram);
 
   return [
     { key: INTERVIEW_STEP, phase: "form", label: "Concern & Vital Signs" },
-    ...(generalSelected ? [{ key: ASSESSMENT_STEP, phase: "form", label: "Physical Exam & Assessment" }] : []),
+    { key: ASSESSMENT_STEP, phase: "form", label: "Physical Exam & Assessment" },
     ...(programSteps.length > 0
-      ? [{ key: PROGRAMS_STEP, phase: "form", label: "Program / Service Details" }]
+      ? [{ key: PROGRAMS_STEP, phase: "form", label: "Service Details" }]
       : []),
-    // The Assessment field above already covers the diagnosis for a General
-    // Consultation; a program-only visit has no earlier step to have captured
-    // it, so this step keeps naming and collecting it.
-    { key: TREATMENT_STEP, phase: "form", label: generalSelected ? "Actions Taken" : "BHC Assessment & Actions Taken" },
-    { key: NEXT_STEP, phase: "next", label: "Disposition" },
+    { key: TREATMENT_STEP, phase: "form", label: "Actions Taken" },
+    { key: NEXT_STEP, phase: "next", label: "Care Plan & Next Steps" },
+    // Only when a monitored condition needs data the ITR does not hold (TB today).
+    ...(monitoringDetailKeys.length > 0
+      ? [{ key: MONITORING_STEP, phase: "next", label: "Monitoring Details" }]
+      : []),
     { key: REVIEW_STEP, phase: "review", label: "Review & Confirm" },
   ];
 }
@@ -171,18 +170,18 @@ export function resolveStepHeading({
  * Clinical Assessment (where they are chosen) and are skipped entirely when
  * none is selected.
  */
-export function getFormSequence(programSteps = [], generalSelected = true) {
-  return [
-    INTERVIEW_STEP,
-    ...(generalSelected ? [ASSESSMENT_STEP] : []),
-    ...programSteps.map((step) => step.key),
-    TREATMENT_STEP,
-  ];
+export function getFormSequence(programSteps = []) {
+  return [INTERVIEW_STEP, ASSESSMENT_STEP, ...programSteps.map((step) => step.key), TREATMENT_STEP];
 }
 
 /** Every screen in order, used to rank validation errors and Previous/Continue. */
-export function getStepOrder(programSteps = [], generalSelected = true) {
-  return [...getFormSequence(programSteps, generalSelected), NEXT_STEP, REVIEW_STEP];
+export function getStepOrder(programSteps = [], monitoringDetailKeys = []) {
+  return [
+    ...getFormSequence(programSteps),
+    NEXT_STEP,
+    ...(monitoringDetailKeys.length > 0 ? [MONITORING_STEP] : []),
+    REVIEW_STEP,
+  ];
 }
 
 /**
@@ -253,6 +252,8 @@ const NEXT_CARE_PHASE = "next";
  *
  * A stored program form that is no longer selected is resolved to Interview by
  * resolveFormStep at render time.
+ *
+ * Monitoring Details is saved as the next phase, so it resumes on Care Plan.
  */
 export function resolveRestoredPosition(payload = {}) {
   const phase = payload?.wizardPhase;
@@ -292,16 +293,15 @@ export function getErrorOwnerStepKey(errorKey) {
   ) {
     return INTERVIEW_STEP;
   }
-  if (key.startsWith("tbData.")) return programStepKey("TB DOTS / TB Monitoring");
+  if (key.startsWith("tbData.")) return MONITORING_STEP;
   if (key === "familyPlanningMethodUsed" || key.startsWith("familyPlanningData.")) {
     return programStepKey("Family Planning");
   }
   if (key === "vaccineEntries") return programStepKey("Immunization");
-  // Every step-based consultation is a General Consultation (generalSelected
-  // is always true), so its diagnosis list lives on Physical Exam &
-  // Assessment - the Treatment step's "BHC Assessment" field never renders.
+  // The diagnosis list lives on Physical Exam & Assessment.
   if (key === "diagnosis") return ASSESSMENT_STEP;
   if (key === "dispensedMedicines") return TREATMENT_STEP;
+  if (key.startsWith("carePlanStop.")) return NEXT_STEP;
   if (key === "reasonForReferral" || key === "receivingRhuId" || key === "urgencyLevel" || key === "followUpDate" || key === "followUpTime" || key === "followUpReason" || key === "followUpStatus") {
     return NEXT_STEP;
   }

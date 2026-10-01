@@ -20,6 +20,7 @@ import {
   formatEpiDate,
 } from "../../../utils/epiTracking";
 import { formatDate, formatDisplayValue } from "../../../utils/formatters";
+import { isTbRecord } from "../../../utils/tbRecords";
 
 const EMPTY_MARK = "Not recorded";
 const SOURCE_EMPTY_MARK = "\u2014";
@@ -38,7 +39,7 @@ export default function SpecializedRecordsTab({
   const programRecords = records.filter(
     (record) =>
       isOwnPatientRecord(record, patient) &&
-      getSpecializedRecordType(record) === program,
+      (program === "tb" ? isTbRecord(record) : getSpecializedRecordType(record) === program),
   );
 
   if (programRecords.length === 0) return null;

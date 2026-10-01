@@ -4,19 +4,19 @@ import { PROGRAM_CLASSIFICATIONS, restoredClassification, getConsultationProgram
 import { getSpecializedRecordPrograms, getServiceTypeLabel } from "./healthRecordPrograms.js";
 
 test("removing the primary selects a remaining program without losing the others", () => {
-  assert.deepEqual(toggleConsultationProgram(["Maternal", "TB"], "Maternal", "Maternal"), { selectedPrograms: ["TB"], primaryProgram: "TB" });
-  assert.deepEqual(toggleConsultationProgram(["Maternal"], "Maternal", "TB"), { selectedPrograms: ["Maternal", "TB"], primaryProgram: "Maternal" });
+  assert.deepEqual(toggleConsultationProgram(["Maternal", "EPI"], "Maternal", "Maternal"), { selectedPrograms: ["EPI"], primaryProgram: "EPI" });
+  assert.deepEqual(toggleConsultationProgram(["Maternal"], "Maternal", "EPI"), { selectedPrograms: ["Maternal", "EPI"], primaryProgram: "Maternal" });
 });
 
 test("server metadata restores primary and all selected programs", () => {
-  const record = { category: "Maternal", monitoring_data: { selectedPrograms: ["Maternal", "TB"], primaryProgram: "TB" } };
-  assert.deepEqual(getConsultationPrograms(record), ["Maternal", "TB"]);
-  assert.equal(getPrimaryProgram(record), "TB");
-  assert.deepEqual(getSpecializedRecordPrograms([record]).map(program => program.key), ["maternal", "tb"]);
+  const record = { category: "Maternal", monitoring_data: { selectedPrograms: ["Maternal", "EPI"], primaryProgram: "EPI" } };
+  assert.deepEqual(getConsultationPrograms(record), ["Maternal", "EPI"]);
+  assert.equal(getPrimaryProgram(record), "EPI");
+  assert.deepEqual(getSpecializedRecordPrograms([record]).map(program => program.key), ["epi", "maternal"]);
 });
 
 test("the selectable programs", () => {
-  assert.deepEqual(Object.keys(PROGRAM_CLASSIFICATIONS), ["Maternal", "TB", "Family Planning", "EPI"]);
+  assert.deepEqual(Object.keys(PROGRAM_CLASSIFICATIONS), ["Maternal", "Family Planning", "EPI"]);
 });
 
 test("legacy classifications still work and explicit general visits stay general", () => {
@@ -35,6 +35,11 @@ test("a stale removed program is ignored, never shown", () => {
 test("a restored draft with a removed classification follows its remaining primary", () => {
   assert.equal(restoredClassification("Hypertension / Diabetic Monitoring", "Maternal"), "Maternal");
   assert.equal(restoredClassification("Hypertension / Diabetic Monitoring", ""), "General Consultation");
-  assert.equal(restoredClassification("TB DOTS / TB Monitoring", "TB"), "TB DOTS / TB Monitoring");
+  assert.equal(restoredClassification("TB DOTS / TB Monitoring", ""), "General Consultation");
   assert.equal(restoredClassification("General Consultation", ""), "General Consultation");
+});
+
+test("TB is no longer a consultation program", () => {
+  assert.deepEqual(Object.keys(PROGRAM_CLASSIFICATIONS), ["Maternal", "Family Planning", "EPI"]);
+  assert.deepEqual(getConsultationPrograms({ selectedPrograms: ["TB", "EPI"] }), ["EPI"]);
 });

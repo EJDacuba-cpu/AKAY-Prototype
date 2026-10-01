@@ -72,8 +72,8 @@ class ConsultationWorkflowRevisionTest extends TestCase
     {
         $encoder = User::create(['name' => 'Encoder', 'email' => 'encoder@example.test', 'password' => 'password123', 'role' => 'bhw', 'status' => 'active', 'barangay_health_center_id' => $this->worker->barangay_health_center_id, 'permissions' => ActionPermissions::PRESETS['encoder']]);
         Sanctum::actingAs($encoder, ['akay:access']);
-        $payload = ['chiefComplaint' => 'Concern', 'selectedPrograms' => ['TB'], 'primaryProgram' => 'TB'];
-        $data = ['patient_id' => $this->patient->id, 'classification' => 'TB DOTS / TB Monitoring', 'payload' => $payload];
+        $payload = ['chiefComplaint' => 'Concern', 'selectedPrograms' => ['Family Planning'], 'primaryProgram' => 'Family Planning'];
+        $data = ['patient_id' => $this->patient->id, 'classification' => 'Family Planning', 'payload' => $payload];
         $draft = $this->postJson('/api/health-record-drafts', $data)->assertCreated()->json('data');
         $path = '/api/health-record-drafts/'.$draft['id'];
         $review = $this->postJson($path.'/transition', ['action' => 'submit', 'version' => $draft['version']])->assertOk()->json('data');
@@ -104,7 +104,7 @@ class ConsultationWorkflowRevisionTest extends TestCase
 
     public function test_incomplete_added_program_blocks_finalization(): void
     {
-        $this->save(['category' => 'TB DOTS / TB Monitoring', 'monitoring_data' => ['selectedPrograms' => ['TB'], 'primaryProgram' => 'TB']])->assertUnprocessable()->assertJsonValidationErrors(['tb_data.diagnosis.tbCaseNumber', 'tb_data.phases.intensiveStart']);
+        $this->save(['diagnosis' => 'PTB', 'diagnoses' => [['id' => 'd1', 'name' => 'PTB', 'carePlan' => 'monitor']]])->assertUnprocessable()->assertJsonValidationErrors(['tb_data.diagnosis.tbCaseNumber', 'tb_data.phases.intensiveStart']);
         $this->assertDatabaseCount('health_records', 0);
     }
 

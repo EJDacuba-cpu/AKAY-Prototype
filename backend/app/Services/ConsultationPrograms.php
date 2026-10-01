@@ -8,7 +8,6 @@ class ConsultationPrograms
 {
     public const CLASSIFICATIONS = [
         'Maternal' => 'Maternal',
-        'TB' => 'TB DOTS / TB Monitoring',
         'Family Planning' => 'Family Planning',
         'EPI' => 'Immunization',
     ];
