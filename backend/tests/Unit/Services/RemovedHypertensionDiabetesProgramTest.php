@@ -70,4 +70,22 @@ class RemovedHypertensionDiabetesProgramTest extends TestCase
 
         (new HealthRecordDraftPayloadService)->sanitize(['hypertensionDiabeticData' => ['bp' => '120/80']]);
     }
+
+    public function test_legacy_tb_program_is_dropped_from_old_drafts_on_read(): void
+    {
+        $service = new HealthRecordDraftPayloadService;
+
+        $both = $service->sanitize(['selectedPrograms' => ['Maternal', 'TB'], 'primaryProgram' => 'TB', 'tbData' => ['diagnosis' => ['tbCaseNumber' => 'TB-9']]]);
+        $this->assertSame(['Maternal'], $both['selectedPrograms']);
+        $this->assertSame('Maternal', $both['primaryProgram']);
+        $this->assertSame('TB-9', $both['tbData']['diagnosis']['tbCaseNumber']);
+
+        $only = $service->sanitize(['selectedPrograms' => ['TB'], 'primaryProgram' => 'TB']);
+        $this->assertSame([], $only['selectedPrograms']);
+        $this->assertSame('', $only['primaryProgram']);
+
+        $clean = $service->sanitize(['selectedPrograms' => ['Maternal', 'EPI'], 'primaryProgram' => 'EPI']);
+        $this->assertSame(['Maternal', 'EPI'], $clean['selectedPrograms']);
+        $this->assertSame('EPI', $clean['primaryProgram']);
+    }
 }

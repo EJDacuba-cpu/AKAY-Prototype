@@ -388,6 +388,21 @@ class HealthRecordDraftPayloadService
             unset($payload['referralForm']['preferredRhuDoctorId']);
         }
 
+        // TB stopped being a consultation program. Drafts saved earlier may still
+        // list it; drop it (and any primary that pointed at it) so they open.
+        // The draft's stored tbData is left untouched.
+        if (is_array($payload['selectedPrograms'] ?? null) && array_is_list($payload['selectedPrograms'])) {
+            $payload['selectedPrograms'] = array_values(array_filter(
+                $payload['selectedPrograms'],
+                fn ($program) => $program !== 'TB'
+            ));
+        }
+        if (($payload['primaryProgram'] ?? null) === 'TB') {
+            $payload['primaryProgram'] = is_array($payload['selectedPrograms'] ?? null)
+                ? ($payload['selectedPrograms'][0] ?? '')
+                : '';
+        }
+
         $sanitized = $this->sanitizeNode($payload, self::SCHEMA, 'payload');
 
         $validator = Validator::make(['payload' => $sanitized], $this->rules());
