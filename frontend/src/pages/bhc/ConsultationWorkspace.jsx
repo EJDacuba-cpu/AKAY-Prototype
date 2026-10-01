@@ -110,6 +110,14 @@ import {
   setMonitoringStop,
 } from "../../utils/carePlanWorkspace";
 import {
+  activeMonitoringsFromOverview,
+  droppedContinuedCareNotice,
+  keepStopsFor,
+  resolveContinuedCare,
+  tbPrefillRecordId,
+} from "../../utils/continuedCare";
+import { getCareOverview } from "../../services/careOverviewService";
+import {
   NextActionStep,
   ConsultationReviewStep,
 } from "../../components/features/health-records/wizard/HealthRecordWizardSteps";
@@ -811,6 +819,10 @@ export default function ConsultationWorkspace() {
   const healthRecordsPath = `${basePath}/health-records`;
   const patientsPath = `${basePath}/patients`;
   const routeContext = resolveBhcConsultationRoute(searchParams);
+  // "continue" (Start Consultation modal, Follow-ups "Record Visit") opens the
+  // same step-flow New Consultation as "new", then seeds Care Plan from it.
+  const opensNewConsultation =
+    routeContext.kind === "new" || routeContext.kind === "continue";
 
   const recordId = searchParams.get("recordId");
   const followUpTaskId = routeContext.kind === "followup" ? routeContext.followUpId : "";
@@ -823,12 +835,11 @@ export default function ConsultationWorkspace() {
       searchParams.get("recordType") ||
       searchParams.get("healthRecordType"),
   );
-  const requestedMode =
-    searchParams.get("mode") || (recordId ? "follow-up" : "create");
-  const normalizedRequestedMode = requestedMode
-    .toLowerCase()
-    .replace(/[_-]+/g, "");
-  const isFollowUpRouteMode = ["followup"].includes(normalizedRequestedMode);
+  // The legacy long-form follow-up entry (removed in Task 11). Every
+  // `mode=followup` URL now resolves to "continue" / "new" (the step flow), so
+  // this is false; it is no longer read from the raw `mode` parameter, which
+  // would have kept those URLs on the old form.
+  const isFollowUpRouteMode = routeContext.kind === "followup";
   const isFollowUp = !!recordId && isFollowUpRouteMode;
   // Editing an already-saved health record is intentionally disabled. Records are
   // read-only after saving; corrections are made via a new record or follow-up visit.
@@ -857,7 +868,7 @@ export default function ConsultationWorkspace() {
     routeContext.kind === "followup" ? "followup" : "new",
   );
   const [consultationMode, setConsultationMode] = useState(
-    routeContext.kind === "new" ? "general" : null,
+    opensNewConsultation ? "general" : null,
   );
   const [visitPurpose, setVisitPurpose] = useState(null);
   const [purposeOpen, setPurposeOpen] = useState(false);
@@ -866,7 +877,7 @@ export default function ConsultationWorkspace() {
   // Which screen of the form phase is showing (a program form, Clinical
   // Assessment or Treatment). UI position only - saved in the one draft.
   const [formStep, setFormStep] = useState(
-    routeContext.kind === "new" ? INTERVIEW_STEP : "",
+    opensNewConsultation ? INTERVIEW_STEP : "",
   );
   const [correctionNote, setCorrectionNote] = useState("");
   const resumedRouteDraft = useRef("");
@@ -897,7 +908,7 @@ export default function ConsultationWorkspace() {
   const [consultationNotes, setConsultationNotes] = useState("");
   const [healthRecordType, setHealthRecordType] = useState(
     preselectedClassification ||
-      (routeContext.kind === "new" ? "General Consultation" : ""),
+      (opensNewConsultation ? "General Consultation" : ""),
   );
   // Visit-level Morbidity / Notifiable status. Chosen directly only on the
   // follow-up form (free-text assessment, no diagnosis list); the step-based
@@ -993,7 +1004,7 @@ export default function ConsultationWorkspace() {
   // consultation ends - saved, discarded, or abandoned for another patient.
   // Distinct from idempotencyKey, which names one final-save ATTEMPT.
   const [consultationUuid, setConsultationUuid] = useState(() =>
-    routeContext.kind === "new" ? ensureConsultationUuid("") : "",
+    opensNewConsultation ? ensureConsultationUuid("") : "",
   );
   // Encrypted on-device consultations belonging to this user are still loaded
   // for route-scoped recovery after a refresh, close, or restart.
@@ -1063,7 +1074,7 @@ export default function ConsultationWorkspace() {
   useEffect(() => {
     if (
       draftConflictCheckedRef.current ||
-      routeContext.kind !== "new" ||
+      !opensNewConsultation ||
       draftListLoading ||
       !selectedPatientId
     ) {
@@ -1085,7 +1096,7 @@ export default function ConsultationWorkspace() {
     activeDraft?.id,
     draftListLoading,
     healthRecordDrafts,
-    routeContext.kind,
+    opensNewConsultation,
     selectedPatientId,
   ]);
 
@@ -1854,6 +1865,76 @@ export default function ConsultationWorkspace() {
     };
   }
 
+  // ---- Care overview: what this consultation continues ------------------
+  // Read fresh for the patient whenever a consultation opens. From a
+  // "continue" route it seeds the Start Consultation selection (once); for a
+  // resumed draft it re-hydrates the stored ids (names, registry keys, each
+  // follow-up's source ITR) and drops ids that are no longer active, which the
+  // server would reject. Either way it lists the patient's active monitoring
+  // for Care Plan's "Monitored at BHC" note. A newer load (a draft resumed
+  // over a seeded route) supersedes one still in flight.
+  const careOverviewRequestRef = useRef(0);
+  async function loadContinuedCare(patientId, selection = null) {
+    if (!patientId) return;
+    const request = ++careOverviewRequestRef.current;
+    const isCurrent = () => request === careOverviewRequestRef.current;
+    const hasSelection = Boolean(
+      selection && (selection.followUpIds.length || selection.monitoringIds.length),
+    );
+    let overview;
+    try {
+      overview = await queryClient.fetchQuery({
+        queryKey: queryKeys.careOverview(patientId),
+        queryFn: () => getCareOverview(patientId),
+        staleTime: 0,
+      });
+    } catch {
+      if (isCurrent() && hasSelection) {
+        toast.error(
+          selection.restored
+            ? "Unable to load this patient's follow-ups and monitoring. Continued items show without their condition names until the page is reloaded."
+            : "Unable to load this patient's follow-ups and monitoring. This consultation was opened without them.",
+          { id: "continued-care-unavailable" },
+        );
+      }
+      return;
+    }
+    if (!isCurrent()) return;
+
+    setActiveMonitorings(activeMonitoringsFromOverview(overview));
+    if (!selection) return;
+
+    const resolved = resolveContinuedCare(overview, {
+      followUpIds: selection.followUpIds,
+      monitoringIds: selection.monitoringIds,
+      includeFollowUpConditions: !selection.restored,
+    });
+    setContinuedFollowUpTaskIds(resolved.continuedFollowUpTaskIds);
+    setContinuedFollowUps(resolved.continuedFollowUps);
+    setContinuedMonitorings(resolved.continuedMonitorings);
+    setMonitoringStops((current) => keepStopsFor(current, resolved.continuedMonitorings));
+    const notice = droppedContinuedCareNotice(resolved);
+    if (notice) toast(notice, { id: "continued-care-dropped", duration: 8000 });
+
+    // Continuing TB fills the TB-DOTS card from its last ITR, as the old
+    // follow-up form did. A resumed draft keeps the card it saved.
+    if (selection.restored) return;
+    const tbRecordId = tbPrefillRecordId(
+      resolved.continuedMonitorings,
+      queryClient.getQueryData(queryKeys.clinicalRegistry()) || clinicalRegistry,
+    );
+    if (!tbRecordId) return;
+    try {
+      const record = await getHealthRecordById(tbRecordId);
+      if (!isCurrent()) return;
+      setTbData((current) =>
+        current === EMPTY_TB_DATA ? normalizeTbData(record?.tbData || record?.tb_data) : current,
+      );
+    } catch {
+      // The card simply starts empty.
+    }
+  }
+
   function restoreHealthRecordDraft(draft) {
     const payload = draft.payload || {};
     setReceivingRhuId(payload.receivingRhuId || "");
@@ -1932,7 +2013,7 @@ export default function ConsultationWorkspace() {
     }));
     {
       // Names (and each follow-up's source record) are filled in from
-      // care-overview once it loads (Task 10); until then placeholders.
+      // care-overview once it loads (loadContinuedCare); until then placeholders.
       const restoredCarePlan = restoreCarePlanDraft(payload.carePlan);
       setContinuedFollowUpTaskIds(restoredCarePlan.continuedFollowUpTaskIds);
       setContinuedFollowUps([]);
@@ -1940,6 +2021,11 @@ export default function ConsultationWorkspace() {
       setMonitoringStops(restoredCarePlan.monitoringStops);
       setActiveMonitorings([]);
       setNextScreen(NEXT_STEP);
+      void loadContinuedCare(draft.patient.id, {
+        followUpIds: restoredCarePlan.continuedFollowUpTaskIds,
+        monitoringIds: restoredCarePlan.continuedMonitorings.map((monitoring) => monitoring.id),
+        restored: true,
+      });
     }
 
     const warnings = [];
@@ -1974,6 +2060,21 @@ export default function ConsultationWorkspace() {
     setFormStep(draft.reviewState === "review" ? REVIEW_STEP : restored.formStep);
     setValidationErrors({});
   }
+
+  // New / continue routes load the overview once for the route's patient.
+  const routeCareLoadedRef = useRef(false);
+  useEffect(() => {
+    if (routeCareLoadedRef.current || !opensNewConsultation || !preselectedPatientId) return;
+    routeCareLoadedRef.current = true;
+    void loadContinuedCare(
+      preselectedPatientId,
+      routeContext.kind === "continue"
+        ? { followUpIds: routeContext.followUpIds, monitoringIds: routeContext.monitoringIds }
+        : null,
+    );
+    // Loaded once per opened consultation; a resumed draft runs its own load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opensNewConsultation, preselectedPatientId]);
 
   const handleDraftAutosaved = useCallback((saved) => {
     setActiveDraft({ id: saved.id, version: saved.version, reviewState: saved.reviewState });
@@ -2141,7 +2242,7 @@ export default function ConsultationWorkspace() {
     if (!isDraftRouteEligible || !localVaultAvailable || !localDraftOwnerKey) {
       return undefined;
     }
-    if (routeContext.kind !== "new" || !selectedPatientId) return undefined;
+    if (!opensNewConsultation || !selectedPatientId) return undefined;
     localRecoveryCheckedRef.current = true;
 
     let active = true;
@@ -2167,7 +2268,7 @@ export default function ConsultationWorkspace() {
     localVaultAvailable,
     localDraftOwnerKey,
     selectedPatientId,
-    routeContext.kind,
+    opensNewConsultation,
   ]);
 
   /**

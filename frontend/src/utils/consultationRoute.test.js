@@ -17,14 +17,25 @@ test("patient-scoped routes open a new consultation directly", () => {
   );
 });
 
-test("follow-up routes retain the exact task being fulfilled", () => {
+test("continue routes carry the selected follow-ups and monitoring", () => {
   assert.deepEqual(
-    resolveBhcConsultationRoute("?mode=follow-up&patientId=17&followUpId=91&recordId=4"),
-    { kind: "followup", patientId: "17", followUpId: "91" },
+    resolveBhcConsultationRoute("?patientId=17&mode=continue&followUpIds=1,2&monitoringIds=4"),
+    { kind: "continue", patientId: "17", followUpIds: [1, 2], monitoringIds: [4] },
   );
   assert.deepEqual(
-    resolveBhcConsultationRoute("?mode=followup&patientId=17&followUpId=92"),
-    { kind: "followup", patientId: "17", followUpId: "92" },
+    resolveBhcConsultationRoute("?patientId=17&mode=followup&followUpId=9"),
+    { kind: "continue", patientId: "17", followUpIds: [9], monitoringIds: [] },
+  );
+});
+
+test("legacy follow-up routes open the step flow with that task continued", () => {
+  assert.deepEqual(
+    resolveBhcConsultationRoute("?mode=follow-up&patientId=17&followUpId=91&recordId=4"),
+    { kind: "continue", patientId: "17", followUpIds: [91], monitoringIds: [] },
+  );
+  assert.deepEqual(
+    resolveBhcConsultationRoute("?patientId=17&mode=continue&followUpIds=1,,x,-3,2&monitoringIds="),
+    { kind: "continue", patientId: "17", followUpIds: [1, 2], monitoringIds: [] },
   );
 });
 
@@ -38,5 +49,12 @@ test("draft resume restores consultation context directly", () => {
 
 test("generic and malformed follow-up routes redirect to Patient Center", () => {
   assert.equal(resolveBhcConsultationRoute("").kind, "redirect");
-  assert.equal(resolveBhcConsultationRoute("?mode=followup&patientId=17").kind, "redirect");
+  assert.equal(resolveBhcConsultationRoute("?mode=followup&recordId=4").kind, "redirect");
+});
+
+test("a follow-up route without a task but with a patient opens a new consultation", () => {
+  assert.deepEqual(resolveBhcConsultationRoute("?mode=followup&patientId=17"), {
+    kind: "new",
+    patientId: "17",
+  });
 });

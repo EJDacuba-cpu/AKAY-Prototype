@@ -1,18 +1,22 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { ArrowLeft, Plus } from "lucide-react";
 
 import { ConfirmationModal, RefreshingIndicator } from "../../../common";
 import usePatientConsultation from "../../../../hooks/usePatientConsultation";
 import { FollowUpStateBadge } from "./FollowUpsAndReferrals";
+import StartConsultationModal from "./StartConsultationModal";
 import { TextAction } from "./ProfileSection";
 import { Chip } from "../PatientAlertChips";
 import { formatPatientAddress } from "../PatientIdentityCard";
 import { formatDate, formatPatientName } from "../../../../utils/formatters";
 import { getPatientAge } from "../../../../utils/patientProfile";
+import { buildPatientConsultationPath } from "../../../../utils/consultationRoute";
+import { selectionToRoute } from "../../../../utils/startConsultation";
 
-function ConsultationButton({ consultation }) {
+/** `onStart` replaces the link (Start Consultation opens the modal instead). */
+function ConsultationButton({ consultation, onStart }) {
   const { isPending, isError, discarding, primaryLabel, startPath } = consultation;
   const disabled = isPending || isError || discarding;
   const className =
@@ -27,6 +31,15 @@ function ConsultationButton({ consultation }) {
         className={className}
       >
         {isPending ? "Checking consultation..." : primaryLabel}
+      </button>
+    );
+  }
+
+  if (onStart) {
+    return (
+      <button type="button" onClick={onStart} className={className}>
+        <Plus size={15} aria-hidden="true" />
+        {primaryLabel}
       </button>
     );
   }
@@ -122,7 +135,10 @@ export default function PatientProfileHeader({
   canViewHistory = false,
   activeFollowUps = [],
 }) {
-  const consultation = usePatientConsultation(patient.id || patientId);
+  const consultationPatientId = patient.id || patientId;
+  const consultation = usePatientConsultation(consultationPatientId);
+  const navigate = useNavigate();
+  const [startModalOpen, setStartModalOpen] = useState(false);
   const age = getPatientAge(patient);
   const ageText = age !== "" ? `${age} yrs` : "";
   const address = patient.barangay || formatPatientAddress(patient);
@@ -160,11 +176,28 @@ export default function PatientProfileHeader({
 
         <div className="w-full shrink-0 sm:w-auto sm:min-w-[200px]">
           {updating && <RefreshingIndicator label="Updating patient details..." />}
-          <ConsultationButton consultation={consultation} />
+          <ConsultationButton
+            consultation={consultation}
+            onStart={consultation.needsStartModal ? () => setStartModalOpen(true) : undefined}
+          />
         </div>
       </div>
 
       <ConsultationNotice consultation={consultation} />
+      {/* Portaled for the same z-index reason as the discard confirmation. */}
+      {startModalOpen &&
+        consultation.needsStartModal &&
+        createPortal(
+          <StartConsultationModal
+            overview={consultation.careOverview}
+            onCancel={() => setStartModalOpen(false)}
+            onStartNew={() => navigate(buildPatientConsultationPath(consultationPatientId))}
+            onContinue={({ followUpIds, monitoringIds }) =>
+              navigate(selectionToRoute({ patientId: consultationPatientId, followUpIds, monitoringIds }))
+            }
+          />,
+          document.body,
+        )}
     </header>
   );
 }

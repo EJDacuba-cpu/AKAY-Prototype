@@ -1,3 +1,16 @@
+function idList(value) {
+  return String(value || "")
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((id) => Number.isInteger(id) && id > 0);
+}
+
+/**
+ * Which consultation the workspace opens. "continue" is a new step-flow
+ * consultation that continues follow-ups / monitoring picked in the Start
+ * Consultation modal; the legacy follow-up entry (Follow-ups "Record Visit",
+ * `mode=followup&followUpId=X`) resolves to it too, with that one task.
+ */
 export function resolveBhcConsultationRoute(search = "") {
   const params =
     search instanceof URLSearchParams
@@ -14,9 +27,22 @@ export function resolveBhcConsultationRoute(search = "") {
     .replace(/[_-]+/g, "");
 
   if (draftId) return { kind: "draft", draftId, patientId };
+  if (mode === "continue") {
+    return patientId
+      ? {
+          kind: "continue",
+          patientId,
+          followUpIds: idList(params.get("followUpIds")),
+          monitoringIds: idList(params.get("monitoringIds")),
+        }
+      : { kind: "redirect", reason: "missing-patient" };
+  }
   if (mode === "followup") {
-    return followUpId
-      ? { kind: "followup", patientId, followUpId }
+    if (followUpId && patientId) {
+      return { kind: "continue", patientId, followUpIds: idList(followUpId), monitoringIds: [] };
+    }
+    return patientId
+      ? { kind: "new", patientId }
       : { kind: "redirect", reason: "missing-follow-up" };
   }
   if (patientId) return { kind: "new", patientId };

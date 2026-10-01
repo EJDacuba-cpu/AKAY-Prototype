@@ -116,7 +116,8 @@ export function monitoredConditionKeys(diagnoses = [], continuedMonitorings = []
     .filter((diagnosis) => monitors(carePlanFor(diagnosis, continuedMonitorings, registry)))
     .map((diagnosis) => matchConditionKey(diagnosis.name, registry));
   for (const monitoring of continuingRows(diagnoses, continuedMonitorings, registry)) {
-    if (!required[monitoring.id]) keys.push(monitoring.conditionKey || null);
+    // A follow-up's continued conditions arrive without a key (care-overview).
+    if (!required[monitoring.id]) keys.push(monitoring.conditionKey || matchConditionKey(monitoring.conditionName, registry));
   }
   return keys;
 }

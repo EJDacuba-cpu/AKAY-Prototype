@@ -66,4 +66,5 @@ export const queryKeys = {
   providerAvailability: () => ["rhu-provider-availability"],
   referralHolds: () => ["referral-holds"],
   clinicalRegistry: () => ["clinical-registry"],
+  careOverview: (patientId) => ["care-overview", String(patientId)],
 };

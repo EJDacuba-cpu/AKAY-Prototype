@@ -1,5 +1,6 @@
 import { formatDisplayValue } from "../../../utils/formatters";
 import { formatServiceType } from "../../../utils/healthRecordPrograms";
+import { selectionToRoute } from "../../../utils/startConsultation";
 
 export const STATE_CONFIG = {
   due_today: {
@@ -134,24 +135,14 @@ export function getTaskNavigationTarget(task) {
 }
 
 /**
- * The query contract the consultation workspace reads when a visit is recorded
- * against an existing follow-up. Shared by every surface that offers
- * "Record Visit" (the Follow-ups list/calendar and the Patient Profile) so
- * the two cannot drift apart. The workspace opens directly for the exact task.
+ * Where "Record Visit" goes for a follow-up. Shared by every surface that
+ * offers it (the Follow-ups list/calendar, follow-up details and the Patient
+ * Profile) so they cannot drift apart: the standard step-flow consultation
+ * with this follow-up continued, exactly as if it were ticked in the Start
+ * Consultation modal.
  */
 export function buildRecordFollowUpVisitPath(task, basePath = "/bhc") {
-  const params = new URLSearchParams({
-    mode: "followup",
-    followUpId: task.id,
-    patientId: task.patientId,
-    serviceType: getTaskClassification(task) || getTaskServiceTypeLabel(task),
-    followUpStatus: formatStateLabel(task.effectiveState || getEffectiveState(task)),
-    followUpDate: task.dueDate || "",
-  });
-
-  if (task.healthRecordId) params.set("recordId", task.healthRecordId);
-
-  return `${basePath}/health-records/add?${params.toString()}`;
+  return selectionToRoute({ patientId: task.patientId, followUpIds: [task.id] }, basePath);
 }
 
 export function normalizeFilterState(value) {

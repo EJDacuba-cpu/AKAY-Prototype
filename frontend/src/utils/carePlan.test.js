@@ -33,6 +33,12 @@ test("a new diagnosis defaults to no tracking; a continued one defaults to monit
   assert.equal(carePlanFor({ name: "HTN", carePlan: "refer" }, [htnMonitoring], registry), "refer");
 });
 
+test("a continued condition without a stored key is keyed by its registry name", () => {
+  // Follow-up conditions from care-overview carry no condition_key.
+  const tb = { id: 9, conditionName: "Tuberculosis", conditionKey: null };
+  assert.deepEqual(monitoredConditionKeys([], [tb, asthmaMonitoring], {}, registry), ["tuberculosis", null]);
+});
+
 test("continuing rows are the continued conditions not diagnosed this visit", () => {
   const rows = continuingRows([{ id: "d1", name: "Hypertension" }], [htnMonitoring, asthmaMonitoring], registry);
   assert.deepEqual(rows.map((m) => m.id), [4]);
