@@ -782,6 +782,8 @@ function toPayload(record = {}, { partial = false } = {}) {
       spo2: record.spo2 || null,
       weight: record.weight || null,
       height: record.height || null,
+      // Fasting Blood Sugar, mg/dL (optional; the input arrives in Task 13).
+      fbs: record.fbs ?? null,
     },
     visit_type: visitType,
     parent_health_record_id: parentHealthRecordId,
@@ -794,10 +796,10 @@ function toPayload(record = {}, { partial = false } = {}) {
     monitoring_data: monitoringData,
     family_planning_data:
       (recordTypeKey === "family planning" || programs.includes("Family Planning")) ? familyPlanningData : null,
-    tb_data:
-      (recordTypeKey === "tb dots / tb monitoring" || programs.includes("TB"))
-        ? record.tbData || record.tb_data || null
-        : null,
+    // TB-DOTS data travels with any record that carries it: the BHC workspace
+    // sends it only when Monitoring Details includes the TB card, the RHU page
+    // only for its TB category (each sends null otherwise).
+    tb_data: record.tbData || record.tb_data || null,
     needs_referral: needsReferral,
     chief_complaint: record.chiefComplaint || null,
     physical_exam: record.physicalExam || null,
@@ -809,6 +811,8 @@ function toPayload(record = {}, { partial = false } = {}) {
     history_of_present_illness: record.summaryOfPresentIllness || null,
     diagnosis: record.diagnosis || null,
     diagnoses: normalizeDiagnoses(record.diagnoses).length ? normalizeDiagnoses(record.diagnoses) : null,
+    // Care Plan & Next Steps: continued follow-ups / monitoring and stops.
+    care_plan: record.carePlan || null,
     assessment_notes: record.assessmentNotes || null,
     treatment_notes:
       record.treatmentNotes ||
@@ -991,6 +995,7 @@ function toPayload(record = {}, { partial = false } = {}) {
   if (!hasAny(record, ["chiefComplaint"])) delete payload.chief_complaint;
   if (!hasAny(record, ["diagnosis"])) delete payload.diagnosis;
   if (!hasAny(record, ["diagnoses"])) delete payload.diagnoses;
+  if (!hasAny(record, ["carePlan"])) delete payload.care_plan;
   if (!hasAny(record, ["assessmentNotes"])) delete payload.assessment_notes;
   if (
     !hasAny(record, [
