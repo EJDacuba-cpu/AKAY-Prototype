@@ -61,6 +61,9 @@ class HealthRecordRequest extends FormRequest
             'vital_signs.spo2' => ['nullable', 'numeric', 'between:0,100'],
             'vital_signs.weight' => ['nullable', 'numeric', 'gt:0'],
             'vital_signs.height' => ['nullable', 'numeric', 'gt:0'],
+            // Additional Measurements: optional, reused by Diabetes monitoring
+            // and reports. Nothing is ever derived from it.
+            'vital_signs.fbs' => ['nullable', 'numeric', 'min:0', 'max:1000'],
             'visit_type' => ['nullable', 'string', 'in:initial_consultation,follow_up_visit'],
             'parent_health_record_id' => ['nullable', 'exists:health_records,id'],
             'category' => ['nullable', 'string', 'max:100'],
@@ -294,6 +297,19 @@ class HealthRecordRequest extends FormRequest
             // Which report this diagnosis is included in; null = not reported.
             // Drives the derived monitoring_data.morbidityReportingStatus.
             'diagnoses.*.reportAs' => ['nullable', 'string', Rule::in(HealthRecord::DIAGNOSIS_REPORT_TYPES)],
+            // Care Plan & Next Steps, per diagnosis. null = no ongoing tracking.
+            'diagnoses.*.carePlan' => ['nullable', 'string', Rule::in(\App\Services\CarePlan::VALUES)],
+            'diagnoses.*.includeInSurveillance' => ['nullable', 'boolean'],
+            // Existing follow-ups / monitoring this ITR continues (Start
+            // Consultation modal), and the monitoring it stops.
+            'care_plan' => ['nullable', 'array'],
+            'care_plan.continued_follow_up_task_ids' => ['nullable', 'array', 'max:20'],
+            'care_plan.continued_follow_up_task_ids.*' => ['integer', 'distinct'],
+            'care_plan.continued_monitoring_ids' => ['nullable', 'array', 'max:20'],
+            'care_plan.continued_monitoring_ids.*' => ['integer', 'distinct'],
+            'care_plan.monitoring_stops' => ['nullable', 'array', 'max:20'],
+            'care_plan.monitoring_stops.*.monitoring_id' => ['required', 'integer', 'distinct'],
+            'care_plan.monitoring_stops.*.reason' => ['required', 'string', 'max:500', 'regex:/\S/'],
             'assessment_notes' => ['nullable', 'string', 'max:5000'],
             'treatment_notes' => ['nullable', 'string'],
             'medical_history' => ['nullable', 'string'],
@@ -417,12 +433,17 @@ class HealthRecordRequest extends FormRequest
             if (in_array('Family Planning', $programs)) {
                 $required[] = 'family_planning_data.methodUsed';
             }
+            // A TB program added to the visit still carries its own TB card,
+            // whether or not a diagnosis is being monitored.
             if (in_array('TB', $programs)) {
-                $required = [...$required, 'tb_data.diagnosis.tbCaseNumber', 'tb_data.phases.intensiveStart'];
+                $required = [...$required, ...\App\Services\MonitoringDetails::REQUIRED_FIELDS['tb_dots']];
             }
-            foreach ($required as $field) {
+            foreach ($this->monitoringDetailKeys() as $detailsKey) {
+                $required = [...$required, ...(\App\Services\MonitoringDetails::REQUIRED_FIELDS[$detailsKey] ?? [])];
+            }
+            foreach (array_unique($required) as $field) {
                 if (blank($this->input($field))) {
-                    $validator->errors()->add($field, 'Complete this required program field or remove the additional form.');
+                    $validator->errors()->add($field, 'Complete this required field.');
                 }
             }
             if (in_array('EPI', $programs) && empty($this->input('immunization_data.vaccineEntries')) && blank($this->input('notes'))) {
@@ -455,5 +476,39 @@ class HealthRecordRequest extends FormRequest
                 }
             }
         });
+    }
+
+    /**
+     * Monitoring Details forms this visit needs: one per distinct
+     * monitoring_details key among conditions monitored now - diagnoses set to
+     * Monitor, plus continued monitoring records that are not being stopped.
+     *
+     * @return array<int, string>
+     */
+    private function monitoringDetailKeys(): array
+    {
+        $registry = app(\App\Services\ClinicalRegistry::class);
+        $keys = [];
+        foreach ($this->input('diagnoses', []) as $diagnosis) {
+            if (! is_array($diagnosis) || ! \App\Services\CarePlan::monitors($diagnosis['carePlan'] ?? null)) {
+                continue;
+            }
+            $match = $registry->matchCondition($diagnosis['name'] ?? null);
+            $keys[] = $registry->monitoringDetailsFor($match['key'] ?? null);
+        }
+
+        $stopped = array_map('intval', array_column($this->input('care_plan.monitoring_stops', []) ?: [], 'monitoring_id'));
+        $continued = array_diff(array_map('intval', $this->input('care_plan.continued_monitoring_ids', []) ?: []), $stopped);
+        if ($continued !== []) {
+            $conditionKeys = \App\Models\ConditionMonitoring::query()
+                ->whereIn('id', $continued)
+                ->where('patient_id', (int) $this->input('patient_id'))
+                ->pluck('condition_key');
+            foreach ($conditionKeys as $conditionKey) {
+                $keys[] = $registry->monitoringDetailsFor($conditionKey);
+            }
+        }
+
+        return array_values(array_unique(array_filter($keys)));
     }
 }

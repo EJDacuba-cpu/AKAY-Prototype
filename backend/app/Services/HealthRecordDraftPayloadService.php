@@ -53,6 +53,8 @@ class HealthRecordDraftPayloadService
             'addToConditions' => self::SCALAR,
             'conditionStatus' => self::SCALAR,
             'reportAs' => self::SCALAR,
+            'carePlan' => self::SCALAR,
+            'includeInSurveillance' => self::SCALAR,
         ]],
         'assessmentNotes' => self::SCALAR,
         'medication' => self::SCALAR,
@@ -65,6 +67,7 @@ class HealthRecordDraftPayloadService
         'spo2' => self::SCALAR,
         'weight' => self::SCALAR,
         'height' => self::SCALAR,
+        'fbs' => self::SCALAR,
         'followUpStatus' => self::SCALAR,
         'followUpDate' => self::SCALAR,
         'followUpTime' => self::SCALAR,
@@ -346,6 +349,15 @@ class HealthRecordDraftPayloadService
                     'heightCm' => self::SCALAR,
                 ]],
             ],
+        ],
+        // Care Plan & Next Steps: what this consultation continues or stops.
+        'carePlan' => [
+            'continuedFollowUpTaskIds' => ['*' => self::SCALAR],
+            'continuedMonitoringIds' => ['*' => self::SCALAR],
+            'monitoringStops' => ['*' => [
+                'monitoringId' => self::SCALAR,
+                'reason' => self::SCALAR,
+            ]],
         ],
         'referralForm' => [
             'urgencyLevel' => self::SCALAR,
