@@ -126,7 +126,10 @@ class FollowUpTaskSyncService
             return;
         }
 
-        if ($record->needs_referral) {
+        $monitorsWithReferral = $record->needs_referral
+            && CarePlan::monitorsAny($record->diagnoses ?? []);
+
+        if ($record->needs_referral && ! $monitorsWithReferral) {
             $this->cancelUnfulfilledTask($record, $user);
             return;
         }
@@ -134,7 +137,7 @@ class FollowUpTaskSyncService
         $status = $this->healthRecordStatus($record);
         $dueDate = $this->followUpDate($record);
 
-        if ($status !== 'follow up required' || ! $dueDate) {
+        if ((! $monitorsWithReferral && $status !== 'follow up required') || ! $dueDate) {
             $this->cancelUnfulfilledTask($record, $user);
             return;
         }
