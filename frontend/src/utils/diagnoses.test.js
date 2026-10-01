@@ -146,3 +146,11 @@ test("removeDiagnosis drops only that chip", () => {
   const list = [{ id: "a", name: "Asthma" }, { id: "b", name: "UTI" }];
   assert.deepEqual(removeDiagnosis(list, "a"), [{ id: "b", name: "UTI" }]);
 });
+
+test("normalizeDiagnoses keeps care plan and surveillance choices", () => {
+  const [entry] = normalizeDiagnoses([{ id: "d1", name: "HFMD", carePlan: "monitor", includeInSurveillance: true }]);
+  assert.equal(entry.carePlan, "monitor");
+  assert.equal(entry.includeInSurveillance, true);
+  const [plain] = normalizeDiagnoses([{ id: "d2", name: "Cough", carePlan: "bogus" }]);
+  assert.equal(Object.hasOwn(plain, "carePlan"), false);
+});

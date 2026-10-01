@@ -18,6 +18,7 @@
  * under Records & Surveillance - see diagnosisReporting.js.
  */
 import { normalizeReportAs } from "./diagnosisReporting.js";
+import { isCarePlanValue } from "./carePlan.js";
 
 /** Case/whitespace-insensitive key for comparing diagnosis or condition names. */
 export function normalizeNameKey(name) {
@@ -154,6 +155,8 @@ export function normalizeDiagnoses(list) {
           ? (CONDITION_STATUSES.includes(item.conditionStatus) ? item.conditionStatus : "Active")
           : null,
         ...(Object.hasOwn(item, "reportAs") ? { reportAs: normalizeReportAs(item.reportAs) } : {}),
+        ...(isCarePlanValue(item.carePlan) ? { carePlan: item.carePlan } : {}),
+        ...(item.includeInSurveillance === true ? { includeInSurveillance: true } : {}),
       };
     });
 }
