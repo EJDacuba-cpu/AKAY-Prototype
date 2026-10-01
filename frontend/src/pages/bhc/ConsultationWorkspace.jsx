@@ -4254,6 +4254,11 @@ export default function ConsultationWorkspace() {
       onReferralChange={(field, value) =>
         handleReferralFormChange(field === "reason" ? "reasonForReferral" : field, value)
       }
+      // Same notes field, label and placeholder the Next Action step offered.
+      notes={monitoringNotes}
+      notesLabel={monitoringNotesLabel}
+      notesPlaceholder={monitoringNotesPlaceholder}
+      onNotesChange={setMonitoringNotes}
     />
   );
 

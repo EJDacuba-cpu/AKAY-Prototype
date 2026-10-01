@@ -29,7 +29,8 @@ export default function CarePlanSection({
   diagnoses = [], continuedMonitorings = [], activeMonitorings = [], stops = {}, registry = {},
   followUp = {}, referral = {}, referralFacilityField = null, showsFollowUp = false,
   needsReferral = false, errors = {}, disabled = false,
-  onCarePlanChange, onStopChange, onFollowUpChange, onReferralChange,
+  notes = "", notesLabel = "Monitoring Notes", notesPlaceholder = "Write monitoring notes if useful...",
+  onCarePlanChange, onStopChange, onFollowUpChange, onReferralChange, onNotesChange,
 }) {
   const continuedMap = continuedByIdentity(continuedMonitorings, registry);
   const activeMap = continuedByIdentity(activeMonitorings, registry);
@@ -194,6 +195,23 @@ export default function CarePlanSection({
       {!needsReferral && !showsFollowUp && rows.length === 0 && (
         <p className="border border-[#E5E7EB] bg-[#F9FAFB] px-3 py-2 text-sm text-[#374151]">No follow-up or referral required.</p>
       )}
+
+      {/* Always offered, as the Next Action step did: the visit's monitoring /
+          return-visit notes (monitoringNotes), shown on the saved record. */}
+      <ClinicalFieldGroup
+        title="Additional Clinical Notes"
+        subtitle="Optional internal notes for this consultation."
+      >
+        <FieldTextarea
+          label={notesLabel}
+          name="monitoringNotes"
+          value={notes || ""}
+          disabled={disabled}
+          placeholder={notesPlaceholder}
+          rows={3}
+          onChange={(event) => onNotesChange?.(event.target.value)}
+        />
+      </ClinicalFieldGroup>
     </div>
   );
 }
