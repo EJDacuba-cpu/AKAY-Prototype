@@ -124,6 +124,59 @@ class CarePlanSaveTest extends TestCase
         $this->assertSame('active', $monitoring->fresh()->status);
     }
 
+    /** @return array{0: ConditionMonitoring, 1: int} */
+    private function activeHypertension(): array
+    {
+        $this->save([['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor']])->assertCreated();
+
+        return [$this->active()->sole(), HealthRecord::count()];
+    }
+
+    public function test_a_continued_condition_marked_none_must_be_stopped_with_a_reason(): void
+    {
+        $this->assertEndingWithoutStopIsRejected('none');
+    }
+
+    public function test_a_continued_condition_marked_refer_must_be_stopped_with_a_reason(): void
+    {
+        $this->assertEndingWithoutStopIsRejected('refer');
+    }
+
+    private function assertEndingWithoutStopIsRejected(string $carePlan): void
+    {
+        [$monitoring, $before] = $this->activeHypertension();
+
+        $this->save([['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => $carePlan]], ['continued_monitoring_ids' => [$monitoring->id]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['care_plan.monitoring_stops']);
+
+        $this->assertSame('active', $monitoring->fresh()->status);
+        $this->assertSame($before, HealthRecord::count());
+        $this->assertSame(1, $monitoring->visits()->count());
+    }
+
+    public function test_a_continued_condition_ended_in_the_diagnosis_is_stopped_when_a_reason_is_given(): void
+    {
+        [$monitoring] = $this->activeHypertension();
+
+        $this->save([['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'none']], [
+            'continued_monitoring_ids' => [$monitoring->id],
+            'monitoring_stops' => [['monitoring_id' => $monitoring->id, 'reason' => 'Controlled, no tracking needed']],
+        ])->assertCreated();
+
+        $this->assertSame('stopped', $monitoring->fresh()->status);
+        $this->assertSame(['started', 'stopped'], $monitoring->visits()->orderBy('id')->pluck('action')->all());
+    }
+
+    public function test_a_re_diagnosed_continued_condition_without_a_care_plan_is_continued(): void
+    {
+        [$monitoring] = $this->activeHypertension();
+
+        $this->save([['id' => 'd1', 'name' => 'Hypertension']], ['continued_monitoring_ids' => [$monitoring->id]])->assertCreated();
+
+        $this->assertSame('active', $monitoring->fresh()->status);
+        $this->assertSame(['started', 'continued'], $monitoring->visits()->orderBy('id')->pluck('action')->all());
+    }
+
     public function test_stale_or_foreign_continued_monitoring_is_rejected_and_nothing_saves(): void
     {
         $this->save([['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor']])->assertCreated();

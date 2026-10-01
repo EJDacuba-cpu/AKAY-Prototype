@@ -75,6 +75,8 @@ class ConditionMonitoringService
             $monitored[$identity]['referred'] = $monitored[$identity]['referred'] || CarePlan::refers($diagnosis['carePlan']);
         }
 
+        $this->assertEndedConditionsAreStopped($diagnoses, $continued, $monitored, $stopReasons);
+
         $activeAfter = collect();
 
         foreach ($monitored as $identity => $entry) {
@@ -142,6 +144,35 @@ class ConditionMonitoringService
             ->whereIn('state', FollowUpTask::ACTIVE_STATES)
             ->first();
         $task?->conditionMonitorings()->syncWithoutDetaching($monitorings->pluck('id')->all());
+    }
+
+    /**
+     * A continued condition re-diagnosed this visit as No Ongoing Tracking
+     * (none) or Refer to RHU (refer) ends monitoring, so it needs a stop with a
+     * reason. An absent carePlan means "continue" (the UI default). Runs before
+     * any write so the whole save rolls back.
+     *
+     * @param  array<int, array<string, mixed>>  $diagnoses
+     * @param  Collection<int, ConditionMonitoring>  $continued
+     * @param  array<string, mixed>  $monitored  identities monitored by a diagnosis this visit
+     * @param  array<int, string>  $stopReasons
+     */
+    private function assertEndedConditionsAreStopped(array $diagnoses, Collection $continued, array $monitored, array $stopReasons): void
+    {
+        foreach ($continued as $monitoring) {
+            if (isset($monitored[$monitoring->condition_identity]) || ($stopReasons[$monitoring->id] ?? '') !== '') {
+                continue;
+            }
+            foreach ($diagnoses as $diagnosis) {
+                if (is_array($diagnosis)
+                    && in_array($diagnosis['carePlan'] ?? null, [CarePlan::NONE, CarePlan::REFER], true)
+                    && $this->registry->conditionIdentity($diagnosis['conditionKey'] ?? null, (string) ($diagnosis['name'] ?? '')) === $monitoring->condition_identity) {
+                    throw ValidationException::withMessages([
+                        'care_plan.monitoring_stops' => 'A continued condition marked No Ongoing Tracking or Refer to RHU must be stopped with a reason.',
+                    ]);
+                }
+            }
+        }
     }
 
     private function history(ConditionMonitoring $monitoring, HealthRecord $record, string $action, bool $referred): void
