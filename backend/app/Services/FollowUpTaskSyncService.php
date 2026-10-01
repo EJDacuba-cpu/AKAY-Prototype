@@ -73,6 +73,48 @@ class FollowUpTaskSyncService
         return $lockedTask;
     }
 
+    /**
+     * Every other follow-up the Start Consultation modal selected, locked and
+     * checked exactly like the primary one: same patient and BHC, still
+     * processable. $alreadyLocked is the primary task lockTaskForProcessing()
+     * returned (skipped here).
+     *
+     * @param  array<int, mixed>  $taskIds
+     * @return \Illuminate\Support\Collection<int, FollowUpTask>
+     */
+    public function lockAdditionalTasks(array $taskIds, Patient $patient, User $user, ?FollowUpTask $alreadyLocked): \Illuminate\Support\Collection
+    {
+        $tasks = collect();
+        foreach (array_values($taskIds) as $index => $taskId) {
+            if ($alreadyLocked !== null && (int) $taskId === (int) $alreadyLocked->id) {
+                continue;
+            }
+            $task = FollowUpTask::query()->whereKey((int) $taskId)->lockForUpdate()->first();
+            if ($task === null
+                || (int) $task->patient_id !== (int) $patient->id
+                || (int) $task->barangay_health_center_id !== (int) $patient->barangay_health_center_id) {
+                throw ValidationException::withMessages([
+                    "care_plan.continued_follow_up_task_ids.$index" => 'This follow-up does not belong to this patient.',
+                ]);
+            }
+            $this->facilityAccess->authorizeFollowUpTask($user, $task);
+            if (! $this->isProcessable($task)) {
+                $this->alreadyProcessed($task);
+            }
+            $tasks->push($task);
+        }
+
+        return $tasks;
+    }
+
+    /** @param \Illuminate\Support\Collection<int, FollowUpTask> $tasks */
+    public function fulfillTasks(\Illuminate\Support\Collection $tasks, HealthRecord $record, ?User $user): void
+    {
+        foreach ($tasks as $task) {
+            $this->fulfillTask($task, $record, $user);
+        }
+    }
+
     public function syncRecord(
         HealthRecord $record,
         ?User $user = null,

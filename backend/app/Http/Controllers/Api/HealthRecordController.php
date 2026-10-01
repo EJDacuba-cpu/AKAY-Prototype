@@ -13,6 +13,7 @@ use App\Models\Patient;
 use App\Services\AkayCacheService;
 use App\Services\AuditLogger;
 use App\Services\ClinicalRegistry;
+use App\Services\ConditionMonitoringService;
 use App\Services\CurrentConditionsSync;
 use App\Services\FacilityAccessService;
 use App\Services\FollowUpEpisodeService;
@@ -81,7 +82,8 @@ class HealthRecordController extends Controller
         ReferralCreationService $referralCreation,
         HealthRecordDraftService $drafts,
         CurrentConditionsSync $currentConditions,
-        ClinicalRegistry $clinicalRegistry
+        ClinicalRegistry $clinicalRegistry,
+        ConditionMonitoringService $monitoring
     ) {
         $data = $request->validated();
         $patient = Patient::findOrFail($data['patient_id']);
@@ -95,6 +97,8 @@ class HealthRecordController extends Controller
         $idempotencyKey = $data['idempotency_key'];
         $idempotencyHash = $idempotency->hash($data);
         $legacyIdempotencyHash = $idempotency->legacyHash($data);
+        $carePlan = $data['care_plan'] ?? [];
+        unset($data['care_plan']);
 
         if ($existing = HealthRecord::query()
             ->where('created_by', $request->user()->id)
@@ -169,7 +173,9 @@ class HealthRecordController extends Controller
                 $idempotencyKey,
                 $drafts,
                 $draftPublicId,
-                $currentConditions
+                $currentConditions,
+                $monitoring,
+                $carePlan
             ) {
                 $lockedDraft = $draftPublicId
                     ? $drafts->lockForOfficialSave(
@@ -184,10 +190,25 @@ class HealthRecordController extends Controller
                     $patient,
                     $request->user()
                 );
+                $additionalTasks = $followUpTasks->lockAdditionalTasks(
+                    $carePlan['continued_follow_up_task_ids'] ?? [],
+                    $patient,
+                    $request->user(),
+                    $lockedFollowUpTask
+                );
+                $continuedMonitorings = $monitoring->lockContinued($patient, $carePlan['continued_monitoring_ids'] ?? []);
                 $record = HealthRecord::create([...$data, 'encoded_by' => $lockedDraft?->owner_user_id ?? $request->user()->id]);
                 // Registered diagnoses (conditionKey set) always sync; free-text
                 // diagnoses sync only when the user ticked "Add to Current Conditions".
                 $currentConditions->sync($patient, $data['diagnoses'] ?? [], $record->date_recorded->toDateString());
+                $monitoredNow = $monitoring->apply(
+                    $patient,
+                    $record,
+                    $data['diagnoses'] ?? [],
+                    $continuedMonitorings,
+                    $carePlan['monitoring_stops'] ?? [],
+                    $request->user()
+                );
                 $confirmedItems = array_values(array_filter($dispensedMedicines, fn ($item) => ($item['confirmed_given'] ?? false) === true));
                 foreach ($data['immunization_data']['vaccineEntries'] ?? [] as $entry) {
                     if (($entry['confirmedGiven'] ?? false) === true) {
@@ -199,6 +220,8 @@ class HealthRecordController extends Controller
                 }
                 $followUpTasks->syncRecord($record, $request->user(), $lockedFollowUpTask);
                 $followUpTasks->fulfillParentTask($record, $request->user(), $lockedFollowUpTask);
+                $followUpTasks->fulfillTasks($additionalTasks, $record, $request->user());
+                $monitoring->linkFollowUpTask($record, $monitoredNow);
 
                 if (is_array($referralData)) {
                     try {
@@ -272,6 +295,13 @@ class HealthRecordController extends Controller
                     ->first();
 
                 return $this->consultationAlreadyRecordedResponse($recorded);
+            }
+
+            if ($this->isMonitoringConflict($exception)) {
+                return response()->json([
+                    'message' => 'This condition was just put under monitoring by another save. Please save again.',
+                    'code' => 'CONDITION_MONITORING_CONFLICT',
+                ], 409);
             }
 
             if (! $this->isIdempotencyConflict($exception)) {
@@ -709,6 +739,12 @@ class HealthRecordController extends Controller
 
         return in_array($sqlState, ['23505', '23000'], true)
             && str_contains($message, 'idempotency_key');
+    }
+
+    private function isMonitoringConflict(QueryException $exception): bool
+    {
+        return in_array($exception->errorInfo[0] ?? null, ['23505', '23000'], true)
+            && str_contains(strtolower($exception->getMessage()), 'condition_monitorings_one_active_idx');
     }
 
     private function isConsultationUuidConflict(QueryException $exception): bool

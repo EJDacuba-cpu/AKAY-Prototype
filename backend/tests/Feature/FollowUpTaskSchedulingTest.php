@@ -272,7 +272,7 @@ class FollowUpTaskSchedulingTest extends TestCase
             ->assertConflict();
     }
 
-    public function test_database_prevents_one_visit_from_fulfilling_two_schedules(): void
+    public function test_one_visit_may_fulfil_several_continued_schedules(): void
     {
         $first = $this->schedule($this->patient, $this->bhw, $this->bhc);
         $second = $this->schedule(
@@ -296,12 +296,16 @@ class FollowUpTaskSchedulingTest extends TestCase
             'fulfilled_by_health_record_id' => $completedVisit->id,
         ]);
 
-        $this->expectException(QueryException::class);
+        // Care Plan & Next Steps: one consultation can continue several
+        // follow-ups, so the database no longer limits a visit to one.
         $second->update([
             'state' => FollowUpTask::STATE_FULFILLED,
             'fulfilled_at' => now(),
             'fulfilled_by_health_record_id' => $completedVisit->id,
         ]);
+
+        $this->assertSame($completedVisit->id, $first->fresh()->fulfilled_by_health_record_id);
+        $this->assertSame($completedVisit->id, $second->fresh()->fulfilled_by_health_record_id);
     }
 
     private function postHealthRecord(array $overrides = [])
