@@ -172,6 +172,7 @@ import {
 import { queryKeys } from "../../utils/queryKeys";
 import { createIdempotencyKey } from "../../utils/idempotency";
 import { resolveBhcConsultationRoute } from "../../utils/consultationRoute";
+import { validateFbs } from "../../utils/fbs";
 import {
   adoptConsultationUuid,
   ensureConsultationUuid,
@@ -847,6 +848,9 @@ export default function ConsultationWorkspace() {
   const [spo2, setSpo2] = useState("");
   const [weight, setWeight] = useState("");
   const [height, setHeight] = useState("");
+  // Optional extra measurement. Recorded only - nothing reads it to flag,
+  // suggest or alert.
+  const [fbs, setFbs] = useState("");
 
   const [followUpStatus, setFollowUpStatus] = useState("Completed");
   const [followUpDate, setFollowUpDate] = useState("");
@@ -1174,7 +1178,7 @@ export default function ConsultationWorkspace() {
     () => buildConsultationSteps({ selectedPrograms, primaryProgram, monitoringDetailKeys }),
     [selectedPrograms, primaryProgram, monitoringDetailKeys],
   );
-  // The programs nested inside the single "Programs & Monitoring" step.
+  // The services nested inside the single "Service Details" step.
   const programFormSteps = useMemo(
     () => getProgramFormSteps(selectedPrograms, primaryProgram),
     [selectedPrograms, primaryProgram],
@@ -1326,6 +1330,7 @@ export default function ConsultationWorkspace() {
       spo2,
       weight,
       height,
+      fbs,
       followUpStatus,
       followUpDate,
       followUpTime,
@@ -1605,6 +1610,7 @@ export default function ConsultationWorkspace() {
     setSpo2(payload.spo2 || "");
     setWeight(payload.weight || "");
     setHeight(payload.height || "");
+    setFbs(payload.fbs === undefined || payload.fbs === null ? "" : String(payload.fbs));
     setFollowUpStatus(payload.followUpStatus || "Routine Monitoring");
     setFollowUpDate(payload.followUpDate || "");
     setFollowUpTime(payload.followUpTime || "");
@@ -2186,6 +2192,8 @@ export default function ConsultationWorkspace() {
     for (const [key, value] of Object.entries({ pulse, spo2, weight, height, temp })) {
       if (String(value).trim() && (!Number.isFinite(Number(value)) || (key !== "temp" && Number(value) < 0) || (["weight", "height"].includes(key) && Number(value) === 0) || (key === "spo2" && Number(value) > 100))) errors[key] = "Enter a valid measurement.";
     }
+    const fbsError = validateFbs(fbs);
+    if (fbsError) errors.fbs = fbsError;
     if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
     if (!finalizing) return errors;
     if ((needsReferral || normalizePatientStatus(followUpStatus) === "Follow-up Required") && !diagnosis.trim()) errors.diagnosis = "BHC Assessment is required for follow-up or referral.";
@@ -3022,6 +3030,7 @@ export default function ConsultationWorkspace() {
       spo2: spo2 || null,
       weight: weight || null,
       height: height || null,
+      fbs: fbs === "" ? null : Number(fbs),
       medication:
         effectiveHealthRecordType === "Maternal"
           ? recordMaternalData.treatment || medication
@@ -3421,7 +3430,7 @@ export default function ConsultationWorkspace() {
 
   /**
    * Accepts either a screen key (a program form, assessment, treatment) or a
-   * global progress-bar key; "Programs & Monitoring" opens the first program.
+   * global progress-bar key; "Service Details" opens the first service.
    */
   function goToStepKey(key, { scroll = true } = {}) {
     const target = key === PROGRAMS_STEP ? programFormSteps[0]?.key : key;
@@ -3501,7 +3510,7 @@ export default function ConsultationWorkspace() {
       : key === "Family Planning" ? familyPlanningEligibility
       : key === "EPI" && immunizationPatientInfo.mode === "adult" ? { eligible: false, message: getAdultImmunizationMessage(immunizationPatientInfo.age) }
       : { eligible: true, message: "" };
-    return { key, title: key, description: key === "EPI" ? "Immunization and child vaccination services." : RECORD_TYPE_DETAILS[classification]?.description,
+    return { key, title: key === "Maternal" ? "Maternal Care" : key, description: key === "EPI" ? "Immunization and child vaccination services." : RECORD_TYPE_DETAILS[classification]?.description,
       icon: RECORD_TYPE_DETAILS[classification]?.icon || Stethoscope, disabled: !eligibility.eligible, disabledReason: eligibility.message };
   });
 
@@ -3755,7 +3764,7 @@ export default function ConsultationWorkspace() {
     steps: consultationSteps,
     subtitles: stepSubtitles,
   });
-  // The fixed right-hand column changes with the step: Programs & Monitoring
+  // The fixed right-hand column changes with the step: Barangay Health Services
   // (the visit's service context) is chosen on Interview & Vital Signs only;
   // Physical Exam & Assessment shows the 2D body preview instead. Every other
   // step runs full width. The review summary lists the chosen programs.
@@ -3821,6 +3830,7 @@ export default function ConsultationWorkspace() {
     spo2 && `SpO2 ${spo2}%`,
     weight && `Weight ${weight} kg`,
     height && `Height ${height} cm`,
+    fbs && `FBS ${fbs} mg/dL`,
   ]
     .filter(Boolean)
     .join(" \u00b7 ");
@@ -3979,7 +3989,7 @@ export default function ConsultationWorkspace() {
 
       <div className="ehr-consult__stage">
       <ConsultationWorkspaceBody>
-      {/* Programs & Monitoring (Interview step) or the Body Preview (Assessment
+      {/* Barangay Health Services (Interview step) or the Body Preview (Assessment
           step) lives in a fixed column to the right of the form.
           From 1024px this column stays put and only the form column
           (heading included) scrolls (see consultation-ehr.css); below that everything
@@ -4061,6 +4071,12 @@ export default function ConsultationWorkspace() {
               <FieldInput label="Height" name="height" error={validationErrors.height} type="number" value={height} onChange={event => setHeight(event.target.value)} placeholder="cm" />
               <FieldInput label="Temperature" name="temp" error={validationErrors.temp} value={temp} onChange={event => setTemp(event.target.value)} placeholder="°C" />
               <BmiOutputField weight={weight} height={height} />
+            </div>
+            <div className="mt-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#374151]">Additional Measurements</p>
+              <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
+                <FieldInput label="Fasting Blood Sugar (FBS) (mg/dL)" name="fbs" data-field="vital_signs.fbs" error={validationErrors["vital_signs.fbs"] || validationErrors.fbs} type="number" inputMode="decimal" min={0} max={1000} step="any" value={fbs} onChange={event => { clearValidationError("fbs"); clearValidationError("vital_signs.fbs"); setFbs(event.target.value); }} placeholder="mg/dL" />
+              </div>
             </div>
             </FormSection>
           </section>

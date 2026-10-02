@@ -1,6 +1,6 @@
 # AKAY Current State / Handoff
 
-**Status date:** 2026-09-26
+**Status date:** 2026-10-02
 
 ## Current Phase
 
@@ -130,25 +130,32 @@ Do not skip the approval gate.
 At the end of a substantial Claude Code session, update this section.
 
 ### Last task
-2026-09-29: per-diagnosis Morbidity / Notifiable reporting under Records & Surveillance (New Consultation). Before that: the read-only Programs / Monitoring audit (`docs/ai/PROGRAMS-MONITORING-AUDIT.md`).
+Care Plan & Next Steps (spec: `docs/superpowers/specs/2026-09-30-care-plan-next-steps-design.md`): condition monitoring tables, the care-overview, the Start Consultation modal, one consultation step flow, per-diagnosis surveillance, an optional FBS measurement, and TB identified by data. Before that: per-diagnosis Morbidity / Notifiable reporting (2026-09-29).
 
 ### Changes made
-- Each diagnosis now carries `reportAs` (`morbidity` | `notifiable` | null) in `health_records.diagnoses`. It is stored in the existing JSON column, so there is no migration.
-- The server derives the visit-level `monitoring_data.morbidityReportingStatus` and its legacy flags from those choices (`HealthRecordController::normalizeDiagnosisReporting`). Records saved earlier, and follow-up visits (free-text assessment, no diagnosis list), keep using the visit-level status directly.
-- `frontend/src/utils/diagnosisReporting.js` is now the single reader. It replaced four duplicate copies (the workspace, `healthRecordService`, `recordDetailsHelpers`, `BHCReports`).
-- BHC Reports: "Morbidity and Notifiable Diseases" is split into a **Morbidity Report** and a **Notifiable Disease Report**, each with one row per reported diagnosis.
+- Monitoring: the Care Pathway enrollment layer is replaced by condition monitoring tables (`2026_09_30_000002_create_condition_monitoring_tables`). Follow-up tasks can now be fulfilled by a shared follow-up (`2026_09_30_000003_allow_shared_follow_up_fulfilment`).
+- Care overview: one read of what a patient is being monitored for and which follow-ups are open, used by Care & Programs, Monitoring Details and the consultation.
+- Start Consultation modal: choose what the visit continues (open follow-ups, monitorings) before the consultation opens; the selection seeds the Care Plan step.
+- One step flow: Concern & Vital Signs (with the Barangay Health Services panel), Physical Exam & Assessment, Service Details (only when a service is selected), Actions Taken, Care Plan & Next Steps, Monitoring Details (only when monitoring is continued or started), Review & Confirm. TB is no longer a Visit Service.
+- Barangay Health Services panel: Maternal Care, Family Planning and EPI as one flat list. "Primary" and "Make primary" appear only when two or more services are selected.
+- Surveillance: per-diagnosis "Include in Surveillance" and a Surveillance Report replace the HFMD surveillance registry.
+- FBS: optional Fasting Blood Sugar (mg/dL, 0-1000) under "Additional Measurements" on Concern & Vital Signs. Stored in `vital_signs.fbs`, shown on Review, saved in drafts. Recorded only: nothing is flagged, suggested or derived from it. The range check is `frontend/src/utils/fbs.js`.
+- TB is identified by data (`tbRecords.isTbRecord`) everywhere, never by matching text.
 
 ### Tests/checks run
-- Backend: new `DiagnosisReportingTest` passes (6/6). Full suite: 202 failures, identical before and after this change (pre-existing; mostly response status-code mismatches).
-- Frontend: 259/259 node tests pass, eslint is clean (one pre-existing warning), and the vite build succeeds.
+- Frontend: 305/305 node tests pass, eslint reports 0 errors and the 1 pre-existing warning (`pages/rhu/RHUAddHealthRecords.jsx`), and the vite build succeeds.
+- Backend: not re-run for the FBS/panel change (backend unchanged in that task). Pre-existing failures are listed below.
 
 ### Open risks
+- Migrations NOT yet run on Supabase: `2026_09_30_000001_drop_care_pathway_tables`, `2026_09_30_000002_create_condition_monitoring_tables`, and `2026_09_30_000003_allow_shared_follow_up_fulfilment` (an index swap). The app expects all three.
+- The admin Health Records list (stored function `akay_health_record_list`) filters TB by category only, so it does not match the by-data TB detection used elsewhere.
+- Old in-progress drafts that had the HFMD surveillance tick lose it; the worker re-ticks Include in Surveillance.
+- The "Start Postpartum Follow-up" CTA on Care & Programs (`focus=deliveryDate`) leads to a consultation that cannot record a delivery date. Product decision needed: restore the delivery date on the Maternal step, or retire the CTA.
+- None of the new UI (Care Plan, Monitoring Details, Start Consultation modal, Barangay Health Services panel, FBS, Surveillance checkbox and report) has been exercised in a browser by the implementers. Manual QA is needed.
+- The pre-existing 194 backend test failures remain (mostly 403 / permission setup in tests).
 - Repository has not yet been fully audited.
 - Existing `docs/` files may conflict with current implementation.
 - Security controls are present but have not yet received an end-to-end audit.
-- 202 pre-existing backend test failures need investigation.
-- The Care Pathway enrollment layer was removed on 2026-09-30 (it had been migrated to Supabase, with zero rows). `2026_09_30_000001_drop_care_pathway_tables` drops the four empty tables and has **not** been run against Supabase yet.
-- `docs/ai/PROGRAMS-MONITORING-AUDIT.md`, referenced by earlier handoffs, does not exist in the repo.
 
 ### Next action
-Investigate the pre-existing backend test failures. Then the developer decides the open questions in the Programs / Monitoring audit.
+Manual QA of the new Care Plan, monitoring, Start Consultation, Barangay Health Services, FBS and surveillance screens in a browser. Decide the open items above (postpartum CTA, admin TB list). Then run the three pending migrations on Supabase and investigate the pre-existing backend test failures.

@@ -287,7 +287,8 @@ export function getErrorOwnerStepKey(errorKey) {
 
   // Interview and Vital Signs share the first step.
   if (
-    ["pulse", "spo2", "weight", "height", "temp"].includes(key) ||
+    ["pulse", "spo2", "weight", "height", "temp", "fbs"].includes(key) ||
+    key === "vital_signs.fbs" ||
     key === "chiefComplaint" ||
     key === "summaryOfPresentIllness"
   ) {

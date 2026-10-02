@@ -14,7 +14,7 @@ import {
 
 /**
  * 2D body preview for the Physical Exam & Assessment step: sits in the fixed
- * right-hand column where Programs & Monitoring sits on the Interview step.
+ * right-hand column where Barangay Health Services sits on the Interview step.
  *
  * Optional. It documents WHERE on the body a finding was noted for this visit
  * - it never suggests symptoms, diagnoses or interpretations. A plain, neutral

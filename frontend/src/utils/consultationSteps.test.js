@@ -298,6 +298,8 @@ test("later steps never show a program title", () => {
 
 test("each validation error is owned by the screen that shows its field", () => {
   assert.equal(getErrorOwnerStepKey("chiefComplaint"), INTERVIEW_STEP);
+  assert.equal(getErrorOwnerStepKey("vital_signs.fbs"), INTERVIEW_STEP);
+  assert.equal(getErrorOwnerStepKey("fbs"), INTERVIEW_STEP);
   assert.equal(getErrorOwnerStepKey("summaryOfPresentIllness"), INTERVIEW_STEP);
   // Vital Signs is a card on the first step, so BP belongs to that step.
   assert.equal(getErrorOwnerStepKey("hypertensionDiabeticData.conditionType"), null);
