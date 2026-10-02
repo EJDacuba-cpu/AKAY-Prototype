@@ -94,6 +94,7 @@ import {
   restoreCarePlanDraft,
   reviewBackTarget,
   setMonitoringStop,
+  shouldRegenerateReferralReason,
 } from "../../utils/carePlanWorkspace";
 import {
   activeMonitoringsFromOverview,
@@ -1158,8 +1159,11 @@ export default function ConsultationWorkspace() {
     ),
     [diagnoses, continuedMonitorings, monitoringStops, clinicalRegistry],
   );
-  // Whether the visit's follow-up survives a referral, and whether its fields show.
-  const carePlanFollowUp = followUpPlan(carePlanDisposition, followUpDate);
+  // Whether the visit's follow-up survives a referral, and whether its fields
+  // show. A service visit (programs selected, and sent - see the payload's
+  // consultationMode guard) keeps its dated next visit through a referral.
+  const carePlanHasService = Boolean(consultationMode) && selectedPrograms.length > 0;
+  const carePlanFollowUp = followUpPlan(carePlanDisposition, followUpDate, { hasService: carePlanHasService });
   const patientGateLocked = !selectedPatientId;
 
   // ---- Step-based consultation -------------------------------------------
@@ -1215,17 +1219,23 @@ export default function ConsultationWorkspace() {
     if (followUpStatus !== derivedStatus) setFollowUpStatus(derivedStatus);
   }, [carePlanDisposition.needsReferral, needsReferral, followUpDate, followUpStatus]);
 
-  // Pre-fill the referral reason once, when a referral becomes needed and the
-  // reason is still empty ("Referred for: ..."); the worker edits it after.
-  const carePlanReferralWasNeededRef = useRef(false);
+  // Pre-fill the referral reason ("Referred for: ...") from the diagnoses
+  // referred, and keep it in step when that set changes - but only while the
+  // text is empty or still exactly the last pre-fill. Once the worker edits it
+  // (or it came back from a draft) it is never overwritten.
+  const lastAutoReferralReasonRef = useRef("");
+  const currentReferralReason = referralForm.reasonForReferral || "";
   useEffect(() => {
-    const wasNeeded = carePlanReferralWasNeededRef.current;
-    carePlanReferralWasNeededRef.current = carePlanDisposition.needsReferral;
-    if (!carePlanDisposition.needsReferral || wasNeeded) return;
-    setReferralForm((prev) => (prev.reasonForReferral?.trim()
-      ? prev
-      : { ...prev, reasonForReferral: buildReferralReason(diagnoses, continuedMonitorings, clinicalRegistry) }));
-  }, [carePlanDisposition.needsReferral, diagnoses, continuedMonitorings, clinicalRegistry]);
+    if (!carePlanDisposition.needsReferral) return;
+    const next = buildReferralReason(diagnoses, continuedMonitorings, clinicalRegistry);
+    if (!shouldRegenerateReferralReason({
+      current: currentReferralReason,
+      lastAuto: lastAutoReferralReasonRef.current,
+      next,
+    })) return;
+    lastAutoReferralReasonRef.current = next;
+    setReferralForm((prev) => ({ ...prev, reasonForReferral: next }));
+  }, [carePlanDisposition.needsReferral, diagnoses, continuedMonitorings, clinicalRegistry, currentReferralReason]);
 
   const activeProgramStep =
     programFormSteps.find((step) => step.key === activeFormStep) || null;
@@ -2867,8 +2877,13 @@ export default function ConsultationWorkspace() {
       ? continuedLink.followUpTaskId
       : "";
     // A referral cancels the follow-up, unless a condition stays monitored at
-    // the BHC ("Monitor at BHC + Refer to RHU").
-    const followUpKept = carePlanFollowUp.kept;
+    // the BHC ("Monitor at BHC + Refer to RHU") or a service visit has its
+    // next date (the EPI next dose counts as that date) - followUpPlan.
+    const followUpKept = followUpPlan(
+      carePlanDisposition,
+      followUpDate || immunizationNextScheduleDate,
+      { hasService: carePlanHasService },
+    ).kept;
     const immunizationWillComplete = false;
     const effectiveFollowUpDate = followUpKept
       ? followUpDate || immunizationNextScheduleDate || ""

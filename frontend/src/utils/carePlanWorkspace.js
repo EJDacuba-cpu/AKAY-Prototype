@@ -19,13 +19,33 @@ import { MONITORING_STEP, NEXT_STEP, REVIEW_STEP } from "./consultationSteps.js"
  * Whether the visit's single follow-up survives, and whether its fields show.
  *
  * A plain referral hands the follow-up to the RHU (the server clears it), so
- * it is neither shown nor required. A date that is already set - pre-filled
+ * it is neither shown nor required. A referral keeps it when the visit still
+ * monitors a condition, or when it is a service visit (`hasService`: Maternal /
+ * Family Planning / EPI selected) with a follow-up date set - the next dose,
+ * appointment or prenatal return. Same rule as the server's
+ * CarePlan::keepsFollowUpWithReferral. A referred service visit keeps showing
+ * the fields so that date can be set. A date that is already set - pre-filled
  * from a Family Planning appointment, or left from an earlier choice - keeps
  * the fields on screen so the worker can see and clear it.
  */
-export function followUpPlan(disposition = {}, followUpDate = "") {
-  const kept = !disposition.needsReferral || Boolean(disposition.monitorsAny);
-  return { kept, shows: kept && (Boolean(disposition.showsFollowUp) || Boolean(followUpDate)) };
+export function followUpPlan(disposition = {}, followUpDate = "", { hasService = false } = {}) {
+  const referred = Boolean(disposition.needsReferral);
+  const monitors = Boolean(disposition.monitorsAny);
+  const kept = !referred || monitors || (Boolean(hasService) && Boolean(followUpDate));
+  const offered = !referred || monitors || Boolean(hasService);
+  return { kept, shows: offered && (Boolean(disposition.showsFollowUp) || Boolean(followUpDate)) };
+}
+
+/**
+ * Whether the "Referred for: ..." prefill should be rewritten to `next` (the
+ * text built from the diagnoses referred now). Only while the reason is empty
+ * or still exactly the last text filled in automatically (`lastAuto`); once
+ * the worker edits it - or it came back from a draft - it is never overwritten.
+ */
+export function shouldRegenerateReferralReason({ current = "", lastAuto = "", next = "" } = {}) {
+  const text = String(current ?? "");
+  if (!next || text === next) return false;
+  return text.trim() === "" || text === lastAuto;
 }
 
 /** The follow-up reason is required once a date is set (frontend-only rule). */

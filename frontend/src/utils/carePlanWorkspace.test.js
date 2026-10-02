@@ -11,6 +11,7 @@ import {
   restoreCarePlanDraft,
   reviewBackTarget,
   setMonitoringStop,
+  shouldRegenerateReferralReason,
 } from "./carePlanWorkspace.js";
 import { MONITORING_STEP, NEXT_STEP, REVIEW_STEP } from "./consultationSteps.js";
 
@@ -35,6 +36,22 @@ test("the follow-up is kept unless the visit only refers", () => {
   // A date already set (e.g. pre-filled from a Family Planning appointment)
   // stays visible so the worker can see and clear it.
   assert.deepEqual(followUpPlan(none, "2026-10-08"), { kept: true, shows: true });
+});
+
+test("a referred service visit keeps its next-visit follow-up once a date is set", () => {
+  const referOnly = { needsReferral: true, showsFollowUp: false, monitorsAny: false };
+  const referVaccination = { needsReferral: true, showsFollowUp: true, monitorsAny: false };
+  const service = { hasService: true };
+
+  // Same rule as the server (CarePlan::keepsFollowUpWithReferral).
+  assert.deepEqual(followUpPlan(referVaccination, "2026-11-01", service), { kept: true, shows: true });
+  assert.deepEqual(followUpPlan(referOnly, "2026-11-01", service), { kept: true, shows: true });
+  // No date yet: nothing is kept, but the fields still show so one can be set.
+  assert.deepEqual(followUpPlan(referVaccination, "", service), { kept: false, shows: true });
+  assert.deepEqual(followUpPlan(referOnly, "", service), { kept: false, shows: false });
+  // Plain refer with no service still drops it, date or not.
+  assert.deepEqual(followUpPlan(referVaccination, "2026-11-01", { hasService: false }), { kept: false, shows: false });
+  assert.deepEqual(followUpPlan(referOnly, "2026-11-01"), { kept: false, shows: false });
 });
 
 test("a follow-up date needs a reason, whenever the follow-up is kept", () => {
@@ -158,4 +175,21 @@ test("review rows say so when nothing follows the visit", () => {
       { label: "Next Follow-up", value: "Not scheduled" },
     ],
   );
+});
+
+test("the referral reason follows the referred diagnoses until the worker edits it", () => {
+  const first = "Referred for: Pneumonia";
+  const next = "Referred for: Pneumonia; Hypertension";
+
+  // Empty, or still exactly what was last filled in: regenerate.
+  assert.equal(shouldRegenerateReferralReason({ current: "", lastAuto: "", next: first }), true);
+  assert.equal(shouldRegenerateReferralReason({ current: "  ", lastAuto: "", next: first }), true);
+  assert.equal(shouldRegenerateReferralReason({ current: first, lastAuto: first, next }), true);
+  // Edited by the worker (or restored from a draft): never overwritten.
+  assert.equal(shouldRegenerateReferralReason({ current: `${first}, SpO2 low`, lastAuto: first, next }), false);
+  assert.equal(shouldRegenerateReferralReason({ current: "From the draft", lastAuto: "", next }), false);
+  // Nothing to change, or nothing to fill in.
+  assert.equal(shouldRegenerateReferralReason({ current: next, lastAuto: first, next }), false);
+  assert.equal(shouldRegenerateReferralReason({ current: first, lastAuto: first, next: "" }), false);
+  assert.equal(shouldRegenerateReferralReason({ current: undefined, lastAuto: "", next: first }), true);
 });
