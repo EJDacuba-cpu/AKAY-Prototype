@@ -17,6 +17,7 @@ import {
   rescheduleFollowUp,
 } from "../../services/followUpTaskService";
 import { formatDisplayValue } from "../../utils/formatters";
+import { matchesServiceTypeFilter } from "../../utils/healthRecordPrograms";
 import { createActiveFilterChips } from "../../utils/filterUtils";
 import { queryKeys } from "../../utils/queryKeys";
 import ActionMenu from "../../components/common/tables/ActionMenu";
@@ -103,9 +104,11 @@ export default function FollowUps() {
               task.effectiveState,
             )
           : task.effectiveState === normalizeFilterState(filters.state);
-      const matchesServiceType =
-        !filters.serviceType ||
-        getTaskServiceTypeLabel(task) === filters.serviceType;
+      const matchesServiceType = matchesServiceTypeFilter(
+        filters.serviceType,
+        task.healthRecord,
+        getTaskServiceTypeLabel(task),
+      );
 
       const haystack = [
         task.patientName,
@@ -183,9 +186,11 @@ export default function FollowUps() {
       const matchesFilter =
         filters.state === "All Active" ||
         task.effectiveState === normalizeFilterState(filters.state);
-      const matchesServiceType =
-        !filters.serviceType ||
-        getTaskServiceTypeLabel(task) === filters.serviceType;
+      const matchesServiceType = matchesServiceTypeFilter(
+        filters.serviceType,
+        task.healthRecord,
+        getTaskServiceTypeLabel(task),
+      );
 
       const haystack = [
         task.patientName,

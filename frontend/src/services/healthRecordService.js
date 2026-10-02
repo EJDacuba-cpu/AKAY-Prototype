@@ -57,10 +57,9 @@ function firstPresent(values = []) {
   return values.find((value) => value !== undefined && value !== null && value !== "") || "";
 }
 
-// Surveillance tag/category reads now go through utils/surveillance.js's
-// shared getSurveillanceTags - the single reader ConsultationWorkspace,
-// this file, and BHCReports all use, replacing what used to be three
-// separate copies of this same legacy-fallback logic. Morbidity /
+// Legacy HFMD surveillance tag/category reads go through utils/surveillance.js's
+// shared getSurveillanceTags (old records still display them); new records
+// flag diagnoses[].includeInSurveillance instead. Morbidity /
 // notifiable status reads go through utils/diagnosisReporting.js the same way.
 
 function getOtherSurveillanceCategory(record = {}, monitoringData = {}) {
@@ -568,7 +567,8 @@ function toPayload(record = {}, { partial = false } = {}) {
     include_in_morbidity_report: morbidityReportingStatus !== "not_included",
     isNotifiableDisease: morbidityReportingStatus === "notifiable",
     is_notifiable_disease: morbidityReportingStatus === "notifiable",
-    surveillanceTags,
+    // Legacy HFMD mirrors only; surveillanceTags is no longer sent (new
+    // records flag diagnoses[].includeInSurveillance instead).
     surveillanceCategory,
     surveillance_category: surveillanceCategory,
     diseaseSurveillanceCategory: surveillanceCategory,
@@ -972,7 +972,6 @@ function toPayload(record = {}, { partial = false } = {}) {
       "include_in_morbidity_report",
       "isNotifiableDisease",
       "is_notifiable_disease",
-      "surveillanceTags",
       "surveillanceCategory",
       "surveillance_category",
       "diseaseSurveillanceCategory",

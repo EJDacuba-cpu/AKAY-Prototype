@@ -13,6 +13,7 @@ import {
   getRecordTimeValue,
   getRecordValue,
   getSpecializedRecordType,
+  isTbRecord,
 } from "../../../utils/healthRecordPrograms";
 import {
   REQUIRED_EPI_ITEMS,
@@ -20,7 +21,6 @@ import {
   formatEpiDate,
 } from "../../../utils/epiTracking";
 import { formatDate, formatDisplayValue } from "../../../utils/formatters";
-import { isTbRecord } from "../../../utils/tbRecords";
 
 const EMPTY_MARK = "Not recorded";
 const SOURCE_EMPTY_MARK = "\u2014";

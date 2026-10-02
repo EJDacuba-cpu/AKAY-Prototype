@@ -1,20 +1,18 @@
 import { REPORT_AS_OPTIONS, normalizeReportAs } from "../../../../utils/diagnosisReporting";
 
 /**
- * Morbidity / Notifiable reporting under Records & Surveillance: one row per
- * diagnosis, each with a single choice - Not reported, Morbidity, or
- * Notifiable (see utils/diagnosisReporting.js). The worker picks; nothing is
- * inferred from the diagnosis name.
+ * Records & Surveillance: one row per diagnosis, each with two independent
+ * choices - the report (Not reported, Morbidity, or Notifiable; see
+ * utils/diagnosisReporting.js) and an "Include in Surveillance" checkbox that
+ * puts it in the Surveillance Report (utils/surveillance.js). The worker
+ * picks; nothing is inferred from the diagnosis name.
  *
- * Rows are plain { id, name, reportAs } so the caller decides what they are:
- * the Assessment step passes its diagnosis list, and the follow-up form
- * (free-text assessment, no list) passes one row for the whole visit.
- *
- * @param rows        [{ id, name, reportAs }]
- * @param onChange    (id, reportAs) => void
- * @param emptyText   shown when there is nothing to report yet
+ * @param rows                  [{ id, name, reportAs, includeInSurveillance }]
+ * @param onChange              (id, reportAs) => void
+ * @param onSurveillanceChange  (id, boolean) => void
+ * @param emptyText             shown when there is nothing to report yet
  */
-export default function DiagnosisReportingField({ rows = [], onChange, emptyText }) {
+export default function DiagnosisReportingField({ rows = [], onChange, onSurveillanceChange, emptyText }) {
   if (rows.length === 0) {
     return <p className="text-xs text-gray-400">{emptyText}</p>;
   }
@@ -47,6 +45,10 @@ export default function DiagnosisReportingField({ rows = [], onChange, emptyText
                     </label>
                   );
                 })}
+                <label className="flex cursor-pointer items-center gap-1.5 text-[13px]">
+                  <input type="checkbox" checked={row.includeInSurveillance === true} onChange={(event) => onSurveillanceChange(row.id, event.target.checked)} className="h-4 w-4 accent-[#DC2626]" />
+                  <span className={row.includeInSurveillance ? "font-semibold text-[#DC2626]" : "text-gray-600"}>Include in Surveillance</span>
+                </label>
               </div>
             </fieldset>
           </li>

@@ -18,6 +18,7 @@ import PatientDetailItem from "../patients/PatientDetailItem";
 import { formatDisplayValue, formatLongDate } from "../../../utils/formatters";
 import { FollowUpEpisodeContent } from "./FollowUpEpisodePanel";
 import { formatRecordReporting, getMorbidityReportingStatus } from "../../../utils/diagnosisReporting";
+import { getSurveillanceDiagnoses } from "../../../utils/surveillance";
 import {
   getServiceTypeLabel,
   isMaternalRecord as isMaternalProgramRecord,
@@ -33,7 +34,6 @@ import {
   getFamilyPlanningDetails,
   normalizeHealthRecordStatus,
   getRecordValue,
-  getHfmdSurveillance,
   getMaternalData,
   getDispensedMedicines,
   getRecordDateValue,
@@ -152,7 +152,8 @@ export default function HealthRecordClinicalDetails({
     morbidityReportingStatus === "morbidity" ||
     morbidityReportingStatus === "notifiable";
   const reportingSummary = formatRecordReporting(record);
-  const hfmdSurveillance = getHfmdSurveillance(record);
+  // Diagnoses included in surveillance; a legacy HFMD-tagged record reads as HFMD.
+  const surveillanceSummary = getSurveillanceDiagnoses(record).map(({ name }) => name).join(", ");
   const generalVitalItems = getVitalSignItems(record);
   const linkedReferralTarget =
     linkedReferral?.trackingId ||
@@ -220,7 +221,7 @@ export default function HealthRecordClinicalDetails({
         medicalNotes={medicalNotesValue}
         shouldShowReporting={shouldShowMorbidityReporting}
         reportingSummary={reportingSummary}
-        hfmdSurveillance={hfmdSurveillance}
+        surveillanceSummary={surveillanceSummary}
         dispensedMedicines={dispensedMedicines}
         needsReferral={needsRhuReferral}
         linkedReferral={linkedReferral}
@@ -245,7 +246,7 @@ export default function HealthRecordClinicalDetails({
       shouldShowMorbidityReporting={shouldShowMorbidityReporting}
       reportingSummary={reportingSummary}
       isGeneralConsultationRecord={isGeneralConsultationRecord}
-      hfmdSurveillance={hfmdSurveillance}
+      surveillanceSummary={surveillanceSummary}
       dispensedMedicines={dispensedMedicines}
       isFamilyPlanningRecord={isFamilyPlanningRecord}
       hasFamilyPlanningDetails={hasFamilyPlanningDetails}
@@ -379,7 +380,7 @@ function GenericRecordDetails({
   shouldShowMorbidityReporting,
   reportingSummary,
   isGeneralConsultationRecord,
-  hfmdSurveillance,
+  surveillanceSummary,
   dispensedMedicines,
   isFamilyPlanningRecord,
   hasFamilyPlanningDetails,
@@ -475,12 +476,12 @@ function GenericRecordDetails({
     careContent.push(
       <div key="surveillance">
         <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          Community-Based Surveillance
+          Surveillance
         </p>
         <div className="grid gap-4 md:grid-cols-2">
           <PatientDetailItem
-            label="HFMD Surveillance"
-            value={hfmdSurveillance ? "Yes" : "No"}
+            label="Included in Surveillance"
+            value={surveillanceSummary || "No"}
           />
         </div>
       </div>,
@@ -574,7 +575,7 @@ function GeneralConsultationRecordDetails({
   medicalNotes,
   shouldShowReporting,
   reportingSummary,
-  hfmdSurveillance,
+  surveillanceSummary,
   dispensedMedicines = [],
   needsReferral,
   linkedReferral,
@@ -682,8 +683,8 @@ function GeneralConsultationRecordDetails({
                   value={reportingSummary}
                 />
                 <TabbedDetailItem
-                  label="HFMD Surveillance"
-                  value={hfmdSurveillance ? "Yes" : "No"}
+                  label="Included in Surveillance"
+                  value={surveillanceSummary || "No"}
                 />
               </div>
             </TabbedSubsection>

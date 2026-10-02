@@ -19,7 +19,7 @@ export const reportNavItems = [
   { label: "Family Planning Target Client List", slug: "family-planning" },
   { label: "Child Immunization (EPI) Target Client List", slug: "epi-target-client-list" },
   { label: "Morbidity and Notifiable Diseases", slug: "morbidity" },
-  { label: "Community-Based Disease Surveillance", slug: "community-based-surveillance" },
+  { label: "Surveillance Report", slug: "community-based-surveillance" },
   { label: "Follow-up and Monitoring", slug: "follow-ups" },
   { label: "Maternal and Prenatal Care Target Client List", slug: "maternal" },
   { label: "TB Program Register", slug: "tb" },

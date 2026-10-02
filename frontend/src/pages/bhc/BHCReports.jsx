@@ -28,9 +28,8 @@ import {
   formatDisplayValue,
   formatPatientName,
 } from "../../utils/formatters";
-import { getSurveillanceTags, hasSurveillanceTag } from "../../utils/surveillance";
+import { getSurveillanceReportEntries } from "../../utils/surveillance";
 import { getReportedDiagnoses } from "../../utils/diagnosisReporting";
-import useClinicalRegistry from "../../hooks/useClinicalRegistry";
 import {
   ATTENTION_FILTER_ALL,
   ATTENTION_LEVELS,
@@ -51,6 +50,7 @@ import {
   isFamilyPlanningRecord,
   isMaternalRecord,
   isTbRecord,
+  matchesServiceTypeFilter,
   normalizeVaccineName,
 } from "../../utils/healthRecordPrograms";
 import { queryKeys } from "../../utils/queryKeys";
@@ -92,9 +92,9 @@ const REPORT_TYPES = [
   {
     key: "community_surveillance",
     slug: "community-based-surveillance",
-    label: "Community-Based Disease Surveillance",
+    label: "Surveillance Report",
     description:
-      "Disease-specific surveillance lists generated from marked health records.",
+      "Diagnoses included in surveillance, one row per diagnosis.",
   },
   {
     key: "family_planning",
@@ -160,7 +160,6 @@ const EMPTY_FILTERS = {
   vaccineStatus: "",
   aogRange: "",
   disease: "",
-  surveillanceList: "hfmd",
 };
 
 export default function BHCReports() {
@@ -275,12 +274,10 @@ export default function BHCReports() {
     [safeReferrals],
   );
 
-  const { registry: clinicalRegistry } = useClinicalRegistry();
   const reportFields = getReportFilterFields(
     selectedReport,
     barangayOptions,
     receivingFacilities,
-    clinicalRegistry.surveillance_diseases,
   );
   const activeFilters = createActiveFilterChips(filters, reportFields);
   const loading =
@@ -443,7 +440,6 @@ export default function BHCReports() {
               referrals={safeReferrals}
               followUps={safeFollowUps}
               patientMap={patientMap}
-              clinicalRegistry={clinicalRegistry}
             />
           </main>
         </div>
@@ -814,24 +810,23 @@ function DiagnosisReportView({ records, filters, patientMap, reportType }) {
   );
 }
 
-function CommunitySurveillanceReportView({ records, filters, patientMap, clinicalRegistry }) {
-  const selectedList = filters.surveillanceList || "hfmd";
-  const diseaseLabel = clinicalRegistry?.surveillance_diseases?.[selectedList]?.name || "Cases";
-  const rows = records
-    .filter((record) => isCommunitySurveillanceRecord(record, selectedList))
-    .filter(
-      (record) =>
-        matchesDateRange(getRecordDateValue(record), filters) &&
-        matchesValue(getRecordBarangay(record, patientMap), filters.barangay),
-    )
-    .map((record, index) =>
-      normalizeCommunitySurveillanceRow(record, patientMap, index + 1),
-    );
+function CommunitySurveillanceReportView({ records, filters, patientMap }) {
+  const eligibleRecords = records.filter(
+    (record) =>
+      matchesDateRange(getRecordDateValue(record), filters) &&
+      matchesValue(getRecordBarangay(record, patientMap), filters.barangay),
+  );
+  const rows = getSurveillanceReportEntries(eligibleRecords, filters.disease).map(
+    ({ record, diagnosis }, index) => ({
+      ...normalizeCommunitySurveillanceRow(record, patientMap, index + 1),
+      diagnosis,
+    }),
+  );
 
   return (
     <>
       <SummaryGrid>
-        <SummaryCard label={`${diseaseLabel} Cases`} value={rows.length} icon={<ClipboardList size={16} />} />
+        <SummaryCard label="Surveillance Cases" value={rows.length} icon={<ClipboardList size={16} />} />
         <SummaryCard
           label="Areas / Sitios"
           value={new Set(rows.map((row) => row.areaSitio).filter(Boolean)).size}
@@ -844,8 +839,8 @@ function CommunitySurveillanceReportView({ records, filters, patientMap, clinica
           icon={<FileHeart size={16} />}
         />
         <SummaryCard
-          label="Included"
-          value={rows.length}
+          label="Diagnoses"
+          value={new Set(rows.map((row) => row.diagnosis.toLowerCase())).size}
           tone="emerald"
           icon={<Stethoscope size={16} />}
         />
@@ -865,7 +860,7 @@ function FollowUpReportView({ followUps, filters }) {
       (task) =>
         matchesDateRange(task.dueDate, filters) &&
         matchesValue(task.patient?.barangay, filters.barangay) &&
-        matchesValue(getServiceTypeLabel(task.healthRecord), filters.serviceType) &&
+        matchesServiceTypeFilter(filters.serviceType, task.healthRecord, getServiceTypeLabel(task.healthRecord)) &&
         matchesValue(
           formatFollowUpState(task.effectiveState),
           filters.status,
@@ -1225,10 +1220,11 @@ function CommunitySurveillanceTable({ rows }) {
     "Week",
     "Date",
     "No.",
-    "Name of Child",
+    "Name",
     "Age",
     "Birthday",
     "Area / Sitio",
+    "Diagnosis",
     "Signs and Symptoms",
   ];
 
@@ -1236,10 +1232,10 @@ function CommunitySurveillanceTable({ rows }) {
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 px-4 py-3 text-center">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-[#0F172A]">
-          Community-Based Surveillance
+          Surveillance Report
         </p>
         <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
-          List of Hand, Foot, and Mouth Disease Cases
+          Diagnoses Included in Surveillance
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -1259,10 +1255,10 @@ function CommunitySurveillanceTable({ rows }) {
                 <td colSpan={columns.length} className="px-6 py-16 text-center">
                   <FileText className="mx-auto text-slate-300" size={28} />
                   <p className="mt-3 font-semibold text-slate-600">
-                    No HFMD surveillance cases
+                    No surveillance cases
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
-                    No visits marked for this surveillance list match the selected filters.
+                    No diagnoses were included in surveillance for the selected filters.
                   </p>
                 </td>
               </tr>
@@ -1277,6 +1273,7 @@ function CommunitySurveillanceTable({ rows }) {
                     row.age,
                     formatDate(row.birthday, EMPTY_MARK),
                     row.areaSitio,
+                    row.diagnosis,
                     row.signsSymptoms,
                   ].map((value, columnIndex) => (
                     <td
@@ -1339,7 +1336,7 @@ function HeaderAction({ icon, label, count, onClick }) {
   );
 }
 
-function getReportFilterFields(type, barangays, facilities, surveillanceDiseases = {}) {
+function getReportFilterFields(type, barangays, facilities) {
   const dateField = {
     key: "dateRange",
     label: type === "epi" ? "Registration Date Range" : "Date Range",
@@ -1418,25 +1415,11 @@ function getReportFilterFields(type, barangays, facilities, surveillanceDiseases
       ];
     case "morbidity":
     case "notifiable":
-      return [
-        dateField,
-        barangay,
-        { key: "disease", label: "Disease / Diagnosis", type: "text", placeholder: "Search diagnosis" },
-      ];
     case "community_surveillance":
       return [
         dateField,
         barangay,
-        {
-          key: "surveillanceList",
-          label: "Surveillance List",
-          type: "select",
-          resetValue: "hfmd",
-          options: Object.entries(surveillanceDiseases).map(([key, disease]) => ({
-            value: key,
-            label: disease.name,
-          })),
-        },
+        { key: "disease", label: "Disease / Diagnosis", type: "text", placeholder: "Search diagnosis" },
       ];
     case "followups":
       return [
@@ -1518,12 +1501,9 @@ function normalizeCommunitySurveillanceRow(record, patientMap, number) {
   };
 }
 
-function isCommunitySurveillanceRecord(record = {}, surveillanceList = "hfmd") {
-  return hasSurveillanceTag(getSurveillanceTags(record), surveillanceList);
-}
-
-// Surveillance tag reads go through utils/surveillance.js's shared
-// getSurveillanceTags, and morbidity / notifiable reads through
+// Surveillance rows come from utils/surveillance.js's getSurveillanceReportEntries
+// (per-diagnosis includeInSurveillance, legacy HFMD tags as one HFMD row), and
+// morbidity / notifiable reads through
 // utils/diagnosisReporting.js - see healthRecordService.js for the same
 // consolidation note.
 
