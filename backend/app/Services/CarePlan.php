@@ -39,6 +39,25 @@ final class CarePlan
         return false;
     }
 
+    /**
+     * Whether a visit that refers still keeps its own next-visit follow-up:
+     * it monitors a condition at the BHC ("Monitor at BHC + Refer"), or it is
+     * a service visit (Maternal / Family Planning / EPI selected) with a
+     * follow-up date set - the next dose, appointment or prenatal return.
+     * A plain referral with no service hands the follow-up to the RHU.
+     */
+    public static function keepsFollowUpWithReferral(array $diagnoses, mixed $monitoringData): bool
+    {
+        if (self::monitorsAny($diagnoses)) {
+            return true;
+        }
+        $monitoringData = is_array($monitoringData) ? $monitoringData : [];
+        $programs = $monitoringData['selectedPrograms'] ?? [];
+        $date = $monitoringData['followUpDate'] ?? $monitoringData['follow_up_date'] ?? null;
+
+        return is_array($programs) && $programs !== [] && filled($date);
+    }
+
     public static function refersAny(array $diagnoses): bool
     {
         foreach ($diagnoses as $diagnosis) {

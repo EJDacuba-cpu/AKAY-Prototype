@@ -132,10 +132,13 @@ class FollowUpTaskSyncService
             return;
         }
 
-        $monitorsWithReferral = $record->needs_referral
-            && CarePlan::monitorsAny($record->diagnoses ?? []);
+        // A referral keeps the visit's own follow-up only when the BHC still
+        // owns the next visit (CarePlan::keepsFollowUpWithReferral); the
+        // record's status then reads Needs Referral, so it is not checked.
+        $keptWithReferral = $record->needs_referral
+            && CarePlan::keepsFollowUpWithReferral($record->diagnoses ?? [], $record->monitoring_data ?? []);
 
-        if ($record->needs_referral && ! $monitorsWithReferral) {
+        if ($record->needs_referral && ! $keptWithReferral) {
             $this->cancelUnfulfilledTask($record, $user);
             return;
         }
@@ -143,7 +146,7 @@ class FollowUpTaskSyncService
         $status = $this->healthRecordStatus($record);
         $dueDate = $this->followUpDate($record);
 
-        if ((! $monitorsWithReferral && $status !== 'follow up required') || ! $dueDate) {
+        if ((! $keptWithReferral && $status !== 'follow up required') || ! $dueDate) {
             $this->cancelUnfulfilledTask($record, $user);
             return;
         }

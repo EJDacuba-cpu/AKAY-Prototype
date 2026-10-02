@@ -419,11 +419,14 @@ class HealthRecordRequest extends FormRequest
                 $validator->errors()->add('referral.reason_for_referral', 'Reason for referral is required.');
             }
             // A plain referral hands the follow-up to the RHU, so no date is
-            // needed. "Monitor at BHC + Refer" keeps the BHC follow-up, so the
-            // date is still required when the visit asks for one.
-            $monitorsWithReferral = $needsReferral
-                && \App\Services\CarePlan::monitorsAny($this->input('diagnoses', []) ?: []);
-            if ((! $needsReferral || $monitorsWithReferral) && $normalizedStatus === 'follow up required' && ! $date) {
+            // needed. A referral that keeps the BHC follow-up ("Monitor at BHC
+            // + Refer", or a service visit with its next date set - see
+            // CarePlan::keepsFollowUpWithReferral) still needs the date when
+            // the visit asks for one. (The service case already has a date, so
+            // only the monitored case can trip this rule.)
+            $keptWithReferral = $needsReferral
+                && \App\Services\CarePlan::keepsFollowUpWithReferral($this->diagnosesInput(), $monitoringData);
+            if ((! $needsReferral || $keptWithReferral) && $normalizedStatus === 'follow up required' && ! $date) {
                 $validator->errors()->add(
                     'monitoring_data.followUpDate',
                     'Follow-up date is required when status is Follow-up Required.'

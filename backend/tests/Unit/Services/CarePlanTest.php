@@ -25,4 +25,18 @@ class CarePlanTest extends TestCase
         $this->assertTrue(CarePlan::refersAny($diagnoses));
         $this->assertFalse(CarePlan::monitorsAny([['name' => 'A']]));
     }
+
+    public function test_a_referral_keeps_the_follow_up_when_monitoring_or_a_dated_service_visit(): void
+    {
+        $refer = [['name' => 'Pneumonia', 'carePlan' => 'refer']];
+        $monitorRefer = [['name' => 'Hypertension', 'carePlan' => 'monitor_refer']];
+
+        $this->assertTrue(CarePlan::keepsFollowUpWithReferral($monitorRefer, []));
+        $this->assertTrue(CarePlan::keepsFollowUpWithReferral($refer, ['selectedPrograms' => ['EPI'], 'followUpDate' => '2026-11-01']));
+        $this->assertTrue(CarePlan::keepsFollowUpWithReferral($refer, ['selectedPrograms' => ['Maternal'], 'follow_up_date' => '2026-11-01']));
+        $this->assertFalse(CarePlan::keepsFollowUpWithReferral($refer, ['selectedPrograms' => ['EPI'], 'followUpDate' => null]));
+        $this->assertFalse(CarePlan::keepsFollowUpWithReferral($refer, ['selectedPrograms' => [], 'followUpDate' => '2026-11-01']));
+        $this->assertFalse(CarePlan::keepsFollowUpWithReferral($refer, ['followUpDate' => '2026-11-01']));
+        $this->assertFalse(CarePlan::keepsFollowUpWithReferral($refer, null));
+    }
 }

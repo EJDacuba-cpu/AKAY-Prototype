@@ -74,6 +74,49 @@ class CarePlanReferralFollowUpTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors('monitoring_data.followUpDate');
     }
 
+    /** A vaccination visit (EPI selected) that also refers an unrelated diagnosis. */
+    private function saveServiceVisit(?string $followUpDate)
+    {
+        return $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
+            'patient_id' => $this->patient->id,
+            'category' => 'Immunization',
+            'chief_complaint' => 'Vaccination Visit',
+            'notes' => 'Vaccine deferred, referred for cough',
+            'diagnosis' => 'Pneumonia',
+            'diagnoses' => [['id' => 'd1', 'name' => 'Pneumonia', 'carePlan' => 'refer']],
+            'needs_referral' => true,
+            'referral' => ['reason_for_referral' => 'Referred for: Pneumonia', 'urgency_level' => 'Routine'],
+            'monitoring_data' => [
+                'selectedPrograms' => ['EPI'],
+                'primaryProgram' => 'EPI',
+                'followUpStatus' => $followUpDate ? 'Follow-up Required' : 'Completed',
+                'followUpDate' => $followUpDate,
+                'followUpReason' => $followUpDate ? 'Next dose' : null,
+            ],
+        ]);
+    }
+
+    public function test_a_service_visit_keeps_its_next_visit_follow_up_through_a_referral(): void
+    {
+        $date = now()->addWeeks(4)->toDateString();
+        $id = $this->saveServiceVisit($date)->assertCreated()->json('data.id');
+
+        $task = FollowUpTask::where('health_record_id', $id)->sole();
+        $this->assertSame('pending', $task->state);
+        $this->assertSame($date, $task->due_date->toDateString());
+        $record = \App\Models\HealthRecord::findOrFail($id);
+        $this->assertSame($date, $record->monitoring_data['followUpDate']);
+        $this->assertSame('Needs Referral', $record->monitoring_data['followUpStatus']);
+        $this->assertSame(0, ConditionMonitoring::count());
+    }
+
+    public function test_a_service_visit_with_no_follow_up_date_has_nothing_to_keep(): void
+    {
+        $id = $this->saveServiceVisit(null)->assertCreated()->json('data.id');
+
+        $this->assertFalse(FollowUpTask::where('health_record_id', $id)->exists());
+    }
+
     public function test_refer_without_monitoring_still_drops_the_follow_up(): void
     {
         $id = $this->save('refer', true)->assertCreated()->json('data.id');
