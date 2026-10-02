@@ -89,9 +89,9 @@ export default function CareAndProgramsTab({
 
   function handleCardAction(action) {
     if (action?.type === "start-postpartum-follow-up") {
-      // mode=followup + a preselected patient/classification is enough for
-      // ConsultationWorkspace to treat this as a follow-up visit (see
-      // hasRouteFollowUpContext) without needing a specific parent record.
+      // Without a followUpId, mode=followup opens a new step-flow
+      // consultation for this patient (utils/consultationRoute.js), with
+      // serviceType preselecting the Maternal classification.
       const params = new URLSearchParams({
         patientId: String(patientId || ""),
         mode: "followup",
