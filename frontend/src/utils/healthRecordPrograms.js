@@ -1,5 +1,9 @@
-import { getConsultationPrograms } from "./consultationPrograms.js";
-import { isTbRecord as isTbRecordByData } from "./tbRecords.js";
+import { getConsultationPrograms, PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
+import { isTbRecord } from "./tbRecords.js";
+
+// The one TB detector (legacy TB category, legacy "TB" program, or non-empty
+// TB-DOTS data) lives in tbRecords.js; re-exported so importers keep working.
+export { isTbRecord };
 
 export const EPI_VACCINE_ROWS = [
   "Newborn Screening",
@@ -318,33 +322,32 @@ export function isFamilyPlanningRecord(record = {}) {
   return hasAnyTerm(record, ["family planning", "fp"]);
 }
 
-/**
- * The one TB detector for record readers: saved TB-DOTS data, the legacy TB
- * category or "TB" program (utils/tbRecords), or - for records that predate
- * selectedPrograms - TB terms in the record text. TB data counts even when the
- * record lists other programs (or none): new TB records are General
- * Consultation or a service category with tb_data.
- */
-export function isTbRecord(record = {}) {
-  if (isTbRecordByData(record)) return true;
-  const explicit = record.selectedPrograms ?? record.monitoringData?.selectedPrograms ?? record.monitoring_data?.selectedPrograms;
-  if (Array.isArray(explicit)) return explicit.includes("TB");
-  return hasAnyTerm(record, ["tb", "tuberculosis", "dots"]);
-}
-
 const TB_SERVICE_TYPE = "TB DOTS / TB Monitoring";
 
 /**
  * Service-type filter shared by the Follow-ups page and the Follow-up report.
- * `label` is the row's displayed service type. The TB option matches TB
- * records by data (isTbRecord on the linked health record), since new TB
- * records are General Consultation or a service category with tb_data.
+ * `label` is the row's displayed service type. With a linked health record,
+ * the TB option is decided by isTbRecord alone (new TB records are General
+ * Consultation or a service category with tb_data); without one, it falls
+ * back to the label.
  */
 export function matchesServiceTypeFilter(filter, record, label) {
   if (!filter) return true;
+  if (filter === TB_SERVICE_TYPE && record) return isTbRecord(record);
   const normalize = (value) => String(value || "").trim().toLowerCase();
-  if (filter === TB_SERVICE_TYPE && record && isTbRecord(record)) return true;
   return normalize(label) === normalize(filter);
+}
+
+/**
+ * The Health Records page's Service Type filter for one (list-shaped) record:
+ * the TB option is isTbRecord; any other option matches a selected program's
+ * service type or the record's own classification.
+ */
+export function matchesClassificationFilter(filter, record = {}) {
+  if (!filter) return true;
+  if (filter === TB_SERVICE_TYPE) return isTbRecord(record);
+  const services = getConsultationPrograms(record).map((program) => formatServiceType(PROGRAM_CLASSIFICATIONS[program], ""));
+  return services.includes(filter) || formatServiceType(record.classification, "") === filter;
 }
 
 export function getSpecializedRecordType(record = {}) {

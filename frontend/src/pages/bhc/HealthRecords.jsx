@@ -22,6 +22,7 @@ import {
   getRecordId,
   getRecordParentId,
   isFollowUpVisitRecord,
+  matchesClassificationFilter,
 } from "../../utils/healthRecordPrograms";
 import { queryKeys } from "../../utils/queryKeys";
 
@@ -183,10 +184,7 @@ export default function HealthRecords() {
       record.classification?.toLowerCase().includes(searchLower) ||
       formatServiceType(record.classification, "").toLowerCase().includes(searchLower) ||
       record.concern?.toLowerCase().includes(searchLower);
-    const matchesClassification =
-      !filters.classification ||
-      services.includes(filters.classification) ||
-      formatServiceType(record.classification, "") === filters.classification;
+    const matchesClassification = matchesClassificationFilter(filters.classification, record);
     const matchesVisitType =
       !filters.visitType || record.visitType === filters.visitType;
     const matchesVisitDate = isDateInPreset(record.date, filters.dateRange, {

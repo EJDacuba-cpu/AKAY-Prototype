@@ -7,6 +7,7 @@ import {
   getSpecializedRecordPrograms,
   getSpecializedRecordType,
   isTbRecord,
+  matchesClassificationFilter,
   matchesServiceTypeFilter,
   SPECIALIZED_RECORD_PROGRAMS,
 } from "./healthRecordPrograms.js";
@@ -85,11 +86,21 @@ test("isTbRecord detects TB by data even when the record lists other (or no) pro
   assert.equal(isTbRecord({ category: "General Consultation", monitoring_data: { selectedPrograms: [] }, tb_data: {} }), false);
 });
 
-test("isTbRecord keeps the legacy program and text checks", () => {
+test("isTbRecord keeps the legacy TB program and category, and never matches record text", () => {
   assert.equal(isTbRecord({ monitoring_data: { selectedPrograms: ["TB"] } }), true);
-  assert.equal(isTbRecord({ category: "Tuberculosis follow-up" }), true);
+  assert.equal(isTbRecord({ monitoring_data: { selectedPrograms: ["Maternal", "TB"] } }), true);
+  assert.equal(isTbRecord({ category: "TB DOTS / TB Monitoring" }), true);
+  assert.equal(isTbRecord({ category: "General Consultation", tbData: { diagnosis: { tbCaseNumber: "TB-1" } } }), true);
+  assert.equal(isTbRecord({ category: "Tuberculosis follow-up" }), false);
+  assert.equal(isTbRecord({ category: "General Consultation", diagnosis: "red dots on skin" }), false);
   assert.equal(isTbRecord({ category: "General Consultation", monitoring_data: { selectedPrograms: ["EPI"] } }), false);
   assert.equal(isTbRecord({ category: "General Consultation" }), false);
+});
+
+test("isTbRecord is the tbRecords detector, so text never puts a record in the TB tab", () => {
+  const record = { id: 3, category: "Maternal", chiefComplaint: "Fever after football game" };
+  assert.equal(isTbRecord(record), false);
+  assert.deepEqual(getSpecializedRecordPrograms([record]).map(({ key }) => key), ["maternal"]);
 });
 
 test("a General Consultation record with only TB data lands in the TB specialized tab", () => {
@@ -103,10 +114,28 @@ test("the TB service-type filter matches TB records by data, other types by labe
   const tbByData = { category: "General Consultation", monitoring_data: { selectedPrograms: [] }, tb_data: { diagnosis: { tbCaseNumber: "TB-1" } } };
   assert.equal(matchesServiceTypeFilter("TB DOTS / TB Monitoring", tbByData, "General Consultation"), true);
   assert.equal(matchesServiceTypeFilter("TB DOTS / TB Monitoring", { category: "General Consultation" }, "General Consultation"), false);
+  // With a linked record, TB is decided by isTbRecord alone - not by a TB-looking label.
+  assert.equal(matchesServiceTypeFilter("TB DOTS / TB Monitoring", { category: "General Consultation", chiefComplaint: "dots" }, "TB DOTS / TB Monitoring"), false);
   assert.equal(matchesServiceTypeFilter("TB DOTS / TB Monitoring", undefined, "TB DOTS / TB Monitoring"), true);
   assert.equal(matchesServiceTypeFilter("TB DOTS / TB Monitoring", undefined, "Unclassified"), false);
   assert.equal(matchesServiceTypeFilter("General Consultation", tbByData, "General Consultation"), true);
   assert.equal(matchesServiceTypeFilter("family planning", {}, "Family Planning"), true);
   assert.equal(matchesServiceTypeFilter("Family Planning", {}, "Maternal / Prenatal"), false);
   assert.equal(matchesServiceTypeFilter("", {}, "anything"), true);
+});
+
+test("the Health Records service-type filter matches TB by isTbRecord, other types by service or classification", () => {
+  const tbByData = { classification: "General Consultation", category: "General Consultation", monitoring_data: { selectedPrograms: [] }, tb_data: { diagnosis: { tbCaseNumber: "TB-1" } } };
+  const textOnly = { classification: "General Consultation", category: "General Consultation", chiefComplaint: "red dots", concern: "red dots" };
+  const maternal = { classification: "Maternal", category: "Maternal", monitoring_data: { selectedPrograms: ["Maternal"] } };
+  const legacyTb = { classification: "TB DOTS / TB Monitoring", category: "TB DOTS / TB Monitoring" };
+
+  assert.equal(matchesClassificationFilter("TB DOTS / TB Monitoring", tbByData), true);
+  assert.equal(matchesClassificationFilter("TB DOTS / TB Monitoring", legacyTb), true);
+  assert.equal(matchesClassificationFilter("TB DOTS / TB Monitoring", textOnly), false);
+  assert.equal(matchesClassificationFilter("TB DOTS / TB Monitoring", maternal), false);
+  assert.equal(matchesClassificationFilter("General Consultation", tbByData), true);
+  assert.equal(matchesClassificationFilter("Maternal / Prenatal", maternal), true);
+  assert.equal(matchesClassificationFilter("Family Planning", maternal), false);
+  assert.equal(matchesClassificationFilter("", maternal), true);
 });
