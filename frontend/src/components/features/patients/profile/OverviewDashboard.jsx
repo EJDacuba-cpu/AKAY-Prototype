@@ -169,6 +169,8 @@ function VitalsSummaryCard({ records, isLoading }) {
         ["Weight", value(record.weight), "kg"],
         ["Height", value(record.height), "cm"],
         ["BMI", bmi !== null && Number.isFinite(bmi) ? formatBmi(bmi) : "—", "kg/m²"],
+        // Optional Additional Measurement: shown only when recorded.
+        ...(hasVitalValue(record.fbs) ? [["FBS", record.fbs, "mg/dL"]] : []),
       ]
     : [];
   const when = recordedAt
@@ -188,7 +190,7 @@ function VitalsSummaryCard({ records, isLoading }) {
         ) : !record ? (
           <p className="text-sm text-gray-600">No vital signs recorded yet.</p>
         ) : (
-          <dl className="grid grid-cols-2 gap-px overflow-hidden border border-gray-200 bg-gray-200 sm:grid-cols-4 lg:grid-cols-7">
+          <dl className={`grid grid-cols-2 gap-px overflow-hidden border border-gray-200 bg-gray-200 sm:grid-cols-4 ${cells.length > 7 ? "lg:grid-cols-8" : "lg:grid-cols-7"}`}>
             {cells.map(([label, reading, unit]) => (
               <div key={label} className="min-w-0 bg-white px-2 py-1">
                 <dt className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{label}</dt>

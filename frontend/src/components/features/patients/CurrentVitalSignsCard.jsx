@@ -25,6 +25,8 @@ export default function CurrentVitalSignsCard({ records = [], isLoading = false 
     ["Weight", measurement(record.weight, "kg")],
     ["Height", measurement(record.height, "cm")],
     ["BMI", bmi !== null && Number.isFinite(bmi) ? `${formatBmi(bmi)} kg/m²` : "Not recorded"],
+    // Optional Additional Measurement: listed only when recorded.
+    ...(hasVitalValue(record.fbs) ? [["FBS", measurement(record.fbs, "mg/dL")]] : []),
   ] : [];
 
   return (

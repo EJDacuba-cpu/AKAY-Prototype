@@ -51,6 +51,8 @@ function VitalsGrid({ records }) {
     ["Wt", value(record.weight), "kg"],
     ["Ht", value(record.height), "cm"],
     ["BMI", bmi !== null && Number.isFinite(bmi) ? formatBmi(bmi) : "—", "kg/m²"],
+    // Optional Additional Measurement: shown only when recorded.
+    ...(hasVitalValue(record.fbs) ? [["FBS", record.fbs, "mg/dL"]] : []),
   ] : [];
 
   return (

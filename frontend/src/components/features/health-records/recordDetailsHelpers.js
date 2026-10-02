@@ -5,6 +5,7 @@ import {
 } from "../../../utils/formatters";
 import { formatServiceType } from "../../../utils/healthRecordPrograms";
 import { calculateBmi, formatBmi, getBmiCategory } from "../../../utils/bmi";
+import { formatFbs } from "../../../utils/recordCarePlan";
 
 /* ─────────────────────────────────────────────
    Shared health-record detail helpers
@@ -604,6 +605,8 @@ export function getVitalSignItems(record = {}) {
 
   const cleanWeight = cleanVitalSignValue(weightValue);
   const cleanHeight = cleanVitalSignValue(heightValue);
+  // Optional Additional Measurement; listed only when it was recorded.
+  const fbsValue = formatFbs(record?.fbs ?? vitalObject.fbs);
 
   return [
     { label: "BP", value: cleanVitalSignValue(bpValue) },
@@ -614,6 +617,7 @@ export function getVitalSignItems(record = {}) {
     { label: "Weight", value: cleanWeight },
     { label: "Height", value: cleanHeight },
     { label: "BMI", value: getBmiDisplayValue(record, cleanWeight, cleanHeight) },
+    ...(fbsValue ? [{ label: "FBS", value: fbsValue }] : []),
   ];
 }
 

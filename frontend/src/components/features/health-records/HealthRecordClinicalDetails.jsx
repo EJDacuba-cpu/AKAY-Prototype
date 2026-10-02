@@ -59,6 +59,7 @@ import {
   getBloodPressureValue,
   getRecordVisitTypeValue,
 } from "./recordDetailsHelpers";
+import { diagnosisCarePlanItems } from "../../../utils/recordCarePlan";
 
 /* ─────────────────────────────────────────────
    HealthRecordClinicalDetails
@@ -68,7 +69,45 @@ import {
    Shared by the health record details page and both referral details pages.
 ──────────────────────────────────────────── */
 
-export default function HealthRecordClinicalDetails({
+export default function HealthRecordClinicalDetails(props) {
+  // Care Plan & Next Steps as saved, per diagnosis (display only), under
+  // whichever record layout applies.
+  const carePlanItems = diagnosisCarePlanItems(props.record?.diagnoses);
+  const details = <RecordDetailsBody {...props} />;
+  if (carePlanItems.length === 0) return details;
+  return (
+    <div className="space-y-4">
+      {details}
+      <DiagnosisCarePlanSummary items={carePlanItems} />
+    </div>
+  );
+}
+
+function DiagnosisCarePlanSummary({ items }) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-5">
+      <TabbedSubsection title="Care Plan">
+        <ul className="divide-y divide-slate-100">
+          {items.map((item) => (
+            <li key={item.key} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-sm">
+              <span className="font-medium text-[#0F172A]">{item.name}</span>
+              <span className="flex flex-wrap items-center gap-2">
+                {item.plan && <span className="text-slate-600">{item.plan}</span>}
+                {item.inSurveillance && (
+                  <span className="rounded-sm border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800">
+                    In surveillance
+                  </span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </TabbedSubsection>
+    </section>
+  );
+}
+
+function RecordDetailsBody({
   record,
   patient = {},
   linkedReferral = null,
@@ -952,6 +991,7 @@ function MaternalPrenatalRecordDetails({
   const vitalItems = getVitalSignItems(record);
   const temperature =
     vitalItems.find((item) => item.label === "Temperature")?.value || "";
+  const fbs = vitalItems.find((item) => item.label === "FBS")?.value || "";
   const labs = getLaboratoryResultItems(maternal);
   const hasLabResults = labs.some((item) => Boolean(item.value));
   const ultrasoundResult = getUltrasoundValue(maternal, [
@@ -1009,6 +1049,7 @@ function MaternalPrenatalRecordDetails({
               <TabbedDetailItem label="Height / HGT" value={height} />
               <TabbedDetailItem label="BMI" value={bmi} />
               <TabbedDetailItem label="Temperature" value={temperature} />
+              {fbs && <TabbedDetailItem label="FBS" value={fbs} />}
             </div>
           </TabbedSubsection>
           <TabbedSubsection title="Complaint">

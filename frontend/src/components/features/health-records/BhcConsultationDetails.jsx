@@ -1,6 +1,7 @@
 import HealthRecordClinicalDetails from './HealthRecordClinicalDetails';
 import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms } from '../../../utils/consultationPrograms';
 import { VISIT_SERVICES, TEENAGE_PREGNANCY_MESSAGE } from '../../../utils/visitPurpose';
+import { formatFbs } from '../../../utils/recordCarePlan';
 
 function Details({ rows }) {
   return <dl className="grid gap-4 sm:grid-cols-2">{rows.map(([label, value]) => <div key={label}><dt className="text-xs font-semibold text-slate-500">{label}</dt><dd className="mt-1 whitespace-pre-wrap text-sm text-slate-900">{String(value ?? '').trim() || 'Not recorded'}</dd></div>)}</dl>;
@@ -40,6 +41,7 @@ export default function BhcConsultationDetails({ record, ...props }) {
         <Details rows={[
           ['Blood Pressure', [record.systolicBp, record.diastolicBp].filter(Boolean).join(' / ')],
           ['Temperature', record.temperature || record.temp], ['Pulse', record.pulse], ['SpO₂', record.spo2], ['Weight', record.weight], ['Height', record.height],
+          ...(formatFbs(record.fbs) ? [['FBS', formatFbs(record.fbs)]] : []),
         ]} />
         <Details rows={[
           ['Gravida', maternal.gravida], ['Para', maternal.para], ['Term', maternal.term], ['Preterm', maternal.preterm], ['Abortion', maternal.abortion], ['Living', maternal.living],

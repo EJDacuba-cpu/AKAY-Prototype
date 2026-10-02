@@ -406,6 +406,8 @@ function normalizeRecord(record = {}) {
     spo2: vitalSigns.spo2 || record.spo2 || "",
     weight: vitalSigns.weight || record.weight || "",
     height: vitalSigns.height || record.height || "",
+    // Optional Additional Measurement (mg/dL); "" when not recorded.
+    fbs: vitalSigns.fbs ?? record.fbs ?? "",
     status:
       record.status ||
       monitoringData.followUpStatus ||
