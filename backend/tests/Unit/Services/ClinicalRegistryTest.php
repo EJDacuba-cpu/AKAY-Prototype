@@ -58,34 +58,19 @@ class ClinicalRegistryTest extends TestCase
         $this->assertNull($this->registry()->matchCondition(null));
     }
 
-    public function test_matches_surveillance_disease_by_name_or_alias(): void
-    {
-        $match = $this->registry()->matchSurveillance('HFMD');
-        $this->assertSame(['key' => 'hfmd', 'name' => 'Hand, Foot and Mouth Disease'], $match);
-
-        $match = $this->registry()->matchSurveillance('Hand, Foot and Mouth Disease');
-        $this->assertSame('hfmd', $match['key']);
-
-        $this->assertNull($this->registry()->matchSurveillance('Dengue'));
-    }
-
     public function test_validity_checks(): void
     {
         $registry = $this->registry();
         $this->assertTrue($registry->isValidConditionKey('hypertension'));
         $this->assertFalse($registry->isValidConditionKey('unknown'));
         $this->assertFalse($registry->isValidConditionKey(null));
-
-        $this->assertTrue($registry->isValidSurveillanceKey('hfmd'));
-        $this->assertFalse($registry->isValidSurveillanceKey('unknown'));
     }
 
-    public function test_all_returns_both_lists(): void
+    public function test_all_returns_the_condition_list(): void
     {
         $all = $this->registry()->all();
-        $this->assertSame(['monitored_conditions', 'surveillance_diseases'], array_keys($all));
+        $this->assertSame(['monitored_conditions'], array_keys($all));
         $this->assertArrayHasKey('hypertension', $all['monitored_conditions']);
-        $this->assertArrayHasKey('hfmd', $all['surveillance_diseases']);
     }
 
     public function test_condition_identity_prefers_the_registry_key(): void

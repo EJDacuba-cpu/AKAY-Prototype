@@ -67,8 +67,11 @@ class HealthRecordController extends Controller
             $query->where('patient_id', $request->query('patient_id'));
         }
 
-        if ($request->query('category')) {
-            $query->where('category', $request->query('category'));
+        if ($category = $request->query('category')) {
+            // New TB records are service/General Consultation with TB-DOTS data.
+            $category === 'TB DOTS / TB Monitoring'
+                ? $query->where(fn ($q) => $q->where('category', $category)->orWhereNotNull('tb_data'))
+                : $query->where('category', $category);
         }
 
         return response()->json(['data' => $query->latest('date_recorded')->paginate($request->integer('per_page', 25))]);
@@ -523,15 +526,11 @@ class HealthRecordController extends Controller
     }
 
     /**
-     * When the client sends monitoring_data.surveillanceTags (the registry-
-     * driven checkbox list), it is authoritative: the legacy single-value
-     * mirrors (hfmdSurveillance, surveillanceCategory, diseaseSurveillanceCategory,
-     * and their snake_case aliases) are derived from it here, server-side, so
-     * every existing reader (BHCReports, healthRecordService.js) keeps
-     * working unmodified even if a client sent an inconsistent legacy value
-     * alongside the new one. A save with no surveillanceTags key at all
-     * (older client) leaves the legacy keys exactly as the client sent them -
-     * nothing is inferred backwards from legacy-only input.
+     * Legacy clients only: derives the HFMD mirror fields from surveillanceTags.
+     * (hfmdSurveillance, surveillanceCategory, diseaseSurveillanceCategory and
+     * their snake_case aliases.) Current clients flag diagnoses[].includeInSurveillance
+     * and never send surveillanceTags, so this does nothing for them; a save
+     * with no surveillanceTags key leaves the legacy keys exactly as sent.
      */
     private function normalizeSurveillanceData(array &$data): void
     {

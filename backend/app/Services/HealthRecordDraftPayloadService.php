@@ -70,7 +70,6 @@ class HealthRecordDraftPayloadService
         'patientCondition' => self::SCALAR,
         'morbidityReportingStatus' => self::SCALAR,
         'hfmdSurveillance' => self::SCALAR,
-        'surveillanceTags' => ['*' => self::SCALAR],
         'needsReferral' => self::SCALAR,
         'careDecisionStep' => self::SCALAR,
         'referralDetailsStep' => self::SCALAR,
@@ -400,6 +399,11 @@ class HealthRecordDraftPayloadService
         // The Purpose of Visit is no longer recorded. Drafts saved earlier may
         // still carry it; drop it so they open (the workspace no longer reads it).
         unset($payload['visitPurpose']);
+
+        // HFMD surveillance tags were retired for the per-diagnosis
+        // includeInSurveillance flag. Drafts saved earlier may still carry
+        // them; drop them so they open (the workspace no longer reads them).
+        unset($payload['surveillanceTags']);
 
         $sanitized = $this->sanitizeNode($payload, self::SCHEMA, 'payload');
 

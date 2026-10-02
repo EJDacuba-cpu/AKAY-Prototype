@@ -160,10 +160,11 @@ class HealthRecordRequest extends FormRequest
             'monitoring_data.patient_condition' => ['nullable', 'string', 'max:100'],
             'monitoring_data.attendingStaff' => ['nullable', 'string', 'max:150'],
             'monitoring_data.attending_staff' => ['nullable', 'string', 'max:150'],
-            // Registry-driven Community-Based Surveillance tags. Coexists with
-            // the legacy hfmdSurveillance/surveillanceCategory keys, which
-            // HealthRecordController::normalizeSurveillanceData derives from
-            // this when present.
+            // Legacy clients only: the retired HFMD surveillance tags. Current
+            // clients flag diagnoses[].includeInSurveillance instead;
+            // HealthRecordController::normalizeSurveillanceData still derives
+            // the legacy hfmdSurveillance/surveillanceCategory mirrors from this
+            // when an older client sends it.
             'monitoring_data.surveillanceTags' => ['nullable', 'array'],
             'monitoring_data.surveillanceTags.*' => ['string'],
             'family_planning_data' => ['nullable', 'array'],
@@ -378,12 +379,6 @@ class HealthRecordRequest extends FormRequest
                 'monitoring_data',
                 $this->input('category', $this->route('health_record')?->category)
             );
-            $clinicalRegistry = app(\App\Services\ClinicalRegistry::class);
-            foreach ($this->input('monitoring_data.surveillanceTags', []) as $index => $tagKey) {
-                if (! is_string($tagKey) || ! $clinicalRegistry->isValidSurveillanceKey($tagKey)) {
-                    $validator->errors()->add("monitoring_data.surveillanceTags.$index", 'This surveillance disease is not configured.');
-                }
-            }
             $status = $monitoringData['followUpStatus']
                 ?? $monitoringData['follow_up_status']
                 ?? $monitoringData['status']
