@@ -246,12 +246,6 @@ class HealthRecordController extends Controller
                     }
                 }
 
-                $purpose = $record->monitoring_data['visitPurpose'] ?? null;
-                if (is_array($purpose) && filled($purpose['overrideReason'] ?? null)) {
-                    // The clinical reason stays on the protected record; the audit
-                    // entry identifies who committed the override and when.
-                    $auditLogger->log($request, 'eligibility_override', 'health_records', "BHC age eligibility override recorded on health record {$record->id}; reason stored in visitPurpose.overrideReason.");
-                }
                 $auditLogger->log($request, 'created', 'health_records', "Created health record {$record->id}.");
                 if ($lockedDraft !== null) {
                     $drafts->consumeLocked(

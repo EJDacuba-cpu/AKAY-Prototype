@@ -6,7 +6,6 @@ use App\Models\HealthRecord;
 use App\Models\Referral;
 use App\Services\ConsultationPrograms;
 use App\Services\CurrentConditionsSync;
-use App\Services\VisitPurpose;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -17,6 +16,10 @@ class HealthRecordRequest extends FormRequest
         $monitoringData = $this->input('monitoring_data');
         if (is_array($monitoringData)) {
             unset($monitoringData['follow_up_reason']);
+            // The Purpose of Visit is no longer recorded. Older records keep the
+            // visitPurpose they stored (it is still displayed and read there);
+            // a new record never gains one, so it is no longer validated either.
+            unset($monitoringData['visitPurpose']);
             $this->merge(['monitoring_data' => $monitoringData]);
         }
 
@@ -37,7 +40,6 @@ class HealthRecordRequest extends FormRequest
     {
         return [
             ...ConsultationPrograms::rules('monitoring_data'),
-            ...VisitPurpose::rules('monitoring_data.visitPurpose'),
             'idempotency_key' => $this->isMethod('post')
                 ? ['bail', 'required', 'uuid', 'max:64']
                 : ['prohibited'],
@@ -368,7 +370,6 @@ class HealthRecordRequest extends FormRequest
             if ($validator->errors()->isNotEmpty()) {
                 return;
             }
-            VisitPurpose::validate($validator, $this);
             $monitoringData = $this->input('monitoring_data', []);
             ConsultationPrograms::validateSelection(
                 $validator,

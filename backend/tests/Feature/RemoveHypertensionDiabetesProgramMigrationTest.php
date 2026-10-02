@@ -248,7 +248,8 @@ class RemoveHypertensionDiabetesProgramMigrationTest extends TestCase
         $this->runMigration();
 
         $payload = app(HealthRecordDraftService::class)->payload($draft->fresh());
-        $this->assertSame(['General'], $payload['visitPurpose']['services']);
+        // The Purpose of Visit is no longer recorded: reading the draft drops it.
+        $this->assertArrayNotHasKey('visitPurpose', $payload);
         $this->assertNull($payload['primaryProgram']);
         $this->assertSame('general', $payload['consultationMode']);
         $this->assertSame('General Consultation', $draft->fresh()->classification);

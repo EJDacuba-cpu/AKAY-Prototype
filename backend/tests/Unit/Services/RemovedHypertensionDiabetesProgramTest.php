@@ -3,9 +3,9 @@
 namespace Tests\Unit\Services;
 
 use App\Http\Requests\HealthRecordDraftRequest;
+use App\Http\Requests\HealthRecordRequest;
 use App\Services\ConsultationPrograms;
 use App\Services\HealthRecordDraftPayloadService;
-use App\Services\VisitPurpose;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -17,7 +17,6 @@ class RemovedHypertensionDiabetesProgramTest extends TestCase
         // Neither the old Hypertension / Diabetes programs nor the retired
         // NCD Monitoring pathway may come back as a classification.
         $this->assertSame(['Maternal', 'Family Planning', 'EPI'], array_keys(ConsultationPrograms::CLASSIFICATIONS));
-        $this->assertSame(['General', 'Prenatal', 'Postpartum', 'EPI', 'Family Planning', 'TB'], VisitPurpose::SERVICES);
         $this->assertNotContains('Hypertension / Diabetic Monitoring', HealthRecordDraftRequest::CLASSIFICATIONS);
         $this->assertNotContains('NCD Monitoring', HealthRecordDraftRequest::CLASSIFICATIONS);
     }
@@ -31,17 +30,6 @@ class RemovedHypertensionDiabetesProgramTest extends TestCase
             );
             $this->assertTrue($validator->fails(), "$program should be rejected");
             $this->assertArrayHasKey('monitoring_data.selectedPrograms.0', $validator->errors()->toArray());
-        }
-    }
-
-    public function test_hypertension_and_diabetes_are_rejected_as_visit_services(): void
-    {
-        foreach (['Hypertension', 'Diabetes'] as $service) {
-            $validator = Validator::make(
-                ['purpose' => ['version' => 1, 'services' => [$service]]],
-                VisitPurpose::rules('purpose')
-            );
-            $this->assertTrue($validator->fails(), "$service should be rejected");
         }
     }
 
@@ -87,5 +75,45 @@ class RemovedHypertensionDiabetesProgramTest extends TestCase
         $clean = $service->sanitize(['selectedPrograms' => ['Maternal', 'EPI'], 'primaryProgram' => 'EPI']);
         $this->assertSame(['Maternal', 'EPI'], $clean['selectedPrograms']);
         $this->assertSame('EPI', $clean['primaryProgram']);
+    }
+
+    public function test_legacy_visit_purpose_is_dropped_from_old_drafts_on_read(): void
+    {
+        $service = new HealthRecordDraftPayloadService;
+
+        // Including a purpose the old rules would have rejected: the draft
+        // still opens, without the purpose.
+        foreach ([
+            ['version' => 1, 'services' => ['General', 'Prenatal'], 'overrideReason' => '', 'pregnancyConfirmed' => 'No'],
+            ['version' => 1, 'services' => ['Hypertension']],
+        ] as $purpose) {
+            $payload = $service->sanitize([
+                'visitPurpose' => $purpose,
+                'selectedPrograms' => ['Maternal'],
+                'primaryProgram' => 'Maternal',
+                'chiefComplaint' => 'Cough',
+            ]);
+
+            $this->assertArrayNotHasKey('visitPurpose', $payload);
+            $this->assertSame(['Maternal'], $payload['selectedPrograms']);
+            $this->assertSame('Cough', $payload['chiefComplaint']);
+        }
+    }
+
+    public function test_new_health_records_do_not_store_a_visit_purpose(): void
+    {
+        $request = HealthRecordRequest::create('/api/health-records', 'POST', [
+            'monitoring_data' => [
+                'visitPurpose' => ['version' => 1, 'services' => ['Hypertension'], 'overrideReason' => 'x'],
+                'selectedPrograms' => ['Maternal'],
+                'primaryProgram' => 'Maternal',
+            ],
+        ]);
+
+        (new \ReflectionMethod($request, 'prepareForValidation'))->invoke($request);
+
+        $this->assertArrayNotHasKey('visitPurpose', $request->input('monitoring_data'));
+        $this->assertSame(['Maternal'], $request->input('monitoring_data.selectedPrograms'));
+        $this->assertSame('Maternal', $request->input('monitoring_data.primaryProgram'));
     }
 }

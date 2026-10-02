@@ -19,12 +19,6 @@ class HealthRecordDraftPayloadService
         // still decrypt - sanitize() runs on READ as well as write.
         'consultationUuid' => self::SCALAR,
         'receivingRhuId' => self::SCALAR,
-        'visitPurpose' => [
-            'version' => self::SCALAR,
-            'services' => ['*' => self::SCALAR],
-            'overrideReason' => self::SCALAR,
-            'pregnancyConfirmed' => self::SCALAR,
-        ],
         'selectedPrograms' => ['*' => self::SCALAR],
         'primaryProgram' => self::SCALAR,
         'consultationMode' => self::SCALAR,
@@ -403,6 +397,10 @@ class HealthRecordDraftPayloadService
                 : '';
         }
 
+        // The Purpose of Visit is no longer recorded. Drafts saved earlier may
+        // still carry it; drop it so they open (the workspace no longer reads it).
+        unset($payload['visitPurpose']);
+
         $sanitized = $this->sanitizeNode($payload, self::SCHEMA, 'payload');
 
         $validator = Validator::make(['payload' => $sanitized], $this->rules());
@@ -489,7 +487,6 @@ class HealthRecordDraftPayloadService
     {
         return [
             ...ConsultationPrograms::rules('payload'),
-            ...VisitPurpose::rules('payload.visitPurpose'),
             'payload.consultationUuid' => ['nullable', 'uuid'],
             'payload.consultationMode' => ['nullable', 'in:general,program'],
             'payload.wizardPhase' => ['nullable', 'in:program,form,next,review'],
