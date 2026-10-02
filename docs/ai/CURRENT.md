@@ -141,10 +141,30 @@ Care Plan & Next Steps (spec: `docs/superpowers/specs/2026-09-30-care-plan-next-
 - Surveillance: per-diagnosis "Include in Surveillance" and a Surveillance Report replace the HFMD surveillance registry.
 - FBS: optional Fasting Blood Sugar (mg/dL, 0-1000) under "Additional Measurements" on Concern & Vital Signs. Stored in `vital_signs.fbs`, shown on Review, saved in drafts. Recorded only: nothing is flagged, suggested or derived from it. The range check is `frontend/src/utils/fbs.js`.
 - TB is identified by data (`tbRecords.isTbRecord`) everywhere, never by matching text.
+- Final review fix wave (2026-10-02):
+  - **Referral on a service visit (ruling):** a referral keeps the visit's own next-visit follow-up when the visit monitors a condition (as before) OR it is a service visit (Maternal / Family Planning / EPI selected) with a follow-up date set (next dose, FP appointment, prenatal return). A plain referral with no service still drops it. One rule on the server (`CarePlan::keepsFollowUpWithReferral`) and the same rule in the frontend (`carePlanWorkspace.followUpPlan`).
+  - The server rejects a diagnosis set to Refer / Monitor + Refer without a referral (422 on `needs_referral`).
+  - Legacy `monitoring_data.surveillanceTags` is validated again (max 5, only `hfmd`).
+  - Row locks taken in a stable order (continued follow-ups and monitorings by id, monitored conditions by identity); continued monitoring is locked only for the patient being saved. The monitoring 409 (`CONDITION_MONITORING_CONFLICT`) also recognises SQLite's message, so it is tested.
+  - Care overview: a follow-up's conditions carry `condition_key` and `started_at`.
+  - Participants (Programs) Start Consultation opens the Start Consultation modal like the patient profile header.
+  - Saved records show FBS (mg/dL, only when recorded) with the other vitals, and the per-diagnosis care plan (Monitor / Refer / Monitor + Refer, "In surveillance") in record details.
+  - The "Referred for: ..." reason follows the referred diagnoses until the worker edits it. The referral's initial diagnosis still carries all diagnoses.
 
 ### Tests/checks run
-- Frontend: 305/305 node tests pass, eslint reports 0 errors and the 1 pre-existing warning (`pages/rhu/RHUAddHealthRecords.jsx`), and the vite build succeeds.
-- Backend: not re-run for the FBS/panel change (backend unchanged in that task). Pre-existing failures are listed below.
+- Measured by the controller before the fix wave: backend 568 tests / 194 failed, with the failing-name set identical to the pre-existing baseline; frontend 305/305.
+- After the fix wave: see `.superpowers/sdd/2026-09-30-care-plan-next-steps/final-fix-report.md` (backend failing names compared with the baseline: 0 new; frontend node tests, eslint with the 1 pre-existing warning in `pages/rhu/RHUAddHealthRecords.jsx`, and the vite build).
+
+### Deploy order
+1. Run the pending migrations on Supabase BEFORE deploying the new backend code: `2026_09_30_000001_drop_care_pathway_tables`, then `2026_09_30_000002_create_condition_monitoring_tables`, then `2026_09_30_000003_allow_shared_follow_up_fulfilment`.
+2. Deploy the backend BEFORE the frontend. A new frontend against an old backend silently ignores `care_plan` (nothing is continued or stopped). An old frontend (open tab) against the new backend gets a 422 when saving a record with the retired TB program until the page is reloaded.
+
+### Merge gate: staging smoke test
+The backend test classes that exercise `HealthRecordController::store()` seams - `HealthRecordIdempotencyTest`, `HealthRecordDraftFinalizationTest`, `FollowUpConcurrencyTest`, `ReferralSubmissionGateTest`, and much of `FacilityIsolationSecurityTest` - are among the 194 pre-existing failures, so they give no regression coverage for this feature. Before merging, smoke-test on staging:
+- one consultation continuing two follow-ups and one monitoring;
+- re-diagnose a continued Hypertension as No Ongoing Tracking (stop reason required);
+- resume an old TB-program draft;
+- a referral on a service visit (e.g. EPI with a next-dose date): the follow-up must survive.
 
 ### Open risks
 - Migrations NOT yet run on Supabase: `2026_09_30_000001_drop_care_pathway_tables`, `2026_09_30_000002_create_condition_monitoring_tables`, and `2026_09_30_000003_allow_shared_follow_up_fulfilment` (an index swap). The app expects all three.
@@ -152,10 +172,11 @@ Care Plan & Next Steps (spec: `docs/superpowers/specs/2026-09-30-care-plan-next-
 - Old in-progress drafts that had the HFMD surveillance tick lose it; the worker re-ticks Include in Surveillance.
 - The "Start Postpartum Follow-up" CTA on Care & Programs (`focus=deliveryDate`) leads to a consultation that cannot record a delivery date. Product decision needed: restore the delivery date on the Maternal step, or retire the CTA.
 - None of the new UI (Care Plan, Monitoring Details, Start Consultation modal, Barangay Health Services panel, FBS, Surveillance checkbox and report) has been exercised in a browser by the implementers. Manual QA is needed.
-- The pre-existing 194 backend test failures remain (mostly 403 / permission setup in tests).
+- The 194 pre-existing backend test failures remain (measured, same names as the baseline; mostly 403 / permission setup in tests). They hide regressions in `store()` - see the merge gate above.
+- `docs/ai/PROGRAMS-MONITORING-AUDIT.md`, referenced by earlier handoffs, does not exist in the repo.
 - Repository has not yet been fully audited.
 - Existing `docs/` files may conflict with current implementation.
 - Security controls are present but have not yet received an end-to-end audit.
 
 ### Next action
-Manual QA of the new Care Plan, monitoring, Start Consultation, Barangay Health Services, FBS and surveillance screens in a browser. Decide the open items above (postpartum CTA, admin TB list). Then run the three pending migrations on Supabase and investigate the pre-existing backend test failures.
+Manual QA of the new Care Plan, monitoring, Start Consultation, Barangay Health Services, FBS and surveillance screens in a browser, then the staging smoke test above. Decide the open items above (postpartum CTA, admin TB list). Then run the three pending migrations on Supabase (deploy order above) and investigate the pre-existing backend test failures.
