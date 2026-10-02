@@ -2,12 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DIAGNOSIS_LIMITS,
-  DIAGNOSIS_SUGGESTIONS,
   addDiagnosis,
   getAddDiagnosisError,
   removeDiagnosis,
   toggleDiagnosisCondition,
-  filterDiagnosisSuggestions,
   findCurrentCondition,
   formatDiagnoses,
   isDuplicateDiagnosisName,
@@ -64,16 +62,6 @@ test("restoreDiagnoses keeps legacy free text without rewording it", () => {
   assert.deepEqual(restoreDiagnoses({}), { diagnoses: [], assessmentNotes: "" });
 });
 
-test("filterDiagnosisSuggestions only offers the supported NCD conditions, plain contains match", () => {
-  assert.deepEqual(filterDiagnosisSuggestions(""), DIAGNOSIS_SUGGESTIONS);
-  assert.deepEqual(filterDiagnosisSuggestions("  "), DIAGNOSIS_SUGGESTIONS);
-  assert.deepEqual(filterDiagnosisSuggestions("hyper"), ["Hypertension"]);
-  assert.deepEqual(filterDiagnosisSuggestions("DIABETES"), ["Diabetes Mellitus"]);
-  // A typo gets no fuzzy match - this is a plain substring filter.
-  assert.deepEqual(filterDiagnosisSuggestions("hypertansion"), []);
-  assert.deepEqual(filterDiagnosisSuggestions("asthma"), []);
-});
-
 test("findCurrentCondition matches ignoring case and extra spaces, never invents one", () => {
   const conditions = [{ name: "Hypertension", status: "Controlled" }];
   assert.equal(findCurrentCondition(conditions, "  hypertension  ")?.status, "Controlled");
@@ -93,11 +81,11 @@ test("isDuplicateDiagnosisName flags a same-consultation repeat, ignoring case/s
   assert.equal(isDuplicateDiagnosisName(list, "Asthma", "a"), false);
 });
 
-test("addDiagnosis appends a chip, keeping manual text exactly and structured names in their one spelling", () => {
+test("addDiagnosis appends a chip, keeping the text exactly as typed (trimmed)", () => {
   let list = addDiagnosis([], "  Asthma  ");
   list = addDiagnosis(list, "hypertension");
   list = addDiagnosis(list, "UTI");
-  assert.deepEqual(list.map((item) => item.name), ["Asthma", "Hypertension", "UTI"]);
+  assert.deepEqual(list.map((item) => item.name), ["Asthma", "hypertension", "UTI"]);
   assert.ok(list.every((item) => item.id && item.addToConditions === false && item.conditionStatus === null));
   assert.equal(new Set(list.map((item) => item.id)).size, 3);
 });

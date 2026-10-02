@@ -7,12 +7,12 @@
  * The record's plain-text `diagnosis` stays the copy every existing reader
  * uses (reports, referrals, follow-ups): it is the names joined with "; ".
  *
- * DIAGNOSIS_SUGGESTIONS below is a plain typing-shortcut list - the backend's ClinicalRegistry (config/clinical_registry.php)
- * is the source of truth for which diagnoses are registered monitored
- * conditions and what auto-syncs to Current Conditions; this list is not
- * wired to that registry yet (a frontend follow-up - see
- * docs/superpowers/specs/2026-09-29-diagnosis-monitoring-surveillance-registry-design.md
- * section 2).
+ * The Suspected Case field (the Assessment step) has no search or suggestions:
+ * the worker types the case and it is kept exactly as typed. The backend's ClinicalRegistry
+ * (config/clinical_registry.php) is the source of truth for which diagnoses
+ * are registered monitored conditions (HTN, DM, PTB ... by name or alias) and
+ * what auto-syncs to Current Conditions; it renames a matched diagnosis to its
+ * official name when the consultation is saved.
  *
  * `reportAs` (Morbidity / Notifiable / not reported) is chosen per diagnosis
  * under Records & Surveillance - see diagnosisReporting.js.
@@ -30,37 +30,11 @@ export const CONDITION_STATUSES = ["Active", "Controlled", "Resolved"];
 
 export const DIAGNOSIS_LIMITS = { name: 150, count: 20, notes: 5000 };
 
-/**
- * Structured suggestions offered while typing a diagnosis - currently
- * standardized diagnosis names. Picking one is a shortcut for typing it; any
- * other diagnosis (Asthma, UTI, ...) is typed and saved exactly as entered.
- * No fuzzy matching, autocorrection or automatic inference is layered on top
- * of this list.
- */
-export const DIAGNOSIS_SUGGESTIONS = Object.freeze(["Hypertension", "Diabetes Mellitus"]);
-
-/** Exact match ignoring case/extra spaces - keeps a structured name's one spelling. */
-function findStructuredDiagnosisName(name) {
-  const key = normalizeNameKey(name);
-  return DIAGNOSIS_SUGGESTIONS.find((suggestion) => normalizeNameKey(suggestion) === key) || null;
-}
-
 export function createDiagnosisId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
   return `dx-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/**
- * The suggestions matching what has been typed so far - a plain
- * case-insensitive "contains" filter, nothing fuzzy. An empty query returns
- * every suggestion (the full list shown on focus).
- */
-export function filterDiagnosisSuggestions(query) {
-  const key = normalizeNameKey(query);
-  if (!key) return DIAGNOSIS_SUGGESTIONS;
-  return DIAGNOSIS_SUGGESTIONS.filter((suggestion) => normalizeNameKey(suggestion).includes(key));
 }
 
 /**
@@ -100,8 +74,7 @@ export function getAddDiagnosisError(diagnoses, name) {
 
 /**
  * The list with `name` appended as a new diagnosis, or the list unchanged if
- * it cannot be added. A structured diagnosis keeps its one spelling
- * ("hypertension" -> "Hypertension"); anything else is kept exactly as typed.
+ * it cannot be added. The text is kept exactly as typed (trimmed).
  * New entries are not Current Conditions until the worker marks them; their
  * report choice starts at `reportAs` (the caller's default for this visit).
  */
@@ -113,7 +86,7 @@ export function addDiagnosis(diagnoses, name, reportAs = null) {
     ...list,
     {
       id: createDiagnosisId(),
-      name: findStructuredDiagnosisName(text) || text,
+      name: text,
       addToConditions: false,
       conditionStatus: null,
       reportAs: normalizeReportAs(reportAs),

@@ -2,33 +2,32 @@ import { useId, useRef, useState } from "react";
 import { Star, X } from "lucide-react";
 import {
   DIAGNOSIS_LIMITS,
-  DIAGNOSIS_SUGGESTIONS,
   addDiagnosis,
-  filterDiagnosisSuggestions,
   findCurrentCondition,
   getAddDiagnosisError,
-  normalizeNameKey,
   removeDiagnosis,
   toggleDiagnosisCondition,
 } from "../../../../utils/diagnoses";
 
 /**
- * Diagnosis / Clinical Impression for the Assessment step: one always-visible
- * searchable field with an Add button, and the added diagnoses as chips.
+ * Suspected Case for the Assessment step (the Barangay workflow's "suspected
+ * case"): one always-visible text field with an Add button, and the added
+ * cases as chips. There is no search and no suggestion list - the worker types
+ * what is suspected and adds it exactly as typed. Nothing is fuzzy-matched,
+ * autocorrected or inferred. A chip's star marks it for the patient's Current
+ * Conditions (Active) when the consultation is saved; x removes it. There is
+ * no edit - a mistake is removed and typed again.
  *
- * The field suggests only DIAGNOSIS_SUGGESTIONS (diagnoses.js); anything else
- * is added exactly as typed. Nothing is fuzzy-matched, autocorrected or
- * inferred. A chip's star marks it for the patient's Current Conditions
- * (Active) when the consultation is saved; × removes it. There is no edit -
- * a mistake is removed and typed again.
+ * Each entry is still stored as a diagnosis (diagnoses[]) so Care Plan,
+ * reporting and Current Conditions keep working unchanged.
  *
- * This component only adds, marks and removes diagnoses.
+ * This component only adds, marks and removes entries.
  */
 
 const LABEL_CLASS = "mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]";
 const ERROR_TEXT = {
   duplicate: "Already added to this consultation.",
-  full: `A consultation can list up to ${DIAGNOSIS_LIMITS.count} diagnoses.`,
+  full: `A consultation can list up to ${DIAGNOSIS_LIMITS.count} suspected cases.`,
 };
 
 /**
@@ -51,28 +50,12 @@ export default function DiagnosisListField({
   defaultReportAs = null,
 }) {
   const inputRef = useRef(null);
-  const listboxId = useId();
+  const inputId = useId();
   const [text, setText] = useState("");
-  const [optionsOpen, setOptionsOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(-1);
 
   const trimmed = text.trim();
   const addError = getAddDiagnosisError(diagnoses, trimmed);
   const shownError = addError === "duplicate" || addError === "full" ? ERROR_TEXT[addError] : "";
-  // Structured suggestions first; typed text that is not one of them can be
-  // added as it is.
-  const options = [
-    ...filterDiagnosisSuggestions(text).map((value) => ({ kind: "suggestion", value })),
-    ...(trimmed && !DIAGNOSIS_SUGGESTIONS.some((s) => normalizeNameKey(s) === normalizeNameKey(trimmed))
-      ? [{ kind: "custom", value: trimmed }]
-      : []),
-  ];
-  const showOptions = optionsOpen && options.length > 0;
-
-  function closeOptions() {
-    setOptionsOpen(false);
-    setActiveIndex(-1);
-  }
 
   function add(value = trimmed) {
     if (getAddDiagnosisError(diagnoses, value)) {
@@ -81,7 +64,6 @@ export default function DiagnosisListField({
     }
     onChange(addDiagnosis(diagnoses, value, defaultReportAs));
     setText("");
-    closeOptions();
     inputRef.current?.focus();
   }
 
@@ -90,104 +72,35 @@ export default function DiagnosisListField({
   }
 
   function handleKeyDown(event) {
-    if (event.key === "ArrowDown" && options.length > 0) {
-      event.preventDefault();
-      setOptionsOpen(true);
-      setActiveIndex((prev) => (prev + 1) % options.length);
-      return;
-    }
-    if (event.key === "ArrowUp" && options.length > 0) {
-      event.preventDefault();
-      setOptionsOpen(true);
-      setActiveIndex((prev) => (prev <= 0 ? options.length - 1 : prev - 1));
-      return;
-    }
-    if (event.key === "Escape" && showOptions) {
-      event.preventDefault();
-      closeOptions();
-      return;
-    }
     if (event.key === "Enter") {
       event.preventDefault();
-      add(showOptions && activeIndex >= 0 && options[activeIndex] ? options[activeIndex].value : trimmed);
+      add();
     }
   }
 
   return (
     <div>
-      <label htmlFor={`${listboxId}-input`} className={LABEL_CLASS}>
-        Diagnosis / Clinical Impression
+      <label htmlFor={inputId} className={LABEL_CLASS}>
+        Suspected Case
       </label>
 
       <div className="flex items-start gap-2">
-        <div className="relative min-w-0 flex-1">
+        <div className="min-w-0 flex-1">
           <input
-            id={`${listboxId}-input`}
+            id={inputId}
             ref={inputRef}
             value={text}
             maxLength={DIAGNOSIS_LIMITS.name}
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={showOptions}
-            aria-controls={listboxId}
-            aria-activedescendant={showOptions && activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined}
             aria-invalid={Boolean(shownError || error) || undefined}
-            aria-describedby={shownError ? `${listboxId}-hint` : undefined}
+            aria-describedby={shownError ? `${inputId}-hint` : undefined}
             autoComplete="off"
-            placeholder="Search or type diagnosis…"
-            onChange={(event) => {
-              setText(event.target.value);
-              setOptionsOpen(true);
-              setActiveIndex(-1);
-            }}
-            onFocus={() => setOptionsOpen(true)}
-            onBlur={closeOptions}
+            placeholder="Type the suspected case…"
+            onChange={(event) => setText(event.target.value)}
             onKeyDown={handleKeyDown}
             className={`h-9 w-full rounded-none border bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] focus:border-[#DC2626] focus:ring-2 focus:ring-red-200 ${
               error ? "border-[#DC2626]" : "border-[#D1D5DB]"
             }`}
           />
-          {showOptions && (
-            <ul
-              id={listboxId}
-              role="listbox"
-              aria-label="Diagnosis options"
-              className="absolute left-0 right-0 top-full z-10 mt-1 border border-[#D1D5DB] bg-white shadow-md"
-            >
-              {options.map((option, index) => {
-                const active = index === activeIndex;
-                const blocked = Boolean(getAddDiagnosisError(diagnoses, option.value));
-                return (
-                  <li key={`${option.kind}-${option.value}`} role="presentation">
-                    <button
-                      type="button"
-                      id={`${listboxId}-option-${index}`}
-                      role="option"
-                      aria-selected={active}
-                      aria-disabled={blocked || undefined}
-                      disabled={blocked}
-                      // Keeps the input focused so its onBlur does not close
-                      // the list before this click lands.
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => add(option.value)}
-                      onMouseEnter={() => setActiveIndex(index)}
-                      className={`block w-full px-3 py-1.5 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
-                        option.kind === "custom" ? "border-t border-[#E5E7EB]" : ""
-                      } ${active ? "bg-red-50 text-[#DC2626]" : "text-[#111827] hover:bg-[#F3F4F6]"}`}
-                    >
-                      {option.kind === "custom" ? (
-                        <>
-                          Use <span className="font-semibold">&ldquo;{option.value}&rdquo;</span> as diagnosis
-                        </>
-                      ) : (
-                        option.value
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
         </div>
         <button
           type="button"
@@ -200,14 +113,14 @@ export default function DiagnosisListField({
       </div>
 
       {shownError && (
-        <p id={`${listboxId}-hint`} className="mt-1 text-[11px] font-medium text-[#DC2626]">
+        <p id={`${inputId}-hint`} className="mt-1 text-[11px] font-medium text-[#DC2626]">
           {shownError}
         </p>
       )}
       {error && <p className="mt-1 text-[11px] font-medium text-[#DC2626]">{error}</p>}
 
       {diagnoses.length > 0 && (
-        <ul aria-label="Added diagnoses" className="mt-2 flex flex-wrap gap-1.5">
+        <ul aria-label="Added suspected cases" className="mt-2 flex flex-wrap gap-1.5">
           {diagnoses.map((item) => {
             const linked = item.addToConditions ? findCurrentCondition(currentConditions, item.name) : null;
             const starLabel = item.addToConditions

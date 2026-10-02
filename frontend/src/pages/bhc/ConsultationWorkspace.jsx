@@ -129,7 +129,6 @@ import {
   PROGRAMS_STEP,
   REVIEW_STEP,
   EXIT_STEP,
-  TREATMENT_STEP,
   buildConsultationSteps,
   findFirstErrorStepKey,
   getErrorOwnerStepKey,
@@ -137,6 +136,7 @@ import {
   getGlobalStepKey,
   getNextStepKey,
   getPreviousStepKey,
+  getServiceFormReturnTarget,
   getProgramFormSteps,
   getStepOrder,
   pickErrorsForStep,
@@ -1179,17 +1179,21 @@ export default function ConsultationWorkspace() {
   const effectiveReportingStatus = deriveReportingStatus(diagnoses);
   const defaultReportAs = getDefaultReportAs(normalizedHealthRecordType);
   const consultationSteps = useMemo(
-    () => buildConsultationSteps({ selectedPrograms, primaryProgram, monitoringDetailKeys }),
-    [selectedPrograms, primaryProgram, monitoringDetailKeys],
+    () => buildConsultationSteps({ monitoringDetailKeys }),
+    [monitoringDetailKeys],
   );
-  // The services nested inside the single "Service Details" step.
+  // The service forms. They are a detour opened from Concern & Vital Signs (or
+  // Review's Edit), not part of Next / Previous.
   const programFormSteps = useMemo(
     () => getProgramFormSteps(selectedPrograms, primaryProgram),
     [selectedPrograms, primaryProgram],
   );
-  const formSequence = getFormSequence(programFormSteps);
+  const formSequence = getFormSequence();
   const stepOrder = getStepOrder(programFormSteps, monitoringDetailKeys);
-  const activeFormStep = resolveFormStep(formStep, formSequence);
+  const activeFormStep = resolveFormStep(formStep, formSequence, programFormSteps);
+  // Where the open service form was launched from, so finishing it goes back
+  // there: the first step (the hub) or Review.
+  const [serviceFormOrigin, setServiceFormOrigin] = useState(INTERVIEW_STEP);
   // Interview, Vital Signs, Clinical Assessment, each program form, and
   // Treatment are all screens of the one form phase; formStep says which.
   const currentStepKey =
@@ -2206,7 +2210,7 @@ export default function ConsultationWorkspace() {
     if (fbsError) errors.fbs = fbsError;
     if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
     if (!finalizing) return errors;
-    if ((needsReferral || normalizePatientStatus(followUpStatus) === "Follow-up Required") && !diagnosis.trim()) errors.diagnosis = "BHC Assessment is required for follow-up or referral.";
+    if ((needsReferral || normalizePatientStatus(followUpStatus) === "Follow-up Required") && !diagnosis.trim()) errors.diagnosis = "A suspected case is required for follow-up or referral.";
     if (needsReferral && !receivingRhuId) errors.receivingRhuId = "Receiving facility is required.";
     if (needsReferral && !ATTENTION_LEVELS.includes(referralForm.urgencyLevel)) errors.urgencyLevel = "Referral priority is required.";
     if (needsReferral && !referralForm.reasonForReferral?.trim()) errors.reasonForReferral = "Reason for referral is required.";
@@ -3449,12 +3453,15 @@ export default function ConsultationWorkspace() {
    */
   function goToStepKey(key, { scroll = true } = {}) {
     const target = key === PROGRAMS_STEP ? programFormSteps[0]?.key : key;
-    const phase = formSequence.includes(target)
+    const isServiceForm = programFormSteps.some((step) => step.key === target);
+    const phase = formSequence.includes(target) || isServiceForm
       ? "form"
       : consultationSteps.find((item) => item.key === target)?.phase;
     if (!phase) return;
 
     closeDateTimePopovers();
+    // Opening a service form from any other screen remembers that screen.
+    if (isServiceForm && !activeProgramStep) setServiceFormOrigin(getServiceFormReturnTarget(currentStepKey));
     if (phase === "form") setFormStep(target);
     // Care Plan and Monitoring Details are the two screens of the Next phase.
     if (phase === "next") setNextScreen(target === MONITORING_STEP ? MONITORING_STEP : NEXT_STEP);
@@ -3490,6 +3497,13 @@ export default function ConsultationWorkspace() {
   function handleFormStepNext(event) {
     event?.preventDefault();
     closeDateTimePopovers();
+    // A service form is a detour: Done goes back to where it was opened. It
+    // never blocks - an unfinished form shows as Incomplete in the panel and
+    // is caught again when the visit is reviewed and saved.
+    if (activeProgramStep) {
+      goToStepKey(getServiceFormReturnTarget(serviceFormOrigin));
+      return;
+    }
     if (!checkStepGate(activeFormStep)) return;
     goToStepKey(getNextStepKey(formSequence, activeFormStep));
   }
@@ -3498,6 +3512,10 @@ export default function ConsultationWorkspace() {
   // fixed patient's profile; the leave guard flushes the current draft.
   function handleFormStepPrevious() {
     closeDateTimePopovers();
+    if (activeProgramStep) {
+      goToStepKey(getServiceFormReturnTarget(serviceFormOrigin));
+      return;
+    }
     const target = getPreviousStepKey(formSequence, activeFormStep);
     if (target === EXIT_STEP) {
       navigate(`${basePath}/patients/${selectedPatientId}`);
@@ -3685,7 +3703,7 @@ export default function ConsultationWorkspace() {
     treatmentBindings.forEach((binding) => binding.set(value));
   };
 
-  // Records & Surveillance, on the Clinical Assessment step. Two independent
+  // Records & Surveillance, under the Care Plan. Two independent
   // decisions per diagnosis: report it as Morbidity or Notifiable (or not at
   // all), and include it in the Surveillance Report or not - neither gates the
   // other. Both reuse this same consultation's patient/encounter data; nothing
@@ -3715,13 +3733,13 @@ export default function ConsultationWorkspace() {
                 Include in Reports and Surveillance:
               </p>
               <p className="mt-1 mb-2.5 text-xs leading-relaxed text-[#6B7280]">
-                Choose the report for each diagnosis, and whether it is included in the Surveillance Report.
+                Choose the report for each suspected case, and whether it is included in the Surveillance Report.
               </p>
               <DiagnosisReportingField
                 rows={diagnoses}
                 onChange={handleReportAsChange}
                 onSurveillanceChange={handleSurveillanceChange}
-                emptyText="Add a diagnosis under Assessment above to include it in a report."
+                emptyText="Add a suspected case under Assessment above to include it in a report."
               />
             </div>
           </div>
@@ -3763,10 +3781,9 @@ export default function ConsultationWorkspace() {
     [INTERVIEW_STEP]:
       "Record the patient's reason for visit and present illness.",
     [ASSESSMENT_STEP]:
-      "Document the examination findings and initial assessment for this visit.",
-    [TREATMENT_STEP]:
-      "Summarize findings, monitoring, counseling, services, and items actually given.",
-    [NEXT_STEP]: "Plan each diagnosis, then any referral and the next follow-up.",
+      "Document the examination findings, the suspected case, and the actions taken for this visit.",
+    [NEXT_STEP]:
+      "Plan each suspected case, then any referral and the next follow-up, and classify it for reporting.",
     [MONITORING_STEP]:
       "Details a monitored condition needs beyond this consultation record.",
     [REVIEW_STEP]: "Confirm the consultation details below before saving.",
@@ -3787,6 +3804,11 @@ export default function ConsultationWorkspace() {
     wizardPhase === WIZARD_FORM &&
     !(activeDraft?.reviewState === "review" && !canFinalize);
   const showProgramPanel = sidePanelAllowed && activeFormStep === INTERVIEW_STEP;
+  // Service forms: Back / Done both return to where the form was opened from.
+  const serviceFormReturnLabel =
+    getServiceFormReturnTarget(serviceFormOrigin) === REVIEW_STEP
+      ? "Back to Review"
+      : "Back to Concern & Vital Signs";
   const showBodyPanel = sidePanelAllowed && activeFormStep === ASSESSMENT_STEP;
   const showSidePanel = showProgramPanel || showBodyPanel;
   // Program panel: one status per form step, attached to each selected program
@@ -3889,7 +3911,7 @@ export default function ConsultationWorkspace() {
       rows: [
         { label: "Physical Exam", value: physicalExam },
         { label: "Body Findings", value: formatBodyFindings(bodyFindings) },
-        { label: "Diagnosis", value: formatDiagnoses(diagnoses) || diagnosis },
+        { label: "Suspected Case", value: formatDiagnoses(diagnoses) || diagnosis },
         { label: "Assessment Notes", value: assessmentNotes },
 
         // The selection itself is listed under Program / Service Details
@@ -3897,6 +3919,16 @@ export default function ConsultationWorkspace() {
         ...(programFormSteps.length === 0
           ? [{ label: "Programs / Services", value: "None — General Consultation" }]
           : []),
+      ],
+    },
+    {
+      key: "actions-taken",
+      title: "Actions Taken",
+      // Sits under Assessment on the same screen.
+      stepKey: ASSESSMENT_STEP,
+      rows: [
+        { label: "Actions Taken", value: treatmentValue },
+        { label: "Medicines / Supplies", value: dispensedMedicines.map(item => item.medicineName + " · " + item.quantity + " " + item.unit + " · " + (item.confirmedGiven ? "Dispensed/Given" : "Planned")).join("\n") },
       ],
     },
     // Present only when a program was chosen. Edit opens the first program
@@ -3910,15 +3942,6 @@ export default function ConsultationWorkspace() {
         "TB DOTS / TB Monitoring": tbData,
       }[step.classification]),
     })),
-    {
-      key: TREATMENT_STEP,
-      title: "Actions Taken",
-      stepKey: TREATMENT_STEP,
-      rows: [
-        { label: "Actions Taken", value: treatmentValue },
-        { label: "Medicines / Supplies", value: dispensedMedicines.map(item => item.medicineName + " · " + item.quantity + " " + item.unit + " · " + (item.confirmedGiven ? "Dispensed/Given" : "Planned")).join("\n") },
-      ],
-    },
     {
       key: NEXT_STEP,
       title: "Care Plan & Next Steps",
@@ -4044,6 +4067,8 @@ export default function ConsultationWorkspace() {
           indicator={stepHeadingSlot}
         >
           {carePlanScreen}
+          {/* Records & Surveillance sits under the Care Plan (not on Monitoring Details). */}
+          {nextScreen !== MONITORING_STEP && reportingDecisions}
         </NextActionStep>
       ) : wizardPhase === WIZARD_REVIEW ? (
         <ConsultationReviewStep
@@ -4564,7 +4589,7 @@ export default function ConsultationWorkspace() {
 
             <FormSection
               title="Assessment"
-              subtitle="Record the clinical impression or diagnosis for this visit."
+              subtitle="Record the suspected case for this visit."
               delay={3}
             >
               <LockedFormContent locked={patientGateLocked}>
@@ -4583,29 +4608,15 @@ export default function ConsultationWorkspace() {
                   wrapperClassName="mt-4"
                   value={assessmentNotes}
                   onChange={(event) => setAssessmentNotes(event.target.value)}
-                  placeholder="Optional. Longer explanation that does not belong in the diagnosis name."
+                  placeholder="Optional. Longer explanation that does not belong in the suspected case."
                   maxLength={5000}
                   rows={3}
                 />
               </LockedFormContent>
             </FormSection>
 
-            {/* Records & Surveillance always follows Assessment/Diagnosis,
-                whatever programs are selected: morbidity, notifiable disease,
-                and surveillance are independent of program/service
-                selection. */}
-            {reportingDecisions}
-
-            {/* The program decision, made after the assessment it follows from.
-                Optional: none selected is a general consultation, and Program /
-                Service Details is then skipped. */}
-
-          </>
-        )}
-
-        {/* Treatment / Medicine: treatment given and inventory dispensed, once. */}
-        {activeFormStep === TREATMENT_STEP && (
-          <>
+            {/* Actions Taken: treatment given and inventory dispensed. It sits under
+                Assessment on the same screen (it used to be its own step). */}
             {treatmentBindings.length > 0 && (
               <FormSection
                 title="Actions Taken"
@@ -4671,6 +4682,7 @@ export default function ConsultationWorkspace() {
 
 
 
+
         </div>
         )}
       </form>
@@ -4699,13 +4711,15 @@ export default function ConsultationWorkspace() {
           previousLabel={
             currentStepKey === INTERVIEW_STEP
               ? "Back to Patient"
-              : "Previous"
+              : activeProgramStep
+                ? serviceFormReturnLabel
+                : "Previous"
           }
           // Autosave status stays visible throughout the consultation.
           // Review, where Save Consultation is the one action that commits.
           secondaryAction={autosaveStatus}
           onContinue={handleWorkspaceContinue}
-          continueLabel={isReviewStep ? (canFinalize ? (needsReferral ? "Finalize Consultation & Submit Referral" : "Finalize Consultation") : "Submit for Review") : "Next"}
+          continueLabel={isReviewStep ? (canFinalize ? (needsReferral ? "Finalize Consultation & Submit Referral" : "Finalize Consultation") : "Submit for Review") : activeProgramStep ? "Done" : "Next"}
           continueDisabled={activeDraft?.reviewState === "review" && !canFinalize}
           continueBusy={isReviewStep ? saving : false}
           continueBusyLabel={isReviewStep ? "Saving..." : "Loading..."}

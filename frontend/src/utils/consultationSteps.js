@@ -3,11 +3,17 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
 /**
  * Step model for the New Consultation workspace.
  *
- *   Concern & Vital Signs -> Physical Exam & Assessment
- *       -> Service Details (when a service is selected)
- *       -> Actions Taken -> Care Plan & Next Steps
+ *   Concern & Vital Signs
+ *       -> Physical Exam & Assessment (also holds Actions Taken)
+ *       -> Care Plan & Next Steps (also holds Records & Surveillance)
  *       -> Monitoring Details (when a monitored condition needs it)
  *       -> Review & Confirm
+ *
+ * The service forms (Prenatal / Family Planning / EPI) are NOT part of that
+ * chain. Concern & Vital Signs is the hub: the worker ticks the services in the
+ * Barangay Health Services panel, opens each service's form from there, and a
+ * finished form returns to where it was opened (the hub, or Review when edited
+ * from there). The panel shows each service as Completed / Incomplete.
  *
  * Interview and Vital Signs are one step: two cards on the same screen,
  * with no Next between them. The step's key is INTERVIEW_STEP.
@@ -30,7 +36,6 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
 export const INTERVIEW_STEP = "interview";
 export const PROGRAMS_STEP = "programs";
 export const ASSESSMENT_STEP = "assessment";
-export const TREATMENT_STEP = "treatment";
 export const NEXT_STEP = "next";
 export const REVIEW_STEP = "review";
 export const MONITORING_STEP = "monitoring";
@@ -106,20 +111,14 @@ export function getProgramFormSteps(selectedPrograms = [], primaryProgram = "") 
 }
 
 /**
- * The global steps, one heading each. "Service Details" appears only
- * when at least one program is selected, so a General Consultation goes
- * straight from Clinical Assessment to Treatment & Management.
+ * The global steps, one heading each. The service forms are never listed: they
+ * are a detour from Concern & Vital Signs (see the header), so the steps are
+ * the same whichever services are selected.
  */
-export function buildConsultationSteps({ selectedPrograms, primaryProgram, monitoringDetailKeys = [] } = {}) {
-  const programSteps = getProgramFormSteps(selectedPrograms, primaryProgram);
-
+export function buildConsultationSteps({ monitoringDetailKeys = [] } = {}) {
   return [
     { key: INTERVIEW_STEP, phase: "form", label: "Concern & Vital Signs" },
     { key: ASSESSMENT_STEP, phase: "form", label: "Physical Exam & Assessment" },
-    ...(programSteps.length > 0
-      ? [{ key: PROGRAMS_STEP, phase: "form", label: "Service Details" }]
-      : []),
-    { key: TREATMENT_STEP, phase: "form", label: "Actions Taken" },
     { key: NEXT_STEP, phase: "next", label: "Care Plan & Next Steps" },
     // Only when a monitored condition needs data the ITR does not hold (TB today).
     ...(monitoringDetailKeys.length > 0
@@ -166,18 +165,34 @@ export function resolveStepHeading({
 }
 
 /**
- * The screens the form phase walks through, in order. Program forms sit AFTER
- * Clinical Assessment (where they are chosen) and are skipped entirely when
- * none is selected.
+ * The screens Next / Previous walk through in the form phase. The service forms
+ * are deliberately absent: they are opened from the first step and return to
+ * where they were opened (see getServiceFormReturnTarget).
  */
-export function getFormSequence(programSteps = []) {
-  return [INTERVIEW_STEP, ASSESSMENT_STEP, ...programSteps.map((step) => step.key), TREATMENT_STEP];
+export function getFormSequence() {
+  return [INTERVIEW_STEP, ASSESSMENT_STEP];
 }
 
-/** Every screen in order, used to rank validation errors and Previous/Continue. */
+/**
+ * Where a finished (or abandoned) service form goes back to: Review when it
+ * was opened from Review's Edit, otherwise the first step - the hub the
+ * services are chosen on. Any other origin (a draft resumed inside a service
+ * form, a stray key) also lands on the hub.
+ */
+export function getServiceFormReturnTarget(origin) {
+  return origin === REVIEW_STEP ? REVIEW_STEP : INTERVIEW_STEP;
+}
+
+/**
+ * Every screen in order, used to rank validation errors. The service forms rank
+ * right after the first step, where they are opened from, so a Save that finds
+ * a service form incomplete sends the worker there before later screens.
+ */
 export function getStepOrder(programSteps = [], monitoringDetailKeys = []) {
   return [
-    ...getFormSequence(programSteps),
+    INTERVIEW_STEP,
+    ...programSteps.map((step) => step.key),
+    ASSESSMENT_STEP,
     NEXT_STEP,
     ...(monitoringDetailKeys.length > 0 ? [MONITORING_STEP] : []),
     REVIEW_STEP,
@@ -214,7 +229,7 @@ export const EXIT_STEP = "exit";
 
 /**
  * Where Next goes from a form screen: the next screen in order, and Next Care
- * Decision after the last one (Treatment & Management).
+ * Decision after the last one.
  */
 export function getNextStepKey(formSequence, current) {
   const index = formSequence.indexOf(current);
@@ -238,6 +253,9 @@ const LEGACY_CURRENT_VISIT_PHASE = "program";
 // Vital Signs was briefly a screen of its own. Its fields now sit on the
 // first step, so a draft saved there reopens on that step.
 const LEGACY_VITALS_STEP = "vitals";
+// Actions Taken was briefly a screen of its own. Its fields now sit under
+// Physical Exam & Assessment, so a draft saved there reopens on that step.
+const LEGACY_TREATMENT_STEP = "treatment";
 const FORM_PHASE = "form";
 const NEXT_CARE_PHASE = "next";
 
@@ -259,12 +277,13 @@ export function resolveRestoredPosition(payload = {}) {
   const phase = payload?.wizardPhase;
   const resumesOnNextCare = phase === NEXT_CARE_PHASE;
   const raw = typeof payload?.formStep === "string" ? payload.formStep : "";
-  const stored = raw === LEGACY_VITALS_STEP ? INTERVIEW_STEP : raw;
+  const stored =
+    raw === LEGACY_VITALS_STEP ? INTERVIEW_STEP : raw === LEGACY_TREATMENT_STEP ? ASSESSMENT_STEP : raw;
   const usable = phase !== LEGACY_CURRENT_VISIT_PHASE && stored;
 
   return {
     phase: phase === REVIEW_STEP ? REVIEW_STEP : resumesOnNextCare ? NEXT_CARE_PHASE : FORM_PHASE,
-    formStep: usable ? stored : resumesOnNextCare ? TREATMENT_STEP : INTERVIEW_STEP,
+    formStep: usable ? stored : resumesOnNextCare ? ASSESSMENT_STEP : INTERVIEW_STEP,
   };
 }
 
@@ -274,8 +293,10 @@ export function getGlobalStepKey(stepKey) {
 }
 
 /** The stored screen if it still exists, otherwise the first form screen. */
-export function resolveFormStep(current, formSequence) {
-  return formSequence.includes(current) ? current : formSequence[0] || "";
+export function resolveFormStep(current, formSequence, programSteps = []) {
+  if (formSequence.includes(current)) return current;
+  if (programSteps.some((step) => step.key === current)) return current;
+  return formSequence[0] || "";
 }
 
 /**
@@ -301,7 +322,8 @@ export function getErrorOwnerStepKey(errorKey) {
   if (key === "vaccineEntries") return programStepKey("Immunization");
   // The diagnosis list lives on Physical Exam & Assessment.
   if (key === "diagnosis") return ASSESSMENT_STEP;
-  if (key === "dispensedMedicines") return TREATMENT_STEP;
+  // Actions Taken (and the medicines dispensed) sit on the Assessment screen.
+  if (key === "dispensedMedicines") return ASSESSMENT_STEP;
   if (key.startsWith("carePlanStop.")) return NEXT_STEP;
   if (key === "reasonForReferral" || key === "receivingRhuId" || key === "urgencyLevel" || key === "followUpDate" || key === "followUpTime" || key === "followUpReason" || key === "followUpStatus") {
     return NEXT_STEP;

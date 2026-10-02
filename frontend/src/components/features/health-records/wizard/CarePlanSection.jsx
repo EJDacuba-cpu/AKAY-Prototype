@@ -39,9 +39,9 @@ export default function CarePlanSection({
   return (
     <div className="space-y-6">
       <section aria-labelledby="care-plan-diagnoses">
-        <h2 id="care-plan-diagnoses" className="text-sm font-bold text-[#111827]">This visit&apos;s diagnoses</h2>
+        <h2 id="care-plan-diagnoses" className="text-sm font-bold text-[#111827]">This visit&apos;s suspected cases</h2>
         {diagnoses.length === 0 ? (
-          <p className="mt-2 text-xs text-gray-500">No diagnosis was recorded under Assessment.</p>
+          <p className="mt-2 text-xs text-gray-500">No suspected case was recorded under Assessment.</p>
         ) : (
           <ul className="mt-2 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
             {diagnoses.map((diagnosis) => {
