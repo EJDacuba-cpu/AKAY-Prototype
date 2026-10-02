@@ -5,6 +5,9 @@ import * as programModule from "./healthRecordPrograms.js";
 import {
   getServiceTypeLabel,
   getSpecializedRecordPrograms,
+  getSpecializedRecordType,
+  isTbRecord,
+  matchesServiceTypeFilter,
   SPECIALIZED_RECORD_PROGRAMS,
 } from "./healthRecordPrograms.js";
 
@@ -72,4 +75,38 @@ test("the Hypertension / Diabetic program is gone from specialized records", () 
 
 test("RHU Senior Citizen records keep their pre-existing label untouched", () => {
   assert.equal(getServiceTypeLabel({ category: "Senior Citizen" }), "Hypertension / Diabetic Monitoring");
+});
+
+test("isTbRecord detects TB by data even when the record lists other (or no) programs", () => {
+  const tbCard = { diagnosis: { tbCaseNumber: "TB-1" } };
+  assert.equal(isTbRecord({ category: "General Consultation", monitoring_data: { selectedPrograms: [] }, tb_data: tbCard }), true);
+  assert.equal(isTbRecord({ category: "Maternal / Prenatal", monitoringData: { selectedPrograms: ["Maternal"] }, tbData: tbCard }), true);
+  assert.equal(isTbRecord({ category: "TB DOTS / TB Monitoring", monitoring_data: { selectedPrograms: [] } }), true);
+  assert.equal(isTbRecord({ category: "General Consultation", monitoring_data: { selectedPrograms: [] }, tb_data: {} }), false);
+});
+
+test("isTbRecord keeps the legacy program and text checks", () => {
+  assert.equal(isTbRecord({ monitoring_data: { selectedPrograms: ["TB"] } }), true);
+  assert.equal(isTbRecord({ category: "Tuberculosis follow-up" }), true);
+  assert.equal(isTbRecord({ category: "General Consultation", monitoring_data: { selectedPrograms: ["EPI"] } }), false);
+  assert.equal(isTbRecord({ category: "General Consultation" }), false);
+});
+
+test("a General Consultation record with only TB data lands in the TB specialized tab", () => {
+  const record = { id: 9, category: "General Consultation", monitoring_data: { selectedPrograms: [] }, tb_data: { diagnosis: { tbCaseNumber: "TB-9" } } };
+  const programs = getSpecializedRecordPrograms([record]);
+  assert.deepEqual(programs.map(({ key, count }) => [key, count]), [["tb", 1]]);
+  assert.equal(getSpecializedRecordType(record), "tb");
+});
+
+test("the TB service-type filter matches TB records by data, other types by label", () => {
+  const tbByData = { category: "General Consultation", monitoring_data: { selectedPrograms: [] }, tb_data: { diagnosis: { tbCaseNumber: "TB-1" } } };
+  assert.equal(matchesServiceTypeFilter("TB DOTS / TB Monitoring", tbByData, "General Consultation"), true);
+  assert.equal(matchesServiceTypeFilter("TB DOTS / TB Monitoring", { category: "General Consultation" }, "General Consultation"), false);
+  assert.equal(matchesServiceTypeFilter("TB DOTS / TB Monitoring", undefined, "TB DOTS / TB Monitoring"), true);
+  assert.equal(matchesServiceTypeFilter("TB DOTS / TB Monitoring", undefined, "Unclassified"), false);
+  assert.equal(matchesServiceTypeFilter("General Consultation", tbByData, "General Consultation"), true);
+  assert.equal(matchesServiceTypeFilter("family planning", {}, "Family Planning"), true);
+  assert.equal(matchesServiceTypeFilter("Family Planning", {}, "Maternal / Prenatal"), false);
+  assert.equal(matchesServiceTypeFilter("", {}, "anything"), true);
 });

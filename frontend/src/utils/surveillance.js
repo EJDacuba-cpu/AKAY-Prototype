@@ -1,18 +1,15 @@
 /**
- * Community-Based Surveillance tags - the registry-driven successor to the
- * single hardcoded HFMD checkbox, per
- * docs/superpowers/specs/2026-09-29-diagnosis-monitoring-surveillance-registry-design.md.
+ * Surveillance readers, per
+ * docs/superpowers/specs/2026-09-30-care-plan-next-steps-design.md.
  *
- * The single shared reader every surveillance-aware screen uses
- * (ConsultationWorkspace, healthRecordService, BHCReports) - previously each
- * of the three duplicated its own legacy-field lookup. `monitoring_data.
- * surveillanceTags` is used when present; a record saved before this feature
- * (only the legacy `hfmdSurveillance` boolean) is read as `["hfmd"]`. Legacy
- * fields are never written from here - that only happens server-side
- * (HealthRecordController::normalizeSurveillanceData) or, for backward
- * compatibility with older code paths, alongside a save's own payload.
+ * A diagnosis is included in the Surveillance Report by its own
+ * `includeInSurveillance` flag (set under Records & Surveillance). Records
+ * saved before that change carry the retired HFMD tagging instead -
+ * `monitoring_data.surveillanceTags` or, older still, the `hfmdSurveillance`
+ * boolean / `surveillanceCategory` - and still report as one HFMD row through
+ * getSurveillanceTags. Nothing here writes a legacy field; new saves no longer
+ * send surveillanceTags.
  */
-import { normalizeNameKey } from "./diagnoses.js";
 
 function firstPresent(candidates) {
   for (const value of candidates) {
@@ -28,7 +25,7 @@ function toBoolean(value) {
 }
 
 /**
- * The surveillance tag keys (registry keys, e.g. ["hfmd"]) for a record or
+ * The legacy surveillance tag keys (e.g. ["hfmd"]) for a record or
  * an in-progress consultation's monitoring_data. `record` and
  * `monitoringData` may be the same object (a plain monitoring_data blob) or
  * `record` may be a full health record with `monitoring_data`/`monitoringData`
@@ -50,23 +47,32 @@ export function hasSurveillanceTag(tags, key) {
   return Array.isArray(tags) && tags.includes(key);
 }
 
+const LEGACY_HFMD_NAME = "Hand, Foot and Mouth Disease";
+
+/** Diagnoses included in the Surveillance Report; legacy HFMD-tagged records read as one HFMD row. */
+export function getSurveillanceDiagnoses(record = {}) {
+  const flagged = (Array.isArray(record.diagnoses) ? record.diagnoses : [])
+    .filter((diagnosis) => diagnosis?.includeInSurveillance === true && String(diagnosis.name || "").trim())
+    .map((diagnosis) => ({ name: String(diagnosis.name).trim() }));
+  if (flagged.length) return flagged;
+  return hasSurveillanceTag(getSurveillanceTags(record), "hfmd") ? [{ name: LEGACY_HFMD_NAME }] : [];
+}
+
 /**
- * The surveillance disease `text` names or is an alias of, per the
- * registry's `surveillance_diseases` map ({ [key]: { name, aliases } }), or
- * null. Exact match ignoring case and extra spaces only - no fuzzy,
- * substring or typo matching, mirroring ClinicalRegistry::matchSurveillance
- * on the backend. Used only to SUGGEST a tag; nothing here ticks one.
+ * Surveillance Report rows: one `{ record, diagnosis }` per included
+ * diagnosis, optionally narrowed by a case-insensitive diagnosis substring,
+ * grouped by diagnosis name (case-insensitive; record order kept within a
+ * group).
  */
-export function matchSurveillanceDisease(text, surveillanceDiseases = {}) {
-  const key = normalizeNameKey(text);
-  if (!key) return null;
-  for (const [diseaseKey, disease] of Object.entries(surveillanceDiseases)) {
-    const names = [disease?.name, ...(disease?.aliases || [])];
-    if (names.some((name) => normalizeNameKey(name) === key)) {
-      return { key: diseaseKey, name: disease.name };
-    }
-  }
-  return null;
+export function getSurveillanceReportEntries(records = [], diagnosisFilter = "") {
+  const needle = String(diagnosisFilter || "").trim().toLowerCase();
+  const entries = (Array.isArray(records) ? records : []).flatMap((record) =>
+    getSurveillanceDiagnoses(record)
+      .filter(({ name }) => !needle || name.toLowerCase().includes(needle))
+      .map(({ name }) => ({ record, diagnosis: name })),
+  );
+  const groupKey = ({ diagnosis }) => diagnosis.toLowerCase();
+  return entries.sort((a, b) => groupKey(a).localeCompare(groupKey(b)));
 }
 
 function getLegacyHfmdSurveillance(record = {}, monitoringData = {}) {

@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getSurveillanceTags, hasSurveillanceTag, matchSurveillanceDisease } from "./surveillance.js";
-
-const registry = {
-  hfmd: { name: "Hand, Foot and Mouth Disease", aliases: ["HFMD"] },
-};
+import {
+  getSurveillanceDiagnoses,
+  getSurveillanceReportEntries,
+  getSurveillanceTags,
+  hasSurveillanceTag,
+} from "./surveillance.js";
 
 test("surveillanceTags is used directly when present", () => {
   assert.deepEqual(getSurveillanceTags({ monitoring_data: { surveillanceTags: ["hfmd"] } }), ["hfmd"]);
@@ -32,14 +33,55 @@ test("hasSurveillanceTag checks membership safely", () => {
   assert.equal(hasSurveillanceTag(null, "hfmd"), false);
 });
 
-test("matchSurveillanceDisease matches by official name or alias", () => {
-  assert.deepEqual(matchSurveillanceDisease("Hand, Foot and Mouth Disease", registry), { key: "hfmd", name: "Hand, Foot and Mouth Disease" });
-  assert.deepEqual(matchSurveillanceDisease("HFMD", registry), { key: "hfmd", name: "Hand, Foot and Mouth Disease" });
-  assert.deepEqual(matchSurveillanceDisease("  hfmd  ", registry), { key: "hfmd", name: "Hand, Foot and Mouth Disease" });
+test("surveillance diagnoses come from the per-diagnosis flag, with legacy HFMD kept", () => {
+  assert.deepEqual(
+    getSurveillanceDiagnoses({ diagnoses: [{ name: "HFMD", includeInSurveillance: true }, { name: "Cough" }] }),
+    [{ name: "HFMD" }],
+  );
+  assert.deepEqual(
+    getSurveillanceDiagnoses({ monitoring_data: { hfmdSurveillance: true } }),
+    [{ name: "Hand, Foot and Mouth Disease" }],
+  );
+  assert.deepEqual(getSurveillanceDiagnoses({ diagnoses: [{ name: "Cough" }] }), []);
 });
 
-test("matchSurveillanceDisease never fuzzy-matches", () => {
-  assert.equal(matchSurveillanceDisease("HFM", registry), null);
-  assert.equal(matchSurveillanceDisease("Dengue", registry), null);
-  assert.equal(matchSurveillanceDisease("", registry), null);
+test("surveillance diagnoses: every flagged diagnosis is listed, blank names and non-true flags are skipped", () => {
+  assert.deepEqual(
+    getSurveillanceDiagnoses({
+      diagnoses: [
+        { name: " Dengue ", includeInSurveillance: true },
+        { name: "Measles", includeInSurveillance: true },
+        { name: "  ", includeInSurveillance: true },
+        { name: "Cough", includeInSurveillance: "true" },
+      ],
+    }),
+    [{ name: "Dengue" }, { name: "Measles" }],
+  );
+  assert.deepEqual(getSurveillanceDiagnoses(), []);
+  assert.deepEqual(getSurveillanceDiagnoses({ diagnoses: null }), []);
+});
+
+test("a legacy surveillanceTags record still reads as one HFMD row", () => {
+  assert.deepEqual(
+    getSurveillanceDiagnoses({ monitoring_data: { surveillanceTags: ["hfmd"] } }),
+    [{ name: "Hand, Foot and Mouth Disease" }],
+  );
+});
+
+test("the Surveillance Report has one entry per included diagnosis, grouped by name and filtered by diagnosis text", () => {
+  const flagged = { id: 1, diagnoses: [{ name: "Measles", includeInSurveillance: true }, { name: "Dengue", includeInSurveillance: true }, { name: "Cough" }] };
+  const legacy = { id: 2, monitoring_data: { hfmdSurveillance: true } };
+  const none = { id: 3, diagnoses: [{ name: "Cough" }] };
+  const second = { id: 4, diagnoses: [{ name: "measles", includeInSurveillance: true }] };
+
+  assert.deepEqual(
+    getSurveillanceReportEntries([flagged, legacy, none, second]).map(({ record, diagnosis }) => [record.id, diagnosis]),
+    [[1, "Dengue"], [2, "Hand, Foot and Mouth Disease"], [1, "Measles"], [4, "measles"]],
+  );
+  assert.deepEqual(
+    getSurveillanceReportEntries([flagged, legacy, none], "  mouth ").map(({ record, diagnosis }) => [record.id, diagnosis]),
+    [[2, "Hand, Foot and Mouth Disease"]],
+  );
+  assert.deepEqual(getSurveillanceReportEntries([flagged], "DENG").map(({ diagnosis }) => diagnosis), ["Dengue"]);
+  assert.deepEqual(getSurveillanceReportEntries(null), []);
 });

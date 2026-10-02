@@ -1,5 +1,5 @@
 import { getConsultationPrograms } from "./consultationPrograms.js";
-import { isTbRecord as hasTbData } from "./tbRecords.js";
+import { isTbRecord as isTbRecordByData } from "./tbRecords.js";
 
 export const EPI_VACCINE_ROWS = [
   "Newborn Screening",
@@ -318,10 +318,33 @@ export function isFamilyPlanningRecord(record = {}) {
   return hasAnyTerm(record, ["family planning", "fp"]);
 }
 
+/**
+ * The one TB detector for record readers: saved TB-DOTS data, the legacy TB
+ * category or "TB" program (utils/tbRecords), or - for records that predate
+ * selectedPrograms - TB terms in the record text. TB data counts even when the
+ * record lists other programs (or none): new TB records are General
+ * Consultation or a service category with tb_data.
+ */
 export function isTbRecord(record = {}) {
+  if (isTbRecordByData(record)) return true;
   const explicit = record.selectedPrograms ?? record.monitoringData?.selectedPrograms ?? record.monitoring_data?.selectedPrograms;
-  if (Array.isArray(explicit)) return ["TB"].some(key => explicit.includes(key));
+  if (Array.isArray(explicit)) return explicit.includes("TB");
   return hasAnyTerm(record, ["tb", "tuberculosis", "dots"]);
+}
+
+const TB_SERVICE_TYPE = "TB DOTS / TB Monitoring";
+
+/**
+ * Service-type filter shared by the Follow-ups page and the Follow-up report.
+ * `label` is the row's displayed service type. The TB option matches TB
+ * records by data (isTbRecord on the linked health record), since new TB
+ * records are General Consultation or a service category with tb_data.
+ */
+export function matchesServiceTypeFilter(filter, record, label) {
+  if (!filter) return true;
+  const normalize = (value) => String(value || "").trim().toLowerCase();
+  if (filter === TB_SERVICE_TYPE && record && isTbRecord(record)) return true;
+  return normalize(label) === normalize(filter);
 }
 
 export function getSpecializedRecordType(record = {}) {
@@ -347,7 +370,7 @@ export function getSpecializedRecordPrograms(records = []) {
   for (const record of Array.isArray(records) ? records : []) {
     const selected = getConsultationPrograms(record);
     const keys = selected.length ? [...new Set(selected.map(key => ({ EPI: "epi", Maternal: "maternal", "Family Planning": "familyPlanning" })[key]))] : [getSpecializedRecordType(record)];
-    if (hasTbData(record) && !keys.includes("tb")) keys.push("tb");
+    if (isTbRecord(record) && !keys.includes("tb")) keys.push("tb");
     keys.forEach(key => groupedRecords.get(key)?.push(record));
   }
 
