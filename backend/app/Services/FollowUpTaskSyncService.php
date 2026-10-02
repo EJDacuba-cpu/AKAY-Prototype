@@ -84,8 +84,14 @@ class FollowUpTaskSyncService
      */
     public function lockAdditionalTasks(array $taskIds, Patient $patient, User $user, ?FollowUpTask $alreadyLocked): \Illuminate\Support\Collection
     {
+        // Locked in ascending id order, so two saves touching the same tasks
+        // always take their row locks in the same order (no deadlock); errors
+        // still name the position the client sent the id at.
+        $ordered = array_values($taskIds);
+        asort($ordered, SORT_NUMERIC);
+
         $tasks = collect();
-        foreach (array_values($taskIds) as $index => $taskId) {
+        foreach ($ordered as $index => $taskId) {
             if ($alreadyLocked !== null && (int) $taskId === (int) $alreadyLocked->id) {
                 continue;
             }

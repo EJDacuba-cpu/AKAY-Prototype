@@ -27,7 +27,16 @@ class ConditionMonitoringService
     public function lockContinued(Patient $patient, array $monitoringIds): Collection
     {
         $ids = array_values(array_map('intval', $monitoringIds));
-        $locked = ConditionMonitoring::query()->whereIn('id', $ids)->lockForUpdate()->get()->keyBy('id');
+        // Only this patient's rows are locked (another patient's id is never
+        // locked, it just fails below), in id order so concurrent saves lock
+        // in the same order.
+        $locked = ConditionMonitoring::query()
+            ->where('patient_id', $patient->id)
+            ->whereIn('id', $ids)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
 
         foreach ($ids as $index => $id) {
             $monitoring = $locked->get($id);
@@ -76,6 +85,9 @@ class ConditionMonitoringService
         }
 
         $this->assertEndedConditionsAreStopped($diagnoses, $continued, $monitored, $stopReasons);
+        // The existing-row lookups below take row locks: always in the same
+        // (identity) order, whatever order the diagnoses were typed in.
+        ksort($monitored, SORT_STRING);
 
         $activeAfter = collect();
 

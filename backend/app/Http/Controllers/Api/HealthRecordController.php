@@ -695,8 +695,16 @@ class HealthRecordController extends Controller
 
     private function storeResponse(HealthRecord $record, bool $replay, int $status)
     {
+        // One ITR can fulfil several continued follow-ups; the one reported is
+        // the parent record's task (the visit's primary follow-up), else the
+        // lowest id - never whatever row the database happens to return first.
         $completedFollowUpTaskId = FollowUpTask::query()
             ->where('fulfilled_by_health_record_id', $record->id)
+            ->orderByRaw(
+                'CASE WHEN health_record_id = ? THEN 0 ELSE 1 END',
+                [(int) $record->parent_health_record_id]
+            )
+            ->orderBy('id')
             ->value('id');
         $nextFollowUpTaskId = FollowUpTask::query()
             ->where('health_record_id', $record->id)
@@ -739,10 +747,19 @@ class HealthRecordController extends Controller
             && str_contains($message, 'idempotency_key');
     }
 
+    /**
+     * The partial unique index "one active monitoring per patient and
+     * condition" (condition_monitorings_one_active_idx). PostgreSQL names the
+     * index; SQLite names its columns instead ("UNIQUE constraint failed:
+     * condition_monitorings.patient_id, condition_monitorings.condition_identity").
+     */
     private function isMonitoringConflict(QueryException $exception): bool
     {
+        $message = strtolower($exception->getMessage());
+
         return in_array($exception->errorInfo[0] ?? null, ['23505', '23000'], true)
-            && str_contains(strtolower($exception->getMessage()), 'condition_monitorings_one_active_idx');
+            && (str_contains($message, 'condition_monitorings_one_active_idx')
+                || str_contains($message, 'condition_monitorings.condition_identity'));
     }
 
     private function isConsultationUuidConflict(QueryException $exception): bool

@@ -165,8 +165,8 @@ class HealthRecordRequest extends FormRequest
             // HealthRecordController::normalizeSurveillanceData still derives
             // the legacy hfmdSurveillance/surveillanceCategory mirrors from this
             // when an older client sends it.
-            'monitoring_data.surveillanceTags' => ['nullable', 'array'],
-            'monitoring_data.surveillanceTags.*' => ['string'],
+            'monitoring_data.surveillanceTags' => ['nullable', 'array', 'max:5'],
+            'monitoring_data.surveillanceTags.*' => ['string', Rule::in(['hfmd'])],
             'family_planning_data' => ['nullable', 'array'],
             'family_planning_data.clientType' => ['nullable', 'string', 'max:100'],
             'family_planning_data.client_type' => ['nullable', 'string', 'max:100'],
@@ -403,6 +403,18 @@ class HealthRecordRequest extends FormRequest
             if (($needsReferral || $normalizedStatus === 'follow up required') && blank($this->input('diagnosis'))) {
                 $validator->errors()->add('diagnosis', 'BHC Assessment is required for follow-up or referral.');
             }
+            // A diagnosis set to Refer to RHU (or Monitor at BHC + Refer) is a
+            // referral: the ITR would otherwise say "Refer to RHU" with none.
+            if (
+                $this->isMethod('post')
+                && ! $needsReferral
+                && \App\Services\CarePlan::refersAny($this->diagnosesInput())
+            ) {
+                $validator->errors()->add(
+                    'needs_referral',
+                    'A diagnosis is set to Refer to RHU, so this visit needs a referral. Add the referral or change the care plan.'
+                );
+            }
             if ($needsReferral && blank($this->input('referral.reason_for_referral'))) {
                 $validator->errors()->add('referral.reason_for_referral', 'Reason for referral is required.');
             }
@@ -472,6 +484,14 @@ class HealthRecordRequest extends FormRequest
                 }
             }
         });
+    }
+
+    /** @return array<int, mixed> */
+    private function diagnosesInput(): array
+    {
+        $diagnoses = $this->input('diagnoses', []);
+
+        return is_array($diagnoses) ? $diagnoses : [];
     }
 
     /**

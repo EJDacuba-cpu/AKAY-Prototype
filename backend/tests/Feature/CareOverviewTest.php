@@ -63,6 +63,8 @@ class CareOverviewTest extends TestCase
             ->assertJsonPath('data.pending_follow_ups.0.is_overdue', true)
             ->assertJsonPath('data.pending_follow_ups.0.reason', 'BP recheck')
             ->assertJsonPath('data.pending_follow_ups.0.conditions.0.condition_name', 'Hypertension')
+            ->assertJsonPath('data.pending_follow_ups.0.conditions.0.condition_key', 'hypertension')
+            ->assertJsonPath('data.pending_follow_ups.0.conditions.0.started_at', now()->subWeeks(2)->toDateString())
             ->assertJsonCount(1, 'data.monitoring_without_follow_up')
             ->assertJsonPath('data.monitoring_without_follow_up.0.id', $asthma->id)
             ->assertJsonPath('data.monitoring_without_follow_up.0.last_health_record_id', $source->id);
@@ -70,6 +72,10 @@ class CareOverviewTest extends TestCase
         $this->assertSame(
             ['id', 'due_date', 'due_time', 'state', 'is_overdue', 'reason', 'source_health_record_id', 'source_date', 'conditions'],
             array_keys($response->json('data.pending_follow_ups.0'))
+        );
+        $this->assertSame(
+            ['monitoring_id', 'condition_name', 'condition_key', 'started_at'],
+            array_keys($response->json('data.pending_follow_ups.0.conditions.0'))
         );
     }
 

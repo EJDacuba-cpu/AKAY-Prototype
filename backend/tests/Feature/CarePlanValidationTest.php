@@ -76,8 +76,47 @@ class CarePlanValidationTest extends TestCase
 
     public function test_tb_diagnosis_without_monitoring_needs_no_tb_card(): void
     {
-        $this->store(['diagnoses' => [['id' => 'd1', 'name' => 'PTB', 'carePlan' => 'refer']], 'needs_referral' => false])
-            ->assertCreated();
+        $this->store([
+            'diagnosis' => 'PTB',
+            'diagnoses' => [['id' => 'd1', 'name' => 'PTB', 'carePlan' => 'refer']],
+            'needs_referral' => true,
+            'referral' => ['reason_for_referral' => 'Referred for: PTB', 'urgency_level' => 'Routine'],
+        ])->assertCreated();
+    }
+
+    public function test_a_refer_care_plan_needs_a_referral(): void
+    {
+        foreach (['refer', 'monitor_refer'] as $carePlan) {
+            $this->store([
+                'diagnosis' => 'Asthma',
+                'diagnoses' => [['id' => 'd1', 'name' => 'Asthma', 'carePlan' => $carePlan]],
+                'needs_referral' => false,
+            ])->assertUnprocessable()->assertJsonValidationErrors(['needs_referral']);
+        }
+        $this->assertSame(0, \App\Models\HealthRecord::count());
+    }
+
+    public function test_a_refer_care_plan_with_a_referral_or_a_monitor_only_plan_saves(): void
+    {
+        $this->store([
+            'diagnosis' => 'Asthma',
+            'diagnoses' => [['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'refer']],
+            'needs_referral' => true,
+            'referral' => ['reason_for_referral' => 'Referred for: Asthma', 'urgency_level' => 'Routine'],
+        ])->assertCreated();
+        $this->store([
+            'diagnosis' => 'Asthma',
+            'diagnoses' => [['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor']],
+        ])->assertCreated();
+    }
+
+    public function test_legacy_surveillance_tags_are_still_validated(): void
+    {
+        $this->store(['monitoring_data' => ['surveillanceTags' => ['junk']]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['monitoring_data.surveillanceTags.0']);
+        $this->store(['monitoring_data' => ['surveillanceTags' => array_fill(0, 6, 'hfmd')]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['monitoring_data.surveillanceTags']);
+        $this->store(['monitoring_data' => ['surveillanceTags' => ['hfmd']]])->assertCreated();
     }
 
     public function test_care_plan_round_trips_through_a_draft(): void

@@ -63,6 +63,8 @@ class CareOverviewController extends Controller
                 'conditions' => $task->conditionMonitorings->map(fn (ConditionMonitoring $m) => [
                     'monitoring_id' => $m->id,
                     'condition_name' => $m->condition_name,
+                    'condition_key' => $m->condition_key,
+                    'started_at' => $m->started_at?->toDateString(),
                 ])->values(),
             ])->values(),
             'monitoring_without_follow_up' => $monitorings->map(function (ConditionMonitoring $m) {

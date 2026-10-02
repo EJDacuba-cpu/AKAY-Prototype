@@ -46,6 +46,15 @@ class CarePlanSaveTest extends TestCase
         ]);
     }
 
+    /** A Refer care plan is only accepted with a referral (no RHU doctor: a referral hold). */
+    private function referral(): array
+    {
+        return [
+            'needs_referral' => true,
+            'referral' => ['reason_for_referral' => 'Referred for: Hypertension', 'urgency_level' => 'Routine'],
+        ];
+    }
+
     private function active(): \Illuminate\Support\Collection
     {
         return ConditionMonitoring::where('patient_id', $this->patient->id)->where('status', 'active')->get();
@@ -69,7 +78,7 @@ class CarePlanSaveTest extends TestCase
         $this->save([
             ['id' => 'd1', 'name' => 'HTN', 'carePlan' => 'monitor'],
             ['id' => 'd2', 'name' => 'Hypertension', 'carePlan' => 'monitor_refer'],
-        ], [], ['needs_referral' => false])->assertCreated();
+        ], [], $this->referral())->assertCreated();
 
         $this->assertCount(1, $this->active());
         $this->assertTrue($this->active()->first()->visits()->sole()->referred);
@@ -146,8 +155,11 @@ class CarePlanSaveTest extends TestCase
     {
         [$monitoring, $before] = $this->activeHypertension();
 
-        $this->save([['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => $carePlan]], ['continued_monitoring_ids' => [$monitoring->id]])
-            ->assertUnprocessable()->assertJsonValidationErrors(['care_plan.monitoring_stops']);
+        $this->save(
+            [['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => $carePlan]],
+            ['continued_monitoring_ids' => [$monitoring->id]],
+            $carePlan === 'refer' ? $this->referral() : []
+        )->assertUnprocessable()->assertJsonValidationErrors(['care_plan.monitoring_stops']);
 
         $this->assertSame('active', $monitoring->fresh()->status);
         $this->assertSame($before, HealthRecord::count());
@@ -235,6 +247,113 @@ class CarePlanSaveTest extends TestCase
         $this->save([], ['continued_monitoring_ids' => [$monitoring->id]])
             ->assertUnprocessable()->assertJsonValidationErrors(['tb_data.diagnosis.tbCaseNumber']);
         $this->assertSame($before, HealthRecord::count());
+    }
+
+    public function test_a_concurrent_start_of_the_same_monitoring_is_a_409_and_nothing_saves(): void
+    {
+        // A concurrent save commits an active Hypertension monitoring between
+        // this save's "is there one?" lookup and its insert. Simulated by
+        // inserting that competing row (bypassing the model) just before the
+        // insert, so the partial unique index is what rejects the save.
+        ConditionMonitoring::creating(function (ConditionMonitoring $monitoring): void {
+            \Illuminate\Support\Facades\DB::table('condition_monitorings')->insert([
+                ...$monitoring->getAttributes(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+        $before = HealthRecord::count();
+
+        $this->save([['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor']])
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'CONDITION_MONITORING_CONFLICT');
+
+        $this->assertSame($before, HealthRecord::count());
+        $this->assertSame(0, ConditionMonitoring::count());
+        $this->assertSame(0, \App\Models\ConditionMonitoringVisit::count());
+    }
+
+    public function test_a_replayed_save_with_a_care_plan_writes_nothing_twice(): void
+    {
+        [$monitoring] = $this->activeHypertension();
+        $key = (string) Str::uuid();
+        $payload = [
+            'patient_id' => $this->patient->id,
+            'category' => 'General Consultation',
+            'chief_complaint' => 'BP check',
+            'diagnosis' => 'Hypertension',
+            'diagnoses' => [['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor']],
+            'care_plan' => ['continued_monitoring_ids' => [$monitoring->id]],
+        ];
+
+        $id = $this->withHeader('Idempotency-Key', $key)->postJson('/api/health-records', $payload)
+            ->assertCreated()->json('data.id');
+        $records = HealthRecord::count();
+        $visits = \App\Models\ConditionMonitoringVisit::count();
+
+        $this->withHeader('Idempotency-Key', $key)->postJson('/api/health-records', $payload)
+            ->assertOk()
+            ->assertJsonPath('idempotent_replay', true)
+            ->assertJsonPath('data.id', $id);
+        $this->assertSame($records, HealthRecord::count());
+        $this->assertSame($visits, \App\Models\ConditionMonitoringVisit::count());
+        $this->assertSame(1, ConditionMonitoring::count());
+
+        $this->withHeader('Idempotency-Key', $key)->postJson('/api/health-records', [
+            ...$payload,
+            'care_plan' => [
+                'continued_monitoring_ids' => [$monitoring->id],
+                'monitoring_stops' => [['monitoring_id' => $monitoring->id, 'reason' => 'Controlled']],
+            ],
+        ])->assertStatus(409)->assertJsonPath('code', 'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH');
+        $this->assertSame($records, HealthRecord::count());
+        $this->assertSame('active', $monitoring->fresh()->status);
+    }
+
+    public function test_another_patients_active_monitoring_cannot_be_continued(): void
+    {
+        $this->save([['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor']], [], ['patient_id' => $this->otherPatient->id])->assertCreated();
+        $foreign = ConditionMonitoring::where('patient_id', $this->otherPatient->id)->sole();
+        $before = HealthRecord::count();
+
+        $this->save([], ['continued_monitoring_ids' => [$foreign->id]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['care_plan.continued_monitoring_ids.0']);
+        $this->assertSame($before, HealthRecord::count());
+        $this->assertSame(1, $foreign->visits()->count());
+    }
+
+    public function test_continued_follow_ups_are_validated_against_the_order_the_client_sent(): void
+    {
+        $first = HealthRecord::create(['patient_id' => $this->patient->id, 'category' => 'General Consultation', 'barangay_health_center_id' => $this->patient->barangay_health_center_id]);
+        $foreignRecord = HealthRecord::create(['patient_id' => $this->otherPatient->id, 'category' => 'General Consultation', 'barangay_health_center_id' => $this->otherPatient->barangay_health_center_id]);
+        $foreign = FollowUpTask::create(['health_record_id' => $foreignRecord->id, 'patient_id' => $this->otherPatient->id, 'barangay_health_center_id' => $this->otherPatient->barangay_health_center_id, 'due_date' => now()->toDateString(), 'state' => 'pending']);
+        $second = HealthRecord::create(['patient_id' => $this->patient->id, 'category' => 'General Consultation', 'barangay_health_center_id' => $this->patient->barangay_health_center_id]);
+        $primary = FollowUpTask::create(['health_record_id' => $first->id, 'patient_id' => $this->patient->id, 'barangay_health_center_id' => $this->patient->barangay_health_center_id, 'due_date' => now()->toDateString(), 'state' => 'pending']);
+        $own = FollowUpTask::create(['health_record_id' => $second->id, 'patient_id' => $this->patient->id, 'barangay_health_center_id' => $this->patient->barangay_health_center_id, 'due_date' => now()->toDateString(), 'state' => 'pending']);
+
+        // Locked in ascending id order (the foreign task first), but the error
+        // still names the position the client sent it at.
+        $this->save([], ['continued_follow_up_task_ids' => [$primary->id, $own->id, $foreign->id]], [
+            'visit_type' => 'follow_up_visit',
+            'parent_health_record_id' => $first->id,
+            'monitoring_data' => ['followUpTaskId' => $primary->id],
+        ])->assertUnprocessable()->assertJsonValidationErrors(['care_plan.continued_follow_up_task_ids.2']);
+        $this->assertSame('pending', $own->fresh()->state);
+    }
+
+    public function test_the_completed_follow_up_reported_is_the_parent_records_task(): void
+    {
+        $other = HealthRecord::create(['patient_id' => $this->patient->id, 'category' => 'General Consultation', 'barangay_health_center_id' => $this->patient->barangay_health_center_id]);
+        $parent = HealthRecord::create(['patient_id' => $this->patient->id, 'category' => 'General Consultation', 'barangay_health_center_id' => $this->patient->barangay_health_center_id]);
+        // The additional task has the LOWER id; the parent's task must still win.
+        $additional = FollowUpTask::create(['health_record_id' => $other->id, 'patient_id' => $this->patient->id, 'barangay_health_center_id' => $this->patient->barangay_health_center_id, 'due_date' => now()->toDateString(), 'state' => 'pending']);
+        $primary = FollowUpTask::create(['health_record_id' => $parent->id, 'patient_id' => $this->patient->id, 'barangay_health_center_id' => $this->patient->barangay_health_center_id, 'due_date' => now()->toDateString(), 'state' => 'pending']);
+
+        $this->save([], ['continued_follow_up_task_ids' => [$primary->id, $additional->id]], [
+            'visit_type' => 'follow_up_visit',
+            'parent_health_record_id' => $parent->id,
+            'monitoring_data' => ['followUpTaskId' => $primary->id],
+        ])->assertCreated()->assertJsonPath('result.completed_follow_up_task_id', $primary->id);
     }
 
     public function test_follow_up_of_another_patient_is_rejected(): void
