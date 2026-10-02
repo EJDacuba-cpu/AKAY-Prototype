@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Link } from "react-router";
+import { createPortal } from "react-dom";
+import { Link, useNavigate } from "react-router";
 import { Check, Minus, Plus, X } from "lucide-react";
 
 import ActionMenu from "../../common/tables/ActionMenu";
@@ -8,13 +9,79 @@ import { EmptyNote, ProfileSection } from "../patients/profile/ProfileSection";
 import WithdrawReasonModal from "./WithdrawReasonModal";
 import AddParticipantModal from "./AddParticipantModal";
 import { formatShortDate } from "../../../utils/patientProfile";
+import StartConsultationModal from "../patients/profile/StartConsultationModal";
+import usePatientConsultation from "../../../hooks/usePatientConsultation";
 import { buildPatientConsultationPath } from "../../../utils/consultationRoute";
+import { selectionToRoute, startConsultationAction } from "../../../utils/startConsultation";
 
 const STATUS_STYLES = {
   Enrolled: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
   Completed: "border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D]",
   Withdrawn: "border-[#E5E7EB] bg-[#F8FAFC] text-[#475569]",
 };
+
+/**
+ * A participant's Start / Resume Consultation, with the same behaviour as the
+ * patient profile header (usePatientConsultation): an unfinished draft is
+ * resumed; otherwise, when the patient has pending follow-ups or unscheduled
+ * monitoring, the Start Consultation modal opens; else a new consultation.
+ */
+function ParticipantConsultationAction({ patientId, patientName }) {
+  const consultation = usePatientConsultation(patientId);
+  const navigate = useNavigate();
+  const [modalOpen, setModalOpen] = useState(false);
+  const action = startConsultationAction(consultation);
+  const label = consultation.primaryLabel;
+  const ariaLabel = `${label} for ${patientName || "this patient"}`;
+  const className = "text-xs font-medium text-red-600 hover:underline";
+
+  let control;
+  if (consultation.isError) {
+    control = (
+      <button
+        type="button"
+        onClick={consultation.retry}
+        title="Unable to check for an unfinished consultation."
+        className="text-xs font-medium text-gray-600 hover:underline"
+      >
+        Retry check
+      </button>
+    );
+  } else if (action === "disabled") {
+    control = <span className="text-xs font-medium text-gray-400">{consultation.isPending ? "Checking..." : label}</span>;
+  } else if (action === "modal") {
+    control = (
+      <button type="button" onClick={() => setModalOpen(true)} aria-label={ariaLabel} className={className}>
+        {label}
+      </button>
+    );
+  } else {
+    control = (
+      <Link to={consultation.startPath} aria-label={ariaLabel} className={className}>
+        {label}
+      </Link>
+    );
+  }
+
+  return (
+    <>
+      {control}
+      {modalOpen &&
+        consultation.needsStartModal &&
+        createPortal(
+          <StartConsultationModal
+            overview={consultation.careOverview}
+            onCancel={() => setModalOpen(false)}
+            onStartNew={() => navigate(buildPatientConsultationPath(patientId))}
+            onContinue={({ followUpIds, monitoringIds }) =>
+              navigate(selectionToRoute({ patientId, followUpIds, monitoringIds }))
+            }
+          />,
+          document.body,
+        )}
+    </>
+  );
+}
 
 function StatusPill({ status }) {
   return (
@@ -165,12 +232,10 @@ export default function ParticipantsTab({
                 )}
 
                 <div className="flex shrink-0 items-center gap-2">
-                  <Link
-                    to={buildPatientConsultationPath(participant.patientId, "/bhc")}
-                    className="text-xs font-medium text-red-600 hover:underline"
-                  >
-                    Start Consultation
-                  </Link>
+                  <ParticipantConsultationAction
+                    patientId={participant.patientId}
+                    patientName={participant.patientName}
+                  />
                   {participant.status === "Enrolled" && (
                     <ActionMenu
                       title={participant.patientName}
