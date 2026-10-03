@@ -116,12 +116,17 @@ function BodyFigure({ findings, sex, side, onToggleSide, countByRegion, activeRe
     ? findings.find((item) => item.region === overlayRegion && item.side === side)
     : null;
   const [overlayX, overlayY] = overlayRegion ? getDotPosition(figure, side, overlayRegion) : [0, 0];
-  const overlaySide = overlayX <= 0.5 ? "right" : "left";
-  const overlayStyle = overlayRegion
-    ? overlaySide === "right"
-      ? { top: `${overlayY * 100}%`, left: `calc(${overlayX * 100}% + 14px)`, transform: "translateY(-50%)" }
-      : { top: `${overlayY * 100}%`, right: `calc(${(1 - overlayX) * 100}% + 14px)`, transform: "translateY(-50%)" }
-    : null;
+  // Centre-column dots (head, chest, abdomen, pelvis) get the callout centred
+  // below them, so it never runs past the narrow side column; the others open
+  // away from the body's midline.
+  const overlaySide = Math.abs(overlayX - 0.5) < 0.1 ? "below" : overlayX < 0.5 ? "right" : "left";
+  const overlayStyle = !overlayRegion
+    ? null
+    : overlaySide === "below"
+      ? { top: `calc(${overlayY * 100}% + 16px)`, left: "50%", transform: "translateX(-50%)" }
+      : overlaySide === "right"
+        ? { top: `${overlayY * 100}%`, left: `calc(${overlayX * 100}% + 14px)`, transform: "translateY(-50%)" }
+        : { top: `${overlayY * 100}%`, right: `calc(${(1 - overlayX) * 100}% + 14px)`, transform: "translateY(-50%)" };
 
   return (
     <AnatomyFigure
@@ -153,7 +158,7 @@ function BodyFigure({ findings, sex, side, onToggleSide, countByRegion, activeRe
           className={`pointer-events-none absolute z-10 flex items-center ${overlaySide === "right" ? "flex-row" : "flex-row-reverse"}`}
           style={overlayStyle}
         >
-          {overlayCount > 0 && (
+          {overlayCount > 0 && overlaySide !== "below" && (
             <span
               className={`bp-callout-line h-px w-3.5 flex-none bg-[#111827] ${overlaySide === "right" ? "origin-left" : "origin-right"}`}
             />
