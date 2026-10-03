@@ -1,3 +1,5 @@
+import { getVitalRecordDate } from "./currentPatientVitals.js";
+
 /**
  * Body Mass Index, derived rather than stored.
  *
@@ -46,4 +48,33 @@ export function getLatestBmiRecord(records = []) {
       (record) => calculateBmi(record?.weight, record?.height) !== null,
     ) || null
   );
+}
+
+/**
+ * Latest BMI for display: { value, category, date } or null.
+ *
+ * Records may arrive in any order; they are sorted newest first (undated
+ * last) before the latest complete pair is picked. The adult category is
+ * withheld ("") under age 18, where WHO adult cut-offs do not apply; an empty
+ * or non-numeric age is treated as an adult.
+ */
+export function summarizeLatestBmi(records, age) {
+  const ordered = (Array.isArray(records) ? records : [])
+    .filter(Boolean)
+    .map((record) => ({ record, time: getVitalRecordDate(record)?.getTime() ?? -Infinity }))
+    .sort((a, b) => b.time - a.time)
+    .map(({ record }) => record);
+
+  const record = getLatestBmiRecord(ordered);
+  if (!record) return null;
+
+  const bmi = calculateBmi(record.weight, record.height);
+  const numericAge = age === "" || age === null || age === undefined ? NaN : Number(age);
+  const isChild = Number.isFinite(numericAge) && numericAge < 18;
+
+  return {
+    value: formatBmi(bmi),
+    category: isChild ? "" : getBmiCategory(bmi),
+    date: getVitalRecordDate(record),
+  };
 }

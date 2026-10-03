@@ -1,4 +1,4 @@
-import { BODY_SIDES, getBodyRegionLabel, normalizeBodyFindings } from "./bodyFindings.js";
+import { BODY_REGIONS, BODY_SIDES, getBodyRegionLabel, normalizeBodyFindings, normalizeBodySide } from "./bodyFindings.js";
 import { getVitalRecordDate } from "./currentPatientVitals.js";
 
 /**
@@ -50,6 +50,35 @@ export function splitFindingsBySide(findings) {
     (bySide[item.region] ||= []).push(item);
   }
   return split;
+}
+
+/**
+ * One entry per (side, region) holding findings, for the Recorded Findings
+ * list: front areas first, then back, each in BODY_REGIONS order. `label` is
+ * the first item's side-aware regionLabel; `items` keep input order.
+ * @returns {{ key: string, region: string, side: string, label: string, count: number, items: object[] }[]}
+ */
+export function groupFindingsByArea(findings) {
+  const groups = new Map();
+  for (const item of Array.isArray(findings) ? findings : []) {
+    const side = normalizeBodySide(item.side);
+    const key = `${side}:${item.region}`;
+    if (!groups.has(key)) {
+      groups.set(key, { key, region: item.region, side, label: item.regionLabel, count: 0, items: [] });
+    }
+    const group = groups.get(key);
+    group.items.push(item);
+    group.count += 1;
+  }
+
+  const sideOrder = (side) => BODY_SIDES.indexOf(side);
+  const regionOrder = (region) => {
+    const index = BODY_REGIONS.findIndex(({ key }) => key === region);
+    return index === -1 ? BODY_REGIONS.length : index;
+  };
+  return [...groups.values()].sort(
+    (a, b) => sideOrder(a.side) - sideOrder(b.side) || regionOrder(a.region) - regionOrder(b.region),
+  );
 }
 
 /**

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getRecordId, splitFindingsBySide, summarizeBodyFindings } from "./bodyFindingsSummary.js";
+import { getRecordId, groupFindingsByArea, splitFindingsBySide, summarizeBodyFindings } from "./bodyFindingsSummary.js";
 
 const finding = (region, text, extra = {}) => ({ id: `${region}-${text}`, region, finding: text, ...extra });
 
@@ -110,4 +110,28 @@ test("splitFindingsBySide keeps each side's regions apart", () => {
   assert.equal(split.back.chest[0].finding, "Rash");
   assert.equal(split.front.abdomen, undefined);
   assert.deepEqual(splitFindingsBySide([]), { front: {}, back: {} });
+});
+
+test("groupFindingsByArea groups by side then region, front first, in region order", () => {
+  const items = [
+    { ...finding("chest", "a"), side: "front", regionLabel: "Chest" },
+    { ...finding("chest", "b"), side: "back", regionLabel: "Upper back" },
+    { ...finding("head", "c"), side: "front", regionLabel: "Head" },
+    { ...finding("chest", "d"), side: "front", regionLabel: "Chest" },
+    { ...finding("abdomen", "e"), regionLabel: "Abdomen" },
+  ];
+  const groups = groupFindingsByArea(items);
+  assert.deepEqual(groups.map((g) => g.key), ["front:head", "front:chest", "front:abdomen", "back:chest"]);
+  assert.deepEqual(groups.map((g) => g.count), [1, 2, 1, 1]);
+  const chest = groups[1];
+  assert.equal(chest.region, "chest");
+  assert.equal(chest.side, "front");
+  assert.equal(chest.label, "Chest");
+  assert.deepEqual(chest.items.map((i) => i.finding), ["a", "d"]);
+  assert.equal(groups[3].label, "Upper back");
+});
+
+test("groupFindingsByArea of nothing is empty", () => {
+  assert.deepEqual(groupFindingsByArea([]), []);
+  assert.deepEqual(groupFindingsByArea(undefined), []);
 });

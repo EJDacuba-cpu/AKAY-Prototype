@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DOT_POSITIONS, FIGURE_KEYS, getFigureKey, markerStyle } from "./bodyFigureGeometry.js";
+import { DOT_POSITIONS, FIGURE_KEYS, HIGHLIGHT_SIZES, getFigureKey, highlightStyle, markerStyle } from "./bodyFigureGeometry.js";
 import { BODY_REGIONS } from "./bodyFindings.js";
 
 const SIDES = ["front", "back"];
@@ -42,4 +42,26 @@ test("getFigureKey picks female only for a Female sex", () => {
 
 test("markerStyle converts a normalized position to CSS percentages", () => {
   assert.deepEqual(markerStyle([0.25, 0.5]), { left: "25%", top: "50%" });
+});
+
+test("every region has a soft highlight size within bounds", () => {
+  for (const { key } of BODY_REGIONS) {
+    const [w, h] = HIGHLIGHT_SIZES[key] ?? [];
+    assert.ok(w > 0 && w <= 0.35, `${key} width`);
+    assert.ok(h > 0 && h <= 0.35, `${key} height`);
+  }
+});
+
+test("highlightStyle centres on the dot and sizes by figure width", () => {
+  const [, chestTop] = DOT_POSITIONS.male.front.chest;
+  assert.deepEqual(highlightStyle("male", "front", "chest"), {
+    left: "50%",
+    top: markerStyle([0.5, chestTop]).top,
+    width: "30%",
+    aspectRatio: "0.3 / 0.2",
+  });
+  const arm = highlightStyle("female", "back", "left_arm");
+  assert.equal(arm.left, "31.5%");
+  assert.equal(arm.width, "11%");
+  assert.equal(arm.aspectRatio, "0.11 / 0.2");
 });

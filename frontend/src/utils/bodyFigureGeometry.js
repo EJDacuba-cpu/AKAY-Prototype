@@ -94,3 +94,36 @@ const toPercent = (fraction) => `${Number((fraction * 100).toFixed(4))}%`;
 export function markerStyle([x, y]) {
   return { left: toPercent(x), top: toPercent(y) };
 }
+
+/**
+ * Soft area-highlight ellipse per region as [w, h], both fractions of the
+ * FIGURE WIDTH so the ellipse keeps its shape as the figure scales.
+ */
+export const HIGHLIGHT_SIZES = {
+  head: [0.16, 0.18],
+  chest: [0.3, 0.2],
+  abdomen: [0.26, 0.18],
+  pelvis: [0.26, 0.16],
+  right_arm: [0.11, 0.2],
+  left_arm: [0.11, 0.2],
+  right_hand: [0.11, 0.11],
+  left_hand: [0.11, 0.11],
+  right_leg: [0.13, 0.24],
+  left_leg: [0.13, 0.24],
+  right_foot: [0.11, 0.08],
+  left_foot: [0.11, 0.08],
+};
+
+/**
+ * CSS for an absolutely positioned highlight centred on a region's dot
+ * (callers add -translate-x-1/2 -translate-y-1/2). The width is a percentage
+ * of the figure box; the height follows from the aspect ratio.
+ */
+export function highlightStyle(figure, side, region) {
+  const [w, h] = HIGHLIGHT_SIZES[region];
+  return {
+    ...markerStyle(getDotPosition(figure, side, region)),
+    width: toPercent(w),
+    aspectRatio: `${w} / ${h}`,
+  };
+}
