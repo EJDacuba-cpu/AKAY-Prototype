@@ -1,5 +1,5 @@
 /**
- * Morbidity / Notifiable Disease reporting under Records & Surveillance.
+ * Morbidity / Notifiable Disease reporting, per condition in its Care Plan row.
  *
  * The source of truth is per diagnosis: each entry in a consultation's
  * `diagnoses` carries `reportAs` - "morbidity", "notifiable", or null (not

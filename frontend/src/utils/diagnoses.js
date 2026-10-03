@@ -15,7 +15,7 @@
  * official name when the consultation is saved.
  *
  * `reportAs` (Morbidity / Notifiable / not reported) is chosen per diagnosis
- * under Records & Surveillance - see diagnosisReporting.js.
+ * in its Care Plan row - see diagnosisReporting.js.
  */
 import { normalizeReportAs } from "./diagnosisReporting.js";
 import { isCarePlanValue } from "./carePlan.js";

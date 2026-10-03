@@ -13,8 +13,8 @@ use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
- * diagnoses.*.reportAs (the per-diagnosis Morbidity / Notifiable choice under
- * Records & Surveillance) and the visit-level morbidityReportingStatus
+ * diagnoses.*.reportAs (the per-diagnosis Morbidity / Notifiable choice in its
+ * Care Plan row) and the visit-level morbidityReportingStatus
  * mirrors HealthRecordController::normalizeDiagnosisReporting derives from it.
  */
 class DiagnosisReportingTest extends TestCase
@@ -100,6 +100,25 @@ class DiagnosisReportingTest extends TestCase
             ['morbidityReportingStatus' => 'notifiable']
         )->assertCreated()->json('data.id');
         $this->assertSame('notifiable', HealthRecord::findOrFail($id)->monitoring_data['morbidityReportingStatus']);
+    }
+
+    public function test_a_visit_with_no_suspected_condition_is_saved_as_a_general_consultation_and_reports_nothing(): void
+    {
+        // The client sends not_included for an empty diagnosis list (see
+        // deriveReportingStatus). The visit is still a finalized General
+        // Consultation encounter: counted from its own record, never from a
+        // condition, and with no referral or morbidity / notifiable status.
+        $id = $this->store([], ['morbidityReportingStatus' => 'not_included'])
+            ->assertCreated()
+            ->json('data.id');
+
+        $record = HealthRecord::findOrFail($id);
+        $this->assertSame('General Consultation', $record->category);
+        $this->assertEmpty($record->diagnoses ?? []);
+        $this->assertNotNull($record->finalized_at);
+        $this->assertFalse((bool) $record->needs_referral);
+        $this->assertSame('not_included', $record->monitoring_data['morbidityReportingStatus']);
+        $this->assertArrayNotHasKey('isNotifiableDisease', $record->monitoring_data);
     }
 
     public function test_an_unknown_report_type_is_rejected(): void

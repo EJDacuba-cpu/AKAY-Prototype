@@ -7,7 +7,7 @@ test('every flow, program-only included, keeps assessment, vitals, treatment and
   // Service forms are a detour from the first step, not part of Next/Previous.
   assert.deepEqual(getFormSequence(), ['interview', 'assessment']);
   const steps = buildConsultationSteps({ selectedPrograms: ['EPI'], primaryProgram: 'EPI' });
-  assert.equal(steps[0].label, 'Concern & Vital Signs');
+  assert.equal(steps[0].label, 'Patient Interview');
   assert.equal(steps.some(step => step.key === 'assessment'), true);
   assert.equal(steps.at(-1).key, 'review');
 });

@@ -6,6 +6,7 @@ import {
   conditionIdentity,
   continuingRows,
   stopsRequired,
+  NO_CONDITION_MESSAGE,
 } from "./carePlan.js";
 import { MONITORING_STEP, NEXT_STEP, REVIEW_STEP } from "./consultationSteps.js";
 
@@ -184,9 +185,10 @@ export function carePlanReviewRows({
     });
     if (followUp.date) rows.push({ label: "Follow-up Reason", value: followUp.reason || "" });
   }
-  // Same condition as the screen's "No follow-up or referral required." line.
-  if (!referral.needed && !followUp.shows && continuing.length === 0) {
-    rows.push({ label: "Next Steps", value: "No follow-up or referral required." });
+  // Same condition as the screen's empty state: only a visit with no
+  // condition says so. With conditions, each row already shows its plan.
+  if (diagnoses.length === 0 && !referral.needed && !followUp.shows && continuing.length === 0) {
+    rows.push({ label: "Next Steps", value: NO_CONDITION_MESSAGE });
   }
   return rows;
 }

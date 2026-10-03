@@ -169,7 +169,12 @@ test("review rows say so when nothing follows the visit", () => {
   ]);
   assert.deepEqual(
     carePlanReviewRows({ diagnoses: [], registry, referral: { needed: false }, followUp: { shows: false } }),
-    [{ label: "Next Steps", value: "No follow-up or referral required." }],
+    [{ label: "Next Steps", value: "No suspected condition was recorded for this visit. No condition-specific care plan is required." }],
+  );
+  // With conditions, each condition's own row already says No Ongoing Tracking.
+  assert.deepEqual(
+    carePlanReviewRows({ diagnoses: [{ id: "d1", name: "Cough", carePlan: "none" }], registry, referral: { needed: false }, followUp: { shows: false } }),
+    [{ label: "Cough", value: "No Ongoing Tracking" }],
   );
   assert.deepEqual(
     carePlanReviewRows({

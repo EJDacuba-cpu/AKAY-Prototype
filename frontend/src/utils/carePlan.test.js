@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   CARE_PLAN, CARE_PLAN_OPTIONS, CARE_PLAN_LABELS, conditionIdentity, defaultCarePlan, carePlanFor, continuingRows,
   stopsRequired, referredDiagnoses, buildReferralReason, deriveDisposition, validateCarePlan,
-  buildCarePlanPayload, monitoredConditionKeys,
+  buildCarePlanPayload, monitoredConditionKeys, NO_CONDITION_MESSAGE,
 } from "./carePlan.js";
 
 const registry = {
@@ -130,5 +130,37 @@ test("payload lists continued ids and only real stops", () => {
     continued_follow_up_task_ids: [9],
     continued_monitoring_ids: [3, 4],
     monitoring_stops: [{ monitoring_id: 4, reason: "Moved away" }],
+  });
+});
+
+test("a new condition defaults to No Ongoing Tracking and needs no choice before the visit moves on", () => {
+  const diagnoses = [
+    { id: "d1", name: "Cough" },
+    { id: "d2", name: "Asthma", carePlan: "refer" },
+    { id: "d3", name: "HTN" },
+  ];
+  assert.equal(carePlanFor(diagnoses[0], [htnMonitoring], registry), CARE_PLAN.NONE);
+  assert.equal(carePlanFor(diagnoses[1], [htnMonitoring], registry), CARE_PLAN.REFER);
+  // A continued condition keeps its Monitor default; a new one has no stop to explain.
+  assert.equal(carePlanFor(diagnoses[2], [htnMonitoring], registry), CARE_PLAN.MONITOR);
+  assert.deepEqual(validateCarePlan({ diagnoses, continuedMonitorings: [htnMonitoring], stops: {}, registry }), {});
+});
+
+test("a visit with no suspected condition has nothing to choose and needs no care-plan error", () => {
+  assert.deepEqual(validateCarePlan({ diagnoses: [], continuedMonitorings: [], stops: {}, registry }), {});
+  assert.match(NO_CONDITION_MESSAGE, /No suspected condition was recorded for this visit\. No condition-specific care plan is required\./);
+});
+
+test("a general consultation carries no care plan, referral, monitoring or follow-up", () => {
+  assert.deepEqual(
+    deriveDisposition({ diagnoses: [], continuedMonitorings: [], stops: {}, registry, serviceNeedsNextVisit: false }),
+    { needsReferral: false, showsFollowUp: false, monitorsAny: false, monitorsDiagnosis: false },
+  );
+  // Existing monitorings that were not brought into the visit are never listed or stopped.
+  assert.deepEqual(continuingRows([], [], registry), []);
+  assert.deepEqual(buildCarePlanPayload({ diagnoses: [], continuedMonitorings: [], stops: {}, registry }), {
+    continued_follow_up_task_ids: [],
+    continued_monitoring_ids: [],
+    monitoring_stops: [],
   });
 });

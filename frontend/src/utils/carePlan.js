@@ -28,6 +28,14 @@ export const CARE_PLAN_LABELS = Object.freeze({
   [CARE_PLAN.MONITOR_REFER]: "Monitor at BHC + Refer to RHU",
 });
 
+/**
+ * Shown instead of the condition-specific care plan when the visit records no
+ * suspected condition (a General Consultation). The visit itself is still
+ * saved and counted from its own record; nothing here is a condition choice.
+ */
+export const NO_CONDITION_MESSAGE =
+  "No suspected condition was recorded for this visit. No condition-specific care plan is required.";
+
 const VALUES = new Set(Object.values(CARE_PLAN));
 
 export function isCarePlanValue(value) {

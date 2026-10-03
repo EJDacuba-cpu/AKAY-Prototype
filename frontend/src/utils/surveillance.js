@@ -3,7 +3,7 @@
  * docs/superpowers/specs/2026-09-30-care-plan-next-steps-design.md.
  *
  * A diagnosis is included in the Surveillance Report by its own
- * `includeInSurveillance` flag (set under Records & Surveillance). Records
+ * `includeInSurveillance` flag (set in the condition's Care Plan row). Records
  * saved before that change carry the retired HFMD tagging instead -
  * `monitoring_data.surveillanceTags` or, older still, the `hfmdSurveillance`
  * boolean / `surveillanceCategory` - and still report as one HFMD row through

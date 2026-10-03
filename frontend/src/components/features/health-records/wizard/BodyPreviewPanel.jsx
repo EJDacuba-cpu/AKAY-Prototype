@@ -606,7 +606,8 @@ export default function BodyPreviewPanel({
  * Body findings organised by body area and side, shown under the Physical
  * Examination findings textarea: front areas first, then back areas. The area
  * comes from the region and side that were selected, so it is never typed
- * again. Renders nothing until a finding exists - the body map stays optional.
+ * again. With no finding yet it shows an optional-use hint - the body map stays
+ * optional.
  */
 export function BodyFindingsList({ findings = [], readOnly = false, onEdit, onRemove }) {
   const groups = BODY_SIDES
@@ -616,13 +617,17 @@ export function BodyFindingsList({ findings = [], readOnly = false, onEdit, onRe
       items: findings.filter((item) => normalizeBodySide(item.side) === side && item.region === key),
     })))
     .filter((group) => group.items.length > 0);
-  if (groups.length === 0) return null;
 
   return (
     <div className="mt-4">
       <p className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">
-        Findings by body area
+        Location-Specific Findings
       </p>
+      {groups.length === 0 ? (
+        <p className="text-sm text-[#6B7280]">
+          Optional. Select a body area to record a location-specific finding.
+        </p>
+      ) : (
       <div className="divide-y divide-[#E5E7EB] border border-[#E5E7EB]">
         {groups.map((group) => (
           <div key={group.id} className="flex flex-col gap-1 px-3 py-2 sm:flex-row sm:gap-3">
@@ -661,6 +666,7 @@ export function BodyFindingsList({ findings = [], readOnly = false, onEdit, onRe
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }

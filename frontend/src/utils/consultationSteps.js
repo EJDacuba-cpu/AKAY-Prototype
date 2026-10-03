@@ -3,20 +3,21 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
 /**
  * Step model for the New Consultation workspace.
  *
- *   Concern & Vital Signs
- *       -> Physical Exam & Assessment (also holds Actions Taken)
- *       -> Care Plan & Next Steps (also holds Records & Surveillance)
+ *   Patient Interview
+ *       -> Physical Exam & Assessment (Vital Signs and Physical Findings, then Assessment and Actions Taken)
+ *       -> Care Plan & Next Steps (each condition row also holds its reporting)
  *       -> Monitoring Details (when a monitored condition needs it)
  *       -> Review & Confirm
  *
  * The service forms (Prenatal / Family Planning / EPI) are NOT part of that
- * chain. Concern & Vital Signs is the hub: the worker ticks the services in the
+ * chain. Patient Interview is the hub: the worker ticks the services in the
  * Barangay Health Services panel, opens each service's form from there, and a
  * finished form returns to where it was opened (the hub, or Review when edited
  * from there). The panel shows each service as Completed / Incomplete.
  *
- * Interview and Vital Signs are one step: two cards on the same screen,
- * with no Next between them. The step's key is INTERVIEW_STEP.
+ * Vital Signs are recorded under Physical Examination on the Physical Exam &
+ * Assessment step; Patient Interview holds the Chief Complaint / HPI and the
+ * Patient Background. The interview step's key is INTERVIEW_STEP.
  *
  * Two levels:
  *  - GLOBAL steps (one heading each). Health programs are never global steps
@@ -112,12 +113,12 @@ export function getProgramFormSteps(selectedPrograms = [], primaryProgram = "") 
 
 /**
  * The global steps, one heading each. The service forms are never listed: they
- * are a detour from Concern & Vital Signs (see the header), so the steps are
+ * are a detour from Patient Interview (see the header), so the steps are
  * the same whichever services are selected.
  */
 export function buildConsultationSteps({ monitoringDetailKeys = [] } = {}) {
   return [
-    { key: INTERVIEW_STEP, phase: "form", label: "Concern & Vital Signs" },
+    { key: INTERVIEW_STEP, phase: "form", label: "Patient Interview" },
     { key: ASSESSMENT_STEP, phase: "form", label: "Physical Exam & Assessment" },
     { key: NEXT_STEP, phase: "next", label: "Care Plan & Next Steps" },
     // Only when a monitored condition needs data the ITR does not hold (TB today).
@@ -250,8 +251,8 @@ export function getPreviousStepKey(formSequence, current) {
 // The wizardPhase values a draft payload can carry. The server allowlist
 // accepts exactly program / form / next; nothing new is ever written.
 const LEGACY_CURRENT_VISIT_PHASE = "program";
-// Vital Signs was briefly a screen of its own. Its fields now sit on the
-// first step, so a draft saved there reopens on that step.
+// Vital Signs was briefly a screen of its own. A draft saved there still
+// reopens on the first step; the fields now live under Physical Examination.
 const LEGACY_VITALS_STEP = "vitals";
 // Actions Taken was briefly a screen of its own. Its fields now sit under
 // Physical Exam & Assessment, so a draft saved there reopens on that step.
@@ -306,14 +307,12 @@ export function resolveFormStep(current, formSequence, programSteps = []) {
 export function getErrorOwnerStepKey(errorKey) {
   const key = String(errorKey || "");
 
-  // Interview and Vital Signs share the first step.
-  if (
-    ["pulse", "spo2", "weight", "height", "temp", "fbs"].includes(key) ||
-    key === "vital_signs.fbs" ||
-    key === "chiefComplaint" ||
-    key === "summaryOfPresentIllness"
-  ) {
+  if (key === "chiefComplaint" || key === "summaryOfPresentIllness") {
     return INTERVIEW_STEP;
+  }
+  // Vital Signs are a subsection of Physical Examination.
+  if (["pulse", "spo2", "weight", "height", "temp", "fbs"].includes(key) || key === "vital_signs.fbs") {
+    return ASSESSMENT_STEP;
   }
   if (key.startsWith("tbData.")) return MONITORING_STEP;
   if (key === "familyPlanningMethodUsed" || key.startsWith("familyPlanningData.")) {

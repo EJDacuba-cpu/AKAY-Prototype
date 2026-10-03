@@ -39,7 +39,7 @@ const ERROR_TEXT = {
  *                           rather than duplicated
  * @param error              validation message for the diagnosis
  * @param defaultReportAs    the report choice a newly added diagnosis starts
- *                           with (changed under Records & Surveillance)
+ *                           with (changed in its Care Plan row)
  */
 export default function DiagnosisListField({
   diagnoses = [],

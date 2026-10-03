@@ -122,7 +122,6 @@ import ConsultationProgramPanel from "../../components/features/health-records/w
 import BodyPreviewPanel, { BodyFindingsList } from "../../components/features/health-records/wizard/BodyPreviewPanel";
 import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindings";
 import DiagnosisListField from "../../components/features/health-records/wizard/DiagnosisListField";
-import DiagnosisReportingField from "../../components/features/health-records/wizard/DiagnosisReportingField";
 import { formatDiagnoses, joinDiagnosisNames, restoreDiagnoses } from "../../utils/diagnoses";
 import { applyLegacyReportingStatus, deriveReportingStatus, setDiagnosisReportAs } from "../../utils/diagnosisReporting";
 import useClinicalRegistry from "../../hooks/useClinicalRegistry";
@@ -277,7 +276,7 @@ const RECORD_TYPE_DETAILS = {
 /**
  * The report a diagnosis starts with on this visit: Morbidity on a General
  * Consultation, not reported on a program visit. The worker changes it per
- * diagnosis under Records & Surveillance (see utils/diagnosisReporting.js).
+ * diagnosis in its Care Plan row (see utils/diagnosisReporting.js).
  */
 function getDefaultReportAs(recordType = "") {
   return normalizeRecordType(recordType) === "General Consultation" ? "morbidity" : null;
@@ -1150,7 +1149,7 @@ export default function ConsultationWorkspace() {
   });
   const selectedPatient = selectedPatientDetails || null;
 
-  // Patient Background (Concern & Vital Signs): the only place it is edited.
+  // Patient Background (Patient Interview): the only place it is edited.
   // Edits are staged here and in the draft, and applied with the finalized
   // record - see docs/superpowers/specs/2026-10-03-patient-background-tab-design.md.
   // Without clinical.history the card is locked and nothing is staged.
@@ -1204,7 +1203,7 @@ export default function ConsultationWorkspace() {
     () => buildConsultationSteps({ monitoringDetailKeys }),
     [monitoringDetailKeys],
   );
-  // The service forms. They are a detour opened from Concern & Vital Signs (or
+  // The service forms. They are a detour opened from Patient Interview (or
   // Review's Edit), not part of Next / Previous.
   const programFormSteps = useMemo(
     () => getProgramFormSteps(selectedPrograms, primaryProgram),
@@ -3703,6 +3702,8 @@ export default function ConsultationWorkspace() {
       onCarePlanChange={(id, value) => {
         setDiagnoses((current) => current.map((entry) => (entry.id === id ? { ...entry, carePlan: value } : entry)));
       }}
+      onReportAsChange={handleReportAsChange}
+      onSurveillanceChange={handleSurveillanceChange}
       onStopChange={(monitoringId, reason) => {
         clearValidationError(`carePlanStop.${monitoringId}`);
         setMonitoringStops((current) => setMonitoringStop(current, monitoringId, reason));
@@ -3763,50 +3764,17 @@ export default function ConsultationWorkspace() {
     treatmentBindings.forEach((binding) => binding.set(value));
   };
 
-  // Records & Surveillance, under the Care Plan. Two independent
-  // decisions per diagnosis: report it as Morbidity or Notifiable (or not at
+  // Reporting is per condition, inside that condition's Care Plan row. Two
+  // independent decisions: report it as Morbidity or Notifiable (or not at
   // all), and include it in the Surveillance Report or not - neither gates the
   // other. Both reuse this same consultation's patient/encounter data; nothing
-  // extra is created.
+  // extra is created, and the visit itself is counted from its own record.
   function handleReportAsChange(id, reportAs) {
     setDiagnoses((current) => setDiagnosisReportAs(current, id, reportAs));
   }
   function handleSurveillanceChange(id, value) {
     setDiagnoses((current) => current.map((d) => (d.id === id ? { ...d, includeInSurveillance: value } : d)));
   }
-  const reportingDecisions = (
-    <div
-      className="anim-fade-up border-t border-[#E5E7EB] pt-5 pb-1"
-      style={stagger(7)}
-    >
-      <h2 className="text-sm font-bold text-[#1A1A1A]">
-        Records & Surveillance
-      </h2>
-      <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
-        Classify this visit for reporting when applicable.
-      </p>
-      <div className="mt-4">
-        <LockedFormContent locked={patientGateLocked}>
-          <div className="space-y-5">
-            <div data-field="morbidityReportingStatus">
-              <p className="text-sm font-medium text-gray-600">
-                Include in Reports and Surveillance:
-              </p>
-              <p className="mt-1 mb-2.5 text-xs leading-relaxed text-[#6B7280]">
-                Choose the report for each suspected case, and whether it is included in the Surveillance Report.
-              </p>
-              <DiagnosisReportingField
-                rows={diagnoses}
-                onChange={handleReportAsChange}
-                onSurveillanceChange={handleSurveillanceChange}
-                emptyText="Add a suspected case under Assessment above to include it in a report."
-              />
-            </div>
-          </div>
-        </LockedFormContent>
-      </div>
-    </div>
-  );
 
   const autosaveStatus = canSaveCurrentDraft ? (
     <span role="status" aria-live="polite" className="text-xs text-gray-500">
@@ -3839,9 +3807,9 @@ export default function ConsultationWorkspace() {
   // position is simply not shown while the progress UI is switched off.
   const stepSubtitles = {
     [INTERVIEW_STEP]:
-      "Record the patient's reason for visit and present illness.",
+      "Record the patient's reason for visit, present illness and background.",
     [ASSESSMENT_STEP]:
-      "Document the examination findings, the suspected case, and the actions taken for this visit.",
+      "Record the vital signs and examination findings, the suspected case, and the actions taken for this visit.",
     [NEXT_STEP]:
       "Plan each suspected case, then any referral and the next follow-up, and classify it for reporting.",
     [MONITORING_STEP]:
@@ -3857,7 +3825,7 @@ export default function ConsultationWorkspace() {
     subtitles: stepSubtitles,
   });
   // The fixed right-hand column changes with the step: Barangay Health Services
-  // (the visit's service context) is chosen on Interview & Vital Signs only;
+  // (the visit's service context) is chosen on Patient Interview only;
   // Physical Exam & Assessment shows the 2D body preview instead. Every other
   // step runs full width. The review summary lists the chosen programs.
   const sidePanelAllowed =
@@ -3868,7 +3836,7 @@ export default function ConsultationWorkspace() {
   const serviceFormReturnLabel =
     getServiceFormReturnTarget(serviceFormOrigin) === REVIEW_STEP
       ? "Back to Review"
-      : "Back to Concern & Vital Signs";
+      : "Back to Patient Interview";
   const showBodyPanel = sidePanelAllowed && activeFormStep === ASSESSMENT_STEP;
   const showSidePanel = showProgramPanel || showBodyPanel;
   // Program panel: one status per form step, attached to each selected program
@@ -3937,7 +3905,7 @@ export default function ConsultationWorkspace() {
   const reviewSections = [
     {
       key: INTERVIEW_STEP,
-      title: "Concern",
+      title: "Patient Interview",
       stepKey: INTERVIEW_STEP,
       rows: [
         {
@@ -3960,8 +3928,8 @@ export default function ConsultationWorkspace() {
     {
       key: "vitals",
       title: "Vital Signs",
-      // Its card sits on the first step, beside Interview.
-      stepKey: INTERVIEW_STEP,
+      // A subsection of Physical Examination.
+      stepKey: ASSESSMENT_STEP,
       rows: [{ label: "Measurements", value: vitalsSummary }],
     },
     // Only when a section was edited; Edit reopens the card expanded.
@@ -4141,8 +4109,6 @@ export default function ConsultationWorkspace() {
           indicator={stepHeadingSlot}
         >
           {carePlanScreen}
-          {/* Records & Surveillance sits under the Care Plan (not on Monitoring Details). */}
-          {nextScreen !== MONITORING_STEP && reportingDecisions}
         </NextActionStep>
       ) : wizardPhase === WIZARD_REVIEW ? (
         <ConsultationReviewStep
@@ -4172,13 +4138,12 @@ export default function ConsultationWorkspace() {
         className="relative ml-0 mr-auto w-full max-w-5xl pb-16"
       >
         {isFirstConsultationStep ? (
-          // The first step is Interview and Vital Signs together: one card on
-          // one screen, no Next between them - the same card every other step
-          // uses, with each section under its own heading.
+          // The first step is the Patient Interview: Chief Complaint / HPI and
+          // Patient Background, each section under its own heading.
           <section className={CONSULTATION_CARD_CLASS}>
             {/* HPI is marked required for a general consultation; whether that
                 applies is decided at Clinical Assessment, which enforces it. */}
-            <FormSection title="Chief Complaint" subtitle="Why the patient is here today, in their own words and yours." delay={3}>
+            <FormSection title="Chief Complaint & History of Present Illness" subtitle="Why the patient is here today, in their own words and yours." delay={3}>
             <div className="grid gap-4 @xl:grid-cols-2">
               <FieldTextarea label="Chief Complaint" required name="chiefComplaint" error={validationErrors.chiefComplaint} value={chiefComplaint} onChange={event => { clearValidationError("chiefComplaint"); setChiefComplaint(event.target.value); }} placeholder="Describe the patient's chief complaint..." rows={3} />
               <FieldTextarea label="History of Present Illness" name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }}  rows={3} />
@@ -4186,7 +4151,7 @@ export default function ConsultationWorkspace() {
             </FormSection>
 
             {/* Patient Background: history taking belongs with the interview,
-                so it sits after Chief Complaint / HPI and before the vitals. */}
+                so it sits after Chief Complaint / HPI. */}
             <FormSection title="Patient Background" subtitle="Past medical, family, and personal & social history. Changes are saved when the consultation is finalized." delay={4}>
               <ConsultationBackgroundCard
                 locked={!canViewBackground}
@@ -4197,27 +4162,6 @@ export default function ConsultationWorkspace() {
                 expanded={backgroundExpanded}
                 onExpandedChange={setBackgroundExpanded}
               />
-            </FormSection>
-
-            {/* Vital Signs: recorded once, here. Program forms do not repeat
-                them. Three columns on desktop: BP | Pulse | SpO2, then Weight |
-                Height | Temperature, then BMI. */}
-            <FormSection title="Vital Signs" subtitle="Record the patient's current measurements for this visit." delay={5}>
-            <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
-              <BpInputGroup name="bloodPressure" systolic={systolicBp} diastolic={diastolicBp} onSystolicChange={setSystolicBp} onDiastolicChange={setDiastolicBp} />
-              <FieldInput label="Pulse Rate" name="pulse" error={validationErrors.pulse} type="number" value={pulse} onChange={event => setPulse(event.target.value)} placeholder="bpm" />
-              <FieldInput label="SpO₂" name="spo2" error={validationErrors.spo2} type="number" value={spo2} onChange={event => setSpo2(event.target.value)} placeholder="%" />
-              <FieldInput label="Weight" name="weight" error={validationErrors.weight} type="number" value={weight} onChange={event => setWeight(event.target.value)} placeholder="kg" />
-              <FieldInput label="Height" name="height" error={validationErrors.height} type="number" value={height} onChange={event => setHeight(event.target.value)} placeholder="cm" />
-              <FieldInput label="Temperature" name="temp" error={validationErrors.temp} value={temp} onChange={event => setTemp(event.target.value)} placeholder="°C" />
-              <BmiOutputField weight={weight} height={height} />
-            </div>
-            <div className="mt-4">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#374151]">Additional Measurements</p>
-              <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
-                <FieldInput label="Fasting Blood Sugar (FBS) (mg/dL)" name="fbs" data-field="vital_signs.fbs" error={validationErrors["vital_signs.fbs"] || validationErrors.fbs} type="number" inputMode="decimal" min={0} max={1000} step="any" value={fbs} onChange={event => { clearValidationError("fbs"); clearValidationError("vital_signs.fbs"); setFbs(event.target.value); }} placeholder="mg/dL" />
-              </div>
-            </div>
             </FormSection>
           </section>
         ) : (
@@ -4663,27 +4607,51 @@ export default function ConsultationWorkspace() {
           <>
             <FormSection
               title="Physical Examination"
-              subtitle="Record relevant examination findings for this visit."
+              subtitle="Record the patient's vital signs and examination findings for this visit."
               delay={3}
             >
               <LockedFormContent locked={patientGateLocked}>
-                <FieldTextarea
-                  label="Findings"
-                  value={physicalExam}
-                  onChange={(event) => setPhysicalExam(event.target.value)}
-                  placeholder="Document relevant physical examination findings for this visit."
-                  rows={4}
-                />
-                <BodyFindingsList
-                  findings={bodyFindings}
-                  readOnly={workspaceLocked}
-                  onEdit={(item) => {
-                    // Show the finding's side first; the dialog anchors to that side's dot.
-                    setBodyPreviewSide(item.side);
-                    setBodyFindingDialog({ region: item.region, side: item.side, anchor: null, editingId: item.id });
-                  }}
-                  onRemove={(id) => setBodyFindings((current) => current.filter((item) => item.id !== id))}
-                />
+                {/* Vital Signs: recorded once, here. Program forms do not repeat
+                    them. Three columns on desktop: BP | Pulse | SpO2, then
+                    Weight | Height | Temperature, then BMI. */}
+                <div>
+                  <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-[#111827]">Vital Signs</h3>
+                  <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
+                    <BpInputGroup name="bloodPressure" systolic={systolicBp} diastolic={diastolicBp} onSystolicChange={setSystolicBp} onDiastolicChange={setDiastolicBp} />
+                    <FieldInput label="Pulse Rate" name="pulse" error={validationErrors.pulse} type="number" value={pulse} onChange={event => setPulse(event.target.value)} placeholder="bpm" />
+                    <FieldInput label="SpO₂" name="spo2" error={validationErrors.spo2} type="number" value={spo2} onChange={event => setSpo2(event.target.value)} placeholder="%" />
+                    <FieldInput label="Weight" name="weight" error={validationErrors.weight} type="number" value={weight} onChange={event => setWeight(event.target.value)} placeholder="kg" />
+                    <FieldInput label="Height" name="height" error={validationErrors.height} type="number" value={height} onChange={event => setHeight(event.target.value)} placeholder="cm" />
+                    <FieldInput label="Temperature" name="temp" error={validationErrors.temp} value={temp} onChange={event => setTemp(event.target.value)} placeholder="°C" />
+                    <BmiOutputField weight={weight} height={height} />
+                  </div>
+                  <div className="mt-4">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#374151]">Additional Measurements</p>
+                    <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
+                      <FieldInput label="Fasting Blood Sugar (FBS) (mg/dL)" name="fbs" data-field="vital_signs.fbs" error={validationErrors["vital_signs.fbs"] || validationErrors.fbs} type="number" inputMode="decimal" min={0} max={1000} step="any" value={fbs} onChange={event => { clearValidationError("fbs"); clearValidationError("vital_signs.fbs"); setFbs(event.target.value); }} placeholder="mg/dL" />
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-6 border-t border-[#E5E7EB] pt-4">
+                  <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-[#111827]">Physical Findings</h3>
+                  <FieldTextarea
+                    label="General Examination Notes"
+                    value={physicalExam}
+                    onChange={(event) => setPhysicalExam(event.target.value)}
+                    placeholder="Document general or non-localized examination findings for this visit..."
+                    rows={4}
+                  />
+                  <BodyFindingsList
+                    findings={bodyFindings}
+                    readOnly={workspaceLocked}
+                    onEdit={(item) => {
+                      // Show the finding's side first; the dialog anchors to that side's dot.
+                      setBodyPreviewSide(item.side);
+                      setBodyFindingDialog({ region: item.region, side: item.side, anchor: null, editingId: item.id });
+                    }}
+                    onRemove={(id) => setBodyFindings((current) => current.filter((item) => item.id !== id))}
+                  />
+                </div>
               </LockedFormContent>
             </FormSection>
 

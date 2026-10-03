@@ -11,8 +11,8 @@ import {
 } from "../../../../utils/backgroundUpdate";
 
 /**
- * Patient Background on Concern & Vital Signs, between the interview and the
- * vitals - per docs/superpowers/specs/2026-10-03-patient-background-tab-design.md.
+ * Patient Background on Patient Interview, after Chief Complaint / HPI -
+ * per docs/superpowers/specs/2026-10-03-patient-background-tab-design.md.
  *
  * Collapsed it is a read-only summary; Review / Update opens the shared
  * editor. Edits are only staged (`update`, carried in the draft) and saved

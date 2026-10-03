@@ -1,8 +1,10 @@
 import { TimePickerField } from "../../../common/forms/DatePickerField";
 import { ClinicalFieldGroup, FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
 import { ATTENTION_LEVELS, DEFAULT_ATTENTION } from "../../../../utils/referralAttention";
+import DiagnosisReportingField from "./DiagnosisReportingField";
 import {
-  CARE_PLAN, CARE_PLAN_OPTIONS, carePlanFor, continuedByIdentity, conditionIdentity, continuingRows, endsMonitoring,
+  CARE_PLAN, CARE_PLAN_OPTIONS, NO_CONDITION_MESSAGE, carePlanFor, continuedByIdentity, conditionIdentity,
+  continuingRows, endsMonitoring,
 } from "../../../../utils/carePlan";
 
 function StopReason({ monitoringId, value, error, disabled, onChange }) {
@@ -21,9 +23,13 @@ function StopReason({ monitoringId, value, error, disabled, onChange }) {
 }
 
 /**
- * Care Plan & Next Steps: one plan per diagnosis, continued monitoring, then
- * the visit's single referral and single follow-up. Every rule it shows comes
- * from utils/carePlan.js.
+ * Care Plan & Next Steps. With no suspected condition the visit is a General
+ * Consultation: a plain empty state, no condition controls (the visit is still
+ * saved and counted from its own record). With conditions, one row per
+ * condition holds its care plan (No Ongoing Tracking unless the worker changes
+ * it, Monitor at BHC for a continued one) and its reporting controls, then come
+ * the continued monitoring brought into this visit and the visit's single
+ * referral and single follow-up. Every rule it shows comes from utils/carePlan.js.
  */
 export default function CarePlanSection({
   diagnoses = [], continuedMonitorings = [], activeMonitorings = [], stops = {}, registry = {},
@@ -31,6 +37,7 @@ export default function CarePlanSection({
   needsReferral = false, errors = {}, disabled = false,
   notes = "", notesLabel = "Monitoring Notes", notesPlaceholder = "Write monitoring notes if useful...",
   onCarePlanChange, onStopChange, onFollowUpChange, onReferralChange, onNotesChange,
+  onReportAsChange, onSurveillanceChange,
 }) {
   const continuedMap = continuedByIdentity(continuedMonitorings, registry);
   const activeMap = continuedByIdentity(activeMonitorings, registry);
@@ -38,11 +45,13 @@ export default function CarePlanSection({
 
   return (
     <div className="space-y-6">
-      <section aria-labelledby="care-plan-diagnoses">
-        <h2 id="care-plan-diagnoses" className="text-sm font-bold text-[#111827]">This visit&apos;s suspected cases</h2>
-        {diagnoses.length === 0 ? (
-          <p className="mt-2 text-xs text-gray-500">No suspected case was recorded under Assessment.</p>
-        ) : (
+      {diagnoses.length === 0 && rows.length === 0 && (
+        <p className="border border-[#E5E7EB] bg-[#F9FAFB] px-3 py-2 text-sm text-[#374151]">{NO_CONDITION_MESSAGE}</p>
+      )}
+
+      {diagnoses.length > 0 && (
+        <section aria-labelledby="care-plan-diagnoses">
+          <h2 id="care-plan-diagnoses" className="text-sm font-bold text-[#111827]">This visit&apos;s suspected conditions</h2>
           <ul className="mt-2 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
             {diagnoses.map((diagnosis) => {
               const value = carePlanFor(diagnosis, continuedMonitorings, registry);
@@ -64,32 +73,42 @@ export default function CarePlanSection({
                       </p>
                     )}
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
-                      {CARE_PLAN_OPTIONS.map((option) => (
-                        <label key={option.value} className="flex cursor-pointer items-center gap-1.5 text-[13px]">
-                          <input
-                            type="radio"
-                            name={`care-plan-${diagnosis.id}`}
-                            value={option.value}
-                            checked={value === option.value}
-                            onChange={() => onCarePlanChange(diagnosis.id, option.value)}
-                            className="h-4 w-4 accent-[#DC2626]"
-                          />
-                          <span className={value === option.value ? "font-semibold text-[#DC2626]" : "text-gray-600"}>{option.label}</span>
-                        </label>
-                      ))}
+                      {CARE_PLAN_OPTIONS.map((option) => {
+                        const checked = value === option.value;
+                        return (
+                          <label key={option.value} className="flex cursor-pointer items-center gap-1.5 text-[13px]">
+                            <input
+                              type="radio"
+                              name={`care-plan-${diagnosis.id}`}
+                              value={option.value}
+                              checked={checked}
+                              onChange={() => onCarePlanChange(diagnosis.id, option.value)}
+                              className="h-4 w-4 accent-[#DC2626]"
+                            />
+                            <span className={checked ? "font-semibold text-[#DC2626]" : "text-gray-600"}>{option.label}</span>
+                          </label>
+                        );
+                      })}
                     </div>
                     {continued && endsMonitoring(value) && (
                       <div className="mt-2">
                         <StopReason monitoringId={continued.id} value={stops[continued.id]} error={errors[`carePlanStop.${continued.id}`]} disabled={disabled} onChange={onStopChange} />
                       </div>
                     )}
+                    <div className="mt-2.5 border-t border-dashed border-[#E5E7EB] pt-2.5">
+                      <DiagnosisReportingField
+                        diagnosis={diagnosis}
+                        onChange={onReportAsChange}
+                        onSurveillanceChange={onSurveillanceChange}
+                      />
+                    </div>
                   </fieldset>
                 </li>
               );
             })}
           </ul>
-        )}
-      </section>
+        </section>
+      )}
 
       {rows.length > 0 && (
         <section aria-labelledby="care-plan-continuing">
@@ -194,10 +213,6 @@ export default function CarePlanSection({
             )}
           </fieldset>
         </ClinicalFieldGroup>
-      )}
-
-      {!needsReferral && !showsFollowUp && rows.length === 0 && (
-        <p className="border border-[#E5E7EB] bg-[#F9FAFB] px-3 py-2 text-sm text-[#374151]">No follow-up or referral required.</p>
       )}
 
       {/* Always offered, as the Next Action step did: the visit's monitoring /

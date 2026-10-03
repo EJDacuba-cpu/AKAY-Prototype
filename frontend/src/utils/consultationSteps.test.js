@@ -108,7 +108,7 @@ test("the global steps read in the new order with the new names", () => {
   assert.deepEqual(
     steps.map((step) => step.label),
     [
-      "Concern & Vital Signs",
+      "Patient Interview",
       "Physical Exam & Assessment",
       "Care Plan & Next Steps",
       "Review & Confirm",
@@ -226,7 +226,7 @@ for (const [label, programs, primary] of [
     assert.equal(getProgramFormSteps(programs, primary).length > 0, programs.length > 0);
 
     assert.deepEqual(headingFor(INTERVIEW_STEP, programs, primary), {
-      title: "Concern & Vital Signs",
+      title: "Patient Interview",
       subtitle: SUBTITLES[INTERVIEW_STEP],
     });
     assert.deepEqual(headingFor(ASSESSMENT_STEP, programs, primary), {
@@ -269,10 +269,11 @@ test("later steps never show a program title", () => {
 
 test("each validation error is owned by the screen that shows its field", () => {
   assert.equal(getErrorOwnerStepKey("chiefComplaint"), INTERVIEW_STEP);
-  assert.equal(getErrorOwnerStepKey("vital_signs.fbs"), INTERVIEW_STEP);
-  assert.equal(getErrorOwnerStepKey("fbs"), INTERVIEW_STEP);
   assert.equal(getErrorOwnerStepKey("summaryOfPresentIllness"), INTERVIEW_STEP);
-  // Vital Signs is a card on the first step, so BP belongs to that step.
+  // Vital Signs is a subsection of Physical Examination on the assessment step.
+  for (const key of ["pulse", "spo2", "weight", "height", "temp", "fbs", "vital_signs.fbs"]) {
+    assert.equal(getErrorOwnerStepKey(key), ASSESSMENT_STEP, key);
+  }
   assert.equal(getErrorOwnerStepKey("hypertensionDiabeticData.conditionType"), null);
   assert.equal(getErrorOwnerStepKey("tbData.diagnosis.tbCaseNumber"), MONITORING_STEP);
   assert.equal(getErrorOwnerStepKey("diagnosis"), ASSESSMENT_STEP);
@@ -309,7 +310,7 @@ test("the earliest failing screen is revealed, in the NEW order", () => {
   );
   assert.equal(
     findFirstErrorStepKey({ dispensedMedicines: "x", pulse: "y" }, order),
-    INTERVIEW_STEP,
+    ASSESSMENT_STEP,
   );
   assert.equal(findFirstErrorStepKey({}, order), "");
 });
@@ -329,10 +330,10 @@ test("HPI IS enforced once the program decision is made", () => {
 });
 
 test("deferral never touches unrelated errors, and never mutates its input", () => {
-  const errors = { pulse: "Pulse required.", summaryOfPresentIllness: "x" };
+  const errors = { chiefComplaint: "Required.", summaryOfPresentIllness: "x" };
   const deferred = deferUntilProgramDecision(errors, INTERVIEW_STEP);
-  assert.deepEqual(Object.keys(deferred), ["pulse"]);
-  assert.deepEqual(Object.keys(errors), ["pulse", "summaryOfPresentIllness"]);
+  assert.deepEqual(Object.keys(deferred), ["chiefComplaint"]);
+  assert.deepEqual(Object.keys(errors), ["chiefComplaint", "summaryOfPresentIllness"]);
   assert.deepEqual(deferUntilProgramDecision(undefined, INTERVIEW_STEP), {});
 });
 
@@ -344,7 +345,7 @@ function payloadFor(wizardPhase, formStep) {
 }
 
 for (const [stage, formStep] of [
-  ["Interview & Vital Signs", INTERVIEW_STEP],
+  ["Patient Interview", INTERVIEW_STEP],
   ["Physical Exam & Assessment", ASSESSMENT_STEP],
   ["Program 1 (Maternal)", MATERNAL],
   ["Program 2 (EPI)", EPI],
@@ -414,7 +415,7 @@ test("DRAFT RESTORE: a payload never gains a phase the draft allowlist rejects",
   }
 });
 
-/* ── Interview and Vital Signs are one step ──────────────────────────── */
+/* ── Vital Signs live under Physical Examination ─────────────────────── */
 
 test("there is no separate Vital Signs screen to click Next through", () => {
   const sequence = getFormSequence();
@@ -425,12 +426,10 @@ test("there is no separate Vital Signs screen to click Next through", () => {
   assert.equal(getPreviousStepKey(sequence, ASSESSMENT_STEP), INTERVIEW_STEP);
 });
 
-test("vitals errors stop the user on the first step", () => {
+test("vitals errors stop the user on the Physical Exam & Assessment step", () => {
   const errors = { pulse: "Pulse required.", chiefComplaint: "Required." };
-  assert.deepEqual(
-    Object.keys(pickErrorsForStep(deferUntilProgramDecision(errors, INTERVIEW_STEP), INTERVIEW_STEP)).sort(),
-    ["chiefComplaint", "pulse"],
-  );
+  assert.deepEqual(Object.keys(pickErrorsForStep(errors, INTERVIEW_STEP)), ["chiefComplaint"]);
+  assert.deepEqual(Object.keys(pickErrorsForStep(errors, ASSESSMENT_STEP)), ["pulse"]);
 });
 
 test("DRAFT RESTORE: a draft saved on the former Vital Signs screen reopens on the first step", () => {
@@ -450,7 +449,7 @@ test("a draft saved on the removed Hypertension / Diabetic form reopens on a rea
 
 test("Care Plan replaces Disposition and Monitoring Details appears only when needed", () => {
   const labels = buildConsultationSteps({ selectedPrograms: [], primaryProgram: "" }).map((s) => s.label);
-  assert.deepEqual(labels, ["Concern & Vital Signs", "Physical Exam & Assessment", "Care Plan & Next Steps", "Review & Confirm"]);
+  assert.deepEqual(labels, ["Patient Interview", "Physical Exam & Assessment", "Care Plan & Next Steps", "Review & Confirm"]);
 
   const withTb = buildConsultationSteps({ selectedPrograms: [], primaryProgram: "", monitoringDetailKeys: ["tb_dots"] }).map((s) => s.key);
   assert.deepEqual(withTb, [INTERVIEW_STEP, ASSESSMENT_STEP, NEXT_STEP, MONITORING_STEP, REVIEW_STEP]);
