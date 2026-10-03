@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { Plus } from "lucide-react";
 
 import { ConfirmationModal } from "../../../common";
@@ -8,7 +8,6 @@ import usePatientConsultation from "../../../../hooks/usePatientConsultation";
 import StartConsultationModal from "./StartConsultationModal";
 import { TextAction } from "./ProfileSection";
 import { formatDate } from "../../../../utils/formatters";
-import { startRoute } from "../../../../utils/startConsultation";
 
 /** `onStart` replaces the link (Start Consultation opens the modal instead). */
 export function ConsultationButton({ consultation, onStart }) {
@@ -123,7 +122,6 @@ export function ConsultationNotice({ consultation }) {
 export function useConsultationActions(patient, patientId) {
   const consultationPatientId = patient.id || patientId;
   const consultation = usePatientConsultation(consultationPatientId);
-  const navigate = useNavigate();
   const [startModalOpen, setStartModalOpen] = useState(false);
 
   // Portaled for the same z-index reason as the discard confirmation.
@@ -133,9 +131,7 @@ export function useConsultationActions(patient, patientId) {
           <StartConsultationModal
             overview={consultation.careOverview}
             onCancel={() => setStartModalOpen(false)}
-            onStart={({ monitoringIds }) =>
-              navigate(startRoute({ patientId: consultationPatientId, monitoringIds }))
-            }
+            onStart={consultation.start}
           />,
           document.body,
         )

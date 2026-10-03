@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  checkContinuedStart,
   hasMonitoredConditions,
   monitoredConditionOptions,
   selectionToRoute,
@@ -75,4 +76,12 @@ test("what a Start Consultation action does: wait, open the modal, or go", () =>
   // A draft to resume: a plain link.
   assert.equal(startConsultationAction(ready), "link");
   assert.equal(startConsultationAction(), "disabled");
+});
+
+test("a selection is checked against the fresh overview before the workspace opens", () => {
+  assert.deepEqual(checkContinuedStart(overview, [4, 7]), { ok: true, droppedMonitoringIds: [] });
+  assert.deepEqual(checkContinuedStart(overview, []), { ok: true, droppedMonitoringIds: [] });
+  // One stopped or completed elsewhere is reported, never silently dropped.
+  assert.deepEqual(checkContinuedStart(overview, [4, 99]), { ok: false, droppedMonitoringIds: [99] });
+  assert.deepEqual(checkContinuedStart(null, [4]), { ok: false, droppedMonitoringIds: [4] });
 });

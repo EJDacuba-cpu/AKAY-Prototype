@@ -9,6 +9,7 @@ import {
   AlertCircle,
   ClipboardList,
   HeartPulse,
+  Loader2,
   ShieldCheck,
   Stethoscope,
   Syringe,
@@ -880,6 +881,11 @@ export default function ConsultationWorkspace() {
   // source ITR becomes parent_health_record_id (display/compatibility only).
   const [continuedFollowUps, setContinuedFollowUps] = useState([]);
   const [continuedMonitorings, setContinuedMonitorings] = useState([]);
+  // True while a continued consultation is still reading the monitoring it
+  // continues (route entry from Start Consultation / Record Visit, or a resume).
+  const [continuedCareLoading, setContinuedCareLoading] = useState(
+    () => routeContext.kind === "continue" && Boolean(routeContext.patientId) && (routeContext.followUpIds.length > 0 || routeContext.monitoringIds.length > 0),
+  );
   // { [monitoringId]: reason } - a key present means "stop this monitoring".
   const [monitoringStops, setMonitoringStops] = useState({});
   // Followed conditions referred to the RHU (ids), and the documented status the
@@ -1580,14 +1586,21 @@ export default function ConsultationWorkspace() {
     const hasSelection = Boolean(
       selection && (selection.followUpIds.length || selection.monitoringIds.length),
     );
+    // The form waits for what it continues instead of opening half filled.
+    const finishLoading = () => {
+      if (isCurrent()) setContinuedCareLoading(false);
+    };
+    if (hasSelection) setContinuedCareLoading(true);
     let overview;
     try {
       overview = await queryClient.fetchQuery({
         queryKey: queryKeys.careOverview(patientId),
         queryFn: () => getCareOverview(patientId),
-        staleTime: 0,
+        // Start Consultation just read it; reuse that instead of fetching again.
+        staleTime: 30_000,
       });
     } catch {
+      finishLoading();
       if (isCurrent() && hasSelection) {
         toast.error(
           selection.restored
@@ -1618,6 +1631,7 @@ export default function ConsultationWorkspace() {
     setMonitoringStatuses((current) => keepStopsFor(current, resolved.continuedMonitorings));
     const notice = droppedContinuedCareNotice(resolved);
     if (notice) toast(notice, { id: "continued-care-dropped", duration: 8000 });
+    finishLoading();
 
     // Continuing TB fills the TB-DOTS card from its last ITR, as the old
     // follow-up form did. A resumed draft keeps the card it saved.
@@ -4159,7 +4173,12 @@ export default function ConsultationWorkspace() {
         </div>
       )}
       <fieldset disabled={workspaceLocked} className="min-w-0">
-      {wizardPhase === WIZARD_NEXT ? (
+      {continuedCareLoading ? (
+        <p role="status" aria-live="polite" className="ml-0 mr-auto flex w-full max-w-5xl items-center gap-2 border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-6 text-sm text-[#374151]">
+          <Loader2 size={16} className="animate-spin text-[#DC2626]" aria-hidden="true" />
+          Loading monitoring records…
+        </p>
+      ) : wizardPhase === WIZARD_NEXT ? (
         <NextActionStep
           visitDate={wizardVisitDate}
           visitTime={wizardVisitTime}

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router";
 import toast from "react-hot-toast";
 
 import {
@@ -6,11 +7,12 @@ import {
   listHealthRecordDrafts,
 } from "../services/healthRecordDraftService";
 import { getCareOverview } from "../services/careOverviewService";
+import { prepareContinuedStart } from "../services/startConsultationService";
 import { getCurrentUser } from "../utils/auth";
 import { buildPatientConsultationPath } from "../utils/consultationRoute";
 import { DRAFTS_ENABLED } from "../utils/featureFlags";
 import { queryKeys } from "../utils/queryKeys";
-import { hasMonitoredConditions } from "../utils/startConsultation";
+import { hasMonitoredConditions, startRoute } from "../utils/startConsultation";
 
 /**
  * The consultation state of one patient: whether the signed-in user has an
@@ -28,6 +30,7 @@ import { hasMonitoredConditions } from "../utils/startConsultation";
  */
 export default function usePatientConsultation(patientId) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const currentUser = getCurrentUser();
   const ownerId = String(currentUser?.id || "");
   // The care-overview endpoint's own permission rule (CareOverviewController).
@@ -83,6 +86,16 @@ export default function usePatientConsultation(patientId) {
     isError: DRAFTS_ENABLED && isError,
     careOverview,
     needsStartModal: !draft && hasMonitoredConditions(careOverview),
+    /**
+     * Opens the consultation for what the Start Consultation modal chose.
+     * With monitoring ticked it first reads that monitoring fresh and rejects
+     * (ContinuedStartError) if a record is gone, so the workspace never opens
+     * half loaded; with none ticked it opens at once.
+     */
+    start: async ({ monitoringIds = [] } = {}) => {
+      if (monitoringIds.length) await prepareContinuedStart(queryClient, patientId, monitoringIds);
+      navigate(startRoute({ patientId, monitoringIds }));
+    },
     retry: () => queryClient.invalidateQueries({ queryKey }),
     discarding: discard.isPending,
     discard: () => draft && discard.mutateAsync(draft.id),

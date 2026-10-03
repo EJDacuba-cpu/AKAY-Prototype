@@ -1,5 +1,5 @@
 import { buildPatientConsultationPath } from "./consultationRoute.js";
-import { activeMonitoringsFromOverview } from "./continuedCare.js";
+import { activeMonitoringsFromOverview, resolveContinuedCare } from "./continuedCare.js";
 
 /**
  * The conditions the modal offers: active monitoring records
@@ -64,4 +64,14 @@ export function startRoute({ patientId, monitoringIds = [] }, basePath = "/bhc")
   return monitoringIds.length
     ? selectionToRoute({ patientId, monitoringIds }, basePath)
     : buildPatientConsultationPath(patientId, basePath);
+}
+
+/**
+ * Checks the worker's ticked monitoring against a fresh care overview just
+ * before the workspace opens: a record stopped or completed since the modal
+ * was read is reported (never silently dropped), so the modal can say so.
+ */
+export function checkContinuedStart(overview, monitoringIds = []) {
+  const { droppedMonitoringIds } = resolveContinuedCare(overview, { monitoringIds, includeLinkedFollowUps: true });
+  return { ok: droppedMonitoringIds.length === 0, droppedMonitoringIds };
 }

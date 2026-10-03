@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { Check, Minus, Plus, X } from "lucide-react";
 
 import ActionMenu from "../../common/tables/ActionMenu";
@@ -11,7 +11,7 @@ import AddParticipantModal from "./AddParticipantModal";
 import { formatShortDate } from "../../../utils/patientProfile";
 import StartConsultationModal from "../patients/profile/StartConsultationModal";
 import usePatientConsultation from "../../../hooks/usePatientConsultation";
-import { startConsultationAction, startRoute } from "../../../utils/startConsultation";
+import { startConsultationAction } from "../../../utils/startConsultation";
 
 const STATUS_STYLES = {
   Enrolled: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
@@ -27,7 +27,6 @@ const STATUS_STYLES = {
  */
 function ParticipantConsultationAction({ patientId, patientName }) {
   const consultation = usePatientConsultation(patientId);
-  const navigate = useNavigate();
   const [modalOpen, setModalOpen] = useState(false);
   const action = startConsultationAction(consultation);
   const label = consultation.primaryLabel;
@@ -71,9 +70,7 @@ function ParticipantConsultationAction({ patientId, patientName }) {
           <StartConsultationModal
             overview={consultation.careOverview}
             onCancel={() => setModalOpen(false)}
-            onStart={({ monitoringIds }) =>
-              navigate(startRoute({ patientId, monitoringIds }))
-            }
+            onStart={consultation.start}
           />,
           document.body,
         )}
