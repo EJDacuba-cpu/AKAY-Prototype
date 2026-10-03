@@ -459,7 +459,7 @@ textarea,
 }
 
 /* AnatomyFigure: crossfade on front/back flip, a two-pulse ring that hints at
-   the flip button, the marker halo breath, and the hover link-line draw
+   the flip button, and the hover link-line draw
    (--link-length is set inline by the caller to the line's pixel length). */
 @keyframes anatomyFadeIn {
   from {
@@ -481,16 +481,35 @@ textarea,
   }
 }
 
-@keyframes anatomyMarkerPulse {
+@keyframes anatomyAreaPulse {
   0%,
   100% {
-    transform: scale(1);
     opacity: 0.55;
   }
 
+  30% {
+    opacity: 0.6;
+  }
+
+  70% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes anatomyDotPulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px #fff,
+      0 0 0 2px rgb(220 38 38 / 0.35),
+      0 0 6px 1px rgb(220 38 38 / 0.45);
+  }
+
   50% {
-    transform: scale(1.35);
-    opacity: 0.2;
+    box-shadow:
+      0 0 0 1px #fff,
+      0 0 0 3px rgb(220 38 38 / 0.3),
+      0 0 11px 3px rgb(220 38 38 / 0.55);
   }
 }
 
@@ -512,8 +531,36 @@ textarea,
   animation: anatomyFlipHint 600ms ease-out 2;
 }
 
-.anatomy-marker-pulse {
-  animation: anatomyMarkerPulse 1.6s ease-in-out infinite;
+/* Profile body figure: faint red tint on each marked area, stronger and
+   breathing while its finding is revealed (the pulse starts after the 200ms
+   fade-up so the two do not fight). `scale` composes with Tailwind's
+   `translate`. The 7px marker dot carries a white ring and a soft glow; the
+   ring is part of the shadow list so the glow can breathe around it. */
+.anatomy-area {
+  opacity: 0.16;
+  transition:
+    opacity 200ms ease-out,
+    scale 200ms ease-out;
+}
+
+.anatomy-area-active {
+  opacity: 0.55;
+  scale: 1.12;
+}
+
+.anatomy-area-pulse {
+  animation: anatomyAreaPulse 1.8s ease-in-out 200ms infinite;
+}
+
+.anatomy-dot {
+  box-shadow:
+    0 0 0 1px #fff,
+    0 0 0 2px rgb(220 38 38 / 0.35),
+    0 0 6px 1px rgb(220 38 38 / 0.45);
+}
+
+.anatomy-dot-pulse {
+  animation: anatomyDotPulse 1.6s ease-in-out infinite;
 }
 
 .anatomy-link-draw {
@@ -524,8 +571,12 @@ textarea,
 @media (prefers-reduced-motion: reduce) {
   .anatomy-fade-in,
   .anatomy-flip-hint,
-  .anatomy-marker-pulse,
-  .anatomy-link-draw {
+  .anatomy-link-draw,
+  .anatomy-area,
+  .anatomy-area-active,
+  .anatomy-area-pulse,
+  .anatomy-dot-pulse {
     animation: none;
+    transition: none;
   }
 }
