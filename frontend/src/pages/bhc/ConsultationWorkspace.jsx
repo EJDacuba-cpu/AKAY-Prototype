@@ -119,7 +119,7 @@ import {
   ConsultationReviewStep,
 } from "../../components/features/health-records/wizard/HealthRecordWizardSteps";
 import ConsultationProgramPanel from "../../components/features/health-records/wizard/ConsultationProgramPanel";
-import BodyPreviewPanel, { BodyFindingsList, getBodyRegionAnchor } from "../../components/features/health-records/wizard/BodyPreviewPanel";
+import BodyPreviewPanel, { BodyFindingsList } from "../../components/features/health-records/wizard/BodyPreviewPanel";
 import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindings";
 import DiagnosisListField from "../../components/features/health-records/wizard/DiagnosisListField";
 import DiagnosisReportingField from "../../components/features/health-records/wizard/DiagnosisReportingField";
@@ -841,8 +841,10 @@ export default function ConsultationWorkspace() {
   const [physicalExam, setPhysicalExam] = useState("");
   // Findings pinned on the assessment step's 2D body preview.
   const [bodyFindings, setBodyFindings] = useState([]);
-  // The body preview's input while open: { region, anchor, editingId }.
+  // The body preview's input while open: { region, side, anchor, editingId }.
   const [bodyFindingDialog, setBodyFindingDialog] = useState(null);
+  // Which side of the body figure is shown: "front" | "back".
+  const [bodyPreviewSide, setBodyPreviewSide] = useState("front");
   const [medication, setMedication] = useState("");
   const [attendingStaff, setAttendingStaff] = useState(currentUserName);
   const [consultationNotes, setConsultationNotes] = useState("");
@@ -4675,11 +4677,11 @@ export default function ConsultationWorkspace() {
                 <BodyFindingsList
                   findings={bodyFindings}
                   readOnly={workspaceLocked}
-                  onEdit={(item) => setBodyFindingDialog({
-                    region: item.region,
-                    anchor: getBodyRegionAnchor(item.region),
-                    editingId: item.id,
-                  })}
+                  onEdit={(item) => {
+                    // Show the finding's side first; the dialog anchors to that side's dot.
+                    setBodyPreviewSide(item.side);
+                    setBodyFindingDialog({ region: item.region, side: item.side, anchor: null, editingId: item.id });
+                  }}
                   onRemove={(id) => setBodyFindings((current) => current.filter((item) => item.id !== id))}
                 />
               </LockedFormContent>
@@ -4787,19 +4789,24 @@ export default function ConsultationWorkspace() {
       )}
       </fieldset>
       </div>
-      {showSidePanel && (
+      {showSidePanel && (showProgramPanel ? (
         <fieldset disabled={workspaceLocked} className="contents">
-          {showProgramPanel ? programPanel : (
-            <BodyPreviewPanel
-              findings={bodyFindings}
-              onChange={setBodyFindings}
-              readOnly={workspaceLocked || patientGateLocked}
-              dialog={bodyFindingDialog}
-              onDialogChange={setBodyFindingDialog}
-            />
-          )}
+          {programPanel}
         </fieldset>
-      )}
+      ) : (
+        // Outside the locked fieldset so the flip button still works in a
+        // locked review; the panel enforces readOnly itself.
+        <BodyPreviewPanel
+          findings={bodyFindings}
+          onChange={setBodyFindings}
+          readOnly={workspaceLocked || patientGateLocked}
+          dialog={bodyFindingDialog}
+          onDialogChange={setBodyFindingDialog}
+          sex={selectedPatient?.sex}
+          side={bodyPreviewSide}
+          onSideChange={setBodyPreviewSide}
+        />
+      ))}
       </div>
       </ConsultationWorkspaceBody>
 

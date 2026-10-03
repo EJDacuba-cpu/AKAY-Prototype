@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Pencil, Plus, X } from "lucide-react";
 import useMediaQuery from "../../../../hooks/useMediaQuery";
+import AnatomyFigure from "../../patients/AnatomyFigure";
 import {
   BODY_FINDING_LIMITS,
   BODY_REGIONS,
+  BODY_SIDES,
   OTHER_LOCATION,
   createBodyFindingId,
   getBodyRegionLabel,
@@ -11,93 +13,80 @@ import {
   resolveSpecificLocation,
   splitSpecificLocation,
 } from "../../../../utils/bodyFindings";
-import { LEGACY_DOT_POSITIONS as DOT_POSITIONS, FIGURE_SHAPES } from "../../../../utils/bodyFigureGeometry";
+import { getDotPosition, getFigureKey, markerStyle } from "../../../../utils/bodyFigureGeometry";
 
 /**
  * 2D body preview for the Physical Exam & Assessment step: sits in the fixed
  * right-hand column where Barangay Health Services sits on the Interview step.
  *
  * Optional. It documents WHERE on the body a finding was noted for this visit
- * - it never suggests symptoms, diagnoses or interpretations. A plain, neutral
- * standing figure carries one small dot per body area; clicking (or tapping,
- * or Enter/Space on) a dot opens the finding input: anchored beside the dot
- * from 1024px, a bottom sheet below that. On desktop, hovering or focusing a
- * dot previews its findings in a small callout - it never replaces opening
- * the dialog to add or edit one. Added findings are listed by body area under
- * Physical Examination (BodyFindingsList).
+ * - it never suggests symptoms, diagnoses or interpretations. A realistic
+ * male or female figure (front or back, switched only by its flip button)
+ * carries one small dot per body area; clicking (or tapping, or Enter/Space
+ * on) a dot opens the finding input for that area on the side shown:
+ * anchored beside the dot from 1024px, a bottom sheet below that. On desktop,
+ * hovering or focusing a dot previews its findings in a small callout - it
+ * never replaces opening the dialog to add or edit one. Added findings are
+ * listed by body area under Physical Examination (BodyFindingsList).
  *
- * The figure is front-facing, so the PATIENT's right side is drawn on the
- * viewer's left; the R / L markers say so.
+ * Front view: the PATIENT's right side is on the viewer's left. Back view:
+ * the patient's right is on the viewer's right. The R / L markers say so.
  */
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
 const DIALOG_WIDTH = 288;
 const GAP = 12;
 const EDGE = 8;
-const HIT_RADIUS = 14;
-const DOT_RADIUS = 6;
-const RING_RADIUS = 9;
-const BADGE_RADIUS = 6.5;
 
-function RegionShape({ shape, className }) {
-  if (shape.type === "circle") return <circle cx={shape.cx} cy={shape.cy} r={shape.r} className={className} />;
-  if (shape.type === "rect") {
-    return <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} rx={shape.rx} className={className} />;
-  }
-  return <path d={shape.d} className={className} />;
-}
-
-/** The standing figure itself - a fixed outline, never clickable or tinted. */
-function FigureOutline() {
-  return (
-    <g aria-hidden="true">
-      {FIGURE_SHAPES.map((shape, index) => (
-        <RegionShape key={index} shape={shape} className="fill-[#F9FAFB] stroke-[#D1D5DB] stroke-[1.5]" />
-      ))}
-    </g>
-  );
-}
-
-/** One body-area dot: neutral by default, AKAY red once it has a finding. */
-function BodyDot({ region, label, count, active, hovered, readOnly, onOpen, onHoverStart, onHoverEnd }) {
-  const [x, y] = DOT_POSITIONS[region];
+/**
+ * One body-area dot: neutral by default, AKAY red once it has a finding on
+ * the side shown. An HTML button at the region's normalized position; its
+ * sizes are fixed CSS pixels, so the 28px hit area holds as the figure scales.
+ */
+function BodyDot({ region, label, position, count, active, hovered, readOnly, onOpen, onHoverStart, onHoverEnd }) {
   const hasFindings = count > 0;
   const highlighted = active || hovered;
-  const dotTone = hasFindings ? "fill-[#DC2626] stroke-white" : "fill-white stroke-[#9CA3AF]";
+  const dotTone = hasFindings ? "border-white bg-[#DC2626]" : "border-[#9CA3AF] bg-white";
   const fullLabel = `${label}${hasFindings ? `, ${count} finding${count === 1 ? "" : "s"}` : ""}`;
 
   return (
-    <g
+    <button
+      type="button"
       data-region={region}
-      role={readOnly ? "img" : "button"}
+      role={readOnly ? "img" : undefined}
       tabIndex={readOnly ? -1 : 0}
       aria-label={readOnly ? fullLabel : `${fullLabel}. Add a finding`}
+      // A native button turns Enter and Space into this click.
       onClick={readOnly ? undefined : (event) => onOpen(region, event.currentTarget)}
-      onKeyDown={readOnly ? undefined : (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onOpen(region, event.currentTarget);
-        }
-      }}
       onMouseEnter={() => onHoverStart(region)}
       onMouseLeave={() => onHoverEnd(region)}
       onFocus={() => onHoverStart(region)}
       onBlur={() => onHoverEnd(region)}
-      className={`outline-none ${readOnly ? "" : "cursor-pointer"}`}
+      style={markerStyle(position)}
+      // The transparent 28px button is the hit area - the visible dot stays small and clean.
+      className={`absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40 ${
+        readOnly ? "cursor-default" : "cursor-pointer"
+      }`}
     >
-      {/* Larger, invisible hit area - the visible dot stays small and clean. */}
-      <circle cx={x} cy={y} r={HIT_RADIUS} className="fill-transparent" />
-      {highlighted && <circle cx={x} cy={y} r={RING_RADIUS} className="fill-none stroke-[#DC2626] stroke-2" />}
-      <circle cx={x} cy={y} r={DOT_RADIUS} className={`${dotTone} stroke-[1.5] transition-colors duration-150`} />
-      {count >= 2 && (
-        <g pointerEvents="none">
-          <circle cx={x + 7} cy={y - 7} r={BADGE_RADIUS} className="fill-[#DC2626] stroke-white stroke-[1.5]" />
-          <text x={x + 7} y={y - 7} textAnchor="middle" dominantBaseline="central" className="fill-white text-[8px] font-bold">
-            {count}
-          </text>
-        </g>
+      {highlighted && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute left-1/2 top-1/2 h-[18px] w-[18px] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#DC2626]"
+        />
       )}
-    </g>
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none block h-3 w-3 rounded-full border-[1.5px] transition-colors duration-150 ${dotTone}`}
+      />
+      {count >= 2 && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute left-[calc(50%+7px)] top-[calc(50%-7px)] flex h-[13px] min-w-[13px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[1.5px] border-white bg-[#DC2626] px-px text-[8px] font-bold leading-none text-white"
+        >
+          {count}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -106,10 +95,12 @@ function BodyDot({ region, label, count, active, hovered, readOnly, onOpen, onHo
  * line and callout card for a dot with findings, or a plain label for one
  * without. Decorative only - the dot's own aria-label already carries this
  * information, so the preview is hidden from assistive tech. Clicking still
- * goes through onOpen regardless of hover state.
+ * goes through onOpen regardless of hover state. Counts and previews cover
+ * only the side shown.
  */
-function BodyFigure({ findings, countByRegion, activeRegion, readOnly, isDesktop, onOpen }) {
+function BodyFigure({ findings, sex, side, onToggleSide, countByRegion, activeRegion, readOnly, isDesktop, onOpen }) {
   const [hoveredRegion, setHoveredRegion] = useState(null);
+  const figure = getFigureKey(sex);
 
   function hoverStart(region) {
     if (!isDesktop || activeRegion) return;
@@ -121,37 +112,40 @@ function BodyFigure({ findings, countByRegion, activeRegion, readOnly, isDesktop
 
   const overlayRegion = activeRegion ? null : hoveredRegion;
   const overlayCount = overlayRegion ? countByRegion[overlayRegion] || 0 : 0;
-  const overlayFinding = overlayRegion ? findings.find((item) => item.region === overlayRegion) : null;
-  const [overlayX, overlayY] = overlayRegion ? DOT_POSITIONS[overlayRegion] : [0, 0];
-  const overlaySide = overlayX <= 100 ? "right" : "left";
+  const overlayFinding = overlayRegion
+    ? findings.find((item) => item.region === overlayRegion && item.side === side)
+    : null;
+  const [overlayX, overlayY] = overlayRegion ? getDotPosition(figure, side, overlayRegion) : [0, 0];
+  const overlaySide = overlayX <= 0.5 ? "right" : "left";
   const overlayStyle = overlayRegion
     ? overlaySide === "right"
-      ? { top: `${(overlayY / 400) * 100}%`, left: `${(overlayX / 200) * 100}%`, transform: "translateY(-50%)" }
-      : { top: `${(overlayY / 400) * 100}%`, right: `${100 - (overlayX / 200) * 100}%`, transform: "translateY(-50%)" }
+      ? { top: `${overlayY * 100}%`, left: `calc(${overlayX * 100}% + 14px)`, transform: "translateY(-50%)" }
+      : { top: `${overlayY * 100}%`, right: `calc(${(1 - overlayX) * 100}% + 14px)`, transform: "translateY(-50%)" }
     : null;
 
   return (
-    <div className="relative mx-auto w-full max-w-[190px]">
-      <svg viewBox="0 0 200 400" className="mx-auto block h-auto w-full select-none">
-        <title>Front-facing body figure</title>
-        <text x="14" y="18" className="fill-[#6B7280] text-[11px] font-semibold">R</text>
-        <text x="180" y="18" className="fill-[#6B7280] text-[11px] font-semibold">L</text>
-        <FigureOutline />
-        {BODY_REGIONS.map((region) => (
-          <BodyDot
-            key={region.key}
-            region={region.key}
-            label={region.label}
-            count={countByRegion[region.key] || 0}
-            active={activeRegion === region.key}
-            hovered={hoveredRegion === region.key}
-            readOnly={readOnly}
-            onOpen={onOpen}
-            onHoverStart={hoverStart}
-            onHoverEnd={hoverEnd}
-          />
-        ))}
-      </svg>
+    <AnatomyFigure
+      sex={sex}
+      side={side}
+      onToggleSide={onToggleSide}
+      label={side === "front" ? "Front-facing body figure" : "Back-facing body figure"}
+      className="mx-auto w-full max-w-[240px]"
+    >
+      {BODY_REGIONS.map((region) => (
+        <BodyDot
+          key={region.key}
+          region={region.key}
+          label={getBodyRegionLabel(region.key, side)}
+          position={getDotPosition(figure, side, region.key)}
+          count={countByRegion[region.key] || 0}
+          active={activeRegion === region.key}
+          hovered={hoveredRegion === region.key}
+          readOnly={readOnly}
+          onOpen={onOpen}
+          onHoverStart={hoverStart}
+          onHoverEnd={hoverEnd}
+        />
+      ))}
 
       {overlayRegion && (
         <div
@@ -167,7 +161,7 @@ function BodyFigure({ findings, countByRegion, activeRegion, readOnly, isDesktop
           <div
             className={`${overlayCount > 0 ? "bp-callout-card w-[168px] px-2.5 py-2" : "bp-tooltip whitespace-nowrap px-2 py-1"} border border-[#111827] bg-[#111827] text-[11px] leading-snug text-white shadow-lg`}
           >
-            <p className="font-semibold">{getBodyRegionLabel(overlayRegion)}</p>
+            <p className="font-semibold">{getBodyRegionLabel(overlayRegion, side)}</p>
             {overlayCount > 0 && (
               <>
                 <p className="text-[#D1D5DB]">{overlayCount} finding{overlayCount === 1 ? "" : "s"}</p>
@@ -181,23 +175,23 @@ function BodyFigure({ findings, countByRegion, activeRegion, readOnly, isDesktop
           </div>
         </div>
       )}
-    </div>
+    </AnatomyFigure>
   );
 }
 
 /**
- * The input for one region: its findings (each editable and removable) and a
- * single free-text Finding field with an optional note. Nothing is suggested
- * or inferred - the user writes the finding. A native modal <dialog> (focus
- * trap, Esc, backdrop), placed beside the dot from 1024px and as a bottom
- * sheet below that.
+ * The input for one region on one side: its findings (each editable and
+ * removable) and a single free-text Finding field with an optional note.
+ * Nothing is suggested or inferred - the user writes the finding. A native
+ * modal <dialog> (focus trap, Esc, backdrop), placed beside the dot from
+ * 1024px and as a bottom sheet below that.
  *
  * Below 1024px, a region that already has findings opens straight to that
  * summary - the add/edit form only appears once "Add finding" is tapped, or
  * immediately when editing a specific entry. A region with no findings yet
  * opens straight to the form, so there's no empty summary to tap through.
  */
-function FindingDialog({ region, anchor, findings, initialEditingId, readOnly, onSave, onRemove, onClose }) {
+function FindingDialog({ region, side, anchor, findings, initialEditingId, readOnly, onSave, onRemove, onClose }) {
   const dialogRef = useRef(null);
   const findingInputRef = useRef(null);
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
@@ -205,13 +199,13 @@ function FindingDialog({ region, anchor, findings, initialEditingId, readOnly, o
   const [editingId, setEditingId] = useState(initial?.id || null);
   const [finding, setFinding] = useState(initial?.finding || "");
   const [note, setNote] = useState(initial?.note || "");
-  const initialLocation = splitSpecificLocation(region, initial?.location);
+  const initialLocation = splitSpecificLocation(region, initial?.location, side);
   const [locationChoice, setLocationChoice] = useState(initialLocation.choice);
   const [otherLocation, setOtherLocation] = useState(initialLocation.other);
   const [formOpen, setFormOpen] = useState(() => Boolean(initial) || findings.length === 0);
   const otherLocationRef = useRef(null);
-  const locationOptions = getSpecificLocationOptions(region);
-  const titleId = `body-finding-title-${region}`;
+  const locationOptions = getSpecificLocationOptions(region, side);
+  const titleId = `body-finding-title-${side}-${region}`;
   const showForm = isDesktop || formOpen;
 
   useLayoutEffect(() => {
@@ -226,11 +220,14 @@ function FindingDialog({ region, anchor, findings, initialEditingId, readOnly, o
 
     const place = () => {
       const desktop = window.matchMedia(DESKTOP_QUERY).matches;
-      if (!desktop || !anchor?.isConnected) {
+      // Opened from the findings list there is no anchor: by now the figure
+      // has re-rendered on the finding's side, so its dot is the anchor.
+      const target = anchor?.isConnected ? anchor : getBodyRegionAnchor(region);
+      if (!desktop || !target) {
         Object.assign(dialog.style, { position: "fixed", left: "0", right: "0", top: "auto", bottom: "0" });
         return;
       }
-      const rect = anchor.getBoundingClientRect();
+      const rect = target.getBoundingClientRect();
       const height = dialog.offsetHeight;
       let left = rect.left - DIALOG_WIDTH - GAP;
       if (left < EDGE) left = Math.min(rect.right + GAP, window.innerWidth - DIALOG_WIDTH - EDGE);
@@ -255,7 +252,7 @@ function FindingDialog({ region, anchor, findings, initialEditingId, readOnly, o
       observer.disconnect();
       window.removeEventListener("resize", place);
     };
-  }, [anchor]);
+  }, [anchor, region]);
 
   // Focus the Finding field whenever the form appears - on open when it
   // starts visible, or when "Add finding" reveals it on mobile.
@@ -280,6 +277,7 @@ function FindingDialog({ region, anchor, findings, initialEditingId, readOnly, o
     onSave({
       id: editingId || createBodyFindingId(),
       region,
+      side,
       location: resolveSpecificLocation(locationChoice, otherLocation),
       finding: text,
       note: note.trim(),
@@ -289,7 +287,7 @@ function FindingDialog({ region, anchor, findings, initialEditingId, readOnly, o
   }
 
   function startEdit(item) {
-    const split = splitSpecificLocation(region, item.location);
+    const split = splitSpecificLocation(region, item.location, side);
     setEditingId(item.id);
     setFinding(item.finding);
     setNote(item.note || "");
@@ -335,7 +333,7 @@ function FindingDialog({ region, anchor, findings, initialEditingId, readOnly, o
       <div className="flex items-center justify-between gap-2 border-b border-[#E5E7EB] px-4 py-2.5">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6B7280]">Body area</p>
-          <h2 id={titleId} className="text-[14px] font-bold leading-snug">{getBodyRegionLabel(region)}</h2>
+          <h2 id={titleId} className="text-[14px] font-bold leading-snug">{getBodyRegionLabel(region, side)}</h2>
           {findings.length > 0 && (
             <p className="mt-0.5 text-[11px] text-[#6B7280]">{findings.length} finding{findings.length === 1 ? "" : "s"}</p>
           )}
@@ -490,24 +488,37 @@ function FindingDialog({ region, anchor, findings, initialEditingId, readOnly, o
   );
 }
 
-/** The figure's dot element, used to anchor the dialog beside it. */
+/** The figure's dot element for a region on the side shown, used to anchor the dialog beside it. */
 export function getBodyRegionAnchor(region) {
   if (typeof document === "undefined") return null;
   return document.querySelector(`[data-body-preview] [data-region="${region}"]`);
 }
 
 /**
- * @param findings       [{ id, region, location, finding, note }]
+ * @param findings       [{ id, region, side, location, finding, note }]
  * @param onChange       receives the next findings list
- * @param readOnly       view only (locked review / patient gate)
- * @param dialog         { region, anchor, editingId } while the input is open, else null
+ * @param readOnly       view only (locked review / patient gate); flipping stays allowed
+ * @param dialog         { region, side, anchor, editingId } while the input is open, else
+ *                       null; anchor may be null (the dot is then looked up)
  * @param onDialogChange opens (object) or closes (null) the input; owned by the
  *                       page so the Physical Examination list can open it too
+ * @param sex            the patient's sex; picks the male or female figure
+ * @param side           "front" | "back" - the figure side shown, owned by the page
+ * @param onSideChange   receives the next side when the flip button is used
  */
-export default function BodyPreviewPanel({ findings = [], onChange, readOnly = false, dialog, onDialogChange }) {
+export default function BodyPreviewPanel({
+  findings = [],
+  onChange,
+  readOnly = false,
+  dialog,
+  onDialogChange,
+  sex,
+  side = "front",
+  onSideChange,
+}) {
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const countByRegion = findings.reduce((counts, item) => {
-    counts[item.region] = (counts[item.region] || 0) + 1;
+    if (item.side === side) counts[item.region] = (counts[item.region] || 0) + 1;
     return counts;
   }, {});
 
@@ -525,6 +536,10 @@ export default function BodyPreviewPanel({ findings = [], onChange, readOnly = f
       onChange([...findings, item]);
     }
   }
+
+  // The flip is hidden while the input is open, so the side can't change
+  // under it.
+  const toggleSide = onSideChange ? () => onSideChange(side === "front" ? "back" : "front") : undefined;
 
   return (
     <aside
@@ -549,13 +564,18 @@ export default function BodyPreviewPanel({ findings = [], onChange, readOnly = f
       <div className="px-4 pb-3 pt-3">
         <BodyFigure
           findings={findings}
+          sex={sex}
+          side={side}
+          onToggleSide={dialog ? undefined : toggleSide}
           countByRegion={countByRegion}
           activeRegion={dialog?.region}
           readOnly={readOnly}
           isDesktop={isDesktop}
-          onOpen={(region, anchor) => onDialogChange({ region, anchor, editingId: null })}
+          onOpen={(region, anchor) => onDialogChange({ region, side, anchor, editingId: null })}
         />
-        <p className="mt-1 text-center text-[11px] text-[#6B7280]">Front view · R / L = patient&apos;s side</p>
+        <p className="mt-1 text-center text-[11px] text-[#6B7280]">
+          {`${side === "front" ? "Front" : "Back"} view · R / L = patient's side`}
+        </p>
       </div>
 
       <p className="border-t border-[#E5E7EB] px-4 py-2 text-[11px] leading-relaxed text-[#6B7280]">
@@ -564,11 +584,12 @@ export default function BodyPreviewPanel({ findings = [], onChange, readOnly = f
 
       {dialog && (
         <FindingDialog
-          key={`${dialog.region}:${dialog.editingId || ""}`}
+          key={`${dialog.side}:${dialog.region}:${dialog.editingId || ""}`}
           region={dialog.region}
+          side={dialog.side}
           anchor={dialog.anchor}
           initialEditingId={dialog.editingId}
-          findings={findings.filter((item) => item.region === dialog.region)}
+          findings={findings.filter((item) => item.region === dialog.region && item.side === dialog.side)}
           readOnly={readOnly}
           onSave={saveFinding}
           onRemove={(id) => onChange(findings.filter((item) => item.id !== id))}
@@ -580,14 +601,18 @@ export default function BodyPreviewPanel({ findings = [], onChange, readOnly = f
 }
 
 /**
- * Body findings organised by body area, shown under the Physical Examination
- * findings textarea. The area comes from the region that was selected, so it
- * is never typed again. Renders nothing until a finding exists - the body map
- * stays optional.
+ * Body findings organised by body area and side, shown under the Physical
+ * Examination findings textarea: front areas first, then back areas. The area
+ * comes from the region and side that were selected, so it is never typed
+ * again. Renders nothing until a finding exists - the body map stays optional.
  */
 export function BodyFindingsList({ findings = [], readOnly = false, onEdit, onRemove }) {
-  const groups = BODY_REGIONS
-    .map((region) => ({ ...region, items: findings.filter((item) => item.region === region.key) }))
+  const groups = BODY_SIDES
+    .flatMap((side) => BODY_REGIONS.map(({ key }) => ({
+      id: `${side}:${key}`,
+      label: getBodyRegionLabel(key, side),
+      items: findings.filter((item) => item.side === side && item.region === key),
+    })))
     .filter((group) => group.items.length > 0);
   if (groups.length === 0) return null;
 
@@ -598,7 +623,7 @@ export function BodyFindingsList({ findings = [], readOnly = false, onEdit, onRe
       </p>
       <div className="divide-y divide-[#E5E7EB] border border-[#E5E7EB]">
         {groups.map((group) => (
-          <div key={group.key} className="flex flex-col gap-1 px-3 py-2 sm:flex-row sm:gap-3">
+          <div key={group.id} className="flex flex-col gap-1 px-3 py-2 sm:flex-row sm:gap-3">
             <p className="w-40 flex-none pt-1 text-xs font-semibold text-[#374151]">{group.label}</p>
             <ul className="min-w-0 flex-1 space-y-1">
               {group.items.map((item) => (
