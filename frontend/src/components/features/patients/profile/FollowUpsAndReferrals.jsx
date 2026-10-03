@@ -24,7 +24,7 @@ export function FollowUpStateBadge({ state, date }) {
   );
 }
 
-function getReferralDate(referral = {}) {
+export function getReferralDate(referral = {}) {
   return formatDate(
     referral.dateOfReferral ||
       referral.date_of_referral ||
@@ -38,7 +38,7 @@ function getReferralDate(referral = {}) {
   );
 }
 
-function getReferralDestination(referral = {}) {
+export function getReferralDestination(referral = {}) {
   return (
     referral.receivingFacility ||
     referral.destinationFacility ||
