@@ -8,6 +8,7 @@ use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Services\ActionPermissions;
 use App\Services\FollowUpTaskSyncService;
 use App\Services\HealthRecordDraftService;
 use App\Services\ReferralCreationService;
@@ -224,6 +225,45 @@ class HealthRecordDraftFinalizationTest extends TestCase
             'consumed_health_record_id' => $recordId,
             'encrypted_payload' => null,
         ]);
+    }
+
+    public function test_body_findings_keep_region_side_and_location_through_draft_and_finalization(): void
+    {
+        $draftId = $this->createDraft([
+            ...$this->draftPayload(),
+            'bodyFindings' => [
+                ['id' => 'f1', 'region' => 'chest', 'side' => 'back', 'location' => 'Upper spine', 'finding' => 'Rash', 'note' => '2 days'],
+                ['id' => 'f2', 'region' => 'left_leg', 'location' => 'Knee', 'finding' => 'Swelling'],
+            ],
+        ]);
+
+        $draft = $this->actingAs($this->owner, 'sanctum')
+            ->getJson("/api/health-record-drafts/$draftId")
+            ->assertOk()
+            ->assertJsonPath('data.payload.bodyFindings.0.region', 'chest')
+            ->assertJsonPath('data.payload.bodyFindings.0.side', 'back')
+            ->assertJsonPath('data.payload.bodyFindings.0.location', 'Upper spine')
+            ->assertJsonPath('data.payload.bodyFindings.1.region', 'left_leg')
+            ->assertJsonPath('data.payload.bodyFindings.1.location', 'Knee')
+            ->assertJsonMissingPath('data.payload.bodyFindings.1.side');
+
+        $recordId = $this->finalize($draftId, (string) Str::uuid(), [
+            ...$this->officialPayload(),
+            'body_findings' => [
+                ['id' => 'f1', 'region' => 'chest', 'side' => 'back', 'location' => 'Upper spine', 'finding' => 'Rash', 'note' => '2 days'],
+                ['id' => 'f2', 'region' => 'left_leg', 'side' => 'front', 'location' => 'Knee', 'finding' => 'Swelling'],
+            ],
+        ], ['X-Draft-Version' => (string) $draft->json('data.version')])->assertCreated()->json('data.id');
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->getJson("/api/health-records/$recordId")
+            ->assertOk()
+            ->assertJsonPath('data.body_findings.0.region', 'chest')
+            ->assertJsonPath('data.body_findings.0.side', 'back')
+            ->assertJsonPath('data.body_findings.0.location', 'Upper spine')
+            ->assertJsonPath('data.body_findings.1.region', 'left_leg')
+            ->assertJsonPath('data.body_findings.1.side', 'front')
+            ->assertJsonPath('data.body_findings.1.location', 'Knee');
     }
 
     public function test_draft_binding_and_terminal_states_are_enforced_before_official_creation(): void
@@ -443,10 +483,10 @@ class HealthRecordDraftFinalizationTest extends TestCase
             ->json('data.id');
     }
 
-    private function finalize(string $draftId, string $key, array $payload)
+    private function finalize(string $draftId, string $key, array $payload, array $extraHeaders = [])
     {
         return $this->actingAs($this->owner, 'sanctum')
-            ->withHeaders($this->officialHeaders($key, $draftId))
+            ->withHeaders([...$this->officialHeaders($key, $draftId), ...$extraHeaders])
             ->postJson('/api/health-records', $payload);
     }
 
@@ -521,6 +561,7 @@ class HealthRecordDraftFinalizationTest extends TestCase
             'role' => User::ROLE_BHW,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhcId,
+            'permissions' => ActionPermissions::PRESETS['clinical'],
         ]);
     }
 }

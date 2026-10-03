@@ -283,6 +283,7 @@ class HealthRecordRequest extends FormRequest
             'body_findings' => ['nullable', 'array', 'max:50'],
             'body_findings.*.id' => ['nullable', 'string', 'max:64'],
             'body_findings.*.region' => ['required', 'string', Rule::in(HealthRecord::BODY_REGIONS)],
+            'body_findings.*.side' => ['nullable', 'string', Rule::in(['front', 'back'])],
             'body_findings.*.location' => ['nullable', 'string', 'max:100'],
             'body_findings.*.finding' => ['required', 'string', 'max:150'],
             'body_findings.*.note' => ['nullable', 'string', 'max:500'],

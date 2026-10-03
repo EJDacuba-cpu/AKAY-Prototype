@@ -35,6 +35,7 @@ class HealthRecordDraftPayloadService
         'bodyFindings' => ['*' => [
             'id' => self::SCALAR,
             'region' => self::SCALAR,
+            'side' => self::SCALAR,
             'location' => self::SCALAR,
             'finding' => self::SCALAR,
             'note' => self::SCALAR,
@@ -548,6 +549,7 @@ class HealthRecordDraftPayloadService
             'payload.bodyFindings' => ['nullable', 'array', 'max:50'],
             'payload.bodyFindings.*.id' => ['nullable', 'string', 'max:64'],
             'payload.bodyFindings.*.region' => ['required', 'string', Rule::in(HealthRecord::BODY_REGIONS)],
+            'payload.bodyFindings.*.side' => ['nullable', 'string', Rule::in(['front', 'back'])],
             'payload.bodyFindings.*.location' => ['nullable', 'string', 'max:100'],
             'payload.bodyFindings.*.finding' => ['required', 'string', 'max:150'],
             'payload.bodyFindings.*.note' => ['nullable', 'string', 'max:500'],

@@ -6,6 +6,7 @@ use App\Models\BarangayHealthCenter;
 use App\Models\Patient;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Services\ActionPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -21,7 +22,7 @@ class ConsultationProgramsTest extends TestCase
         parent::setUp();
         $rhu = RuralHealthUnit::create(['name' => 'Programs RHU', 'status' => 'active']);
         $bhc = BarangayHealthCenter::create(['name' => 'Programs BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
-        $user = User::create(['name' => 'Programs BHW', 'email' => 'programs@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHW, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $bhc->id]);
+        $user = User::create(['name' => 'Programs BHW', 'email' => 'programs@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHW, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $bhc->id, 'permissions' => ActionPermissions::PRESETS['clinical']]);
         $this->patient = Patient::create(['first_name' => 'Test', 'last_name' => 'Programs', 'sex' => 'Female', 'barangay_health_center_id' => $bhc->id]);
         $this->actingAs($user, 'sanctum');
     }
@@ -224,6 +225,53 @@ class ConsultationProgramsTest extends TestCase
             ->assertJsonValidationErrors(['body_findings.0.region', 'body_findings.1.finding', 'body_findings.2.location']);
     }
 
+    public function test_body_findings_keep_their_side(): void
+    {
+        $id = $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
+            'patient_id' => $this->patient->id,
+            'category' => 'General Consultation',
+            'chief_complaint' => 'Rash',
+            'body_findings' => [
+                ['id' => 'f1', 'region' => 'chest', 'side' => 'back', 'finding' => 'Rash'],
+                ['id' => 'f2', 'region' => 'head', 'side' => 'front', 'finding' => 'Cut'],
+                ['id' => 'f3', 'region' => 'left_leg', 'finding' => 'Swelling'],
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $this->getJson("/api/health-records/$id")->assertOk()
+            ->assertJsonPath('data.body_findings.0.side', 'back')
+            ->assertJsonPath('data.body_findings.1.side', 'front')
+            ->assertJsonMissingPath('data.body_findings.2.side');
+    }
+
+    public function test_body_findings_reject_an_unknown_side(): void
+    {
+        $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
+            'patient_id' => $this->patient->id,
+            'category' => 'General Consultation',
+            'chief_complaint' => 'Rash',
+            'body_findings' => [
+                ['region' => 'chest', 'side' => 'left', 'finding' => 'Rash'],
+            ],
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['body_findings.0.side']);
+    }
+
+    public function test_draft_rejects_an_unknown_body_finding_side(): void
+    {
+        $this->postJson('/api/health-record-drafts', [
+            'patient_id' => $this->patient->id, 'classification' => 'General Consultation',
+            'payload' => [
+                'chiefComplaint' => 'Rash',
+                'bodyFindings' => [[
+                    'id' => 'f1', 'region' => 'chest', 'side' => 'top', 'finding' => 'Rash',
+                ]],
+                'wizardPhase' => 'program',
+            ],
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['payload.bodyFindings.0.side']);
+    }
+
     public function test_body_findings_round_trip_through_a_draft(): void
     {
         $draft = $this->postJson('/api/health-record-drafts', [
@@ -231,7 +279,7 @@ class ConsultationProgramsTest extends TestCase
             'payload' => [
                 'chiefComplaint' => 'Abdominal pain',
                 'bodyFindings' => [[
-                    'id' => 'f1', 'region' => 'abdomen', 'location' => 'Right lower quadrant',
+                    'id' => 'f1', 'region' => 'abdomen', 'side' => 'back', 'location' => 'Right lower quadrant',
                     'finding' => 'Abdominal pain', 'note' => 'RLQ',
                 ]],
                 'wizardPhase' => 'program',
@@ -240,6 +288,7 @@ class ConsultationProgramsTest extends TestCase
 
         $this->getJson("/api/health-record-drafts/$draft")->assertOk()
             ->assertJsonPath('data.payload.bodyFindings.0.region', 'abdomen')
+            ->assertJsonPath('data.payload.bodyFindings.0.side', 'back')
             ->assertJsonPath('data.payload.bodyFindings.0.location', 'Right lower quadrant')
             ->assertJsonPath('data.payload.bodyFindings.0.note', 'RLQ');
     }
