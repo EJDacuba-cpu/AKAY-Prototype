@@ -41,7 +41,7 @@ function ConditionsSection({ background }) {
       id="overview-conditions"
       title="Current Conditions"
       meta={diseases.length ? diseases.length : null}
-      maxHeight="max-h-[180px]"
+      share={2}
     >
       {diseases.length === 0 ? (
         <OverviewNote>No documented conditions yet.</OverviewNote>
@@ -78,7 +78,7 @@ function CareTrackingSection({ entries, programLabels, onViewAll }) {
   return (
     <OverviewCard
       id="overview-care-tracking"
-      maxHeight="max-h-[240px]"
+      share={2.5}
       title="Care Tracking & Monitoring"
       action={entries.length > 0 ? <TextAction onClick={onViewAll}>View all</TextAction> : null}
     >
@@ -123,7 +123,7 @@ function ReferralsPreview({ referrals, isLoading, isError, onViewAll, onView }) 
   return (
     <OverviewCard
       id="overview-referrals"
-      maxHeight="max-h-[200px]"
+      share={2}
       title="Referrals"
       action={referrals.length > 0 ? <TextAction onClick={onViewAll}>View all ({referrals.length})</TextAction> : null}
     >
@@ -172,7 +172,7 @@ function FollowUpsPreview({ followUps, onViewAll, onView }) {
   return (
     <OverviewCard
       id="overview-follow-ups"
-      maxHeight="max-h-[200px]"
+      share={2}
       title="Upcoming Follow-ups"
       meta={followUps.length ? `${followUps.length} active` : null}
       action={followUps.length > 0 ? <TextAction onClick={onViewAll}>View all</TextAction> : null}
@@ -214,7 +214,7 @@ function RecentVisitsPreview({ records, isLoading, onViewAll, onView }) {
   return (
     <OverviewCard
       id="overview-recent-visits"
-      maxHeight="max-h-[200px]"
+      share={2}
       title="Recent Visits"
       action={records.length > 0 ? <TextAction onClick={onViewAll}>View all ({records.length})</TextAction> : null}
     >
@@ -256,8 +256,8 @@ function RecentVisitsPreview({ records, isLoading, onViewAll, onView }) {
 /**
  * Right column of the Overview board: documented conditions, care tracking,
  * latest referrals, the next follow-ups and the most recent visits - each a
- * compact card linking to its full tab. Only rendered for roles that may
- * view clinical history.
+ * compact card linking to its full tab, splitting the column height by card
+ * share. Only rendered for roles that may view clinical history.
  */
 export default function ClinicalOverviewColumn({
   patient,
@@ -278,7 +278,7 @@ export default function ClinicalOverviewColumn({
   onViewRecord,
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className="flex min-h-0 flex-1 flex-col gap-1.5">
       <ConditionsSection background={patient.medicalBackground} />
       <CareTrackingSection entries={careTracking} programLabels={programLabels} onViewAll={onViewPrograms} />
       <ReferralsPreview

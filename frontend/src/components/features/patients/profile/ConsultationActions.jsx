@@ -55,7 +55,7 @@ export function ConsultationNotice({ consultation }) {
 
   if (isError) {
     return (
-      <p role="status" className="flex items-center gap-3 border-t border-gray-200 px-4 py-1.5 text-xs text-gray-600">
+      <p role="status" className="mt-1 flex items-center gap-3 py-1 text-xs text-gray-600">
         Unable to check for an unfinished consultation.
         <TextAction onClick={retry}>Retry</TextAction>
       </p>
@@ -66,7 +66,7 @@ export function ConsultationNotice({ consultation }) {
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-900">
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-900">
         <span className="min-w-0 truncate">
           <span className="font-semibold">Unfinished consultation</span>
           {draft.lastSavedAt ? (

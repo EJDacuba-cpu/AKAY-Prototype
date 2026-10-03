@@ -11,7 +11,7 @@ function AllergyCard({ allergies }) {
   const recorded = text && !NO_ALLERGY_PATTERN.test(text);
   const Icon = recorded ? ShieldAlert : ShieldCheck;
   return (
-    <OverviewCard id="overview-alerts" title="Alerts & Allergies" maxHeight="max-h-[100px]">
+    <OverviewCard id="overview-alerts" title="Alerts & Allergies" share={1.25} minHeight={96}>
       <p className={`flex items-start gap-1.5 text-[13px] leading-snug ${recorded ? "font-semibold text-red-700" : "text-slate-500"}`}>
         <Icon size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
         <span className="min-w-0 break-words">
@@ -28,7 +28,7 @@ function BackgroundSummaryCard({ background, onEdit }) {
     <OverviewCard
       id="overview-background"
       title="Patient Background"
-      maxHeight="max-h-[240px]"
+      share={3}
       action={<TextAction onClick={onEdit}>Edit →</TextAction>}
     >
       <dl className="space-y-0.5 text-xs">
@@ -47,12 +47,13 @@ function BackgroundSummaryCard({ background, onEdit }) {
 
 /**
  * Left column of the Overview board: allergy alert, latest vitals with
- * trends, and the background summary. Identity and demographics live in
- * the profile header and Patient Information tab, not here.
+ * trends, and the background summary, splitting the column height by card
+ * share. Identity and demographics live in the profile header and Patient
+ * Information tab, not here.
  */
 export default function OverviewSummaryColumn({ patient, records = [], recordsLoading = false, onEditBackground }) {
   return (
-    <div className="space-y-1.5">
+    <div className="flex min-h-0 flex-1 flex-col gap-1.5">
       <AllergyCard allergies={patient.medicalBackground?.allergies} />
       <VitalsTrendList records={records} isLoading={recordsLoading} />
       <BackgroundSummaryCard background={patient.medicalBackground} onEdit={onEditBackground} />

@@ -51,9 +51,12 @@ import {
 
 const BACKGROUND_SECTION_KEYS = ["medical", "family", "social"];
 
+// The profile fills the whole content area, leaving only a 10px margin.
+const PROFILE_CONTENT_CLASS = "p-[10px] pb-[max(10px,env(safe-area-inset-bottom))]";
+
 function ProfileShell({ children }) {
   return (
-    <DashboardLayout role="bhc" title="Patient Details">
+    <DashboardLayout role="bhc" title="Patient Details" contentClassName={PROFILE_CONTENT_CLASS}>
       {children}
     </DashboardLayout>
   );
@@ -69,7 +72,7 @@ function ProfileTabs({ tabs, activeTab, onSelect }) {
     <div
       role="tablist"
       aria-label="Patient profile"
-      className="mb-2 overflow-x-auto rounded-card border border-[#E5E7EB] bg-white shadow-card"
+      className="mb-1.5 shrink-0 overflow-x-auto rounded-card border border-[#E5E7EB] bg-white shadow-card"
     >
       <nav className="flex">
         {tabs.map((tab) => {
@@ -102,10 +105,12 @@ function ProfileTabs({ tabs, activeTab, onSelect }) {
 
 /**
  * BHC patient profile: the identity header and tab strip, then the active
- * tab. Overview is a compact card board (alerts, vitals and background
- * summary; Visual Health Summary of recorded body findings; clinical
- * overview). Medical / Family / Social Background is edited inline on the
- * Patient Information tab, below registration.
+ * tab, filling the available width and height. Overview is a card board that
+ * fills the space under the tabs (alerts, vitals and background summary;
+ * Visual Health Summary of recorded body findings; clinical overview). Every
+ * other tab scrolls inside its own panel, so the header and tabs stay put.
+ * Medical / Family / Social Background is edited inline on the Patient
+ * Information tab, below registration.
  */
 export default function PatientDetails() {
   const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
@@ -487,7 +492,7 @@ export default function PatientDetails() {
   return (
     <>
       <ProfileShell>
-        <div className="bhc-patient-profile min-h-[520px] px-4 pt-1.5 pb-4 font-sans sm:px-6 [&_h1]:font-sans! [&_h2]:font-sans! [&_h3]:font-sans! [&_h4]:font-sans!">
+        <div className="bhc-patient-profile flex h-full min-h-0 flex-col font-sans [&_h1]:font-sans! [&_h2]:font-sans! [&_h3]:font-sans! [&_h4]:font-sans!">
           <PatientProfileHeader
             patient={patient}
             patientId={patientId}
@@ -497,7 +502,7 @@ export default function PatientDetails() {
             activeFollowUps={activeFollowUps}
           />
 
-          <div className="@container mt-2 min-w-0">
+          <div className="@container flex min-h-0 min-w-0 flex-1 flex-col">
             {tabStrip}
 
             {activeTab === "overview" &&
@@ -557,6 +562,7 @@ export default function PatientDetails() {
                 role="tabpanel"
                 id={`profile-panel-${activeTab}`}
                 aria-labelledby={`profile-tab-${activeTab}`}
+                className="akay-content-scroll min-h-0 flex-1 overflow-y-auto"
               >
                 {activeTab === "patient-info" && (
                   <RegistrationSections

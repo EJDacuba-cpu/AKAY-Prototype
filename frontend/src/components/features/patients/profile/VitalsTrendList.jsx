@@ -63,7 +63,7 @@ export default function VitalsTrendList({ records = [], isLoading = false }) {
       id="overview-vitals"
       title="Latest Vital Signs"
       meta={formatRecordedAt(record, recordedAt)}
-      maxHeight="max-h-[300px]"
+      share={3.5}
     >
       <div aria-busy={isLoading}>
         {isLoading && records.length === 0 ? (

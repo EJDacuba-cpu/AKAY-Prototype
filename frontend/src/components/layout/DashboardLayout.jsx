@@ -42,6 +42,9 @@ export default function DashboardLayout({
   title,
   children,
   hideSidebar = false,
+  // Replaces the default content padding, for pages that manage their own
+  // edge spacing (e.g. a full-bleed board that fills the viewport).
+  contentClassName = "px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4 lg:p-5",
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -381,7 +384,7 @@ export default function DashboardLayout({
         />
         <TopLoadingBar active={routeLoading} complete={routeLoadingComplete} />
 
-        <section className="akay-content-scroll min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4 lg:p-5">
+        <section className={`akay-content-scroll min-w-0 flex-1 overflow-y-auto overflow-x-hidden ${contentClassName}`}>
           {children}
         </section>
       </main>

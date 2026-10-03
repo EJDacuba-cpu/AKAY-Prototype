@@ -12,8 +12,9 @@ import { getPatientAge } from "../../../../utils/patientProfile";
 /**
  * Full-width identity header for the patient profile: name, Patient ID, age,
  * sex, address and one glanceable status badge on the left; the Start /
- * Resume Consultation action on the right. Shown above the tab strip on
- * every tab; the Overview board below it carries no identity details.
+ * Resume Consultation action on the right. It sits directly on the page
+ * surface (no card) above the tab strip on every tab; the Overview board
+ * below it carries no identity details.
  */
 export default function PatientProfileHeader({
   patient,
@@ -31,8 +32,8 @@ export default function PatientProfileHeader({
   const nextFollowUp = activeFollowUps[0] || null;
 
   return (
-    <header className="border border-gray-200 bg-white">
-      <div className="flex flex-col gap-2 px-4 py-1.5 sm:flex-row sm:items-center sm:justify-between">
+    <header className="shrink-0">
+      <div className="flex flex-col gap-2 py-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-2.5">
           <Link
             to={backPath}

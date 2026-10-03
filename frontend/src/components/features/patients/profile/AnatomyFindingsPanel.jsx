@@ -94,6 +94,7 @@ export default function AnatomyFindingsPanel({ records = [], recordsLoading = fa
       id="overview-visual-summary"
       title="Visual Health Summary"
       spacious
+      minHeight={480}
       action={<ModeToggle mode={mode} onChange={changeMode} />}
     >
       <p role="status" className="text-xs tabular-nums text-slate-600">
