@@ -37,7 +37,12 @@ const ROW_BUTTON =
 function ConditionsSection({ background }) {
   const diseases = Array.isArray(background?.currentDiseases) ? background.currentDiseases : [];
   return (
-    <OverviewCard id="overview-conditions" title="Current Conditions" meta={diseases.length ? diseases.length : null}>
+    <OverviewCard
+      id="overview-conditions"
+      title="Current Conditions"
+      meta={diseases.length ? diseases.length : null}
+      maxHeight="max-h-[180px]"
+    >
       {diseases.length === 0 ? (
         <OverviewNote>No documented conditions yet.</OverviewNote>
       ) : (
@@ -73,6 +78,7 @@ function CareTrackingSection({ entries, programLabels, onViewAll }) {
   return (
     <OverviewCard
       id="overview-care-tracking"
+      maxHeight="max-h-[240px]"
       title="Care Tracking & Monitoring"
       action={entries.length > 0 ? <TextAction onClick={onViewAll}>View all</TextAction> : null}
     >
@@ -117,6 +123,7 @@ function ReferralsPreview({ referrals, isLoading, isError, onViewAll, onView }) 
   return (
     <OverviewCard
       id="overview-referrals"
+      maxHeight="max-h-[200px]"
       title="Referrals"
       action={referrals.length > 0 ? <TextAction onClick={onViewAll}>View all ({referrals.length})</TextAction> : null}
     >
@@ -165,6 +172,7 @@ function FollowUpsPreview({ followUps, onViewAll, onView }) {
   return (
     <OverviewCard
       id="overview-follow-ups"
+      maxHeight="max-h-[200px]"
       title="Upcoming Follow-ups"
       meta={followUps.length ? `${followUps.length} active` : null}
       action={followUps.length > 0 ? <TextAction onClick={onViewAll}>View all</TextAction> : null}
@@ -206,6 +214,7 @@ function RecentVisitsPreview({ records, isLoading, onViewAll, onView }) {
   return (
     <OverviewCard
       id="overview-recent-visits"
+      maxHeight="max-h-[200px]"
       title="Recent Visits"
       action={records.length > 0 ? <TextAction onClick={onViewAll}>View all ({records.length})</TextAction> : null}
     >

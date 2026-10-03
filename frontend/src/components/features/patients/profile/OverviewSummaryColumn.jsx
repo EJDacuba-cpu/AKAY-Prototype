@@ -11,7 +11,7 @@ function AllergyCard({ allergies }) {
   const recorded = text && !NO_ALLERGY_PATTERN.test(text);
   const Icon = recorded ? ShieldAlert : ShieldCheck;
   return (
-    <OverviewCard id="overview-alerts" title="Alerts & Allergies">
+    <OverviewCard id="overview-alerts" title="Alerts & Allergies" maxHeight="max-h-[100px]">
       <p className={`flex items-start gap-1.5 text-[13px] leading-snug ${recorded ? "font-semibold text-red-700" : "text-slate-500"}`}>
         <Icon size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
         <span className="min-w-0 break-words">
@@ -28,6 +28,7 @@ function BackgroundSummaryCard({ background, onEdit }) {
     <OverviewCard
       id="overview-background"
       title="Patient Background"
+      maxHeight="max-h-[240px]"
       action={<TextAction onClick={onEdit}>Edit →</TextAction>}
     >
       <dl className="space-y-0.5 text-xs">

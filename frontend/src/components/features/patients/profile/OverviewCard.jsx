@@ -3,14 +3,19 @@
  * no shadow. Dense by default (the stacked side columns); `spacious` gives
  * the centre anatomy card more room. Title row carries an optional meta
  * (count, timestamp) and an action (View all / Edit / a toggle).
+ *
+ * `maxHeight` is a full Tailwind max-height class (e.g. "max-h-[200px]"),
+ * written out literally by the caller so Tailwind can see it. It is a cap,
+ * not a height: a short or empty card stays short, a long one stops growing
+ * and its body scrolls while the title row (and its action) stay pinned.
  */
-export function OverviewCard({ id, title, meta, action, children, spacious = false, className = "" }) {
+export function OverviewCard({ id, title, meta, action, children, spacious = false, maxHeight = "", className = "" }) {
   return (
     <section
       aria-labelledby={`${id}-title`}
-      className={`border border-gray-200 bg-white ${spacious ? "p-3" : "px-2.5 py-2"} ${className}`}
+      className={`flex flex-col border border-gray-200 bg-white ${spacious ? "p-3" : "px-2.5 py-2"} ${maxHeight} ${className}`}
     >
-      <header className={`${spacious ? "mb-2 min-h-5" : "mb-1 min-h-4"} flex items-center justify-between gap-3`}>
+      <header className={`${spacious ? "mb-2 min-h-5" : "mb-1 min-h-4"} flex shrink-0 items-center justify-between gap-3`}>
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <h2
             id={`${id}-title`}
@@ -22,7 +27,15 @@ export function OverviewCard({ id, title, meta, action, children, spacious = fal
         </div>
         {action}
       </header>
-      {children}
+      <div
+        className={
+          maxHeight
+            ? "min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-width:thin]"
+            : "min-w-0"
+        }
+      >
+        {children}
+      </div>
     </section>
   );
 }

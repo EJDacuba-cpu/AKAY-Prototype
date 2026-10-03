@@ -59,7 +59,12 @@ export default function VitalsTrendList({ records = [], isLoading = false }) {
   const { record, recordedAt, rows } = buildVitalRows(records);
 
   return (
-    <OverviewCard id="overview-vitals" title="Latest Vital Signs" meta={formatRecordedAt(record, recordedAt)}>
+    <OverviewCard
+      id="overview-vitals"
+      title="Latest Vital Signs"
+      meta={formatRecordedAt(record, recordedAt)}
+      maxHeight="max-h-[300px]"
+    >
       <div aria-busy={isLoading}>
         {isLoading && records.length === 0 ? (
           <OverviewNote role="status">Loading vital signs...</OverviewNote>

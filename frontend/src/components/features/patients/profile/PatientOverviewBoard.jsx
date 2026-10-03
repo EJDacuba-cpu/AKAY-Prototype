@@ -13,7 +13,7 @@ export default function PatientOverviewBoard({ left, right, center }) {
       role="tabpanel"
       id="profile-panel-overview"
       aria-labelledby="profile-tab-overview"
-      className="grid grid-cols-1 items-start gap-x-2 gap-y-1.5 md:grid-cols-2 xl:grid-cols-[24fr_46fr_30fr]"
+      className="grid grid-cols-1 items-start gap-x-2 gap-y-1.5 md:grid-cols-2 xl:grid-cols-[minmax(0,24fr)_minmax(0,46fr)_minmax(0,30fr)]"
     >
       <div className="min-w-0 xl:order-1">{left}</div>
       <div className="min-w-0 xl:order-3">{right}</div>
