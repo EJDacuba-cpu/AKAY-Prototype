@@ -11,7 +11,7 @@
  *
  * DOM order is left -> right -> centre, which is the stacking order on phones
  * and tablets (left and right side by side, the anatomy card below); at xl
- * `order` puts the anatomy card in the middle at 24 / 46 / 30.
+ * `order` puts the anatomy card in the middle at 20 / 52 / 28.
  */
 export default function PatientOverviewBoard({ left, right, center }) {
   return (
@@ -19,7 +19,7 @@ export default function PatientOverviewBoard({ left, right, center }) {
       role="tabpanel"
       id="profile-panel-overview"
       aria-labelledby="profile-tab-overview"
-      className="akay-content-scroll grid min-h-0 flex-1 grid-cols-1 gap-x-1.5 gap-y-1.5 overflow-y-auto md:grid-cols-2 xl:grid-cols-[minmax(0,24fr)_minmax(0,46fr)_minmax(0,30fr)] xl:grid-rows-1"
+      className="akay-content-scroll grid min-h-0 flex-1 grid-cols-1 gap-x-1.5 gap-y-1.5 overflow-y-auto md:grid-cols-2 xl:grid-cols-[minmax(0,20fr)_minmax(0,52fr)_minmax(0,28fr)] xl:grid-rows-1"
     >
       <div className="flex min-w-0 flex-col xl:order-1 xl:min-h-0">{left}</div>
       <div className="flex min-w-0 flex-col xl:order-3 xl:min-h-0">{right}</div>

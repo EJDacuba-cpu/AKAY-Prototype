@@ -13,7 +13,7 @@ import {
 import PatientBackgroundTab from "../../components/features/patients/PatientBackgroundTab";
 import PatientProfileHeader from "../../components/features/patients/profile/PatientProfileHeader";
 import PatientOverviewBoard from "../../components/features/patients/profile/PatientOverviewBoard";
-import OverviewSummaryColumn from "../../components/features/patients/profile/OverviewSummaryColumn";
+import VitalsTiles from "../../components/features/patients/profile/VitalsTiles";
 import ClinicalOverviewColumn from "../../components/features/patients/profile/ClinicalOverviewColumn";
 import AnatomyFindingsPanel from "../../components/features/patients/profile/AnatomyFindingsPanel";
 import RegistrationSections from "../../components/features/patients/profile/RegistrationSections";
@@ -63,16 +63,16 @@ function ProfileShell({ children }) {
 }
 
 /**
- * Underlined tab strip for the profile's main content, in the same visual
- * language as RecordTabs (rounded-card/shadow-card box, red active underline,
- * slate inactive text).
+ * Underlined tab strip for the profile's main content: no box or background,
+ * so it sits directly on the page surface above a thin rule, with a red
+ * underline on the active tab and slate text on the others.
  */
 function ProfileTabs({ tabs, activeTab, onSelect }) {
   return (
     <div
       role="tablist"
       aria-label="Patient profile"
-      className="mb-1.5 shrink-0 overflow-x-auto rounded-card border border-[#E5E7EB] bg-white shadow-card"
+      className="mb-1.5 shrink-0 overflow-x-auto border-b border-[#E5E7EB]"
     >
       <nav className="flex">
         {tabs.map((tab) => {
@@ -106,9 +106,10 @@ function ProfileTabs({ tabs, activeTab, onSelect }) {
 /**
  * BHC patient profile: the identity header and tab strip, then the active
  * tab, filling the available width and height. Overview is a card board that
- * fills the space under the tabs (alerts, vitals and background summary;
- * Visual Health Summary of recorded body findings; clinical overview). Every
- * other tab scrolls inside its own panel, so the header and tabs stay put.
+ * fills the space under the tabs (latest vitals on the left; the body figure
+ * with its conditions / allergies / medications dropdowns in the middle; the
+ * background, referrals, follow-ups, programs and visits cards on the right).
+ * Every other tab scrolls inside its own panel, so the header and tabs stay put.
  * Medical / Family / Social Background is edited inline on the Patient
  * Information tab, below registration.
  */
@@ -498,8 +499,6 @@ export default function PatientDetails() {
             patientId={patientId}
             backPath={backPath}
             updating={patientUpdating}
-            canViewHistory={canViewHistory}
-            activeFollowUps={activeFollowUps}
           />
 
           <div className="@container flex min-h-0 min-w-0 flex-1 flex-col">
@@ -508,17 +507,11 @@ export default function PatientDetails() {
             {activeTab === "overview" &&
               (canViewHistory ? (
                 <PatientOverviewBoard
-                  left={
-                    <OverviewSummaryColumn
-                      patient={patient}
-                      records={records}
-                      recordsLoading={recordsLoading}
-                      onEditBackground={() => setActiveTab("patient-info")}
-                    />
-                  }
+                  left={<VitalsTiles records={records} isLoading={recordsLoading} />}
                   center={
                     <AnatomyFindingsPanel
                       key={patientId}
+                      background={patient.medicalBackground}
                       records={records}
                       recordsLoading={recordsLoading}
                       onViewRecord={viewRecord}
@@ -535,6 +528,7 @@ export default function PatientDetails() {
                       activeFollowUps={activeFollowUps}
                       records={records}
                       recordsLoading={recordsLoading}
+                      onEditBackground={() => setActiveTab("patient-info")}
                       onViewPrograms={() => setActiveTab("programs")}
                       onViewReferrals={() => setActiveTab("referrals")}
                       onViewReferral={(trackingId) => navigate(`/bhc/referrals/${trackingId}`)}

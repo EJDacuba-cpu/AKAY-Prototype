@@ -64,7 +64,9 @@ class HealthRecordController extends Controller
             ->with(['patient', 'creator:id,name', ...HealthRecord::OUTCOME_RELATIONS]);
 
         if ($request->query('patient_id')) {
-            $query->where('patient_id', $request->query('patient_id'));
+            $query->where('patient_id', $request->query('patient_id'))
+                // The patient profile's Medications list; other lists stay lean.
+                ->with('dispensedMedicines');
         }
 
         if ($category = $request->query('category')) {

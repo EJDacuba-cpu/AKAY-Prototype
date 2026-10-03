@@ -6,16 +6,11 @@ import { OverviewCard, OverviewNote } from "./OverviewCard";
 import { TextAction } from "./ProfileSection";
 import { formatDate, formatDisplayValue } from "../../../../utils/formatters";
 import { formatShortDate } from "../../../../utils/patientProfile";
+import { summarizeBackground } from "../../../../utils/backgroundSummary";
 import { getRecordId } from "../../../../utils/bodyFindingsSummary";
 import { getRecordDateValue, getRecordOutcome } from "../../../../utils/healthRecordPrograms";
 
 const PREVIEW_COUNT = 3;
-
-const CONDITION_STATUS_TONE = {
-  Active: "border-red-200 bg-red-50 text-red-700",
-  Controlled: "border-amber-200 bg-amber-50 text-amber-700",
-  Resolved: "border-green-200 bg-green-50 text-green-700",
-};
 
 const CARE_STATUS_TONE = {
   info: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
@@ -34,42 +29,25 @@ const CHIP = "shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold
 const ROW_BUTTON =
   "group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-1 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-600/40";
 
-function ConditionsSection({ background }) {
-  const diseases = Array.isArray(background?.currentDiseases) ? background.currentDiseases : [];
+/** Read-only background summary; editing happens on Patient Information. */
+function BackgroundSummaryCard({ background, onEdit }) {
   return (
     <OverviewCard
-      id="overview-conditions"
-      title="Current Conditions"
-      meta={diseases.length ? diseases.length : null}
-      share={2}
+      id="overview-background"
+      title="Patient Background"
+      share={2.5}
+      action={<TextAction onClick={onEdit}>Edit →</TextAction>}
     >
-      {diseases.length === 0 ? (
-        <OverviewNote>No documented conditions yet.</OverviewNote>
-      ) : (
-        <ul className="divide-y divide-gray-100">
-          {diseases.map((disease, index) => {
-            const meta = [
-              disease.firstRecorded && `First noted ${formatShortDate(disease.firstRecorded)}`,
-              disease.lastConfirmed && `Confirmed ${formatShortDate(disease.lastConfirmed)}`,
-            ]
-              .filter(Boolean)
-              .join(" · ");
-            return (
-              <li key={`${disease.name}-${index}`} className="py-1 first:pt-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-sm font-semibold text-slate-900">{disease.name}</span>
-                  {disease.status && (
-                    <span className={`${CHIP} ${CONDITION_STATUS_TONE[disease.status] || "border-slate-200 bg-slate-50 text-slate-600"}`}>
-                      {disease.status}
-                    </span>
-                  )}
-                </div>
-                {meta && <p className="mt-0.5 truncate text-[11px] text-slate-500">{meta}</p>}
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      <dl className="space-y-0.5 text-xs">
+        {summarizeBackground(background).map(({ key, label, text }) => (
+          <div key={key} className="grid grid-cols-[5rem_minmax(0,1fr)] gap-x-2">
+            <dt className="text-slate-500">{label}</dt>
+            <dd className={`m-0 line-clamp-2 min-w-0 break-words ${text ? "text-slate-900" : "text-slate-400"}`} title={text || undefined}>
+              {text || "Not recorded"}
+            </dd>
+          </div>
+        ))}
+      </dl>
     </OverviewCard>
   );
 }
@@ -79,7 +57,7 @@ function CareTrackingSection({ entries, programLabels, onViewAll }) {
     <OverviewCard
       id="overview-care-tracking"
       share={2.5}
-      title="Care Tracking & Monitoring"
+      title="Care Programs"
       action={entries.length > 0 ? <TextAction onClick={onViewAll}>View all</TextAction> : null}
     >
       {programLabels.length > 0 && (
@@ -254,10 +232,11 @@ function RecentVisitsPreview({ records, isLoading, onViewAll, onView }) {
 }
 
 /**
- * Right column of the Overview board: documented conditions, care tracking,
- * latest referrals, the next follow-ups and the most recent visits - each a
- * compact card linking to its full tab, splitting the column height by card
- * share. Only rendered for roles that may view clinical history.
+ * Right column of the Overview board, top to bottom: the background summary,
+ * latest referrals, the next follow-ups, care programs and the most recent
+ * visits - each a compact card linking to its full tab, splitting the column
+ * height by card share. Only rendered for roles that may view clinical
+ * history.
  */
 export default function ClinicalOverviewColumn({
   patient,
@@ -269,6 +248,7 @@ export default function ClinicalOverviewColumn({
   activeFollowUps = [],
   records = [],
   recordsLoading = false,
+  onEditBackground,
   onViewPrograms,
   onViewReferrals,
   onViewReferral,
@@ -279,8 +259,7 @@ export default function ClinicalOverviewColumn({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1.5">
-      <ConditionsSection background={patient.medicalBackground} />
-      <CareTrackingSection entries={careTracking} programLabels={programLabels} onViewAll={onViewPrograms} />
+      <BackgroundSummaryCard background={patient.medicalBackground} onEdit={onEditBackground} />
       <ReferralsPreview
         referrals={referrals}
         isLoading={referralsLoading}
@@ -289,6 +268,7 @@ export default function ClinicalOverviewColumn({
         onView={onViewReferral}
       />
       <FollowUpsPreview followUps={activeFollowUps} onViewAll={onViewFollowUps} onView={onViewFollowUp} />
+      <CareTrackingSection entries={careTracking} programLabels={programLabels} onViewAll={onViewPrograms} />
       <RecentVisitsPreview records={records} isLoading={recordsLoading} onViewAll={onViewRecords} onView={onViewRecord} />
     </div>
   );

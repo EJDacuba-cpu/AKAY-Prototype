@@ -3,33 +3,22 @@ import { ArrowLeft } from "lucide-react";
 
 import { RefreshingIndicator } from "../../../common";
 import { ConsultationButton, ConsultationNotice, useConsultationActions } from "./ConsultationActions";
-import { FollowUpStateBadge } from "./FollowUpsAndReferrals";
-import { Chip } from "../PatientAlertChips";
 import { formatPatientAddress } from "../PatientIdentityCard";
 import { formatPatientName } from "../../../../utils/formatters";
 import { getPatientAge } from "../../../../utils/patientProfile";
 
 /**
  * Full-width identity header for the patient profile: name, Patient ID, age,
- * sex, address and one glanceable status badge on the left; the Start /
- * Resume Consultation action on the right. It sits directly on the page
- * surface (no card) above the tab strip on every tab; the Overview board
- * below it carries no identity details.
+ * sex and address on the left; the Start / Resume Consultation action on the
+ * right. It sits directly on the page surface (no card) above the tab strip
+ * on every tab, and carries no status badge: follow-ups have their own card.
  */
-export default function PatientProfileHeader({
-  patient,
-  patientId,
-  backPath,
-  updating = false,
-  canViewHistory = false,
-  activeFollowUps = [],
-}) {
+export default function PatientProfileHeader({ patient, patientId, backPath, updating = false }) {
   const { consultation, onStart, startModal } = useConsultationActions(patient, patientId);
   const age = getPatientAge(patient);
   const ageText = age !== "" ? `${age} yrs` : "";
   const address = patient.barangay || formatPatientAddress(patient);
   const ageSex = [ageText, patient.sex].filter(Boolean).join(" / ");
-  const nextFollowUp = activeFollowUps[0] || null;
 
   return (
     <header className="shrink-0">
@@ -50,12 +39,6 @@ export default function PatientProfileHeader({
               <span className="font-mono">Patient ID {patient.patientId || patientId}</span>
               {ageSex && <span className="tabular-nums">{ageSex}</span>}
               {address && <span className="break-words">{address}</span>}
-              {canViewHistory &&
-                (nextFollowUp ? (
-                  <FollowUpStateBadge state={nextFollowUp.effectiveState} date={nextFollowUp.dueDate} />
-                ) : (
-                  <Chip tone="muted">No pending follow-ups</Chip>
-                ))}
             </div>
           </div>
         </div>
