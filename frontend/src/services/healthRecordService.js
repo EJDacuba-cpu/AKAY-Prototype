@@ -5,7 +5,7 @@ import {
   unwrapList,
 } from "./apiClient";
 import { getConsultationPrograms } from "../utils/consultationPrograms";
-import { normalizeBodyFindings } from "../utils/bodyFindings";
+import { normalizeBodyFindings, serializeBodyFindings } from "../utils/bodyFindings";
 import { normalizeDiagnoses } from "../utils/diagnoses";
 import { getMorbidityReportingStatus } from "../utils/diagnosisReporting";
 import { API_BASE_URL } from "../config/environment";
@@ -805,11 +805,7 @@ function toPayload(record = {}, { partial = false } = {}) {
     needs_referral: needsReferral,
     chief_complaint: record.chiefComplaint || null,
     physical_exam: record.physicalExam || null,
-    body_findings: normalizeBodyFindings(record.bodyFindings).length
-      ? normalizeBodyFindings(record.bodyFindings).map(({ id, region, finding, note }) => ({
-          id, region, finding, note: note || null,
-        }))
-      : null,
+    body_findings: serializeBodyFindings(record.bodyFindings),
     history_of_present_illness: record.summaryOfPresentIllness || null,
     diagnosis: record.diagnosis || null,
     diagnoses: normalizeDiagnoses(record.diagnoses).length ? normalizeDiagnoses(record.diagnoses) : null,

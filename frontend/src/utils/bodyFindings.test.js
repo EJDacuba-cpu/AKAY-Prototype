@@ -1,12 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  BODY_SIDES,
   OTHER_LOCATION,
   formatBodyFindings,
   getBodyRegionLabel,
   getSpecificLocationOptions,
   normalizeBodyFindings,
+  normalizeBodySide,
   resolveSpecificLocation,
+  serializeBodyFindings,
   splitSpecificLocation,
 } from "./bodyFindings.js";
 
@@ -17,7 +20,7 @@ test("normalizeBodyFindings drops unknown regions and blank findings", () => {
     { id: "c", region: "chest", finding: "   " },
     null,
   ]);
-  assert.deepEqual(result, [{ id: "a", region: "head", location: "Forehead", finding: "Headache", note: "frontal" }]);
+  assert.deepEqual(result, [{ id: "a", region: "head", side: "front", location: "Forehead", finding: "Headache", note: "frontal" }]);
 });
 
 test("normalizeBodyFindings returns [] for non-arrays and assigns missing ids", () => {
@@ -83,4 +86,90 @@ test("split/resolveSpecificLocation round-trip listed and custom locations", () 
   assert.equal(resolveSpecificLocation(OTHER_LOCATION, "  Behind the knee "), "Behind the knee");
   assert.equal(resolveSpecificLocation(OTHER_LOCATION, "  "), "");
   assert.equal(resolveSpecificLocation("", ""), "");
+});
+
+test("normalizeBodyFindings keeps a valid side and defaults the rest to front", () => {
+  const result = normalizeBodyFindings([
+    { id: "1", region: "chest", side: "back", finding: "Rash" },
+    { id: "2", region: "chest", side: "BACK", finding: "Rash" },
+    { id: "3", region: "chest", side: "left", finding: "Rash" },
+    { id: "4", region: "chest", finding: "Rash" },
+  ]);
+  assert.deepEqual(result.map((item) => item.side), ["back", "front", "front", "front"]);
+  assert.deepEqual(Object.keys(result[0]), ["id", "region", "side", "location", "finding", "note"]);
+});
+
+test("normalizeBodySide only accepts exact lowercase front/back", () => {
+  assert.deepEqual(BODY_SIDES, ["front", "back"]);
+  assert.equal(normalizeBodySide("back"), "back");
+  assert.equal(normalizeBodySide("front"), "front");
+  assert.equal(normalizeBodySide("BACK"), "front");
+  assert.equal(normalizeBodySide(undefined), "front");
+});
+
+test("getBodyRegionLabel is side-aware", () => {
+  assert.equal(getBodyRegionLabel("chest", "front"), "Chest");
+  assert.equal(getBodyRegionLabel("chest"), "Chest");
+  const back = {
+    head: "Back of head",
+    chest: "Upper back",
+    abdomen: "Lower back",
+    pelvis: "Buttocks",
+    left_arm: "Left arm (back)",
+    right_hand: "Back of right hand",
+    left_leg: "Left leg (back)",
+    right_foot: "Right heel / sole",
+  };
+  for (const [region, label] of Object.entries(back)) {
+    assert.equal(getBodyRegionLabel(region, "back"), label);
+    assert.equal(getBodyRegionLabel(region), getBodyRegionLabel(region, "front"));
+  }
+});
+
+test("getSpecificLocationOptions has back-side lists", () => {
+  const values = (region, side) => getSpecificLocationOptions(region, side).map((option) => option.value);
+  assert.deepEqual(values("chest", "back"), [
+    "Right shoulder blade", "Left shoulder blade", "Upper spine", "Between shoulder blades", OTHER_LOCATION,
+  ]);
+  assert.deepEqual(values("abdomen", "back"), [
+    "Lower spine", "Right flank", "Left flank", "Sacrum / Tailbone", OTHER_LOCATION,
+  ]);
+  assert.deepEqual(values("head", "back"), ["Back of scalp", "Nape / Back of neck", OTHER_LOCATION]);
+  assert.deepEqual(values("pelvis", "back"), ["Right buttock", "Left buttock", "Tailbone", OTHER_LOCATION]);
+  for (const region of ["right_arm", "left_hand", "right_leg", "left_foot"]) {
+    assert.deepEqual(values(region, "back"), values(region, "front"));
+  }
+  assert.deepEqual(values("chest"), values("chest", "front"));
+  assert.deepEqual(getSpecificLocationOptions("tail", "back"), []);
+});
+
+test("splitSpecificLocation finds a back-side place", () => {
+  assert.deepEqual(splitSpecificLocation("chest", "Upper spine", "back"), { choice: "Upper spine", other: "" });
+  assert.deepEqual(splitSpecificLocation("chest", "Upper spine"), { choice: OTHER_LOCATION, other: "Upper spine" });
+});
+
+test("formatBodyFindings uses back labels", () => {
+  assert.equal(
+    formatBodyFindings([{ region: "chest", side: "back", location: "Upper spine", finding: "Rash" }]),
+    "Upper back - Upper spine: Rash",
+  );
+});
+
+const SIDE_INPUT = [
+  { id: "f1", region: "chest", side: "back", location: "Upper spine", finding: "Rash", note: "" },
+  { id: "f2", region: "left_leg", location: "Knee", finding: "Swelling" },
+];
+
+test("serializeBodyFindings keeps region, side and location", () => {
+  assert.deepEqual(serializeBodyFindings(SIDE_INPUT), [
+    { id: "f1", region: "chest", side: "back", location: "Upper spine", finding: "Rash", note: null },
+    { id: "f2", region: "left_leg", side: "front", location: "Knee", finding: "Swelling", note: null },
+  ]);
+  assert.equal(serializeBodyFindings([]), null);
+  assert.equal(serializeBodyFindings(null), null);
+});
+
+test("findings survive save -> resume unchanged", () => {
+  const roundTripped = normalizeBodyFindings(JSON.parse(JSON.stringify(serializeBodyFindings(SIDE_INPUT))));
+  assert.deepEqual(roundTripped, normalizeBodyFindings(SIDE_INPUT));
 });

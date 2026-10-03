@@ -23,6 +23,14 @@ export const BODY_REGIONS = [
 
 const REGION_BY_KEY = Object.fromEntries(BODY_REGIONS.map((region) => [region.key, region]));
 
+/** Which face of the body figure a finding was placed on. Exactly these two values. */
+export const BODY_SIDES = ["front", "back"];
+
+/** Only the exact lowercase "back" is back; anything else (incl. missing) is front. */
+export function normalizeBodySide(value) {
+  return value === "back" ? "back" : "front";
+}
+
 export const BODY_FINDING_LIMITS = { finding: 150, note: 500, location: 100, count: 50 };
 
 export const OTHER_LOCATION = "other";
@@ -58,9 +66,40 @@ const SPECIFIC_LOCATIONS = {
   left_foot: FOOT_LOCATIONS,
 };
 
+// Back-of-body labels and places. A region missing here (the limbs' places)
+// falls back to its front entry - the anatomical words are the same.
+const BACK_LABELS = {
+  head: "Back of head",
+  chest: "Upper back",
+  abdomen: "Lower back",
+  pelvis: "Buttocks",
+  right_arm: "Right arm (back)",
+  left_arm: "Left arm (back)",
+  right_hand: "Back of right hand",
+  left_hand: "Back of left hand",
+  right_leg: "Right leg (back)",
+  left_leg: "Left leg (back)",
+  right_foot: "Right heel / sole",
+  left_foot: "Left heel / sole",
+};
+
+const BACK_SPECIFIC_LOCATIONS = {
+  head: ["Back of scalp", "Nape / Back of neck"],
+  chest: ["Right shoulder blade", "Left shoulder blade", "Upper spine", "Between shoulder blades"],
+  abdomen: ["Lower spine", "Right flank", "Left flank", "Sacrum / Tailbone"],
+  pelvis: ["Right buttock", "Left buttock", "Tailbone"],
+};
+
+function getLocationList(region, side) {
+  if (normalizeBodySide(side) === "back" && BACK_SPECIFIC_LOCATIONS[region]) {
+    return BACK_SPECIFIC_LOCATIONS[region];
+  }
+  return SPECIFIC_LOCATIONS[region];
+}
+
 /** [{ value, label }] for a region's dropdown, ending with Other / Specify. */
-export function getSpecificLocationOptions(region) {
-  const list = SPECIFIC_LOCATIONS[region];
+export function getSpecificLocationOptions(region, side = "front") {
+  const list = getLocationList(region, side);
   if (!list) return [];
   return [
     ...list.map((label) => ({ value: label, label })),
@@ -72,10 +111,10 @@ export function getSpecificLocationOptions(region) {
  * Splits a stored location into the dropdown value and the Other text, so an
  * existing finding reopens with the right option selected.
  */
-export function splitSpecificLocation(region, location) {
+export function splitSpecificLocation(region, location, side = "front") {
   const text = String(location || "").trim();
   if (!text) return { choice: "", other: "" };
-  if ((SPECIFIC_LOCATIONS[region] || []).includes(text)) return { choice: text, other: "" };
+  if ((getLocationList(region, side) || []).includes(text)) return { choice: text, other: "" };
   return { choice: OTHER_LOCATION, other: text };
 }
 
@@ -88,7 +127,8 @@ export function getBodyRegion(key) {
   return REGION_BY_KEY[key] || null;
 }
 
-export function getBodyRegionLabel(key) {
+export function getBodyRegionLabel(key, side = "front") {
+  if (normalizeBodySide(side) === "back" && BACK_LABELS[key]) return BACK_LABELS[key];
   return REGION_BY_KEY[key]?.label || key || "";
 }
 
@@ -111,6 +151,7 @@ export function normalizeBodyFindings(list) {
     .map((item) => ({
       id: String(item.id || createBodyFindingId()).slice(0, 64),
       region: item.region,
+      side: normalizeBodySide(item.side),
       location: String(item.location || "").trim().slice(0, BODY_FINDING_LIMITS.location),
       finding: String(item.finding).trim().slice(0, BODY_FINDING_LIMITS.finding),
       note: String(item.note || "").trim().slice(0, BODY_FINDING_LIMITS.note),
@@ -120,7 +161,20 @@ export function normalizeBodyFindings(list) {
 /** "Head - Forehead: Headache (2 days); Left leg: Swelling" - for summaries. */
 export function formatBodyFindings(list) {
   return normalizeBodyFindings(list)
-    .map(({ region, location, finding, note }) =>
-      `${getBodyRegionLabel(region)}${location ? ` - ${location}` : ""}: ${finding}${note ? ` (${note})` : ""}`)
+    .map(({ region, side, location, finding, note }) =>
+      `${getBodyRegionLabel(region, side)}${location ? ` - ${location}` : ""}: ${finding}${note ? ` (${note})` : ""}`)
     .join("; ");
+}
+
+/**
+ * Payload shape for the finalization POST (and the only serializer for it):
+ * normalized entries with empty location/note as null, null when there are none.
+ * region, side and location travel unchanged.
+ */
+export function serializeBodyFindings(list) {
+  const findings = normalizeBodyFindings(list);
+  if (!findings.length) return null;
+  return findings.map(({ id, region, side, location, finding, note }) => ({
+    id, region, side, location: location || null, finding, note: note || null,
+  }));
 }
