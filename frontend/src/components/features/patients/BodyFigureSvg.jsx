@@ -68,13 +68,17 @@ function observeSize(el, onSize) {
  * - `activeRegion` + `phase` ("idle" | "highlight" | "line" | "popover"):
  *   the region's tint strengthens and pulses from "highlight"; with `leader`
  *   a thin line runs from the marker toward the popover from "line"; a small
- *   popover of that region's findings shows from "popover", on the side of
- *   the marker with more room and kept inside the figure.
+ *   popover of that region's findings shows from "popover": beside the
+ *   marker on the side with more room when it fits there, otherwise below
+ *   (or above) it, kept inside the figure's parent container - it may
+ *   overflow the figure box itself.
  * - `pinned`: the popover becomes a dialog whose finding rows call
  *   `onViewRecord(recordId)`; Escape or a pointer press outside the popover
  *   and markers calls `onDismiss()`.
  * - Markers report `onMarkerEnter` / `onMarkerLeave` (hover and focus) and
  *   `onMarkerClick` (click, Enter, Space, tap) with their region.
+ * `isDesktop` is part of the shared contract but unused here: the caller
+ * passes `leader` only on desktop.
  * Front view: the PATIENT's right is on the viewer's left. Back view: swapped.
  */
 export default function BodyFigureSvg({
@@ -83,7 +87,6 @@ export default function BodyFigureSvg({
   onToggleSide,
   flipHint = false,
   findingsByRegion = NO_FINDINGS,
-  isDesktop,
   activeRegion = null,
   phase = "idle",
   pinned = false,
@@ -97,38 +100,75 @@ export default function BodyFigureSvg({
   const figure = getFigureKey(sex);
   const marked = BODY_REGIONS.filter(({ key }) => (findingsByRegion[key] || []).length > 0);
 
-  // Layout measurement only: the figure layer's size and the popover's height.
+  // Layout measurement only: the figure's size and offset inside its parent
+  // container (the popover's bounds, so it may overflow the figure), and the
+  // popover's height.
   const layerRef = useRef(null);
-  const [box, setBox] = useState(null);
+  const [layout, setLayout] = useState(null);
   const [popoverEl, setPopoverEl] = useState(null);
   const [popoverSize, setPopoverSize] = useState(null);
 
-  useEffect(() => observeSize(layerRef.current, setBox), []);
+  useEffect(() => {
+    const layer = layerRef.current;
+    const container = layer?.closest("figure")?.parentElement || layer;
+    if (!layer) return undefined;
+    function measure() {
+      const fig = layer.getBoundingClientRect();
+      const bounds = container.getBoundingClientRect();
+      setLayout({
+        width: fig.width,
+        height: fig.height,
+        bounds: { width: bounds.width, height: bounds.height },
+        offX: fig.left - bounds.left,
+        offY: fig.top - bounds.top,
+      });
+    }
+    const stopLayer = observeSize(layer, measure);
+    const stopContainer = container === layer ? undefined : observeSize(container, measure);
+    return () => {
+      stopLayer?.();
+      stopContainer?.();
+    };
+  }, []);
   useEffect(() => observeSize(popoverEl, (size) => setPopoverSize({ el: popoverEl, ...size })), [popoverEl]);
 
   const activeFindings = activeRegion ? findingsByRegion[activeRegion] || [] : [];
   const revealed = activeFindings.length > 0 ? activeRegion : null;
   const showPopover = Boolean(revealed) && phaseReached(phase, "popover");
-  // Lines are desktop-only; on touch the popover simply appears.
-  const showLeader = Boolean(revealed) && leader && Boolean(isDesktop) && phaseReached(phase, "line") && Boolean(box);
+  const showLeader = Boolean(revealed) && leader && phaseReached(phase, "line") && Boolean(layout);
 
   const label = revealed ? getBodyRegionLabel(revealed, side) : "";
+  // Marker centre in figure px.
   const markerPx = (() => {
-    if (!revealed || !box) return null;
+    if (!revealed || !layout) return null;
     const [x, y] = getDotPosition(figure, side, revealed);
-    return { x: x * box.width, y: y * box.height };
+    return { x: x * layout.width, y: y * layout.height };
   })();
   const measuredHeight = popoverSize && popoverSize.el === popoverEl ? popoverSize.height : null;
-  // The popover's horizontal placement does not depend on its height, so the
-  // leader can be drawn before the popover itself has rendered.
-  const placement = markerPx ? placePopover(markerPx, box, { width: POPOVER_WIDTH, height: measuredHeight ?? 0 }) : null;
+  const popHeight = measuredHeight ?? 0;
+  // Placed in container coordinates, then shifted back into figure
+  // coordinates. The leader only needs the popover's near edge, which does
+  // not move once the height is known, so it can draw before the popover.
+  const placement = (() => {
+    if (!markerPx) return null;
+    const { left, top, side: opens } = placePopover(
+      { x: markerPx.x + layout.offX, y: markerPx.y + layout.offY },
+      layout.bounds,
+      { width: POPOVER_WIDTH, height: popHeight },
+    );
+    return { left: left - layout.offX, top: top - layout.offY, side: opens };
+  })();
 
   const leaderLine = (() => {
     if (!showLeader || !placement) return null;
-    const edgeX = placement.side === "right" ? placement.left : placement.left + POPOVER_WIDTH;
-    const spanBottom = placement.top + (measuredHeight ?? 0);
-    const edgeY = measuredHeight == null ? markerPx.y : Math.min(Math.max(markerPx.y, placement.top), spanBottom);
-    const to = { x: edgeX, y: edgeY };
+    const { left, top, side: opens } = placement;
+    const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+    let to;
+    if (opens === "right" || opens === "left") {
+      to = { x: opens === "right" ? left : left + POPOVER_WIDTH, y: clamp(markerPx.y, top, top + popHeight) };
+    } else {
+      to = { x: clamp(markerPx.x, left, left + POPOVER_WIDTH), y: opens === "below" ? top : top + popHeight };
+    }
     return { d: leaderPath(markerPx, to), length: Math.hypot(to.x - markerPx.x, to.y - markerPx.y) };
   })();
 

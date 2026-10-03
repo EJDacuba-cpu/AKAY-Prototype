@@ -33,16 +33,29 @@ const clamp = (value, max) => Math.min(Math.max(value, 0), Math.max(max, 0));
 
 /**
  * Where to put a popover beside a marker. `marker` is the marker centre in px
- * inside the figure box. It opens on the side with more room, vertically
- * centred on the marker, and is clamped to stay inside the box.
- * @returns {{ left: number, top: number, side: "right" | "left" }}
+ * inside the bounds box `figure`. It opens on the side with more room,
+ * vertically centred on the marker, when that side's free space fits the
+ * popover. Otherwise it opens below the marker (above it when the marker is
+ * in the lower 40% of the box), horizontally centred on it. It is always
+ * clamped to stay inside the box.
+ * @returns {{ left: number, top: number, side: "right" | "left" | "below" | "above" }}
  */
 export function placePopover(marker, figure, popover, gap = 14) {
-  const side = figure.width - marker.x >= marker.x ? "right" : "left";
-  const rawLeft = side === "right" ? marker.x + gap : marker.x - gap - popover.width;
+  const preferred = figure.width - marker.x >= marker.x ? "right" : "left";
+  const free = preferred === "right" ? figure.width - marker.x - gap : marker.x - gap;
+  if (free >= popover.width) {
+    const rawLeft = preferred === "right" ? marker.x + gap : marker.x - gap - popover.width;
+    return {
+      left: clamp(rawLeft, figure.width - popover.width),
+      top: clamp(marker.y - popover.height / 2, figure.height - popover.height),
+      side: preferred,
+    };
+  }
+  const side = marker.y > figure.height * 0.6 ? "above" : "below";
+  const rawTop = side === "below" ? marker.y + gap : marker.y - gap - popover.height;
   return {
-    left: clamp(rawLeft, figure.width - popover.width),
-    top: clamp(marker.y - popover.height / 2, figure.height - popover.height),
+    left: clamp(marker.x - popover.width / 2, figure.width - popover.width),
+    top: clamp(rawTop, figure.height - popover.height),
     side,
   };
 }

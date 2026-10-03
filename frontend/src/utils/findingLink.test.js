@@ -33,13 +33,34 @@ test("placePopover keeps the popover inside the figure vertically", () => {
   assert.equal(placePopover({ x: 100, y: 445 }, FIG, POP).top, 370);
 });
 
-test("placePopover clamps horizontally when the free side is too narrow", () => {
+test("placePopover falls back to below when the free side is too narrow", () => {
   const right = placePopover({ x: 150, y: 200 }, FIG, { width: 200, height: 80 });
-  assert.equal(right.side, "right");
-  assert.equal(right.left, 100);
+  assert.deepEqual(right, { left: 50, top: 214, side: "below" });
   const left = placePopover({ x: 160, y: 200 }, FIG, { width: 250, height: 80 });
-  assert.equal(left.side, "left");
-  assert.equal(left.left, 0);
+  assert.deepEqual(left, { left: 35, top: 214, side: "below" });
+});
+
+test("placePopover puts a centre marker's wide popover below it, centred and clamped", () => {
+  const box = { width: 280, height: 420 };
+  assert.deepEqual(placePopover({ x: 140, y: 100 }, box, { width: 200, height: 90 }), { left: 40, top: 114, side: "below" });
+  // Off-centre but still too narrow on both sides: the centred left is clamped.
+  assert.deepEqual(placePopover({ x: 120, y: 100 }, box, { width: 200, height: 90 }), { left: 20, top: 114, side: "below" });
+  assert.equal(placePopover({ x: 30, y: 100 }, { width: 200, height: 420 }, { width: 200, height: 90 }).left, 0);
+});
+
+test("placePopover opens above a centre marker in the lower part of the box", () => {
+  const box = { width: 280, height: 420 };
+  assert.deepEqual(placePopover({ x: 140, y: 300 }, box, { width: 200, height: 90 }), { left: 40, top: 196, side: "above" });
+  assert.equal(placePopover({ x: 140, y: 252 }, box, { width: 200, height: 90 }).side, "below");
+  assert.equal(placePopover({ x: 140, y: 60 }, box, { width: 200, height: 90 }).top, 74);
+  assert.equal(placePopover({ x: 140, y: 400 }, box, { width: 200, height: 90 }).top, 296);
+});
+
+test("placePopover keeps the side when the free space exactly fits", () => {
+  // 300 - 86 - 14 = 200 free on the right.
+  assert.deepEqual(placePopover({ x: 86, y: 200 }, FIG, { width: 200, height: 80 }), { left: 100, top: 160, side: "right" });
+  // One pixel less no longer fits.
+  assert.equal(placePopover({ x: 87, y: 200 }, FIG, { width: 200, height: 80 }).side, "below");
 });
 
 test("leaderPath is a straight segment", () => {
