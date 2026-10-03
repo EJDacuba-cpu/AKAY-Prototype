@@ -12,9 +12,8 @@ import { getPatientAge } from "../../../../utils/patientProfile";
 /**
  * Full-width identity header for the patient profile: name, Patient ID, age,
  * sex, address and one glanceable status badge on the left; the Start /
- * Resume Consultation action on the right. Everything else that used to live
- * in the old identity column (alerts, programs, care, vitals) now lives in
- * the Overview tab's dashboard instead.
+ * Resume Consultation action on the right. Shown on every tab except
+ * Overview, where OverviewIdentityColumn carries the same identity and action.
  */
 export default function PatientProfileHeader({
   patient,

@@ -12,8 +12,10 @@ import {
 } from "../../components/common";
 import PatientBackgroundTab from "../../components/features/patients/PatientBackgroundTab";
 import PatientProfileHeader from "../../components/features/patients/profile/PatientProfileHeader";
-import OverviewDashboard from "../../components/features/patients/profile/OverviewDashboard";
-import PatientHealthSummary from "../../components/features/patients/profile/PatientHealthSummary";
+import PatientOverviewBoard from "../../components/features/patients/profile/PatientOverviewBoard";
+import OverviewIdentityColumn from "../../components/features/patients/profile/OverviewIdentityColumn";
+import ClinicalOverviewColumn from "../../components/features/patients/profile/ClinicalOverviewColumn";
+import AnatomyFindingsPanel from "../../components/features/patients/profile/AnatomyFindingsPanel";
 import RegistrationSections from "../../components/features/patients/profile/RegistrationSections";
 import RecordsTimeline from "../../components/features/patients/profile/RecordsTimeline";
 import CareAndProgramsTab from "../../components/features/patients/profile/CareAndProgramsTab";
@@ -99,10 +101,11 @@ function ProfileTabs({ tabs, activeTab, onSelect }) {
 }
 
 /**
- * BHC patient profile: a left identity panel (alerts, programs, care status
- * and vitals) sits beside the chart. The chart itself is split into Overview
- * (registration + background, edited inline), Health Records, Follow-ups and
- * Referrals tabs, each section rendered as its own card.
+ * BHC patient profile. Overview is one unified board (identity + vitals,
+ * Visual Health Summary of recorded body findings, clinical overview) with
+ * the inline-editable Background below it; the other tabs (Patient
+ * Information, Care & Programs, Follow-ups, Health Records, Referrals) keep
+ * the identity header above the tab strip.
  */
 export default function PatientDetails() {
   const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
@@ -478,133 +481,153 @@ export default function PatientDetails() {
         .includes(search);
     });
 
+  const tabStrip = <ProfileTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} />;
+  const viewRecord = (recordId) => navigate(`/bhc/health-records/${recordId}`);
+
   return (
     <>
       <ProfileShell>
-        <div className="bhc-patient-profile min-h-[520px] px-4 py-3 pb-6 font-sans sm:px-6 [&_h1]:font-sans! [&_h2]:font-sans! [&_h3]:font-sans! [&_h4]:font-sans!">
-          <PatientProfileHeader
-            patient={patient}
-            patientId={patientId}
-            backPath={backPath}
-            updating={patientUpdating}
-            canViewHistory={canViewHistory}
-            activeFollowUps={activeFollowUps}
+        {activeTab === "overview" ? (
+          <PatientOverviewBoard
+            tabStrip={tabStrip}
+            identity={
+              <OverviewIdentityColumn
+                patient={patient}
+                patientId={patientId}
+                backPath={backPath}
+                updating={patientUpdating}
+                canViewHistory={canViewHistory}
+                records={records}
+                recordsLoading={recordsLoading}
+              />
+            }
+            restricted={
+              canViewHistory ? null : (
+                <p className="flex items-center gap-2 py-2 text-sm text-gray-600">
+                  <Lock size={14} className="shrink-0" aria-hidden="true" />
+                  Clinical history is restricted for your role.
+                </p>
+              )
+            }
+            clinical={
+              <ClinicalOverviewColumn
+                patient={patient}
+                careTracking={careTracking}
+                programLabels={programLabels}
+                referrals={referrals}
+                referralsLoading={referralsLoading}
+                referralsError={Boolean(referralsError)}
+                activeFollowUps={activeFollowUps}
+                onViewPrograms={() => setActiveTab("programs")}
+                onViewReferrals={() => setActiveTab("referrals")}
+                onViewReferral={(trackingId) => navigate(`/bhc/referrals/${trackingId}`)}
+                onViewFollowUps={() => setActiveTab("follow-ups")}
+                onViewFollowUp={(taskId) => navigate(`/bhc/follow-ups/${taskId}`)}
+              />
+            }
+            anatomy={
+              <AnatomyFindingsPanel
+                key={patientId}
+                records={records}
+                recordsLoading={recordsLoading}
+                onViewRecord={viewRecord}
+              />
+            }
+            below={
+              canViewHistory
+                ? BACKGROUND_SECTION_KEYS.map((section) => (
+                    <PatientBackgroundTab
+                      key={section}
+                      variant="flat"
+                      section={section}
+                      background={patient.medicalBackground}
+                      saving={savingBackground}
+                      onSave={handleBackgroundSave}
+                    />
+                  ))
+                : null
+            }
           />
+        ) : (
+          <div className="bhc-patient-profile min-h-[520px] px-4 py-3 pb-6 font-sans sm:px-6 [&_h1]:font-sans! [&_h2]:font-sans! [&_h3]:font-sans! [&_h4]:font-sans!">
+            <PatientProfileHeader
+              patient={patient}
+              patientId={patientId}
+              backPath={backPath}
+              updating={patientUpdating}
+              canViewHistory={canViewHistory}
+              activeFollowUps={activeFollowUps}
+            />
 
-          <div className="@container mt-3 min-w-0">
-            <ProfileTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} />
+            <div className="@container mt-3 min-w-0">
+              {tabStrip}
 
-            <div
-              role="tabpanel"
-              id={`profile-panel-${activeTab}`}
-              aria-labelledby={`profile-tab-${activeTab}`}
-            >
-              {activeTab === "overview" && (() => {
-                if (!canViewHistory) {
-                  return (
-                    <p className="flex items-center gap-2 py-2 text-sm text-gray-600">
-                      <Lock size={14} className="shrink-0" aria-hidden="true" />
-                      Clinical history is restricted for your role.
-                    </p>
-                  );
-                }
+              <div
+                role="tabpanel"
+                id={`profile-panel-${activeTab}`}
+                aria-labelledby={`profile-tab-${activeTab}`}
+              >
+                {activeTab === "patient-info" && (
+                  <RegistrationSections
+                    patient={patient}
+                    form={form}
+                    editingSection={editingSection}
+                    onEdit={handleEditSection}
+                    onCancel={handleCancelEdit}
+                    onSave={handleRequestSave}
+                    onChange={handleChange}
+                    fieldErrors={fieldErrors}
+                    saving={saving}
+                    motherSearch={motherSearch}
+                    motherPatientOptions={motherPatientOptions}
+                    onMotherSearchChange={setMotherSearch}
+                    onMotherPatientChange={handleMotherPatientChange}
+                  />
+                )}
 
-                return (
-                  // The right column stays sticky across all of Overview (dashboard,
-                  // Background) - it only unsticks once this whole grid scrolls
-                  // past, not just the dashboard cards above it.
-                  <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-                    <div className="min-w-0">
-                      <OverviewDashboard
-                        patient={patient}
-                        records={records}
-                        recordsLoading={recordsLoading}
-                        activeFollowUps={activeFollowUps}
-                        careTracking={careTracking}
-                        onViewRecords={() => setActiveTab("records")}
-                        onViewFollowUps={() => setActiveTab("follow-ups")}
-                        onViewPrograms={() => setActiveTab("programs")}
-                        onViewRecord={(recordId) => navigate(`/bhc/health-records/${recordId}`)}
-                      />
-                      {BACKGROUND_SECTION_KEYS.map((section) => (
-                        <PatientBackgroundTab
-                          key={section}
-                          variant="flat"
-                          section={section}
-                          background={patient.medicalBackground}
-                          saving={savingBackground}
-                          onSave={handleBackgroundSave}
-                        />
-                      ))}
-                    </div>
+                {activeTab === "programs" && canViewHistory && (
+                  <CareAndProgramsTab
+                    patient={patient}
+                    patientId={patientId}
+                    records={records}
+                    basePath="/bhc"
+                    onViewProgramRecords={handleViewProgramRecords}
+                  />
+                )}
 
-                    <div className="min-w-0 lg:sticky lg:top-3">
-                      <PatientHealthSummary patient={patient} programLabels={programLabels} />
-                    </div>
-                  </div>
-                );
-              })()}
+                {activeTab === "follow-ups" && canViewHistory && (
+                  <FollowUpsByStatus
+                    followUps={patientFollowUps}
+                    onViewFollowUp={(taskId) => navigate(`/bhc/follow-ups/${taskId}`)}
+                  />
+                )}
 
-              {activeTab === "patient-info" && (
-                <RegistrationSections
-                  patient={patient}
-                  form={form}
-                  editingSection={editingSection}
-                  onEdit={handleEditSection}
-                  onCancel={handleCancelEdit}
-                  onSave={handleRequestSave}
-                  onChange={handleChange}
-                  fieldErrors={fieldErrors}
-                  saving={saving}
-                  motherSearch={motherSearch}
-                  motherPatientOptions={motherPatientOptions}
-                  onMotherSearchChange={setMotherSearch}
-                  onMotherPatientChange={handleMotherPatientChange}
-                />
-              )}
+                {activeTab === "records" && canViewHistory && (
+                  <RecordsTimeline
+                    records={records}
+                    patient={patient}
+                    conditionalAreas={conditionalProgramAreas}
+                    isLoading={recordsLoading}
+                    isFetching={recordsFetching}
+                    isError={Boolean(recordsError)}
+                    onView={viewRecord}
+                    initialFilter={recordsFilter}
+                  />
+                )}
 
-              {activeTab === "programs" && canViewHistory && (
-                <CareAndProgramsTab
-                  patient={patient}
-                  patientId={patientId}
-                  records={records}
-                  basePath="/bhc"
-                  onViewProgramRecords={handleViewProgramRecords}
-                />
-              )}
-
-              {activeTab === "follow-ups" && canViewHistory && (
-                <FollowUpsByStatus
-                  followUps={patientFollowUps}
-                  onViewFollowUp={(taskId) => navigate(`/bhc/follow-ups/${taskId}`)}
-                />
-              )}
-
-              {activeTab === "records" && canViewHistory && (
-                <RecordsTimeline
-                  records={records}
-                  patient={patient}
-                  conditionalAreas={conditionalProgramAreas}
-                  isLoading={recordsLoading}
-                  isFetching={recordsFetching}
-                  isError={Boolean(recordsError)}
-                  onView={(recordId) => navigate(`/bhc/health-records/${recordId}`)}
-                  initialFilter={recordsFilter}
-                />
-              )}
-
-              {activeTab === "referrals" && canViewHistory && (
-                <ReferralsSection
-                  referrals={referrals}
-                  isLoading={referralsLoading}
-                  isFetching={referralsFetching}
-                  isError={Boolean(referralsError)}
-                  onView={(trackingId) => navigate(`/bhc/referrals/${trackingId}`)}
-                />
-              )}
+                {activeTab === "referrals" && canViewHistory && (
+                  <ReferralsSection
+                    referrals={referrals}
+                    isLoading={referralsLoading}
+                    isFetching={referralsFetching}
+                    isError={Boolean(referralsError)}
+                    onView={(trackingId) => navigate(`/bhc/referrals/${trackingId}`)}
+                  />
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </ProfileShell>
 
       <ConfirmationModal
