@@ -6,8 +6,8 @@ import { OverviewCard, OverviewNote } from "./OverviewCard";
 import PatientFactsSections from "./PatientFactsSections";
 import { TextAction } from "./ProfileSection";
 import useMediaQuery from "../../../../hooks/useMediaQuery";
-import { BODY_REGIONS } from "../../../../utils/bodyFindings";
-import { summarizeBodyFindings } from "../../../../utils/bodyFindingsSummary";
+import { BODY_REGIONS, BODY_SIDES } from "../../../../utils/bodyFindings";
+import { splitFindingsBySide, summarizeBodyFindings } from "../../../../utils/bodyFindingsSummary";
 import { formatShortDate } from "../../../../utils/patientProfile";
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -55,28 +55,30 @@ function caption(summary, hasRecords) {
 }
 
 /**
- * Centre column of the Overview board: the shared body figure with markers
- * for findings recorded on the latest visit (default) or on every loaded
- * visit, with the Current Conditions / Recorded Findings / Allergies /
- * Medications dropdowns beside it. The findings list follows the figure's
- * selected region. Documentation only - every marker and every line is
- * something a health worker wrote down; nothing is inferred.
+ * Centre column of the Overview board: the patient's realistic body figure
+ * (front or back, switched only by its flip button) with markers for findings
+ * recorded on the latest visit (default) or on every loaded visit, with the
+ * Current Conditions / Recorded Findings / Allergies / Medications dropdowns
+ * beside it. Each finding is marked only on the side it was recorded on
+ * (legacy findings without a side are front). The findings list follows the
+ * figure's selected region on the side shown. Documentation only - every
+ * marker and every line is something a health worker wrote down; nothing is
+ * inferred.
  */
-export default function AnatomyFindingsPanel({ records = [], recordsLoading = false, background, onViewRecord }) {
+export default function AnatomyFindingsPanel({ records = [], recordsLoading = false, background, onViewRecord, sex }) {
   const [mode, setMode] = useState("latest");
+  const [side, setSide] = useState("front");
   const [selectedRegion, setSelectedRegion] = useState(null);
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
 
   const summary = useMemo(() => summarizeBodyFindings(records, mode), [records, mode]);
-  const findingsByRegion = useMemo(() => {
-    const grouped = {};
-    for (const item of summary.findings) (grouped[item.region] ||= []).push(item);
-    return grouped;
-  }, [summary]);
-  // Flat, region-ordered list, filtered to the selected region.
-  const listed = BODY_REGIONS.flatMap(({ key }) =>
-    !selectedRegion || selectedRegion === key ? findingsByRegion[key] || [] : [],
-  );
+  const findingsBySide = useMemo(() => splitFindingsBySide(summary.findings), [summary]);
+  const findingsByRegion = findingsBySide[side];
+  // Flat, region-ordered list: the selected region on the side shown, or
+  // every finding, front then back.
+  const listed = selectedRegion
+    ? findingsByRegion[selectedRegion] || []
+    : BODY_SIDES.flatMap((key) => BODY_REGIONS.flatMap((region) => findingsBySide[key][region.key] || []));
 
   function changeMode(next) {
     setMode(next);
@@ -85,6 +87,11 @@ export default function AnatomyFindingsPanel({ records = [], recordsLoading = fa
 
   function selectRegion(region) {
     setSelectedRegion(region);
+  }
+
+  function toggleSide() {
+    setSide((current) => (current === "front" ? "back" : "front"));
+    selectRegion(null);
   }
 
   const findings = {
@@ -111,6 +118,9 @@ export default function AnatomyFindingsPanel({ records = [], recordsLoading = fa
                 >
                   <span className="min-w-0 break-words text-slate-700 group-hover:text-red-700">
                     <span className="font-semibold text-slate-800">{item.regionLabel}</span>
+                    {item.side === "back" && (
+                      <span className="ml-1 rounded-sm border border-slate-300 px-1 text-[10px] font-semibold uppercase text-slate-500">Back</span>
+                    )}
                     {" – "}
                     {item.location ? `${item.location}: ` : ""}
                     <span className="font-medium text-slate-900 group-hover:text-red-700">{item.finding}</span>
@@ -142,13 +152,17 @@ export default function AnatomyFindingsPanel({ records = [], recordsLoading = fa
           <PatientFactsSections background={background} records={records} recordsLoading={recordsLoading} findings={findings} />
         </div>
 
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto [scrollbar-width:thin] md:pr-0.5">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto [scrollbar-width:thin] md:pr-0.5">
           <p role="status" className="text-xs tabular-nums text-slate-600">
             {recordsLoading && records.length === 0 ? "Loading body findings..." : caption(summary, records.length > 0)}
           </p>
 
-          <div className="flex items-center justify-center bg-[radial-gradient(ellipse_at_center,rgba(241,245,249,1)_0%,rgba(241,245,249,0)_70%)] py-3">
+          {/* A size container, so the figure fits both its height and width. */}
+          <div className="flex min-h-[420px] flex-1 items-center justify-center [container-type:size]">
             <BodyFigureSvg
+              sex={sex}
+              side={side}
+              onToggleSide={toggleSide}
               findingsByRegion={findingsByRegion}
               selectedRegion={selectedRegion}
               onSelectRegion={selectRegion}

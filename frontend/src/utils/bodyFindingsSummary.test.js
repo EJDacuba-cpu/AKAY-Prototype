@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getRecordId, summarizeBodyFindings } from "./bodyFindingsSummary.js";
+import { getRecordId, splitFindingsBySide, summarizeBodyFindings } from "./bodyFindingsSummary.js";
 
 const finding = (region, text, extra = {}) => ({ id: `${region}-${text}`, region, finding: text, ...extra });
 
@@ -84,4 +84,30 @@ test("getRecordId reads the id aliases records arrive with", () => {
   assert.equal(getRecordId({ health_record_id: "h1" }), "h1");
   assert.equal(getRecordId({ recordId: "r1" }), "r1");
   assert.equal(getRecordId({}), "");
+});
+
+const sidedRecord = {
+  id: "S",
+  dateRecorded: "2026-10-01T09:00:00+08:00",
+  bodyFindings: [
+    { id: "s1", region: "chest", side: "back", finding: "Rash" },
+    { id: "s2", region: "chest", finding: "Cough" },
+  ],
+};
+
+test("summary findings carry side and a side-aware label", () => {
+  const summary = summarizeBodyFindings([sidedRecord], "latest");
+  assert.deepEqual(summary.findings.map((item) => item.side), ["back", "front"]);
+  assert.deepEqual(summary.findings.map((item) => item.regionLabel), ["Upper back", "Chest"]);
+});
+
+test("splitFindingsBySide keeps each side's regions apart", () => {
+  const { findings } = summarizeBodyFindings([sidedRecord], "latest");
+  const split = splitFindingsBySide(findings);
+  assert.equal(split.front.chest.length, 1);
+  assert.equal(split.back.chest.length, 1);
+  assert.equal(split.front.chest[0].finding, "Cough");
+  assert.equal(split.back.chest[0].finding, "Rash");
+  assert.equal(split.front.abdomen, undefined);
+  assert.deepEqual(splitFindingsBySide([]), { front: {}, back: {} });
 });

@@ -487,6 +487,7 @@ export default function PatientDetails() {
                     <AnatomyFindingsPanel
                       key={patientId}
                       background={patient.medicalBackground}
+                      sex={patient.sex}
                       records={records}
                       recordsLoading={recordsLoading}
                       onViewRecord={viewRecord}

@@ -1,4 +1,4 @@
-import { getBodyRegionLabel, normalizeBodyFindings } from "./bodyFindings.js";
+import { BODY_SIDES, getBodyRegionLabel, normalizeBodyFindings } from "./bodyFindings.js";
 import { getVitalRecordDate } from "./currentPatientVitals.js";
 
 /**
@@ -26,7 +26,7 @@ function findingsOf(record, visitDate) {
   const recordId = getRecordId(record);
   return normalizeBodyFindings(record.bodyFindings).map((item) => ({
     ...item,
-    regionLabel: getBodyRegionLabel(item.region),
+    regionLabel: getBodyRegionLabel(item.region, item.side),
     recordId,
     visitDate,
   }));
@@ -36,6 +36,20 @@ function countRegions(findings) {
   const counts = {};
   for (const { region } of findings) counts[region] = (counts[region] || 0) + 1;
   return counts;
+}
+
+/**
+ * Groups summary findings by side, then region, keeping their order. Every
+ * finding already has `side` ("front" | "back"; legacy findings are front).
+ * @returns {{ front: Record<string, object[]>, back: Record<string, object[]> }}
+ */
+export function splitFindingsBySide(findings) {
+  const split = Object.fromEntries(BODY_SIDES.map((side) => [side, {}]));
+  for (const item of Array.isArray(findings) ? findings : []) {
+    const bySide = split[item.side] || split.front;
+    (bySide[item.region] ||= []).push(item);
+  }
+  return split;
 }
 
 /**
