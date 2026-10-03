@@ -212,17 +212,9 @@
 }
 
 /* ── Body Preview hover callout (desktop only) ──────────────────────────────
-   A dot with findings draws a short connector line to a callout card;
-   an empty dot just fades in a plain label. Kept minimal and skipped
+   A dot with findings fades in a callout card; an empty dot just fades in
+   a plain label. Kept minimal and skipped
    entirely under prefers-reduced-motion. */
-@keyframes bp-line-draw {
-  from {
-    transform: scaleX(0);
-  }
-  to {
-    transform: scaleX(1);
-  }
-}
 @keyframes bp-fade-in {
   from {
     opacity: 0;
@@ -233,9 +225,6 @@
     transform: translateY(0);
   }
 }
-.ehr-consult .bp-callout-line {
-  animation: bp-line-draw 120ms ease-out;
-}
 .ehr-consult .bp-callout-card {
   animation: bp-fade-in 140ms ease-out 60ms backwards;
 }
@@ -243,7 +232,6 @@
   animation: bp-fade-in 100ms ease-out;
 }
 @media (prefers-reduced-motion: reduce) {
-  .ehr-consult .bp-callout-line,
   .ehr-consult .bp-callout-card,
   .ehr-consult .bp-tooltip {
     animation: none;

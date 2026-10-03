@@ -37,6 +37,8 @@ const DESKTOP_QUERY = "(min-width: 1024px)";
 const DIALOG_WIDTH = 288;
 const GAP = 12;
 const EDGE = 8;
+// Hover callout width; it is clamped inside the figure box by this width.
+const CALLOUT_WIDTH = 168;
 
 /**
  * One body-area dot: neutral by default, AKAY red once it has a finding on
@@ -91,9 +93,10 @@ function BodyDot({ region, label, position, count, active, hovered, readOnly, on
 }
 
 /**
- * The figure plus, on desktop only, a hover/focus preview: a short connector
- * line and callout card for a dot with findings, or a plain label for one
- * without. Decorative only - the dot's own aria-label already carries this
+ * The figure plus, on desktop only, a hover/focus preview: a callout card
+ * for a dot with findings, or a plain label for one without. It sits below
+ * the dot (above it on the lower body), centred on the dot but clamped inside
+ * the figure box so it never runs past the narrow side column. Decorative only - the dot's own aria-label already carries this
  * information, so the preview is hidden from assistive tech. Clicking still
  * goes through onOpen regardless of hover state. Counts and previews cover
  * only the side shown.
@@ -116,17 +119,15 @@ function BodyFigure({ findings, sex, side, onToggleSide, countByRegion, activeRe
     ? findings.find((item) => item.region === overlayRegion && item.side === side)
     : null;
   const [overlayX, overlayY] = overlayRegion ? getDotPosition(figure, side, overlayRegion) : [0, 0];
-  // Centre-column dots (head, chest, abdomen, pelvis) get the callout centred
-  // below them, so it never runs past the narrow side column; the others open
-  // away from the body's midline.
-  const overlaySide = Math.abs(overlayX - 0.5) < 0.1 ? "below" : overlayX < 0.5 ? "right" : "left";
-  const overlayStyle = !overlayRegion
-    ? null
-    : overlaySide === "below"
-      ? { top: `calc(${overlayY * 100}% + 16px)`, left: "50%", transform: "translateX(-50%)" }
-      : overlaySide === "right"
-        ? { top: `${overlayY * 100}%`, left: `calc(${overlayX * 100}% + 14px)`, transform: "translateY(-50%)" }
-        : { top: `${overlayY * 100}%`, right: `calc(${(1 - overlayX) * 100}% + 14px)`, transform: "translateY(-50%)" };
+  const overlayStyle = overlayRegion
+    ? {
+        ...(overlayY > 0.7
+          ? { bottom: `calc(${(1 - overlayY) * 100}% + 16px)` }
+          : { top: `calc(${overlayY * 100}% + 16px)` }),
+        left: `clamp(0px, calc(${overlayX * 100}% - ${CALLOUT_WIDTH / 2}px), calc(100% - ${CALLOUT_WIDTH}px))`,
+        width: `${CALLOUT_WIDTH}px`,
+      }
+    : null;
 
   return (
     <AnatomyFigure
@@ -155,16 +156,11 @@ function BodyFigure({ findings, sex, side, onToggleSide, countByRegion, activeRe
       {overlayRegion && (
         <div
           aria-hidden="true"
-          className={`pointer-events-none absolute z-10 flex items-center ${overlaySide === "right" ? "flex-row" : "flex-row-reverse"}`}
+          className="pointer-events-none absolute z-10 flex justify-center"
           style={overlayStyle}
         >
-          {overlayCount > 0 && overlaySide !== "below" && (
-            <span
-              className={`bp-callout-line h-px w-3.5 flex-none bg-[#111827] ${overlaySide === "right" ? "origin-left" : "origin-right"}`}
-            />
-          )}
           <div
-            className={`${overlayCount > 0 ? "bp-callout-card w-[168px] px-2.5 py-2" : "bp-tooltip whitespace-nowrap px-2 py-1"} border border-[#111827] bg-[#111827] text-[11px] leading-snug text-white shadow-lg`}
+            className={`${overlayCount > 0 ? "bp-callout-card w-full px-2.5 py-2" : "bp-tooltip max-w-full truncate whitespace-nowrap px-2 py-1"} border border-[#111827] bg-[#111827] text-[11px] leading-snug text-white shadow-lg`}
           >
             <p className="font-semibold">{getBodyRegionLabel(overlayRegion, side)}</p>
             {overlayCount > 0 && (
