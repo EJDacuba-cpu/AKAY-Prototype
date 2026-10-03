@@ -23,7 +23,7 @@
     "test:patient-profile": "node --test src/utils/patientProfile.test.js src/utils/currentPatientVitals.test.js",
     "test:current-conditions": "node --test src/utils/currentConditions.test.js",
     "test:diagnosis-reporting": "node --test src/utils/diagnoses.test.js src/utils/diagnosisReporting.test.js",
-    "test:patient-overview": "node --test src/utils/bodyFigureGeometry.test.js src/utils/bodyFindingsSummary.test.js src/utils/vitalTrends.test.js src/utils/backgroundSummary.test.js src/utils/medicationSummary.test.js",
+    "test:patient-overview": "node --test src/utils/bodyFigureGeometry.test.js src/utils/bodyFindings.test.js src/utils/findingLink.test.js src/utils/bodyFindingsSummary.test.js src/utils/vitalTrends.test.js src/utils/backgroundSummary.test.js src/utils/medicationSummary.test.js",
     "test:request-timeout": "node --test src/services/requestTimeout.test.js"
   },
   "dependencies": {

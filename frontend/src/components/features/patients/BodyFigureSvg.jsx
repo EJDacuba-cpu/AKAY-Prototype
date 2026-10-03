@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import AnatomyFigure from "./AnatomyFigure";
 import { BODY_REGIONS, getBodyRegionLabel } from "../../../utils/bodyFindings";
@@ -8,6 +8,7 @@ import { formatShortDate } from "../../../utils/patientProfile";
 const MAX_CALLOUT_FINDINGS = 3;
 // Hover callout width; it is clamped inside the figure box by this width.
 const CALLOUT_WIDTH = 188;
+const NO_FINDINGS = {};
 
 /**
  * One recorded-findings marker: an HTML toggle button at the region's
@@ -77,7 +78,7 @@ export default function BodyFigureSvg({
   sex,
   side = "front",
   onToggleSide,
-  findingsByRegion = {},
+  findingsByRegion = NO_FINDINGS,
   selectedRegion,
   onSelectRegion,
   isDesktop,
@@ -86,16 +87,26 @@ export default function BodyFigureSvg({
   onHoverRegion,
 }) {
   const [hoveredRegion, setHoveredRegion] = useState(null);
+  // A new set of markers (flip, mode change, new records) can unmount the
+  // hovered one without a leave/blur, so hover resets with the findings.
+  const [hoverScope, setHoverScope] = useState(findingsByRegion);
+  if (hoverScope !== findingsByRegion) {
+    setHoverScope(findingsByRegion);
+    setHoveredRegion(null);
+  }
   const figure = getFigureKey(sex);
   const marked = BODY_REGIONS.filter(({ key }) => (findingsByRegion[key] || []).length > 0);
 
+  // The reported hover is always exactly the local one.
+  useEffect(() => {
+    onHoverRegion?.(hoveredRegion);
+  }, [hoveredRegion, onHoverRegion]);
+
   function hoverStart(region) {
     setHoveredRegion(region);
-    onHoverRegion?.(region);
   }
   function hoverEnd(region) {
     setHoveredRegion((current) => (current === region ? null : current));
-    onHoverRegion?.(null);
   }
 
   const calloutRegion = isDesktop && hoveredRegion && findingsByRegion[hoveredRegion]?.length ? hoveredRegion : null;
