@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 import {
   documentedConditionFor,
-  followUpSummaryRows,
   isFollowedThisVisit,
 } from "./followUpThisVisit.js";
 
@@ -26,12 +25,4 @@ test("only the followed condition is reference-only in Patient Background", () =
   assert.equal(isFollowedThisVisit(diseases[0], [htn], registry), true);
   assert.equal(isFollowedThisVisit(diseases[1], [htn], registry), false);
   assert.equal(isFollowedThisVisit(diseases[0], [], registry), false);
-});
-
-test("the summary lists each followed condition with its monitoring start", () => {
-  assert.deepEqual(followUpSummaryRows([htn, { id: 5, conditionName: "Asthma", conditionKey: null, startedAt: "" }]), [
-    { id: 4, name: "Hypertension", startedAt: "2026-10-03" },
-    { id: 5, name: "Asthma", startedAt: "" },
-  ]);
-  assert.deepEqual(followUpSummaryRows([]), []);
 });

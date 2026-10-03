@@ -33,12 +33,3 @@ export function isFollowedThisVisit(disease, continuedMonitorings = [], registry
     (monitoring) => identityOfMonitoring(monitoring, registry) === identity || (disease?.conditionKey && disease.conditionKey === monitoring?.conditionKey),
   );
 }
-
-/** Rows of the read-only "Follow-up This Visit" summary. */
-export function followUpSummaryRows(continuedMonitorings = []) {
-  return continuedMonitorings.map((monitoring) => ({
-    id: monitoring.id,
-    name: monitoring.conditionName,
-    startedAt: monitoring.startedAt || "",
-  }));
-}

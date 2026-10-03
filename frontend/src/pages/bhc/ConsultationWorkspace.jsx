@@ -126,7 +126,6 @@ import BodyPreviewPanel, { BodyFindingsList } from "../../components/features/he
 import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindings";
 import { DRAFTS_ENABLED } from "../../utils/featureFlags";
 import DiagnosisListField from "../../components/features/health-records/wizard/DiagnosisListField";
-import FollowUpThisVisit from "../../components/features/health-records/wizard/FollowUpThisVisit";
 import MonitoredConditionsNote from "../../components/features/health-records/wizard/MonitoredConditionsNote";
 import { formatDiagnoses, joinDiagnosisNames, restoreDiagnoses } from "../../utils/diagnoses";
 import { applyLegacyReportingStatus, deriveReportingStatus, setDiagnosisReportAs } from "../../utils/diagnosisReporting";
@@ -4141,7 +4140,6 @@ export default function ConsultationWorkspace() {
       <div className={`ehr-consult__grid${showSidePanel ? " ehr-consult__grid--panel lg:grid lg:grid-cols-[minmax(0,1fr)_264px] lg:items-start lg:gap-4" : ""}`}>
       <div className="@container min-w-0 ehr-consult__form" data-consult-scroll>
       {inConsultationWorkspace && stepIndicator}
-      {wizardPhase === WIZARD_FORM && <FollowUpThisVisit conditions={continuedMonitorings} />}
       {activeDraft?.reviewState === "review" && canFinalize && <details className="mb-4 rounded-none border border-gray-200 p-4"><summary className="cursor-pointer text-sm font-medium">Return for Correction</summary><p className="my-2 text-sm text-gray-600">Use only when the encoder must verify or complete information.</p><textarea aria-label="Correction note" className="w-full rounded-none border border-gray-300 p-3" value={correctionNote} onChange={event => setCorrectionNote(event.target.value)} /><Button type="button" disabled={!correctionNote.trim()} onClick={async () => { try { if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) return; const identity = getDraftIdentity() || activeDraft; await transitionDraft(identity.id, "return", identity.version, correctionNote.trim()); bypassLeaveGuardRef.current = true; navigate("/bhc/patients/" + selectedPatientId); } catch (error) { toast.error(error.message); } }}>Return for Correction</Button></details>}
       {activeDraft?.returnNote && <div role="status" className="mb-4 rounded-none bg-amber-50 p-4 text-sm">Return for Correction: {activeDraft.returnNote}</div>}
       {draftMedicineWarnings.length > 0 && (
