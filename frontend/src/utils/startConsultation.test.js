@@ -1,12 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  VISIT_CONTEXT,
-  canStartVisit,
+  hasMonitoredConditions,
   monitoredConditionOptions,
   selectionToRoute,
   startConsultationAction,
-  visitContextToRoute,
+  startRoute,
 } from "./startConsultation.js";
 
 const overview = {
@@ -33,20 +32,20 @@ test("lists each active monitoring once, alphabetically, with its earliest follo
   assert.deepEqual(monitoredConditionOptions({ pendingFollowUps: [], monitoringWithoutFollowUp: [] }), []);
 });
 
-test("follow-up needs a condition; general never does; no context cannot start", () => {
-  assert.equal(canStartVisit(VISIT_CONTEXT.GENERAL, []), true);
-  assert.equal(canStartVisit(VISIT_CONTEXT.MONITORING, []), false);
-  assert.equal(canStartVisit(VISIT_CONTEXT.MONITORING, [4]), true);
-  assert.equal(canStartVisit(null, [4]), false);
+test("the modal is only for a patient with an active monitoring record", () => {
+  assert.equal(hasMonitoredConditions(null), false);
+  assert.equal(hasMonitoredConditions({ pendingFollowUps: [], monitoringWithoutFollowUp: [] }), false);
+  // A follow-up that links no monitoring record has nothing to select.
+  assert.equal(hasMonitoredConditions({ pendingFollowUps: [{ id: 1, conditions: [] }], monitoringWithoutFollowUp: [] }), false);
+  assert.equal(hasMonitoredConditions({ pendingFollowUps: [], monitoringWithoutFollowUp: [{ id: 7, conditionName: "Asthma" }] }), true);
+  assert.equal(hasMonitoredConditions(overview), true);
 });
 
-test("visit context becomes a route; general drops any ticked ids", () => {
+test("starting with nothing selected is a normal consultation; a selection continues it", () => {
+  assert.equal(startRoute({ patientId: 17 }), "/bhc/health-records/add?patientId=17&mode=new");
+  assert.equal(startRoute({ patientId: 17, monitoringIds: [] }), "/bhc/health-records/add?patientId=17&mode=new");
   assert.equal(
-    visitContextToRoute({ patientId: 17, context: VISIT_CONTEXT.GENERAL, monitoringIds: [4] }),
-    "/bhc/health-records/add?patientId=17&mode=new",
-  );
-  assert.equal(
-    visitContextToRoute({ patientId: 17, context: VISIT_CONTEXT.MONITORING, monitoringIds: [4, 7] }),
+    startRoute({ patientId: 17, monitoringIds: [4, 7] }),
     "/bhc/health-records/add?patientId=17&mode=continue&monitoringIds=4%2C7",
   );
 });
@@ -70,7 +69,7 @@ test("what a Start Consultation action does: wait, open the modal, or go", () =>
   assert.equal(startConsultationAction({ ...ready, isPending: true }), "disabled");
   assert.equal(startConsultationAction({ ...ready, isError: true }), "disabled");
   assert.equal(startConsultationAction({ ...ready, discarding: true }), "disabled");
-  // No draft: the modal opens for every new consultation (the hook's
+  // No draft and monitored conditions to offer: open the modal (the hook's
   // needsStartModal is false whenever a draft exists, so Resume always wins).
   assert.equal(startConsultationAction({ ...ready, needsStartModal: true }), "modal");
   // A draft to resume: a plain link.

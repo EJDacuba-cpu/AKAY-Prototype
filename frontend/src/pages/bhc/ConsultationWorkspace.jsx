@@ -121,6 +121,7 @@ import {
 import ConsultationProgramPanel from "../../components/features/health-records/wizard/ConsultationProgramPanel";
 import BodyPreviewPanel, { BodyFindingsList } from "../../components/features/health-records/wizard/BodyPreviewPanel";
 import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindings";
+import { DRAFTS_ENABLED } from "../../utils/featureFlags";
 import DiagnosisListField from "../../components/features/health-records/wizard/DiagnosisListField";
 import MonitoredConditionsNote from "../../components/features/health-records/wizard/MonitoredConditionsNote";
 import { formatDiagnoses, joinDiagnosisNames, restoreDiagnoses } from "../../utils/diagnoses";
@@ -796,7 +797,7 @@ export default function ConsultationWorkspace() {
       searchParams.get("recordType") ||
       searchParams.get("healthRecordType"),
   );
-  const isDraftRouteEligible = userRole === "bhc";
+  const isDraftRouteEligible = DRAFTS_ENABLED && userRole === "bhc";
 
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(null);

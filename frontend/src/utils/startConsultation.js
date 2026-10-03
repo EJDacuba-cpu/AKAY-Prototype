@@ -2,14 +2,7 @@ import { buildPatientConsultationPath } from "./consultationRoute.js";
 import { activeMonitoringsFromOverview } from "./continuedCare.js";
 
 /**
- * The visit context the worker picks in the Start Consultation modal. It only
- * says whether the visit is new/general or a follow-up of already-monitored
- * conditions - never which BHC service was provided (that is the sidebar).
- */
-export const VISIT_CONTEXT = { GENERAL: "general", MONITORING: "monitoring_follow_up" };
-
-/**
- * The conditions the modal offers for a follow-up: active monitoring records
+ * The conditions the modal offers: active monitoring records
  * only (not Past Medical History), each once, alphabetical. `followUp` is the
  * earliest-due pending follow-up that links the condition, else null.
  */
@@ -30,17 +23,13 @@ export function monitoredConditionOptions(overview) {
     .sort((a, b) => a.conditionName.localeCompare(b.conditionName, undefined, { sensitivity: "base" }));
 }
 
-/** General can always start; a follow-up needs at least one monitored condition. */
-export function canStartVisit(context, monitoringIds = []) {
-  if (context === VISIT_CONTEXT.GENERAL) return true;
-  if (context === VISIT_CONTEXT.MONITORING) return monitoringIds.length > 0;
-  return false;
-}
-
-/** The consultation route for a chosen visit context (general ignores ticked ids). */
-export function visitContextToRoute({ patientId, context, monitoringIds = [] }, basePath = "/bhc") {
-  if (context === VISIT_CONTEXT.MONITORING) return selectionToRoute({ patientId, monitoringIds }, basePath);
-  return buildPatientConsultationPath(patientId, basePath);
+/**
+ * Whether Start Consultation has anything to ask. Existing monitoring is an
+ * optional context on the one encounter, so a patient with no active
+ * monitoring record skips the modal and goes straight to the workspace.
+ */
+export function hasMonitoredConditions(overview) {
+  return monitoredConditionOptions(overview).length > 0;
 }
 
 /**
@@ -64,4 +53,15 @@ export function selectionToRoute({ patientId, followUpIds = [], monitoringIds = 
   if (followUpIds.length) params.set("followUpIds", followUpIds.join(","));
   if (monitoringIds.length) params.set("monitoringIds", monitoringIds.join(","));
   return `${basePath}/health-records/add?${params.toString()}`;
+}
+
+/**
+ * The consultation route for what the worker ticked in the Start Consultation
+ * modal: nothing ticked is a normal consultation, otherwise the same
+ * consultation carries the chosen monitoring (no separate record).
+ */
+export function startRoute({ patientId, monitoringIds = [] }, basePath = "/bhc") {
+  return monitoringIds.length
+    ? selectionToRoute({ patientId, monitoringIds }, basePath)
+    : buildPatientConsultationPath(patientId, basePath);
 }

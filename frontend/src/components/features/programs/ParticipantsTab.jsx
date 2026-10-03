@@ -11,7 +11,7 @@ import AddParticipantModal from "./AddParticipantModal";
 import { formatShortDate } from "../../../utils/patientProfile";
 import StartConsultationModal from "../patients/profile/StartConsultationModal";
 import usePatientConsultation from "../../../hooks/usePatientConsultation";
-import { startConsultationAction, visitContextToRoute } from "../../../utils/startConsultation";
+import { startConsultationAction, startRoute } from "../../../utils/startConsultation";
 
 const STATUS_STYLES = {
   Enrolled: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
@@ -22,8 +22,8 @@ const STATUS_STYLES = {
 /**
  * A participant's Start / Resume Consultation, with the same behaviour as the
  * patient profile header (usePatientConsultation): an unfinished draft is
- * resumed; otherwise the Start Consultation modal opens so the visit context
- * (new/general, or a follow-up of monitored conditions) is chosen first.
+ * resumed; otherwise, when the patient has active monitored conditions, the
+ * Start Consultation modal opens to optionally add them; else a new consultation.
  */
 function ParticipantConsultationAction({ patientId, patientName }) {
   const consultation = usePatientConsultation(patientId);
@@ -70,10 +70,9 @@ function ParticipantConsultationAction({ patientId, patientName }) {
         createPortal(
           <StartConsultationModal
             overview={consultation.careOverview}
-            overviewUnavailable={consultation.careOverviewUnavailable}
             onCancel={() => setModalOpen(false)}
-            onStart={({ context, monitoringIds }) =>
-              navigate(visitContextToRoute({ patientId, context, monitoringIds }))
+            onStart={({ monitoringIds }) =>
+              navigate(startRoute({ patientId, monitoringIds }))
             }
           />,
           document.body,
