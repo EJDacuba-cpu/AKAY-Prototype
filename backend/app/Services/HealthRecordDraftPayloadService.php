@@ -342,6 +342,12 @@ class HealthRecordDraftPayloadService
                     'heightCm' => self::SCALAR,
                 ]],
             ],
+            // Final NTP treatment outcome. The frontend's EMPTY_TB_DATA always
+            // carries it (empty until treatment closes), so every draft has it.
+            'outcome' => [
+                'status' => self::SCALAR,
+                'date' => self::SCALAR,
+            ],
         ],
         // Care Plan & Next Steps: what this consultation continues or stops.
         'carePlan' => [

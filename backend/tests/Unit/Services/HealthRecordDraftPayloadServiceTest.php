@@ -29,6 +29,23 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $this->assertIsArray($sanitized);
     }
 
+    /**
+     * Every new consultation sends tbData as the frontend's EMPTY_TB_DATA,
+     * including its empty treatment outcome - even when no TB form is open.
+     * Rejecting it fails every draft autosave, which then blocks finalizing.
+     */
+    public function test_untouched_tb_outcome_from_a_new_consultation_is_accepted(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+
+        $payload = $this->fullFrontendPayload();
+        $payload['tbData']['outcome'] = ['status' => '', 'date' => ''];
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertSame(['status' => '', 'date' => ''], $sanitized['tbData']['outcome']);
+    }
+
     public function test_unknown_referral_form_fields_are_rejected(): void
     {
         $service = new HealthRecordDraftPayloadService();
@@ -301,6 +318,11 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
                             'heightCm' => '165',
                         ],
                     ],
+                ],
+                // Final NTP treatment outcome (TbTreatmentCardForm EMPTY_TB_DATA.outcome).
+                'outcome' => [
+                    'status' => 'cured',
+                    'date' => '2027-01-10',
                 ],
             ],
             'referralForm' => [
