@@ -56,10 +56,12 @@ class ConditionMonitoringService
      * @param  array<int, array<string, mixed>>  $diagnoses  server-resolved (conditionKey set)
      * @param  Collection<int, ConditionMonitoring>  $continued  from lockContinued()
      * @param  array<int, array{monitoring_id: int|string, reason: string}>  $stops
+     * @param  array<int, int|string>  $referredIds  followed monitoring the visit refers to the RHU (it stays active)
      * @return Collection<int, ConditionMonitoring> active after this visit, started or continued by it
      */
-    public function apply(Patient $patient, HealthRecord $record, array $diagnoses, Collection $continued, array $stops, User $user): Collection
+    public function apply(Patient $patient, HealthRecord $record, array $diagnoses, Collection $continued, array $stops, User $user, array $referredIds = []): Collection
     {
+        $referredIds = array_map('intval', $referredIds);
         $stopReasons = [];
         foreach ($stops as $index => $stop) {
             $id = (int) $stop['monitoring_id'];
@@ -116,7 +118,7 @@ class ConditionMonitoringService
                 'updated_by' => $user->id,
             ]);
 
-            $this->history($monitoring, $record, $existing === null ? ConditionMonitoringVisit::ACTION_STARTED : ConditionMonitoringVisit::ACTION_CONTINUED, $entry['referred']);
+            $this->history($monitoring, $record, $existing === null ? ConditionMonitoringVisit::ACTION_STARTED : ConditionMonitoringVisit::ACTION_CONTINUED, $entry['referred'] || in_array($monitoring->id, $referredIds, true));
             $activeAfter->put($monitoring->id, $monitoring);
         }
 
@@ -136,7 +138,7 @@ class ConditionMonitoringService
 
                 continue;
             }
-            $this->history($monitoring, $record, ConditionMonitoringVisit::ACTION_CONTINUED, $this->isReferred($diagnoses, $monitoring->condition_identity));
+            $this->history($monitoring, $record, ConditionMonitoringVisit::ACTION_CONTINUED, $this->isReferred($diagnoses, $monitoring->condition_identity) || in_array($monitoring->id, $referredIds, true));
             $activeAfter->put($monitoring->id, $monitoring);
         }
 

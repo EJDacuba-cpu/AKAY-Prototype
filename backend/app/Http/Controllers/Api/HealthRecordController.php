@@ -212,6 +212,12 @@ class HealthRecordController extends Controller
                     $lockedFollowUpTask
                 );
                 $continuedMonitorings = $monitoring->lockContinued($patient, $carePlan['continued_monitoring_ids'] ?? []);
+                $statusUpdates = $carePlan['monitoring_status_updates'] ?? [];
+                abort_if(
+                    $statusUpdates !== [] && ! PatientBackground::canAccess($request->user()),
+                    403,
+                    'Your current facility assignment does not permit changing a documented condition status.'
+                );
                 // Background sections reviewed in this consultation go first: a
                 // stale edited section throws a 409 before anything is written,
                 // and the diagnosis sync below then builds on the merged result.
@@ -223,6 +229,19 @@ class HealthRecordController extends Controller
                         Carbon::parse($data['date_recorded'])->toDateString()
                     )
                     : [];
+                // A documented status the clinician intentionally changed for a
+                // followed condition (Care Plan & Next Steps), after any
+                // Review / Update edit so the clinician's last word stands.
+                $backgroundChanges = [
+                    ...$backgroundChanges,
+                    ...$patientBackground->applyConditionStatuses(
+                        $patient,
+                        $continuedMonitorings,
+                        $statusUpdates,
+                        $request->user(),
+                        Carbon::parse($data['date_recorded'])->toDateString()
+                    ),
+                ];
                 $record = HealthRecord::create([
                     ...$data,
                     'encoded_by' => $lockedDraft?->owner_user_id ?? $request->user()->id,
@@ -245,7 +264,8 @@ class HealthRecordController extends Controller
                     $data['diagnoses'] ?? [],
                     $continuedMonitorings,
                     $carePlan['monitoring_stops'] ?? [],
-                    $request->user()
+                    $request->user(),
+                    $carePlan['monitoring_referrals'] ?? []
                 );
                 $confirmedItems = array_values(array_filter($dispensedMedicines, fn ($item) => ($item['confirmed_given'] ?? false) === true));
                 foreach ($data['immunization_data']['vaccineEntries'] ?? [] as $entry) {

@@ -358,6 +358,11 @@ class HealthRecordDraftPayloadService
                 'monitoringId' => self::SCALAR,
                 'reason' => self::SCALAR,
             ]],
+            'monitoringReferrals' => ['*' => self::SCALAR],
+            'monitoringStatuses' => ['*' => [
+                'monitoringId' => self::SCALAR,
+                'status' => self::SCALAR,
+            ]],
         ],
         // Patient Background sections edited in this consultation, applied to
         // the patient on finalize (PatientBackground::apply). Only the sections

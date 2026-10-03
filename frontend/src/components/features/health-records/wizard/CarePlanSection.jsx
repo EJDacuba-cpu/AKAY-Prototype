@@ -2,10 +2,17 @@ import { TimePickerField } from "../../../common/forms/DatePickerField";
 import { ClinicalFieldGroup, FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
 import { ATTENTION_LEVELS, DEFAULT_ATTENTION } from "../../../../utils/referralAttention";
 import DiagnosisReportingField from "./DiagnosisReportingField";
+import { CONDITION_STATUSES } from "../../../../utils/diagnoses";
 import {
   CARE_PLAN, CARE_PLAN_OPTIONS, NO_CONDITION_MESSAGE, carePlanFor, continuedByIdentity, conditionIdentity,
   continuingRows, endsMonitoring,
 } from "../../../../utils/carePlan";
+
+const MONITORING_DECISIONS = [
+  { value: "continue", label: "Continue monitoring at BHC" },
+  { value: "refer", label: "Refer to RHU" },
+  { value: "stop", label: "Stop BHC monitoring" },
+];
 
 function StopReason({ monitoringId, value, error, disabled, onChange }) {
   return (
@@ -33,10 +40,11 @@ function StopReason({ monitoringId, value, error, disabled, onChange }) {
  */
 export default function CarePlanSection({
   diagnoses = [], continuedMonitorings = [], activeMonitorings = [], stops = {}, registry = {},
+  referrals = [], statuses = {}, documentedStatuses = {},
   followUp = {}, referral = {}, referralFacilityField = null, showsFollowUp = false,
   needsReferral = false, errors = {}, disabled = false,
   notes = "", notesLabel = "Monitoring Notes", notesPlaceholder = "Write monitoring notes if useful...",
-  onCarePlanChange, onStopChange, onFollowUpChange, onReferralChange, onNotesChange,
+  onCarePlanChange, onStopChange, onMonitoringDecision, onStatusChange, onFollowUpChange, onReferralChange, onNotesChange,
   onReportAsChange, onSurveillanceChange,
 }) {
   const continuedMap = continuedByIdentity(continuedMonitorings, registry);
@@ -116,23 +124,53 @@ export default function CarePlanSection({
           <ul className="mt-2 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
             {rows.map((monitoring) => {
               const stopping = Object.hasOwn(stops, monitoring.id);
+              const referring = !stopping && referrals.map(Number).includes(Number(monitoring.id));
+              const decision = stopping ? "stop" : referring ? "refer" : "continue";
+              const documented = Object.hasOwn(documentedStatuses, monitoring.id) ? documentedStatuses[monitoring.id] : null;
               return (
                 <li key={monitoring.id} className="py-3">
                   <fieldset disabled={disabled} className="min-w-0">
                     <legend className="text-sm font-semibold text-[#111827]">{monitoring.conditionName}</legend>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
-                      <label className="flex cursor-pointer items-center gap-1.5 text-[13px]">
-                        <input type="radio" name={`continue-${monitoring.id}`} checked={!stopping} onChange={() => onStopChange(monitoring.id, null)} className="h-4 w-4 accent-[#DC2626]" />
-                        <span className={!stopping ? "font-semibold text-[#DC2626]" : "text-gray-600"}>Continue monitoring</span>
-                      </label>
-                      <label className="flex cursor-pointer items-center gap-1.5 text-[13px]">
-                        <input type="radio" name={`continue-${monitoring.id}`} checked={stopping} onChange={() => onStopChange(monitoring.id, "")} className="h-4 w-4 accent-[#DC2626]" />
-                        <span className={stopping ? "font-semibold text-[#DC2626]" : "text-gray-600"}>Stop monitoring</span>
-                      </label>
+                      {MONITORING_DECISIONS.map((option) => (
+                        <label key={option.value} className="flex cursor-pointer items-center gap-1.5 text-[13px]">
+                          <input
+                            type="radio"
+                            name={`continue-${monitoring.id}`}
+                            checked={decision === option.value}
+                            onChange={() => onMonitoringDecision(monitoring.id, option.value)}
+                            className="h-4 w-4 accent-[#DC2626]"
+                          />
+                          <span className={decision === option.value ? "font-semibold text-[#DC2626]" : "text-gray-600"}>{option.label}</span>
+                        </label>
+                      ))}
                     </div>
+                    {referring && (
+                      <p className="mt-1.5 text-xs text-[#6B7280]">BHC monitoring stays active; the referral is tracked separately.</p>
+                    )}
                     {stopping && (
                       <div className="mt-2">
                         <StopReason monitoringId={monitoring.id} value={stops[monitoring.id]} error={errors[`carePlanStop.${monitoring.id}`]} disabled={disabled} onChange={onStopChange} />
+                      </div>
+                    )}
+                    {documented !== null && (
+                      <div className="mt-2.5 border-t border-dashed border-[#E5E7EB] pt-2.5">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-[#374151]">
+                          Condition status
+                          <select
+                            value={statuses[monitoring.id] || ""}
+                            onChange={(event) => onStatusChange(monitoring.id, event.target.value)}
+                            className="mt-1 block w-48 rounded-none border border-gray-200 px-2 py-1.5 text-[13px] font-normal normal-case tracking-normal text-gray-700 outline-none focus:border-red-600"
+                          >
+                            <option value="">No change</option>
+                            {CONDITION_STATUSES.map((status) => (
+                              <option key={status} value={status}>{status}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <p className="mt-1 text-xs text-[#6B7280]">
+                          Documented status: {documented || "Not recorded"}. Change it only if you are intentionally updating it.
+                        </p>
                       </div>
                     )}
                   </fieldset>

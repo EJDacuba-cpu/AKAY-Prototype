@@ -27,6 +27,7 @@ export default function ConsultationBackgroundCard({
   onUpdateChange,
   expanded = false,
   onExpandedChange,
+  followed = [],
 }) {
   if (locked) {
     return (
@@ -104,6 +105,7 @@ export default function ConsultationBackgroundCard({
             onChange={handleChange}
             editedSections={editedSections}
             onRevertSection={revertSection}
+            followed={followed}
           />
         </div>
       )}

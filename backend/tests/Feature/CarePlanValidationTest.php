@@ -138,7 +138,7 @@ class CarePlanValidationTest extends TestCase
                 'chiefComplaint' => 'Check-up',
                 'fbs' => '126',
                 'diagnoses' => [['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor', 'includeInSurveillance' => true]],
-                'carePlan' => ['continuedFollowUpTaskIds' => [], 'continuedMonitoringIds' => [7], 'monitoringStops' => [['monitoringId' => 7, 'reason' => 'Moved away']]],
+                'carePlan' => ['continuedFollowUpTaskIds' => [], 'continuedMonitoringIds' => [7], 'monitoringStops' => [['monitoringId' => 7, 'reason' => 'Moved away']], 'monitoringReferrals' => [8], 'monitoringStatuses' => [['monitoringId' => 8, 'status' => 'Controlled']]],
             ],
         ])->assertCreated()->json('data.id');
 
@@ -146,6 +146,8 @@ class CarePlanValidationTest extends TestCase
             ->assertJsonPath('data.payload.fbs', '126')
             ->assertJsonPath('data.payload.diagnoses.0.carePlan', 'monitor')
             ->assertJsonPath('data.payload.diagnoses.0.includeInSurveillance', true)
-            ->assertJsonPath('data.payload.carePlan.monitoringStops.0.reason', 'Moved away');
+            ->assertJsonPath('data.payload.carePlan.monitoringStops.0.reason', 'Moved away')
+            ->assertJsonPath('data.payload.carePlan.monitoringReferrals.0', 8)
+            ->assertJsonPath('data.payload.carePlan.monitoringStatuses.0.status', 'Controlled');
     }
 }

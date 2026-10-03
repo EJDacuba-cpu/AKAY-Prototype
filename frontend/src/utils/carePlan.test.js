@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   CARE_PLAN, CARE_PLAN_OPTIONS, CARE_PLAN_LABELS, conditionIdentity, defaultCarePlan, carePlanFor, continuingRows,
   stopsRequired, referredDiagnoses, buildReferralReason, deriveDisposition, validateCarePlan,
-  buildCarePlanPayload, monitoredConditionKeys, NO_CONDITION_MESSAGE,
+  buildCarePlanPayload, monitoredConditionKeys, NO_CONDITION_MESSAGE, referredContinuingRows,
 } from "./carePlan.js";
 
 const registry = {
@@ -130,6 +130,8 @@ test("payload lists continued ids and only real stops", () => {
     continued_follow_up_task_ids: [9],
     continued_monitoring_ids: [3, 4],
     monitoring_stops: [{ monitoring_id: 4, reason: "Moved away" }],
+    monitoring_referrals: [],
+    monitoring_status_updates: [],
   });
 });
 
@@ -162,5 +164,47 @@ test("a general consultation carries no care plan, referral, monitoring or follo
     continued_follow_up_task_ids: [],
     continued_monitoring_ids: [],
     monitoring_stops: [],
+    monitoring_referrals: [],
+    monitoring_status_updates: [],
   });
+});
+
+test("a followed condition can be referred without being diagnosed again", () => {
+  const referred = referredContinuingRows([], [htnMonitoring, asthmaMonitoring], {}, [3], registry);
+  assert.deepEqual(referred.map((m) => m.id), [3]);
+  // A stop wins over a stale referral; a diagnosed condition is the diagnosis' call.
+  assert.deepEqual(referredContinuingRows([], [htnMonitoring], { 3: "Resolved" }, [3], registry), []);
+  assert.deepEqual(referredContinuingRows([{ name: "HTN", carePlan: "monitor" }], [htnMonitoring], {}, [3], registry), []);
+});
+
+test("referring a followed condition needs a referral, keeps its monitoring and pre-fills the reason", () => {
+  const disposition = deriveDisposition({ continuedMonitorings: [htnMonitoring], referrals: [3], registry });
+  assert.equal(disposition.needsReferral, true);
+  assert.equal(disposition.monitorsAny, true);
+  assert.equal(disposition.monitorsDiagnosis, false);
+  assert.equal(buildReferralReason([], [htnMonitoring], registry, [3]), "Referred for: Hypertension");
+  assert.equal(buildReferralReason([{ name: "Cough", carePlan: "refer" }], [htnMonitoring], registry, [3]), "Referred for: Cough; Hypertension");
+  assert.equal(deriveDisposition({ continuedMonitorings: [htnMonitoring], registry }).needsReferral, false);
+});
+
+test("payload lists referred followed conditions and intentional status updates only", () => {
+  const payload = buildCarePlanPayload({
+    continuedMonitorings: [htnMonitoring, asthmaMonitoring],
+    stops: { 4: "Resolved at RHU" },
+    referrals: [3, 4],
+    statuses: { 3: "Controlled", 4: "", 99: "Active" },
+    registry,
+  });
+  assert.deepEqual(payload.monitoring_referrals, [3]);
+  assert.deepEqual(payload.monitoring_status_updates, [{ monitoring_id: 3, status: "Controlled" }]);
+});
+
+test("a status update needs a real status and a followed condition", () => {
+  const payload = buildCarePlanPayload({
+    continuedMonitorings: [htnMonitoring],
+    statuses: { 3: "No change" },
+    registry,
+  });
+  assert.deepEqual(payload.monitoring_status_updates, []);
+  assert.deepEqual(payload.monitoring_referrals, []);
 });

@@ -180,6 +180,65 @@ class PatientBackground
         return $changes;
     }
 
+    /**
+     * Changes the documented status of conditions the consultation followed,
+     * when the clinician intentionally chose a new one in Care Plan & Next
+     * Steps. Touches only the matching Current Conditions entry's status (and
+     * the date it was confirmed) on the locked patient row, so it never
+     * conflicts with a Review / Update edit and a condition with no entry
+     * there is left alone. Runs inside the caller's transaction.
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\ConditionMonitoring>  $continued  from lockContinued()
+     * @param  array<int, array{monitoring_id: int|string, status: string}>  $updates
+     * @return array<int, array> the change entry (one at most), as apply() returns
+     */
+    public function applyConditionStatuses(Patient $patient, \Illuminate\Support\Collection $continued, array $updates, User $user, string $date): array
+    {
+        if ($updates === []) {
+            return [];
+        }
+
+        $locked = Patient::query()->whereKey($patient->id)->lockForUpdate()->firstOrFail();
+        $background = is_array($locked->medical_background) ? $locked->medical_background : [];
+        $before = self::slice($background, 'medical');
+        $diseases = array_values(array_filter(is_array($before['currentDiseases']) ? $before['currentDiseases'] : [], 'is_array'));
+        $changed = false;
+
+        foreach ($updates as $update) {
+            $monitoring = $continued->get((int) $update['monitoring_id']);
+            if ($monitoring === null) {
+                continue;
+            }
+            foreach ($diseases as $index => $disease) {
+                $key = $disease['conditionKey'] ?? null;
+                $matches = ($monitoring->condition_key !== null && $key === $monitoring->condition_key)
+                    || $this->clinicalRegistry->conditionIdentity($key, (string) ($disease['name'] ?? '')) === $monitoring->condition_identity;
+                if (! $matches) {
+                    continue;
+                }
+                if (($disease['status'] ?? null) !== $update['status']) {
+                    $diseases[$index]['status'] = $update['status'];
+                    $diseases[$index]['lastConfirmed'] = $date;
+                    $changed = true;
+                }
+                break;
+            }
+        }
+
+        if (! $changed) {
+            return [];
+        }
+
+        $after = [...$before, 'currentDiseases' => $diseases];
+        $revision = self::revision($background, 'medical') + 1;
+        $background = [...$background, ...$after];
+        $background['revisions']['medical'] = $revision;
+        $background['updatedAt']['medical'] = $date;
+        $locked->update(['medical_background' => $background]);
+
+        return [self::entry('medical', 'consultation', $before, $after, $revision, $user)];
+    }
+
     /** A slice with every nested field present, so a never-recorded field equals an empty one. */
     private static function filled(array $slice): array
     {

@@ -1,4 +1,4 @@
-import { normalizeNameKey } from "./diagnoses.js";
+import { CONDITION_STATUSES, normalizeNameKey } from "./diagnoses.js";
 
 /**
  * Care Plan & Next Steps rules, kept out of the workspace so they are tested.
@@ -123,12 +123,27 @@ export function stopsRequired(diagnoses = [], continuedMonitorings = [], stops =
   return required;
 }
 
+/**
+ * Followed conditions (not diagnosed again this visit) the worker refers to the
+ * RHU. A stop wins over a stale referral. The monitoring itself stays active,
+ * as it does for a referred diagnosis.
+ */
+export function referredContinuingRows(diagnoses = [], continuedMonitorings = [], stops = {}, referrals = [], registry = {}) {
+  const ids = new Set((referrals || []).map(Number));
+  return continuingRows(diagnoses, continuedMonitorings, registry).filter(
+    (monitoring) => ids.has(Number(monitoring.id)) && !Object.hasOwn(stops || {}, monitoring.id),
+  );
+}
+
 export function referredDiagnoses(diagnoses = [], continuedMonitorings = [], registry = {}) {
   return (diagnoses || []).filter((diagnosis) => refers(carePlanFor(diagnosis, continuedMonitorings, registry)));
 }
 
-export function buildReferralReason(diagnoses = [], continuedMonitorings = [], registry = {}) {
-  const names = referredDiagnoses(diagnoses, continuedMonitorings, registry).map((diagnosis) => String(diagnosis.name).trim());
+export function buildReferralReason(diagnoses = [], continuedMonitorings = [], registry = {}, referrals = []) {
+  const names = [
+    ...referredDiagnoses(diagnoses, continuedMonitorings, registry).map((diagnosis) => String(diagnosis.name).trim()),
+    ...referredContinuingRows(diagnoses, continuedMonitorings, {}, referrals, registry).map((monitoring) => String(monitoring.conditionName).trim()),
+  ];
   return names.length ? `Referred for: ${names.join("; ")}` : "";
 }
 
@@ -158,8 +173,10 @@ export function monitoredConditionKeys(diagnoses = [], continuedMonitorings = []
  * monitoring that keeps the follow-up through a referral (the server's
  * CarePlan::keepsFollowUpWithReferral).
  */
-export function deriveDisposition({ diagnoses = [], continuedMonitorings = [], stops = {}, registry = {}, serviceNeedsNextVisit = false } = {}) {
-  const needsReferral = referredDiagnoses(diagnoses, continuedMonitorings, registry).length > 0;
+export function deriveDisposition({ diagnoses = [], continuedMonitorings = [], stops = {}, referrals = [], registry = {}, serviceNeedsNextVisit = false } = {}) {
+  const needsReferral =
+    referredDiagnoses(diagnoses, continuedMonitorings, registry).length > 0 ||
+    referredContinuingRows(diagnoses, continuedMonitorings, stops, referrals, registry).length > 0;
   const monitorsAny = monitoredConditionKeys(diagnoses, continuedMonitorings, stops, registry).length > 0;
   const monitorsDiagnosis = monitoredDiagnoses(diagnoses, continuedMonitorings, registry).length > 0;
   return { needsReferral, showsFollowUp: monitorsAny || serviceNeedsNextVisit, monitorsAny, monitorsDiagnosis };
@@ -175,7 +192,7 @@ export function validateCarePlan({ diagnoses = [], continuedMonitorings = [], st
   return errors;
 }
 
-export function buildCarePlanPayload({ continuedFollowUpTaskIds = [], continuedMonitorings = [], stops = {}, diagnoses = [], registry = {} } = {}) {
+export function buildCarePlanPayload({ continuedFollowUpTaskIds = [], continuedMonitorings = [], stops = {}, diagnoses = [], referrals = [], statuses = {}, registry = {} } = {}) {
   const required = stopsRequired(diagnoses, continuedMonitorings, stops, registry);
   return {
     continued_follow_up_task_ids: continuedFollowUpTaskIds.map(Number),
@@ -183,5 +200,11 @@ export function buildCarePlanPayload({ continuedFollowUpTaskIds = [], continuedM
     monitoring_stops: Object.keys(required)
       .map((id) => ({ monitoring_id: Number(id), reason: String(stops[id] || "").trim() }))
       .filter((stop) => stop.reason),
+    // A followed condition referred to the RHU (its monitoring stays active).
+    monitoring_referrals: referredContinuingRows(diagnoses, continuedMonitorings, stops, referrals, registry).map((monitoring) => Number(monitoring.id)),
+    // Only a status the worker intentionally chose; "No change" sends nothing.
+    monitoring_status_updates: continuedMonitorings
+      .filter((monitoring) => CONDITION_STATUSES.includes(statuses?.[monitoring.id]))
+      .map((monitoring) => ({ monitoring_id: Number(monitoring.id), status: statuses[monitoring.id] })),
   };
 }

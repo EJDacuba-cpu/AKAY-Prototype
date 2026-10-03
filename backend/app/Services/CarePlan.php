@@ -26,6 +26,9 @@ final class CarePlan
     /** The values a new save may choose. */
     public const SELECTABLE = [self::NONE, self::MONITOR, self::REFER];
 
+    /** The documented condition statuses (Current Conditions) a visit may change intentionally. */
+    public const CONDITION_STATUSES = ['Active', 'Controlled', 'Resolved'];
+
     public static function monitors(?string $value): bool
     {
         return $value === self::MONITOR || $value === self::MONITOR_REFER;

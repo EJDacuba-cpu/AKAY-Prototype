@@ -37,6 +37,8 @@ const ERROR_TEXT = {
  * @param currentConditions  the patient's medical_background.currentDiseases,
  *                           used only to say a marked diagnosis will be linked
  *                           rather than duplicated
+ * @param label              field label ("New / Additional Working Diagnosis" when existing
+ *                           monitoring is followed this visit)
  * @param error              validation message for the diagnosis
  * @param defaultReportAs    the report choice a newly added diagnosis starts
  *                           with (changed in its Care Plan row)
@@ -48,6 +50,7 @@ export default function DiagnosisListField({
   currentConditions = [],
   error,
   defaultReportAs = null,
+  label = "Suspected Case",
 }) {
   const inputRef = useRef(null);
   const inputId = useId();
@@ -81,7 +84,7 @@ export default function DiagnosisListField({
   return (
     <div>
       <label htmlFor={inputId} className={LABEL_CLASS}>
-        Suspected Case
+        {label}
       </label>
 
       <div className="flex items-start gap-2">

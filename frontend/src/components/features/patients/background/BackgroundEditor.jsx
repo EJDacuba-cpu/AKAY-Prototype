@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 
 import useClinicalRegistry from "../../../../hooks/useClinicalRegistry";
 import { groupCurrentDiseases } from "../../../../utils/currentConditions";
+import { isFollowedThisVisit } from "../../../../utils/followUpThisVisit";
 import {
   BACKGROUND_SECTION_FIELDS,
   BACKGROUND_SECTION_KEYS,
@@ -27,11 +28,16 @@ function readValue(background, field) {
  * save logic - the consultation stages the result (utils/backgroundUpdate.js)
  * and the server applies it when the record is finalized.
  */
-export default function BackgroundEditor({ value, onChange, editedSections = [], onRevertSection }) {
+export default function BackgroundEditor({ value, onChange, editedSections = [], onRevertSection, followed = [] }) {
   const [newDisease, setNewDisease] = useState("");
   const { registry } = useClinicalRegistry();
   const diseases = Array.isArray(value?.currentDiseases) ? value.currentDiseases : [];
-  const { monitored, other } = groupCurrentDiseases(diseases, registry);
+  const grouped = groupCurrentDiseases(diseases, registry);
+  // Conditions followed in this visit are reference only here: Care Plan &
+  // Next Steps records what happens to them, so they are not editable twice.
+  const followedDiseases = [...grouped.monitored, ...grouped.other].filter((disease) => isFollowedThisVisit(disease, followed, registry));
+  const monitored = grouped.monitored.filter((disease) => !followedDiseases.includes(disease));
+  const other = grouped.other.filter((disease) => !followedDiseases.includes(disease));
 
   function setField(field, next) {
     onChange(
@@ -94,6 +100,13 @@ export default function BackgroundEditor({ value, onChange, editedSections = [],
             <div className="@container space-y-3">
               {section === "medical" && (
                 <div className="space-y-3">
+                  {followedDiseases.length > 0 && (
+                    <p className="border border-[#E5E7EB] bg-[#F9FAFB] px-3 py-2 text-xs text-gray-600">
+                      <span className="font-semibold text-gray-800">Followed this visit (reference only): </span>
+                      {followedDiseases.map((disease) => (disease.status ? `${disease.name} · ${disease.status}` : disease.name)).join("; ")}.
+                      {" "}Record what happens to it in Care Plan &amp; Next Steps.
+                    </p>
+                  )}
                   <DiseaseGroupEdit
                     title="Monitored Conditions"
                     diseases={monitored}

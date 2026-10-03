@@ -323,6 +323,14 @@ class HealthRecordRequest extends FormRequest
             'care_plan.monitoring_stops' => ['nullable', 'array', 'max:20'],
             'care_plan.monitoring_stops.*.monitoring_id' => ['required', 'integer', 'distinct'],
             'care_plan.monitoring_stops.*.reason' => ['required', 'string', 'max:500', 'regex:/\S/'],
+            // What the visit decides for the monitoring it followed: referred to
+            // the RHU (the monitoring stays active) or an intentional change of
+            // the documented condition status.
+            'care_plan.monitoring_referrals' => ['nullable', 'array', 'max:20'],
+            'care_plan.monitoring_referrals.*' => ['integer', 'distinct'],
+            'care_plan.monitoring_status_updates' => ['nullable', 'array', 'max:20'],
+            'care_plan.monitoring_status_updates.*.monitoring_id' => ['required', 'integer', 'distinct'],
+            'care_plan.monitoring_status_updates.*.status' => ['required', Rule::in(\App\Services\CarePlan::CONDITION_STATUSES)],
             'assessment_notes' => ['nullable', 'string', 'max:5000'],
             'treatment_notes' => ['nullable', 'string'],
             'medical_history' => ['nullable', 'string'],
@@ -416,7 +424,9 @@ class HealthRecordRequest extends FormRequest
             // condition it continues, still does.
             $stoppedIds = array_map('intval', array_column($this->input('care_plan.monitoring_stops', []) ?: [], 'monitoring_id'));
             $keepsMonitoring = array_diff(array_map('intval', $this->input('care_plan.continued_monitoring_ids', []) ?: []), $stoppedIds) !== [];
-            $followUpOfMonitoring = ! $needsReferral && $keepsMonitoring;
+            $referredIds = array_map('intval', $this->input('care_plan.monitoring_referrals', []) ?: []);
+            // With no diagnosis any referral can only be of followed monitoring.
+            $followUpOfMonitoring = $keepsMonitoring && (! $needsReferral || $referredIds !== []);
 
             if (($needsReferral || $normalizedStatus === 'follow up required') && blank($this->input('diagnosis')) && ! $followUpOfMonitoring) {
                 $validator->errors()->add('diagnosis', 'BHC Assessment is required for follow-up or referral.');
@@ -432,6 +442,29 @@ class HealthRecordRequest extends FormRequest
                     'needs_referral',
                     'A diagnosis is set to Refer to RHU, so this visit needs a referral. Add the referral or change the care plan.'
                 );
+            }
+            $continuedIds = array_map('intval', $this->input('care_plan.continued_monitoring_ids', []) ?: []);
+            foreach ($referredIds as $index => $id) {
+                if (! in_array($id, $continuedIds, true) || in_array($id, $stoppedIds, true)) {
+                    $validator->errors()->add(
+                        "care_plan.monitoring_referrals.$index",
+                        'Only a monitored condition continued in this consultation, and not stopped, can be referred.'
+                    );
+                }
+            }
+            if ($referredIds !== [] && ! $needsReferral) {
+                $validator->errors()->add(
+                    'needs_referral',
+                    'A monitored condition is referred to the RHU, so this visit needs a referral. Add the referral or change the care plan.'
+                );
+            }
+            foreach (array_column($this->input('care_plan.monitoring_status_updates', []) ?: [], 'monitoring_id') as $index => $id) {
+                if (! in_array((int) $id, $continuedIds, true)) {
+                    $validator->errors()->add(
+                        "care_plan.monitoring_status_updates.$index.monitoring_id",
+                        'Only a monitored condition continued in this consultation can have its status updated.'
+                    );
+                }
             }
             if ($needsReferral && blank($this->input('referral.reason_for_referral'))) {
                 $validator->errors()->add('referral.reason_for_referral', 'Reason for referral is required.');

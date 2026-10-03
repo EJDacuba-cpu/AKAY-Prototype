@@ -10,6 +10,7 @@ import {
   nextPhaseForwardTarget,
   restoreCarePlanDraft,
   reviewBackTarget,
+  setMonitoringDecision,
   setMonitoringStop,
   shouldRegenerateReferralReason,
 } from "./carePlanWorkspace.js";
@@ -86,24 +87,82 @@ test("the draft stores ids and stops only, and restores them", () => {
     continuedFollowUpTaskIds: [7],
     continuedMonitoringIds: [3],
     monitoringStops: [{ monitoringId: 3, reason: "Referred" }, { monitoringId: 4, reason: "" }],
+    monitoringReferrals: [],
+    monitoringStatuses: [],
   });
 
   assert.deepEqual(restoreCarePlanDraft(draft), {
     continuedFollowUpTaskIds: [7],
     continuedMonitorings: [{ id: 3, conditionName: "Monitored condition", conditionKey: null }],
     monitoringStops: { 3: "Referred", 4: "" },
+    monitoringReferrals: [],
+    monitoringStatuses: {},
   });
   assert.deepEqual(restoreCarePlanDraft(undefined), {
     continuedFollowUpTaskIds: [],
     continuedMonitorings: [],
     monitoringStops: {},
+    monitoringReferrals: [],
+    monitoringStatuses: {},
   });
   // Drafts round-trip through JSON; ids may come back as strings.
   assert.deepEqual(restoreCarePlanDraft({ continuedFollowUpTaskIds: ["7", "x"], continuedMonitoringIds: ["3"], monitoringStops: [{ monitoringId: "3", reason: null }] }), {
     continuedFollowUpTaskIds: [7],
     continuedMonitorings: [{ id: 3, conditionName: "Monitored condition", conditionKey: null }],
     monitoringStops: { 3: "" },
+    monitoringReferrals: [],
+    monitoringStatuses: {},
   });
+});
+
+test("a draft keeps the referral and status decisions for followed conditions", () => {
+  const draft = carePlanDraftPayload({
+    continuedMonitorings: [{ id: 3 }, { id: 4 }],
+    monitoringReferrals: [3],
+    monitoringStatuses: { 3: "Controlled", 4: "" },
+  });
+  assert.deepEqual(draft.monitoringReferrals, [3]);
+  assert.deepEqual(draft.monitoringStatuses, [{ monitoringId: 3, status: "Controlled" }]);
+  const restored = restoreCarePlanDraft(JSON.parse(JSON.stringify(draft)));
+  assert.deepEqual(restored.monitoringReferrals, [3]);
+  assert.deepEqual(restored.monitoringStatuses, { 3: "Controlled" });
+  // Anything that is not a real status is dropped on the way back.
+  assert.deepEqual(restoreCarePlanDraft({ monitoringStatuses: [{ monitoringId: 3, status: "Cured" }] }).monitoringStatuses, {});
+});
+
+test("one decision per followed condition: continue, refer or stop", () => {
+  const start = { stops: {}, referrals: [] };
+  const referred = setMonitoringDecision(start, 3, "refer");
+  assert.deepEqual(referred, { stops: {}, referrals: [3] });
+  const stopped = setMonitoringDecision(referred, 3, "stop");
+  assert.deepEqual(stopped, { stops: { 3: "" }, referrals: [] }, "stopping drops the referral and asks for a reason");
+  const back = setMonitoringDecision({ stops: { 3: "Moved away" }, referrals: [] }, 3, "continue");
+  assert.deepEqual(back, { stops: {}, referrals: [] });
+  assert.deepEqual(setMonitoringDecision(referred, 3, "refer"), { stops: {}, referrals: [3] }, "no duplicate");
+  assert.deepEqual(start, { stops: {}, referrals: [] }, "the input is not mutated");
+  // Stopping keeps a reason already typed.
+  assert.deepEqual(setMonitoringDecision({ stops: { 3: "Moved away" }, referrals: [] }, 3, "stop").stops, { 3: "Moved away" });
+});
+
+test("review rows show a followed condition's decision and any status change", () => {
+  const rows = carePlanReviewRows({
+    diagnoses: [],
+    continuedMonitorings: [
+      { id: 3, conditionName: "Hypertension", conditionKey: "hypertension" },
+      { id: 4, conditionName: "Asthma", conditionKey: null },
+      { id: 5, conditionName: "Tuberculosis", conditionKey: "tuberculosis" },
+    ],
+    stops: { 5: "Completed treatment" },
+    referrals: [3],
+    statuses: { 3: "Controlled", 5: "Resolved" },
+    registry,
+    referral: { needed: true, reason: "Referred for: Hypertension", priority: "Routine" },
+  });
+  assert.deepEqual(rows.slice(0, 3), [
+    { label: "Hypertension", value: "Refer to RHU · Monitoring continues · Condition status: Controlled" },
+    { label: "Asthma", value: "Continue monitoring" },
+    { label: "Tuberculosis", value: "Stop monitoring: Completed treatment · Condition status: Resolved" },
+  ]);
 });
 
 test("the first continued follow-up links the visit to its source record", () => {

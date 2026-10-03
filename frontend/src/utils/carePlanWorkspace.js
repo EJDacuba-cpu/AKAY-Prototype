@@ -5,9 +5,11 @@ import {
   continuedByIdentity,
   conditionIdentity,
   continuingRows,
+  referredContinuingRows,
   stopsRequired,
   NO_CONDITION_MESSAGE,
 } from "./carePlan.js";
+import { CONDITION_STATUSES } from "./diagnoses.js";
 import { MONITORING_STEP, NEXT_STEP, REVIEW_STEP } from "./consultationSteps.js";
 
 /**
@@ -67,13 +69,32 @@ export function setMonitoringStop(stops = {}, monitoringId, reason) {
   return next;
 }
 
+/**
+ * One decision per followed condition: continue monitoring at BHC, refer to
+ * the RHU (monitoring stays active), or stop BHC monitoring (a key in `stops`,
+ * "" until a reason is typed). Pure: returns the next `{ stops, referrals }`.
+ */
+export function setMonitoringDecision({ stops = {}, referrals = [] } = {}, monitoringId, decision) {
+  const id = Number(monitoringId);
+  const nextReferrals = referrals.map(Number).filter((value) => value !== id);
+  if (decision === "refer") return { stops: setMonitoringStop(stops, id, null), referrals: [...nextReferrals, id] };
+  if (decision === "stop") return { stops: Object.hasOwn(stops, id) ? { ...stops } : setMonitoringStop(stops, id, ""), referrals: nextReferrals };
+  return { stops: setMonitoringStop(stops, id, null), referrals: nextReferrals };
+}
+
 function positiveInt(value) {
   const number = Number(value);
   return Number.isInteger(number) && number > 0 ? number : null;
 }
 
 /** Draft shape (HealthRecordDraftPayloadService `carePlan`): ids and stops only. */
-export function carePlanDraftPayload({ continuedFollowUpTaskIds = [], continuedMonitorings = [], monitoringStops = {} } = {}) {
+export function carePlanDraftPayload({
+  continuedFollowUpTaskIds = [],
+  continuedMonitorings = [],
+  monitoringStops = {},
+  monitoringReferrals = [],
+  monitoringStatuses = {},
+} = {}) {
   return {
     continuedFollowUpTaskIds: continuedFollowUpTaskIds.map(Number),
     continuedMonitoringIds: continuedMonitorings.map((monitoring) => Number(monitoring.id)),
@@ -81,6 +102,10 @@ export function carePlanDraftPayload({ continuedFollowUpTaskIds = [], continuedM
       monitoringId: Number(monitoringId),
       reason: reason ?? "",
     })),
+    monitoringReferrals: monitoringReferrals.map(Number),
+    monitoringStatuses: Object.entries(monitoringStatuses)
+      .filter(([, status]) => CONDITION_STATUSES.includes(status))
+      .map(([monitoringId, status]) => ({ monitoringId: Number(monitoringId), status })),
   };
 }
 
@@ -97,6 +122,11 @@ export function restoreCarePlanDraft(carePlan) {
     const id = positiveInt(stop?.monitoringId);
     if (id) monitoringStops[id] = typeof stop.reason === "string" ? stop.reason : "";
   }
+  const monitoringStatuses = {};
+  for (const update of Array.isArray(source.monitoringStatuses) ? source.monitoringStatuses : []) {
+    const id = positiveInt(update?.monitoringId);
+    if (id && CONDITION_STATUSES.includes(update.status)) monitoringStatuses[id] = update.status;
+  }
   return {
     continuedFollowUpTaskIds: ids(source.continuedFollowUpTaskIds),
     continuedMonitorings: ids(source.continuedMonitoringIds).map((id) => ({
@@ -105,6 +135,8 @@ export function restoreCarePlanDraft(carePlan) {
       conditionKey: null,
     })),
     monitoringStops,
+    monitoringReferrals: ids(source.monitoringReferrals),
+    monitoringStatuses,
   };
 }
 
@@ -150,6 +182,8 @@ export function carePlanReviewRows({
   diagnoses = [],
   continuedMonitorings = [],
   stops = {},
+  referrals = [],
+  statuses = {},
   registry = {},
   referral = {},
   followUp = {},
@@ -168,11 +202,15 @@ export function carePlanReviewRows({
     rows.push({ label: String(diagnosis.name || "").trim(), value: text });
   }
   const continuing = continuingRows(diagnoses, continuedMonitorings, registry);
+  const referredIds = new Set(referredContinuingRows(diagnoses, continuedMonitorings, stops, referrals, registry).map((m) => m.id));
   for (const monitoring of continuing) {
-    rows.push({
-      label: monitoring.conditionName,
-      value: required[monitoring.id] ? `Stop monitoring${stopText(stops[monitoring.id])}` : "Continue monitoring",
-    });
+    const decision = required[monitoring.id]
+      ? `Stop monitoring${stopText(stops[monitoring.id])}`
+      : referredIds.has(monitoring.id)
+        ? "Refer to RHU · Monitoring continues"
+        : "Continue monitoring";
+    const status = CONDITION_STATUSES.includes(statuses?.[monitoring.id]) ? ` · Condition status: ${statuses[monitoring.id]}` : "";
+    rows.push({ label: monitoring.conditionName, value: `${decision}${status}` });
   }
   if (referral.needed) {
     rows.push({ label: "Reason for Referral", value: referral.reason || "" });
