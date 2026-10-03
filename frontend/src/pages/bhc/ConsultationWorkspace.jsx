@@ -2237,8 +2237,10 @@ export default function ConsultationWorkspace() {
     if (fbsError) errors.fbs = fbsError;
     if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
     if (!finalizing) return errors;
-    // A visit that continues monitored conditions already names what it addresses.
-    if ((needsReferral || normalizePatientStatus(followUpStatus) === "Follow-up Required") && !diagnosis.trim() && continuedMonitorings.length === 0) errors.diagnosis = "A suspected case is required for follow-up or referral.";
+    // A follow-up that keeps monitored conditions going already names what it
+    // addresses; a referral, or a visit stopping every continued condition, still needs one.
+    const followUpOfMonitoring = !needsReferral && continuedMonitorings.some((monitoring) => !Object.hasOwn(monitoringStops, monitoring.id));
+    if ((needsReferral || normalizePatientStatus(followUpStatus) === "Follow-up Required") && !diagnosis.trim() && !followUpOfMonitoring) errors.diagnosis = "A suspected case is required for follow-up or referral.";
     if (needsReferral && !receivingRhuId) errors.receivingRhuId = "Receiving facility is required.";
     if (needsReferral && !ATTENTION_LEVELS.includes(referralForm.urgencyLevel)) errors.urgencyLevel = "Referral priority is required.";
     if (needsReferral && !referralForm.reasonForReferral?.trim()) errors.reasonForReferral = "Reason for referral is required.";

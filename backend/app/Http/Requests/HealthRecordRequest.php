@@ -410,11 +410,15 @@ class HealthRecordRequest extends FormRequest
                 strtolower(trim((string) $status))
             );
 
-            // A visit that continues monitored conditions (Start Consultation's
-            // follow-up) already names what it addresses; it needs no new diagnosis.
-            $continuesMonitoring = ! empty($this->input('care_plan.continued_monitoring_ids'));
+            // A follow-up visit that keeps monitored conditions going (Start
+            // Consultation's follow-up) already names what it addresses; it
+            // needs no new diagnosis. A referral, or a visit that stops every
+            // condition it continues, still does.
+            $stoppedIds = array_map('intval', array_column($this->input('care_plan.monitoring_stops', []) ?: [], 'monitoring_id'));
+            $keepsMonitoring = array_diff(array_map('intval', $this->input('care_plan.continued_monitoring_ids', []) ?: []), $stoppedIds) !== [];
+            $followUpOfMonitoring = ! $needsReferral && $keepsMonitoring;
 
-            if (($needsReferral || $normalizedStatus === 'follow up required') && blank($this->input('diagnosis')) && ! $continuesMonitoring) {
+            if (($needsReferral || $normalizedStatus === 'follow up required') && blank($this->input('diagnosis')) && ! $followUpOfMonitoring) {
                 $validator->errors()->add('diagnosis', 'BHC Assessment is required for follow-up or referral.');
             }
             // A diagnosis set to Refer to RHU is a referral: the ITR would

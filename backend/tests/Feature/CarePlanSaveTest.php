@@ -132,6 +132,32 @@ class CarePlanSaveTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors(['diagnosis']);
     }
 
+    public function test_a_follow_up_whose_continued_monitoring_is_all_stopped_still_needs_a_diagnosis(): void
+    {
+        $this->save([['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor']])->assertCreated();
+        $monitoring = $this->active()->sole();
+
+        $this->save([], [
+            'continued_monitoring_ids' => [$monitoring->id],
+            'monitoring_stops' => [['monitoring_id' => $monitoring->id, 'reason' => 'Resolved']],
+        ], [
+            'monitoring_data' => [
+                'followUpStatus' => 'Follow-up Required',
+                'followUpDate' => now()->addDays(14)->toDateString(),
+                'followUpReason' => 'Repeat check',
+            ],
+        ])->assertUnprocessable()->assertJsonValidationErrors(['diagnosis']);
+    }
+
+    public function test_a_referral_without_a_diagnosis_is_rejected_even_when_continuing_monitoring(): void
+    {
+        $this->save([['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor']])->assertCreated();
+        $monitoring = $this->active()->sole();
+
+        $this->save([], ['continued_monitoring_ids' => [$monitoring->id]], $this->referral())
+            ->assertUnprocessable()->assertJsonValidationErrors(['diagnosis']);
+    }
+
     public function test_stop_ends_monitoring_but_leaves_current_conditions_status(): void
     {
         $this->save([['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor']])->assertCreated();
