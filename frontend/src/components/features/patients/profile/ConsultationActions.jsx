@@ -49,13 +49,13 @@ export function ConsultationButton({ consultation, onStart }) {
 }
 
 /** Status block under the button: an unfinished draft, or a failed draft check. */
-export function ConsultationNotice({ consultation, className = "" }) {
+export function ConsultationNotice({ consultation }) {
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const { draft, isError, discarding, retry, discard, startPath } = consultation;
 
   if (isError) {
     return (
-      <p role="status" className={`flex items-center gap-3 border-t border-gray-200 px-4 py-1.5 text-xs text-gray-600 ${className}`}>
+      <p role="status" className="flex items-center gap-3 border-t border-gray-200 px-4 py-1.5 text-xs text-gray-600">
         Unable to check for an unfinished consultation.
         <TextAction onClick={retry}>Retry</TextAction>
       </p>
@@ -66,7 +66,7 @@ export function ConsultationNotice({ consultation, className = "" }) {
 
   return (
     <>
-      <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-900 ${className}`}>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-900">
         <span className="min-w-0 truncate">
           <span className="font-semibold">Unfinished consultation</span>
           {draft.lastSavedAt ? (
@@ -117,9 +117,9 @@ export function ConsultationNotice({ consultation, className = "" }) {
 }
 
 /**
- * Start / Resume Consultation state shared by the profile header (non-Overview
- * tabs) and the Overview identity column. Each caller places the button,
- * notice and portaled start modal where its layout needs them.
+ * Start / Resume Consultation state for the profile header: the consultation
+ * query, the start-modal open state and the portaled modal. The caller places
+ * the button, notice and modal where its layout needs them.
  */
 export function useConsultationActions(patient, patientId) {
   const consultationPatientId = patient.id || patientId;

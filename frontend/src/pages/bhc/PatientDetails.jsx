@@ -13,7 +13,7 @@ import {
 import PatientBackgroundTab from "../../components/features/patients/PatientBackgroundTab";
 import PatientProfileHeader from "../../components/features/patients/profile/PatientProfileHeader";
 import PatientOverviewBoard from "../../components/features/patients/profile/PatientOverviewBoard";
-import OverviewIdentityColumn from "../../components/features/patients/profile/OverviewIdentityColumn";
+import OverviewSummaryColumn from "../../components/features/patients/profile/OverviewSummaryColumn";
 import ClinicalOverviewColumn from "../../components/features/patients/profile/ClinicalOverviewColumn";
 import AnatomyFindingsPanel from "../../components/features/patients/profile/AnatomyFindingsPanel";
 import RegistrationSections from "../../components/features/patients/profile/RegistrationSections";
@@ -101,11 +101,11 @@ function ProfileTabs({ tabs, activeTab, onSelect }) {
 }
 
 /**
- * BHC patient profile. Overview is one unified board (identity + vitals,
- * Visual Health Summary of recorded body findings, clinical overview) with
- * the inline-editable Background below it; the other tabs (Patient
- * Information, Care & Programs, Follow-ups, Health Records, Referrals) keep
- * the identity header above the tab strip.
+ * BHC patient profile: the identity header and tab strip, then the active
+ * tab. Overview is a compact card board (alerts, vitals and background
+ * summary; Visual Health Summary of recorded body findings; clinical
+ * overview). Medical / Family / Social Background is edited inline on the
+ * Patient Information tab, below registration.
  */
 export default function PatientDetails() {
   const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
@@ -487,81 +487,72 @@ export default function PatientDetails() {
   return (
     <>
       <ProfileShell>
-        {activeTab === "overview" ? (
-          <PatientOverviewBoard
-            tabStrip={tabStrip}
-            identity={
-              <OverviewIdentityColumn
-                patient={patient}
-                patientId={patientId}
-                backPath={backPath}
-                updating={patientUpdating}
-                canViewHistory={canViewHistory}
-                records={records}
-                recordsLoading={recordsLoading}
-              />
-            }
-            restricted={
-              canViewHistory ? null : (
-                <p className="flex items-center gap-2 py-2 text-sm text-gray-600">
+        <div className="bhc-patient-profile min-h-[520px] px-4 py-3 pb-6 font-sans sm:px-6 [&_h1]:font-sans! [&_h2]:font-sans! [&_h3]:font-sans! [&_h4]:font-sans!">
+          <PatientProfileHeader
+            patient={patient}
+            patientId={patientId}
+            backPath={backPath}
+            updating={patientUpdating}
+            canViewHistory={canViewHistory}
+            activeFollowUps={activeFollowUps}
+          />
+
+          <div className="@container mt-3 min-w-0">
+            {tabStrip}
+
+            {activeTab === "overview" &&
+              (canViewHistory ? (
+                <PatientOverviewBoard
+                  left={
+                    <OverviewSummaryColumn
+                      patient={patient}
+                      records={records}
+                      recordsLoading={recordsLoading}
+                      onEditBackground={() => setActiveTab("patient-info")}
+                    />
+                  }
+                  center={
+                    <AnatomyFindingsPanel
+                      key={patientId}
+                      records={records}
+                      recordsLoading={recordsLoading}
+                      onViewRecord={viewRecord}
+                    />
+                  }
+                  right={
+                    <ClinicalOverviewColumn
+                      patient={patient}
+                      careTracking={careTracking}
+                      programLabels={programLabels}
+                      referrals={referrals}
+                      referralsLoading={referralsLoading}
+                      referralsError={Boolean(referralsError)}
+                      activeFollowUps={activeFollowUps}
+                      records={records}
+                      recordsLoading={recordsLoading}
+                      onViewPrograms={() => setActiveTab("programs")}
+                      onViewReferrals={() => setActiveTab("referrals")}
+                      onViewReferral={(trackingId) => navigate(`/bhc/referrals/${trackingId}`)}
+                      onViewFollowUps={() => setActiveTab("follow-ups")}
+                      onViewFollowUp={(taskId) => navigate(`/bhc/follow-ups/${taskId}`)}
+                      onViewRecords={() => setActiveTab("records")}
+                      onViewRecord={viewRecord}
+                    />
+                  }
+                />
+              ) : (
+                <p
+                  role="tabpanel"
+                  id="profile-panel-overview"
+                  aria-labelledby="profile-tab-overview"
+                  className="flex items-center gap-2 py-2 text-sm text-gray-600"
+                >
                   <Lock size={14} className="shrink-0" aria-hidden="true" />
                   Clinical history is restricted for your role.
                 </p>
-              )
-            }
-            clinical={
-              <ClinicalOverviewColumn
-                patient={patient}
-                careTracking={careTracking}
-                programLabels={programLabels}
-                referrals={referrals}
-                referralsLoading={referralsLoading}
-                referralsError={Boolean(referralsError)}
-                activeFollowUps={activeFollowUps}
-                onViewPrograms={() => setActiveTab("programs")}
-                onViewReferrals={() => setActiveTab("referrals")}
-                onViewReferral={(trackingId) => navigate(`/bhc/referrals/${trackingId}`)}
-                onViewFollowUps={() => setActiveTab("follow-ups")}
-                onViewFollowUp={(taskId) => navigate(`/bhc/follow-ups/${taskId}`)}
-              />
-            }
-            anatomy={
-              <AnatomyFindingsPanel
-                key={patientId}
-                records={records}
-                recordsLoading={recordsLoading}
-                onViewRecord={viewRecord}
-              />
-            }
-            below={
-              canViewHistory
-                ? BACKGROUND_SECTION_KEYS.map((section) => (
-                    <PatientBackgroundTab
-                      key={section}
-                      variant="flat"
-                      section={section}
-                      background={patient.medicalBackground}
-                      saving={savingBackground}
-                      onSave={handleBackgroundSave}
-                    />
-                  ))
-                : null
-            }
-          />
-        ) : (
-          <div className="bhc-patient-profile min-h-[520px] px-4 py-3 pb-6 font-sans sm:px-6 [&_h1]:font-sans! [&_h2]:font-sans! [&_h3]:font-sans! [&_h4]:font-sans!">
-            <PatientProfileHeader
-              patient={patient}
-              patientId={patientId}
-              backPath={backPath}
-              updating={patientUpdating}
-              canViewHistory={canViewHistory}
-              activeFollowUps={activeFollowUps}
-            />
+              ))}
 
-            <div className="@container mt-3 min-w-0">
-              {tabStrip}
-
+            {activeTab !== "overview" && (
               <div
                 role="tabpanel"
                 id={`profile-panel-${activeTab}`}
@@ -584,6 +575,19 @@ export default function PatientDetails() {
                     onMotherPatientChange={handleMotherPatientChange}
                   />
                 )}
+
+                {activeTab === "patient-info" &&
+                  canViewHistory &&
+                  BACKGROUND_SECTION_KEYS.map((section) => (
+                    <PatientBackgroundTab
+                      key={section}
+                      variant="flat"
+                      section={section}
+                      background={patient.medicalBackground}
+                      saving={savingBackground}
+                      onSave={handleBackgroundSave}
+                    />
+                  ))}
 
                 {activeTab === "programs" && canViewHistory && (
                   <CareAndProgramsTab
@@ -625,9 +629,9 @@ export default function PatientDetails() {
                   />
                 )}
               </div>
-            </div>
+            )}
           </div>
-        )}
+        </div>
       </ProfileShell>
 
       <ConfirmationModal

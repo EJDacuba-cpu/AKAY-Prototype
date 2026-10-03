@@ -1,4 +1,4 @@
-import { OverviewNote, OverviewSection } from "./OverviewSection";
+import { OverviewCard, OverviewNote } from "./OverviewCard";
 import { buildVitalRows } from "../../../../utils/vitalTrends";
 import { isVitalRecordToday } from "../../../../utils/currentPatientVitals";
 
@@ -54,21 +54,21 @@ function formatRecordedAt(record, recordedAt) {
   })}`;
 }
 
-/** Latest vital signs with a short trend per vital, for the identity column. */
+/** Latest vital signs with a short trend per vital, for the Overview left column. */
 export default function VitalsTrendList({ records = [], isLoading = false }) {
   const { record, recordedAt, rows } = buildVitalRows(records);
 
   return (
-    <OverviewSection id="overview-vitals" title="Latest Vital Signs" meta={formatRecordedAt(record, recordedAt)}>
+    <OverviewCard id="overview-vitals" title="Latest Vital Signs" meta={formatRecordedAt(record, recordedAt)}>
       <div aria-busy={isLoading}>
         {isLoading && records.length === 0 ? (
           <OverviewNote role="status">Loading vital signs...</OverviewNote>
         ) : !record ? (
           <OverviewNote>No vital signs recorded yet.</OverviewNote>
         ) : (
-          <dl className="divide-y divide-slate-200/70">
+          <dl className="divide-y divide-gray-100">
             {rows.map(({ key, label, unit, display, series }) => (
-              <div key={key} className="grid grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-x-3 py-1.5">
+              <div key={key} className="grid grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-x-3 py-1">
                 <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
                 <dd className="m-0 min-w-0 truncate text-sm font-semibold tabular-nums text-slate-900">
                   {display}
@@ -82,6 +82,6 @@ export default function VitalsTrendList({ records = [], isLoading = false }) {
           </dl>
         )}
       </div>
-    </OverviewSection>
+    </OverviewCard>
   );
 }

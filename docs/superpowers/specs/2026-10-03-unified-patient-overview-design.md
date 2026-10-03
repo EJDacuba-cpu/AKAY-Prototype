@@ -107,3 +107,18 @@ navigation callbacks built from existing routes.
 ## Out of scope
 
 RHU patient details; tab strip styling; backend/API; condition-to-body mapping; dark mode.
+
+## Revision 1 (2026-10-03) - compact card dashboard
+
+Supersedes the layout, header, surface and Background decisions above after review against the reference.
+
+| Topic | Revised decision |
+|---|---|
+| Shell | Overview uses the same shell as other tabs: existing `PatientProfileHeader`, tab strip, then the board. No bleed, no fill-height - the board is content-sized |
+| Board | `xl:grid-cols-[24fr_46fr_30fr]`, `items-start`, 8px gaps; md: left + right side by side, centre below; phone: left -> right -> centre |
+| Cards | White, 1px gray-200 border, square corners, no shadow, 12px padding, 8px between stacked cards, on the page's gray-50 (`OverviewCard`) |
+| Left | Alerts & Allergies; Latest Vital Signs (values + sparklines); Patient Background read-only summary (`summarizeBackground`: past medical, family, social - one line each) with Edit -> Patient Information tab. No avatar, no demographics |
+| Centre | Visual Health Summary card: toggle, caption, figure capped at 340px (300px below lg), centred with a light radial glow; compact flat findings list (4 rows, then Show all) |
+| Right | Current Conditions; Care Tracking & Monitoring; Referrals (3); Upcoming Follow-ups (3); Recent Visits (3 latest records, View all -> Health Records tab) |
+| Background editing | Medical / Family / Social editors move to the Patient Information tab below registration (`clinical.history` roles only) |
+| Restricted roles | Header + tabs, then the existing lock note on Overview |

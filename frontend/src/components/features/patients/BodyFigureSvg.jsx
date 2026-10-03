@@ -80,8 +80,8 @@ export default function BodyFigureSvg({ findingsByRegion, selectedRegion, onSele
       : { top: `${(cy / height) * 100}%`, right: `calc(${100 - (cx / width) * 100}% + 14px)`, transform: "translateY(-50%)" };
 
   return (
-    <div className="relative mx-auto w-full max-w-[230px] xl:max-w-[270px]">
-      <svg viewBox={`0 0 ${width} ${height}`} className="block h-auto w-full select-none">
+    <div className="relative mx-auto w-fit">
+      <svg viewBox={`0 0 ${width} ${height}`} className="block h-[300px] w-auto select-none lg:h-[340px]">
         <title>Front-facing body figure with recorded findings</title>
         <text x="14" y="18" className="fill-slate-400 text-[11px] font-semibold">R</text>
         <text x="180" y="18" className="fill-slate-400 text-[11px] font-semibold">L</text>
