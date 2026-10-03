@@ -160,3 +160,37 @@ test("stops are kept only for continued monitoring", () => {
   assert.deepEqual(keepStopsFor({ 3: "Resolved", "8": "Moved away" }, [{ id: 3 }]), { 3: "Resolved" });
   assert.deepEqual(keepStopsFor(undefined, []), {});
 });
+
+const linkedOverview = {
+  pendingFollowUps: [
+    {
+      id: 11, dueDate: "2026-10-01", sourceHealthRecordId: 90,
+      conditions: [{ monitoringId: 4, conditionName: "Hypertension" }, { monitoringId: 5, conditionName: "Diabetes Mellitus" }],
+    },
+    { id: 12, dueDate: "2026-10-20", sourceHealthRecordId: 91, conditions: [{ monitoringId: 4, conditionName: "Hypertension" }] },
+  ],
+  monitoringWithoutFollowUp: [],
+};
+
+test("linked follow-ups of selected monitoring are continued without their other conditions", () => {
+  const r = resolveContinuedCare(linkedOverview, { monitoringIds: [4], includeFollowUpConditions: true, includeLinkedFollowUps: true });
+  assert.deepEqual(r.continuedFollowUpTaskIds, [11, 12]);
+  assert.deepEqual(r.continuedMonitorings.map((m) => m.id), [4]);
+});
+
+test("Record Visit (follow-up ids only) still continues the follow-up's conditions", () => {
+  const r = resolveContinuedCare(linkedOverview, { followUpIds: [11], includeFollowUpConditions: true, includeLinkedFollowUps: true });
+  assert.deepEqual(r.continuedFollowUpTaskIds, [11]);
+  assert.deepEqual(r.continuedMonitorings.map((m) => m.id).sort(), [4, 5]);
+});
+
+test("a selected monitoring that is no longer active is dropped with its links", () => {
+  const r = resolveContinuedCare(linkedOverview, { monitoringIds: [99], includeLinkedFollowUps: true });
+  assert.deepEqual(r.continuedFollowUpTaskIds, []);
+  assert.deepEqual(r.droppedMonitoringIds, [99]);
+});
+
+test("without includeLinkedFollowUps a monitoring selection continues no follow-up", () => {
+  const r = resolveContinuedCare(linkedOverview, { monitoringIds: [4] });
+  assert.deepEqual(r.continuedFollowUpTaskIds, []);
+});

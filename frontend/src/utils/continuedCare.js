@@ -79,6 +79,10 @@ export function activeMonitoringsFromOverview(overview) {
  * - Seeding from the modal (`includeFollowUpConditions: true`) also continues
  *   each selected follow-up's monitored conditions; a resumed draft already
  *   stored them, so it does not.
+ * - `includeLinkedFollowUps` also continues every pending follow-up that links
+ *   one of the passed `monitoringIds`, so the visit fulfils it. Only the
+ *   explicit `followUpIds` pull in their own conditions; a linked follow-up's
+ *   other conditions stay as they were (nothing is selected for the worker).
  * - An id no longer in the overview (fulfilled, stopped, rescheduled) is
  *   dropped and reported - the server would reject it on save. Stops of a
  *   dropped monitoring go with it.
@@ -87,7 +91,13 @@ export function activeMonitoringsFromOverview(overview) {
  */
 export function resolveContinuedCare(
   overview,
-  { followUpIds = [], monitoringIds = [], stops = {}, includeFollowUpConditions = false } = {},
+  {
+    followUpIds = [],
+    monitoringIds = [],
+    stops = {},
+    includeFollowUpConditions = false,
+    includeLinkedFollowUps = false,
+  } = {},
 ) {
   const pending = overview?.pendingFollowUps || [];
   const active = new Map(activeMonitoringsFromOverview(overview).map((monitoring) => [monitoring.id, monitoring]));
@@ -108,6 +118,16 @@ export function resolveContinuedCare(
         const id = Number(condition.monitoringId);
         if (!fromSelectedFollowUps.has(id)) fromSelectedFollowUps.set(id, fromFollowUpCondition(task, condition));
       }
+    }
+  }
+
+  if (includeLinkedFollowUps) {
+    const selectedMonitoringIds = new Set(uniqueIds(monitoringIds));
+    for (const task of pending) {
+      const linksSelected = followUpConditions(task).some((condition) =>
+        selectedMonitoringIds.has(Number(condition.monitoringId)),
+      );
+      if (linksSelected && !followUps.some((item) => Number(item.id) === Number(task.id))) followUps.push(task);
     }
   }
 

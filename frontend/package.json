@@ -14,6 +14,7 @@
     "test:patient-utils": "node --test src/utils/patientUtils.test.js",
     "test:program-tabs": "node --test src/utils/programApplicability.test.js",
     "test:profile-navigation": "node --test src/utils/profileNavigation.test.js",
+    "test:start-consultation": "node --test src/utils/startConsultation.test.js src/utils/continuedCare.test.js",
     "test:consultation-steps": "node --test src/utils/consultationSteps.test.js src/utils/consultationPrograms.test.js",
     "test:local-draft-vault": "node --test src/services/localDraftCrypto.test.js",
     "test:saved-drafts": "node --test src/utils/savedDrafts.test.js",
