@@ -1,17 +1,19 @@
-import { useMemo, useRef, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { useCallback, useMemo, useReducer, useRef, useState } from "react";
 
 import BodyFigureSvg from "../BodyFigureSvg";
 import FindingLinkOverlay from "./FindingLinkOverlay";
 import { OverviewCard, OverviewNote } from "./OverviewCard";
 import PatientFactsSections from "./PatientFactsSections";
-import { TextAction } from "./ProfileSection";
 import useMediaQuery from "../../../../hooks/useMediaQuery";
-import { BODY_REGIONS, BODY_SIDES } from "../../../../utils/bodyFindings";
-import { splitFindingsBySide, summarizeBodyFindings } from "../../../../utils/bodyFindingsSummary";
+import useRevealSequence from "../../../../hooks/useRevealSequence";
+import { summarizeLatestBmi } from "../../../../utils/bmi";
+import { groupFindingsByArea, splitFindingsBySide, summarizeBodyFindings } from "../../../../utils/bodyFindingsSummary";
 import { formatShortDate } from "../../../../utils/patientProfile";
+import { INITIAL_REVEAL, revealFocusReducer } from "../../../../utils/revealFocus";
+import { phaseReached } from "../../../../utils/revealSequence";
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 const MODES = [
   { key: "latest", label: "Latest visit" },
   { key: "history", label: "View history" },
@@ -55,129 +57,167 @@ function caption(summary, hasRecords) {
   return `Latest visit · ${date} · ${plural(count, "finding")}`;
 }
 
+/** "BMI 27.4 · Overweight · Oct 1, 2026"; no category under 18, no date when missing. */
+function bmiLabel(bmi) {
+  if (!bmi) return "BMI not recorded";
+  return [`BMI ${bmi.value}`, bmi.category, bmi.date ? formatShortDate(bmi.date, "") : ""].filter(Boolean).join(" · ");
+}
+
 /**
  * Centre column of the Overview board: the patient's realistic body figure
- * (front or back, switched only by its flip button) with markers for findings
- * recorded on the latest visit (default) or on every loaded visit, with the
- * Current Conditions / Recorded Findings / Allergies / Medications dropdowns
- * beside it. Each finding is marked only on the side it was recorded on
- * (legacy findings without a side are front). The findings list follows the
- * figure's selected region on the side shown. On desktop, hovering or focusing
- * a Recorded Finding draws a line to its marker (or, for a finding on the
- * other side, pulses the flip button), and hovering a marker highlights its
- * findings in the list. Documentation only - every
- * marker and every line is something a health worker wrote down; nothing is
- * inferred.
+ * (front or back, switched only by its flip button) with small markers for
+ * findings recorded on the latest visit (default) or on every loaded visit,
+ * beside the Current Conditions / Findings / Allergies / Medications
+ * dropdowns, and the latest BMI under the figure.
+ *
+ * Findings lists one row per affected area (side + region). Hovering or
+ * focusing a row or a marker (desktop) stages a reveal on the figure: a soft
+ * area highlight, then a line (row to marker, or marker to popover), then a
+ * small popover of that area's findings. A click or tap pins the popover,
+ * whose finding rows open their record; Escape, a press outside, a second
+ * click on the same area, a flip or a mode change unpins it. A row for the
+ * other side only pulses the flip button - the figure never flips by itself.
+ * Below 1024px there are no hover reveals or lines: a tap shows the popover
+ * at once. Reduced motion makes every reveal instant. Documentation only -
+ * every marker, highlight and line is something a health worker wrote down;
+ * nothing is inferred.
  */
-export default function AnatomyFindingsPanel({ records = [], recordsLoading = false, background, onViewRecord, sex }) {
+export default function AnatomyFindingsPanel({
+  records = [],
+  recordsLoading = false,
+  background,
+  onViewRecord,
+  sex,
+  age = "",
+}) {
   const [mode, setMode] = useState("latest");
   const [side, setSide] = useState("front");
-  const [selectedRegion, setSelectedRegion] = useState(null);
-  // The Recorded Findings item hovered or focused: { el, item } | null.
-  const [activeLink, setActiveLink] = useState(null);
-  // The marker region hovered or focused on the figure (side shown).
-  const [hoveredRegion, setHoveredRegion] = useState(null);
+  const [reveal, dispatch] = useReducer(revealFocusReducer, INITIAL_REVEAL);
   const panelRef = useRef(null);
+  // Set by a press on a Findings row while a popover is pinned, so the
+  // figure's outside-press dismissal leaves that row's click to toggle or
+  // switch the pin.
+  const rowPressRef = useRef(false);
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
+  const reducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
 
   const summary = useMemo(() => summarizeBodyFindings(records, mode), [records, mode]);
   const findingsBySide = useMemo(() => splitFindingsBySide(summary.findings), [summary]);
+  const areas = useMemo(() => groupFindingsByArea(summary.findings), [summary]);
+  const bmi = useMemo(() => summarizeLatestBmi(records, age), [records, age]);
   const findingsByRegion = findingsBySide[side];
-  // Flat, region-ordered list: the selected region on the side shown, or
-  // every finding, front then back.
-  const listed = selectedRegion
-    ? findingsByRegion[selectedRegion] || []
-    : BODY_SIDES.flatMap((key) => BODY_REGIONS.flatMap((region) => findingsBySide[key][region.key] || []));
 
-  // A flip or a mode change can unmount the hovered item or marker without a
-  // leave/blur, so both drop the link and the marker hover (the figure resets
-  // its own hover on new findings too).
-  function clearHover() {
-    setActiveLink(null);
-    setHoveredRegion(null);
-  }
+  // A focus whose area is gone (records reloaded) counts as no focus.
+  const focus = reveal.focus && areas.some((area) => area.key === reveal.focus.key) ? reveal.focus : null;
+  const pinned = reveal.pinned && Boolean(focus);
+  const onSideShown = Boolean(focus) && focus.side === side;
+
+  const phase = useRevealSequence(onSideShown ? `${focus.source}:${focus.key}` : null, {
+    instant: reducedMotion || pinned || !isDesktop,
+  });
+  const activeRegion = onSideShown ? focus.region : null;
+  const leader = isDesktop && focus?.source === "marker";
+  const flipHint = isDesktop && focus?.source === "row" && focus.side !== side;
+  const showRowLine = isDesktop && focus?.source === "row" && onSideShown && phaseReached(phase, "line");
 
   function changeMode(next) {
     setMode(next);
-    selectRegion(null);
-    clearHover();
-  }
-
-  function selectRegion(region) {
-    setSelectedRegion(region);
+    dispatch({ type: "reset" });
   }
 
   function toggleSide() {
     setSide((current) => (current === "front" ? "back" : "front"));
-    selectRegion(null);
-    clearHover();
+    dispatch({ type: "reset" });
   }
 
-  function linkStart(event, item) {
-    setActiveLink({ el: event.currentTarget, item });
-  }
-  function linkEnd(event) {
-    const el = event.currentTarget;
-    setActiveLink((current) => (current?.el === el ? null : current));
+  const dismiss = useCallback(() => {
+    if (rowPressRef.current) {
+      rowPressRef.current = false;
+      return;
+    }
+    dispatch({ type: "dismiss" });
+  }, []);
+
+  // Unpin first, so the figure's Escape / outside-press handlers are gone
+  // before the record view opens.
+  function viewRecord(recordId) {
+    dispatch({ type: "dismiss" });
+    onViewRecord?.(recordId);
   }
 
-  // Desktop only: a hovered finding on the side shown links to its marker; one
-  // on the other side draws no line and hints at the flip button instead
-  // (the figure never flips on hover).
-  const linkItem = isDesktop ? activeLink?.item : null;
-  const linkedRegion = linkItem && linkItem.side === side ? linkItem.region : null;
-  const flipHint = Boolean(linkItem && linkItem.side !== side);
-  const markerRegion = isDesktop ? hoveredRegion : null;
+  const markerArea = (region) => ({ key: `${side}:${region}`, region, side });
+  function markerEnter(region) {
+    if (isDesktop) dispatch({ type: "hover", source: "marker", area: markerArea(region) });
+  }
+  // Leave and blur only ever clear an unpinned hover reveal (the reducer
+  // ignores them while pinned).
+  function markerLeave(region) {
+    dispatch({ type: "leave", source: "marker", key: markerArea(region).key });
+  }
+  function markerClick(region) {
+    dispatch({ type: "click", source: "marker", area: markerArea(region), currentSide: side });
+  }
+
+  function rowEnter(event, area) {
+    if (isDesktop) dispatch({ type: "hover", source: "row", area, el: event.currentTarget });
+  }
+  function rowLeave(event, area) {
+    dispatch({ type: "leave", source: "row", key: area.key, el: event.currentTarget });
+  }
+  function rowClick(event, area) {
+    rowPressRef.current = false;
+    dispatch({ type: "click", source: "row", area, el: event.currentTarget, currentSide: side });
+  }
 
   const findings = {
-    title: selectedRegion && listed[0] ? listed[0].regionLabel : "Recorded Findings",
-    count: listed.length,
-    content: (
-      <>
-        {selectedRegion && (
-          <div className="mb-1">
-            <TextAction onClick={() => selectRegion(null)}>Clear selection</TextAction>
-          </div>
-        )}
-        {listed.length === 0 ? (
-          <OverviewNote>No body findings recorded.</OverviewNote>
-        ) : (
-          <ul className="divide-y divide-gray-100">
-            {listed.map((item) => (
-              <li key={`${item.recordId}-${item.id}`}>
+    title: "Findings",
+    count: areas.length,
+    content:
+      areas.length === 0 ? (
+        <OverviewNote>No body findings recorded.</OverviewNote>
+      ) : (
+        <ul className="divide-y divide-gray-100">
+          {areas.map((area) => {
+            const active = focus?.key === area.key;
+            return (
+              <li key={area.key}>
                 <button
                   type="button"
-                  onClick={() => onViewRecord(item.recordId)}
-                  onMouseEnter={(event) => linkStart(event, item)}
-                  onFocus={(event) => linkStart(event, item)}
-                  onMouseLeave={linkEnd}
-                  onBlur={linkEnd}
-                  disabled={!item.recordId}
-                  className={`group flex w-full items-start justify-between gap-2 py-1 text-left text-xs transition-colors hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-600/40 disabled:cursor-default${
-                    markerRegion && item.region === markerRegion && item.side === side ? " bg-red-50" : ""
+                  aria-expanded={pinned && active}
+                  aria-label={`${area.label}, ${plural(area.count, "finding")}${area.side === "back" ? ", back" : ""}`}
+                  onPointerDown={() => {
+                    if (!pinned) return;
+                    rowPressRef.current = true;
+                    // The figure's document listener consumes it during this
+                    // same event; never let it outlive the event.
+                    setTimeout(() => {
+                      rowPressRef.current = false;
+                    }, 0);
+                  }}
+                  onClick={(event) => rowClick(event, area)}
+                  onMouseEnter={(event) => rowEnter(event, area)}
+                  onFocus={(event) => rowEnter(event, area)}
+                  onMouseLeave={(event) => rowLeave(event, area)}
+                  onBlur={(event) => rowLeave(event, area)}
+                  className={`group flex w-full items-center justify-between gap-2 py-1 text-left text-xs transition-colors hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-600/40${
+                    active ? " bg-red-50" : ""
                   }`}
                 >
-                  <span className="min-w-0 break-words text-slate-700 group-hover:text-red-700">
-                    <span className="font-semibold text-slate-800">{item.regionLabel}</span>
-                    {item.side === "back" && (
-                      <span className="ml-1 rounded-sm border border-slate-300 px-1 text-[10px] font-semibold uppercase text-slate-500">Back</span>
+                  <span className="min-w-0 break-words font-semibold text-slate-800 group-hover:text-red-700">
+                    {area.label}
+                    {area.side === "back" && (
+                      <span className="ml-1 rounded-sm border border-slate-300 px-1 text-[10px] font-semibold uppercase text-slate-500">
+                        Back
+                      </span>
                     )}
-                    {" – "}
-                    {item.location ? `${item.location}: ` : ""}
-                    <span className="font-medium text-slate-900 group-hover:text-red-700">{item.finding}</span>
-                    {item.note ? <span className="text-slate-500"> ({item.note})</span> : null}
-                    <span className="mt-0.5 block text-[11px] tabular-nums text-slate-500">
-                      {formatShortDate(item.visitDate, "Date not recorded")}
-                    </span>
                   </span>
-                  <ChevronRight size={12} className="mt-0.5 shrink-0 text-slate-300 group-hover:text-red-600" aria-hidden="true" />
+                  <span className="shrink-0 tabular-nums text-slate-500">{area.count}</span>
                 </button>
               </li>
-            ))}
-          </ul>
-        )}
-      </>
-    ),
+            );
+          })}
+        </ul>
+      ),
   };
 
   return (
@@ -189,9 +229,7 @@ export default function AnatomyFindingsPanel({ records = [], recordsLoading = fa
       action={<ModeToggle mode={mode} onChange={changeMode} />}
     >
       <div ref={panelRef} className="relative flex h-full min-h-0 flex-col gap-3 md:flex-row">
-        {linkedRegion && (
-          <FindingLinkOverlay containerRef={panelRef} itemEl={activeLink.el} markerRegion={linkedRegion} />
-        )}
+        {showRowLine && <FindingLinkOverlay containerRef={panelRef} itemEl={focus.el} markerRegion={focus.region} />}
 
         <div className="flex h-80 shrink-0 flex-col border-b border-gray-100 pb-2 md:h-auto md:w-2/5 md:max-w-72 md:border-b-0 md:border-r md:pb-0 md:pr-3">
           <PatientFactsSections background={background} records={records} recordsLoading={recordsLoading} findings={findings} />
@@ -202,25 +240,29 @@ export default function AnatomyFindingsPanel({ records = [], recordsLoading = fa
             {recordsLoading && records.length === 0 ? "Loading body findings..." : caption(summary, records.length > 0)}
           </p>
 
-          {/* A size container, so the figure fits both its height and width. */}
+          {/* A size container, so the figure fits both its height and width;
+              the figure places its popover within it. */}
           <div className="flex min-h-[340px] flex-1 items-center justify-center [container-type:size]">
             <BodyFigureSvg
               sex={sex}
               side={side}
               onToggleSide={toggleSide}
-              findingsByRegion={findingsByRegion}
-              selectedRegion={selectedRegion}
-              onSelectRegion={selectRegion}
-              isDesktop={isDesktop}
-              linkedRegion={linkedRegion}
               flipHint={flipHint}
-              onHoverRegion={setHoveredRegion}
+              findingsByRegion={findingsByRegion}
+              isDesktop={isDesktop}
+              activeRegion={activeRegion}
+              phase={phase}
+              pinned={pinned}
+              leader={leader}
+              onMarkerEnter={markerEnter}
+              onMarkerLeave={markerLeave}
+              onMarkerClick={markerClick}
+              onViewRecord={viewRecord}
+              onDismiss={dismiss}
             />
           </div>
 
-          <div className="mt-2">
-            <OverviewNote>Shows body findings as recorded during visits.</OverviewNote>
-          </div>
+          <p className="mt-2 text-center text-xs tabular-nums text-slate-500">{bmiLabel(bmi)}</p>
         </div>
       </div>
     </OverviewCard>

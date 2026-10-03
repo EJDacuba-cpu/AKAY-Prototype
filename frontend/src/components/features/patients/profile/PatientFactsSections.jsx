@@ -122,12 +122,12 @@ function MedicationsBody({ summary, isLoading }) {
 }
 
 /**
- * The dropdowns beside the body figure: Current Conditions, Recorded Findings,
+ * The dropdowns beside the body figure: Current Conditions, Findings,
  * Allergies and Medications, all open to start with. Everything shown is
  * something a health worker recorded; Medications lists the medicines
  * dispensed on the visits loaded for this profile (newest first), not what the
- * patient takes now. Recorded Findings is owned by the figure (it follows the
- * selected body region), so the caller passes it in as
+ * patient takes now. Findings is owned by the figure (its rows drive the
+ * figure's reveal), so the caller passes it in as
  * `findings = { title, count, content }`.
  */
 export default function PatientFactsSections({ background, records = [], recordsLoading = false, findings }) {

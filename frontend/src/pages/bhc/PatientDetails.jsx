@@ -41,6 +41,7 @@ import { queryKeys } from "../../utils/queryKeys";
 import { getCurrentUser } from "../../utils/auth";
 import {
   createPatientForm,
+  getPatientAge,
   getSectionErrors,
   orderFollowUps,
   sortByDateDesc,
@@ -486,6 +487,7 @@ export default function PatientDetails() {
                   center={
                     <AnatomyFindingsPanel
                       key={patientId}
+                      age={getPatientAge(patient)}
                       background={patient.medicalBackground}
                       sex={patient.sex}
                       records={records}

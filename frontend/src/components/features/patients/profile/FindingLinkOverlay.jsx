@@ -42,8 +42,8 @@ function measureLink(container, itemEl, markerRegion) {
 const sameLink = (a, b) => a === b || (a !== null && b !== null && a.key === b.key && a.d === b.d);
 
 /**
- * The profile's hover link: a red curve drawn from a Recorded Findings list
- * item's right edge to the centre of its body-figure marker, over the
+ * The profile's hover link: a red curve drawn from a Findings list row's
+ * right edge to the centre of its body-figure marker, over the
  * `containerRef` element (which must be positioned). Geometry and drawing
  * only - the caller decides when a link applies. Re-measures on container
  * resize, on any scroll inside it, and when its content changes. Renders
