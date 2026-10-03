@@ -22,7 +22,7 @@ test("every figure/side has a normalized position for every region", () => {
 test("patient's right is on the viewer's left from the front and right from the back", () => {
   for (const figure of FIGURE_KEYS) {
     const { front, back } = DOT_POSITIONS[figure];
-    for (const limb of ["arm", "leg"]) {
+    for (const limb of ["arm", "leg", "hand", "foot"]) {
       const right = `right_${limb}`;
       const left = `left_${limb}`;
       assert.ok(front[right][0] < 0.5 && 0.5 < front[left][0], `${figure} front ${limb}`);

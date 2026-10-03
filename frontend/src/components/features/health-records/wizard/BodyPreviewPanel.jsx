@@ -10,6 +10,7 @@ import {
   createBodyFindingId,
   getBodyRegionLabel,
   getSpecificLocationOptions,
+  normalizeBodySide,
   resolveSpecificLocation,
   splitSpecificLocation,
 } from "../../../../utils/bodyFindings";
@@ -116,7 +117,7 @@ function BodyFigure({ findings, sex, side, onToggleSide, countByRegion, activeRe
   const overlayRegion = activeRegion ? null : hoveredRegion;
   const overlayCount = overlayRegion ? countByRegion[overlayRegion] || 0 : 0;
   const overlayFinding = overlayRegion
-    ? findings.find((item) => item.region === overlayRegion && item.side === side)
+    ? findings.find((item) => item.region === overlayRegion && normalizeBodySide(item.side) === side)
     : null;
   const [overlayX, overlayY] = overlayRegion ? getDotPosition(figure, side, overlayRegion) : [0, 0];
   const overlayStyle = overlayRegion
@@ -519,7 +520,7 @@ export default function BodyPreviewPanel({
 }) {
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const countByRegion = findings.reduce((counts, item) => {
-    if (item.side === side) counts[item.region] = (counts[item.region] || 0) + 1;
+    if (normalizeBodySide(item.side) === side) counts[item.region] = (counts[item.region] || 0) + 1;
     return counts;
   }, {});
 
@@ -590,7 +591,7 @@ export default function BodyPreviewPanel({
           side={dialog.side}
           anchor={dialog.anchor}
           initialEditingId={dialog.editingId}
-          findings={findings.filter((item) => item.region === dialog.region && item.side === dialog.side)}
+          findings={findings.filter((item) => item.region === dialog.region && normalizeBodySide(item.side) === dialog.side)}
           readOnly={readOnly}
           onSave={saveFinding}
           onRemove={(id) => onChange(findings.filter((item) => item.id !== id))}
@@ -612,7 +613,7 @@ export function BodyFindingsList({ findings = [], readOnly = false, onEdit, onRe
     .flatMap((side) => BODY_REGIONS.map(({ key }) => ({
       id: `${side}:${key}`,
       label: getBodyRegionLabel(key, side),
-      items: findings.filter((item) => item.side === side && item.region === key),
+      items: findings.filter((item) => normalizeBodySide(item.side) === side && item.region === key),
     })))
     .filter((group) => group.items.length > 0);
   if (groups.length === 0) return null;

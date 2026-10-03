@@ -203,7 +203,7 @@ export default function AnatomyFindingsPanel({ records = [], recordsLoading = fa
           </p>
 
           {/* A size container, so the figure fits both its height and width. */}
-          <div className="flex min-h-[420px] flex-1 items-center justify-center [container-type:size]">
+          <div className="flex min-h-[340px] flex-1 items-center justify-center [container-type:size]">
             <BodyFigureSvg
               sex={sex}
               side={side}

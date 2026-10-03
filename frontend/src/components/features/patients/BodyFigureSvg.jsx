@@ -73,6 +73,7 @@ function Marker({ region, label, position, count, selected, highlighted, onSelec
  * also reported through `onHoverRegion(region | null)`; a marker whose region
  * is hovered or equals `linkedRegion` pulses.
  * Front view: the PATIENT's right is on the viewer's left. Back view: swapped.
+ * `findingsByRegion` must be memoized by the caller: a new identity resets hover state.
  */
 export default function BodyFigureSvg({
   sex,
