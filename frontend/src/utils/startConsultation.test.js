@@ -70,10 +70,10 @@ test("what a Start Consultation action does: wait, open the modal, or go", () =>
   assert.equal(startConsultationAction({ ...ready, isPending: true }), "disabled");
   assert.equal(startConsultationAction({ ...ready, isError: true }), "disabled");
   assert.equal(startConsultationAction({ ...ready, discarding: true }), "disabled");
-  // Something to continue (and no draft - the hook's needsStartModal is false
-  // whenever a draft exists, so Resume always wins): open the modal.
+  // No draft: the modal opens for every new consultation (the hook's
+  // needsStartModal is false whenever a draft exists, so Resume always wins).
   assert.equal(startConsultationAction({ ...ready, needsStartModal: true }), "modal");
-  // A draft to resume, or nothing to continue: a plain link.
+  // A draft to resume: a plain link.
   assert.equal(startConsultationAction(ready), "link");
   assert.equal(startConsultationAction(), "disabled");
 });

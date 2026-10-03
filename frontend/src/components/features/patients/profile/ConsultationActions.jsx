@@ -8,8 +8,7 @@ import usePatientConsultation from "../../../../hooks/usePatientConsultation";
 import StartConsultationModal from "./StartConsultationModal";
 import { TextAction } from "./ProfileSection";
 import { formatDate } from "../../../../utils/formatters";
-import { buildPatientConsultationPath } from "../../../../utils/consultationRoute";
-import { selectionToRoute } from "../../../../utils/startConsultation";
+import { visitContextToRoute } from "../../../../utils/startConsultation";
 
 /** `onStart` replaces the link (Start Consultation opens the modal instead). */
 export function ConsultationButton({ consultation, onStart }) {
@@ -133,10 +132,10 @@ export function useConsultationActions(patient, patientId) {
       ? createPortal(
           <StartConsultationModal
             overview={consultation.careOverview}
+            overviewUnavailable={consultation.careOverviewUnavailable}
             onCancel={() => setStartModalOpen(false)}
-            onStartNew={() => navigate(buildPatientConsultationPath(consultationPatientId))}
-            onContinue={({ followUpIds, monitoringIds }) =>
-              navigate(selectionToRoute({ patientId: consultationPatientId, followUpIds, monitoringIds }))
+            onStart={({ context, monitoringIds }) =>
+              navigate(visitContextToRoute({ patientId: consultationPatientId, context, monitoringIds }))
             }
           />,
           document.body,

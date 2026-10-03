@@ -11,8 +11,7 @@ import AddParticipantModal from "./AddParticipantModal";
 import { formatShortDate } from "../../../utils/patientProfile";
 import StartConsultationModal from "../patients/profile/StartConsultationModal";
 import usePatientConsultation from "../../../hooks/usePatientConsultation";
-import { buildPatientConsultationPath } from "../../../utils/consultationRoute";
-import { selectionToRoute, startConsultationAction } from "../../../utils/startConsultation";
+import { startConsultationAction, visitContextToRoute } from "../../../utils/startConsultation";
 
 const STATUS_STYLES = {
   Enrolled: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
@@ -23,8 +22,8 @@ const STATUS_STYLES = {
 /**
  * A participant's Start / Resume Consultation, with the same behaviour as the
  * patient profile header (usePatientConsultation): an unfinished draft is
- * resumed; otherwise, when the patient has pending follow-ups or unscheduled
- * monitoring, the Start Consultation modal opens; else a new consultation.
+ * resumed; otherwise the Start Consultation modal opens so the visit context
+ * (new/general, or a follow-up of monitored conditions) is chosen first.
  */
 function ParticipantConsultationAction({ patientId, patientName }) {
   const consultation = usePatientConsultation(patientId);
@@ -71,10 +70,10 @@ function ParticipantConsultationAction({ patientId, patientName }) {
         createPortal(
           <StartConsultationModal
             overview={consultation.careOverview}
+            overviewUnavailable={consultation.careOverviewUnavailable}
             onCancel={() => setModalOpen(false)}
-            onStartNew={() => navigate(buildPatientConsultationPath(patientId))}
-            onContinue={({ followUpIds, monitoringIds }) =>
-              navigate(selectionToRoute({ patientId, followUpIds, monitoringIds }))
+            onStart={({ context, monitoringIds }) =>
+              navigate(visitContextToRoute({ patientId, context, monitoringIds }))
             }
           />,
           document.body,

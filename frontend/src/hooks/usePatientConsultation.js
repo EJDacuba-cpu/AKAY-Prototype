@@ -9,7 +9,6 @@ import { getCareOverview } from "../services/careOverviewService";
 import { getCurrentUser } from "../utils/auth";
 import { buildPatientConsultationPath } from "../utils/consultationRoute";
 import { queryKeys } from "../utils/queryKeys";
-import { needsStartModal } from "../utils/startConsultation";
 
 /**
  * The consultation state of one patient: whether the signed-in user has an
@@ -17,12 +16,13 @@ import { needsStartModal } from "../utils/startConsultation";
  * to discard the draft. Shared by the profile header's primary button and its
  * draft banner so both read one query.
  *
- * Without a draft, Start Consultation first checks the patient's care overview
- * (pending follow-ups, unscheduled monitoring): when there is something to
- * continue, `needsStartModal` is true and the button opens the Start
- * Consultation modal instead of navigating. A draft always wins - Resume goes
- * straight back to it. An overview that fails to load never blocks starting:
- * the button falls back to a new consultation.
+ * Without a draft, Start Consultation opens the Start Consultation modal
+ * (`needsStartModal`) so the worker picks the visit context - new/general, or
+ * a follow-up of monitored conditions - before the workspace opens. A draft
+ * always wins: Resume goes straight back to it. The care overview (the
+ * monitored conditions the modal lists) is read first; when it cannot be read
+ * `careOverviewUnavailable` is true and the modal still opens, offering only
+ * a general consultation.
  */
 export default function usePatientConsultation(patientId) {
   const queryClient = useQueryClient();
@@ -80,7 +80,8 @@ export default function usePatientConsultation(patientId) {
     isPending: isPending || (!draft && careOverviewPending),
     isError,
     careOverview,
-    needsStartModal: !draft && needsStartModal(careOverview),
+    needsStartModal: !draft,
+    careOverviewUnavailable: !canReadCareOverview || careOverviewQuery.isError,
     retry: () => queryClient.invalidateQueries({ queryKey }),
     discarding: discard.isPending,
     discard: () => draft && discard.mutateAsync(draft.id),
