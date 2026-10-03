@@ -68,7 +68,7 @@ export default function VitalsTrendList({ records = [], isLoading = false }) {
         ) : (
           <dl className="divide-y divide-gray-100">
             {rows.map(({ key, label, unit, display, series }) => (
-              <div key={key} className="grid grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-x-3 py-1">
+              <div key={key} className="grid grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-x-3 py-0.5">
                 <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
                 <dd className="m-0 min-w-0 truncate text-sm font-semibold tabular-nums text-slate-900">
                   {display}

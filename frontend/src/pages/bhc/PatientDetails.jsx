@@ -69,7 +69,7 @@ function ProfileTabs({ tabs, activeTab, onSelect }) {
     <div
       role="tablist"
       aria-label="Patient profile"
-      className="mb-3 overflow-x-auto rounded-card border border-[#E5E7EB] bg-white shadow-card"
+      className="mb-2 overflow-x-auto rounded-card border border-[#E5E7EB] bg-white shadow-card"
     >
       <nav className="flex">
         {tabs.map((tab) => {
@@ -84,7 +84,7 @@ function ProfileTabs({ tabs, activeTab, onSelect }) {
               aria-selected={active}
               aria-controls={`profile-panel-${tab.key}`}
               onClick={() => onSelect(tab.key)}
-              className={`whitespace-nowrap border-b-2 px-4 py-2 text-xs font-semibold transition-colors duration-150 ${
+              className={`whitespace-nowrap border-b-2 px-4 py-1.5 text-xs font-semibold transition-colors duration-150 ${
                 active
                   ? "border-[#B91C1C] text-[#B91C1C]"
                   : "border-transparent text-slate-400 hover:border-slate-300 hover:text-slate-600"
@@ -487,7 +487,7 @@ export default function PatientDetails() {
   return (
     <>
       <ProfileShell>
-        <div className="bhc-patient-profile min-h-[520px] px-4 py-3 pb-6 font-sans sm:px-6 [&_h1]:font-sans! [&_h2]:font-sans! [&_h3]:font-sans! [&_h4]:font-sans!">
+        <div className="bhc-patient-profile min-h-[520px] px-4 pt-1.5 pb-4 font-sans sm:px-6 [&_h1]:font-sans! [&_h2]:font-sans! [&_h3]:font-sans! [&_h4]:font-sans!">
           <PatientProfileHeader
             patient={patient}
             patientId={patientId}
@@ -497,7 +497,7 @@ export default function PatientDetails() {
             activeFollowUps={activeFollowUps}
           />
 
-          <div className="@container mt-3 min-w-0">
+          <div className="@container mt-2 min-w-0">
             {tabStrip}
 
             {activeTab === "overview" &&

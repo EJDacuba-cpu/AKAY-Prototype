@@ -1,15 +1,16 @@
 /**
- * One compact card on the Overview board: white, 1px gray border, square
- * corners, no shadow, tight padding. Title row carries an optional meta
+ * One card on the Overview board: white, 1px gray border, square corners,
+ * no shadow. Dense by default (the stacked side columns); `spacious` gives
+ * the centre anatomy card more room. Title row carries an optional meta
  * (count, timestamp) and an action (View all / Edit / a toggle).
  */
-export function OverviewCard({ id, title, meta, action, children, className = "" }) {
+export function OverviewCard({ id, title, meta, action, children, spacious = false, className = "" }) {
   return (
     <section
       aria-labelledby={`${id}-title`}
-      className={`border border-gray-200 bg-white p-3 ${className}`}
+      className={`border border-gray-200 bg-white ${spacious ? "p-3" : "px-2.5 py-2"} ${className}`}
     >
-      <header className="mb-2 flex min-h-5 items-center justify-between gap-3">
+      <header className={`${spacious ? "mb-2 min-h-5" : "mb-1 min-h-4"} flex items-center justify-between gap-3`}>
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <h2
             id={`${id}-title`}

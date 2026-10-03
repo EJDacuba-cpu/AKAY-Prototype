@@ -32,7 +32,7 @@ const OUTCOME_TEXT = {
 
 const CHIP = "shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
 const ROW_BUTTON =
-  "group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-1.5 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-600/40";
+  "group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-1 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-600/40";
 
 function ConditionsSection({ background }) {
   const diseases = Array.isArray(background?.currentDiseases) ? background.currentDiseases : [];
@@ -50,7 +50,7 @@ function ConditionsSection({ background }) {
               .filter(Boolean)
               .join(" · ");
             return (
-              <li key={`${disease.name}-${index}`} className="py-1.5 first:pt-0">
+              <li key={`${disease.name}-${index}`} className="py-1 first:pt-0">
                 <div className="flex items-center justify-between gap-2">
                   <span className="min-w-0 truncate text-sm font-semibold text-slate-900">{disease.name}</span>
                   {disease.status && (
@@ -77,7 +77,7 @@ function CareTrackingSection({ entries, programLabels, onViewAll }) {
       action={entries.length > 0 ? <TextAction onClick={onViewAll}>View all</TextAction> : null}
     >
       {programLabels.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-1.5">
+        <div className="mb-1 flex flex-wrap gap-1">
           {programLabels.map((label) => (
             <span key={label} className="rounded-sm border border-slate-300 px-2 py-0.5 text-[11px] text-slate-700">
               {label}
@@ -90,7 +90,7 @@ function CareTrackingSection({ entries, programLabels, onViewAll }) {
       ) : (
         <ul className="divide-y divide-gray-100">
           {entries.map((entry) => (
-            <li key={entry.key} className="flex items-center justify-between gap-3 py-1.5 first:pt-0">
+            <li key={entry.key} className="flex items-center justify-between gap-3 py-1 first:pt-0">
               <span className="min-w-0">
                 <span className="block truncate text-sm font-semibold text-slate-900">{entry.label}</span>
                 <span className="block text-[11px] text-slate-500">
@@ -269,7 +269,7 @@ export default function ClinicalOverviewColumn({
   onViewRecord,
 }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <ConditionsSection background={patient.medicalBackground} />
       <CareTrackingSection entries={careTracking} programLabels={programLabels} onViewAll={onViewPrograms} />
       <ReferralsPreview

@@ -93,6 +93,7 @@ export default function AnatomyFindingsPanel({ records = [], recordsLoading = fa
     <OverviewCard
       id="overview-visual-summary"
       title="Visual Health Summary"
+      spacious
       action={<ModeToggle mode={mode} onChange={changeMode} />}
     >
       <p role="status" className="text-xs tabular-nums text-slate-600">

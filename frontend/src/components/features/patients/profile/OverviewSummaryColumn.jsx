@@ -12,7 +12,7 @@ function AllergyCard({ allergies }) {
   const Icon = recorded ? ShieldAlert : ShieldCheck;
   return (
     <OverviewCard id="overview-alerts" title="Alerts & Allergies">
-      <p className={`flex items-start gap-2 text-sm ${recorded ? "font-semibold text-red-700" : "text-slate-500"}`}>
+      <p className={`flex items-start gap-1.5 text-[13px] leading-snug ${recorded ? "font-semibold text-red-700" : "text-slate-500"}`}>
         <Icon size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
         <span className="min-w-0 break-words">
           {recorded ? `Allergy: ${text}` : text ? "No known allergies" : "Allergies not recorded"}
@@ -30,7 +30,7 @@ function BackgroundSummaryCard({ background, onEdit }) {
       title="Patient Background"
       action={<TextAction onClick={onEdit}>Edit →</TextAction>}
     >
-      <dl className="space-y-1.5 text-xs">
+      <dl className="space-y-0.5 text-xs">
         {summarizeBackground(background).map(({ key, label, text }) => (
           <div key={key} className="grid grid-cols-[5rem_minmax(0,1fr)] gap-x-2">
             <dt className="text-slate-500">{label}</dt>
@@ -51,7 +51,7 @@ function BackgroundSummaryCard({ background, onEdit }) {
  */
 export default function OverviewSummaryColumn({ patient, records = [], recordsLoading = false, onEditBackground }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <AllergyCard allergies={patient.medicalBackground?.allergies} />
       <VitalsTrendList records={records} isLoading={recordsLoading} />
       <BackgroundSummaryCard background={patient.medicalBackground} onEdit={onEditBackground} />

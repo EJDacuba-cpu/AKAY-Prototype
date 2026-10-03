@@ -32,7 +32,7 @@ export default function PatientProfileHeader({
 
   return (
     <header className="border border-gray-200 bg-white">
-      <div className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 px-4 py-1.5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-2.5">
           <Link
             to={backPath}
