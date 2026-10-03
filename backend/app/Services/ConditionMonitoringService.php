@@ -72,16 +72,15 @@ class ConditionMonitoringService
         }
 
         // One entry per condition identity this visit monitors; a condition
-        // typed twice ("HTN", "Hypertension") collapses to one, referred if
-        // either entry refers.
+        // typed twice ("HTN" Monitor, "Hypertension" Refer) collapses to one,
+        // referred if any entry refers.
         $monitored = [];
         foreach ($diagnoses as $diagnosis) {
             if (! is_array($diagnosis) || ! CarePlan::monitors($diagnosis['carePlan'] ?? null)) {
                 continue;
             }
             $identity = $this->registry->conditionIdentity($diagnosis['conditionKey'] ?? null, (string) $diagnosis['name']);
-            $monitored[$identity] ??= ['key' => $diagnosis['conditionKey'] ?? null, 'name' => (string) $diagnosis['name'], 'referred' => false];
-            $monitored[$identity]['referred'] = $monitored[$identity]['referred'] || CarePlan::refers($diagnosis['carePlan']);
+            $monitored[$identity] ??= ['key' => $diagnosis['conditionKey'] ?? null, 'name' => (string) $diagnosis['name'], 'referred' => $this->isReferred($diagnoses, $identity)];
         }
 
         $this->assertEndedConditionsAreStopped($diagnoses, $continued, $monitored, $stopReasons);
@@ -133,11 +132,11 @@ class ConditionMonitoringService
                     'stop_reason' => $stopReasons[$monitoring->id],
                     'updated_by' => $user->id,
                 ]);
-                $this->history($monitoring, $record, ConditionMonitoringVisit::ACTION_STOPPED, $this->isReferred($diagnoses, $monitoring));
+                $this->history($monitoring, $record, ConditionMonitoringVisit::ACTION_STOPPED, $this->isReferred($diagnoses, $monitoring->condition_identity));
 
                 continue;
             }
-            $this->history($monitoring, $record, ConditionMonitoringVisit::ACTION_CONTINUED, $this->isReferred($diagnoses, $monitoring));
+            $this->history($monitoring, $record, ConditionMonitoringVisit::ACTION_CONTINUED, $this->isReferred($diagnoses, $monitoring->condition_identity));
             $activeAfter->put($monitoring->id, $monitoring);
         }
 
@@ -160,8 +159,9 @@ class ConditionMonitoringService
 
     /**
      * A continued condition re-diagnosed this visit as No Ongoing Tracking
-     * (none) or Refer to RHU (refer) ends monitoring, so it needs a stop with a
-     * reason. An absent carePlan means "continue" (the UI default). Runs before
+     * (none) ends monitoring, so it needs a stop with a reason. Refer to RHU
+     * does not: a referral keeps the monitoring active and is tracked on its
+     * own. An absent carePlan means "continue" (the UI default). Runs before
      * any write so the whole save rolls back.
      *
      * @param  array<int, array<string, mixed>>  $diagnoses
@@ -177,10 +177,10 @@ class ConditionMonitoringService
             }
             foreach ($diagnoses as $diagnosis) {
                 if (is_array($diagnosis)
-                    && in_array($diagnosis['carePlan'] ?? null, [CarePlan::NONE, CarePlan::REFER], true)
+                    && ($diagnosis['carePlan'] ?? null) === CarePlan::NONE
                     && $this->registry->conditionIdentity($diagnosis['conditionKey'] ?? null, (string) ($diagnosis['name'] ?? '')) === $monitoring->condition_identity) {
                     throw ValidationException::withMessages([
-                        'care_plan.monitoring_stops' => 'A continued condition marked No Ongoing Tracking or Refer to RHU must be stopped with a reason.',
+                        'care_plan.monitoring_stops' => 'A continued condition marked No Ongoing Tracking must be stopped with a reason.',
                     ]);
                 }
             }
@@ -197,13 +197,13 @@ class ConditionMonitoringService
         ]);
     }
 
-    /** A continued condition diagnosed this visit as Refer (it is then stopped or kept by the row). */
-    private function isReferred(array $diagnoses, ConditionMonitoring $monitoring): bool
+    /** Whether a diagnosis of this condition identity is referred this visit. */
+    private function isReferred(array $diagnoses, string $identity): bool
     {
         foreach ($diagnoses as $diagnosis) {
             if (is_array($diagnosis)
                 && CarePlan::refers($diagnosis['carePlan'] ?? null)
-                && $this->registry->conditionIdentity($diagnosis['conditionKey'] ?? null, (string) ($diagnosis['name'] ?? '')) === $monitoring->condition_identity) {
+                && $this->registry->conditionIdentity($diagnosis['conditionKey'] ?? null, (string) ($diagnosis['name'] ?? '')) === $identity) {
                 return true;
             }
         }

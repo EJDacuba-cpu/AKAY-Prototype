@@ -29,30 +29,35 @@ class CarePlanReferralFollowUpTest extends TestCase
         $this->actingAs($user, 'sanctum');
     }
 
-    private function save(string $carePlan, bool $needsReferral)
+    /** @param  array<int, array<string, mixed>>  $diagnoses */
+    private function save(array $diagnoses, array $monitoringData = [], array $carePlan = [])
     {
         return $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
             'patient_id' => $this->patient->id,
             'category' => 'General Consultation',
             'chief_complaint' => 'Dizziness',
-            'diagnosis' => 'Hypertension',
-            'diagnoses' => [['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => $carePlan]],
-            'needs_referral' => $needsReferral,
+            'diagnosis' => implode('; ', array_column($diagnoses, 'name')),
+            'diagnoses' => $diagnoses,
+            'needs_referral' => true,
             // Same shape ConsultationWorkflowRevisionTest uses. With no RHU
             // doctor available the record still saves and a referral hold is
             // recorded - the follow-up behaviour is what this test checks.
             'referral' => ['reason_for_referral' => 'Uncontrolled BP', 'urgency_level' => 'Routine'],
-            'monitoring_data' => [
+            'monitoring_data' => $monitoringData ?: [
                 'followUpStatus' => 'Follow-up Required',
                 'followUpDate' => now()->addWeeks(2)->toDateString(),
                 'followUpReason' => 'BP recheck',
             ],
+            'care_plan' => $carePlan,
         ]);
     }
 
-    public function test_monitor_and_refer_keeps_the_follow_up(): void
+    public function test_a_referral_keeps_the_follow_up_when_another_diagnosis_is_monitored(): void
     {
-        $id = $this->save('monitor_refer', true)->assertCreated()->json('data.id');
+        $id = $this->save([
+            ['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor'],
+            ['id' => 'd2', 'name' => 'Pneumonia', 'carePlan' => 'refer'],
+        ])->assertCreated()->json('data.id');
 
         $task = FollowUpTask::where('health_record_id', $id)->sole();
         $this->assertSame('pending', $task->state);
@@ -60,18 +65,37 @@ class CarePlanReferralFollowUpTest extends TestCase
         $this->assertSame('active', ConditionMonitoring::sole()->status);
     }
 
-    public function test_monitor_and_refer_still_requires_the_follow_up_date_when_one_is_asked_for(): void
+    public function test_a_monitored_diagnosis_with_a_referral_still_requires_the_follow_up_date_when_one_is_asked_for(): void
+    {
+        $this->save([
+            ['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor'],
+            ['id' => 'd2', 'name' => 'Pneumonia', 'carePlan' => 'refer'],
+        ], ['followUpStatus' => 'Follow-up Required'])
+            ->assertStatus(422)->assertJsonValidationErrors('monitoring_data.followUpDate');
+    }
+
+    public function test_referring_a_continued_condition_keeps_monitoring_without_a_follow_up(): void
     {
         $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
             'patient_id' => $this->patient->id,
             'category' => 'General Consultation',
-            'chief_complaint' => 'Dizziness',
+            'chief_complaint' => 'BP check',
             'diagnosis' => 'Hypertension',
-            'diagnoses' => [['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor_refer']],
-            'needs_referral' => true,
-            'referral' => ['reason_for_referral' => 'Uncontrolled BP', 'urgency_level' => 'Routine'],
-            'monitoring_data' => ['followUpStatus' => 'Follow-up Required'],
-        ])->assertStatus(422)->assertJsonValidationErrors('monitoring_data.followUpDate');
+            'diagnoses' => [['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor']],
+        ])->assertCreated();
+        $monitoring = ConditionMonitoring::sole();
+
+        // Monitoring stays active, but that alone asks for no BHC date: the
+        // referral hands the next visit to the RHU.
+        $id = $this->save(
+            [['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'refer']],
+            ['followUpStatus' => 'Follow-up Required'],
+            ['continued_monitoring_ids' => [$monitoring->id]]
+        )->assertCreated()->json('data.id');
+
+        $this->assertSame('active', $monitoring->fresh()->status);
+        $this->assertFalse(FollowUpTask::where('health_record_id', $id)->whereIn('state', FollowUpTask::ACTIVE_STATES)->exists());
+        $this->assertNull(\App\Models\HealthRecord::findOrFail($id)->monitoring_data['followUpDate'] ?? null);
     }
 
     /** A vaccination visit (EPI selected) that also refers an unrelated diagnosis. */
@@ -119,7 +143,7 @@ class CarePlanReferralFollowUpTest extends TestCase
 
     public function test_refer_without_monitoring_still_drops_the_follow_up(): void
     {
-        $id = $this->save('refer', true)->assertCreated()->json('data.id');
+        $id = $this->save([['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'refer']])->assertCreated()->json('data.id');
 
         $this->assertFalse(FollowUpTask::where('health_record_id', $id)->whereIn('state', FollowUpTask::ACTIVE_STATES)->exists());
         $this->assertSame(0, ConditionMonitoring::count());

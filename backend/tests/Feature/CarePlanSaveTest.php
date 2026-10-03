@@ -77,7 +77,7 @@ class CarePlanSaveTest extends TestCase
     {
         $this->save([
             ['id' => 'd1', 'name' => 'HTN', 'carePlan' => 'monitor'],
-            ['id' => 'd2', 'name' => 'Hypertension', 'carePlan' => 'monitor_refer'],
+            ['id' => 'd2', 'name' => 'Hypertension', 'carePlan' => 'refer'],
         ], [], $this->referral())->assertCreated();
 
         $this->assertCount(1, $this->active());
@@ -143,27 +143,33 @@ class CarePlanSaveTest extends TestCase
 
     public function test_a_continued_condition_marked_none_must_be_stopped_with_a_reason(): void
     {
-        $this->assertEndingWithoutStopIsRejected('none');
-    }
-
-    public function test_a_continued_condition_marked_refer_must_be_stopped_with_a_reason(): void
-    {
-        $this->assertEndingWithoutStopIsRejected('refer');
-    }
-
-    private function assertEndingWithoutStopIsRejected(string $carePlan): void
-    {
         [$monitoring, $before] = $this->activeHypertension();
 
         $this->save(
-            [['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => $carePlan]],
-            ['continued_monitoring_ids' => [$monitoring->id]],
-            $carePlan === 'refer' ? $this->referral() : []
+            [['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'none']],
+            ['continued_monitoring_ids' => [$monitoring->id]]
         )->assertUnprocessable()->assertJsonValidationErrors(['care_plan.monitoring_stops']);
 
         $this->assertSame('active', $monitoring->fresh()->status);
         $this->assertSame($before, HealthRecord::count());
         $this->assertSame(1, $monitoring->visits()->count());
+    }
+
+    public function test_referring_a_continued_condition_keeps_its_monitoring_active(): void
+    {
+        [$monitoring] = $this->activeHypertension();
+
+        // No stop entry: a referral never ends monitoring by itself.
+        $id = $this->save(
+            [['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'refer']],
+            ['continued_monitoring_ids' => [$monitoring->id]],
+            $this->referral()
+        )->assertCreated()->json('data.id');
+
+        $this->assertSame('active', $monitoring->fresh()->status);
+        $visit = $monitoring->visits()->where('health_record_id', $id)->sole();
+        $this->assertSame('continued', $visit->action);
+        $this->assertTrue($visit->referred);
     }
 
     public function test_a_continued_condition_ended_in_the_diagnosis_is_stopped_when_a_reason_is_given(): void

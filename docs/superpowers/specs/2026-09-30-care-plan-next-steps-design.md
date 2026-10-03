@@ -130,9 +130,15 @@ One row per diagnosis with a single choice (default **No Ongoing Tracking**):
 
 - **No Ongoing Tracking**
 - **Monitor at BHC**
-- **Refer to RHU**
-- **Monitor at BHC + Refer to RHU** — keeps the condition under active BHC
-  monitoring and includes it in the visit's referral.
+- **Refer to RHU** — includes the condition in the visit's referral, which is
+  tracked through its own status and the RHU feedback. It starts no BHC
+  monitoring and needs no BHC follow-up date.
+
+*Monitor at BHC + Refer to RHU* (`monitor_refer`) was retired on 2026-10-04:
+older records keep it and still read back with that label, but it is no
+longer offered and a new save rejects it. A draft holding it resolves to
+*Refer to RHU*. A condition the BHC should follow clinically is set to
+*Monitor at BHC*.
 
 Monitor is available for **any** diagnosis, registered or free text.
 
@@ -154,9 +160,10 @@ For each monitoring record selected in the modal:
   required).
 - If its condition **is** among this visit's diagnoses, it is handled on that
   diagnosis row, which then **defaults to *Monitor at BHC*** instead of No
-  Ongoing Tracking: *Monitor at BHC* / *Monitor at BHC + Refer to RHU*
-  continue it; *No Ongoing Tracking* / *Refer to RHU* stop it, and a stop
-  reason is then required.
+  Ongoing Tracking: *Monitor at BHC* continues it; *Refer to RHU* also keeps
+  it active (the referral never ends monitoring by itself - the visit is
+  recorded in its history as referred); *No Ongoing Tracking* stops it, and a
+  stop reason is then required.
 
 Continued monitoring therefore stays active unless the worker explicitly
 stops it.
@@ -166,7 +173,8 @@ changing that status does not stop monitoring.
 
 ### C. Referral
 
-Shown when any diagnosis is *Refer to RHU* or *Monitor at BHC + Refer to RHU*.
+Shown when any diagnosis is *Refer to RHU*. The referral closes through its
+own status / outcome, never through a care-plan choice.
 **One referral per consultation**, with the existing fields (receiving RHU,
 priority, reason) and existing rules (`referrals.submit` permission, RHU
 doctor-availability block). The reason is pre-filled from those diagnoses
@@ -185,6 +193,11 @@ or a selected service needs a next visit (EPI's next-dose date keeps
 pre-filling it as today). **One follow-up task per consultation.** The date
 is optional; if set, a reason is required (existing rule). The task is linked
 to every condition monitored in this visit.
+
+A referral hands the follow-up to the RHU unless another diagnosis is set to
+*Monitor at BHC* or a service visit has its next date. A referred condition
+whose monitoring merely stays active does not keep it; the BHC schedules the
+next monitoring visit after the RHU feedback.
 
 When nothing is monitored, no service needs a next visit and nothing is
 referred, the step reads "No follow-up or referral required."
@@ -232,7 +245,8 @@ task to each monitoring record it covers (`condition_monitoring_id`,
 ### Changes to existing data (no new columns)
 
 - `health_records.diagnoses[]` entries gain:
-  - `carePlan`: `none | monitor | refer | monitor_refer` (server-validated),
+  - `carePlan`: `none | monitor | refer` on a new save (server-validated;
+    `monitor_refer` only on records saved before 2026-10-04),
   - `includeInSurveillance`: boolean.
   The ITR permanently records what was decided.
 - `config/clinical_registry.php`: the `tuberculosis` entry gains
@@ -363,8 +377,9 @@ Backend feature tests:
 - One follow-up linked to every monitored condition; continued follow-ups
   fulfilled by the new ITR; `care_plan` ids belonging to another patient, or
   already closed, are rejected.
-- One referral containing exactly the referred diagnoses; `Monitor at BHC +
-  Refer to RHU` both keeps monitoring active and refers.
+- One referral containing exactly the referred diagnoses; referring a
+  continued condition keeps its monitoring active without a stop or a
+  follow-up date; a new save rejects `monitor_refer`.
 - Category stays service-based; TB detection by `tb_data` for new records and
   by category for old ones.
 - `care-overview` output and access control.

@@ -303,7 +303,10 @@ class HealthRecordRequest extends FormRequest
             // Drives the derived monitoring_data.morbidityReportingStatus.
             'diagnoses.*.reportAs' => ['nullable', 'string', Rule::in(HealthRecord::DIAGNOSIS_REPORT_TYPES)],
             // Care Plan & Next Steps, per diagnosis. null = no ongoing tracking.
-            'diagnoses.*.carePlan' => ['nullable', 'string', Rule::in(\App\Services\CarePlan::VALUES)],
+            // A new save cannot use the retired monitor_refer value.
+            'diagnoses.*.carePlan' => ['nullable', 'string', Rule::in($this->isMethod('post')
+                ? \App\Services\CarePlan::SELECTABLE
+                : \App\Services\CarePlan::VALUES)],
             'diagnoses.*.includeInSurveillance' => ['nullable', 'boolean'],
             // Existing follow-ups / monitoring this ITR continues (Start
             // Consultation modal), and the monitoring it stops.
@@ -410,8 +413,8 @@ class HealthRecordRequest extends FormRequest
             if (($needsReferral || $normalizedStatus === 'follow up required') && blank($this->input('diagnosis'))) {
                 $validator->errors()->add('diagnosis', 'BHC Assessment is required for follow-up or referral.');
             }
-            // A diagnosis set to Refer to RHU (or Monitor at BHC + Refer) is a
-            // referral: the ITR would otherwise say "Refer to RHU" with none.
+            // A diagnosis set to Refer to RHU is a referral: the ITR would
+            // otherwise say "Refer to RHU" with none.
             if (
                 $this->isMethod('post')
                 && ! $needsReferral
@@ -426,8 +429,8 @@ class HealthRecordRequest extends FormRequest
                 $validator->errors()->add('referral.reason_for_referral', 'Reason for referral is required.');
             }
             // A plain referral hands the follow-up to the RHU, so no date is
-            // needed. A referral that keeps the BHC follow-up ("Monitor at BHC
-            // + Refer", or a service visit with its next date set - see
+            // needed. A referral that keeps the BHC follow-up (another
+            // diagnosis set to Monitor, or a service visit with its next date set - see
             // CarePlan::keepsFollowUpWithReferral) still needs the date when
             // the visit asks for one. (The service case already has a date, so
             // only the monitored case can trip this rule.)

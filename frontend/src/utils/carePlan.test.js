@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  CARE_PLAN, CARE_PLAN_OPTIONS, conditionIdentity, defaultCarePlan, carePlanFor, continuingRows,
+  CARE_PLAN, CARE_PLAN_OPTIONS, CARE_PLAN_LABELS, conditionIdentity, defaultCarePlan, carePlanFor, continuingRows,
   stopsRequired, referredDiagnoses, buildReferralReason, deriveDisposition, validateCarePlan,
   buildCarePlanPayload, monitoredConditionKeys,
 } from "./carePlan.js";
@@ -18,8 +18,17 @@ const asthmaMonitoring = { id: 4, conditionName: "Asthma", conditionKey: null };
 
 test("labels are explicit and in order", () => {
   assert.deepEqual(CARE_PLAN_OPTIONS.map((o) => o.label), [
-    "No Ongoing Tracking", "Monitor at BHC", "Refer to RHU", "Monitor at BHC + Refer to RHU",
+    "No Ongoing Tracking", "Monitor at BHC", "Refer to RHU",
   ]);
+});
+
+test("the retired monitor + refer value keeps its label for older records", () => {
+  assert.equal(CARE_PLAN_LABELS.monitor_refer, "Monitor at BHC + Refer to RHU");
+  assert.equal(CARE_PLAN_LABELS.refer, "Refer to RHU");
+});
+
+test("a draft still holding monitor + refer resolves to Refer to RHU", () => {
+  assert.equal(carePlanFor({ name: "HTN", carePlan: "monitor_refer" }, [], registry), CARE_PLAN.REFER);
 });
 
 test("identity uses the registry key, else the normalized name", () => {
@@ -44,12 +53,22 @@ test("continuing rows are the continued conditions not diagnosed this visit", ()
   assert.deepEqual(rows.map((m) => m.id), [4]);
 });
 
-test("a re-diagnosed continued condition set to no tracking or refer needs a stop reason", () => {
-  const diagnoses = [{ id: "d1", name: "HTN", carePlan: "refer" }];
+test("a re-diagnosed continued condition set to no tracking needs a stop reason", () => {
+  const diagnoses = [{ id: "d1", name: "HTN", carePlan: "none" }];
   assert.deepEqual(stopsRequired(diagnoses, [htnMonitoring, asthmaMonitoring], {}, registry), { 3: true });
   const errors = validateCarePlan({ diagnoses, continuedMonitorings: [htnMonitoring], stops: { 3: "  " }, registry });
   assert.ok(errors["carePlanStop.3"]);
-  assert.deepEqual(validateCarePlan({ diagnoses, continuedMonitorings: [htnMonitoring], stops: { 3: "Referred for insulin" }, registry }), {});
+  assert.deepEqual(validateCarePlan({ diagnoses, continuedMonitorings: [htnMonitoring], stops: { 3: "Controlled" }, registry }), {});
+});
+
+test("referring a continued condition keeps it monitored and needs no stop", () => {
+  const diagnoses = [{ id: "d1", name: "HTN", carePlan: "refer" }];
+  // A stale stop entry (typed before switching to Refer) is not sent.
+  const stops = { 3: "Old reason" };
+  assert.deepEqual(stopsRequired(diagnoses, [htnMonitoring], stops, registry), {});
+  assert.deepEqual(validateCarePlan({ diagnoses, continuedMonitorings: [htnMonitoring], stops: {}, registry }), {});
+  assert.deepEqual(monitoredConditionKeys(diagnoses, [htnMonitoring], stops, registry), ["hypertension"]);
+  assert.deepEqual(buildCarePlanPayload({ continuedMonitorings: [htnMonitoring], stops, diagnoses, registry }).monitoring_stops, []);
 });
 
 test("an explicit stop on a continuing row also needs a reason", () => {
@@ -59,7 +78,7 @@ test("an explicit stop on a continuing row also needs a reason", () => {
 
 test("referral set and pre-filled reason follow the current diagnoses only", () => {
   const diagnoses = [
-    { id: "d1", name: "Diabetes Mellitus", carePlan: "monitor_refer" },
+    { id: "d1", name: "Diabetes Mellitus", carePlan: "refer" },
     { id: "d2", name: "Hypertension", carePlan: "refer" },
     { id: "d3", name: "Cough", carePlan: "none" },
   ];
@@ -71,12 +90,18 @@ test("referral set and pre-filled reason follow the current diagnoses only", () 
 
 test("disposition: referral, follow-up visibility, monitoring", () => {
   assert.deepEqual(
-    deriveDisposition({ diagnoses: [{ name: "HTN", carePlan: "monitor_refer" }], continuedMonitorings: [], stops: {}, registry, serviceNeedsNextVisit: false }),
-    { needsReferral: true, showsFollowUp: true, monitorsAny: true },
+    deriveDisposition({ diagnoses: [{ name: "HTN", carePlan: "monitor" }, { name: "Pneumonia", carePlan: "refer" }], continuedMonitorings: [], stops: {}, registry, serviceNeedsNextVisit: false }),
+    { needsReferral: true, showsFollowUp: true, monitorsAny: true, monitorsDiagnosis: true },
   );
   assert.deepEqual(
     deriveDisposition({ diagnoses: [{ name: "Cough", carePlan: "none" }], continuedMonitorings: [], stops: {}, registry, serviceNeedsNextVisit: false }),
-    { needsReferral: false, showsFollowUp: false, monitorsAny: false },
+    { needsReferral: false, showsFollowUp: false, monitorsAny: false, monitorsDiagnosis: false },
+  );
+  // A referred continued condition stays monitored, but no diagnosis is set
+  // to Monitor - so the referral still hands the follow-up to the RHU.
+  assert.deepEqual(
+    deriveDisposition({ diagnoses: [{ name: "HTN", carePlan: "refer" }], continuedMonitorings: [htnMonitoring], stops: {}, registry, serviceNeedsNextVisit: false }),
+    { needsReferral: true, showsFollowUp: true, monitorsAny: true, monitorsDiagnosis: false },
   );
   assert.equal(
     deriveDisposition({ diagnoses: [], continuedMonitorings: [], stops: {}, registry, serviceNeedsNextVisit: true }).showsFollowUp,

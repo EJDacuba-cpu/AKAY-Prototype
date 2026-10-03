@@ -690,7 +690,7 @@ class HealthRecordController extends Controller
     private function normalizeReferralDisposition(array &$data): void
     {
         $monitoringData = $data['monitoring_data'] ?? [];
-        // "Monitor at BHC + Refer to RHU", or a service visit with its next
+        // A diagnosis set to Monitor at BHC, or a service visit with its next
         // date set: the BHC still owns that next visit, so its follow-up
         // survives the referral (CarePlan::keepsFollowUpWithReferral).
         $keepsFollowUp = \App\Services\CarePlan::keepsFollowUpWithReferral($data['diagnoses'] ?? [], $monitoringData);

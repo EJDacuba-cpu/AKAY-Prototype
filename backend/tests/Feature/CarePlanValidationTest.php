@@ -43,6 +43,19 @@ class CarePlanValidationTest extends TestCase
             ->assertUnprocessable()->assertJsonValidationErrors(['diagnoses.0.carePlan']);
     }
 
+    public function test_the_retired_monitor_and_refer_value_is_rejected_on_a_new_save(): void
+    {
+        // Older records keep 'monitor_refer'; a new visit picks Monitor at BHC
+        // or Refer to RHU per diagnosis.
+        $this->store([
+            'diagnosis' => 'Asthma',
+            'diagnoses' => [['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor_refer']],
+            'needs_referral' => true,
+            'referral' => ['reason_for_referral' => 'Referred for: Asthma', 'urgency_level' => 'Routine'],
+        ])->assertUnprocessable()->assertJsonValidationErrors(['diagnoses.0.carePlan']);
+        $this->assertSame(0, \App\Models\HealthRecord::count());
+    }
+
     public function test_fbs_must_be_a_sane_number(): void
     {
         foreach (['abc', -5, 5000] as $value) {
@@ -86,13 +99,11 @@ class CarePlanValidationTest extends TestCase
 
     public function test_a_refer_care_plan_needs_a_referral(): void
     {
-        foreach (['refer', 'monitor_refer'] as $carePlan) {
-            $this->store([
-                'diagnosis' => 'Asthma',
-                'diagnoses' => [['id' => 'd1', 'name' => 'Asthma', 'carePlan' => $carePlan]],
-                'needs_referral' => false,
-            ])->assertUnprocessable()->assertJsonValidationErrors(['needs_referral']);
-        }
+        $this->store([
+            'diagnosis' => 'Asthma',
+            'diagnoses' => [['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'refer']],
+            'needs_referral' => false,
+        ])->assertUnprocessable()->assertJsonValidationErrors(['needs_referral']);
         $this->assertSame(0, \App\Models\HealthRecord::count());
     }
 

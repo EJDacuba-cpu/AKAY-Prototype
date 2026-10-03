@@ -2,7 +2,7 @@ import { TimePickerField } from "../../../common/forms/DatePickerField";
 import { ClinicalFieldGroup, FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
 import { ATTENTION_LEVELS, DEFAULT_ATTENTION } from "../../../../utils/referralAttention";
 import {
-  CARE_PLAN_OPTIONS, carePlanFor, continuedByIdentity, conditionIdentity, continuingRows, monitors,
+  CARE_PLAN, CARE_PLAN_OPTIONS, carePlanFor, continuedByIdentity, conditionIdentity, continuingRows, endsMonitoring,
 } from "../../../../utils/carePlan";
 
 function StopReason({ monitoringId, value, error, disabled, onChange }) {
@@ -56,7 +56,11 @@ export default function CarePlanSection({
                     {alreadyActive && (
                       <p className="mt-0.5 text-xs text-[#6B7280]">
                         Monitored at BHC{alreadyActive.startedAt ? ` since ${alreadyActive.startedAt}` : ""}
-                        {continued ? " — continued in this visit." : ". Choosing Monitor adds this visit to it."}
+                        {continued
+                          ? value === CARE_PLAN.REFER
+                            ? " — stays active; the referral is tracked separately."
+                            : " — continued in this visit."
+                          : ". Choosing Monitor adds this visit to it."}
                       </p>
                     )}
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
@@ -74,7 +78,7 @@ export default function CarePlanSection({
                         </label>
                       ))}
                     </div>
-                    {continued && !monitors(value) && (
+                    {continued && endsMonitoring(value) && (
                       <div className="mt-2">
                         <StopReason monitoringId={continued.id} value={stops[continued.id]} error={errors[`carePlanStop.${continued.id}`]} disabled={disabled} onChange={onStopChange} />
                       </div>

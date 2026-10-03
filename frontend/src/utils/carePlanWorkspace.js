@@ -1,5 +1,6 @@
 import {
-  CARE_PLAN_OPTIONS,
+  CARE_PLAN,
+  CARE_PLAN_LABELS,
   carePlanFor,
   continuedByIdentity,
   conditionIdentity,
@@ -19,8 +20,9 @@ import { MONITORING_STEP, NEXT_STEP, REVIEW_STEP } from "./consultationSteps.js"
  * Whether the visit's single follow-up survives, and whether its fields show.
  *
  * A plain referral hands the follow-up to the RHU (the server clears it), so
- * it is neither shown nor required. A referral keeps it when the visit still
- * monitors a condition, or when it is a service visit (`hasService`: Maternal /
+ * it is neither shown nor required - even when a referred condition's existing
+ * monitoring stays active. A referral keeps it when a diagnosis is set to
+ * Monitor at BHC, or when it is a service visit (`hasService`: Maternal /
  * Family Planning / EPI selected) with a follow-up date set - the next dose,
  * appointment or prenatal return. Same rule as the server's
  * CarePlan::keepsFollowUpWithReferral. A referred service visit keeps showing
@@ -30,7 +32,7 @@ import { MONITORING_STEP, NEXT_STEP, REVIEW_STEP } from "./consultationSteps.js"
  */
 export function followUpPlan(disposition = {}, followUpDate = "", { hasService = false } = {}) {
   const referred = Boolean(disposition.needsReferral);
-  const monitors = Boolean(disposition.monitorsAny);
+  const monitors = Boolean(disposition.monitorsDiagnosis);
   const kept = !referred || monitors || (Boolean(hasService) && Boolean(followUpDate));
   const offered = !referred || monitors || Boolean(hasService);
   return { kept, shows: offered && (Boolean(disposition.showsFollowUp) || Boolean(followUpDate)) };
@@ -137,8 +139,6 @@ export function reviewBackTarget(monitoringDetailKeys = []) {
   return monitoringDetailKeys.length > 0 ? MONITORING_STEP : NEXT_STEP;
 }
 
-const PLAN_LABELS = Object.fromEntries(CARE_PLAN_OPTIONS.map((option) => [option.value, option.label]));
-
 function stopText(reason) {
   const text = String(reason || "").trim();
   return text ? `: ${text}` : "";
@@ -158,13 +158,13 @@ export function carePlanReviewRows({
   const rows = [];
 
   for (const diagnosis of diagnoses) {
-    const plan = PLAN_LABELS[carePlanFor(diagnosis, continuedMonitorings, registry)];
+    const value = carePlanFor(diagnosis, continuedMonitorings, registry);
+    const plan = CARE_PLAN_LABELS[value];
     const monitoring = continued.get(conditionIdentity(diagnosis.name, registry));
-    const stopped = monitoring && required[monitoring.id];
-    rows.push({
-      label: String(diagnosis.name || "").trim(),
-      value: stopped ? `${plan} · Monitoring stopped${stopText(stops[monitoring.id])}` : plan,
-    });
+    let text = plan;
+    if (monitoring && required[monitoring.id]) text = `${plan} · Monitoring stopped${stopText(stops[monitoring.id])}`;
+    else if (monitoring && value === CARE_PLAN.REFER) text = `${plan} · Monitoring continues`;
+    rows.push({ label: String(diagnosis.name || "").trim(), value: text });
   }
   const continuing = continuingRows(diagnoses, continuedMonitorings, registry);
   for (const monitoring of continuing) {

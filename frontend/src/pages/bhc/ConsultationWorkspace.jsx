@@ -2936,8 +2936,8 @@ export default function ConsultationWorkspace() {
     const submittedFollowUpTaskId = continuedLink
       ? continuedLink.followUpTaskId
       : "";
-    // A referral cancels the follow-up, unless a condition stays monitored at
-    // the BHC ("Monitor at BHC + Refer to RHU") or a service visit has its
+    // A referral cancels the follow-up, unless another diagnosis is set to
+    // Monitor at BHC or a service visit has its
     // next date (the EPI next dose counts as that date) - followUpPlan.
     const followUpKept = followUpPlan(
       carePlanDisposition,

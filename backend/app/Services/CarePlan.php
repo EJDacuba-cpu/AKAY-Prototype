@@ -14,9 +14,17 @@ final class CarePlan
 
     public const REFER = 'refer';
 
+    /**
+     * Retired "Monitor at BHC + Refer to RHU": older records keep it, a new
+     * save picks Monitor or Refer per diagnosis (SELECTABLE).
+     */
     public const MONITOR_REFER = 'monitor_refer';
 
+    /** Every value a stored record may hold. */
     public const VALUES = [self::NONE, self::MONITOR, self::REFER, self::MONITOR_REFER];
+
+    /** The values a new save may choose. */
+    public const SELECTABLE = [self::NONE, self::MONITOR, self::REFER];
 
     public static function monitors(?string $value): bool
     {
@@ -41,7 +49,7 @@ final class CarePlan
 
     /**
      * Whether a visit that refers still keeps its own next-visit follow-up:
-     * it monitors a condition at the BHC ("Monitor at BHC + Refer"), or it is
+     * a diagnosis is set to Monitor at BHC, or it is
      * a service visit (Maternal / Family Planning / EPI selected) with a
      * follow-up date set - the next dose, appointment or prenatal return.
      * A plain referral with no service hands the follow-up to the RHU.

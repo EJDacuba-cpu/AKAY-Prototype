@@ -24,15 +24,21 @@ const registry = {
 };
 
 test("the follow-up is kept unless the visit only refers", () => {
-  const none = { needsReferral: false, showsFollowUp: false, monitorsAny: false };
-  const monitor = { needsReferral: false, showsFollowUp: true, monitorsAny: true };
-  const referOnly = { needsReferral: true, showsFollowUp: false, monitorsAny: false };
-  const monitorRefer = { needsReferral: true, showsFollowUp: true, monitorsAny: true };
+  const none = { needsReferral: false, showsFollowUp: false, monitorsAny: false, monitorsDiagnosis: false };
+  const monitor = { needsReferral: false, showsFollowUp: true, monitorsAny: true, monitorsDiagnosis: true };
+  const referOnly = { needsReferral: true, showsFollowUp: false, monitorsAny: false, monitorsDiagnosis: false };
+  // One diagnosis set to Monitor, another to Refer.
+  const monitorAndRefer = { needsReferral: true, showsFollowUp: true, monitorsAny: true, monitorsDiagnosis: true };
+  // A continued condition referred this visit: still monitored, no Monitor row.
+  const referContinued = { needsReferral: true, showsFollowUp: true, monitorsAny: true, monitorsDiagnosis: false };
 
   assert.deepEqual(followUpPlan(none, ""), { kept: true, shows: false });
   assert.deepEqual(followUpPlan(monitor, ""), { kept: true, shows: true });
   assert.deepEqual(followUpPlan(referOnly, "2026-10-08"), { kept: false, shows: false });
-  assert.deepEqual(followUpPlan(monitorRefer, "2026-10-08"), { kept: true, shows: true });
+  assert.deepEqual(followUpPlan(monitorAndRefer, "2026-10-08"), { kept: true, shows: true });
+  // Same rule as the server (CarePlan::keepsFollowUpWithReferral): only a
+  // diagnosis set to Monitor keeps the follow-up through a referral.
+  assert.deepEqual(followUpPlan(referContinued, "2026-10-08"), { kept: false, shows: false });
   // A date already set (e.g. pre-filled from a Family Planning appointment)
   // stays visible so the worker can see and clear it.
   assert.deepEqual(followUpPlan(none, "2026-10-08"), { kept: true, shows: true });
@@ -125,20 +131,23 @@ test("review rows list each plan, stops, referral and follow-up", () => {
   const rows = carePlanReviewRows({
     diagnoses: [
       { id: "d1", name: "HTN", carePlan: "refer" },
-      { id: "d2", name: "Diabetes Mellitus", carePlan: "monitor_refer" },
+      { id: "d2", name: "Diabetes Mellitus", carePlan: "monitor" },
+      { id: "d3", name: "Pneumonia", carePlan: "none" },
     ],
     continuedMonitorings: [
       { id: 3, conditionName: "Hypertension", conditionKey: "hypertension" },
       { id: 4, conditionName: "Asthma", conditionKey: null },
+      { id: 5, conditionName: "Pneumonia", conditionKey: null },
     ],
-    stops: { 3: "Managed at RHU", 4: "" },
+    stops: { 3: "Stale reason", 4: "", 5: "Resolved" },
     registry,
     referral: { needed: true, reason: "Referred for: HTN; Diabetes Mellitus", priority: "Urgent" },
     followUp: { shows: true, date: "October 8, 2026", time: "9:00 AM", reason: "FBS recheck" },
   });
   assert.deepEqual(rows, [
-    { label: "HTN", value: "Refer to RHU · Monitoring stopped: Managed at RHU" },
-    { label: "Diabetes Mellitus", value: "Monitor at BHC + Refer to RHU" },
+    { label: "HTN", value: "Refer to RHU · Monitoring continues" },
+    { label: "Diabetes Mellitus", value: "Monitor at BHC" },
+    { label: "Pneumonia", value: "No Ongoing Tracking · Monitoring stopped: Resolved" },
     { label: "Asthma", value: "Stop monitoring" },
     { label: "Reason for Referral", value: "Referred for: HTN; Diabetes Mellitus" },
     { label: "Referral Priority", value: "Urgent" },

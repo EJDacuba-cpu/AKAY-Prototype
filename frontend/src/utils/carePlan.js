@@ -10,15 +10,23 @@ export const CARE_PLAN = Object.freeze({
   NONE: "none",
   MONITOR: "monitor",
   REFER: "refer",
+  // Retired "Monitor at BHC + Refer to RHU": older records keep it; it is no
+  // longer offered, and a draft holding it resolves to Refer (carePlanFor).
   MONITOR_REFER: "monitor_refer",
 });
 
+/** The choices offered per diagnosis. */
 export const CARE_PLAN_OPTIONS = Object.freeze([
   { value: CARE_PLAN.NONE, label: "No Ongoing Tracking" },
   { value: CARE_PLAN.MONITOR, label: "Monitor at BHC" },
   { value: CARE_PLAN.REFER, label: "Refer to RHU" },
-  { value: CARE_PLAN.MONITOR_REFER, label: "Monitor at BHC + Refer to RHU" },
 ]);
+
+/** Labels for every stored value, the retired one included (read-back). */
+export const CARE_PLAN_LABELS = Object.freeze({
+  ...Object.fromEntries(CARE_PLAN_OPTIONS.map((option) => [option.value, option.label])),
+  [CARE_PLAN.MONITOR_REFER]: "Monitor at BHC + Refer to RHU",
+});
 
 const VALUES = new Set(Object.values(CARE_PLAN));
 
@@ -67,6 +75,7 @@ export function defaultCarePlan(diagnosis, continuedMonitorings = [], registry =
 }
 
 export function carePlanFor(diagnosis, continuedMonitorings = [], registry = {}) {
+  if (diagnosis?.carePlan === CARE_PLAN.MONITOR_REFER) return CARE_PLAN.REFER;
   return isCarePlanValue(diagnosis?.carePlan)
     ? diagnosis.carePlan
     : defaultCarePlan(diagnosis, continuedMonitorings, registry);
@@ -82,15 +91,21 @@ export function continuingRows(diagnoses = [], continuedMonitorings = [], regist
   return continuedMonitorings.filter((monitoring) => !diagnosed.has(monitoringIdentity(monitoring, registry)));
 }
 
+/** A continued condition re-diagnosed as No Ongoing Tracking ends its monitoring. */
+export function endsMonitoring(value) {
+  return value === CARE_PLAN.NONE;
+}
+
 /**
- * Continued monitoring this visit ends: a re-diagnosed condition set to a
- * non-monitoring plan, or a part-B row with a stop entry. Each needs a reason.
+ * Continued monitoring this visit ends: a re-diagnosed condition set to No
+ * Ongoing Tracking, or a part-B row with a stop entry. Each needs a reason.
+ * Refer to RHU keeps the monitoring active; the referral is tracked on its own.
  */
 export function stopsRequired(diagnoses = [], continuedMonitorings = [], stops = {}, registry = {}) {
   const required = {};
   for (const diagnosis of diagnoses || []) {
     const monitoring = continuedFor(diagnosis, continuedMonitorings, registry);
-    if (monitoring && !monitors(carePlanFor(diagnosis, continuedMonitorings, registry))) {
+    if (monitoring && endsMonitoring(carePlanFor(diagnosis, continuedMonitorings, registry))) {
       required[monitoring.id] = true;
     }
   }
@@ -109,23 +124,37 @@ export function buildReferralReason(diagnoses = [], continuedMonitorings = [], r
   return names.length ? `Referred for: ${names.join("; ")}` : "";
 }
 
+function monitoredDiagnoses(diagnoses, continuedMonitorings, registry) {
+  return (diagnoses || []).filter((diagnosis) => monitors(carePlanFor(diagnosis, continuedMonitorings, registry)));
+}
+
 /** Registry keys (null for free text) of every condition monitored after this visit. */
 export function monitoredConditionKeys(diagnoses = [], continuedMonitorings = [], stops = {}, registry = {}) {
   const required = stopsRequired(diagnoses, continuedMonitorings, stops, registry);
-  const keys = (diagnoses || [])
-    .filter((diagnosis) => monitors(carePlanFor(diagnosis, continuedMonitorings, registry)))
-    .map((diagnosis) => matchConditionKey(diagnosis.name, registry));
-  for (const monitoring of continuingRows(diagnoses, continuedMonitorings, registry)) {
-    // A follow-up's continued conditions arrive without a key (care-overview).
-    if (!required[monitoring.id]) keys.push(monitoring.conditionKey || matchConditionKey(monitoring.conditionName, registry));
+  const monitored = monitoredDiagnoses(diagnoses, continuedMonitorings, registry);
+  const keys = monitored.map((diagnosis) => matchConditionKey(diagnosis.name, registry));
+  const monitoredIdentities = new Set(monitored.map((diagnosis) => conditionIdentity(diagnosis.name, registry)));
+  for (const monitoring of continuedMonitorings) {
+    // Diagnosed as Monitor: already counted above. Otherwise (a part-B row,
+    // or re-diagnosed as Refer) it stays monitored unless stopped. A
+    // follow-up's continued conditions arrive without a key (care-overview).
+    if (monitoredIdentities.has(monitoringIdentity(monitoring, registry)) || required[monitoring.id]) continue;
+    keys.push(monitoring.conditionKey || matchConditionKey(monitoring.conditionName, registry));
   }
   return keys;
 }
 
+/**
+ * `monitorsAny`: some condition stays monitored after this visit.
+ * `monitorsDiagnosis`: a diagnosis is set to Monitor at BHC - the only
+ * monitoring that keeps the follow-up through a referral (the server's
+ * CarePlan::keepsFollowUpWithReferral).
+ */
 export function deriveDisposition({ diagnoses = [], continuedMonitorings = [], stops = {}, registry = {}, serviceNeedsNextVisit = false } = {}) {
   const needsReferral = referredDiagnoses(diagnoses, continuedMonitorings, registry).length > 0;
   const monitorsAny = monitoredConditionKeys(diagnoses, continuedMonitorings, stops, registry).length > 0;
-  return { needsReferral, showsFollowUp: monitorsAny || serviceNeedsNextVisit, monitorsAny };
+  const monitorsDiagnosis = monitoredDiagnoses(diagnoses, continuedMonitorings, registry).length > 0;
+  return { needsReferral, showsFollowUp: monitorsAny || serviceNeedsNextVisit, monitorsAny, monitorsDiagnosis };
 }
 
 export function validateCarePlan({ diagnoses = [], continuedMonitorings = [], stops = {}, registry = {} } = {}) {

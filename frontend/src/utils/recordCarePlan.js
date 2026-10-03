@@ -1,4 +1,4 @@
-import { CARE_PLAN, CARE_PLAN_OPTIONS } from "./carePlan.js";
+import { CARE_PLAN, CARE_PLAN_LABELS } from "./carePlan.js";
 
 /**
  * Read-back of what a saved record stored for Care Plan & Next Steps. Display
@@ -6,7 +6,6 @@ import { CARE_PLAN, CARE_PLAN_OPTIONS } from "./carePlan.js";
  */
 
 const SHOWN_PLANS = new Set([CARE_PLAN.MONITOR, CARE_PLAN.REFER, CARE_PLAN.MONITOR_REFER]);
-const PLAN_LABELS = Object.fromEntries(CARE_PLAN_OPTIONS.map((option) => [option.value, option.label]));
 
 /** vital_signs.fbs as "126 mg/dL"; "" when not recorded. */
 export function formatFbs(value) {
@@ -27,7 +26,7 @@ export function diagnosisCarePlanItems(diagnoses) {
     .map((diagnosis, index) => ({
       key: String(diagnosis.id || `diagnosis-${index}`),
       name: String(diagnosis.name).trim(),
-      plan: SHOWN_PLANS.has(diagnosis.carePlan) ? PLAN_LABELS[diagnosis.carePlan] : "",
+      plan: SHOWN_PLANS.has(diagnosis.carePlan) ? CARE_PLAN_LABELS[diagnosis.carePlan] : "",
       inSurveillance: diagnosis.includeInSurveillance === true,
     }))
     .filter((item) => item.plan || item.inSurveillance);
