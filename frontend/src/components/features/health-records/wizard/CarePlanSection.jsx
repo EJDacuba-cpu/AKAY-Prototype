@@ -112,7 +112,7 @@ export default function CarePlanSection({
 
       {rows.length > 0 && (
         <section aria-labelledby="care-plan-continuing">
-          <h2 id="care-plan-continuing" className="text-sm font-bold text-[#111827]">Continuing monitoring</h2>
+          <h2 id="care-plan-continuing" className="text-sm font-bold text-[#111827]">Monitored conditions addressed in this visit</h2>
           <ul className="mt-2 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
             {rows.map((monitoring) => {
               const stopping = Object.hasOwn(stops, monitoring.id);

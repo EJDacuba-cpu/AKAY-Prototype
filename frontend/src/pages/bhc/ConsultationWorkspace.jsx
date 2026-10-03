@@ -122,6 +122,7 @@ import ConsultationProgramPanel from "../../components/features/health-records/w
 import BodyPreviewPanel, { BodyFindingsList } from "../../components/features/health-records/wizard/BodyPreviewPanel";
 import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindings";
 import DiagnosisListField from "../../components/features/health-records/wizard/DiagnosisListField";
+import MonitoredConditionsNote from "../../components/features/health-records/wizard/MonitoredConditionsNote";
 import { formatDiagnoses, joinDiagnosisNames, restoreDiagnoses } from "../../utils/diagnoses";
 import { applyLegacyReportingStatus, deriveReportingStatus, setDiagnosisReportAs } from "../../utils/diagnosisReporting";
 import useClinicalRegistry from "../../hooks/useClinicalRegistry";
@@ -1578,6 +1579,7 @@ export default function ConsultationWorkspace() {
       followUpIds: selection.followUpIds,
       monitoringIds: selection.monitoringIds,
       includeFollowUpConditions: !selection.restored,
+      includeLinkedFollowUps: !selection.restored,
     });
     setContinuedFollowUpTaskIds(resolved.continuedFollowUpTaskIds);
     setContinuedFollowUps(resolved.continuedFollowUps);
@@ -2235,7 +2237,8 @@ export default function ConsultationWorkspace() {
     if (fbsError) errors.fbs = fbsError;
     if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
     if (!finalizing) return errors;
-    if ((needsReferral || normalizePatientStatus(followUpStatus) === "Follow-up Required") && !diagnosis.trim()) errors.diagnosis = "A suspected case is required for follow-up or referral.";
+    // A visit that continues monitored conditions already names what it addresses.
+    if ((needsReferral || normalizePatientStatus(followUpStatus) === "Follow-up Required") && !diagnosis.trim() && continuedMonitorings.length === 0) errors.diagnosis = "A suspected case is required for follow-up or referral.";
     if (needsReferral && !receivingRhuId) errors.receivingRhuId = "Receiving facility is required.";
     if (needsReferral && !ATTENTION_LEVELS.includes(referralForm.urgencyLevel)) errors.urgencyLevel = "Referral priority is required.";
     if (needsReferral && !referralForm.reasonForReferral?.trim()) errors.reasonForReferral = "Reason for referral is required.";
@@ -4662,6 +4665,7 @@ export default function ConsultationWorkspace() {
             >
               <LockedFormContent locked={patientGateLocked}>
                 <div data-field="diagnosis" tabIndex={-1} className="outline-none">
+                  <MonitoredConditionsNote conditions={continuedMonitorings} />
                   <DiagnosisListField
                     diagnoses={diagnoses}
                     onChange={updateDiagnoses}
