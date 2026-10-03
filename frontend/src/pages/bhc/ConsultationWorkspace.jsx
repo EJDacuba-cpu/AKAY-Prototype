@@ -4226,6 +4226,7 @@ export default function ConsultationWorkspace() {
                 expanded={backgroundExpanded}
                 onExpandedChange={setBackgroundExpanded}
                 followed={continuedMonitorings}
+                monitorings={activeMonitorings}
               />
             </FormSection>
           </section>

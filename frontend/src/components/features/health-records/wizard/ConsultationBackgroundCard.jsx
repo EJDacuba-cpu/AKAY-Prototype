@@ -1,11 +1,12 @@
 import { Lock } from "lucide-react";
 
 import BackgroundEditor from "../../patients/background/BackgroundEditor";
-import { summarizeBackground } from "../../../../utils/backgroundSummary";
+import { AddressedBadge } from "../../patients/background/BackgroundFields";
+import useClinicalRegistry from "../../../../hooks/useClinicalRegistry";
+import { backgroundConditionGroups } from "../../../../utils/backgroundConditions";
 import {
   buildBackgroundUpdate,
   editedSectionKeys,
-  formatDiseases,
   overlayBackgroundUpdate,
   sliceBackground,
 } from "../../../../utils/backgroundUpdate";
@@ -28,7 +29,9 @@ export default function ConsultationBackgroundCard({
   expanded = false,
   onExpandedChange,
   followed = [],
+  monitorings = [],
 }) {
+  const { registry } = useClinicalRegistry();
   if (locked) {
     return (
       <div className="flex items-start gap-3 py-1" role="note">
@@ -56,12 +59,26 @@ export default function ConsultationBackgroundCard({
     handleChange({ ...current, ...sliceBackground(background, section) });
   }
 
+  // Read-only summary: Currently Monitored (the conditions addressed in this
+  // visit flagged), other known conditions, allergies, hospitalizations and
+  // surgeries. Assessment handles new diagnoses; Care Plan decides what
+  // happens to a followed condition.
+  const { monitored, other } = backgroundConditionGroups({
+    diseases: current?.currentDiseases,
+    monitorings,
+    followed,
+    registry,
+  });
+  const describe = (condition) => (condition.status ? `${condition.name} (${condition.status})` : condition.name);
+  const text = (value) => String(value || "").trim();
   const lines = [
-    { key: "allergies", label: "Allergies", text: String(current?.allergies || "").trim() },
-    { key: "conditions", label: "Conditions", text: formatDiseases(current?.currentDiseases) },
-    ...summarizeBackground(current),
+    { key: "monitored", label: "Currently Monitored", conditions: monitored, empty: "None" },
+    { key: "other", label: "Other conditions", text: other.map(describe).join("; ") },
+    { key: "allergies", label: "Allergies", text: text(current?.allergies) },
+    { key: "hospitalizations", label: "Hospitalizations", text: text(current?.hospitalizations) },
+    { key: "surgeries", label: "Surgeries", text: text(current?.surgeries) },
   ];
-  const isEmpty = lines.every((line) => !line.text);
+  const isEmpty = lines.every((line) => (line.conditions ? line.conditions.length === 0 : !line.text));
 
   return (
     <div>
@@ -77,11 +94,26 @@ export default function ConsultationBackgroundCard({
               <p className="text-sm text-gray-500">No background recorded yet.</p>
             ) : (
               <dl className="space-y-1 text-[12.5px]">
-                {lines.map(({ key, label, text }) => (
-                  <div key={key} className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3">
-                    <dt className="text-gray-500">{label}</dt>
-                    <dd className={`m-0 min-w-0 break-words ${text ? "text-gray-900" : "text-gray-400"}`}>
-                      {text || "Not recorded"}
+                {lines.map((line) => (
+                  <div key={line.key} className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3">
+                    <dt className="text-gray-500">{line.label}</dt>
+                    <dd className={`m-0 min-w-0 break-words ${line.conditions ? line.conditions.length ? "text-gray-900" : "text-gray-400" : line.text ? "text-gray-900" : "text-gray-400"}`}>
+                      {line.conditions ? (
+                        line.conditions.length ? (
+                          <ul className="m-0 list-none space-y-0.5 p-0">
+                            {line.conditions.map((condition) => (
+                              <li key={condition.key} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                <span>{describe(condition)}</span>
+                                {condition.addressed && <AddressedBadge />}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          line.empty
+                        )
+                      ) : (
+                        line.text || "Not recorded"
+                      )}
                     </dd>
                   </div>
                 ))}

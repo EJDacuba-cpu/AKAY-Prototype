@@ -3,7 +3,7 @@ import { Plus } from "lucide-react";
 
 import useClinicalRegistry from "../../../../hooks/useClinicalRegistry";
 import { groupCurrentDiseases } from "../../../../utils/currentConditions";
-import { isFollowedThisVisit } from "../../../../utils/followUpThisVisit";
+import { documentedConditionFor, isFollowedThisVisit } from "../../../../utils/followUpThisVisit";
 import {
   BACKGROUND_SECTION_FIELDS,
   BACKGROUND_SECTION_KEYS,
@@ -38,6 +38,12 @@ export default function BackgroundEditor({ value, onChange, editedSections = [],
   const followedDiseases = [...grouped.monitored, ...grouped.other].filter((disease) => isFollowedThisVisit(disease, followed, registry));
   const monitored = grouped.monitored.filter((disease) => !followedDiseases.includes(disease));
   const other = grouped.other.filter((disease) => !followedDiseases.includes(disease));
+  // Shown under Currently Monitored as read-only rows with the "Addressed in
+  // this visit" indicator - even when the background never documented it.
+  const addressedRows = followed.map((monitoring) => {
+    const documented = documentedConditionFor(monitoring, diseases, registry);
+    return { key: `addressed-${monitoring.id}`, name: documented?.name || monitoring.conditionName, status: documented?.status || "" };
+  });
 
   function setField(field, next) {
     onChange(
@@ -100,20 +106,15 @@ export default function BackgroundEditor({ value, onChange, editedSections = [],
             <div className="@container space-y-3">
               {section === "medical" && (
                 <div className="space-y-3">
-                  {followedDiseases.length > 0 && (
-                    <p className="border border-[#E5E7EB] bg-[#F9FAFB] px-3 py-2 text-xs text-gray-600">
-                      <span className="font-semibold text-gray-800">Followed this visit (reference only): </span>
-                      {followedDiseases.map((disease) => (disease.status ? `${disease.name} · ${disease.status}` : disease.name)).join("; ")}.
-                      {" "}Record what happens to it in Care Plan &amp; Next Steps.
-                    </p>
+                  {(monitored.length > 0 || addressedRows.length > 0) && (
+                    <DiseaseGroupEdit
+                      title="Currently Monitored"
+                      diseases={monitored}
+                      readOnlyRows={addressedRows}
+                      onUpdate={updateDisease}
+                      onRemove={removeDisease}
+                    />
                   )}
-                  <DiseaseGroupEdit
-                    title="Monitored Conditions"
-                    diseases={monitored}
-                    emptyText="None recorded - added automatically from a matching diagnosis."
-                    onUpdate={updateDisease}
-                    onRemove={removeDisease}
-                  />
                   <DiseaseGroupEdit
                     title="Other Conditions"
                     diseases={other}

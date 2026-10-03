@@ -40,12 +40,33 @@ export function DiseaseGroupView({ title, diseases, emptyText }) {
   );
 }
 
-export function DiseaseGroupEdit({ title, diseases, emptyText, onUpdate, onRemove }) {
+/** Marks a condition the consultation is following today (picked in Start Consultation). */
+export function AddressedBadge() {
+  return (
+    <span className="rounded-sm bg-red-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-red-700">
+      Addressed in this visit
+    </span>
+  );
+}
+
+export function DiseaseGroupEdit({ title, diseases, emptyText, onUpdate, onRemove, readOnlyRows = [] }) {
   return (
     <div>
       <GroupHeading>{title}</GroupHeading>
       <div className="mt-1.5 space-y-2">
-        {diseases.length === 0 && <p className="text-[12px] text-gray-400">{emptyText}</p>}
+        {readOnlyRows.map((row) => (
+          <div
+            key={row.key}
+            className="flex flex-wrap items-center gap-2 rounded-none border border-gray-200 bg-gray-50 px-3 py-2 text-[12.5px]"
+          >
+            <span className="font-semibold text-gray-900">{row.name}</span>
+            {row.status && <span className="text-gray-600">· {row.status}</span>}
+            <AddressedBadge />
+          </div>
+        ))}
+        {diseases.length === 0 && readOnlyRows.length === 0 && emptyText && (
+          <p className="text-[12px] text-gray-400">{emptyText}</p>
+        )}
         {diseases.map((disease) => (
           <div
             key={`${disease.conditionKey || disease.name}-${disease.index}`}
