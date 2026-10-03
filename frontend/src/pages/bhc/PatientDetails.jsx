@@ -32,7 +32,6 @@ import {
   getPatientReferrals,
   getPatientDetailsListByRole,
   updatePatient,
-  updatePatientMedicalBackground,
 } from "../../services/patientService";
 import { getProfileReturnPath } from "../../utils/profileNavigation";
 import { getSpecializedRecordPrograms } from "../../utils/healthRecordPrograms";
@@ -43,13 +42,10 @@ import { getCurrentUser } from "../../utils/auth";
 import {
   createPatientForm,
   getSectionErrors,
-  mergeBackgroundSection,
   orderFollowUps,
   sortByDateDesc,
   validatePatientForm,
 } from "../../utils/patientProfile";
-
-const BACKGROUND_SECTION_KEYS = ["medical", "family", "social"];
 
 // The profile fills the whole content area, leaving only a 10px margin.
 const PROFILE_CONTENT_CLASS = "p-[10px] pb-[max(10px,env(safe-area-inset-bottom))]";
@@ -110,8 +106,8 @@ function ProfileTabs({ tabs, activeTab, onSelect }) {
  * with its conditions / allergies / medications dropdowns in the middle; the
  * background, referrals, follow-ups, programs and visits cards on the right).
  * Every other tab scrolls inside its own panel, so the header and tabs stay put.
- * Medical / Family / Social Background is edited inline on the Patient
- * Information tab, below registration.
+ * Past Medical / Family / Personal & Social History have their own read-only
+ * Patient Background tab; they are updated only inside a consultation.
  */
 export default function PatientDetails() {
   const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
@@ -125,7 +121,6 @@ export default function PatientDetails() {
   // Which registration section is open for editing (one at a time), or null.
   const [editingSection, setEditingSection] = useState(null);
   const [pendingSaveSection, setPendingSaveSection] = useState(null);
-  const [savingBackground, setSavingBackground] = useState(false);
   const [openSuccess, setOpenSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({});
@@ -270,6 +265,8 @@ export default function PatientDetails() {
     { key: "patient-info", label: "Patient Information" },
     ...(canViewHistory
       ? [
+          // Read-only; the background is updated in a consultation.
+          { key: "background", label: "Patient Background" },
           {
             key: "programs",
             label: "Care & Programs",
@@ -402,28 +399,6 @@ export default function PatientDetails() {
     }
   }
 
-  /**
-   * Saves one background section onto the latest saved background, so editing
-   * medical, family and social side by side never overwrites one with another's
-   * stale copy. Returns false on failure so the section keeps its edit state.
-   */
-  async function handleBackgroundSave(editedBackground, section) {
-    try {
-      setSavingBackground(true);
-      const merged = mergeBackgroundSection(patient.medicalBackground, editedBackground, section);
-      const savedPatient = await updatePatientMedicalBackground(patientId, merged);
-      if (savedPatient) setPatientOverride(savedPatient);
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.patientDetails("bhc", patientId),
-      });
-      return true;
-    } catch {
-      return false;
-    } finally {
-      setSavingBackground(false);
-    }
-  }
-
   if (patientLoading && !patient) {
     return (
       <ProfileShell>
@@ -528,7 +503,7 @@ export default function PatientDetails() {
                       activeFollowUps={activeFollowUps}
                       records={records}
                       recordsLoading={recordsLoading}
-                      onEditBackground={() => setActiveTab("patient-info")}
+                      onViewBackground={() => setActiveTab("background")}
                       onViewPrograms={() => setActiveTab("programs")}
                       onViewReferrals={() => setActiveTab("referrals")}
                       onViewReferral={(trackingId) => navigate(`/bhc/referrals/${trackingId}`)}
@@ -576,18 +551,13 @@ export default function PatientDetails() {
                   />
                 )}
 
-                {activeTab === "patient-info" &&
-                  canViewHistory &&
-                  BACKGROUND_SECTION_KEYS.map((section) => (
-                    <PatientBackgroundTab
-                      key={section}
-                      variant="flat"
-                      section={section}
-                      background={patient.medicalBackground}
-                      saving={savingBackground}
-                      onSave={handleBackgroundSave}
-                    />
-                  ))}
+                {activeTab === "background" && canViewHistory && (
+                  <PatientBackgroundTab
+                    patientId={patientId}
+                    background={patient.medicalBackground}
+                    basePath="/bhc"
+                  />
+                )}
 
                 {activeTab === "programs" && canViewHistory && (
                   <CareAndProgramsTab

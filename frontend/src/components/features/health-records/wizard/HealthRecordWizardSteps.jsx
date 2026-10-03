@@ -223,6 +223,7 @@ export function ConsultationReviewStep({
   savingLabel = "Saving...",
   helper = "",
   indicator = null,
+  notice = null,
 }) {
   return (
     <WizardCard
@@ -252,6 +253,7 @@ export function ConsultationReviewStep({
           </ul>
         </div>
       )}
+      {notice}
       <div className="space-y-4">
         {sections.map((section) => (
           <section

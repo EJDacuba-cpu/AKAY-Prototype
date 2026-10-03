@@ -9,7 +9,6 @@ import {
   getSectionErrors,
   getTodayIsoDate,
   groupFollowUpsByStatus,
-  mergeBackgroundSection,
   orderFollowUps,
   validatePatientForm,
 } from "./patientProfile.js";
@@ -67,36 +66,6 @@ test("the form reads alias keys and defaults the municipality", () => {
   assert.equal(form.purokArea, "3");
   assert.equal(form.municipality, "Bulakan");
   assert.equal(getPatientValue({}, ["x"]), "Not recorded");
-});
-
-test("saving one background section keeps the other sections' latest data", () => {
-  const latest = {
-    currentDiseases: [{ name: "Asthma" }],
-    allergies: "Penicillin",
-    hospitalizations: "",
-    surgeries: "",
-    familyHistory: { similarIllness: "latest family", chronicIllness: "", hereditaryIllness: "" },
-    personalSocial: { diet: "latest diet", smoking: "", alcohol: "", notes: "" },
-    updatedAt: { medical: "2026-01-01", family: "2026-02-02", social: "2026-03-03" },
-  };
-  // The medical editor started from a stale copy of the other sections.
-  const edited = {
-    currentDiseases: [{ name: "Asthma" }, { name: "Hypertension" }],
-    allergies: "Penicillin",
-    hospitalizations: "",
-    surgeries: "None",
-    familyHistory: { similarIllness: "STALE", chronicIllness: "", hereditaryIllness: "" },
-    personalSocial: { diet: "STALE", smoking: "", alcohol: "", notes: "" },
-    updatedAt: { medical: "2026-09-26", family: "1999-01-01", social: "1999-01-01" },
-  };
-  const merged = mergeBackgroundSection(latest, edited, "medical");
-  assert.equal(merged.currentDiseases.length, 2);
-  assert.equal(merged.surgeries, "None");
-  assert.equal(merged.familyHistory.similarIllness, "latest family");
-  assert.equal(merged.personalSocial.diet, "latest diet");
-  assert.deepEqual(merged.updatedAt, { medical: "2026-09-26", family: "2026-02-02", social: "2026-03-03" });
-  assert.equal(mergeBackgroundSection(latest, edited, "family").familyHistory.similarIllness, "STALE");
-  assert.equal(mergeBackgroundSection(latest, edited, "social").personalSocial.diet, "STALE");
 });
 
 test("overdue pending follow-ups read as no-show and resolved ones stay resolved", () => {

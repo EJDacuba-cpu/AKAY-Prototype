@@ -82,6 +82,7 @@ class HealthRecordDraftService
         }
 
         $payload = $this->payloads->sanitize($data['payload']);
+        $this->authorizeBackgroundUpdate($user, $payload);
         $this->authorizeMedicineSelections($user, $payload);
         $ciphertext = $this->encrypt($payload);
 
@@ -177,6 +178,12 @@ class HealthRecordDraftService
             $this->assertEditor($user, $draft);
             $patient = $this->authorizedPatient($user, (int) $data['patient_id']);
             $payload = $this->payloads->sanitize($data['payload']);
+            $this->authorizeBackgroundUpdate($user, $payload);
+            if (! PatientBackground::canAccess($user) && isset($before['backgroundUpdate'])) {
+                // This user was never sent the staged background edits (see
+                // withoutRestrictedFields), so their save must not erase them.
+                $payload['backgroundUpdate'] = $before['backgroundUpdate'];
+            }
             $this->authorizeMedicineSelections($user, $payload);
             $ciphertext = $this->encrypt($payload);
             $expectedVersion = (int) $data['version'];
@@ -506,6 +513,25 @@ class HealthRecordDraftService
         }
 
         return $patient;
+    }
+
+    /** The draft payload as this user may see it: staged background edits are clinical history. */
+    public function withoutRestrictedFields(User $user, array $payload): array
+    {
+        if (! PatientBackground::canAccess($user)) {
+            unset($payload['backgroundUpdate']);
+        }
+
+        return $payload;
+    }
+
+    private function authorizeBackgroundUpdate(User $user, array $payload): void
+    {
+        abort_if(
+            isset($payload['backgroundUpdate']) && ! PatientBackground::canAccess($user),
+            403,
+            'You do not have permission to update the patient background.'
+        );
     }
 
     private function authorizeMedicineSelections(User $user, array $payload): void

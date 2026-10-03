@@ -815,6 +815,8 @@ function toPayload(record = {}, { partial = false } = {}) {
     diagnoses: normalizeDiagnoses(record.diagnoses).length ? normalizeDiagnoses(record.diagnoses) : null,
     // Care Plan & Next Steps: continued follow-ups / monitoring and stops.
     care_plan: record.carePlan || null,
+    // Edited Patient Background sections, applied with the record (create only).
+    background_update: record.backgroundUpdate || null,
     assessment_notes: record.assessmentNotes || null,
     treatment_notes:
       record.treatmentNotes ||
@@ -997,6 +999,7 @@ function toPayload(record = {}, { partial = false } = {}) {
   if (!hasAny(record, ["diagnosis"])) delete payload.diagnosis;
   if (!hasAny(record, ["diagnoses"])) delete payload.diagnoses;
   if (!hasAny(record, ["carePlan"])) delete payload.care_plan;
+  if (!record.backgroundUpdate) delete payload.background_update;
   if (!hasAny(record, ["assessmentNotes"])) delete payload.assessment_notes;
   if (
     !hasAny(record, [

@@ -74,6 +74,16 @@ import ImmunizationVisitFields from "../../components/features/health-records/Im
 import { RadioChoiceGroup } from "../../components/features/health-records/fields/ClinicalFields";
 import CarePlanSection from "../../components/features/health-records/wizard/CarePlanSection";
 import MonitoringDetailsForms from "../../components/features/health-records/wizard/MonitoringDetailsForms";
+import ConsultationBackgroundCard from "../../components/features/health-records/wizard/ConsultationBackgroundCard";
+import BackgroundConflictPanel from "../../components/features/health-records/wizard/BackgroundConflictPanel";
+import {
+  BACKGROUND_SECTION_LABELS,
+  backgroundChangeRows,
+  editedSectionKeys,
+  readBackgroundConflicts,
+  resolveBackgroundConflicts,
+  toRecordBackgroundUpdate,
+} from "../../utils/backgroundUpdate";
 import {
   buildCarePlanPayload,
   buildReferralReason,
@@ -1131,12 +1141,22 @@ export default function ConsultationWorkspace() {
     }
   }, [currentUserName, attendingStaff]);
 
-  const { data: selectedPatientDetails } = useQuery({
+  const { data: selectedPatientDetails, isLoading: selectedPatientLoading } = useQuery({
     queryKey: ["consultation-selected-patient", selectedPatientId],
     queryFn: () => getBhcPatientById(selectedPatientId),
     enabled: Boolean(selectedPatientId),
   });
   const selectedPatient = selectedPatientDetails || null;
+
+  // Patient Background (Concern & Vital Signs): the only place it is edited.
+  // Edits are staged here and in the draft, and applied with the finalized
+  // record - see docs/superpowers/specs/2026-10-03-patient-background-tab-design.md.
+  // Without clinical.history the card is locked and nothing is staged.
+  const canViewBackground = (currentUser?.permissions || []).includes("clinical.history");
+  const [backgroundUpdate, setBackgroundUpdate] = useState(null);
+  const [backgroundExpanded, setBackgroundExpanded] = useState(false);
+  // The 409 conflicts from the last save, until the clinician applies a choice per section.
+  const [backgroundConflicts, setBackgroundConflicts] = useState(null);
 
   const normalizedHealthRecordType = normalizeRecordType(healthRecordType);
   const recordTypeKey = normalizedHealthRecordType.toLowerCase();
@@ -1487,6 +1507,7 @@ export default function ConsultationWorkspace() {
         "medicinesSupplies",
       ]),
       tbData,
+      ...(canViewBackground && backgroundUpdate ? { backgroundUpdate } : {}),
       // Ids and stops only; condition names are re-read from care-overview.
       carePlan: carePlanDraftPayload({
         continuedFollowUpTaskIds,
@@ -1650,6 +1671,9 @@ export default function ConsultationWorkspace() {
       ...(payload.familyPlanningData || {}),
     });
     setTbData(normalizeTbData(payload.tbData));
+    // The server never sends it to a user without clinical.history.
+    setBackgroundUpdate(payload.backgroundUpdate || null);
+    setBackgroundConflicts(null);
     setReferralForm((current) => ({
       ...current,
       ...(payload.referralForm || {}),
@@ -2471,6 +2495,29 @@ export default function ConsultationWorkspace() {
     );
   }
 
+  /**
+   * A 409 because an edited Patient Background section changed since it was
+   * opened. Nothing was saved; the draft already holds the clinician's edits.
+   * Refetches the patient so the panel compares against the latest version.
+   */
+  function showBackgroundConflict(error) {
+    const conflicts = readBackgroundConflicts(error);
+    if (!conflicts) return false;
+    clearOfficialSubmission();
+    setConnectionIssue(null);
+    setLastFailedSubmit(null);
+    setBackgroundConflicts(conflicts);
+    queryClient.invalidateQueries({ queryKey: ["consultation-selected-patient", selectedPatientId] });
+    goToStepKey(REVIEW_STEP);
+    return true;
+  }
+
+  function applyBackgroundConflictChoices(choices) {
+    setBackgroundUpdate(resolveBackgroundConflicts(backgroundUpdate, backgroundConflicts, choices));
+    setBackgroundConflicts(null);
+    toast.success("Patient Background choices applied. Save again to finalize.");
+  }
+
   function refreshMedicineStock() {
     setBhcMedicineInventoryReloadKey((current) => current + 1);
   }
@@ -2725,7 +2772,9 @@ export default function ConsultationWorkspace() {
           "",
       });
     } catch (error) {
-      if (isFollowUpAlreadyProcessed(error)) {
+      if (showBackgroundConflict(error)) {
+        // Shown on Review & Confirm.
+      } else if (isFollowUpAlreadyProcessed(error)) {
         showFollowUpAlreadyProcessed(error);
       } else if (isInsufficientStock(error)) {
         showMedicineStockConflict(error);
@@ -2754,6 +2803,11 @@ export default function ConsultationWorkspace() {
   async function handleSave(event) {
     event?.preventDefault();
     if (saving) return;
+    if (backgroundConflicts?.length) {
+      toast.error("Choose which Patient Background version to keep before saving.");
+      goToStepKey(REVIEW_STEP);
+      return;
+    }
     if (!canFinalize) {
       if (!chiefComplaint.trim()) { setValidationErrorsAndFocus({ chiefComplaint: "Chief complaint is required." }); goToStepKey(INTERVIEW_STEP); return; }
       setSaving(true);
@@ -3095,6 +3149,8 @@ export default function ConsultationWorkspace() {
           : null,
       // Sent whenever Monitoring Details includes the TB card (isTb).
       tbData: isTb ? tbData : null,
+      // Patient Background sections reviewed in this visit (only the edited ones).
+      backgroundUpdate: canViewBackground ? toRecordBackgroundUpdate(backgroundUpdate) : undefined,
       // What this visit continues and stops. validateCarePlan already ran in
       // getClinicalValidationErrors above (this payload drops blank stops).
       carePlan: buildCarePlanPayload({
@@ -3209,6 +3265,7 @@ export default function ConsultationWorkspace() {
         needsReferral: formData.needs_referral === true,
       });
     } catch (error) {
+      if (showBackgroundConflict(error)) return;
       if (isFollowUpAlreadyProcessed(error)) {
         showFollowUpAlreadyProcessed(error);
         return;
@@ -3379,6 +3436,7 @@ export default function ConsultationWorkspace() {
         });
         return;
       }
+      if (showBackgroundConflict(error)) return;
       if (isFollowUpAlreadyProcessed(error)) {
         showFollowUpAlreadyProcessed(error);
         return;
@@ -3904,6 +3962,20 @@ export default function ConsultationWorkspace() {
       stepKey: INTERVIEW_STEP,
       rows: [{ label: "Measurements", value: vitalsSummary }],
     },
+    // Only when a section was edited; Edit reopens the card expanded.
+    ...(canViewBackground && editedSectionKeys(backgroundUpdate).length
+      ? [{
+          key: "patient-background",
+          title: "Patient Background Changes",
+          stepKey: "patient-background",
+          rows: editedSectionKeys(backgroundUpdate).flatMap((section) =>
+            backgroundChangeRows(selectedPatient?.medicalBackground, backgroundUpdate.sections[section], section).map((row) => ({
+              label: `${BACKGROUND_SECTION_LABELS[section]} · ${row.label}`,
+              value: `Before: ${row.before || "Not recorded"}\nAfter: ${row.after || "Not recorded"}`,
+            })),
+          ),
+        }]
+      : []),
     {
       key: ASSESSMENT_STEP,
       title: "Physical Exam & Assessment",
@@ -4076,8 +4148,20 @@ export default function ConsultationWorkspace() {
           visitTime={wizardVisitTime}
           sections={reviewSections}
           errors={reviewErrorMessages}
-          onEditStep={key => { if (activeDraft?.reviewState === "review" && !(currentUser?.permissions || []).includes("records.correct")) return; goToStepKey(key); }}
+          onEditStep={key => {
+            if (activeDraft?.reviewState === "review" && !(currentUser?.permissions || []).includes("records.correct")) return;
+            if (key === "patient-background") { setBackgroundExpanded(true); goToStepKey(INTERVIEW_STEP); return; }
+            goToStepKey(key);
+          }}
           indicator={stepHeadingSlot}
+          notice={canViewBackground && backgroundConflicts?.length ? (
+            <BackgroundConflictPanel
+              key={backgroundConflicts.map((conflict) => `${conflict.section}:${conflict.revision}`).join("|")}
+              conflicts={backgroundConflicts}
+              update={backgroundUpdate}
+              onApply={applyBackgroundConflictChoices}
+            />
+          ) : null}
         />
       ) : (
       <form
@@ -4099,10 +4183,24 @@ export default function ConsultationWorkspace() {
             </div>
             </FormSection>
 
+            {/* Patient Background: history taking belongs with the interview,
+                so it sits after Chief Complaint / HPI and before the vitals. */}
+            <FormSection title="Patient Background" subtitle="Past medical, family, and personal & social history. Changes are saved when the consultation is finalized." delay={4}>
+              <ConsultationBackgroundCard
+                locked={!canViewBackground}
+                loading={selectedPatientLoading}
+                background={selectedPatient?.medicalBackground}
+                update={backgroundUpdate}
+                onUpdateChange={setBackgroundUpdate}
+                expanded={backgroundExpanded}
+                onExpandedChange={setBackgroundExpanded}
+              />
+            </FormSection>
+
             {/* Vital Signs: recorded once, here. Program forms do not repeat
                 them. Three columns on desktop: BP | Pulse | SpO2, then Weight |
                 Height | Temperature, then BMI. */}
-            <FormSection title="Vital Signs" subtitle="Record the patient's current measurements for this visit." delay={4}>
+            <FormSection title="Vital Signs" subtitle="Record the patient's current measurements for this visit." delay={5}>
             <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
               <BpInputGroup name="bloodPressure" systolic={systolicBp} diastolic={diastolicBp} onSystolicChange={setSystolicBp} onDiastolicChange={setDiastolicBp} />
               <FieldInput label="Pulse Rate" name="pulse" error={validationErrors.pulse} type="number" value={pulse} onChange={event => setPulse(event.target.value)} placeholder="bpm" />

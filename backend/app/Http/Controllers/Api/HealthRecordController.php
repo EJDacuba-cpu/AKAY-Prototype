@@ -21,6 +21,7 @@ use App\Services\FollowUpTaskSyncService;
 use App\Services\HealthRecordDraftService;
 use App\Services\HealthRecordIdempotencyService;
 use App\Services\MedicineStockService;
+use App\Services\PatientBackground;
 use App\Services\ReferralCreationService;
 use App\Services\ReferralHoldService;
 use App\Services\ReferralRoutingService;
@@ -28,6 +29,7 @@ use App\Support\StoredFunction;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class HealthRecordController extends Controller
@@ -88,7 +90,8 @@ class HealthRecordController extends Controller
         HealthRecordDraftService $drafts,
         CurrentConditionsSync $currentConditions,
         ClinicalRegistry $clinicalRegistry,
-        ConditionMonitoringService $monitoring
+        ConditionMonitoringService $monitoring,
+        PatientBackground $patientBackground
     ) {
         $data = $request->validated();
         $patient = Patient::findOrFail($data['patient_id']);
@@ -104,6 +107,11 @@ class HealthRecordController extends Controller
         $legacyIdempotencyHash = $idempotency->legacyHash($data);
         $carePlan = $data['care_plan'] ?? [];
         unset($data['care_plan']);
+        $backgroundUpdate = $data['background_update'] ?? null;
+        unset($data['background_update']);
+        if ($backgroundUpdate !== null && ! PatientBackground::canAccess($request->user())) {
+            abort(403, 'You do not have permission to update the patient background.');
+        }
 
         if ($existing = HealthRecord::query()
             ->where('created_by', $request->user()->id)
@@ -180,7 +188,9 @@ class HealthRecordController extends Controller
                 $draftPublicId,
                 $currentConditions,
                 $monitoring,
-                $carePlan
+                $carePlan,
+                $backgroundUpdate,
+                $patientBackground
             ) {
                 $lockedDraft = $draftPublicId
                     ? $drafts->lockForOfficialSave(
@@ -202,10 +212,33 @@ class HealthRecordController extends Controller
                     $lockedFollowUpTask
                 );
                 $continuedMonitorings = $monitoring->lockContinued($patient, $carePlan['continued_monitoring_ids'] ?? []);
-                $record = HealthRecord::create([...$data, 'encoded_by' => $lockedDraft?->owner_user_id ?? $request->user()->id]);
+                // Background sections reviewed in this consultation go first: a
+                // stale edited section throws a 409 before anything is written,
+                // and the diagnosis sync below then builds on the merged result.
+                $backgroundChanges = $backgroundUpdate !== null
+                    ? $patientBackground->apply(
+                        $patient,
+                        $backgroundUpdate,
+                        $request->user(),
+                        Carbon::parse($data['date_recorded'])->toDateString()
+                    )
+                    : [];
+                $record = HealthRecord::create([
+                    ...$data,
+                    'encoded_by' => $lockedDraft?->owner_user_id ?? $request->user()->id,
+                    'background_changes' => $backgroundChanges ?: null,
+                ]);
                 // Registered diagnoses (conditionKey set) always sync; free-text
                 // diagnoses sync only when the user ticked "Add to Current Conditions".
-                $currentConditions->sync($patient, $data['diagnoses'] ?? [], $record->date_recorded->toDateString());
+                $conditionsChange = $currentConditions->sync(
+                    $patient,
+                    $data['diagnoses'] ?? [],
+                    $record->date_recorded->toDateString(),
+                    $request->user()
+                );
+                if ($conditionsChange !== null) {
+                    $record->update(['background_changes' => [...$backgroundChanges, $conditionsChange]]);
+                }
                 $monitoredNow = $monitoring->apply(
                     $patient,
                     $record,

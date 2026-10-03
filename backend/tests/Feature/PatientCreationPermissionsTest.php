@@ -63,15 +63,15 @@ class PatientCreationPermissionsTest extends TestCase
 
             $patient = Patient::findOrFail($response->json('data.id'));
             $this->assertSame($user->id, $patient->created_by);
+            // Registration never writes a background, whoever registers: it
+            // is only changed by a finalized consultation.
+            $this->assertEmpty($patient->medical_background);
             if ($canAccessHistory) {
-                $response->assertJsonPath('data.medical_background.allergies', 'Child history')
-                    ->assertJsonPath('data.mother.medical_background.allergies', 'Private mother history');
-                $this->assertSame('Child history', $patient->medical_background['allergies']);
+                $response->assertJsonPath('data.mother.medical_background.allergies', 'Private mother history');
             } else {
                 $response->assertJsonMissingPath('data.medical_background')
                     ->assertJsonMissingPath('data.mother.medical_background')
                     ->assertJsonMissingPath('data.mother.health_records');
-                $this->assertEmpty($patient->medical_background);
             }
         }
     }

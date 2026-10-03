@@ -358,6 +358,48 @@ class HealthRecordDraftPayloadService
                 'reason' => self::SCALAR,
             ]],
         ],
+        // Patient Background sections edited in this consultation, applied to
+        // the patient on finalize (PatientBackground::apply). Only the sections
+        // the clinician changed are present, each with the revision it was
+        // opened at. Never stored for or sent to users without clinical.history
+        // (HealthRecordDraftService / HealthRecordDraftController::show).
+        'backgroundUpdate' => [
+            'sections' => [
+                'medical' => [
+                    'currentDiseases' => ['*' => [
+                        'name' => self::SCALAR,
+                        'status' => self::SCALAR,
+                        'firstRecorded' => self::SCALAR,
+                        'lastConfirmed' => self::SCALAR,
+                        'source' => self::SCALAR,
+                        'conditionKey' => self::SCALAR,
+                    ]],
+                    'allergies' => self::SCALAR,
+                    'hospitalizations' => self::SCALAR,
+                    'surgeries' => self::SCALAR,
+                ],
+                'family' => [
+                    'familyHistory' => [
+                        'similarIllness' => self::SCALAR,
+                        'chronicIllness' => self::SCALAR,
+                        'hereditaryIllness' => self::SCALAR,
+                    ],
+                ],
+                'social' => [
+                    'personalSocial' => [
+                        'diet' => self::SCALAR,
+                        'smoking' => self::SCALAR,
+                        'alcohol' => self::SCALAR,
+                        'notes' => self::SCALAR,
+                    ],
+                ],
+            ],
+            'baseRevisions' => [
+                'medical' => self::SCALAR,
+                'family' => self::SCALAR,
+                'social' => self::SCALAR,
+            ],
+        ],
         'referralForm' => [
             'urgencyLevel' => self::SCALAR,
             'dateOfReferral' => self::SCALAR,
@@ -497,6 +539,7 @@ class HealthRecordDraftPayloadService
     {
         return [
             ...ConsultationPrograms::rules('payload'),
+            ...PatientBackground::rules('payload.backgroundUpdate', 'baseRevisions'),
             'payload.consultationUuid' => ['nullable', 'uuid'],
             'payload.consultationMode' => ['nullable', 'in:general,program'],
             'payload.wizardPhase' => ['nullable', 'in:program,form,next,review'],

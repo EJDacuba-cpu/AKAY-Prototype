@@ -16,8 +16,7 @@ use Illuminate\Support\Carbon;
 class PatientController extends Controller
 {
     public function __construct(
-        private readonly FacilityAccessService $facilityAccess,
-        private readonly \App\Services\ClinicalRegistry $clinicalRegistry
+        private readonly FacilityAccessService $facilityAccess
     ) {
     }
 
@@ -88,10 +87,6 @@ class PatientController extends Controller
         $this->authorizeMotherLink($request, $data['mother_patient_id'] ?? null);
         $user = $request->user();
         $canAccessHistory = $user->isAdmin() || ActionPermissions::allows($user, 'clinical.history');
-        if (! $canAccessHistory) {
-            // Keep registration fields, but never persist unauthorized clinical history.
-            unset($data['medical_background']);
-        }
         $data['created_by'] = $user->id;
 
         if ($user->isBhw()) {
@@ -217,15 +212,6 @@ class PatientController extends Controller
 
     private function normalizeProfileFields(array $data, ?Patient $patient = null): array
     {
-        // Same registry resolution the consultation path uses (ClinicalRegistry),
-        // so a Current Condition typed directly on the profile ("PTB") is
-        // normalized to the official spelling ("Tuberculosis") and tagged with
-        // conditionKey exactly as a diagnosis-driven sync would produce.
-        if (isset($data['medical_background']['currentDiseases']) && is_array($data['medical_background']['currentDiseases'])) {
-            $data['medical_background']['currentDiseases'] = $this->clinicalRegistry
-                ->resolveConditionEntries($data['medical_background']['currentDiseases']);
-        }
-
         foreach ([
             'occupation',
             'philhealth_status',

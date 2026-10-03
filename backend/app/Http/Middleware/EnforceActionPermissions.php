@@ -16,6 +16,7 @@ class EnforceActionPermissions
         $permission = match (true) {
             // Either consultations.encode or clinical.history; the controller checks.
             str_contains($path, '/care-overview') => null,
+            str_contains($path, '/background-history') => 'clinical.history',
             str_contains($path, '/corrections') => $read ? 'clinical.history' : 'records.correct',
             str_contains($path, 'dispensed-medicines') => 'items.dispense',
             str_contains($path, '/health-record-drafts') => 'consultations.encode',

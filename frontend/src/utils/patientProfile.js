@@ -173,37 +173,6 @@ export function getSectionErrors(errors = {}, section) {
   );
 }
 
-/**
- * Applies one background section's edit onto the latest saved background.
- *
- * The three sections (medical, family, social) are slices of a single
- * medical_background payload and each edits its own slice, so a save must not
- * write back the other two from whatever stale copy the editing section
- * started with. Merging the edited slice onto the latest copy lets sections be
- * edited side by side without one save clobbering another.
- */
-export function mergeBackgroundSection(latest = {}, edited = {}, section) {
-  const merged = {
-    ...latest,
-    updatedAt: { ...(latest.updatedAt || {}), [section]: edited.updatedAt?.[section] || "" },
-  };
-
-  if (section === "medical") {
-    merged.currentDiseases = edited.currentDiseases;
-    merged.allergies = edited.allergies;
-    merged.hospitalizations = edited.hospitalizations;
-    merged.surgeries = edited.surgeries;
-  } else if (section === "family") {
-    merged.familyHistory = edited.familyHistory;
-  } else if (section === "social") {
-    merged.personalSocial = edited.personalSocial;
-  } else {
-    return edited;
-  }
-
-  return merged;
-}
-
 /** A follow-up task's state as of today, folding overdue pending tasks into no_show. */
 export function getEffectiveFollowUpState(task = {}, today = new Date().toISOString().slice(0, 10)) {
   if (task.state === "fulfilled") return "fulfilled";

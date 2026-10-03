@@ -6,6 +6,7 @@ use App\Models\HealthRecord;
 use App\Models\Referral;
 use App\Services\ConsultationPrograms;
 use App\Services\CurrentConditionsSync;
+use App\Services\PatientBackground;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -305,6 +306,11 @@ class HealthRecordRequest extends FormRequest
             'diagnoses.*.includeInSurveillance' => ['nullable', 'boolean'],
             // Existing follow-ups / monitoring this ITR continues (Start
             // Consultation modal), and the monitoring it stops.
+            // Patient Background sections reviewed in this consultation, applied
+            // to the patient inside the record's transaction (create only).
+            ...($this->isMethod('post')
+                ? PatientBackground::rules('background_update', 'base_revisions')
+                : ['background_update' => ['prohibited']]),
             'care_plan' => ['nullable', 'array'],
             'care_plan.continued_follow_up_task_ids' => ['nullable', 'array', 'max:20'],
             'care_plan.continued_follow_up_task_ids.*' => ['integer', 'distinct'],

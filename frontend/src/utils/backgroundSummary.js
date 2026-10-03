@@ -2,7 +2,8 @@
  * One read-only line per background section for the Overview's compact
  * Patient Background card. Allergies and current diseases are left out -
  * the Overview already shows them in Alerts & Allergies and Current
- * Conditions. Full editing lives on the Patient Information tab.
+ * Conditions. The full read-only view is the Patient Background tab; it is
+ * updated in a consultation (which also uses this summary on its card).
  */
 const SECTIONS = [
   {

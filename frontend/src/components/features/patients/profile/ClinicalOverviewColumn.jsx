@@ -29,14 +29,14 @@ const CHIP = "shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold
 const ROW_BUTTON =
   "group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-1 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-600/40";
 
-/** Read-only background summary; editing happens on Patient Information. */
-function BackgroundSummaryCard({ background, onEdit }) {
+/** Read-only background summary; View opens the Patient Background tab. */
+function BackgroundSummaryCard({ background, onView }) {
   return (
     <OverviewCard
       id="overview-background"
       title="Patient Background"
       share={2.5}
-      action={<TextAction onClick={onEdit}>Edit →</TextAction>}
+      action={<TextAction onClick={onView}>View →</TextAction>}
     >
       <dl className="space-y-0.5 text-xs">
         {summarizeBackground(background).map(({ key, label, text }) => (
@@ -248,7 +248,7 @@ export default function ClinicalOverviewColumn({
   activeFollowUps = [],
   records = [],
   recordsLoading = false,
-  onEditBackground,
+  onViewBackground,
   onViewPrograms,
   onViewReferrals,
   onViewReferral,
@@ -259,7 +259,7 @@ export default function ClinicalOverviewColumn({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1.5">
-      <BackgroundSummaryCard background={patient.medicalBackground} onEdit={onEditBackground} />
+      <BackgroundSummaryCard background={patient.medicalBackground} onView={onViewBackground} />
       <ReferralsPreview
         referrals={referrals}
         isLoading={referralsLoading}

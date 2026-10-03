@@ -61,6 +61,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::apiResource('patients', PatientController::class);
         Route::apiResource('health-records', HealthRecordController::class);
         Route::get('patients/{patient}/care-overview', [\App\Http\Controllers\Api\CareOverviewController::class, 'show']);
+        Route::get('patients/{patient}/background-history', \App\Http\Controllers\Api\PatientBackgroundHistoryController::class);
         Route::get('health-records/{healthRecord}/corrections', [\App\Http\Controllers\Api\RecordCorrectionController::class, 'index']);
         Route::post('health-records/{healthRecord}/corrections', [\App\Http\Controllers\Api\RecordCorrectionController::class, 'store']);
         Route::get('health-records/{healthRecord}/tb-card-pdf', [HealthRecordController::class, 'tbCardPdf']);

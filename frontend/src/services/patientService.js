@@ -53,6 +53,14 @@ export const EMPTY_MEDICAL_BACKGROUND = {
     family: "",
     social: "",
   },
+  // Server-owned concurrency token per section, bumped on every change. A
+  // consultation sends the revision it opened a section at; a moved one is a
+  // conflict (see utils/backgroundUpdate.js).
+  revisions: {
+    medical: 0,
+    family: 0,
+    social: 0,
+  },
 };
 
 /**
@@ -74,6 +82,9 @@ export function normalizeMedicalBackground(source) {
             firstRecorded: normalizeDate(entry.firstRecorded),
             lastConfirmed: normalizeDate(entry.lastConfirmed),
             source: entry.source || "",
+            // Server-resolved; groupCurrentDiseases files an entry under
+            // Monitored Conditions by it.
+            conditionKey: entry.conditionKey || null,
           }))
       : [],
     allergies: background.allergies || "",
@@ -90,6 +101,11 @@ export function normalizeMedicalBackground(source) {
     updatedAt: {
       ...EMPTY_MEDICAL_BACKGROUND.updatedAt,
       ...(background.updatedAt || {}),
+    },
+    revisions: {
+      medical: Number(background.revisions?.medical) || 0,
+      family: Number(background.revisions?.family) || 0,
+      social: Number(background.revisions?.social) || 0,
     },
   };
 }
@@ -266,14 +282,8 @@ function toPayload(patient = {}) {
       patient.patientClassification || patient.patientCategory || patient.category || null;
   }
 
-  // Only sent when the caller actually carries a background, so a plain
-  // registration-details edit cannot blank out the clinical background the
-  // Medical Background / Family History / Personal & Social tabs own.
-  const backgroundSource =
-    patient.medicalBackground ?? patient.medical_background;
-  if (backgroundSource && typeof backgroundSource === "object") {
-    payload.medical_background = normalizeMedicalBackground(backgroundSource);
-  }
+  // medical_background is never sent: the API ignores it. The background
+  // only changes through a finalized consultation.
 
   return payload;
 }
@@ -308,17 +318,12 @@ export async function updateBhcPatient(id, data) {
 }
 
 /**
- * Saves only the clinical background. Deliberately does NOT go through
- * toPayload(): that builder fills in defaults for every registration field
- * ("Patient" for a missing surname, "Other" for a missing sex), which a
- * background-only save must never send. PATCH leaves untouched columns alone.
+ * The Patient Background tab's Changes log: what each finalized consultation
+ * changed in the background, newest first.
  */
-export async function updatePatientMedicalBackground(id, medicalBackground) {
-  const response = await apiRequest(`/patients/${id}`, {
-    method: "PATCH",
-    body: { medical_background: normalizeMedicalBackground(medicalBackground) },
-  });
-  return normalizePatient(unwrapData(response));
+export async function getPatientBackgroundHistory(id) {
+  const response = await apiRequest(`/patients/${id}/background-history`);
+  return Array.isArray(unwrapData(response)) ? unwrapData(response) : [];
 }
 
 export async function getBhcPatientById(id) {

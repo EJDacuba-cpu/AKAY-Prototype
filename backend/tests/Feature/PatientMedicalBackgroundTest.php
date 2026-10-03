@@ -6,14 +6,15 @@ use App\Models\BarangayHealthCenter;
 use App\Models\Patient;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Services\ActionPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 /**
- * Patient-level clinical background (Patient Profile > Medical Background,
- * Family History, Personal & Social History) - the longitudinal history the
- * profile owns, distinct from the per-visit health_records.medical_history.
+ * Patient-level clinical background (Past Medical, Family, Personal & Social
+ * History) as the patient API sees it: readable, never writable. Changes go
+ * through a finalized consultation - see PatientBackgroundConsultationTest.
  */
 class PatientMedicalBackgroundTest extends TestCase
 {
@@ -41,6 +42,7 @@ class PatientMedicalBackgroundTest extends TestCase
             'role' => User::ROLE_BHW,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $this->bhc->id,
+            'permissions' => ActionPermissions::PRESETS['clinical'],
         ]);
         $this->patient = Patient::create([
             'first_name' => 'Background',
@@ -51,111 +53,44 @@ class PatientMedicalBackgroundTest extends TestCase
         ]);
     }
 
-    public function test_medical_background_is_saved_and_returned(): void
+    /**
+     * The background is read-only outside a consultation: the patient API
+     * silently drops it on update, in either accepted spelling, and keeps
+     * whatever the patient already had.
+     */
+    public function test_update_ignores_medical_background(): void
     {
-        $background = [
-            'currentDiseases' => [
-                [
-                    'name' => 'Hypertension',
-                    'status' => 'Active',
-                    'firstRecorded' => '2026-01-10',
-                    'lastConfirmed' => '2026-09-01',
-                    'source' => 'Consultation',
-                ],
-            ],
-            'allergies' => 'Penicillin',
-            'hospitalizations' => 'Appendectomy (2019)',
-            'surgeries' => 'None reported',
-            'familyHistory' => [
-                'similarIllness' => 'Mother - Hypertension',
-                'chronicIllness' => 'Diabetes (father\'s side)',
-                'hereditaryIllness' => 'None reported',
-            ],
-            'personalSocial' => [
-                'diet' => 'High-salt diet',
-                'smoking' => 'Former smoker',
-                'alcohol' => 'Social drinker',
-                'notes' => 'Walks daily.',
-            ],
-        ];
+        $this->patient->update(['medical_background' => ['allergies' => 'Dust']]);
 
-        $this->actingAs($this->bhw, 'sanctum')
-            ->putJson("/api/patients/{$this->patient->id}", [
-                'medical_background' => $background,
-            ])
-            ->assertOk()
-            ->assertJsonPath('data.medical_background.allergies', 'Penicillin')
-            ->assertJsonPath(
-                'data.medical_background.currentDiseases.0.name',
-                'Hypertension'
-            );
+        foreach (['medical_background', 'medicalBackground'] as $field) {
+            $this->actingAs($this->bhw, 'sanctum')
+                ->putJson("/api/patients/{$this->patient->id}", [
+                    'occupation' => 'Farmer',
+                    $field => ['allergies' => 'Penicillin', 'currentDiseases' => [['status' => 'Active']]],
+                ])
+                ->assertOk()
+                ->assertJsonPath('data.medical_background.allergies', 'Dust');
+        }
 
         $fresh = $this->patient->fresh();
-        $this->assertSame('Active', $fresh->medical_background['currentDiseases'][0]['status']);
-        $this->assertSame(
-            'Mother - Hypertension',
-            $fresh->medical_background['familyHistory']['similarIllness']
-        );
-        $this->assertSame(
-            'High-salt diet',
-            $fresh->medical_background['personalSocial']['diet']
-        );
+        $this->assertSame('Farmer', $fresh->occupation);
+        $this->assertSame(['allergies' => 'Dust'], $fresh->medical_background);
     }
 
-    /** The camelCase key the frontend sends is accepted too. */
-    public function test_camel_case_medical_background_alias_is_accepted(): void
+    /** Registration cannot seed a background either - the first consultation does. */
+    public function test_create_ignores_medical_background(): void
     {
-        $this->actingAs($this->bhw, 'sanctum')
-            ->putJson("/api/patients/{$this->patient->id}", [
-                'medicalBackground' => ['allergies' => 'Seafood'],
+        $response = $this->actingAs($this->bhw, 'sanctum')
+            ->postJson('/api/patients', [
+                'first_name' => 'New',
+                'last_name' => 'Patient',
+                'sex' => 'Male',
+                'barangay_health_center_id' => $this->bhc->id,
+                'medical_background' => ['allergies' => 'Penicillin'],
             ])
-            ->assertOk();
+            ->assertCreated();
 
-        $this->assertSame('Seafood', $this->patient->fresh()->medical_background['allergies']);
-    }
-
-    /** A current-disease entry without a name is rejected rather than stored half-formed. */
-    public function test_current_disease_requires_a_name(): void
-    {
-        $this->actingAs($this->bhw, 'sanctum')
-            ->putJson("/api/patients/{$this->patient->id}", [
-                'medical_background' => [
-                    'currentDiseases' => [['status' => 'Active']],
-                ],
-            ])
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors('medical_background.currentDiseases.0.name');
-    }
-
-    /**
-     * Each background section carries its own "last updated" date, so the
-     * profile can say how current what it shows is. Saving one section must
-     * not disturb the dates the other sections already carried.
-     */
-    public function test_section_update_dates_are_saved_independently(): void
-    {
-        $this->actingAs($this->bhw, 'sanctum')
-            ->putJson("/api/patients/{$this->patient->id}", [
-                'medical_background' => [
-                    'allergies' => 'Penicillin',
-                    'updatedAt' => ['medical' => '2026-09-19'],
-                ],
-            ])
-            ->assertOk();
-
-        $this->actingAs($this->bhw, 'sanctum')
-            ->putJson("/api/patients/{$this->patient->id}", [
-                'medical_background' => [
-                    'allergies' => 'Penicillin',
-                    'familyHistory' => ['similarIllness' => 'Mother - Asthma'],
-                    'updatedAt' => ['medical' => '2026-09-19', 'family' => '2026-09-20'],
-                ],
-            ])
-            ->assertOk();
-
-        $background = $this->patient->fresh()->medical_background;
-        $this->assertSame('2026-09-19', $background['updatedAt']['medical']);
-        $this->assertSame('2026-09-20', $background['updatedAt']['family']);
+        $this->assertEmpty(Patient::findOrFail($response->json('data.id'))->medical_background);
     }
 
     /** Updating an unrelated field must not wipe an existing background. */

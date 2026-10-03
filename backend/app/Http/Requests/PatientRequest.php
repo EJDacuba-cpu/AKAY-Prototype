@@ -24,7 +24,6 @@ class PatientRequest extends FormRequest
             'husbandOccupation' => 'spouse_occupation',
             'purokArea' => 'purok_area',
             'motherPatientId' => 'mother_patient_id',
-            'medicalBackground' => 'medical_background',
         ];
 
         $mapped = [];
@@ -76,37 +75,9 @@ class PatientRequest extends FormRequest
             'philhealth_number' => ['nullable', 'string', 'max:100'],
             'philhealth_category' => ['nullable', 'string', 'max:100'],
             'patient_category' => ['nullable', 'string', 'max:100'],
-            // Longitudinal clinical background owned by the Patient Profile.
-            // The per-visit snapshot stays on health_records.medical_history.
-            'medical_background' => ['nullable', 'array'],
-            'medical_background.currentDiseases' => ['nullable', 'array', 'max:50'],
-            'medical_background.currentDiseases.*.name' => ['required', 'string', 'max:150'],
-            'medical_background.currentDiseases.*.status' => ['nullable', 'string', 'max:50'],
-            'medical_background.currentDiseases.*.firstRecorded' => ['nullable', 'date'],
-            'medical_background.currentDiseases.*.lastConfirmed' => ['nullable', 'date'],
-            'medical_background.currentDiseases.*.source' => ['nullable', 'string', 'max:100'],
-            // Server-resolved from the name by ClinicalRegistry on save
-            // (PatientController::normalizeProfileFields); any value sent here
-            // is accepted by validation but always discarded and recomputed.
-            'medical_background.currentDiseases.*.conditionKey' => ['nullable', 'string', 'max:64'],
-            'medical_background.allergies' => ['nullable', 'string', 'max:1000'],
-            'medical_background.hospitalizations' => ['nullable', 'string', 'max:1000'],
-            'medical_background.surgeries' => ['nullable', 'string', 'max:1000'],
-            'medical_background.familyHistory' => ['nullable', 'array'],
-            'medical_background.familyHistory.similarIllness' => ['nullable', 'string', 'max:1000'],
-            'medical_background.familyHistory.chronicIllness' => ['nullable', 'string', 'max:1000'],
-            'medical_background.familyHistory.hereditaryIllness' => ['nullable', 'string', 'max:1000'],
-            'medical_background.personalSocial' => ['nullable', 'array'],
-            'medical_background.personalSocial.diet' => ['nullable', 'string', 'max:255'],
-            'medical_background.personalSocial.smoking' => ['nullable', 'string', 'max:255'],
-            'medical_background.personalSocial.alcohol' => ['nullable', 'string', 'max:255'],
-            'medical_background.personalSocial.notes' => ['nullable', 'string', 'max:1000'],
-            // When each background section was last edited, so the profile can
-            // date what it shows. Not a revision log.
-            'medical_background.updatedAt' => ['nullable', 'array'],
-            'medical_background.updatedAt.medical' => ['nullable', 'date'],
-            'medical_background.updatedAt.family' => ['nullable', 'date'],
-            'medical_background.updatedAt.social' => ['nullable', 'date'],
+            // medical_background is deliberately absent: it is not accepted on
+            // create or update, so validated() drops it. The background only
+            // changes through a finalized consultation (PatientBackground).
             'status' => ['sometimes', 'string', 'max:100'],
             'barangay_health_center_id' => ['nullable', 'exists:barangay_health_centers,id'],
             'rural_health_unit_id' => ['nullable', 'exists:rural_health_units,id'],

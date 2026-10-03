@@ -37,6 +37,7 @@ class HealthRecord extends Model
         'assessment_notes',
         'treatment_notes',
         'medical_history',
+        'background_changes',
         'notes',
         'encoded_by', 'assessed_by', 'finalized_by', 'finalized_at', 'items_planned',
     ];
@@ -66,6 +67,9 @@ class HealthRecord extends Model
         'idempotency_key',
         'idempotency_hash',
         'consultation_uuid',
+        // Clinical history: served only by the background-history endpoint,
+        // which checks clinical.history - never part of a record response.
+        'background_changes',
     ];
 
     protected $appends = [
@@ -83,6 +87,7 @@ class HealthRecord extends Model
         'tb_data' => 'array',
         'body_findings' => 'array',
         'diagnoses' => 'array',
+        'background_changes' => 'array',
         'needs_referral' => 'boolean',
         'items_planned' => 'array',
         'finalized_at' => 'datetime',

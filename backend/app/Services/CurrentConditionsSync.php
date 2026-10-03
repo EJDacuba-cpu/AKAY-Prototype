@@ -64,7 +64,13 @@ class CurrentConditionsSync
         }
     }
 
-    public function sync(Patient $patient, array $diagnoses, string $date): void
+    /**
+     * Returns the Current Conditions change as a background_changes entry
+     * (source "diagnosis"), or null when nothing on the list moved. A change
+     * bumps revisions.medical, so a consultation still holding an older copy
+     * of Past Medical History gets a conflict instead of overwriting it.
+     */
+    public function sync(Patient $patient, array $diagnoses, string $date, ?User $user = null): ?array
     {
         $selected = array_values(array_filter(
             $diagnoses,
@@ -73,7 +79,7 @@ class CurrentConditionsSync
                 && (($diagnosis['conditionKey'] ?? null) !== null || ($diagnosis['addToConditions'] ?? false) === true),
         ));
         if ($selected === []) {
-            return;
+            return null;
         }
 
         $locked = Patient::query()->whereKey($patient->id)->lockForUpdate()->firstOrFail();
@@ -117,7 +123,18 @@ class CurrentConditionsSync
             }
         }
 
+        $before = PatientBackground::slice($background, 'medical');
         $background['currentDiseases'] = $conditions;
+        $after = PatientBackground::slice($background, 'medical');
+        if ($after == $before) {
+            return null;
+        }
+
+        $revision = PatientBackground::revision($background, 'medical') + 1;
+        $background['revisions']['medical'] = $revision;
+        $background['updatedAt']['medical'] = $date;
         $locked->update(['medical_background' => $background]);
+
+        return PatientBackground::entry('medical', 'diagnosis', $before, $after, $revision, $user);
     }
 }

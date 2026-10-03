@@ -60,7 +60,10 @@ class HealthRecordDraftController extends Controller
             'Unable to open this draft safely. Please try again.',
             function () use ($request, $draft): array {
                 $record = $this->drafts->loadOwnedActive($request->user(), $draft);
-                $payload = $this->drafts->payload($record);
+                $payload = $this->drafts->withoutRestrictedFields(
+                    $request->user(),
+                    $this->drafts->payload($record)
+                );
 
                 return [
                     $record,
