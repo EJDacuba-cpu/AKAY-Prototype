@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import AnatomyFigure from "./AnatomyFigure";
 import { BODY_REGIONS, getBodyRegionLabel } from "../../../utils/bodyFindings";
@@ -25,15 +25,17 @@ const plural = (count) => `${count} finding${count === 1 ? "" : "s"}`;
  * anatomy underneath. `data-marker-region` / `data-marker-core` let the
  * profile's finding link find the marker's visible centre.
  */
-function Marker({ region, label, position, count, active, expanded, onEnter, onLeave, onClick }) {
+function Marker({ region, label, position, count, active, expanded, controls, onEnter, onLeave, onClick }) {
   return (
     <button
       type="button"
       data-marker-region={region}
       aria-expanded={expanded}
+      aria-controls={expanded ? controls : undefined}
       aria-label={`${label}, ${plural(count)}`}
-      // A native button turns Enter and Space into this click.
-      onClick={() => onClick?.(region)}
+      // A native button turns Enter and Space into this click. The button
+      // goes along so the caller can return focus to it later.
+      onClick={(event) => onClick?.(region, event.currentTarget)}
       onMouseEnter={() => onEnter?.(region)}
       onMouseLeave={() => onLeave?.(region)}
       onFocus={() => onEnter?.(region)}
@@ -69,16 +71,19 @@ function observeSize(el, onSize) {
  *   the region's tint strengthens and pulses from "highlight"; with `leader`
  *   a thin line runs from the marker toward the popover from "line"; a small
  *   popover of that region's findings shows from "popover": beside the
- *   marker on the side with more room when it fits there, otherwise below
- *   (or above) it, kept inside the figure's parent container - it may
- *   overflow the figure box itself.
- * - `pinned`: the popover becomes a dialog whose finding rows call
- *   `onViewRecord(recordId)`; Escape or a pointer press outside the popover
- *   and markers calls `onDismiss()`.
+ *   marker - on the outward side for a marker-initiated reveal (`leader`),
+ *   on the right for a row-initiated one, when that side fits; otherwise on
+ *   the side with more room, otherwise below (or above) it - kept inside the
+ *   figure's parent container; it may overflow the figure box itself. The
+ *   hover preview lists up to 3 findings plus "+N more".
+ * - `pinned`: the popover (id `popoverId`) becomes a dialog listing every
+ *   finding, each calling `onViewRecord(recordId)`. Once measured it takes
+ *   focus and, below 1024px (`isDesktop` false), scrolls into view. Escape
+ *   calls `onDismiss("escape")`; a completed click outside the popover, the
+ *   markers and any `[data-reveal-row]` calls `onDismiss("outside")` - a
+ *   scroll or drag never dismisses.
  * - Markers report `onMarkerEnter` / `onMarkerLeave` (hover and focus) and
- *   `onMarkerClick` (click, Enter, Space, tap) with their region.
- * `isDesktop` is part of the shared contract but unused here: the caller
- * passes `leader` only on desktop.
+ *   `onMarkerClick(region, buttonEl)` (click, Enter, Space, tap).
  * Front view: the PATIENT's right is on the viewer's left. Back view: swapped.
  */
 export default function BodyFigureSvg({
@@ -87,6 +92,8 @@ export default function BodyFigureSvg({
   onToggleSide,
   flipHint = false,
   findingsByRegion = NO_FINDINGS,
+  isDesktop = false,
+  popoverId,
   activeRegion = null,
   phase = "idle",
   pinned = false,
@@ -98,6 +105,8 @@ export default function BodyFigureSvg({
   onDismiss,
 }) {
   const figure = getFigureKey(sex);
+  const ownPopoverId = useId();
+  const dialogId = popoverId || ownPopoverId;
   const marked = BODY_REGIONS.filter(({ key }) => (findingsByRegion[key] || []).length > 0);
 
   // Layout measurement only: the figure's size and offset inside its parent
@@ -151,10 +160,17 @@ export default function BodyFigureSvg({
   // not move once the height is known, so it can draw before the popover.
   const placement = (() => {
     if (!markerPx) return null;
+    const marker = { x: markerPx.x + layout.offX, y: markerPx.y + layout.offY };
+    // A marker-initiated reveal (`leader`) opens outward, keeping limb
+    // popovers off the torso; a row-initiated one opens right, away from the
+    // Findings column, so the row line never runs through the popover.
+    const prefer = leader ? (marker.x < layout.bounds.width / 2 ? "left" : "right") : "right";
     const { left, top, side: opens } = placePopover(
-      { x: markerPx.x + layout.offX, y: markerPx.y + layout.offY },
+      marker,
       layout.bounds,
       { width: POPOVER_WIDTH, height: popHeight },
+      undefined,
+      prefer,
     );
     return { left: left - layout.offX, top: top - layout.offY, side: opens };
   })();
@@ -174,26 +190,40 @@ export default function BodyFigureSvg({
 
   const popoverReady = Boolean(placement) && measuredHeight != null;
 
-  // While pinned: Escape anywhere, or a press outside the popover and every
-  // marker, dismisses it.
+  // While pinned: Escape anywhere, or a completed click outside the popover,
+  // every marker and every Findings row, dismisses it. A click rather than a
+  // pointer press, so scrolling the page on a phone never dismisses; markers
+  // and rows pin, unpin or switch through their own click handlers.
   useEffect(() => {
     if (!pinned) return undefined;
     function onKeyDown(event) {
-      if (event.key === "Escape") onDismiss?.();
+      if (event.key === "Escape") onDismiss?.("escape");
     }
-    function onPointerDown(event) {
+    function onClick(event) {
       const target = event.target;
       if (popoverEl?.contains(target)) return;
-      if (target instanceof Element && target.closest("[data-marker-region]")) return;
-      onDismiss?.();
+      if (target instanceof Element && target.closest("[data-marker-region], [data-reveal-row]")) return;
+      onDismiss?.("outside");
     }
     document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("click", onClick);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("click", onClick);
     };
   }, [pinned, popoverEl, onDismiss]);
+
+  // Once a pinned popover is measured (so visible), move focus into it, and
+  // below 1024px scroll it into view. Runs again for a new popover element
+  // (the pin switched to another area).
+  useEffect(() => {
+    if (!pinned || !popoverReady || !popoverEl) return;
+    popoverEl.focus({ preventScroll: true });
+    if (!isDesktop) popoverEl.scrollIntoView({ block: "nearest" });
+  }, [pinned, popoverReady, popoverEl, isDesktop]);
+
+  // Hover preview: the first few plus "+N more". Pinned: every finding.
+  const listed = pinned ? activeFindings : activeFindings.slice(0, MAX_POPOVER_FINDINGS);
 
   return (
     <AnatomyFigure
@@ -230,6 +260,7 @@ export default function BodyFigureSvg({
             count={findingsByRegion[key].length}
             active={key === revealed && phase !== "idle"}
             expanded={pinned && activeRegion === key}
+            controls={dialogId}
             onEnter={onMarkerEnter}
             onLeave={onMarkerLeave}
             onClick={onMarkerClick}
@@ -255,6 +286,7 @@ export default function BodyFigureSvg({
           <div
             key={revealed}
             ref={setPopoverEl}
+            id={dialogId}
             {...(pinned ? { role: "dialog", "aria-label": `${label} findings`, tabIndex: -1 } : { "aria-hidden": "true" })}
             className={`anatomy-fade-in absolute z-20 w-[200px] rounded-none border border-slate-200 bg-white px-2.5 py-2 text-[11px] leading-snug text-slate-700 shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40${
               pinned ? "" : " pointer-events-none"
@@ -266,8 +298,8 @@ export default function BodyFigureSvg({
             }
           >
             <p className="text-[12px] font-semibold text-slate-900">{label}</p>
-            <ul className="mt-1 space-y-1">
-              {activeFindings.slice(0, MAX_POPOVER_FINDINGS).map((item) => {
+            <ul className={`mt-1 space-y-1${pinned ? " max-h-[220px] overflow-y-auto [scrollbar-width:thin]" : ""}`}>
+              {listed.map((item) => {
                 const text = (
                   <>
                     <span className="block truncate">
@@ -295,7 +327,7 @@ export default function BodyFigureSvg({
                 );
               })}
             </ul>
-            {activeFindings.length > MAX_POPOVER_FINDINGS && (
+            {!pinned && activeFindings.length > MAX_POPOVER_FINDINGS && (
               <p className="mt-1 text-[10px] text-slate-500">+{activeFindings.length - MAX_POPOVER_FINDINGS} more</p>
             )}
           </div>

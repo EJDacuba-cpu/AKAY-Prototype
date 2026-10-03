@@ -109,3 +109,17 @@ test("unknown actions return the state unchanged", () => {
   const state = pinnedOn(chest);
   assert.equal(revealFocusReducer(state, { type: "nope" }), state);
 });
+
+test("a marker click keeps the marker element as the opener", () => {
+  const marker = { id: "marker-hand" };
+  assert.deepEqual(
+    revealFocusReducer(INITIAL_REVEAL, { type: "click", source: "marker", area: hand, el: marker, currentSide: "front" }),
+    pinnedOn(hand, "marker", marker),
+  );
+  // Hover (no element) then click on the same marker: the click's element wins.
+  const hovered = revealFocusReducer(INITIAL_REVEAL, { type: "hover", source: "marker", area: hand });
+  assert.equal(
+    revealFocusReducer(hovered, { type: "click", source: "marker", area: hand, el: marker, currentSide: "front" }).focus.el,
+    marker,
+  );
+});

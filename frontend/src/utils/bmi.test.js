@@ -43,3 +43,13 @@ test("summarizeLatestBmi returns null without a complete measurement", () => {
   assert.equal(summarizeLatestBmi(undefined, 30), null);
   assert.equal(summarizeLatestBmi([visit("2026-09-01", { weight: "70" })], 30), null);
 });
+
+test("summarizeLatestBmi reads a leading number from the age text", () => {
+  const records = [visit("2026-09-01", { weight: "80", height: "170.9" })];
+  assert.equal(summarizeLatestBmi(records, " ").category, "Overweight");
+  assert.equal(summarizeLatestBmi(records, "12 yrs").category, "");
+  assert.equal(summarizeLatestBmi(records, " 12 yrs ").category, "");
+  assert.equal(summarizeLatestBmi(records, "17").category, "");
+  assert.equal(summarizeLatestBmi(records, 18).category, "Overweight");
+  assert.equal(summarizeLatestBmi(records, "18 yrs").category, "Overweight");
+});

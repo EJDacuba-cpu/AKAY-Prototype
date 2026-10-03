@@ -66,3 +66,23 @@ test("placePopover keeps the side when the free space exactly fits", () => {
 test("leaderPath is a straight segment", () => {
   assert.equal(leaderPath({ x: 10, y: 20 }, { x: 110, y: 60 }), "M 10 20 L 110 60");
 });
+
+test("placePopover uses a preferred side that fits even when the other side is larger", () => {
+  // Marker right of centre: left is larger, but right still fits 120.
+  assert.deepEqual(placePopover({ x: 160, y: 200 }, FIG, POP, 14, "right"), { left: 174, top: 160, side: "right" });
+  // Marker left of centre: right is larger, but left still fits 120.
+  assert.deepEqual(placePopover({ x: 140, y: 200 }, FIG, POP, 14, "left"), { left: 6, top: 160, side: "left" });
+});
+
+test("placePopover falls back to the existing rule when the preferred side does not fit", () => {
+  // Right has 300 - 250 - 14 = 36 px: the larger left side is used.
+  assert.deepEqual(placePopover({ x: 250, y: 200 }, FIG, POP, 14, "right"), placePopover({ x: 250, y: 200 }, FIG, POP));
+  assert.equal(placePopover({ x: 250, y: 200 }, FIG, POP, 14, "right").side, "left");
+  // Neither side fits a wide popover: below, as before.
+  assert.equal(placePopover({ x: 150, y: 200 }, FIG, { width: 200, height: 80 }, 14, "left").side, "below");
+});
+
+test("placePopover without a preference keeps the larger-side rule", () => {
+  assert.deepEqual(placePopover({ x: 160, y: 200 }, FIG, POP, 14, undefined), placePopover({ x: 160, y: 200 }, FIG, POP));
+  assert.equal(placePopover({ x: 160, y: 200 }, FIG, POP, 14, undefined).side, "left");
+});

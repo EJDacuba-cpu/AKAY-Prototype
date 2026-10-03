@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 
 import BodyFigureSvg from "../BodyFigureSvg";
 import FindingLinkOverlay from "./FindingLinkOverlay";
@@ -74,7 +74,7 @@ function bmiLabel(bmi) {
  * focusing a row or a marker (desktop) stages a reveal on the figure: a soft
  * area highlight, then a line (row to marker, or marker to popover), then a
  * small popover of that area's findings. A click or tap pins the popover,
- * whose finding rows open their record; Escape, a press outside, a second
+ * whose finding rows open their record; Escape, a click outside, a second
  * click on the same area, a flip or a mode change unpins it. A row for the
  * other side only pulses the flip button - the figure never flips by itself.
  * Below 1024px there are no hover reveals or lines: a tap shows the popover
@@ -94,10 +94,7 @@ export default function AnatomyFindingsPanel({
   const [side, setSide] = useState("front");
   const [reveal, dispatch] = useReducer(revealFocusReducer, INITIAL_REVEAL);
   const panelRef = useRef(null);
-  // Set by a press on a Findings row while a popover is pinned, so the
-  // figure's outside-press dismissal leaves that row's click to toggle or
-  // switch the pin.
-  const rowPressRef = useRef(false);
+  const popoverId = `overview-figure-popover${useId()}`;
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const reducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
 
@@ -110,6 +107,9 @@ export default function AnatomyFindingsPanel({
   // A focus whose area is gone (records reloaded) counts as no focus.
   const focus = reveal.focus && areas.some((area) => area.key === reveal.focus.key) ? reveal.focus : null;
   const pinned = reveal.pinned && Boolean(focus);
+  // The element that opened the pinned popover (a Findings row or a marker
+  // button), to take focus back when it closes.
+  const opener = pinned ? focus.el || null : null;
   const onSideShown = Boolean(focus) && focus.side === side;
 
   const phase = useRevealSequence(onSideShown ? `${focus.source}:${focus.key}` : null, {
@@ -117,8 +117,15 @@ export default function AnatomyFindingsPanel({
   });
   const activeRegion = onSideShown ? focus.region : null;
   const leader = isDesktop && focus?.source === "marker";
-  const flipHint = isDesktop && focus?.source === "row" && focus.side !== side;
+  const flipHint = focus?.source === "row" && focus.side !== side;
   const showRowLine = isDesktop && focus?.source === "row" && onSideShown && phaseReached(phase, "line");
+
+  // The pinned area vanished (records refetched, data changed): clear the
+  // stale pin, or the reducer would keep ignoring every hover.
+  const stalePin = reveal.pinned && !focus;
+  useEffect(() => {
+    if (stalePin) dispatch({ type: "reset" });
+  }, [stalePin]);
 
   function changeMode(next) {
     setMode(next);
@@ -130,16 +137,31 @@ export default function AnatomyFindingsPanel({
     dispatch({ type: "reset" });
   }
 
-  const dismiss = useCallback(() => {
-    if (rowPressRef.current) {
-      rowPressRef.current = false;
-      return;
-    }
-    dispatch({ type: "dismiss" });
-  }, []);
+  // Escape hands focus back to the opener, unless focus has already moved to
+  // some other control. It is focused before the dismiss, so its focus
+  // handler's hover is ignored while still pinned and no preview re-opens.
+  // An outside click never moves focus: it goes where the click put it.
+  const dismiss = useCallback(
+    (reason) => {
+      if (reason === "escape" && opener?.isConnected) {
+        const active = document.activeElement;
+        const focusInPopover = Boolean(active && document.getElementById(popoverId)?.contains(active));
+        if (!active || active === document.body || focusInPopover) opener.focus();
+      }
+      dispatch({ type: "dismiss" });
+    },
+    [opener, popoverId],
+  );
 
-  // Unpin first, so the figure's Escape / outside-press handlers are gone
-  // before the record view opens.
+  // A click on the opener of the pinned area unpins it: keep focus on that
+  // element (a click alone does not focus a button in every browser).
+  // Clicking another row or marker leaves focus where the click put it.
+  function keepFocusOnUnpin(area, el) {
+    if (pinned && focus.key === area.key && el && focus.el === el) el.focus();
+  }
+
+  // Unpin first (no focus restore), so the figure's Escape / outside-click
+  // handlers are gone before the record view opens.
   function viewRecord(recordId) {
     dispatch({ type: "dismiss" });
     onViewRecord?.(recordId);
@@ -154,8 +176,10 @@ export default function AnatomyFindingsPanel({
   function markerLeave(region) {
     dispatch({ type: "leave", source: "marker", key: markerArea(region).key });
   }
-  function markerClick(region) {
-    dispatch({ type: "click", source: "marker", area: markerArea(region), currentSide: side });
+  function markerClick(region, el) {
+    const area = markerArea(region);
+    keepFocusOnUnpin(area, el);
+    dispatch({ type: "click", source: "marker", area, el, currentSide: side });
   }
 
   function rowEnter(event, area) {
@@ -165,8 +189,9 @@ export default function AnatomyFindingsPanel({
     dispatch({ type: "leave", source: "row", key: area.key, el: event.currentTarget });
   }
   function rowClick(event, area) {
-    rowPressRef.current = false;
-    dispatch({ type: "click", source: "row", area, el: event.currentTarget, currentSide: side });
+    const el = event.currentTarget;
+    keepFocusOnUnpin(area, el);
+    dispatch({ type: "click", source: "row", area, el, currentSide: side });
   }
 
   const findings = {
@@ -183,17 +208,10 @@ export default function AnatomyFindingsPanel({
               <li key={area.key}>
                 <button
                   type="button"
+                  data-reveal-row
                   aria-expanded={pinned && active}
+                  aria-controls={pinned && active ? popoverId : undefined}
                   aria-label={`${area.label}, ${plural(area.count, "finding")}${area.side === "back" ? ", back" : ""}`}
-                  onPointerDown={() => {
-                    if (!pinned) return;
-                    rowPressRef.current = true;
-                    // The figure's document listener consumes it during this
-                    // same event; never let it outlive the event.
-                    setTimeout(() => {
-                      rowPressRef.current = false;
-                    }, 0);
-                  }}
                   onClick={(event) => rowClick(event, area)}
                   onMouseEnter={(event) => rowEnter(event, area)}
                   onFocus={(event) => rowEnter(event, area)}
@@ -250,6 +268,7 @@ export default function AnatomyFindingsPanel({
               flipHint={flipHint}
               findingsByRegion={findingsByRegion}
               isDesktop={isDesktop}
+              popoverId={popoverId}
               activeRegion={activeRegion}
               phase={phase}
               pinned={pinned}
@@ -262,7 +281,11 @@ export default function AnatomyFindingsPanel({
             />
           </div>
 
-          <p className="mt-2 text-center text-xs tabular-nums text-slate-500">{bmiLabel(bmi)}</p>
+          {/* Blank (height kept) until the first records arrive, so it never
+              reads "BMI not recorded" while loading. */}
+          <p className="mt-2 text-center text-xs tabular-nums text-slate-500">
+            {recordsLoading && records.length === 0 ? <>&nbsp;</> : bmiLabel(bmi)}
+          </p>
         </div>
       </div>
     </OverviewCard>

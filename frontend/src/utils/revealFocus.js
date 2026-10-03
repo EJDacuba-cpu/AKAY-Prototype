@@ -2,11 +2,12 @@
  * Which body area the Visual Health Summary is revealing, and whether that
  * reveal is pinned. `focus` is null or
  * `{ source: "row" | "marker", key: "<side>:<region>", region, side, el }`
- * (`el` is the Findings row element for a row, undefined for a marker).
+ * (`el` is the Findings row element for a row, the marker button for a marker
+ * click - the opener focus returns to - and undefined for a marker hover).
  *
  * Hover reveals come and go with hover/focus; a click pins the reveal so
  * leave and blur (e.g. focus moving into the popover) never tear it down.
- * Only a second click on the same area, a dismiss (Escape, outside press,
+ * Only a second click on the same area, a dismiss (Escape, outside click,
  * opening a record) or a reset (flip, Latest/History change) unpins.
  */
 export const INITIAL_REVEAL = Object.freeze({ focus: null, pinned: false });

@@ -55,8 +55,9 @@ export function getLatestBmiRecord(records = []) {
  *
  * Records may arrive in any order; they are sorted newest first (undated
  * last) before the latest complete pair is picked. The adult category is
- * withheld ("") under age 18, where WHO adult cut-offs do not apply; an empty
- * or non-numeric age is treated as an adult.
+ * withheld ("") under age 18, where WHO adult cut-offs do not apply. The age
+ * is read from its leading number ("12 yrs" is 12); an empty, blank or
+ * non-numeric age is treated as an adult.
  */
 export function summarizeLatestBmi(records, age) {
   const ordered = (Array.isArray(records) ? records : [])
@@ -69,7 +70,7 @@ export function summarizeLatestBmi(records, age) {
   if (!record) return null;
 
   const bmi = calculateBmi(record.weight, record.height);
-  const numericAge = age === "" || age === null || age === undefined ? NaN : Number(age);
+  const numericAge = Number.parseFloat(String(age).trim());
   const isChild = Number.isFinite(numericAge) && numericAge < 18;
 
   return {
