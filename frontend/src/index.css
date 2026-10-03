@@ -457,3 +457,75 @@ textarea,
     animation: none;
   }
 }
+
+/* AnatomyFigure: crossfade on front/back flip, a two-pulse ring that hints at
+   the flip button, the marker halo breath, and the hover link-line draw
+   (--link-length is set inline by the caller to the line's pixel length). */
+@keyframes anatomyFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes anatomyFlipHint {
+  0% {
+    box-shadow: 0 0 0 0 rgb(220 38 38 / 0.55);
+  }
+
+  100% {
+    box-shadow: 0 0 0 9px rgb(220 38 38 / 0);
+  }
+}
+
+@keyframes anatomyMarkerPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+
+  50% {
+    transform: scale(1.35);
+    opacity: 0.2;
+  }
+}
+
+@keyframes anatomyLinkDraw {
+  from {
+    stroke-dashoffset: var(--link-length);
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.anatomy-fade-in {
+  animation: anatomyFadeIn 150ms ease-out;
+}
+
+.anatomy-flip-hint {
+  animation: anatomyFlipHint 600ms ease-out 2;
+}
+
+.anatomy-marker-pulse {
+  animation: anatomyMarkerPulse 1.6s ease-in-out infinite;
+}
+
+.anatomy-link-draw {
+  stroke-dasharray: var(--link-length);
+  animation: anatomyLinkDraw 350ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anatomy-fade-in,
+  .anatomy-flip-hint,
+  .anatomy-marker-pulse,
+  .anatomy-link-draw {
+    animation: none;
+  }
+}
