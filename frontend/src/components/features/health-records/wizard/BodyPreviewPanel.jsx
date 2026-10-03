@@ -11,7 +11,7 @@ import {
   resolveSpecificLocation,
   splitSpecificLocation,
 } from "../../../../utils/bodyFindings";
-import { DOT_POSITIONS, FIGURE_SHAPES } from "../../../../utils/bodyFigureGeometry";
+import { LEGACY_DOT_POSITIONS as DOT_POSITIONS, FIGURE_SHAPES } from "../../../../utils/bodyFigureGeometry";
 
 /**
  * 2D body preview for the Physical Exam & Assessment step: sits in the fixed

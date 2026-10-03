@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { BODY_REGIONS } from "../../../utils/bodyFindings";
-import { DOT_POSITIONS, FIGURE_SHAPES, FIGURE_VIEWBOX } from "../../../utils/bodyFigureGeometry";
+import { LEGACY_DOT_POSITIONS as DOT_POSITIONS, FIGURE_SHAPES, FIGURE_VIEWBOX } from "../../../utils/bodyFigureGeometry";
 import { formatShortDate } from "../../../utils/patientProfile";
 
 const MAX_CALLOUT_FINDINGS = 3;
