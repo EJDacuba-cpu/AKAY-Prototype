@@ -2,7 +2,7 @@ import { ALL_PERMISSIONS, PERMISSION_PRESETS } from "./actionPermissions.js";
 
 export function compatiblePermissions(designation, role) {
   const clinical = ["nurse", "midwife", "doctor"].includes(String(designation).toLowerCase());
-  if (clinical) return ALL_PERMISSIONS.filter(p => role === "rhu_staff" || p !== "rhu.manage");
+  if (clinical) return ALL_PERMISSIONS.filter(p => role === "rhu_staff" || !["rhu.manage", "conditions.confirm"].includes(p));
   if (String(designation).toLowerCase() === "logistics") return PERMISSION_PRESETS.inventory.permissions;
   return PERMISSION_PRESETS.encoder.permissions;
 }

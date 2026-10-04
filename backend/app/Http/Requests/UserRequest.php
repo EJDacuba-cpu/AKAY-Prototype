@@ -52,7 +52,7 @@ class UserRequest extends FormRequest
             if ($this->exists('permissions')) {
                 $clinical = in_array($designation, ['midwife', 'nurse', 'doctor'], true);
                 $allowed = $role === User::ROLE_ADMIN ? [] : ($clinical
-                    ? array_values(array_filter(\App\Services\ActionPermissions::ALL, fn ($p) => $role === User::ROLE_RHU_STAFF || $p !== 'rhu.manage'))
+                    ? array_values(array_filter(\App\Services\ActionPermissions::ALL, fn ($p) => $role === User::ROLE_RHU_STAFF || ! in_array($p, ['rhu.manage', 'conditions.confirm'], true)))
                     : ($designation === 'logistics' ? \App\Services\ActionPermissions::PRESETS['inventory'] : \App\Services\ActionPermissions::PRESETS['encoder']));
                 if (array_diff($this->input('permissions', []), $allowed)) {
                     $validator->errors()->add('permissions', 'One or more duties are incompatible with this designation or home facility.');
