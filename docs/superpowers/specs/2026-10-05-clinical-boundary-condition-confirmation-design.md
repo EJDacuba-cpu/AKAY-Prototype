@@ -29,10 +29,10 @@ the established condition.**
 | 2 | Condition statuses (RHU only): `under_evaluation`, `active`, `controlled`, `resolved`, `ruled_out`. BHC never sets any status. |
 | 3 | RHU confirms via a **Confirm Conditions** block on the referral feedback form and on the RHU health record form. Free-text `rhu_diagnosis` / "Updated Diagnosis" alone never activates anything. |
 | 4 | BHC Assessment's "Suspected Case" becomes **Health Concerns**: free text, no suggestions, no "Add to Current Conditions". |
-| 5 | Each Health Concern has one next action: **Recheck** (date; recheck task only), **Follow-up**, or **Refer to RHU**. No Emergency Referral (the RHU is not an emergency facility). |
+| 5 | Each Health Concern has one next action: **Recheck**, **Follow-up**, or **Refer to RHU**. Recheck and Follow-up both use the visit's single follow-up date (AKAY keeps one active follow-up task per record); Recheck differs in intent and is listed in the task's reason ("Recheck: <concern>"). Recheck never creates monitoring. No Emergency Referral (the RHU is not an emergency facility). |
 | 6 | Each Health Concern keeps Report as (Morbidity / Notifiable) and Include in Surveillance, chosen by the worker per reporting rules/case definitions, never auto-classified. Reporting never creates or activates a condition. Notifiable/surveillance entries may be suspected/syndromic cases. |
 | 7 | Formal BHC monitoring may start only for an RHU condition in `active` or `controlled`. `under_evaluation` is visible but not monitorable. |
-| 8 | BHC starts monitoring a newly confirmed condition only when the RHU ticked **Recommend BHC monitoring**, which creates a pending BHC follow-up task; it surfaces in the existing Start Consultation prompt like any pending follow-up. |
+| 8 | BHC starts monitoring a newly confirmed condition only when the RHU ticked **Recommend BHC monitoring**. That is a flag on the condition (not a follow-up task); the care overview lists recommended `active`/`controlled` conditions with no active monitoring as a third pending item, which surfaces in the existing Start Consultation prompt. Starting monitoring clears it from the list. |
 | 9 | The Start Consultation modal keeps its current flow (existing monitoring + pending follow-ups only); no general "Existing Active Conditions" selector. BHC services stay selected in the workspace. |
 | 10 | Existing `condition_monitorings` rows stay usable as **Legacy BHC Monitoring**; they are not labelled or backfilled as RHU-confirmed. They link to a `patient_condition` only when the RHU later confirms the same condition. |
 | 11 | Existing `currentDiseases` entries are never rewritten. All carry `source: "Consultation"` (both the old sync and the old manual editor wrote it), so their provenance is unclear: they display as **Unverified — recorded from BHC consultation**, never as patient-reported or confirmed. |
@@ -71,11 +71,12 @@ Append-only; the profile shows it as each condition's history.
 - `condition_monitorings.patient_condition_id` — nullable FK. Required for
   every monitoring started after this change; null means Legacy BHC
   Monitoring.
-- `follow_up_tasks.patient_condition_id` — nullable FK; set on the task the
-  RHU's "Recommend BHC monitoring" creates.
+- `patient_conditions.bhc_monitoring_recommended_at` / `bhc_monitoring_recommended_by`
+  — nullable; set by the RHU's "Recommend BHC monitoring" tick. `follow_up_tasks`
+  is unchanged.
 - `health_records.diagnoses[]` — unchanged storage. On a BHC record created
   after this change each entry is a Health Concern; `carePlan` takes
-  `recheck | follow_up | refer` (plus `recheckDate` for `recheck`). Older
+  `recheck | follow_up | refer`. Older
   records keep `none | monitor | refer | monitor_refer` and are read as before.
 - `medical_background.currentDiseases` — unchanged storage; new entries carry
   `source: "Patient-reported"` and an optional `note`, no status.
@@ -86,16 +87,15 @@ Append-only; the profile shows it as each condition's history.
 
 ## BHC consultation
 
-- **Start Consultation modal:** unchanged flow. A pending follow-up task with
-  a `patient_condition_id` appears as e.g. "Start BHC monitoring —
-  Hypertension (recommended by RHU, confirmed 2026-10-01)". Ticking it opens
-  the workspace with that condition's Condition Monitoring section in *start*
-  mode.
+- **Start Consultation modal:** unchanged flow. A recommended condition
+  appears as e.g. "Start BHC monitoring — Hypertension (recommended by RHU,
+  confirmed 2026-10-01)". Ticking it opens the workspace with that
+  condition's Condition Monitoring section in *start* mode.
 - **Assessment & Next Steps:** only new BHC findings. Health Concerns list
   (free text, max as today) with per-concern next action and reporting
-  controls. Recheck requires its own date and creates one recheck task per
-  concern; Follow-up uses the visit's single follow-up date; the visit still
-  has one referral (all referred concerns).
+  controls. Recheck and Follow-up require the visit's single follow-up date;
+  the task reason lists "Recheck: <concern>" for Recheck concerns. The visit
+  still has one referral (all referred concerns).
 - **Condition Monitoring section** (one per ticked monitoring / start item):
   findings and notes; Continue Monitoring / Refer back to RHU / Stop BHC
   Monitoring (reason required). In *start* mode: Start BHC Monitoring. No
@@ -106,7 +106,7 @@ Append-only; the profile shows it as each condition's history.
 - No condition write of any kind from a BHC record.
 - `ConditionMonitoringService` starts monitoring only from a
   `patient_condition_id` that belongs to the patient and is `active` or
-  `controlled`; otherwise 422. Starting fulfills the linked follow-up task.
+  `controlled`; otherwise 422.
   Continue/stop/refer of existing (incl. legacy) monitoring work as today.
 - `ClinicalRegistry` remains only for identity matching and TB's
   `monitoring_details`; it drives no sync.
@@ -130,9 +130,8 @@ Saving, in the same transaction as the feedback / record:
 - If an active Legacy BHC Monitoring row has the same identity and the new
   status is `active` / `controlled`, link it (`patient_condition_id`) — no
   new task needed.
-- "Recommend BHC monitoring" with no linked active monitoring creates a
-  pending follow-up task at the patient's BHC with `patient_condition_id`
-  set.
+- "Recommend BHC monitoring" sets `bhc_monitoring_recommended_at/by` on the
+  condition.
 
 Authorization: new action permission `conditions.confirm`, granted to the RHU
 profile only; the backend also requires an RHU working facility → otherwise
@@ -159,7 +158,7 @@ and the overview. Part 2's dashboard reuses these groups.
 ## Migration
 
 One reversible migration: create `patient_conditions` and
-`patient_condition_events`; add the two nullable FKs. No backfill: legacy
+`patient_condition_events`; add `condition_monitorings.patient_condition_id`. No backfill: legacy
 monitoring stays unlinked, `currentDiseases` is not touched.
 
 ## Testing
@@ -169,17 +168,20 @@ Backend feature tests:
 - A BHC finalize with concerns — including names matching registry entries —
   creates no condition and no `currentDiseases` change.
 - Concern reporting flags still reach the morbidity and surveillance reports.
-- Recheck creates a task, never a monitoring row.
+- Recheck requires the visit follow-up date, puts "Recheck: <concern>" in the
+  task reason, and never creates a monitoring row.
 - Start monitoring: 422 without a `patient_condition_id`, for another
   patient's condition, and for `under_evaluation` / `resolved` /
-  `ruled_out`; success fulfills the RHU follow-up task.
+  `ruled_out`; success removes the condition from the overview's
+  recommendations.
 - Legacy monitoring continues/stops as before.
 - `conditions.confirm`: 403 for BHC users and non-RHU facilities.
 - Feedback and RHU-record confirmations write the condition and its event in
   the same transaction; an unticked row writes nothing; a second confirmation
   of the same identity updates the open row; the one-open-row index holds.
 - Confirming a condition links matching Legacy BHC Monitoring.
-- "Recommend BHC monitoring" creates exactly one pending task.
+- "Recommend BHC monitoring" sets the flag; the care overview lists it until
+  monitoring starts; no follow-up task is created.
 - Patient-reported entries are saved through the consultation background
   update with the existing revision/409 rules.
 
@@ -187,10 +189,10 @@ Frontend unit tests:
 
 - Medical Conditions grouping, including the Unverified rule for legacy
   `source: "Consultation"` entries and Legacy BHC Monitoring labelling.
-- Start Consultation prompt: an RHU "start monitoring" task appears as a
+- Start Consultation prompt: an RHU monitoring recommendation appears as a
   pending item; no general condition selector exists.
-- Health Concern next action validation (Recheck needs a date; no emergency
-  option).
+- Health Concern next action validation (Recheck/Follow-up need the visit
+  follow-up date; no emergency option).
 
 ## Out of scope (later parts)
 
