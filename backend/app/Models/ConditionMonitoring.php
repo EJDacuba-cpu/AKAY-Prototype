@@ -19,7 +19,7 @@ class ConditionMonitoring extends Model
     public const STATUS_STOPPED = 'stopped';
 
     protected $fillable = [
-        'patient_id', 'barangay_health_center_id', 'condition_key', 'condition_name',
+        'patient_id', 'patient_condition_id', 'barangay_health_center_id', 'condition_key', 'condition_name',
         'condition_identity', 'status', 'started_health_record_id', 'started_at',
         'stopped_health_record_id', 'stopped_at', 'stop_reason', 'created_by', 'updated_by',
     ];
@@ -32,6 +32,17 @@ class ConditionMonitoring extends Model
     public function patient(): BelongsTo
     {
         return $this->belongsTo(Patient::class);
+    }
+
+    public function patientCondition(): BelongsTo
+    {
+        return $this->belongsTo(PatientCondition::class);
+    }
+
+    /** Legacy BHC Monitoring: started before any RHU condition was linked. */
+    public function isLegacy(): bool
+    {
+        return $this->patient_condition_id === null;
     }
 
     public function visits(): HasMany
