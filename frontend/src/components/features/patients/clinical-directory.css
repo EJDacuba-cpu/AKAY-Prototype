@@ -85,28 +85,92 @@
   }
 }
 
-/* Main column (pinned header + card list) and, from 1280px up, a permanent
-   preview panel beside it (decided in PatientsModule). */
+/* Main column (pinned header + card list) and, from 1024px up, a collapsible
+   details panel beside it (decided in PatientsModule). Collapsed it takes no
+   space at all; the Details button in the toolbar or a card click opens it. */
 .clinical-directory__layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 .clinical-directory__layout--preview {
+  grid-template-columns: minmax(0, 1fr) 0;
+  column-gap: 0;
+  transition: grid-template-columns 200ms ease, column-gap 200ms ease;
+}
+.clinical-directory__layout--preview.is-open {
   grid-template-columns: minmax(0, 1fr) 380px;
+  column-gap: 16px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .clinical-directory__layout--preview { transition: none; }
 }
 .clinical-directory__main {
   min-width: 0;
 }
-.clinical-directory__preview {
+.clinical-directory__details {
   display: flex;
-  flex-direction: column;
+  min-width: 0;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
   border: 1px solid var(--clinical-border);
   border-radius: var(--clinical-radius);
   background: var(--clinical-surface);
   box-shadow: var(--clinical-shadow);
+}
+/* Collapsed: no border or shadow bleeding into the 0px column, and hidden from
+   assistive tech once the close transition has finished. */
+.clinical-directory__details[data-open="false"] {
+  border-width: 0;
+  box-shadow: none;
+  visibility: hidden;
+  transition: visibility 0s linear 200ms;
+}
+.clinical-directory__preview {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 378px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Details toggle: a quiet secondary button left of New Patient. */
+.clinical-directory .module-toolbar__row > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.clinical-directory .module-toolbar__row > div:last-child > * { flex: 0 0 auto; width: auto; }
+.clinical-directory .clinical-directory__details-toggle {
+  order: -1;
+  display: inline-flex;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid var(--clinical-border-strong);
+  background: var(--clinical-surface);
+  color: var(--clinical-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.clinical-directory .clinical-directory__details-toggle:hover {
+  border-color: var(--clinical-red);
+  background: var(--clinical-red-pale);
+  color: var(--clinical-red-dark);
+}
+.clinical-directory .clinical-directory__details-toggle[aria-pressed="true"] {
+  border-color: var(--clinical-red);
+  background: var(--clinical-red-pale);
+  color: var(--clinical-red-dark);
+}
+.clinical-directory .clinical-directory__details-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--clinical-focus);
 }
 
 /* Pinned layout (768px and up; keep in sync with PINNED_QUERY in
@@ -309,6 +373,7 @@
   .clinical-directory .module-toolbar__row { flex-direction: column; align-items: stretch; }
   .clinical-directory .module-toolbar__controls { flex: auto; margin-left: 0; }
   .clinical-directory .module-toolbar__row > div:last-child { width: 100%; }
+  .clinical-directory .module-toolbar__row > div:last-child > * { flex: 1 1 0; }
   .clinical-directory .module-toolbar__controls > div { width: 100%; }
   .clinical-directory .module-toolbar__row input { width: 100%; opacity: 1; font-size: 16px; }
 }

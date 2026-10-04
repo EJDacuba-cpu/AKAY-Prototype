@@ -3,25 +3,47 @@ import assert from "node:assert/strict";
 import {
   getPatientKey,
   reconcileSelection,
-  toggleSelection,
+  selectCard,
 } from "./directorySelection.js";
+
+test("selectCard opens the panel on the first click", () => {
+  assert.deepEqual(selectCard({ selectedId: null, open: false }, "12"), {
+    selectedId: "12",
+    open: true,
+  });
+});
+
+test("selectCard switches patients while the panel stays open", () => {
+  assert.deepEqual(selectCard({ selectedId: "12", open: true }, "13"), {
+    selectedId: "13",
+    open: true,
+  });
+});
+
+test("selectCard closes and clears on the selected card while open", () => {
+  assert.deepEqual(selectCard({ selectedId: "12", open: true }, "12"), {
+    selectedId: null,
+    open: false,
+  });
+});
+
+test("selectCard reopens on the selected card after a chevron collapse", () => {
+  assert.deepEqual(selectCard({ selectedId: "12", open: false }, "12"), {
+    selectedId: "12",
+    open: true,
+  });
+});
+
+test("selectCard ignores a card without a key", () => {
+  const state = { selectedId: "12", open: true };
+  assert.equal(selectCard(state, ""), state);
+});
 
 test("getPatientKey prefers id, falls back to patientId, never yields 'undefined'", () => {
   assert.equal(getPatientKey({ id: 12, patientId: "P-9" }), "12");
   assert.equal(getPatientKey({ patientId: "P-9" }), "P-9");
   assert.equal(getPatientKey({}), "");
   assert.equal(getPatientKey(null), "");
-});
-
-test("toggleSelection selects, switches and clears", () => {
-  assert.equal(toggleSelection(null, "12"), "12");
-  assert.equal(toggleSelection("12", "13"), "13");
-  assert.equal(toggleSelection("12", "12"), null);
-});
-
-test("toggleSelection ignores a card without a key", () => {
-  assert.equal(toggleSelection(null, ""), null);
-  assert.equal(toggleSelection("12", ""), "12");
 });
 
 test("reconcileSelection keeps a patient that is still listed", () => {

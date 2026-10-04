@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import { Plus, Users } from "lucide-react";
+import { PanelRight, Plus, Users } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ConnectionErrorState, RefreshingIndicator } from "../../components/common";
@@ -18,7 +18,7 @@ import { isConnectionError } from "../../services/apiClient";
 import {
   getPatientKey,
   reconcileSelection,
-  toggleSelection,
+  selectCard,
 } from "../../utils/directorySelection";
 import { formatDisplayValue } from "../../utils/formatters";
 import "../../components/features/patients/clinical-directory.css";
@@ -31,8 +31,9 @@ const DEFAULT_FILTERS = {
   civilStatus: "All Civil Status",
   dateRegistered: "",
 };
-// Wide enough for the results grid AND a permanent preview panel.
-const PREVIEW_QUERY = "(min-width: 1280px)";
+// Wide enough for the results grid beside the collapsible details panel; below
+// it the summary opens in a Drawer. Keep in sync with clinical-directory.css.
+const PREVIEW_QUERY = "(min-width: 1024px)";
 // From here up the header stays pinned and only the card list scrolls; below it
 // (phones) the whole page scrolls as usual. Keep in sync with clinical-directory.css.
 const PINNED_QUERY = "(min-width: 768px)";
@@ -63,7 +64,9 @@ export default function PatientsModule() {
   const [loadingMore, setLoadingMore] = useState(false);
   const loadMoreRef = useRef(null);
   const resultsRef = useRef(null);
-  const [selectedPatientId, setSelectedPatientId] = useState(null);
+  // The details panel starts collapsed; a card click selects a patient and opens it.
+  const [panel, setPanel] = useState({ selectedId: null, open: false });
+  const { selectedId: selectedPatientId, open: panelOpen } = panel;
   const showInlinePreview = useMediaQuery(PREVIEW_QUERY);
   const pinnedHeader = useMediaQuery(PINNED_QUERY);
 
@@ -152,28 +155,33 @@ export default function PatientsModule() {
     if (resultsRef.current) resultsRef.current.scrollTop = 0;
   }, [filters]);
 
-  // Close the preview once its patient is filtered out of the directory.
+  // Clear the selection once its patient is filtered out of the directory.
   const selectedStillListed =
     reconcileSelection(selectedPatientId, filteredPatients) === selectedPatientId;
   useEffect(() => {
-    if (!selectedStillListed) setSelectedPatientId(null);
+    if (!selectedStillListed) setPanel((current) => ({ ...current, selectedId: null }));
   }, [selectedStillListed]);
 
+  const summaryShown = Boolean(selectedPatientId) && (panelOpen || !showInlinePreview);
   useEffect(() => {
-    if (!selectedPatientId) return undefined;
+    if (!summaryShown) return undefined;
     function onKeyDown(event) {
-      if (event.key === "Escape") setSelectedPatientId(null);
+      if (event.key === "Escape") closeSummary();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedPatientId]);
+  }, [summaryShown]);
 
-  function toggleSelectedPatient(patientId) {
-    setSelectedPatientId((current) => toggleSelection(current, patientId));
+  function selectPatient(patientId) {
+    setPanel((current) => selectCard(current, patientId));
+  }
+
+  function togglePanel() {
+    setPanel((current) => ({ ...current, open: !current.open }));
   }
 
   function closeSummary() {
-    setSelectedPatientId(null);
+    setPanel({ selectedId: null, open: false });
   }
 
   useEffect(() => {
@@ -257,7 +265,9 @@ export default function PatientsModule() {
       >
         <div
           className={`clinical-directory__layout${
-            showInlinePreview && !showInitialLoading ? " clinical-directory__layout--preview" : ""
+            showInlinePreview && !showInitialLoading
+              ? ` clinical-directory__layout--preview${panelOpen ? " is-open" : ""}`
+              : ""
           }`}
         >
           {/* Left column: the pinned header (title, search, filters, New Patient)
@@ -287,6 +297,21 @@ export default function PatientsModule() {
                 primaryActionTo="/bhc/patients/add"
                 primaryActionLabel="New Patient"
                 primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
+                actions={
+                  showInlinePreview && (
+                    <button
+                      type="button"
+                      className="clinical-directory__details-toggle"
+                      onClick={togglePanel}
+                      aria-pressed={panelOpen}
+                      aria-controls="patient-details-panel"
+                      title={panelOpen ? "Hide patient details" : "Show patient details"}
+                    >
+                      <PanelRight size={14} strokeWidth={2.25} aria-hidden="true" />
+                      Details
+                    </button>
+                  )
+                }
               />
             )}
 
@@ -307,24 +332,35 @@ export default function PatientsModule() {
                   loadingMore={loadingMore}
                   loadMoreRef={loadMoreRef}
                   selectedPatientId={selectedPatientId}
-                  onSelectPatient={toggleSelectedPatient}
+                  onSelectPatient={selectPatient}
                 />
               )}
             </div>
           </div>
 
           {showInlinePreview && !showInitialLoading && (
-            <aside className="clinical-directory__preview" aria-label="Patient preview">
-              {selectedPatientId ? (
-                <PatientSummaryPanel key={selectedPatientId} patientId={selectedPatientId} showTitle />
-              ) : (
-                <div className="clinical-directory__preview-empty">
-                  <p className="clinical-directory__preview-empty-title">Select a patient to preview</p>
-                  <p className="clinical-directory__preview-empty-hint">
-                    Click a patient card to see their summary here.
-                  </p>
-                </div>
-              )}
+            <aside
+              className="clinical-directory__details"
+              data-open={panelOpen}
+              aria-label="Patient details"
+              inert={!panelOpen}
+            >
+              <div
+                id="patient-details-panel"
+                className="clinical-directory__preview"
+              >
+                {panelOpen &&
+                  (selectedPatientId ? (
+                    <PatientSummaryPanel key={selectedPatientId} patientId={selectedPatientId} showTitle />
+                  ) : (
+                    <div className="clinical-directory__preview-empty">
+                      <p className="clinical-directory__preview-empty-title">Select a patient to preview</p>
+                      <p className="clinical-directory__preview-empty-hint">
+                        Click a patient card to see their summary here.
+                      </p>
+                    </div>
+                  ))}
+              </div>
             </aside>
           )}
         </div>
