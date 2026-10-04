@@ -1,5 +1,7 @@
 export const queryKeys = {
   patients: (role = "bhc") => ["patients", role],
+  // Under patients(role), so a registration's invalidation refreshes it too.
+  household: (role = "bhc", serial) => ["patients", role, "household", serial],
   patientDetails: (role = "bhc", patientId) => [
     "patient-details",
     role,

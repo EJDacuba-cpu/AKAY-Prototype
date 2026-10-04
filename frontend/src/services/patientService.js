@@ -130,6 +130,10 @@ export function normalizePatient(patient = {}) {
     patient.mother_patient || patient.motherPatient || patient.mother || null;
   const linkedMotherId =
     patient.mother_patient_id || patient.motherPatientId || linkedMother?.id || "";
+  const linkedFather =
+    patient.father_patient || patient.fatherPatient || patient.father || null;
+  const linkedFatherId =
+    patient.father_patient_id || patient.fatherPatientId || linkedFather?.id || "";
 
   return {
     ...patient,
@@ -174,7 +178,12 @@ export function normalizePatient(patient = {}) {
     mother_patient_id: linkedMotherId ? String(linkedMotherId) : "",
     motherPatient: linkedMother,
     motherName: patient.mother_name || patient.motherName || "",
+    motherBirthDate: normalizeDate(patient.mother_birth_date || patient.motherBirthDate),
+    fatherPatientId: linkedFatherId ? String(linkedFatherId) : "",
+    father_patient_id: linkedFatherId ? String(linkedFatherId) : "",
+    fatherPatient: linkedFather,
     fatherName: patient.father_name || patient.fatherName || "",
+    fatherBirthDate: normalizeDate(patient.father_birth_date || patient.fatherBirthDate),
     guardianName: patient.guardian_name || patient.guardianName || "",
     guardianRelationship:
       patient.guardian_relationship || patient.guardianRelationship || "",
@@ -247,8 +256,14 @@ function toPayload(patient = {}) {
       patient.registrationType || patient.patientType || patient.patient_type || "general",
     mother_patient_id:
       patient.motherPatientId || patient.mother_patient_id || null,
+    father_patient_id:
+      patient.fatherPatientId || patient.father_patient_id || null,
     mother_name: patient.motherName || patient.mother_name || null,
+    mother_birth_date:
+      patient.motherBirthDate || patient.mother_birth_date || null,
     father_name: patient.fatherName || patient.father_name || null,
+    father_birth_date:
+      patient.fatherBirthDate || patient.father_birth_date || null,
     guardian_name: patient.guardianName || patient.guardian_name || null,
     guardian_relationship:
       patient.guardianRelationship || patient.guardian_relationship || null,
@@ -293,6 +308,16 @@ async function listPatients(params = {}) {
     Object.entries(params).filter(([, value]) => value !== undefined && value !== ""),
   );
   const response = await apiRequest(`/patients${query.size ? `?${query}` : ""}`);
+  return unwrapList(response).map(normalizePatient);
+}
+
+/**
+ * The household behind a Family Serial Number: the registered patients the
+ * user can see who share it. An empty list means the serial is new.
+ */
+export async function getHousehold(serial) {
+  const query = new URLSearchParams({ serial });
+  const response = await apiRequest(`/patients/household?${query}`);
   return unwrapList(response).map(normalizePatient);
 }
 

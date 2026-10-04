@@ -8,6 +8,8 @@ import {
   Check,
   ChevronDown,
   ClipboardList,
+  House,
+  LoaderCircle,
   MapPinHouse,
   Users,
   UserPlus,
@@ -37,10 +39,15 @@ import {
   PhilippineContactInput,
 } from "../../components/features/patients/PatientFormComponents";
 
+import { createBhcPatient, getHousehold } from "../../services/patientService";
 import {
-  createBhcPatient,
-  getPatientDetailsListByRole,
-} from "../../services/patientService";
+  PARENT_FIELDS,
+  changeFamilySerial,
+  linkParent,
+  memberAgeLabel,
+  parentRoleFor,
+  unlinkParent,
+} from "../../utils/householdParents";
 import { isConnectionError } from "../../services/apiClient";
 import { queryKeys } from "../../utils/queryKeys";
 import { buildPatientConsultationPath } from "../../utils/consultationRoute";
@@ -113,6 +120,7 @@ const INITIAL_FORM_STATE = {
   motherPatientId: "",
   motherBirthDate: "",
   fatherName: "",
+  fatherPatientId: "",
   fatherBirthDate: "",
   familySerialNumber: "",
 
@@ -147,11 +155,6 @@ export function PatientRegistrationPage({
   const [createdPatientId, setCreatedPatientId] = useState("");
   const [form, setForm] = useState(INITIAL_FORM_STATE);
   const [fieldErrors, setFieldErrors] = useState({});
-  const { data: registeredPatients = [] } = useQuery({
-    queryKey: queryKeys.patients(queryRole),
-    queryFn: () => getPatientDetailsListByRole(queryRole),
-  });
-
   const ageDisplay = formatAgeDisplay(form.birthDate);
   const ageYears = calculateAge(form.birthDate);
   const ageInMonths = calculateAgeInMonths(form.birthDate);
@@ -176,34 +179,29 @@ export function PatientRegistrationPage({
     String(currentDate.getMonth() + 1).padStart(2, "0"),
     String(currentDate.getDate()).padStart(2, "0"),
   ].join("-");
-  const motherPatientOptions = registeredPatients
-    .filter((patient) => {
-      const age = calculateAge(patient.birthDate || patient.birthdate);
-      return patient.sex === "Female" && (age === "" || Number(age) >= 12);
-    })
-    .filter((patient) => {
-      const search = form.motherName.trim().toLowerCase();
-      if (!search) return true;
-      return getMotherPatientLabel(patient).toLowerCase().includes(search);
-    });
-  const linkedMother = form.motherPatientId
-    ? registeredPatients.find(
-        (patient) => String(patient.id) === String(form.motherPatientId),
-      )
-    : null;
-  const linkedMotherBirthDate =
-    linkedMother?.birthDate || linkedMother?.birthdate || "";
-  const fatherAgeDisplay = formatAgeDisplay(form.fatherBirthDate);
-  const motherAgeDisplay = formatAgeDisplay(form.motherBirthDate);
-  const linkedMotherHelper = linkedMother
-    ? [
-        "Linked registered mother",
-        linkedMotherBirthDate ? `DOB ${formatDisplayDate(linkedMotherBirthDate)}` : "",
-        linkedMother.barangay || "",
-      ]
-        .filter(Boolean)
-        .join(" - ")
-    : "";
+  // The Family Serial Number is the household: once typed, its registered
+  // members are listed so the parents can be linked from them.
+  const typedSerial = form.familySerialNumber.trim();
+  const lookupSerial = useDebouncedValue(typedSerial, 400);
+  const {
+    data: householdMembers = [],
+    isFetching: householdFetching,
+    isError: householdFailed,
+  } = useQuery({
+    queryKey: queryKeys.household(queryRole, lookupSerial),
+    queryFn: () => getHousehold(lookupSerial),
+    enabled: isChildRegistration && lookupSerial !== "",
+    staleTime: 30_000,
+  });
+  const householdStatus = !typedSerial
+    ? "idle"
+    : typedSerial !== lookupSerial || householdFetching
+      ? "searching"
+      : householdFailed
+        ? "error"
+        : householdMembers.length > 0
+          ? "found"
+          : "new";
 
 
   // --- HANDLERS ---
@@ -293,6 +291,7 @@ function handleBirthDateChange(valueOrEvent) {
     motherPatientId: nextIsChild ? prev.motherPatientId : "",
     motherBirthDate: nextIsChild ? prev.motherBirthDate : "",
     fatherName: nextIsChild ? prev.fatherName : "",
+    fatherPatientId: nextIsChild ? prev.fatherPatientId : "",
     fatherBirthDate: nextIsChild ? prev.fatherBirthDate : "",
 
     // clear EPI-only fields kapag hindi na EPI age
@@ -307,71 +306,25 @@ function handleBirthDateChange(valueOrEvent) {
       [name]: value,
     }));
   }
-  function handleMotherNameChange(value) {
+  function handleFamilySerialChange(event) {
+    const { value } = event.target;
+    setForm((prev) => changeFamilySerial(prev, value));
+  }
+
+  function handleUseAsParent(role, member) {
+    const fields = PARENT_FIELDS[role];
     setFieldErrors((prev) => ({
       ...prev,
-      motherName: "",
-      motherPatientId: "",
+      [fields.name]: "",
+      [fields.birthDate]: "",
     }));
-
-    setForm((prev) => ({
-      ...prev,
-      motherName: value,
-      motherPatientId: "",
-      motherBirthDate: "",
-      fatherName: "",
-      fatherBirthDate: "",
-      familySerialNumber: "",
-    }));
+    setForm((prev) => linkParent(prev, role, member));
   }
-  function handleMotherPatientSelect(value) {
-    const selectedMother = registeredPatients.find(
-      (patient) => String(patient.id) === String(value),
-    );
 
-    setFieldErrors((prev) => ({ ...prev, motherName: "", motherPatientId: "" }));
-    setForm((prev) => ({
-      ...prev,
-      motherPatientId: value,
-      motherName: selectedMother
-        ? selectedMother.fullName || selectedMother.name || prev.motherName
-        : prev.motherName,
-      motherBirthDate: selectedMother
-        ? selectedMother.birthDate || selectedMother.birthdate || prev.motherBirthDate
-        : prev.motherBirthDate,
-      familySerialNumber: selectedMother
-        ? selectedMother.familySerialNumber ||
-          selectedMother.family_serial_number ||
-          prev.familySerialNumber
-        : prev.familySerialNumber,
-      fatherName: selectedMother
-        ? selectedMother.spouseName ||
-          selectedMother.spouse_name ||
-          prev.fatherName
-        : prev.fatherName,
-    }));
+  function handleUnlinkParent(role) {
+    setForm((prev) => unlinkParent(prev, role));
   }
-  function clearMotherLink() {
-    setFieldErrors((prev) => ({
-      ...prev,
-      motherName: "",
-      motherPatientId: "",
-      motherBirthDate: "",
-      fatherName: "",
-      fatherBirthDate: "",
-      familySerialNumber: "",
-    }));
 
-    setForm((prev) => ({
-      ...prev,
-      motherName: "",
-      motherPatientId: "",
-      motherBirthDate: "",
-      fatherName: "",
-      fatherBirthDate: "",
-      familySerialNumber: "",
-    }));
-  }
     function validateForm() {
     const nextErrors = {};
 
@@ -436,6 +389,7 @@ function handleBirthDateChange(valueOrEvent) {
           motherPatientId: form.motherPatientId || null,
           motherBirthDate: form.motherBirthDate || null,
           fatherName: form.fatherName || null,
+          fatherPatientId: form.fatherPatientId || null,
           fatherBirthDate: form.fatherBirthDate || null,
           birthPlace: isEpiTargetAge ? form.birthPlace || null : null,
           birthTime: isEpiTargetAge ? form.birthTime || null : null,
@@ -447,6 +401,7 @@ function handleBirthDateChange(valueOrEvent) {
           motherPatientId: null,
           motherBirthDate: null,
           fatherName: null,
+          fatherPatientId: null,
           fatherBirthDate: null,
           birthPlace: null,
           birthTime: null,
@@ -805,91 +760,43 @@ function handleBirthDateChange(valueOrEvent) {
               <SectionHeader
                 icon={Users}
                 title="Parent / Household Information"
-                description="Additional parent and household details for child patients."
+                description="The Family Serial Number links this child to their household."
               />
 
-            <div className="space-y-6">
-              {/* Mother Information */}
-              <div className="space-y-3">
-
+              <div className="space-y-5">
                 <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  <MotherCombobox
-                    value={form.motherPatientId}
-                    inputValue={form.motherName}
-                    options={motherPatientOptions}
-                    helperText={linkedMotherHelper}
-                    error={fieldErrors.motherName}
-                    onInputChange={handleMotherNameChange}
-                    onChange={handleMotherPatientSelect}
-                    onClear={clearMotherLink}
-                    required
-                  />
-
-                  <DatePickerField
-                    label="Mother Date of Birth"
-                    name="motherBirthDate"
-                    value={form.motherBirthDate}
-                    mode="birthdate"
-                    maxDate={todayIso}
-                    disableFuture
-                    onChange={(value) =>
-                      handleParentBirthDateChange("motherBirthDate", value)
-                    }
-                    error={fieldErrors.motherBirthDate}
-                  />
-
-                  <FormInput
-                    label="Mother Age"
-                    name="motherAge"
-                    value={motherAgeDisplay}
-                    readOnly
-                    className="bg-gray-50"
-                  />
-                </div>
-              </div>
-
-              {/* Father and Household Information */}
-              <div className="space-y-3 border-t border-[#EEF2F6] pt-5">
-
-                <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  <FormInput
-                    label="Name of Father"
-                    name="fatherName"
-                    value={form.fatherName}
-                    onChange={handleChange}
-                  />
-
-                  <DatePickerField
-                    label="Father Date of Birth"
-                    name="fatherBirthDate"
-                    value={form.fatherBirthDate}
-                    mode="birthdate"
-                    maxDate={todayIso}
-                    disableFuture
-                    onChange={(value) =>
-                      handleParentBirthDateChange("fatherBirthDate", value)
-                    }
-                    error={fieldErrors.fatherBirthDate}
-                  />
-
-                  <FormInput
-                    label="Father Age"
-                    name="fatherAge"
-                    value={fatherAgeDisplay}
-                    readOnly
-                    className="bg-gray-50"
-                  />
-
                   <FormInput
                     label="Family Serial Number"
                     name="familySerialNumber"
                     value={form.familySerialNumber}
-                    onChange={handleChange}
-                    placeholder="Optional household serial"
+                    onChange={handleFamilySerialChange}
+                    placeholder="Enter household serial"
+                    autoComplete="off"
                   />
                 </div>
+
+                <HouseholdPanel
+                  status={householdStatus}
+                  serial={typedSerial}
+                  members={householdMembers}
+                  form={form}
+                  onUseAsParent={handleUseAsParent}
+                />
+
+                {Object.keys(PARENT_FIELDS).map((role) => (
+                  <ParentFields
+                    key={role}
+                    role={role}
+                    form={form}
+                    errors={fieldErrors}
+                    todayIso={todayIso}
+                    required={role === "mother"}
+                    onChange={handleChange}
+                    onBirthDateChange={handleParentBirthDateChange}
+                    onUnlink={handleUnlinkParent}
+                  />
+                ))}
               </div>
-            </div>
             </section>
 
             {isEpiTargetAge && (
@@ -998,131 +905,180 @@ export default function AddPatient() {
   return <PatientRegistrationPage />;
 }
 
-function MotherCombobox({
-  value,
-  inputValue,
-  options,
-  helperText,
-  error,
-  required,
-  onInputChange,
-  onChange,
-  onClear,
-}) {
-  const [open, setOpen] = useState(false);
-  const wrapperRef = useRef(null);
-  const selected = Boolean(value);
+/**
+ * The household behind the typed Family Serial Number: its registered members,
+ * each offered as Mother or Father, or a note that the serial is new.
+ */
+function HouseholdPanel({ status, serial, members, form, onUseAsParent }) {
+  if (status === "idle") return null;
 
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (!wrapperRef.current?.contains(event.target)) {
-        setOpen(false);
-      }
-    }
+  if (status === "searching") {
+    return (
+      <p className="flex items-center gap-2 text-xs text-[#6B7280]" aria-live="polite">
+        <LoaderCircle size={14} className="animate-spin text-[#B91C1C]" />
+        Checking household {serial}…
+      </p>
+    );
+  }
 
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  if (status === "error") {
+    return (
+      <p className="rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-xs text-[#6B7280]" aria-live="polite">
+        Could not check this serial right now. Parent details can still be
+        entered manually below.
+      </p>
+    );
+  }
 
-  function selectMother(patient) {
-    onChange(patient.id);
-    setOpen(false);
+  if (status === "new") {
+    return (
+      <div
+        className="flex items-start gap-3 rounded-xl border border-dashed border-[#D1D5DB] bg-[#F9FAFB] px-4 py-3"
+        aria-live="polite"
+      >
+        <House size={16} className="mt-0.5 shrink-0 text-[#9CA3AF]" />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-[#374151]">
+            No existing household found
+          </p>
+          <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
+            A new household will be created under{" "}
+            <span className="font-semibold text-[#374151]">{serial}</span> when
+            this patient is saved. Enter the parents below.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div ref={wrapperRef} className="relative min-w-0 sm:col-span-2 xl:col-span-1">
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-        Mother
-        {required && <span className="text-red-400"> *</span>}
-      </label>
-      <div className="relative">
-        <input
-          type="text"
-          value={inputValue}
-          onChange={(event) => {
-            onInputChange(event.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          placeholder="Search registered mother or type name"
-          className={`h-10 w-full rounded-xl border bg-white px-3 pr-16 text-sm text-[#111827] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
-            error ? "border-[#B91C1C]" : "border-[#E5E7EB]"
-          }`}
-        />
-        <button
-          type="button"
-          onClick={() => (selected ? onClear() : setOpen((current) => !current))}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-[11px] font-semibold text-[#B91C1C] hover:bg-red-50"
-        >
-          {selected ? "Clear" : "Search"}
-        </button>
+    <div className="overflow-hidden rounded-xl border border-[#FECACA]" aria-live="polite">
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#FECACA] bg-[#FEF2F2] px-4 py-2.5">
+        <House size={15} className="shrink-0 text-[#B91C1C]" />
+        <p className="text-sm font-semibold text-[#991B1B]">Household Found</p>
+        <span className="text-xs text-[#B91C1C]/80">
+          {members.length} registered {members.length === 1 ? "member" : "members"}
+        </span>
       </div>
 
-      {helperText && (
-        <p className="mt-1 text-[11px] font-medium text-emerald-700">
-          {helperText}
-        </p>
-      )}
-      {error && (
-        <p className="mt-1 text-[11px] font-medium leading-relaxed text-[#B91C1C]">
-          {error}
-        </p>
-      )}
+      <ul className="divide-y divide-[#F1F5F9] bg-white">
+        {members.map((member) => {
+          const role = parentRoleFor(member);
+          const fields = role ? PARENT_FIELDS[role] : null;
+          const linked = fields && String(form[fields.id]) === String(member.id);
 
-      {open && options.length > 0 && (
-        <div className="absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-[#E5E7EB] bg-white py-1 shadow-lg shadow-slate-900/[0.08]">
-          {options.slice(0, 8).map((patient) => (
-            <button
-              key={patient.id}
-              type="button"
-              onClick={() => selectMother(patient)}
-              className="block w-full px-3 py-2 text-left text-sm hover:bg-[#F8FAFC]"
+          return (
+            <li
+              key={member.id}
+              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-4 py-2.5"
             >
-              <span className="block truncate font-semibold text-[#0F172A]">
-                {patient.fullName || patient.name || "Unnamed patient"}
-              </span>
-              <span className="block truncate text-[11px] text-[#64748B]">
-                {getMotherPatientMeta(patient)}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-[#1F2937]">
+                  {member.fullName || "Unnamed patient"}
+                </p>
+                <p className="text-[11px] text-[#6B7280]">
+                  {memberAgeLabel(member)} · {member.sex || "Sex not recorded"}
+                </p>
+              </div>
+
+              {linked ? (
+                <span className="inline-flex items-center gap-1 rounded-lg bg-[#B91C1C] px-2.5 py-1 text-[11px] font-semibold text-white">
+                  <Check size={12} />
+                  {fields.label}
+                </span>
+              ) : fields ? (
+                <button
+                  type="button"
+                  onClick={() => onUseAsParent(role, member)}
+                  className="rounded-lg border border-[#FECACA] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#B91C1C] transition hover:border-[#B91C1C] hover:bg-[#FEF2F2]"
+                >
+                  Use as {fields.label}
+                </button>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
 
-function getMotherPatientLabel(patient = {}) {
-  return [
-    patient.fullName || patient.name || "Unnamed patient",
-    patient.patientId || patient.id ? `Patient ID: ${patient.patientId || patient.id}` : "",
-    patient.barangay || "",
-  ]
-    .filter(Boolean)
-    .join(" - ");
+/**
+ * One parent's Name / Date of Birth / Age. A parent linked from the household
+ * is locked to their registered record until unlinked.
+ */
+function ParentFields({
+  role,
+  form,
+  errors,
+  todayIso,
+  required,
+  onChange,
+  onBirthDateChange,
+  onUnlink,
+}) {
+  const fields = PARENT_FIELDS[role];
+  const linked = Boolean(form[fields.id]);
+
+  return (
+    <div className="grid min-w-0 gap-4 border-t border-[#EEF2F6] pt-5 sm:grid-cols-2 xl:grid-cols-3">
+      <FormInput
+        label={`${fields.label} Name`}
+        name={fields.name}
+        value={form[fields.name]}
+        onChange={onChange}
+        readOnly={linked}
+        error={errors[fields.name]}
+        required={required}
+        helperText={
+          linked ? (
+            <span className="inline-flex flex-wrap items-center gap-1.5 font-medium text-[#B91C1C]">
+              <Check size={11} />
+              Linked to registered patient
+              <span className="text-[#D1D5DB]">·</span>
+              <button
+                type="button"
+                onClick={() => onUnlink(role)}
+                className="font-semibold text-[#6B7280] underline-offset-2 hover:text-[#B91C1C] hover:underline"
+              >
+                Unlink
+              </button>
+            </span>
+          ) : null
+        }
+      />
+
+      <DatePickerField
+        label={`${fields.label} Date of Birth`}
+        name={fields.birthDate}
+        value={form[fields.birthDate]}
+        mode="birthdate"
+        maxDate={todayIso}
+        disableFuture
+        disabled={linked}
+        onChange={(value) => onBirthDateChange(fields.birthDate, value)}
+        error={errors[fields.birthDate]}
+      />
+
+      <FormInput
+        label={`${fields.label} Age`}
+        name={`${role}Age`}
+        value={formatAgeDisplay(form[fields.birthDate])}
+        readOnly
+      />
+    </div>
+  );
 }
 
-function getMotherPatientMeta(patient = {}) {
-  return [
-    patient.patientId || patient.id ? `Patient ID: ${patient.patientId || patient.id}` : "",
-    patient.birthDate || patient.birthdate
-      ? `DOB ${formatDisplayDate(patient.birthDate || patient.birthdate)}`
-      : "",
-    patient.barangay || "",
-  ]
-    .filter(Boolean)
-    .join(" - ");
-}
+function useDebouncedValue(value, delay) {
+  const [debounced, setDebounced] = useState(value);
 
-function formatDisplayDate(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "2-digit",
-    year: "numeric",
-  });
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return debounced;
 }
 
 function SexRadioGroup({

@@ -68,6 +68,17 @@ test("the form reads alias keys and defaults the municipality", () => {
   assert.equal(getPatientValue({}, ["x"]), "Not recorded");
 });
 
+test("a profile edit carries the household parent links and birthdates through", () => {
+  const form = createPatientForm({
+    mother_patient_id: 7, mother_birth_date: "1992-03-04",
+    father_patient_id: 8, father_birth_date: "1990-05-06",
+  });
+  assert.equal(form.motherPatientId, 7);
+  assert.equal(form.motherBirthDate, "1992-03-04");
+  assert.equal(form.fatherPatientId, 8);
+  assert.equal(form.fatherBirthDate, "1990-05-06");
+});
+
 test("overdue pending follow-ups read as no-show and resolved ones stay resolved", () => {
   const today = "2026-09-26";
   assert.equal(getEffectiveFollowUpState({ dueDate: "2026-09-26" }, today), "due_today");

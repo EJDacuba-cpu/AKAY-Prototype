@@ -27,8 +27,11 @@ class Patient extends Model
         'spouse_occupation',
         'registration_type',
         'mother_patient_id',
+        'father_patient_id',
         'mother_name',
+        'mother_birth_date',
         'father_name',
+        'father_birth_date',
         'guardian_name',
         'guardian_relationship',
         'guardian_contact_number',
@@ -56,6 +59,8 @@ class Patient extends Model
         // displayed one day early, and written back one day early on the next
         // profile save. A birthdate is a calendar date; it has no instant.
         'birthdate' => 'date:Y-m-d',
+        'mother_birth_date' => 'date:Y-m-d',
+        'father_birth_date' => 'date:Y-m-d',
         'birth_time' => 'datetime:H:i',
         'birth_weight' => 'decimal:2',
         'birth_height' => 'decimal:2',
@@ -96,6 +101,11 @@ class Patient extends Model
     public function mother(): BelongsTo
     {
         return $this->belongsTo(self::class, 'mother_patient_id');
+    }
+
+    public function father(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'father_patient_id');
     }
 
     public function children(): HasMany

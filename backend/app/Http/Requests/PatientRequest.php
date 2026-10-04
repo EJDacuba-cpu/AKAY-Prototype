@@ -24,6 +24,9 @@ class PatientRequest extends FormRequest
             'husbandOccupation' => 'spouse_occupation',
             'purokArea' => 'purok_area',
             'motherPatientId' => 'mother_patient_id',
+            'fatherPatientId' => 'father_patient_id',
+            'motherBirthDate' => 'mother_birth_date',
+            'fatherBirthDate' => 'father_birth_date',
         ];
 
         $mapped = [];
@@ -61,8 +64,11 @@ class PatientRequest extends FormRequest
             'spouse_occupation' => ['nullable', 'string', 'max:255'],
             'registration_type' => ['nullable', Rule::in(['general', 'child'])],
             'mother_patient_id' => ['nullable', 'exists:patients,id'],
+            'father_patient_id' => ['nullable', 'exists:patients,id'],
             'mother_name' => ['nullable', 'string', 'max:255'],
+            'mother_birth_date' => ['nullable', 'date', 'before_or_equal:today'],
             'father_name' => ['nullable', 'string', 'max:255'],
+            'father_birth_date' => ['nullable', 'date', 'before_or_equal:today'],
             'guardian_name' => ['nullable', 'string', 'max:255'],
             'guardian_relationship' => ['nullable', 'string', 'max:100'],
             'guardian_contact_number' => ['nullable', 'string', 'max:50'],

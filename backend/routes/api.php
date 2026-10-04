@@ -58,6 +58,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
     });
 
     Route::middleware(['facility.assigned', 'actions.allowed'])->group(function () {
+        Route::get('patients/household', [PatientController::class, 'household']);
         Route::apiResource('patients', PatientController::class);
         Route::apiResource('health-records', HealthRecordController::class);
         Route::get('patients/{patient}/care-overview', [\App\Http\Controllers\Api\CareOverviewController::class, 'show']);

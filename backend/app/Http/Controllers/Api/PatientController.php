@@ -81,10 +81,39 @@ class PatientController extends Controller
         return response()->json(['data' => $results]);
     }
 
+    /**
+     * The household behind a Family Serial Number: every active patient the
+     * user can see who shares the serial, oldest first so the parents lead.
+     * Identity fields only - it is a picker for linking a child's parents.
+     */
+    public function household(Request $request)
+    {
+        $serial = trim((string) $request->validate([
+            'serial' => ['required', 'string', 'max:100'],
+        ])['serial']);
+
+        $members = $this->facilityAccess
+            ->scopePatients(Patient::query(), $request->user())
+            ->where('family_serial_number', $serial)
+            ->where(fn ($query) => $query
+                ->whereNull('status')
+                ->orWhere('status', '!=', 'inactive'))
+            ->orderByRaw('birthdate IS NULL, birthdate')
+            ->limit(50)
+            ->get()
+            ->map(fn (Patient $patient) => [
+                ...$patient->only(['id', 'first_name', 'middle_name', 'last_name', 'sex', 'age']),
+                'birthdate' => $patient->birthdate?->toDateString(),
+                'full_name' => $patient->full_name,
+            ]);
+
+        return response()->json(['data' => $members]);
+    }
+
     public function store(PatientRequest $request, AuditLogger $auditLogger)
     {
         $data = $this->normalizeProfileFields($request->validated());
-        $this->authorizeMotherLink($request, $data['mother_patient_id'] ?? null);
+        $this->authorizeParentLinks($request, $data);
         $user = $request->user();
         $canAccessHistory = $user->isAdmin() || ActionPermissions::allows($user, 'clinical.history');
         $data['created_by'] = $user->id;
@@ -104,10 +133,11 @@ class PatientController extends Controller
         $patient = Patient::create($data);
         $auditLogger->log($request, 'created', 'patients', "Created patient {$patient->full_name}.");
 
-        $patient->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother']);
+        $patient->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother', 'father']);
         if (! $canAccessHistory) {
-            $response = $patient->makeHidden(['medical_background', 'mother'])->toArray();
+            $response = $patient->makeHidden(['medical_background', 'mother', 'father'])->toArray();
             $response['mother'] = $patient->mother ? PatientIdentity::response($patient->mother) : null;
+            $response['father'] = $patient->father ? PatientIdentity::response($patient->father) : null;
 
             return response()->json(['data' => $response], 201);
         }
@@ -148,6 +178,8 @@ class PatientController extends Controller
                 ->with('feedback'),
             'mother' => fn ($query) => $this->facilityAccess
                 ->scopePatients($query, $user),
+            'father' => fn ($query) => $this->facilityAccess
+                ->scopePatients($query, $user),
         ]);
         $patient->loadCount([
             'healthRecords' => fn ($query) => $this->facilityAccess
@@ -173,13 +205,13 @@ class PatientController extends Controller
                 $data['facility_id']
             );
         }
-        $this->authorizeMotherLink($request, $data['mother_patient_id'] ?? null);
+        $this->authorizeParentLinks($request, $data);
         $patient->update($data);
         $auditLogger->log($request, 'updated', 'patients', "Updated patient {$patient->full_name}.");
 
         return response()->json(['data' => ! $request->user()->isAdmin() && ! \App\Services\ActionPermissions::allows($request->user(), 'clinical.history')
             ? \App\Services\PatientIdentity::response($patient->fresh())
-            : $patient->fresh()->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother'])]);
+            : $patient->fresh()->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother', 'father'])]);
     }
 
     public function destroy(Request $request, Patient $patient, AuditLogger $auditLogger)
@@ -191,23 +223,35 @@ class PatientController extends Controller
         return response()->json(['data' => $patient->fresh()]);
     }
 
-    private function authorizeMotherLink(Request $request, mixed $motherPatientId): void
+    /**
+     * A linked mother or father must be a registered patient the user can see,
+     * of the matching sex, and not the patient themself.
+     */
+    private function authorizeParentLinks(Request $request, array $data): void
     {
-        if (! $motherPatientId) {
-            return;
+        foreach (['mother' => 'Female', 'father' => 'Male'] as $role => $sex) {
+            $parentId = $data["{$role}_patient_id"] ?? null;
+            if (! $parentId) {
+                continue;
+            }
+
+            $currentPatient = $request->route('patient');
+            abort_if(
+                $currentPatient instanceof Patient
+                    && (string) $currentPatient->id === (string) $parentId,
+                422,
+                "A patient cannot be linked as their own {$role}."
+            );
+
+            $parent = Patient::find($parentId);
+            abort_unless($parent, 422, "Selected {$role} patient was not found.");
+            $this->facilityAccess->authorizePatient($request->user(), $parent);
+            abort_unless(
+                $parent->sex === $sex,
+                422,
+                "The linked {$role} must be a {$sex} patient."
+            );
         }
-
-        $currentPatient = $request->route('patient');
-        abort_if(
-            $currentPatient instanceof Patient
-                && (string) $currentPatient->id === (string) $motherPatientId,
-            422,
-            'A patient cannot be linked as their own mother.'
-        );
-
-        $mother = Patient::find($motherPatientId);
-        abort_unless($mother, 422, 'Selected mother patient was not found.');
-        $this->facilityAccess->authorizePatient($request->user(), $mother);
     }
 
     private function normalizeProfileFields(array $data, ?Patient $patient = null): array
@@ -222,6 +266,9 @@ class PatientController extends Controller
             'nhts_status',
             'family_serial_number',
             'mother_patient_id',
+            'father_patient_id',
+            'mother_birth_date',
+            'father_birth_date',
         ] as $field) {
             if (array_key_exists($field, $data) && $data[$field] === '') {
                 $data[$field] = null;
