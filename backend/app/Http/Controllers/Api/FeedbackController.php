@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\FeedbackRequest;
 use App\Models\Feedback;
 use App\Services\FacilityAccessService;
+use App\Services\PatientConditions;
 use App\Services\ReferralWorkflowService;
 use Illuminate\Http\Request;
 
@@ -38,6 +39,11 @@ class FeedbackController extends Controller
     public function store(FeedbackRequest $request, ReferralWorkflowService $workflow)
     {
         $data = $request->validated();
+        abort_if(
+            ! empty($data['condition_confirmations']) && ! PatientConditions::canConfirm($request->user()),
+            403,
+            'Only RHU staff can confirm a condition.'
+        );
         $feedback = $workflow->completeWithFeedback(
             $request,
             (int) $data['referral_id'],

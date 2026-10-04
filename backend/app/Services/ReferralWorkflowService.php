@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\ReferralWorkflowConflictException;
 use App\Models\AuditLog;
 use App\Models\Feedback;
+use App\Models\PatientCondition;
 use App\Models\Referral;
 use App\Models\ReferralUpdate;
 use App\Models\User;
@@ -18,7 +19,8 @@ class ReferralWorkflowService
         private readonly FacilityAccessService $facilityAccess,
         private readonly UserNotificationService $notifications,
         private readonly AuditLogger $auditLogger,
-        private readonly AkayCacheService $cache
+        private readonly AkayCacheService $cache,
+        private readonly PatientConditions $patientConditions
     ) {
     }
 
@@ -101,7 +103,10 @@ class ReferralWorkflowService
         int $referralId,
         array $feedbackData
     ): Feedback {
-        $feedback = DB::transaction(function () use ($request, $referralId, $feedbackData): Feedback {
+        $confirmations = $feedbackData['condition_confirmations'] ?? [];
+        unset($feedbackData['condition_confirmations']);
+
+        $feedback = DB::transaction(function () use ($request, $referralId, $feedbackData, $confirmations): Feedback {
             $referral = $this->lockReferralForTransition($referralId);
             $this->facilityAccess->authorizeRhuReferralAction($request->user(), $referral);
             $current = $this->canonicalStatusOrConflict(
@@ -133,6 +138,16 @@ class ReferralWorkflowService
                 'created_by' => $request->user()->id,
                 'received_at' => $feedbackData['received_at'] ?? now(),
             ]);
+
+            if ($confirmations !== []) {
+                $this->patientConditions->apply(
+                    $referral->patient,
+                    $confirmations,
+                    $request->user(),
+                    PatientCondition::SOURCE_RHU_FEEDBACK,
+                    $feedback->id
+                );
+            }
 
             $referral->update(['status' => Referral::STATUS_COMPLETED]);
             $this->recordHistory(

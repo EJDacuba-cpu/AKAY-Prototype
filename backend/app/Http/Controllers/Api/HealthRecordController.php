@@ -10,6 +10,7 @@ use App\Models\FollowUpTask;
 use App\Models\HealthRecord;
 use App\Models\HealthRecordDraft;
 use App\Models\Patient;
+use App\Models\PatientCondition;
 use App\Services\AkayCacheService;
 use App\Services\AuditLogger;
 use App\Services\ClinicalRegistry;
@@ -22,6 +23,7 @@ use App\Services\HealthRecordDraftService;
 use App\Services\HealthRecordIdempotencyService;
 use App\Services\MedicineStockService;
 use App\Services\PatientBackground;
+use App\Services\PatientConditions;
 use App\Services\ReferralCreationService;
 use App\Services\ReferralHoldService;
 use App\Services\ReferralRoutingService;
@@ -91,7 +93,8 @@ class HealthRecordController extends Controller
         CurrentConditionsSync $currentConditions,
         ClinicalRegistry $clinicalRegistry,
         ConditionMonitoringService $monitoring,
-        PatientBackground $patientBackground
+        PatientBackground $patientBackground,
+        PatientConditions $patientConditions
     ) {
         $data = $request->validated();
         $patient = Patient::findOrFail($data['patient_id']);
@@ -111,6 +114,11 @@ class HealthRecordController extends Controller
         unset($data['background_update']);
         if ($backgroundUpdate !== null && ! PatientBackground::canAccess($request->user())) {
             abort(403, 'You do not have permission to update the patient background.');
+        }
+        $conditionConfirmations = $data['condition_confirmations'] ?? [];
+        unset($data['condition_confirmations']);
+        if ($conditionConfirmations !== [] && ! PatientConditions::canConfirm($request->user())) {
+            abort(403, 'Only RHU staff can confirm a condition.');
         }
 
         if ($existing = HealthRecord::query()
@@ -190,7 +198,9 @@ class HealthRecordController extends Controller
                 $monitoring,
                 $carePlan,
                 $backgroundUpdate,
-                $patientBackground
+                $patientBackground,
+                $conditionConfirmations,
+                $patientConditions
             ) {
                 $lockedDraft = $draftPublicId
                     ? $drafts->lockForOfficialSave(
@@ -247,6 +257,15 @@ class HealthRecordController extends Controller
                     'encoded_by' => $lockedDraft?->owner_user_id ?? $request->user()->id,
                     'background_changes' => $backgroundChanges ?: null,
                 ]);
+                if ($conditionConfirmations !== []) {
+                    $patientConditions->apply(
+                        $patient,
+                        $conditionConfirmations,
+                        $request->user(),
+                        PatientCondition::SOURCE_RHU_RECORD,
+                        $record->id
+                    );
+                }
                 // Registered diagnoses (conditionKey set) always sync; free-text
                 // diagnoses sync only when the user ticked "Add to Current Conditions".
                 $conditionsChange = $currentConditions->sync(

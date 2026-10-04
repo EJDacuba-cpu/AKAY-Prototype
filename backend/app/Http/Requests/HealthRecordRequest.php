@@ -7,6 +7,7 @@ use App\Models\Referral;
 use App\Services\ConsultationPrograms;
 use App\Services\CurrentConditionsSync;
 use App\Services\PatientBackground;
+use App\Services\PatientConditions;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -315,6 +316,11 @@ class HealthRecordRequest extends FormRequest
             ...($this->isMethod('post')
                 ? PatientBackground::rules('background_update', 'base_revisions')
                 : ['background_update' => ['prohibited']]),
+            // RHU staff confirming a condition's clinical status from an RHU
+            // record (create only; the record itself is immutable afterwards).
+            ...($this->isMethod('post')
+                ? PatientConditions::rules()
+                : ['condition_confirmations' => ['prohibited']]),
             'care_plan' => ['nullable', 'array'],
             'care_plan.continued_follow_up_task_ids' => ['nullable', 'array', 'max:20'],
             'care_plan.continued_follow_up_task_ids.*' => ['integer', 'distinct'],
