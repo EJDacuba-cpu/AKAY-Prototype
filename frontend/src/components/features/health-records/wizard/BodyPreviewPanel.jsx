@@ -102,9 +102,9 @@ function BodyDot({ region, label, position, count, active, hovered, readOnly, on
  * goes through onOpen regardless of hover state. Counts and previews cover
  * only the side shown.
  */
-function BodyFigure({ findings, sex, side, onToggleSide, countByRegion, activeRegion, readOnly, isDesktop, onOpen }) {
+function BodyFigure({ findings, sex, birthDate, side, onToggleSide, countByRegion, activeRegion, readOnly, isDesktop, onOpen }) {
   const [hoveredRegion, setHoveredRegion] = useState(null);
-  const figure = getFigureKey(sex);
+  const figure = getFigureKey(sex, birthDate);
 
   function hoverStart(region) {
     if (!isDesktop || activeRegion) return;
@@ -133,6 +133,7 @@ function BodyFigure({ findings, sex, side, onToggleSide, countByRegion, activeRe
   return (
     <AnatomyFigure
       sex={sex}
+      birthDate={birthDate}
       side={side}
       onToggleSide={onToggleSide}
       label={side === "front" ? "Front-facing body figure" : "Back-facing body figure"}
@@ -505,6 +506,8 @@ export function getBodyRegionAnchor(region) {
  * @param onDialogChange opens (object) or closes (null) the input; owned by the
  *                       page so the Physical Examination list can open it too
  * @param sex            the patient's sex; picks the male or female figure
+ * @param birthDate      the patient's date of birth; through 12 completed months
+ *                       it picks the infant figure instead, whatever the sex
  * @param side           "front" | "back" - the figure side shown, owned by the page
  * @param onSideChange   receives the next side when the flip button is used
  */
@@ -515,6 +518,7 @@ export default function BodyPreviewPanel({
   dialog,
   onDialogChange,
   sex,
+  birthDate,
   side = "front",
   onSideChange,
 }) {
@@ -567,6 +571,7 @@ export default function BodyPreviewPanel({
         <BodyFigure
           findings={findings}
           sex={sex}
+          birthDate={birthDate}
           side={side}
           onToggleSide={dialog ? undefined : toggleSide}
           countByRegion={countByRegion}

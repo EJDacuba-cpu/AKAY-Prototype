@@ -88,6 +88,7 @@ function observeSize(el, onSize) {
  */
 export default function BodyFigureSvg({
   sex,
+  birthDate,
   side = "front",
   onToggleSide,
   flipHint = false,
@@ -104,7 +105,7 @@ export default function BodyFigureSvg({
   onViewRecord,
   onDismiss,
 }) {
-  const figure = getFigureKey(sex);
+  const figure = getFigureKey(sex, birthDate);
   const ownPopoverId = useId();
   const dialogId = popoverId || ownPopoverId;
   const marked = BODY_REGIONS.filter(({ key }) => (findingsByRegion[key] || []).length > 0);
@@ -228,6 +229,7 @@ export default function BodyFigureSvg({
   return (
     <AnatomyFigure
       sex={sex}
+      birthDate={birthDate}
       side={side}
       onToggleSide={onToggleSide}
       flipHint={flipHint}

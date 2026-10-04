@@ -57,13 +57,16 @@ export function formatShortDate(value, fallback = "Not recorded") {
   });
 }
 
+/** The patient's date of birth as stored on the row, or "" when absent. */
+export function getPatientBirthDate(patient = {}) {
+  return getPatientValue(patient, ["birthDate", "birthdate", "dateOfBirth", "date_of_birth"], "");
+}
+
 /** Stored age when the row has one, otherwise computed from the birth date. */
 export function getPatientAge(patient = {}) {
   const stored = getPatientValue(patient, ["age"], "");
   if (stored !== "") return stored;
-  return calculateAge(
-    getPatientValue(patient, ["birthDate", "birthdate", "dateOfBirth", "date_of_birth"], ""),
-  );
+  return calculateAge(getPatientBirthDate(patient));
 }
 
 export function createPatientForm(patient = {}) {

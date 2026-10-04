@@ -3,28 +3,32 @@ import { RotateCcw } from "lucide-react";
 import { FIGURE_ASPECT, getFigureKey } from "../../../utils/bodyFigureGeometry";
 import femaleBack from "../../../assets/anatomy/female-back.webp";
 import femaleFront from "../../../assets/anatomy/female-front.webp";
+import infantBack from "../../../assets/anatomy/infant-back.webp";
+import infantFront from "../../../assets/anatomy/infant-front.webp";
 import maleBack from "../../../assets/anatomy/male-back.webp";
 import maleFront from "../../../assets/anatomy/male-front.webp";
 
 const FIGURE_IMAGES = {
   male: { front: maleFront, back: maleBack },
   female: { front: femaleFront, back: femaleBack },
+  infant: { front: infantFront, back: infantBack },
 };
 
 const LABEL_CLASS = "pointer-events-none absolute top-[18%] -translate-y-1/2 select-none text-[11px] font-semibold text-slate-400";
 
 /**
- * Presentation-only male/female body figure shared by the consultation's
- * Physical Exam step and the patient profile's Visual Health Summary. It draws
- * the front or back image for `sex`, the R / L side labels and an optional
- * flip button; the caller owns `side` and all findings, hover and selection
- * logic. `children` render in a layer above the image: position markers there
+ * Presentation-only body figure shared by the consultation's Physical Exam
+ * step and the patient profile's Visual Health Summary. It draws the front or
+ * back image for `sex` and `birthDate` (the infant figure through 12 completed
+ * months, else male/female; see getFigureKey), the R / L side labels and an
+ * optional flip button; the caller owns `side` and all findings, hover and
+ * selection logic. `children` render in a layer above the image: position markers there
  * with markerStyle() from bodyFigureGeometry. The box keeps the images'
  * aspect ratio, so the caller sizes it with `className` (width or height).
  * Front view: the PATIENT's right is on the viewer's left. Back view: swapped.
  */
-export default function AnatomyFigure({ sex, side, onToggleSide, flipHint = false, className = "", label, children }) {
-  const figure = getFigureKey(sex);
+export default function AnatomyFigure({ sex, birthDate, side, onToggleSide, flipHint = false, className = "", label, children }) {
+  const figure = getFigureKey(sex, birthDate);
   const [leftLabel, rightLabel] = side === "front" ? ["R", "L"] : ["L", "R"];
   const flipLabel = side === "front" ? "Show back" : "Show front";
 

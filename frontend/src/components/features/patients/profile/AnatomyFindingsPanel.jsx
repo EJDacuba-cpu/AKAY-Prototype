@@ -88,6 +88,7 @@ export default function AnatomyFindingsPanel({
   background,
   onViewRecord,
   sex,
+  birthDate,
   age = "",
 }) {
   const [mode, setMode] = useState("latest");
@@ -263,6 +264,7 @@ export default function AnatomyFindingsPanel({
           <div className="flex min-h-[340px] flex-1 items-center justify-center [container-type:size]">
             <BodyFigureSvg
               sex={sex}
+              birthDate={birthDate}
               side={side}
               onToggleSide={toggleSide}
               flipHint={flipHint}

@@ -24,12 +24,12 @@ export const calculateAge = (birthDate) => {
 /**
  * Calculates full months elapsed from date of birth.
  * @param {string} birthDate - ISO date string
+ * @param {Date} [today] - reference date, defaults to now
  * @returns {number|string} Age in months or empty string
  */
-export const calculateAgeInMonths = (birthDate) => {
+export const calculateAgeInMonths = (birthDate, today = new Date()) => {
   if (!birthDate) return "";
 
-  const today = new Date();
   const dob = new Date(birthDate);
   if (Number.isNaN(dob.getTime()) || dob > today) return "";
 

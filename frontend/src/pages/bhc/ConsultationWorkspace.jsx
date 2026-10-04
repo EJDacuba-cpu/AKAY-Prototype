@@ -4856,6 +4856,7 @@ export default function ConsultationWorkspace() {
           dialog={bodyFindingDialog}
           onDialogChange={setBodyFindingDialog}
           sex={selectedPatient?.sex}
+          birthDate={getEffectivePatientBirthdate(selectedPatient)}
           side={bodyPreviewSide}
           onSideChange={setBodyPreviewSide}
         />

@@ -15,6 +15,8 @@
   --clinical-radius: 0;
   --clinical-shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 1px 3px rgba(17, 24, 39, 0.03);
   --clinical-gap: 12px;
+  --fab-size: 52px;
+  --fab-inset: 24px;
   --clinical-focus: 0 0 0 3px #dc262626;
   container-type: inline-size;
   min-width: 0;
@@ -72,6 +74,17 @@
    the preview panel, not to the viewport. */
 .clinical-directory__results {
   container: directory-results / inline-size;
+  /* Breathing room under the last card. */
+  padding-bottom: 16px;
+}
+/* Below desktop the floating button overlays the list's bottom-right corner:
+   let the list scroll far enough that its last card and Open Profile button can
+   rest clear of it (24px inset + 52px button + 20px). Keep in sync with
+   DESKTOP_QUERY in PatientsModule. */
+@media (max-width: 1023.98px) {
+  .clinical-directory__results {
+    padding-bottom: calc(var(--fab-inset) + var(--fab-size) + 20px);
+  }
 }
 /* One column on phones, two cards per row once there is room (the reference). */
 .clinical-directory__grid {
@@ -135,7 +148,7 @@
   overflow-y: auto;
 }
 
-/* Details toggle: a quiet secondary button left of New Patient. */
+/* Details toggle: a quiet secondary button, ordered before New Patient. */
 .clinical-directory .module-toolbar__row > div:last-child {
   display: flex;
   align-items: center;
@@ -383,4 +396,67 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .clinical-directory *, .clinical-directory .anim-fade-up { animation: none; transition: none; }
+}
+
+/* New Patient floating button (below 1024px only; desktop uses the toolbar
+   button). It floats over the list's bottom-right corner, --fab-inset (24px) from
+   the list's bottom and right edges, so it is clear of the scrollbar and beside,
+   never over, the Details panel. The anchor is a zero-height sticky line at the
+   bottom of the list column: in the pinned layout (768px+) that is the list's
+   bottom edge, and on phones (whole page scrolls) it sticks to the screen bottom,
+   so the button is always visible. Cards scroll beneath it. */
+.clinical-directory__fab-anchor {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  flex: none;
+  height: 0;
+}
+.patients-fab {
+  position: absolute;
+  right: var(--fab-inset);
+  bottom: var(--fab-inset);
+  display: flex;
+  width: var(--fab-size);
+  height: var(--fab-size);
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: var(--clinical-red);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.18), 0 1px 3px rgba(17, 24, 39, 0.1);
+  transition: background-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+.patients-fab:hover {
+  background: var(--clinical-red-dark);
+  box-shadow: 0 4px 12px rgba(17, 24, 39, 0.22), 0 1px 4px rgba(17, 24, 39, 0.12);
+}
+.patients-fab:active { background: #991b1b; transform: scale(0.96); }
+.patients-fab:focus-visible {
+  outline: 3px solid #fecaca;
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .patients-fab { transition: none; }
+}
+.patients-fab__tooltip {
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 50%;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: #111827;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(4px, -50%);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.patients-fab:focus-visible .patients-fab__tooltip { opacity: 1; transform: translate(0, -50%); }
+@media (hover: hover) {
+  .patients-fab:hover .patients-fab__tooltip { opacity: 1; transform: translate(0, -50%); }
 }

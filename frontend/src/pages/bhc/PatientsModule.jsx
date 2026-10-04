@@ -31,9 +31,11 @@ const DEFAULT_FILTERS = {
   civilStatus: "All Civil Status",
   dateRegistered: "",
 };
-// Wide enough for the results grid beside the collapsible details panel; below
-// it the summary opens in a Drawer. Keep in sync with clinical-directory.css.
-const PREVIEW_QUERY = "(min-width: 1024px)";
+// Desktop: the toolbar carries New Patient and Details, and the summary shows in
+// the collapsible details panel. Below it, the floating New Patient button
+// replaces the toolbar one and the summary opens in a Drawer. Keep in sync with
+// clinical-directory.css.
+const DESKTOP_QUERY = "(min-width: 1024px)";
 // From here up the header stays pinned and only the card list scrolls; below it
 // (phones) the whole page scrolls as usual. Keep in sync with clinical-directory.css.
 const PINNED_QUERY = "(min-width: 768px)";
@@ -67,7 +69,7 @@ export default function PatientsModule() {
   // The details panel starts collapsed; a card click selects a patient and opens it.
   const [panel, setPanel] = useState({ selectedId: null, open: false });
   const { selectedId: selectedPatientId, open: panelOpen } = panel;
-  const showInlinePreview = useMediaQuery(PREVIEW_QUERY);
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const pinnedHeader = useMediaQuery(PINNED_QUERY);
 
   const barangayOptions = uniqueOptions(
@@ -162,7 +164,7 @@ export default function PatientsModule() {
     if (!selectedStillListed) setPanel((current) => ({ ...current, selectedId: null }));
   }, [selectedStillListed]);
 
-  const summaryShown = Boolean(selectedPatientId) && (panelOpen || !showInlinePreview);
+  const summaryShown = Boolean(selectedPatientId) && (panelOpen || !isDesktop);
   useEffect(() => {
     if (!summaryShown) return undefined;
     function onKeyDown(event) {
@@ -265,7 +267,7 @@ export default function PatientsModule() {
       >
         <div
           className={`clinical-directory__layout${
-            showInlinePreview && !showInitialLoading
+            isDesktop && !showInitialLoading
               ? ` clinical-directory__layout--preview${panelOpen ? " is-open" : ""}`
               : ""
           }`}
@@ -294,11 +296,11 @@ export default function PatientsModule() {
                 onClearFilters={clearFilters}
                 onRemoveFilter={removeFilter}
                 filterDescription="Narrow the patient directory."
-                primaryActionTo="/bhc/patients/add"
-                primaryActionLabel="New Patient"
+                primaryActionTo={isDesktop ? "/bhc/patients/add" : undefined}
+                primaryActionLabel={isDesktop ? "New Patient" : undefined}
                 primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
                 actions={
-                  showInlinePreview && (
+                  isDesktop && (
                     <button
                       type="button"
                       className="clinical-directory__details-toggle"
@@ -336,9 +338,21 @@ export default function PatientsModule() {
                 />
               )}
             </div>
+
+            {/* Below desktop the toolbar button is hidden and this floating one takes
+                over (one at a time). The anchor has no height, so the button floats
+                over the list's bottom-right corner and cards scroll beneath it. */}
+            {!showInitialLoading && !isDesktop && (
+              <div className="clinical-directory__fab-anchor">
+                <Link to="/bhc/patients/add" className="patients-fab" aria-label="New Patient">
+                  <Plus size={24} strokeWidth={2.25} aria-hidden="true" />
+                  <span className="patients-fab__tooltip" aria-hidden="true">New Patient</span>
+                </Link>
+              </div>
+            )}
           </div>
 
-          {showInlinePreview && !showInitialLoading && (
+          {isDesktop && !showInitialLoading && (
             <aside
               className="clinical-directory__details"
               data-open={panelOpen}
@@ -366,12 +380,12 @@ export default function PatientsModule() {
         </div>
       </SoftLoadingArea>
       <Drawer
-        open={!showInlinePreview && Boolean(selectedPatientId)}
+        open={!isDesktop && Boolean(selectedPatientId)}
         onClose={closeSummary}
         title="Patient Summary"
         widthClassName="w-full sm:w-[420px]"
       >
-        {!showInlinePreview && selectedPatientId && (
+        {!isDesktop && selectedPatientId && (
           <PatientSummaryPanel key={selectedPatientId} patientId={selectedPatientId} />
         )}
       </Drawer>

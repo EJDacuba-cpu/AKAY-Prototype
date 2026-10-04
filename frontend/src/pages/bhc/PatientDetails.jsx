@@ -42,6 +42,7 @@ import { getCurrentUser } from "../../utils/auth";
 import {
   createPatientForm,
   getPatientAge,
+  getPatientBirthDate,
   getSectionErrors,
   orderFollowUps,
   sortByDateDesc,
@@ -490,6 +491,7 @@ export default function PatientDetails() {
                       age={getPatientAge(patient)}
                       background={patient.medicalBackground}
                       sex={patient.sex}
+                      birthDate={getPatientBirthDate(patient)}
                       records={records}
                       recordsLoading={recordsLoading}
                       onViewRecord={viewRecord}
