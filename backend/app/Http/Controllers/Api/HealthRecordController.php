@@ -157,6 +157,8 @@ class HealthRecordController extends Controller
 
         if ($this->isReferralDisposition($data, $referralData)) {
             $this->normalizeReferralDisposition($data);
+        } else {
+            $this->requireConcernFollowUp($data);
         }
 
         $this->normalizeVisitTypeData($request, $data, true);
@@ -707,6 +709,26 @@ class HealthRecordController extends Controller
         $data['monitoring_data'] = [
             ...$monitoringData,
             'followUpReason' => $typed === '' ? $reason : "$reason — $typed",
+        ];
+    }
+
+    /**
+     * A concern set to Recheck or Follow-up promises a return visit, so a
+     * non-referral visit must read Follow-up Required - the status
+     * FollowUpTaskSyncService schedules a task from - whatever the client sent.
+     */
+    private function requireConcernFollowUp(array &$data): void
+    {
+        $returns = collect($data['diagnoses'] ?? [])->contains(
+            fn ($diagnosis) => is_array($diagnosis) && \App\Services\CarePlan::keepsBhcFollowUp($diagnosis['carePlan'] ?? null)
+        );
+        if (! $returns) {
+            return;
+        }
+        $data['monitoring_data'] = [
+            ...($data['monitoring_data'] ?? []),
+            'followUpStatus' => 'Follow-up Required',
+            'follow_up_status' => 'Follow-up Required',
         ];
     }
 

@@ -4,12 +4,14 @@ namespace Tests\Feature;
 
 use App\Models\BarangayHealthCenter;
 use App\Models\ConditionMonitoring;
+use App\Models\FollowUpTask;
 use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\PatientCondition;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\ActionPermissions;
+use App\Services\FollowUpTaskSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -126,7 +128,49 @@ class HealthConcernBoundaryTest extends TestCase
             ['id' => 'd2', 'name' => 'Headache'],
         ])->assertCreated()->json('data.id');
 
-        $this->assertNull(HealthRecord::findOrFail($id)->diagnoses[0]['carePlan'] ?? null);
+        foreach (HealthRecord::findOrFail($id)->diagnoses as $concern) {
+            $this->assertEmpty($concern['carePlan'] ?? null);
+        }
+    }
+
+    public function test_a_recheck_concern_with_a_date_but_no_status_still_schedules_the_task(): void
+    {
+        $date = now()->addWeek()->toDateString();
+        $id = $this->save(
+            [['id' => 'd1', 'name' => 'Elevated BP', 'carePlan' => 'recheck']],
+            ['monitoring_data' => ['followUpDate' => $date]]
+        )->assertCreated()->json('data.id');
+
+        $task = FollowUpTask::where('health_record_id', $id)->sole();
+        $this->assertSame('pending', $task->state);
+        $this->assertSame($date, $task->due_date->toDateString());
+        $this->assertSame('Follow-up Required', HealthRecord::findOrFail($id)->monitoring_data['followUpStatus']);
+    }
+
+    public function test_a_legacy_referral_record_keeps_its_follow_up_task_on_resync(): void
+    {
+        $record = HealthRecord::create([
+            'patient_id' => $this->patient->id,
+            'category' => 'General Consultation',
+            'barangay_health_center_id' => $this->patient->barangay_health_center_id,
+            'needs_referral' => true,
+            'diagnoses' => [
+                ['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor'],
+                ['id' => 'd2', 'name' => 'Pneumonia', 'carePlan' => 'refer'],
+            ],
+            'monitoring_data' => ['followUpStatus' => 'Needs Referral', 'followUpDate' => now()->addWeeks(2)->toDateString()],
+        ]);
+        $task = FollowUpTask::create([
+            'health_record_id' => $record->id,
+            'patient_id' => $this->patient->id,
+            'barangay_health_center_id' => $this->patient->barangay_health_center_id,
+            'due_date' => now()->addWeeks(2)->toDateString(),
+            'state' => FollowUpTask::STATE_PENDING,
+        ]);
+
+        app(FollowUpTaskSyncService::class)->syncRecord($record->fresh());
+
+        $this->assertSame('pending', $task->fresh()->state);
     }
 
     public function test_recheck_and_follow_up_need_the_follow_up_date(): void

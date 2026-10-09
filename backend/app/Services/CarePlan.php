@@ -69,7 +69,12 @@ final class CarePlan
     public static function keepsFollowUpWithReferral(array $diagnoses, mixed $monitoringData): bool
     {
         foreach ($diagnoses as $diagnosis) {
-            if (is_array($diagnosis) && self::keepsBhcFollowUp($diagnosis['carePlan'] ?? null)) {
+            // monitors(): stored legacy records keep their follow-up on resync;
+            // a new save can no longer choose Monitor.
+            if (is_array($diagnosis) && (
+                self::keepsBhcFollowUp($diagnosis['carePlan'] ?? null)
+                || self::monitors($diagnosis['carePlan'] ?? null)
+            )) {
                 return true;
             }
         }

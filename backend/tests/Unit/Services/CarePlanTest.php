@@ -60,6 +60,9 @@ class CarePlanTest extends TestCase
         $this->assertTrue(CarePlan::keepsFollowUpWithReferral([...$refer, ['name' => 'Hypertension', 'carePlan' => 'follow_up']], []));
         $this->assertTrue(CarePlan::keepsFollowUpWithReferral($refer, ['selectedPrograms' => ['EPI'], 'followUpDate' => '2026-11-01']));
         $this->assertTrue(CarePlan::keepsFollowUpWithReferral($refer, ['selectedPrograms' => ['Maternal'], 'follow_up_date' => '2026-11-01']));
+        // Stored legacy concerns keep their follow-up too (resync of old records).
+        $this->assertTrue(CarePlan::keepsFollowUpWithReferral([...$refer, ['name' => 'Hypertension', 'carePlan' => 'monitor']], []));
+        $this->assertTrue(CarePlan::keepsFollowUpWithReferral([['name' => 'Hypertension', 'carePlan' => 'monitor_refer']], []));
         $this->assertFalse(CarePlan::keepsFollowUpWithReferral($refer, ['selectedPrograms' => ['EPI'], 'followUpDate' => null]));
         $this->assertFalse(CarePlan::keepsFollowUpWithReferral($refer, ['selectedPrograms' => [], 'followUpDate' => '2026-11-01']));
         $this->assertFalse(CarePlan::keepsFollowUpWithReferral($refer, ['followUpDate' => '2026-11-01']));
