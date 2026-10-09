@@ -2,17 +2,18 @@ import { TimePickerField } from "../../../common/forms/DatePickerField";
 import { ClinicalFieldGroup, FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
 import { ATTENTION_LEVELS, DEFAULT_ATTENTION } from "../../../../utils/referralAttention";
 import DiagnosisReportingField from "./DiagnosisReportingField";
-import { CONDITION_STATUSES } from "../../../../utils/diagnoses";
-import {
-  CARE_PLAN, CARE_PLAN_OPTIONS, NO_CONDITION_MESSAGE, carePlanFor, continuedByIdentity, conditionIdentity,
-  continuingRows, endsMonitoring,
-} from "../../../../utils/carePlan";
+import { CARE_PLAN_OPTIONS, NO_CONCERN_MESSAGE, carePlanFor } from "../../../../utils/carePlan";
+import { formatDate } from "../../../../utils/formatters";
+import { conditionStatusLabel } from "../../../../utils/medicalConditions";
 
 const MONITORING_DECISIONS = [
-  { value: "continue", label: "Continue monitoring at BHC" },
-  { value: "refer", label: "Refer to RHU" },
-  { value: "stop", label: "Stop BHC monitoring" },
+  { value: "continue", label: "Continue Monitoring" },
+  { value: "refer", label: "Refer back to RHU" },
+  { value: "stop", label: "Stop BHC Monitoring" },
 ];
+
+// A condition the RHU has already closed: BHC may still be following it, so say so.
+const CLOSED_STATUSES = new Set(["resolved", "ruled_out"]);
 
 function StopReason({ monitoringId, value, error, disabled, onChange }) {
   return (
@@ -30,56 +31,45 @@ function StopReason({ monitoringId, value, error, disabled, onChange }) {
 }
 
 /**
- * Care Plan & Next Steps. With no suspected condition the visit is a General
- * Consultation: a plain empty state, no condition controls (the visit is still
- * saved and counted from its own record). With conditions, one row per
- * condition holds its care plan (No Ongoing Tracking unless the worker changes
- * it, Monitor at BHC for a continued one) and its reporting controls, then come
- * the continued monitoring brought into this visit and the visit's single
- * referral and single follow-up. Every rule it shows comes from utils/carePlan.js.
+ * Care Plan & Next Steps. Two separate things:
+ * - "This visit's health concerns": what the worker typed, each with an
+ *   optional next action (Recheck, Follow-up or Refer to RHU) and its reporting
+ *   controls. A concern never starts or stops monitoring.
+ * - "Condition Monitoring": monitoring the BHC already follows (continue,
+ *   refer back to the RHU, or stop with a reason) and RHU-confirmed conditions
+ *   it starts this visit. There is no clinical-status control: only the RHU
+ *   sets a condition's status.
+ * Then come the visit's single referral and single follow-up. A visit with no
+ * concern and nothing monitored is a General Consultation: a plain empty
+ * state. Every rule it shows comes from utils/carePlan.js.
  */
 export default function CarePlanSection({
-  diagnoses = [], continuedMonitorings = [], activeMonitorings = [], stops = {}, registry = {},
-  referrals = [], statuses = {}, documentedStatuses = {},
+  concerns = [], continuedMonitorings = [], startingConditions = [], stops = {},
+  referrals = [],
   followUp = {}, referral = {}, referralFacilityField = null, showsFollowUp = false,
   needsReferral = false, errors = {}, disabled = false,
   notes = "", notesLabel = "Monitoring Notes", notesPlaceholder = "Write monitoring notes if useful...",
-  onCarePlanChange, onStopChange, onMonitoringDecision, onStatusChange, onFollowUpChange, onReferralChange, onNotesChange,
+  onCarePlanChange, onStopChange, onMonitoringDecision, onFollowUpChange, onReferralChange, onNotesChange,
   onReportAsChange, onSurveillanceChange,
 }) {
-  const continuedMap = continuedByIdentity(continuedMonitorings, registry);
-  const activeMap = continuedByIdentity(activeMonitorings, registry);
-  const rows = continuingRows(diagnoses, continuedMonitorings, registry);
+  const hasMonitoring = continuedMonitorings.length > 0 || startingConditions.length > 0;
 
   return (
     <div className="space-y-6">
-      {diagnoses.length === 0 && rows.length === 0 && (
-        <p className="border border-[#E5E7EB] bg-[#F9FAFB] px-3 py-2 text-sm text-[#374151]">{NO_CONDITION_MESSAGE}</p>
+      {concerns.length === 0 && !hasMonitoring && (
+        <p className="border border-[#E5E7EB] bg-[#F9FAFB] px-3 py-2 text-sm text-[#374151]">{NO_CONCERN_MESSAGE}</p>
       )}
 
-      {diagnoses.length > 0 && (
-        <section aria-labelledby="care-plan-diagnoses">
-          <h2 id="care-plan-diagnoses" className="text-sm font-bold text-[#111827]">This visit&apos;s suspected conditions</h2>
+      {concerns.length > 0 && (
+        <section aria-labelledby="care-plan-concerns">
+          <h2 id="care-plan-concerns" className="text-sm font-bold text-[#111827]">This visit&apos;s health concerns</h2>
           <ul className="mt-2 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
-            {diagnoses.map((diagnosis) => {
-              const value = carePlanFor(diagnosis, continuedMonitorings, registry);
-              const identity = conditionIdentity(diagnosis.name, registry);
-              const continued = continuedMap.get(identity);
-              const alreadyActive = continued || activeMap.get(identity);
+            {concerns.map((concern) => {
+              const value = carePlanFor(concern);
               return (
-                <li key={diagnosis.id} className="py-3">
+                <li key={concern.id} className="py-3">
                   <fieldset disabled={disabled} className="min-w-0">
-                    <legend className="text-sm font-semibold text-[#111827]">{diagnosis.name}</legend>
-                    {alreadyActive && (
-                      <p className="mt-0.5 text-xs text-[#6B7280]">
-                        Monitored at BHC{alreadyActive.startedAt ? ` since ${alreadyActive.startedAt}` : ""}
-                        {continued
-                          ? value === CARE_PLAN.REFER
-                            ? " — stays active; the referral is tracked separately."
-                            : " — continued in this visit."
-                          : ". Choosing Monitor adds this visit to it."}
-                      </p>
-                    )}
+                    <legend className="text-sm font-semibold text-[#111827]">{concern.name}</legend>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
                       {CARE_PLAN_OPTIONS.map((option) => {
                         const checked = value === option.value;
@@ -87,10 +77,10 @@ export default function CarePlanSection({
                           <label key={option.value} className="flex cursor-pointer items-center gap-1.5 text-[13px]">
                             <input
                               type="radio"
-                              name={`care-plan-${diagnosis.id}`}
+                              name={`care-plan-${concern.id}`}
                               value={option.value}
                               checked={checked}
-                              onChange={() => onCarePlanChange(diagnosis.id, option.value)}
+                              onChange={() => onCarePlanChange(concern.id, option.value)}
                               className="h-4 w-4 accent-[#DC2626]"
                             />
                             <span className={checked ? "font-semibold text-[#DC2626]" : "text-gray-600"}>{option.label}</span>
@@ -98,14 +88,9 @@ export default function CarePlanSection({
                         );
                       })}
                     </div>
-                    {continued && endsMonitoring(value) && (
-                      <div className="mt-2">
-                        <StopReason monitoringId={continued.id} value={stops[continued.id]} error={errors[`carePlanStop.${continued.id}`]} disabled={disabled} onChange={onStopChange} />
-                      </div>
-                    )}
                     <div className="mt-2.5 border-t border-dashed border-[#E5E7EB] pt-2.5">
                       <DiagnosisReportingField
-                        diagnosis={diagnosis}
+                        diagnosis={concern}
                         onChange={onReportAsChange}
                         onSurveillanceChange={onSurveillanceChange}
                       />
@@ -118,19 +103,27 @@ export default function CarePlanSection({
         </section>
       )}
 
-      {rows.length > 0 && (
-        <section aria-labelledby="care-plan-continuing">
-          <h2 id="care-plan-continuing" className="text-sm font-bold text-[#111827]">Existing monitoring addressed in this visit</h2>
+      {hasMonitoring && (
+        <section aria-labelledby="care-plan-monitoring">
+          <h2 id="care-plan-monitoring" className="text-sm font-bold text-[#111827]">Condition Monitoring</h2>
           <ul className="mt-2 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
-            {rows.map((monitoring) => {
+            {continuedMonitorings.map((monitoring) => {
               const stopping = Object.hasOwn(stops, monitoring.id);
               const referring = !stopping && referrals.map(Number).includes(Number(monitoring.id));
               const decision = stopping ? "stop" : referring ? "refer" : "continue";
-              const documented = Object.hasOwn(documentedStatuses, monitoring.id) ? documentedStatuses[monitoring.id] : null;
+              const closedByRhu = CLOSED_STATUSES.has(monitoring.conditionStatus);
               return (
                 <li key={monitoring.id} className="py-3">
                   <fieldset disabled={disabled} className="min-w-0">
                     <legend className="text-sm font-semibold text-[#111827]">{monitoring.conditionName}</legend>
+                    {monitoring.legacy && (
+                      <p className="mt-0.5 text-xs font-semibold text-[#92400E]">Legacy BHC Monitoring</p>
+                    )}
+                    {closedByRhu && (
+                      <p className="mt-0.5 text-xs text-[#6B7280]">
+                        RHU marked this condition {conditionStatusLabel(monitoring.conditionStatus)}
+                      </p>
+                    )}
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
                       {MONITORING_DECISIONS.map((option) => (
                         <label key={option.value} className="flex cursor-pointer items-center gap-1.5 text-[13px]">
@@ -153,30 +146,19 @@ export default function CarePlanSection({
                         <StopReason monitoringId={monitoring.id} value={stops[monitoring.id]} error={errors[`carePlanStop.${monitoring.id}`]} disabled={disabled} onChange={onStopChange} />
                       </div>
                     )}
-                    {documented !== null && (
-                      <div className="mt-2.5 border-t border-dashed border-[#E5E7EB] pt-2.5">
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-[#374151]">
-                          Condition status
-                          <select
-                            value={statuses[monitoring.id] || ""}
-                            onChange={(event) => onStatusChange(monitoring.id, event.target.value)}
-                            className="mt-1 block w-48 rounded-none border border-gray-200 px-2 py-1.5 text-[13px] font-normal normal-case tracking-normal text-gray-700 outline-none focus:border-red-600"
-                          >
-                            <option value="">No change</option>
-                            {CONDITION_STATUSES.map((status) => (
-                              <option key={status} value={status}>{status}</option>
-                            ))}
-                          </select>
-                        </label>
-                        <p className="mt-1 text-xs text-[#6B7280]">
-                          Documented status: {documented || "Not recorded"}. Change it only if you are intentionally updating it.
-                        </p>
-                      </div>
-                    )}
                   </fieldset>
                 </li>
               );
             })}
+            {startingConditions.map((condition) => (
+              <li key={`start-${condition.conditionId}`} className="py-3">
+                <p className="text-sm font-semibold text-[#111827]">{condition.conditionName}</p>
+                <p className="mt-0.5 text-xs text-[#6B7280]">
+                  Start BHC Monitoring — confirmed by RHU{" "}
+                  {condition.confirmedAt ? formatDate(condition.confirmedAt, condition.confirmedAt) : ""}
+                </p>
+              </li>
+            ))}
           </ul>
         </section>
       )}

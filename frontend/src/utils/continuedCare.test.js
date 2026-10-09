@@ -58,6 +58,7 @@ test("every active monitoring in the overview is listed once", () => {
   assert.deepEqual(active.map((m) => m.id), [4, 5, 3]);
   assert.deepEqual(active.find((m) => m.id === 3), {
     id: 3, conditionName: "Hypertension", conditionKey: null, startedAt: "", lastHealthRecordId: 50,
+    conditionStatus: null, legacy: false,
   });
   assert.deepEqual(activeMonitoringsFromOverview(null), []);
 });
@@ -156,6 +157,46 @@ test("TB-DOTS prefill comes from the continued TB monitoring's last ITR", () => 
   assert.equal(tbPrefillRecordId([{ id: 4, conditionName: "Asthma", lastHealthRecordId: 40 }], registry), null);
 });
 
+test("a continued monitoring carries the RHU status and the legacy flag from the overview", () => {
+  const withStatus = {
+    pendingFollowUps: [
+      {
+        id: 1, dueDate: "2026-10-01", sourceHealthRecordId: 50,
+        conditions: [{ monitoringId: 3, conditionName: "Hypertension", conditionStatus: "Controlled", legacy: false }],
+      },
+    ],
+    monitoringWithoutFollowUp: [
+      { id: 4, conditionName: "Asthma", conditionKey: null, conditionStatus: null, legacy: true },
+      { id: 5, conditionName: "Diabetes", conditionKey: null, conditionStatus: "Resolved", legacy: false },
+    ],
+  };
+  const result = resolveContinuedCare(withStatus, { followUpIds: [1], monitoringIds: [4, 5], includeFollowUpConditions: true });
+  assert.deepEqual(result.continuedMonitorings.map((m) => [m.id, m.conditionStatus, m.legacy]), [
+    [3, "Controlled", false],
+    [4, null, true],
+    [5, "Resolved", false],
+  ]);
+});
+
+test("a withdrawn RHU recommendation is reported in the notice, never silently dropped", () => {
+  assert.equal(
+    droppedContinuedCareNotice({ droppedFollowUpIds: [], droppedMonitoringIds: [], droppedConditionIds: [8] }),
+    "1 RHU-recommended condition is no longer recommended for BHC monitoring and was removed from Care Plan.",
+  );
+  assert.equal(
+    droppedContinuedCareNotice({ droppedFollowUpIds: [], droppedMonitoringIds: [], droppedConditionIds: [8, 9] }),
+    "2 RHU-recommended conditions are no longer recommended for BHC monitoring and were removed from Care Plan.",
+  );
+  assert.equal(
+    droppedContinuedCareNotice({ droppedFollowUpIds: [], droppedMonitoringIds: [7], droppedConditionIds: [8] }),
+    "1 monitored condition is no longer active (already completed or stopped) and was removed from Care Plan. " +
+      "1 RHU-recommended condition is no longer recommended for BHC monitoring and was removed from Care Plan.",
+  );
+  const result = resolveContinuedCare(overview, { startConditionIds: [8] });
+  assert.deepEqual(result.droppedConditionIds, [8]);
+  assert.match(droppedContinuedCareNotice(result), /no longer recommended for BHC monitoring/);
+});
+
 test("stops are kept only for continued monitoring", () => {
   assert.deepEqual(keepStopsFor({ 3: "Resolved", "8": "Moved away" }, [{ id: 3 }]), { 3: "Resolved" });
   assert.deepEqual(keepStopsFor(undefined, []), {});
@@ -213,6 +254,8 @@ test("recommended conditions to start are resolved against the overview", () => 
 test("a recommendation no longer in the overview is dropped and reported", () => {
   const r = resolveContinuedCare(recommendedOverview, { startConditionIds: [9, 77, "x", 9] });
   assert.deepEqual(r.startingConditions.map((c) => c.conditionId), [9]);
+  // The care plan payload and the draft read the condition id from `id`.
+  assert.deepEqual(r.startingConditions.map((c) => c.id), [9]);
   assert.deepEqual(r.droppedConditionIds, [77]);
   const none = resolveContinuedCare(null, { startConditionIds: [3] });
   assert.deepEqual(none.startingConditions, []);

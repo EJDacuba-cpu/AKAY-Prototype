@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { diagnosisCarePlanItems, formatFbs } from "./recordCarePlan.js";
+import { diagnosisCarePlanHeading, diagnosisCarePlanItems, formatFbs } from "./recordCarePlan.js";
 
 test("FBS reads back with its unit, only when recorded", () => {
   assert.equal(formatFbs(126), "126 mg/dL");
@@ -34,4 +34,12 @@ test("a saved record's care plan lists only concerns with a next action or surve
   ]);
   assert.deepEqual(diagnosisCarePlanItems(null), []);
   assert.deepEqual(diagnosisCarePlanItems([{ name: "Asthma", carePlan: "watch" }]), []);
+});
+
+test("the care plan heading is Health Concerns unless the record holds a retired value", () => {
+  assert.equal(diagnosisCarePlanHeading([{ name: "Wound", carePlan: "follow_up" }]), "Health Concerns");
+  assert.equal(diagnosisCarePlanHeading([{ name: "Cough", carePlan: "refer" }, { name: "Rash" }]), "Health Concerns");
+  assert.equal(diagnosisCarePlanHeading([{ name: "Hypertension", carePlan: "monitor" }]), "Care Plan");
+  assert.equal(diagnosisCarePlanHeading([{ name: "Cough", carePlan: "none" }, { name: "Wound", carePlan: "recheck" }]), "Care Plan");
+  assert.equal(diagnosisCarePlanHeading(undefined), "Health Concerns");
 });

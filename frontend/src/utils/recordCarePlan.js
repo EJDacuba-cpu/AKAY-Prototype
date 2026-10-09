@@ -10,6 +10,18 @@ const SHOWN_PLANS = new Set([
   CARE_PLAN.RECHECK, CARE_PLAN.FOLLOW_UP, CARE_PLAN.REFER, CARE_PLAN.MONITOR, CARE_PLAN.MONITOR_REFER,
 ]);
 
+const RETIRED_PLANS = new Set([CARE_PLAN.NONE, CARE_PLAN.MONITOR, CARE_PLAN.MONITOR_REFER]);
+
+/**
+ * "Health Concerns" for a record saved with health concerns; "Care Plan" for an
+ * older record, which holds a retired next action (No Ongoing Tracking,
+ * Monitor at BHC) and was a suspected-condition care plan.
+ */
+export function diagnosisCarePlanHeading(diagnoses) {
+  const retired = Array.isArray(diagnoses) && diagnoses.some((diagnosis) => RETIRED_PLANS.has(diagnosis?.carePlan));
+  return retired ? "Care Plan" : "Health Concerns";
+}
+
 /** vital_signs.fbs as "126 mg/dL"; "" when not recorded. */
 export function formatFbs(value) {
   if (value === null || value === undefined) return "";

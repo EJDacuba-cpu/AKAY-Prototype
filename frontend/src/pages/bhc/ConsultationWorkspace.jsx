@@ -94,7 +94,6 @@ import {
   referredContinuingRows,
   validateCarePlan,
 } from "../../utils/carePlan";
-import { documentedConditionFor } from "../../utils/followUpThisVisit";
 import { monitoringDetailKeys as getMonitoringDetailKeys } from "../../utils/monitoringDetails";
 import {
   carePlanDraftPayload,
@@ -127,7 +126,6 @@ import BodyPreviewPanel, { BodyFindingsList } from "../../components/features/he
 import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindings";
 import { DRAFTS_ENABLED } from "../../utils/featureFlags";
 import DiagnosisListField from "../../components/features/health-records/wizard/DiagnosisListField";
-import MonitoredConditionsNote from "../../components/features/health-records/wizard/MonitoredConditionsNote";
 import { formatDiagnoses, joinDiagnosisNames, restoreDiagnoses } from "../../utils/diagnoses";
 import { applyLegacyReportingStatus, deriveReportingStatus, setDiagnosisReportAs } from "../../utils/diagnosisReporting";
 import useClinicalRegistry from "../../hooks/useClinicalRegistry";
@@ -884,14 +882,15 @@ export default function ConsultationWorkspace() {
   // True while a continued consultation is still reading the monitoring it
   // continues (route entry from Start Consultation / Record Visit, or a resume).
   const [continuedCareLoading, setContinuedCareLoading] = useState(
-    () => routeContext.kind === "continue" && Boolean(routeContext.patientId) && (routeContext.followUpIds.length > 0 || routeContext.monitoringIds.length > 0),
+    () => routeContext.kind === "continue" && Boolean(routeContext.patientId) && (routeContext.followUpIds.length > 0 || routeContext.monitoringIds.length > 0 || routeContext.startConditionIds.length > 0),
   );
   // { [monitoringId]: reason } - a key present means "stop this monitoring".
   const [monitoringStops, setMonitoringStops] = useState({});
-  // Followed conditions referred to the RHU (ids), and the documented status the
-  // worker intentionally changed ({ [monitoringId]: "Active"|"Controlled"|"Resolved" }).
+  // Followed conditions referred to the RHU (ids).
   const [monitoringReferrals, setMonitoringReferrals] = useState([]);
-  const [monitoringStatuses, setMonitoringStatuses] = useState({});
+  // RHU-confirmed conditions BHC starts monitoring this visit (the care
+  // overview's monitoringRecommendations, chosen in Start Consultation).
+  const [startingConditions, setStartingConditions] = useState([]);
   // Every active monitoring record of this patient (care-overview, Task 10),
   // selected or not - only used to note "Already monitored at BHC" on a row.
   const [activeMonitorings, setActiveMonitorings] = useState([]);
@@ -1179,39 +1178,27 @@ export default function ConsultationWorkspace() {
   const isImmunization = recordTypeKey === "immunization" || selectedPrograms.includes("EPI");
   const isMaternal = recordTypeKey === "maternal" || selectedPrograms.includes("Maternal");
   const isFamilyPlanning = recordTypeKey === "family planning" || selectedPrograms.includes("Family Planning");
-  // Care Plan & Next Steps, derived from the per-diagnosis plans and the
-  // continued/stopped monitoring (rules in utils/carePlan.js).
+  // Care Plan & Next Steps, derived from the per-concern next actions and the
+  // continued/started/stopped monitoring (rules in utils/carePlan.js).
   const carePlanDisposition = useMemo(
     () => deriveDisposition({
-      diagnoses, continuedMonitorings, stops: monitoringStops, referrals: monitoringReferrals, registry: clinicalRegistry,
+      concerns: diagnoses, continuedMonitorings, startingConditions, stops: monitoringStops,
+      referrals: monitoringReferrals, registry: clinicalRegistry,
       serviceNeedsNextVisit: isImmunization,
     }),
-    [diagnoses, continuedMonitorings, monitoringStops, monitoringReferrals, clinicalRegistry, isImmunization],
+    [diagnoses, continuedMonitorings, startingConditions, monitoringStops, monitoringReferrals, clinicalRegistry, isImmunization],
   );
   // Followed conditions the worker refers to the RHU, by name: the referral's
-  // diagnosis when no diagnosis was entered (the followed condition is why).
+  // diagnosis when no concern was entered (the followed condition is why).
   const referredFollowedNames = referredContinuingRows(
-    diagnoses, continuedMonitorings, monitoringStops, monitoringReferrals, clinicalRegistry,
+    continuedMonitorings, monitoringStops, monitoringReferrals,
   ).map((monitoring) => monitoring.conditionName).join("; ");
-  // Which followed conditions have a documented Current Conditions entry (and
-  // its status), so Care Plan can offer an intentional status update. Needs
-  // clinical.history, like every change to the background.
-  const documentedStatuses = useMemo(() => {
-    if (!canViewBackground) return {};
-    const diseases = selectedPatient?.medicalBackground?.currentDiseases;
-    const result = {};
-    for (const monitoring of continuedMonitorings) {
-      const entry = documentedConditionFor(monitoring, diseases, clinicalRegistry);
-      if (entry) result[monitoring.id] = entry.status || "";
-    }
-    return result;
-  }, [canViewBackground, selectedPatient, continuedMonitorings, clinicalRegistry]);
   const monitoringDetailKeys = useMemo(
     () => getMonitoringDetailKeys(
-      monitoredConditionKeys(diagnoses, continuedMonitorings, monitoringStops, clinicalRegistry),
+      monitoredConditionKeys(continuedMonitorings, startingConditions, monitoringStops, clinicalRegistry),
       clinicalRegistry,
     ),
-    [diagnoses, continuedMonitorings, monitoringStops, clinicalRegistry],
+    [continuedMonitorings, startingConditions, monitoringStops, clinicalRegistry],
   );
   // Whether the visit's follow-up survives a referral, and whether its fields
   // show. A service visit (programs selected, and sent - see the payload's
@@ -1285,7 +1272,7 @@ export default function ConsultationWorkspace() {
   const currentReferralReason = referralForm.reasonForReferral || "";
   useEffect(() => {
     if (!carePlanDisposition.needsReferral) return;
-    const next = buildReferralReason(diagnoses, continuedMonitorings, clinicalRegistry, monitoringReferrals);
+    const next = buildReferralReason(diagnoses, continuedMonitorings, monitoringReferrals);
     if (!shouldRegenerateReferralReason({
       current: currentReferralReason,
       lastAuto: lastAutoReferralReasonRef.current,
@@ -1293,7 +1280,7 @@ export default function ConsultationWorkspace() {
     })) return;
     lastAutoReferralReasonRef.current = next;
     setReferralForm((prev) => ({ ...prev, reasonForReferral: next }));
-  }, [carePlanDisposition.needsReferral, diagnoses, continuedMonitorings, monitoringReferrals, clinicalRegistry, currentReferralReason]);
+  }, [carePlanDisposition.needsReferral, diagnoses, continuedMonitorings, monitoringReferrals, currentReferralReason]);
 
   const activeProgramStep =
     programFormSteps.find((step) => step.key === activeFormStep) || null;
@@ -1548,7 +1535,7 @@ export default function ConsultationWorkspace() {
         continuedMonitorings,
         monitoringStops,
         monitoringReferrals,
-        monitoringStatuses,
+        startingConditions,
       }),
       referralForm: pickDraftFields(referralForm, [
         "urgencyLevel",
@@ -1584,7 +1571,7 @@ export default function ConsultationWorkspace() {
     const request = ++careOverviewRequestRef.current;
     const isCurrent = () => request === careOverviewRequestRef.current;
     const hasSelection = Boolean(
-      selection && (selection.followUpIds.length || selection.monitoringIds.length),
+      selection && (selection.followUpIds.length || selection.monitoringIds.length || selection.startConditionIds.length),
     );
     // The form waits for what it continues instead of opening half filled.
     const finishLoading = () => {
@@ -1619,6 +1606,7 @@ export default function ConsultationWorkspace() {
     const resolved = resolveContinuedCare(overview, {
       followUpIds: selection.followUpIds,
       monitoringIds: selection.monitoringIds,
+      startConditionIds: selection.startConditionIds,
       includeFollowUpConditions: !selection.restored,
       includeLinkedFollowUps: !selection.restored,
     });
@@ -1628,7 +1616,7 @@ export default function ConsultationWorkspace() {
     setMonitoringStops((current) => keepStopsFor(current, resolved.continuedMonitorings));
     const stillContinued = new Set(resolved.continuedMonitorings.map((monitoring) => Number(monitoring.id)));
     setMonitoringReferrals((current) => current.filter((id) => stillContinued.has(Number(id))));
-    setMonitoringStatuses((current) => keepStopsFor(current, resolved.continuedMonitorings));
+    setStartingConditions(resolved.startingConditions);
     const notice = droppedContinuedCareNotice(resolved);
     if (notice) toast(notice, { id: "continued-care-dropped", duration: 8000 });
     finishLoading();
@@ -1735,12 +1723,16 @@ export default function ConsultationWorkspace() {
       setContinuedMonitorings(restoredCarePlan.continuedMonitorings);
       setMonitoringStops(restoredCarePlan.monitoringStops);
       setMonitoringReferrals(restoredCarePlan.monitoringReferrals);
-      setMonitoringStatuses(restoredCarePlan.monitoringStatuses);
+      // Placeholders keep the ids in autosaved drafts until the overview names them.
+      setStartingConditions(
+        restoredCarePlan.startConditionIds.map((id) => ({ id, conditionId: id, conditionName: "Recommended condition", confirmedAt: "" })),
+      );
       setActiveMonitorings([]);
       setNextScreen(NEXT_STEP);
       void loadContinuedCare(draft.patient.id, {
         followUpIds: restoredCarePlan.continuedFollowUpTaskIds,
         monitoringIds: restoredCarePlan.continuedMonitorings.map((monitoring) => monitoring.id),
+        startConditionIds: restoredCarePlan.startConditionIds,
         restored: true,
       });
     }
@@ -1786,7 +1778,11 @@ export default function ConsultationWorkspace() {
     void loadContinuedCare(
       preselectedPatientId,
       routeContext.kind === "continue"
-        ? { followUpIds: routeContext.followUpIds, monitoringIds: routeContext.monitoringIds }
+        ? {
+            followUpIds: routeContext.followUpIds,
+            monitoringIds: routeContext.monitoringIds,
+            startConditionIds: routeContext.startConditionIds,
+          }
         : null,
     );
     // Loaded once per opened consultation; a resumed draft runs its own load.
@@ -2284,13 +2280,15 @@ export default function ConsultationWorkspace() {
     if (fbsError) errors.fbs = fbsError;
     if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
     if (!finalizing) return errors;
-    // A follow-up that keeps monitored conditions going already names what it
-    // addresses, and so does a referral of one of them; a referral of a
-    // diagnosis, or a visit stopping every continued condition, still needs one.
+    // A follow-up that keeps monitored conditions going (or starts one) already
+    // names what it addresses, and so does a referral of one of them; a
+    // referral of a concern, or a visit stopping every continued condition,
+    // still needs one.
     const followUpOfMonitoring =
-      continuedMonitorings.some((monitoring) => !Object.hasOwn(monitoringStops, monitoring.id)) &&
+      (startingConditions.length > 0 ||
+        continuedMonitorings.some((monitoring) => !Object.hasOwn(monitoringStops, monitoring.id))) &&
       (!needsReferral || referredFollowedNames !== "");
-    if ((needsReferral || normalizePatientStatus(followUpStatus) === "Follow-up Required") && !diagnosis.trim() && !followUpOfMonitoring) errors.diagnosis = "A suspected case is required for follow-up or referral.";
+    if ((needsReferral || normalizePatientStatus(followUpStatus) === "Follow-up Required") && !diagnosis.trim() && !followUpOfMonitoring) errors.diagnosis = "A health concern is required for follow-up or referral.";
     if (needsReferral && !receivingRhuId) errors.receivingRhuId = "Receiving facility is required.";
     if (needsReferral && !ATTENTION_LEVELS.includes(referralForm.urgencyLevel)) errors.urgencyLevel = "Referral priority is required.";
     if (needsReferral && !referralForm.reasonForReferral?.trim()) errors.reasonForReferral = "Reason for referral is required.";
@@ -2301,8 +2299,8 @@ export default function ConsultationWorkspace() {
     // blank-reason stops.
     Object.assign(
       errors,
-      validateCarePlan({ diagnoses, continuedMonitorings, stops: monitoringStops, registry: clinicalRegistry }),
-      carePlanFollowUpErrors({ kept: carePlanFollowUp.kept, followUpDate, followUpReason }),
+      validateCarePlan({ continuedMonitorings, stops: monitoringStops }),
+      carePlanFollowUpErrors({ kept: carePlanFollowUp.kept, followUpDate, followUpReason, concerns: diagnoses }),
     );
 
     if (hasPendingDispensedMedicineDraft) {
@@ -2990,8 +2988,8 @@ export default function ConsultationWorkspace() {
     const submittedFollowUpTaskId = continuedLink
       ? continuedLink.followUpTaskId
       : "";
-    // A referral cancels the follow-up, unless another diagnosis is set to
-    // Monitor at BHC or a service visit has its
+    // A referral cancels the follow-up, unless a concern is set to Recheck or
+    // Follow-up or a service visit has its
     // next date (the EPI next dose counts as that date) - followUpPlan.
     const followUpKept = followUpPlan(
       carePlanDisposition,
@@ -3148,8 +3146,8 @@ export default function ConsultationWorkspace() {
       physicalExam,
       bodyFindings,
       diagnosis,
-      // Each diagnosis carries its effective care plan (defaults included).
-      diagnoses: diagnoses.map((entry) => ({ ...entry, carePlan: carePlanFor(entry, continuedMonitorings, clinicalRegistry) })),
+      // Each health concern carries its chosen next action (null when none).
+      diagnoses: diagnoses.map((entry) => ({ ...entry, carePlan: carePlanFor(entry) })),
       assessmentNotes,
       vitalSigns: consultationVitalSigns,
       systolicBp: systolicBp || null,
@@ -3207,16 +3205,15 @@ export default function ConsultationWorkspace() {
       tbData: isTb ? tbData : null,
       // Patient Background sections reviewed in this visit (only the edited ones).
       backgroundUpdate: canViewBackground ? toRecordBackgroundUpdate(backgroundUpdate) : undefined,
-      // What this visit continues and stops. validateCarePlan already ran in
-      // getClinicalValidationErrors above (this payload drops blank stops).
+      // What this visit continues, starts and stops. validateCarePlan already
+      // ran in getClinicalValidationErrors above (this payload drops blank
+      // stops). A condition's status is the RHU's to set: never sent from here.
       carePlan: buildCarePlanPayload({
         continuedFollowUpTaskIds,
         continuedMonitorings,
+        startingConditions,
         stops: monitoringStops,
-        diagnoses,
         referrals: monitoringReferrals,
-        statuses: monitoringStatuses,
-        registry: clinicalRegistry,
       }),
       ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
       monitoringData: {
@@ -3645,9 +3642,7 @@ export default function ConsultationWorkspace() {
     if (!checkStepGate(NEXT_STEP)) return;
     if (nextScreen === NEXT_STEP) {
       // A stop reason belongs to this screen: ask for it before moving on.
-      const carePlanErrors = validateCarePlan({
-        diagnoses, continuedMonitorings, stops: monitoringStops, registry: clinicalRegistry,
-      });
+      const carePlanErrors = validateCarePlan({ continuedMonitorings, stops: monitoringStops });
       if (setValidationErrorsAndFocus(carePlanErrors)) return;
     }
     goToStepKey(nextPhaseForwardTarget(nextScreen, monitoringDetailKeys));
@@ -3733,11 +3728,10 @@ export default function ConsultationWorkspace() {
     </LockedFormContent>
   ) : (
     <CarePlanSection
-      diagnoses={diagnoses}
+      concerns={diagnoses}
       continuedMonitorings={continuedMonitorings}
-      activeMonitorings={activeMonitorings}
+      startingConditions={startingConditions}
       stops={monitoringStops}
-      registry={clinicalRegistry}
       followUp={{ date: followUpDate, time: followUpTime, reason: followUpReason }}
       referral={{ reason: referralForm.reasonForReferral, urgencyLevel: referralForm.urgencyLevel }}
       referralFacilityField={
@@ -3771,17 +3765,7 @@ export default function ConsultationWorkspace() {
         setMonitoringStops(next.stops);
         setMonitoringReferrals(next.referrals);
       }}
-      onStatusChange={(monitoringId, status) => {
-        setMonitoringStatuses((current) => {
-          const next = { ...current };
-          if (status) next[monitoringId] = status;
-          else delete next[monitoringId];
-          return next;
-        });
-      }}
       referrals={monitoringReferrals}
-      statuses={monitoringStatuses}
-      documentedStatuses={documentedStatuses}
       onFollowUpChange={(field, value) => {
         const [errorKey, setter] = {
           date: ["followUpDate", setFollowUpDate],
@@ -3883,9 +3867,9 @@ export default function ConsultationWorkspace() {
     [INTERVIEW_STEP]:
       "Record the patient's reason for visit, present illness and background.",
     [ASSESSMENT_STEP]:
-      "Record the vital signs and examination findings, the suspected case, and the actions taken for this visit.",
+      "Record the vital signs and examination findings, the health concerns, and the actions taken for this visit.",
     [NEXT_STEP]:
-      "Plan each suspected case, then any referral and the next follow-up, and classify it for reporting.",
+      "Set a next action for each health concern, review condition monitoring, then plan any referral and the next follow-up and classify it for reporting.",
     [MONITORING_STEP]:
       "Details a monitored condition needs beyond this consultation record.",
     [REVIEW_STEP]: "Confirm the consultation details below before saving.",
@@ -4027,7 +4011,7 @@ export default function ConsultationWorkspace() {
       rows: [
         { label: "Physical Exam", value: physicalExam },
         { label: "Body Findings", value: formatBodyFindings(bodyFindings) },
-        { label: "Suspected Case", value: formatDiagnoses(diagnoses) || diagnosis },
+        { label: "Health Concerns", value: formatDiagnoses(diagnoses) || diagnosis },
         { label: "Assessment Notes", value: assessmentNotes },
 
         // The selection itself is listed under Program / Service Details
@@ -4064,12 +4048,11 @@ export default function ConsultationWorkspace() {
       stepKey: NEXT_STEP,
       rows: [
         ...carePlanReviewRows({
-          diagnoses,
+          concerns: diagnoses,
           continuedMonitorings,
+          startingConditions,
           stops: monitoringStops,
           referrals: monitoringReferrals,
-          statuses: monitoringStatuses,
-          registry: clinicalRegistry,
           referral: {
             needed: carePlanDisposition.needsReferral,
             reason: referralForm.reasonForReferral,
@@ -4740,18 +4723,14 @@ export default function ConsultationWorkspace() {
 
             <FormSection
               title="Assessment"
-              subtitle="Record the suspected case for this visit."
+              subtitle="Record the health concerns found in this visit."
               delay={3}
             >
               <LockedFormContent locked={patientGateLocked}>
                 <div data-field="diagnosis" tabIndex={-1} className="outline-none">
-                  <MonitoredConditionsNote conditions={continuedMonitorings} />
                   <DiagnosisListField
-                    label={continuedMonitorings.length > 0 ? "New / Additional Working Diagnosis" : undefined}
                     diagnoses={diagnoses}
                     onChange={updateDiagnoses}
-                    canAddToConditions={(currentUser?.permissions || []).includes("clinical.history")}
-                    currentConditions={selectedPatient?.medicalBackground?.currentDiseases}
                     error={validationErrors.diagnosis}
                     defaultReportAs={defaultReportAs}
                   />
@@ -4761,7 +4740,7 @@ export default function ConsultationWorkspace() {
                   wrapperClassName="mt-4"
                   value={assessmentNotes}
                   onChange={(event) => setAssessmentNotes(event.target.value)}
-                  placeholder="Optional. Longer explanation that does not belong in the suspected case."
+                  placeholder="Optional. Longer explanation that does not belong in a health concern."
                   maxLength={5000}
                   rows={3}
                 />

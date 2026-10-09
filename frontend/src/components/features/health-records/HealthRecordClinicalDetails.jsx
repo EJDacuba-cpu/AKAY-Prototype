@@ -59,7 +59,7 @@ import {
   getBloodPressureValue,
   getRecordVisitTypeValue,
 } from "./recordDetailsHelpers";
-import { diagnosisCarePlanItems } from "../../../utils/recordCarePlan";
+import { diagnosisCarePlanHeading, diagnosisCarePlanItems } from "../../../utils/recordCarePlan";
 
 /* ─────────────────────────────────────────────
    HealthRecordClinicalDetails
@@ -70,7 +70,7 @@ import { diagnosisCarePlanItems } from "../../../utils/recordCarePlan";
 ──────────────────────────────────────────── */
 
 export default function HealthRecordClinicalDetails(props) {
-  // Care Plan & Next Steps as saved, per diagnosis (display only), under
+  // Health concerns and their next actions as saved (display only), under
   // whichever record layout applies.
   const carePlanItems = diagnosisCarePlanItems(props.record?.diagnoses);
   const details = <RecordDetailsBody {...props} />;
@@ -78,15 +78,15 @@ export default function HealthRecordClinicalDetails(props) {
   return (
     <div className="space-y-4">
       {details}
-      <DiagnosisCarePlanSummary items={carePlanItems} />
+      <DiagnosisCarePlanSummary title={diagnosisCarePlanHeading(props.record?.diagnoses)} items={carePlanItems} />
     </div>
   );
 }
 
-function DiagnosisCarePlanSummary({ items }) {
+function DiagnosisCarePlanSummary({ title, items }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5">
-      <TabbedSubsection title="Care Plan">
+      <TabbedSubsection title={title}>
         <ul className="divide-y divide-slate-100">
           {items.map((item) => (
             <li key={item.key} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-sm">

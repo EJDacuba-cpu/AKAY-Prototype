@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 
 import ModalShell, { ModalButton } from "../../../common/modals/ModalShell";
 import { formatDate } from "../../../../utils/formatters";
+import { conditionStatusLabel, monitoringRecommendationOptions } from "../../../../utils/medicalConditions";
 import { monitoredConditionOptions } from "../../../../utils/startConsultation";
 
 function toggle(list, id) {
@@ -34,44 +35,82 @@ function ConditionRow({ checked, disabled, onChange, option }) {
   );
 }
 
+function RecommendationRow({ checked, disabled, onChange, option }) {
+  const { conditionName, status, confirmedAt } = option;
+  const lines = [
+    [conditionStatusLabel(status), confirmedAt && `confirmed by RHU ${formatDate(confirmedAt, confirmedAt)}`]
+      .filter(Boolean)
+      .join(" · "),
+  ].filter(Boolean);
+  return (
+    <label className={`flex items-start gap-2.5 border-b border-[#E5E7EB] px-1 py-2.5 last:border-b-0 ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+        className="mt-0.5 h-4 w-4 flex-none accent-[#DC2626]"
+      />
+      <span className="min-w-0">
+        <span className="block text-[13px] font-semibold text-slate-900">{conditionName}</span>
+        {lines.map((line) => (
+          <span key={line} className="block text-xs text-slate-500">{line}</span>
+        ))}
+      </span>
+    </label>
+  );
+}
+
 /**
- * Shown by Start Consultation when the patient has active monitoring records.
- * Existing monitoring is optional context on the one encounter, not a visit
- * type: nothing is preselected, and starting with nothing ticked is a normal
- * consultation that opens at once. With monitoring ticked, `onStart` (async)
- * first reads the records fresh and the modal stays open on a spinner until
- * the workspace can open already populated; if a record is no longer active
- * or cannot be read, the modal says so instead of opening half loaded.
+ * Shown by Start Consultation when the patient has active monitoring records
+ * or conditions the RHU recommends BHC start monitoring. Both are optional
+ * context on the one encounter, not a visit type: nothing is preselected, and
+ * starting with nothing ticked is a normal consultation that opens at once.
+ * With anything ticked, `onStart` (async) first reads the records fresh and the
+ * modal stays open on a spinner until the workspace can open already
+ * populated; if a record is no longer active, a recommendation was withdrawn,
+ * or they cannot be read, the modal says so instead of opening half loaded.
  * It does not pick a service - Barangay Health Services stays in the
  * workspace. Mount it only while open so each opening starts empty.
  */
 export default function StartConsultationModal({ overview, onStart, onCancel }) {
   const headingId = useId();
+  const recommendedHeadingId = useId();
   const [monitoringIds, setMonitoringIds] = useState([]);
+  const [startConditionIds, setStartConditionIds] = useState([]);
   const [starting, setStarting] = useState(false);
   const [problem, setProblem] = useState("");
   const options = monitoredConditionOptions(overview);
+  const recommendations = monitoringRecommendationOptions(overview);
   const hasPendingFollowUp = options.some((o) => o.followUp && monitoringIds.includes(o.monitoringId));
 
   async function handleStart() {
     setProblem("");
-    if (monitoringIds.length === 0) {
-      onStart({ monitoringIds: [] });
+    if (monitoringIds.length === 0 && startConditionIds.length === 0) {
+      onStart({ monitoringIds: [], startConditionIds: [] });
       return;
     }
     const names = new Map(options.map((option) => [option.monitoringId, option.conditionName]));
+    const recommendedNames = new Map(recommendations.map((option) => [Number(option.conditionId), option.conditionName]));
     setStarting(true);
     try {
-      await onStart({ monitoringIds });
+      await onStart({ monitoringIds, startConditionIds });
       // Navigation takes over; the modal unmounts with the page.
     } catch (error) {
       if (error?.kind === "inactive") {
         const dropped = error.droppedMonitoringIds || [];
+        const droppedRecommendations = (error.droppedConditionIds || []).map(Number);
         setMonitoringIds((current) => current.filter((id) => !dropped.includes(id)));
-        const label = dropped.map((id) => names.get(id) || "A condition").join(", ");
-        setProblem(
-          `${label} ${dropped.length === 1 ? "is" : "are"} no longer under active monitoring and was unticked. Check the list, then start again.`,
-        );
+        setStartConditionIds((current) => current.filter((id) => !droppedRecommendations.includes(Number(id))));
+        const messages = [];
+        if (dropped.length) {
+          const label = dropped.map((id) => names.get(id) || "A condition").join(", ");
+          messages.push(`${label} ${dropped.length === 1 ? "is" : "are"} no longer under active monitoring and was unticked.`);
+        }
+        for (const id of droppedRecommendations) {
+          messages.push(`${recommendedNames.get(id) || "A condition"} is no longer recommended for BHC monitoring and was unticked.`);
+        }
+        setProblem(`${messages.join(" ")} Check the list, then start again.`);
       } else {
         setProblem("Monitoring records could not be loaded. Try again, or untick them to start a normal consultation.");
       }
@@ -105,21 +144,46 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
       }
     >
       <div className="text-[13px] text-slate-600">
-        <h3 id={headingId} className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-          Existing monitoring addressed in this visit
-        </h3>
-        <p className="mt-0.5 text-xs text-slate-500">Optional. Leave all unticked to start a normal consultation.</p>
-        <div role="group" aria-labelledby={headingId} className="mt-1">
-          {options.map((option) => (
-            <ConditionRow
-              key={option.monitoringId}
-              option={option}
-              disabled={starting}
-              checked={monitoringIds.includes(option.monitoringId)}
-              onChange={() => setMonitoringIds((current) => toggle(current, option.monitoringId))}
-            />
-          ))}
-        </div>
+        {options.length > 0 && (
+          <section>
+            <h3 id={headingId} className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+              Existing monitoring addressed in this visit
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-500">Optional. Leave all unticked to start a normal consultation.</p>
+            <div role="group" aria-labelledby={headingId} className="mt-1">
+              {options.map((option) => (
+                <ConditionRow
+                  key={option.monitoringId}
+                  option={option}
+                  disabled={starting}
+                  checked={monitoringIds.includes(option.monitoringId)}
+                  onChange={() => setMonitoringIds((current) => toggle(current, option.monitoringId))}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+        {recommendations.length > 0 && (
+          <section className={options.length > 0 ? "mt-4" : ""}>
+            <h3 id={recommendedHeadingId} className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+              Recommended by RHU — start BHC monitoring
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Optional. Ticked conditions are started in Care Plan &amp; Next Steps; unticked ones stay recommended.
+            </p>
+            <div role="group" aria-labelledby={recommendedHeadingId} className="mt-1">
+              {recommendations.map((option) => (
+                <RecommendationRow
+                  key={option.conditionId}
+                  option={option}
+                  disabled={starting}
+                  checked={startConditionIds.includes(option.conditionId)}
+                  onChange={() => setStartConditionIds((current) => toggle(current, option.conditionId))}
+                />
+              ))}
+            </div>
+          </section>
+        )}
         {hasPendingFollowUp && (
           <p className="mt-2 text-xs text-slate-500">
             Pending follow-ups for the selected conditions are recorded as attended when this consultation is saved.

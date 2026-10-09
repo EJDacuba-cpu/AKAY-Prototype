@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   alertConditionNames,
+  conditionStatusLabel,
   groupMedicalConditions,
   mapPatientConditions,
   monitoringRecommendationOptions,
@@ -115,6 +116,16 @@ test("recommendation options are alphabetical and ignore a missing overview", ()
     { conditionId: 2, conditionName: "Hypertension", status: "active", confirmedAt: "2026-10-01", recommendedAt: "2026-10-02" },
   ]);
   assert.deepEqual(monitoringRecommendationOptions(null), []);
+});
+
+test("RHU condition statuses read as their labels", () => {
+  assert.equal(conditionStatusLabel("under_evaluation"), "Under Evaluation");
+  assert.equal(conditionStatusLabel("active"), "Active");
+  assert.equal(conditionStatusLabel("controlled"), "Controlled");
+  assert.equal(conditionStatusLabel("resolved"), "Resolved");
+  assert.equal(conditionStatusLabel("ruled_out"), "Ruled Out");
+  assert.equal(conditionStatusLabel(null), "");
+  assert.equal(conditionStatusLabel("something_else"), "something_else");
 });
 
 test("the conditions payload is mapped to camelCase", () => {

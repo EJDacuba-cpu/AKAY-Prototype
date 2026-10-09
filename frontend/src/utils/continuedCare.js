@@ -7,7 +7,8 @@ import { matchConditionKey } from "./carePlan.js";
  * page so it is tested.
  *
  * A continued monitoring is `{ id, conditionName, conditionKey, startedAt,
- * lastHealthRecordId }`. A pending follow-up's conditions carry no registry
+ * lastHealthRecordId, conditionStatus, legacy }` (`conditionStatus` is the
+ * RHU's status, null with `legacy` true when it predates confirmation). A pending follow-up's conditions carry no registry
  * key or start date in the overview, so those stay null/"" and identity falls
  * back to the condition name (a registered condition's stored name is its
  * registry name - utils/carePlan.conditionIdentity).
@@ -40,6 +41,8 @@ function fromUnscheduled(monitoring) {
     conditionKey: monitoring.conditionKey || null,
     startedAt: monitoring.startedAt || "",
     lastHealthRecordId: monitoring.lastHealthRecordId || null,
+    conditionStatus: monitoring.conditionStatus || null,
+    legacy: monitoring.legacy === true,
   };
 }
 
@@ -51,6 +54,8 @@ function fromFollowUpCondition(task, condition) {
     startedAt: condition.startedAt || "",
     // The ITR that scheduled the follow-up is that condition's latest visit.
     lastHealthRecordId: task.sourceHealthRecordId || null,
+    conditionStatus: condition.conditionStatus || null,
+    legacy: condition.legacy === true,
   };
 }
 
@@ -150,7 +155,8 @@ export function resolveContinuedCare(
   const startingConditions = [];
   const droppedConditionIds = [];
   for (const id of uniqueIds(startConditionIds)) {
-    if (recommended.has(id)) startingConditions.push(recommended.get(id));
+    // `id` is the condition id the care plan payload and the draft carry.
+    if (recommended.has(id)) startingConditions.push({ ...recommended.get(id), id });
     else droppedConditionIds.push(id);
   }
 
@@ -179,18 +185,39 @@ function countLabel(count, singular, plural) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-/** The notice shown when continued items were dropped; "" when none were. */
-export function droppedContinuedCareNotice({ droppedFollowUpIds = [], droppedMonitoringIds = [] } = {}) {
+/**
+ * The notice shown when continued items were dropped; "" when none were.
+ * A withdrawn RHU recommendation is worded on its own: the worker did not
+ * lose an active record, the RHU no longer recommends starting it.
+ */
+export function droppedContinuedCareNotice({
+  droppedFollowUpIds = [],
+  droppedMonitoringIds = [],
+  droppedConditionIds = [],
+} = {}) {
+  const sentences = [];
   const parts = [];
   if (droppedFollowUpIds.length) parts.push(countLabel(droppedFollowUpIds.length, "follow-up", "follow-ups"));
   if (droppedMonitoringIds.length) {
     parts.push(countLabel(droppedMonitoringIds.length, "monitored condition", "monitored conditions"));
   }
-  if (!parts.length) return "";
-  const one = droppedFollowUpIds.length + droppedMonitoringIds.length === 1;
-  return `${parts.join(" and ")} ${one ? "is" : "are"} no longer active (already completed or stopped) and ${
-    one ? "was" : "were"
-  } removed from Care Plan.`;
+  if (parts.length) {
+    const one = droppedFollowUpIds.length + droppedMonitoringIds.length === 1;
+    sentences.push(
+      `${parts.join(" and ")} ${one ? "is" : "are"} no longer active (already completed or stopped) and ${
+        one ? "was" : "were"
+      } removed from Care Plan.`,
+    );
+  }
+  if (droppedConditionIds.length) {
+    const one = droppedConditionIds.length === 1;
+    sentences.push(
+      `${countLabel(droppedConditionIds.length, "RHU-recommended condition", "RHU-recommended conditions")} ${
+        one ? "is" : "are"
+      } no longer recommended for BHC monitoring and ${one ? "was" : "were"} removed from Care Plan.`,
+    );
+  }
+  return sentences.join(" ");
 }
 
 /**

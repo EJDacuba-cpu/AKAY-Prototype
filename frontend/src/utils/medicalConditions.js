@@ -12,6 +12,20 @@ const CONFIRMED_STATUSES = new Set(["active", "controlled"]);
 const PAST_STATUSES = new Set(["resolved", "ruled_out"]);
 const PATIENT_REPORTED = "Patient-reported";
 
+const STATUS_LABELS = Object.freeze({
+  under_evaluation: "Under Evaluation",
+  active: "Active",
+  controlled: "Controlled",
+  resolved: "Resolved",
+  ruled_out: "Ruled Out",
+});
+
+/** The RHU status as the worker reads it; "" for none, the raw value if unknown. */
+export function conditionStatusLabel(status) {
+  if (!status) return "";
+  return STATUS_LABELS[status] || String(status);
+}
+
 /** GET /patients/{id}/conditions in the client's shape. */
 export function mapPatientConditions(data) {
   const source = data && typeof data === "object" ? data : {};

@@ -12,7 +12,7 @@ import { getCurrentUser } from "../utils/auth";
 import { buildPatientConsultationPath } from "../utils/consultationRoute";
 import { DRAFTS_ENABLED } from "../utils/featureFlags";
 import { queryKeys } from "../utils/queryKeys";
-import { hasMonitoredConditions, startRoute } from "../utils/startConsultation";
+import { hasStartChoices, startRoute } from "../utils/startConsultation";
 
 /**
  * The consultation state of one patient: whether the signed-in user has an
@@ -21,9 +21,9 @@ import { hasMonitoredConditions, startRoute } from "../utils/startConsultation";
  * draft banner so both read one query.
  *
  * Without a draft, Start Consultation first reads the patient's care overview:
- * when the patient has active monitored conditions, `needsStartModal` is true
- * and the button opens the Start Consultation modal, where existing monitoring
- * can optionally be added to the visit. With none, the button goes straight to
+ * when the patient has active monitored conditions or RHU-recommended
+ * conditions to start, `needsStartModal` is true and the button opens the Start
+ * Consultation modal, where they can optionally be added to the visit. With none, the button goes straight to
  * the consultation. A draft always wins - Resume goes straight back to it. An
  * overview that fails to load never blocks starting: the button falls back to
  * a new consultation.
@@ -85,16 +85,19 @@ export default function usePatientConsultation(patientId) {
     isPending: (DRAFTS_ENABLED && isPending) || (!draft && careOverviewPending),
     isError: DRAFTS_ENABLED && isError,
     careOverview,
-    needsStartModal: !draft && hasMonitoredConditions(careOverview),
+    needsStartModal: !draft && hasStartChoices(careOverview),
     /**
      * Opens the consultation for what the Start Consultation modal chose.
-     * With monitoring ticked it first reads that monitoring fresh and rejects
-     * (ContinuedStartError) if a record is gone, so the workspace never opens
-     * half loaded; with none ticked it opens at once.
+     * With monitoring or RHU recommendations ticked it first reads them fresh
+     * and rejects (ContinuedStartError) if a record is gone or a recommendation
+     * withdrawn, so the workspace never opens half loaded; with none ticked it
+     * opens at once.
      */
-    start: async ({ monitoringIds = [] } = {}) => {
-      if (monitoringIds.length) await prepareContinuedStart(queryClient, patientId, monitoringIds);
-      navigate(startRoute({ patientId, monitoringIds }));
+    start: async ({ monitoringIds = [], startConditionIds = [] } = {}) => {
+      if (monitoringIds.length || startConditionIds.length) {
+        await prepareContinuedStart(queryClient, patientId, monitoringIds, startConditionIds);
+      }
+      navigate(startRoute({ patientId, monitoringIds, startConditionIds }));
     },
     retry: () => queryClient.invalidateQueries({ queryKey }),
     discarding: discard.isPending,
