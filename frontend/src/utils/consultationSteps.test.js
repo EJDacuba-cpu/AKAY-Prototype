@@ -460,3 +460,13 @@ test("TB and stop-reason errors route to their screens", () => {
   assert.equal(getErrorOwnerStepKey("tbData.diagnosis.tbCaseNumber"), MONITORING_STEP);
   assert.equal(getErrorOwnerStepKey("carePlanStop.3"), NEXT_STEP);
 });
+
+test("care plan action and acknowledgment errors route to Care Plan & Next Steps", () => {
+  assert.equal(getErrorOwnerStepKey("carePlanAction.d1"), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("followUpAcknowledged"), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("referralAcknowledged"), NEXT_STEP);
+  // Save reveals Care Plan, the earliest failing screen, from Review.
+  const order = getStepOrder([], []);
+  assert.equal(findFirstErrorStepKey({ referralAcknowledged: "x" }, order), NEXT_STEP);
+  assert.equal(findFirstErrorStepKey({ "carePlanAction.d2": "x", followUpAcknowledged: "y" }, order), NEXT_STEP);
+});

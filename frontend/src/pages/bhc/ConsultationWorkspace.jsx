@@ -1233,6 +1233,7 @@ export default function ConsultationWorkspace() {
   });
   const carePlanCoverageShown = {
     followUpCovers: carePlanFollowUp.shows ? carePlanCovers.followUpCovers : [],
+    followUpConcernCount: carePlanFollowUp.shows ? carePlanCovers.followUpConcernCount : 0,
     referralCovers: carePlanDisposition.needsReferral ? carePlanCovers.referralCovers : [],
   };
   const followUpCoversKey = carePlanCoverageShown.followUpCovers.join("\n");
@@ -2339,10 +2340,15 @@ export default function ConsultationWorkspace() {
     // the status follows it, so there is no "date required" case here).
     // validateCarePlan must run before buildCarePlanPayload, which drops
     // blank-reason stops.
+    // Same Care Plan rules Continue checks: a care plan action per concern and
+    // the H7 acknowledgments (never stored in a draft, so a draft resumed onto
+    // Review is asked again - revealErrorStep goes back to Care Plan).
     Object.assign(
       errors,
+      validateConcernActions(diagnoses),
       validateCarePlan({ continuedMonitorings, stops: monitoringStops }),
       carePlanFollowUpErrors({ kept: carePlanFollowUp.kept, followUpDate, followUpReason, concerns: diagnoses }),
+      sharedAcknowledgmentErrors({ ...carePlanCoverageShown, followUpAcknowledged, referralAcknowledged }),
     );
 
     if (hasPendingDispensedMedicineDraft) {

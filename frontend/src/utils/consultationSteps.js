@@ -323,7 +323,8 @@ export function getErrorOwnerStepKey(errorKey) {
   if (key === "diagnosis") return ASSESSMENT_STEP;
   // Actions Taken (and the medicines dispensed) sit on the Assessment screen.
   if (key === "dispensedMedicines") return ASSESSMENT_STEP;
-  if (key.startsWith("carePlanStop.")) return NEXT_STEP;
+  if (key.startsWith("carePlanStop.") || key.startsWith("carePlanAction.")) return NEXT_STEP;
+  if (key === "followUpAcknowledged" || key === "referralAcknowledged") return NEXT_STEP;
   if (key === "reasonForReferral" || key === "receivingRhuId" || key === "urgencyLevel" || key === "followUpDate" || key === "followUpTime" || key === "followUpReason" || key === "followUpStatus") {
     return NEXT_STEP;
   }

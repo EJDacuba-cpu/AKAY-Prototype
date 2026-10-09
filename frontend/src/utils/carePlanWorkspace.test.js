@@ -320,6 +320,7 @@ test("carePlanCoverage lists follow-up and referral items", () => {
   assert.deepEqual(coverage, {
     followUpCovers: ["Concern 1 — Wound", "Concern 2 — Cough", "Hypertension monitoring"],
     referralCovers: ["Concern 2 — Cough"],
+    followUpConcernCount: 2,
   });
 });
 
@@ -351,29 +352,61 @@ test("carePlanCoverage numbers concerns by their place, and adds referred condit
   ]);
   // A historical value from an old draft is not a choice, so it refers nothing.
   assert.deepEqual(coverage.referralCovers, ["Concern 2 — Chest pain", "Hypertension"]);
-  assert.deepEqual(carePlanCoverage(), { followUpCovers: [], referralCovers: [] });
+  assert.deepEqual(carePlanCoverage(), { followUpCovers: [], referralCovers: [], followUpConcernCount: 0 });
 });
 
 test("acknowledgment is required only for two or more covered items", () => {
   const two = ["Concern 1 — Wound", "Concern 2 — Cough"];
+  // The follow-up counts the concerns that schedule it; the referral counts every referred item.
   assert.deepEqual(
-    sharedAcknowledgmentErrors({ followUpCovers: two, referralCovers: two, followUpAcknowledged: false, referralAcknowledged: false }),
+    sharedAcknowledgmentErrors({ followUpConcernCount: 2, referralCovers: two, followUpAcknowledged: false, referralAcknowledged: false }),
     { followUpAcknowledged: ACK_MESSAGE, referralAcknowledged: ACK_MESSAGE },
   );
   assert.deepEqual(
-    sharedAcknowledgmentErrors({ followUpCovers: two, referralCovers: two, followUpAcknowledged: true, referralAcknowledged: false }),
+    sharedAcknowledgmentErrors({ followUpConcernCount: 2, referralCovers: two, followUpAcknowledged: true, referralAcknowledged: false }),
     { referralAcknowledged: ACK_MESSAGE },
   );
   assert.deepEqual(
-    sharedAcknowledgmentErrors({ followUpCovers: two, referralCovers: two, followUpAcknowledged: true, referralAcknowledged: true }),
+    sharedAcknowledgmentErrors({ followUpConcernCount: 2, referralCovers: two, followUpAcknowledged: true, referralAcknowledged: true }),
     {},
   );
   // One item each: nothing to acknowledge.
   assert.deepEqual(
-    sharedAcknowledgmentErrors({ followUpCovers: [two[0]], referralCovers: [two[1]], followUpAcknowledged: false, referralAcknowledged: false }),
+    sharedAcknowledgmentErrors({ followUpConcernCount: 1, referralCovers: [two[1]], followUpAcknowledged: false, referralAcknowledged: false }),
     {},
   );
   assert.deepEqual(sharedAcknowledgmentErrors(), {});
+  // A referred concern and a referred monitored condition: two referred items.
+  const coverage = carePlanCoverage({
+    concerns: [{ id: "a", name: "Cough", carePlan: "refer" }],
+    continuedMonitorings: [{ id: 3, conditionName: "Hypertension" }],
+    referrals: [3],
+  });
+  assert.deepEqual(sharedAcknowledgmentErrors({ ...coverage }), { referralAcknowledged: ACK_MESSAGE });
+});
+
+test("monitored conditions and the service visit never count toward the follow-up acknowledgment", () => {
+  const ack = (input) => sharedAcknowledgmentErrors({ ...carePlanCoverage(input) }).followUpAcknowledged;
+  // Two monitored conditions, no concern.
+  assert.equal(
+    ack({ continuedMonitorings: [{ id: 3, conditionName: "Hypertension" }, { id: 4, conditionName: "Asthma" }], serviceNextVisitLabel: "Prenatal next visit" }),
+    undefined,
+  );
+  // One follow-up concern and one monitored condition.
+  assert.equal(
+    ack({ concerns: [{ id: "a", name: "Wound", carePlan: "follow_up" }], continuedMonitorings: [{ id: 3, conditionName: "Hypertension" }] }),
+    undefined,
+  );
+  // Two follow-up concerns (a flagged referral counts).
+  assert.equal(
+    ack({ concerns: [{ id: "a", name: "Wound", carePlan: "follow_up" }, { id: "b", name: "Cough", carePlan: "refer", bhcFollowUp: true }] }),
+    ACK_MESSAGE,
+  );
+  // An unflagged referral does not schedule the follow-up.
+  assert.equal(
+    ack({ concerns: [{ id: "a", name: "Wound", carePlan: "follow_up" }, { id: "b", name: "Cough", carePlan: "refer" }] }),
+    undefined,
+  );
 });
 
 test("follow-up date and reason errors use the new messages and count flagged referrals", () => {

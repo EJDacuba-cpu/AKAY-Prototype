@@ -43,6 +43,9 @@ export function followUpPlan(disposition = {}, followUpDate = "", { hasService =
  * What the visit's single BHC follow-up and single RHU referral cover, for the
  * "Covers:" lines of BHC Follow-up Details and RHU Referral Details. Display
  * and acknowledgment only: both stay one consultation-level record each.
+ * `followUpConcernCount` is how many concerns schedule the follow-up - the
+ * count its acknowledgment uses (monitoring and the service visit are listed
+ * but do not count).
  *
  * Concerns are numbered by their place in the list ("Concern 2 — Cough"). The
  * follow-up covers each concern that schedules it (Schedule BHC Follow-up, or a
@@ -65,8 +68,9 @@ export function carePlanCoverage({
     ...(continuedMonitorings || []).filter((monitoring) => !Object.hasOwn(stops || {}, monitoring.id)),
     ...(startingConditions || []),
   ];
+  const followUpConcerns = list.filter(schedulesBhcFollowUp);
   const followUpCovers = [
-    ...list.filter(schedulesBhcFollowUp).map(concernLabel),
+    ...followUpConcerns.map(concernLabel),
     ...monitored.map((condition) => `${condition.conditionName} monitoring`),
     ...(serviceNextVisitLabel ? [serviceNextVisitLabel] : []),
   ];
@@ -74,7 +78,7 @@ export function carePlanCoverage({
     ...referredConcerns(list).map(concernLabel),
     ...referredContinuingRows(continuedMonitorings, stops, referrals).map((monitoring) => monitoring.conditionName),
   ];
-  return { followUpCovers, referralCovers };
+  return { followUpCovers, referralCovers, followUpConcernCount: followUpConcerns.length };
 }
 
 /** Shown under an unticked acknowledgment (H7): one referral and one follow-up date per consultation. */
@@ -82,18 +86,20 @@ export const SHARED_ACKNOWLEDGMENT_MESSAGE =
   "AKAY records one referral and one follow-up date per consultation. If these concerns need a different facility, priority or date, refer or schedule the most urgent one here, set the others to another action, and follow your facility's referral or escalation procedure for the rest. Record what you did in Additional Clinical Notes.";
 
 /**
- * When the follow-up date or the referral covers 2 or more items, the worker
- * confirms that one date / one facility and priority suits them all. Nothing
- * is cleared or chosen for them; Continue waits for the box or a changed action.
+ * When 2 or more health concerns schedule the one BHC follow-up, or the
+ * referral covers 2 or more items (referred concerns and referred monitored
+ * conditions, as the server counts them), the worker confirms that one date /
+ * one facility and priority suits them all. Nothing is cleared or chosen for
+ * them; Continue and Save wait for the box or a changed action.
  */
 export function sharedAcknowledgmentErrors({
-  followUpCovers = [],
+  followUpConcernCount = 0,
   referralCovers = [],
   followUpAcknowledged = false,
   referralAcknowledged = false,
 } = {}) {
   const errors = {};
-  if ((followUpCovers || []).length >= 2 && !followUpAcknowledged) errors.followUpAcknowledged = SHARED_ACKNOWLEDGMENT_MESSAGE;
+  if (followUpConcernCount >= 2 && !followUpAcknowledged) errors.followUpAcknowledged = SHARED_ACKNOWLEDGMENT_MESSAGE;
   if ((referralCovers || []).length >= 2 && !referralAcknowledged) errors.referralAcknowledged = SHARED_ACKNOWLEDGMENT_MESSAGE;
   return errors;
 }

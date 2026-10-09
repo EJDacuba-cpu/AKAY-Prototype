@@ -189,9 +189,10 @@ function PointerLine({ children }) {
  *   it starts this visit. There is no clinical-status control: only the RHU
  *   sets a condition's status.
  * - BHC Follow-up Details and RHU Referral Details: the visit's ONE follow-up
- *   and ONE referral, each with what it covers (carePlanCoverage) and, when it
- *   covers 2 or more items, the acknowledgment that one date / one facility
- *   and priority suits them all.
+ *   and ONE referral, each with what it covers (carePlanCoverage) and the
+ *   acknowledgment that one date / one facility and priority suits them all -
+ *   when 2 or more concerns schedule the follow-up, or the referral covers 2
+ *   or more items.
  * - Additional Clinical Notes.
  * A visit with no concern and nothing monitored is a General Consultation: a
  * plain empty state. Every rule it shows comes from utils/carePlan.js.
@@ -209,6 +210,7 @@ export default function CarePlanSection({
   const hasMonitoring = continuedMonitorings.length > 0 || startingConditions.length > 0;
   const followUpCovers = coverage.followUpCovers || [];
   const referralCovers = coverage.referralCovers || [];
+  const followUpConcernCount = coverage.followUpConcernCount || 0;
   const followUpDateRequired = concerns.some(schedulesBhcFollowUp);
 
   return (
@@ -377,20 +379,16 @@ export default function CarePlanSection({
             dateRequired={followUpDateRequired}
             onFollowUpChange={onFollowUpChange}
           />
-          {followUpCovers.length >= 2 && (
-            <>
-              <p className="mt-3 text-xs text-[#6B7280]">
-                This one date applies to everything listed. A concern that needs a different date cannot share it.
-              </p>
-              <Acknowledgment
-                name="followUpAcknowledged"
-                label="One follow-up date is clinically appropriate for all listed concerns."
-                checked={followUpAcknowledged}
-                error={errors.followUpAcknowledged}
-                disabled={disabled}
-                onChange={(checked) => onAcknowledgeChange?.("followUp", checked)}
-              />
-            </>
+          {/* Only concerns count: monitoring and the service visit are listed, not confirmed. */}
+          {followUpConcernCount >= 2 && (
+            <Acknowledgment
+              name="followUpAcknowledged"
+              label="One follow-up date is clinically appropriate for all listed concerns."
+              checked={followUpAcknowledged}
+              error={errors.followUpAcknowledged}
+              disabled={disabled}
+              onChange={(checked) => onAcknowledgeChange?.("followUp", checked)}
+            />
           )}
         </ClinicalFieldGroup>
       )}
