@@ -12,8 +12,10 @@ test("FBS reads back with its unit, only when recorded", () => {
   assert.equal(formatFbs("  "), "");
 });
 
-test("a saved record's care plan lists only tracked or surveillance diagnoses", () => {
+test("a saved record's care plan lists only concerns with a next action or surveillance", () => {
   const items = diagnosisCarePlanItems([
+    { id: "d0", name: "Elevated BP", carePlan: "recheck" },
+    { id: "d8", name: "Wound", carePlan: "follow_up" },
     { id: "d1", name: "Hypertension", carePlan: "monitor" },
     { id: "d2", name: "Pneumonia", carePlan: "refer", includeInSurveillance: true },
     { id: "d3", name: "Diabetes Mellitus", carePlan: "monitor_refer" },
@@ -23,6 +25,8 @@ test("a saved record's care plan lists only tracked or surveillance diagnoses", 
     { id: "d7", name: "  ", carePlan: "monitor" },
   ]);
   assert.deepEqual(items, [
+    { key: "d0", name: "Elevated BP", plan: "Recheck", inSurveillance: false },
+    { key: "d8", name: "Wound", plan: "Follow-up", inSurveillance: false },
     { key: "d1", name: "Hypertension", plan: "Monitor at BHC", inSurveillance: false },
     { key: "d2", name: "Pneumonia", plan: "Refer to RHU", inSurveillance: true },
     { key: "d3", name: "Diabetes Mellitus", plan: "Monitor at BHC + Refer to RHU", inSurveillance: false },

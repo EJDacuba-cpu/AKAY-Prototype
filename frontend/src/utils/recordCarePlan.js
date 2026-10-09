@@ -5,7 +5,10 @@ import { CARE_PLAN, CARE_PLAN_LABELS } from "./carePlan.js";
  * only: nothing here is derived or suggested.
  */
 
-const SHOWN_PLANS = new Set([CARE_PLAN.MONITOR, CARE_PLAN.REFER, CARE_PLAN.MONITOR_REFER]);
+// New next actions and the retired Monitor values older records still hold.
+const SHOWN_PLANS = new Set([
+  CARE_PLAN.RECHECK, CARE_PLAN.FOLLOW_UP, CARE_PLAN.REFER, CARE_PLAN.MONITOR, CARE_PLAN.MONITOR_REFER,
+]);
 
 /** vital_signs.fbs as "126 mg/dL"; "" when not recorded. */
 export function formatFbs(value) {

@@ -5,8 +5,6 @@ import {
   addDiagnosis,
   getAddDiagnosisError,
   removeDiagnosis,
-  toggleDiagnosisCondition,
-  findCurrentCondition,
   formatDiagnoses,
   isDuplicateDiagnosisName,
   joinDiagnosisNames,
@@ -14,18 +12,17 @@ import {
   restoreDiagnoses,
 } from "./diagnoses.js";
 
-test("normalizeDiagnoses drops blank names and only keeps a status when added to conditions", () => {
+test("normalizeDiagnoses drops blank names and never emits condition fields", () => {
   const result = normalizeDiagnoses([
     { id: "a", name: "  Asthma ", addToConditions: true, conditionStatus: "Controlled" },
-    { id: "b", name: "Allergic rhinitis", addToConditions: false, conditionStatus: "Active" },
+    { id: "b", name: "Allergic rhinitis", carePlan: "recheck" },
     { id: "c", name: "   " },
-    { id: "d", name: "Hypertension", addToConditions: true, conditionStatus: "Monitoring" },
   ]);
   assert.deepEqual(result, [
-    { id: "a", name: "Asthma", addToConditions: true, conditionStatus: "Controlled" },
-    { id: "b", name: "Allergic rhinitis", addToConditions: false, conditionStatus: null },
-    { id: "d", name: "Hypertension", addToConditions: true, conditionStatus: "Active" },
+    { id: "a", name: "Asthma" },
+    { id: "b", name: "Allergic rhinitis", carePlan: "recheck" },
   ]);
+  assert.ok(result.every((item) => !("addToConditions" in item) && !("conditionStatus" in item)));
 });
 
 test("the plain-text diagnosis is the joined names", () => {
@@ -34,7 +31,7 @@ test("the plain-text diagnosis is the joined names", () => {
     { id: "b", name: "Allergic rhinitis" },
   ];
   assert.equal(joinDiagnosisNames(list), "Asthma; Allergic rhinitis");
-  assert.equal(formatDiagnoses(list), "Asthma (Current Conditions: Active); Allergic rhinitis");
+  assert.equal(formatDiagnoses(list), "Asthma; Allergic rhinitis");
   assert.equal(joinDiagnosisNames([]), "");
 });
 
@@ -52,7 +49,7 @@ test("restoreDiagnoses keeps legacy free text without rewording it", () => {
   const short = restoreDiagnoses({ diagnosis: "Acute gastroenteritis" });
   assert.equal(short.diagnoses.length, 1);
   assert.equal(short.diagnoses[0].name, "Acute gastroenteritis");
-  assert.equal(short.diagnoses[0].addToConditions, false);
+  assert.deepEqual(Object.keys(short.diagnoses[0]).sort(), ["id", "name"]);
 
   const long = "x".repeat(200);
   const moved = restoreDiagnoses({ diagnosis: long, assessmentNotes: "note" });
@@ -60,14 +57,6 @@ test("restoreDiagnoses keeps legacy free text without rewording it", () => {
   assert.equal(moved.assessmentNotes, `${long}\n\nnote`);
 
   assert.deepEqual(restoreDiagnoses({}), { diagnoses: [], assessmentNotes: "" });
-});
-
-test("findCurrentCondition matches ignoring case and extra spaces, never invents one", () => {
-  const conditions = [{ name: "Hypertension", status: "Controlled" }];
-  assert.equal(findCurrentCondition(conditions, "  hypertension  ")?.status, "Controlled");
-  assert.equal(findCurrentCondition(conditions, "Diabetes Mellitus"), null);
-  assert.equal(findCurrentCondition([], "Hypertension"), null);
-  assert.equal(findCurrentCondition(conditions, ""), null);
 });
 
 test("isDuplicateDiagnosisName flags a same-consultation repeat, ignoring case/spaces, and skips the entry being edited", () => {
@@ -86,7 +75,7 @@ test("addDiagnosis appends a chip, keeping the text exactly as typed (trimmed)",
   list = addDiagnosis(list, "hypertension");
   list = addDiagnosis(list, "UTI");
   assert.deepEqual(list.map((item) => item.name), ["Asthma", "hypertension", "UTI"]);
-  assert.ok(list.every((item) => item.id && item.addToConditions === false && item.conditionStatus === null));
+  assert.ok(list.every((item) => item.id && !("addToConditions" in item) && !("conditionStatus" in item)));
   assert.equal(new Set(list.map((item) => item.id)).size, 3);
 });
 
@@ -119,26 +108,18 @@ test("a duplicate, blank or over-limit diagnosis is not added and says why", () 
   assert.equal(getAddDiagnosisError(list, "Asthma"), null);
 });
 
-test("the star toggles one chip in and out of Current Conditions, always as Active", () => {
-  const list = [
-    { id: "a", name: "Asthma", addToConditions: false, conditionStatus: null },
-    { id: "b", name: "UTI", addToConditions: false, conditionStatus: null },
-  ];
-  const on = toggleDiagnosisCondition(list, "a");
-  assert.deepEqual(on[0], { id: "a", name: "Asthma", addToConditions: true, conditionStatus: "Active" });
-  assert.equal(on[1], list[1]);
-  assert.deepEqual(toggleDiagnosisCondition(on, "a")[0], list[0]);
-});
-
 test("removeDiagnosis drops only that chip", () => {
   const list = [{ id: "a", name: "Asthma" }, { id: "b", name: "UTI" }];
   assert.deepEqual(removeDiagnosis(list, "a"), [{ id: "b", name: "UTI" }]);
 });
 
 test("normalizeDiagnoses keeps care plan and surveillance choices", () => {
-  const [entry] = normalizeDiagnoses([{ id: "d1", name: "HFMD", carePlan: "monitor", includeInSurveillance: true }]);
-  assert.equal(entry.carePlan, "monitor");
+  const [entry] = normalizeDiagnoses([{ id: "d1", name: "HFMD", carePlan: "follow_up", includeInSurveillance: true }]);
+  assert.equal(entry.carePlan, "follow_up");
   assert.equal(entry.includeInSurveillance, true);
+  // A stored legacy value is still read back as stored.
+  const [legacy] = normalizeDiagnoses([{ id: "d3", name: "HTN", carePlan: "monitor" }]);
+  assert.equal(legacy.carePlan, "monitor");
   const [plain] = normalizeDiagnoses([{ id: "d2", name: "Cough", carePlan: "bogus" }]);
   assert.equal(Object.hasOwn(plain, "carePlan"), false);
 });

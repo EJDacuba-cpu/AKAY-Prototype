@@ -25,20 +25,20 @@ const registry = {
 };
 
 test("the follow-up is kept unless the visit only refers", () => {
-  const none = { needsReferral: false, showsFollowUp: false, monitorsAny: false, monitorsDiagnosis: false };
-  const monitor = { needsReferral: false, showsFollowUp: true, monitorsAny: true, monitorsDiagnosis: true };
-  const referOnly = { needsReferral: true, showsFollowUp: false, monitorsAny: false, monitorsDiagnosis: false };
-  // One diagnosis set to Monitor, another to Refer.
-  const monitorAndRefer = { needsReferral: true, showsFollowUp: true, monitorsAny: true, monitorsDiagnosis: true };
-  // A continued condition referred this visit: still monitored, no Monitor row.
-  const referContinued = { needsReferral: true, showsFollowUp: true, monitorsAny: true, monitorsDiagnosis: false };
+  const none = { needsReferral: false, showsFollowUp: false, monitorsAny: false, keepsFollowUpWithReferral: false };
+  const recheck = { needsReferral: false, showsFollowUp: true, monitorsAny: false, keepsFollowUpWithReferral: true };
+  const referOnly = { needsReferral: true, showsFollowUp: false, monitorsAny: false, keepsFollowUpWithReferral: false };
+  // One concern set to Recheck, another to Refer.
+  const recheckAndRefer = { needsReferral: true, showsFollowUp: true, monitorsAny: false, keepsFollowUpWithReferral: true };
+  // A followed condition referred this visit: still monitored, no Recheck / Follow-up concern.
+  const referContinued = { needsReferral: true, showsFollowUp: true, monitorsAny: true, keepsFollowUpWithReferral: false };
 
   assert.deepEqual(followUpPlan(none, ""), { kept: true, shows: false });
-  assert.deepEqual(followUpPlan(monitor, ""), { kept: true, shows: true });
+  assert.deepEqual(followUpPlan(recheck, ""), { kept: true, shows: true });
   assert.deepEqual(followUpPlan(referOnly, "2026-10-08"), { kept: false, shows: false });
-  assert.deepEqual(followUpPlan(monitorAndRefer, "2026-10-08"), { kept: true, shows: true });
+  assert.deepEqual(followUpPlan(recheckAndRefer, "2026-10-08"), { kept: true, shows: true });
   // Same rule as the server (CarePlan::keepsFollowUpWithReferral): only a
-  // diagnosis set to Monitor keeps the follow-up through a referral.
+  // Recheck / Follow-up concern keeps the follow-up through a referral.
   assert.deepEqual(followUpPlan(referContinued, "2026-10-08"), { kept: false, shows: false });
   // A date already set (e.g. pre-filled from a Family Planning appointment)
   // stays visible so the worker can see and clear it.
@@ -70,6 +70,30 @@ test("a follow-up date needs a reason, whenever the follow-up is kept", () => {
   assert.deepEqual(carePlanFollowUpErrors({ kept: false, followUpDate: "2026-10-08", followUpReason: "" }), {});
 });
 
+test("a concern marked Recheck or Follow-up requires the follow-up date", () => {
+  const message = "Set the follow-up date for the concerns marked Recheck or Follow-up.";
+  for (const carePlan of ["recheck", "follow_up"]) {
+    assert.deepEqual(
+      carePlanFollowUpErrors({ kept: true, concerns: [{ name: "BP", carePlan }], followUpDate: "", followUpReason: "" }),
+      { followUpDate: message },
+    );
+  }
+  // Even through a referral that otherwise hands the follow-up to the RHU.
+  assert.deepEqual(
+    carePlanFollowUpErrors({ kept: false, concerns: [{ name: "BP", carePlan: "recheck" }, { name: "TB", carePlan: "refer" }], followUpDate: "" }),
+    { followUpDate: message },
+  );
+  assert.deepEqual(
+    carePlanFollowUpErrors({ kept: true, concerns: [{ name: "BP", carePlan: "recheck" }], followUpDate: "2026-10-08", followUpReason: "Recheck: BP" }),
+    {},
+  );
+  // Refer, no next action and old-draft legacy values never require it.
+  assert.deepEqual(
+    carePlanFollowUpErrors({ kept: false, concerns: [{ name: "TB", carePlan: "refer" }, { name: "Cough" }, { name: "HTN", carePlan: "monitor" }], followUpDate: "" }),
+    {},
+  );
+});
+
 test("stop entries: null removes, a string (even empty) records the stop", () => {
   const stops = { 3: "Moved away" };
   assert.deepEqual(setMonitoringStop(stops, 4, ""), { 3: "Moved away", 4: "" });
@@ -88,7 +112,7 @@ test("the draft stores ids and stops only, and restores them", () => {
     continuedMonitoringIds: [3],
     monitoringStops: [{ monitoringId: 3, reason: "Referred" }, { monitoringId: 4, reason: "" }],
     monitoringReferrals: [],
-    monitoringStatuses: [],
+    startConditionIds: [],
   });
 
   assert.deepEqual(restoreCarePlanDraft(draft), {
@@ -96,14 +120,14 @@ test("the draft stores ids and stops only, and restores them", () => {
     continuedMonitorings: [{ id: 3, conditionName: "Monitored condition", conditionKey: null }],
     monitoringStops: { 3: "Referred", 4: "" },
     monitoringReferrals: [],
-    monitoringStatuses: {},
+    startConditionIds: [],
   });
   assert.deepEqual(restoreCarePlanDraft(undefined), {
     continuedFollowUpTaskIds: [],
     continuedMonitorings: [],
     monitoringStops: {},
     monitoringReferrals: [],
-    monitoringStatuses: {},
+    startConditionIds: [],
   });
   // Drafts round-trip through JSON; ids may come back as strings.
   assert.deepEqual(restoreCarePlanDraft({ continuedFollowUpTaskIds: ["7", "x"], continuedMonitoringIds: ["3"], monitoringStops: [{ monitoringId: "3", reason: null }] }), {
@@ -111,23 +135,24 @@ test("the draft stores ids and stops only, and restores them", () => {
     continuedMonitorings: [{ id: 3, conditionName: "Monitored condition", conditionKey: null }],
     monitoringStops: { 3: "" },
     monitoringReferrals: [],
-    monitoringStatuses: {},
+    startConditionIds: [],
   });
 });
 
-test("a draft keeps the referral and status decisions for followed conditions", () => {
+test("a draft keeps the referral decisions and the conditions being started", () => {
   const draft = carePlanDraftPayload({
     continuedMonitorings: [{ id: 3 }, { id: 4 }],
     monitoringReferrals: [3],
-    monitoringStatuses: { 3: "Controlled", 4: "" },
+    startingConditions: [{ id: 7 }, { id: 8 }],
   });
   assert.deepEqual(draft.monitoringReferrals, [3]);
-  assert.deepEqual(draft.monitoringStatuses, [{ monitoringId: 3, status: "Controlled" }]);
+  assert.deepEqual(draft.startConditionIds, [7, 8]);
+  assert.ok(!("monitoringStatuses" in draft));
   const restored = restoreCarePlanDraft(JSON.parse(JSON.stringify(draft)));
   assert.deepEqual(restored.monitoringReferrals, [3]);
-  assert.deepEqual(restored.monitoringStatuses, { 3: "Controlled" });
-  // Anything that is not a real status is dropped on the way back.
-  assert.deepEqual(restoreCarePlanDraft({ monitoringStatuses: [{ monitoringId: 3, status: "Cured" }] }).monitoringStatuses, {});
+  assert.deepEqual(restored.startConditionIds, [7, 8]);
+  // An old draft's status updates are no longer restored.
+  assert.ok(!("monitoringStatuses" in restoreCarePlanDraft({ monitoringStatuses: [{ monitoringId: 3, status: "Controlled" }] })));
 });
 
 test("one decision per followed condition: continue, refer or stop", () => {
@@ -144,9 +169,9 @@ test("one decision per followed condition: continue, refer or stop", () => {
   assert.deepEqual(setMonitoringDecision({ stops: { 3: "Moved away" }, referrals: [] }, 3, "stop").stops, { 3: "Moved away" });
 });
 
-test("review rows show a followed condition's decision and any status change", () => {
+test("review rows show a followed condition's decision", () => {
   const rows = carePlanReviewRows({
-    diagnoses: [],
+    concerns: [],
     continuedMonitorings: [
       { id: 3, conditionName: "Hypertension", conditionKey: "hypertension" },
       { id: 4, conditionName: "Asthma", conditionKey: null },
@@ -154,14 +179,27 @@ test("review rows show a followed condition's decision and any status change", (
     ],
     stops: { 5: "Completed treatment" },
     referrals: [3],
-    statuses: { 3: "Controlled", 5: "Resolved" },
     registry,
     referral: { needed: true, reason: "Referred for: Hypertension", priority: "Routine" },
   });
   assert.deepEqual(rows.slice(0, 3), [
-    { label: "Hypertension", value: "Refer to RHU · Monitoring continues · Condition status: Controlled" },
+    { label: "Hypertension", value: "Refer to RHU · Monitoring continues" },
     { label: "Asthma", value: "Continue monitoring" },
-    { label: "Tuberculosis", value: "Stop monitoring: Completed treatment · Condition status: Resolved" },
+    { label: "Tuberculosis", value: "Stop monitoring: Completed treatment" },
+  ]);
+});
+
+test("review rows list a condition being started as a monitored condition", () => {
+  const rows = carePlanReviewRows({
+    concerns: [],
+    startingConditions: [{ id: 7, conditionName: "Hypertension", status: "Active", confirmedAt: "2026-10-01" }],
+    registry,
+    referral: { needed: false },
+    followUp: { shows: true, date: "" },
+  });
+  assert.deepEqual(rows, [
+    { label: "Hypertension", value: "Start monitoring at BHC" },
+    { label: "Next Follow-up", value: "Not scheduled" },
   ]);
 });
 
@@ -186,58 +224,57 @@ test("Care Plan continues to Monitoring Details only when a form is needed", () 
   assert.equal(reviewBackTarget([]), NEXT_STEP);
 });
 
-test("review rows list each plan, stops, referral and follow-up", () => {
+test("review rows list each concern's next action, followed conditions, referral and follow-up", () => {
   const rows = carePlanReviewRows({
-    diagnoses: [
-      { id: "d1", name: "HTN", carePlan: "refer" },
-      { id: "d2", name: "Diabetes Mellitus", carePlan: "monitor" },
-      { id: "d3", name: "Pneumonia", carePlan: "none" },
+    concerns: [
+      { id: "d1", name: "Elevated BP", carePlan: "recheck" },
+      { id: "d2", name: "Wound", carePlan: "follow_up" },
+      { id: "d3", name: "Pneumonia", carePlan: "refer" },
+      { id: "d4", name: "Cough" },
     ],
     continuedMonitorings: [
       { id: 3, conditionName: "Hypertension", conditionKey: "hypertension" },
       { id: 4, conditionName: "Asthma", conditionKey: null },
-      { id: 5, conditionName: "Pneumonia", conditionKey: null },
     ],
-    stops: { 3: "Stale reason", 4: "", 5: "Resolved" },
+    stops: { 4: "" },
     registry,
-    referral: { needed: true, reason: "Referred for: HTN; Diabetes Mellitus", priority: "Urgent" },
-    followUp: { shows: true, date: "October 8, 2026", time: "9:00 AM", reason: "FBS recheck" },
+    referral: { needed: true, reason: "Referred for: Pneumonia", priority: "Urgent" },
+    followUp: { shows: true, date: "October 8, 2026", time: "9:00 AM", reason: "Recheck: Elevated BP" },
   });
   assert.deepEqual(rows, [
-    { label: "HTN", value: "Refer to RHU · Monitoring continues" },
-    { label: "Diabetes Mellitus", value: "Monitor at BHC" },
-    { label: "Pneumonia", value: "No Ongoing Tracking · Monitoring stopped: Resolved" },
+    { label: "Elevated BP", value: "Recheck" },
+    { label: "Wound", value: "Follow-up" },
+    { label: "Pneumonia", value: "Refer to RHU" },
+    { label: "Cough", value: "No next action" },
+    { label: "Hypertension", value: "Continue monitoring" },
     { label: "Asthma", value: "Stop monitoring" },
-    { label: "Reason for Referral", value: "Referred for: HTN; Diabetes Mellitus" },
+    { label: "Reason for Referral", value: "Referred for: Pneumonia" },
     { label: "Referral Priority", value: "Urgent" },
     { label: "Next Follow-up", value: "October 8, 2026 · 9:00 AM" },
-    { label: "Follow-up Reason", value: "FBS recheck" },
+    { label: "Follow-up Reason", value: "Recheck: Elevated BP" },
   ]);
 });
 
 test("review rows say so when nothing follows the visit", () => {
-  const rows = carePlanReviewRows({
-    diagnoses: [{ id: "d1", name: "Cough" }],
-    registry,
-    referral: { needed: false },
-    followUp: { shows: true, date: "" },
-  });
-  assert.deepEqual(rows, [
-    { label: "Cough", value: "No Ongoing Tracking" },
-    { label: "Next Follow-up", value: "Not scheduled" },
-  ]);
   assert.deepEqual(
-    carePlanReviewRows({ diagnoses: [], registry, referral: { needed: false }, followUp: { shows: false } }),
-    [{ label: "Next Steps", value: "No suspected condition was recorded for this visit. No condition-specific care plan is required." }],
+    carePlanReviewRows({ concerns: [{ id: "d1", name: "Cough" }], registry, referral: { needed: false }, followUp: { shows: true, date: "" } }),
+    [
+      { label: "Cough", value: "No next action" },
+      { label: "Next Follow-up", value: "Not scheduled" },
+    ],
   );
-  // With conditions, each condition's own row already says No Ongoing Tracking.
   assert.deepEqual(
-    carePlanReviewRows({ diagnoses: [{ id: "d1", name: "Cough", carePlan: "none" }], registry, referral: { needed: false }, followUp: { shows: false } }),
-    [{ label: "Cough", value: "No Ongoing Tracking" }],
+    carePlanReviewRows({ concerns: [], registry, referral: { needed: false }, followUp: { shows: false } }),
+    [{ label: "Next Steps", value: "No health concern was recorded for this visit." }],
+  );
+  // With concerns, each concern's own row already says what follows.
+  assert.deepEqual(
+    carePlanReviewRows({ concerns: [{ id: "d1", name: "Cough" }], registry, referral: { needed: false }, followUp: { shows: false } }),
+    [{ label: "Cough", value: "No next action" }],
   );
   assert.deepEqual(
     carePlanReviewRows({
-      diagnoses: [],
+      concerns: [],
       continuedMonitorings: [{ id: 4, conditionName: "Asthma", conditionKey: null }],
       registry,
       referral: { needed: false },

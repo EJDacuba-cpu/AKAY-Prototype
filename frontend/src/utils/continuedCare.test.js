@@ -9,7 +9,7 @@ import {
   tbPrefillRecordId,
   uniqueById,
 } from "./continuedCare.js";
-import { defaultCarePlan, CARE_PLAN } from "./carePlan.js";
+import { monitoredConditionKeys } from "./carePlan.js";
 import { restoreCarePlanDraft, continuedVisitLink } from "./carePlanWorkspace.js";
 
 const registry = {
@@ -111,9 +111,9 @@ test("a resumed draft's placeholders are re-hydrated from the overview", () => {
     [5, "Tuberculosis", "tuberculosis", "2026-07-01"],
   ]);
   assert.deepEqual(result.monitoringStops, { 5: "Completed treatment" });
-  // A re-diagnosed continued condition defaults to Monitor again (HTN alias -> Hypertension name).
-  assert.equal(defaultCarePlan({ name: "HTN" }, result.continuedMonitorings, registry), CARE_PLAN.MONITOR);
-  assert.equal(defaultCarePlan({ name: "HTN" }, restored.continuedMonitorings, registry), CARE_PLAN.NONE);
+  // A hydrated row without a stored key is still keyed by its registry name; the placeholder is not.
+  assert.deepEqual(monitoredConditionKeys(result.continuedMonitorings, [], {}, registry), ["hypertension", "tuberculosis"]);
+  assert.deepEqual(monitoredConditionKeys(restored.continuedMonitorings, [], {}, registry), [null, null]);
 });
 
 test("ids no longer in the overview are dropped with their stops and reported", () => {

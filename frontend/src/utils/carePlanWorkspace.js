@@ -1,15 +1,11 @@
 import {
-  CARE_PLAN,
   CARE_PLAN_LABELS,
   carePlanFor,
-  continuedByIdentity,
-  conditionIdentity,
-  continuingRows,
+  keepsBhcFollowUp,
   referredContinuingRows,
   stopsRequired,
-  NO_CONDITION_MESSAGE,
+  NO_CONCERN_MESSAGE,
 } from "./carePlan.js";
-import { CONDITION_STATUSES } from "./diagnoses.js";
 import { MONITORING_STEP, NEXT_STEP, REVIEW_STEP } from "./consultationSteps.js";
 
 /**
@@ -24,8 +20,8 @@ import { MONITORING_STEP, NEXT_STEP, REVIEW_STEP } from "./consultationSteps.js"
  *
  * A plain referral hands the follow-up to the RHU (the server clears it), so
  * it is neither shown nor required - even when a referred condition's existing
- * monitoring stays active. A referral keeps it when a diagnosis is set to
- * Monitor at BHC, or when it is a service visit (`hasService`: Maternal /
+ * monitoring stays active. A referral keeps it when a concern is set to
+ * Recheck or Follow-up, or when it is a service visit (`hasService`: Maternal /
  * Family Planning / EPI selected) with a follow-up date set - the next dose,
  * appointment or prenatal return. Same rule as the server's
  * CarePlan::keepsFollowUpWithReferral. A referred service visit keeps showing
@@ -35,7 +31,7 @@ import { MONITORING_STEP, NEXT_STEP, REVIEW_STEP } from "./consultationSteps.js"
  */
 export function followUpPlan(disposition = {}, followUpDate = "", { hasService = false } = {}) {
   const referred = Boolean(disposition.needsReferral);
-  const monitors = Boolean(disposition.monitorsDiagnosis);
+  const monitors = Boolean(disposition.keepsFollowUpWithReferral);
   const kept = !referred || monitors || (Boolean(hasService) && Boolean(followUpDate));
   const offered = !referred || monitors || Boolean(hasService);
   return { kept, shows: offered && (Boolean(disposition.showsFollowUp) || Boolean(followUpDate)) };
@@ -53,12 +49,22 @@ export function shouldRegenerateReferralReason({ current = "", lastAuto = "", ne
   return text.trim() === "" || text === lastAuto;
 }
 
-/** The follow-up reason is required once a date is set (frontend-only rule). */
-export function carePlanFollowUpErrors({ kept = true, followUpDate = "", followUpReason = "" } = {}) {
-  if (kept && followUpDate && !String(followUpReason || "").trim()) {
-    return { followUpReason: "Follow-up reason is required." };
+export const FOLLOW_UP_DATE_MESSAGE = "Set the follow-up date for the concerns marked Recheck or Follow-up.";
+
+/**
+ * A concern marked Recheck or Follow-up needs the follow-up date (the server's
+ * rule, referral or not); the follow-up reason is required once a date is set
+ * (frontend-only rule).
+ */
+export function carePlanFollowUpErrors({ kept = true, concerns = [], followUpDate = "", followUpReason = "" } = {}) {
+  const errors = {};
+  if (!followUpDate && (concerns || []).some((concern) => keepsBhcFollowUp(carePlanFor(concern)))) {
+    errors.followUpDate = FOLLOW_UP_DATE_MESSAGE;
   }
-  return {};
+  if (kept && followUpDate && !String(followUpReason || "").trim()) {
+    errors.followUpReason = "Follow-up reason is required.";
+  }
+  return errors;
 }
 
 /** `reason === null` continues the monitoring; any string (even "") stops it. */
@@ -93,7 +99,7 @@ export function carePlanDraftPayload({
   continuedMonitorings = [],
   monitoringStops = {},
   monitoringReferrals = [],
-  monitoringStatuses = {},
+  startingConditions = [],
 } = {}) {
   return {
     continuedFollowUpTaskIds: continuedFollowUpTaskIds.map(Number),
@@ -103,16 +109,14 @@ export function carePlanDraftPayload({
       reason: reason ?? "",
     })),
     monitoringReferrals: monitoringReferrals.map(Number),
-    monitoringStatuses: Object.entries(monitoringStatuses)
-      .filter(([, status]) => CONDITION_STATUSES.includes(status))
-      .map(([monitoringId, status]) => ({ monitoringId: Number(monitoringId), status })),
+    startConditionIds: startingConditions.map((condition) => Number(condition.id)),
   };
 }
 
 /**
  * Back from a draft. Condition names are not stored; the care-overview query
  * fills them in, so until then each continued record has a placeholder name
- * and no registry key.
+ * and no registry key, and the conditions being started are ids only.
  */
 export function restoreCarePlanDraft(carePlan) {
   const source = carePlan && typeof carePlan === "object" ? carePlan : {};
@@ -121,11 +125,6 @@ export function restoreCarePlanDraft(carePlan) {
   for (const stop of Array.isArray(source.monitoringStops) ? source.monitoringStops : []) {
     const id = positiveInt(stop?.monitoringId);
     if (id) monitoringStops[id] = typeof stop.reason === "string" ? stop.reason : "";
-  }
-  const monitoringStatuses = {};
-  for (const update of Array.isArray(source.monitoringStatuses) ? source.monitoringStatuses : []) {
-    const id = positiveInt(update?.monitoringId);
-    if (id && CONDITION_STATUSES.includes(update.status)) monitoringStatuses[id] = update.status;
   }
   return {
     continuedFollowUpTaskIds: ids(source.continuedFollowUpTaskIds),
@@ -136,7 +135,7 @@ export function restoreCarePlanDraft(carePlan) {
     })),
     monitoringStops,
     monitoringReferrals: ids(source.monitoringReferrals),
-    monitoringStatuses,
+    startConditionIds: ids(source.startConditionIds),
   };
 }
 
@@ -172,6 +171,8 @@ export function reviewBackTarget(monitoringDetailKeys = []) {
   return monitoringDetailKeys.length > 0 ? MONITORING_STEP : NEXT_STEP;
 }
 
+const NO_NEXT_ACTION = "No next action";
+
 function stopText(reason) {
   const text = String(reason || "").trim();
   return text ? `: ${text}` : "";
@@ -179,38 +180,32 @@ function stopText(reason) {
 
 /** Review & Confirm rows for Care Plan & Next Steps, from the same rules the screen uses. */
 export function carePlanReviewRows({
-  diagnoses = [],
+  concerns = [],
   continuedMonitorings = [],
+  startingConditions = [],
   stops = {},
   referrals = [],
-  statuses = {},
-  registry = {},
   referral = {},
   followUp = {},
 } = {}) {
-  const required = stopsRequired(diagnoses, continuedMonitorings, stops, registry);
-  const continued = continuedByIdentity(continuedMonitorings, registry);
+  const required = stopsRequired(continuedMonitorings, stops);
+  const referredIds = new Set(referredContinuingRows(continuedMonitorings, stops, referrals).map((m) => m.id));
   const rows = [];
 
-  for (const diagnosis of diagnoses) {
-    const value = carePlanFor(diagnosis, continuedMonitorings, registry);
-    const plan = CARE_PLAN_LABELS[value];
-    const monitoring = continued.get(conditionIdentity(diagnosis.name, registry));
-    let text = plan;
-    if (monitoring && required[monitoring.id]) text = `${plan} · Monitoring stopped${stopText(stops[monitoring.id])}`;
-    else if (monitoring && value === CARE_PLAN.REFER) text = `${plan} · Monitoring continues`;
-    rows.push({ label: String(diagnosis.name || "").trim(), value: text });
+  for (const concern of concerns) {
+    const value = carePlanFor(concern);
+    rows.push({ label: String(concern.name || "").trim(), value: value ? CARE_PLAN_LABELS[value] : NO_NEXT_ACTION });
   }
-  const continuing = continuingRows(diagnoses, continuedMonitorings, registry);
-  const referredIds = new Set(referredContinuingRows(diagnoses, continuedMonitorings, stops, referrals, registry).map((m) => m.id));
-  for (const monitoring of continuing) {
+  for (const monitoring of continuedMonitorings) {
     const decision = required[monitoring.id]
       ? `Stop monitoring${stopText(stops[monitoring.id])}`
       : referredIds.has(monitoring.id)
         ? "Refer to RHU · Monitoring continues"
         : "Continue monitoring";
-    const status = CONDITION_STATUSES.includes(statuses?.[monitoring.id]) ? ` · Condition status: ${statuses[monitoring.id]}` : "";
-    rows.push({ label: monitoring.conditionName, value: `${decision}${status}` });
+    rows.push({ label: monitoring.conditionName, value: decision });
+  }
+  for (const condition of startingConditions) {
+    rows.push({ label: condition.conditionName, value: "Start monitoring at BHC" });
   }
   if (referral.needed) {
     rows.push({ label: "Reason for Referral", value: referral.reason || "" });
@@ -223,10 +218,10 @@ export function carePlanReviewRows({
     });
     if (followUp.date) rows.push({ label: "Follow-up Reason", value: followUp.reason || "" });
   }
-  // Same condition as the screen's empty state: only a visit with no
-  // condition says so. With conditions, each row already shows its plan.
-  if (diagnoses.length === 0 && !referral.needed && !followUp.shows && continuing.length === 0) {
-    rows.push({ label: "Next Steps", value: NO_CONDITION_MESSAGE });
+  // Same condition as the screen's empty state: only a visit with no concern
+  // and nothing followed says so. With concerns, each row already shows its next action.
+  if (concerns.length === 0 && !referral.needed && !followUp.shows && continuedMonitorings.length === 0 && startingConditions.length === 0) {
+    rows.push({ label: "Next Steps", value: NO_CONCERN_MESSAGE });
   }
   return rows;
 }
