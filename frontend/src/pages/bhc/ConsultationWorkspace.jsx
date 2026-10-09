@@ -126,6 +126,7 @@ import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindi
 import { DRAFTS_ENABLED } from "../../utils/featureFlags";
 import DiagnosisListField from "../../components/features/health-records/wizard/DiagnosisListField";
 import { formatDiagnoses, joinDiagnosisNames, restoreDiagnoses } from "../../utils/diagnoses";
+import { hasDuplicateConcerns } from "../../utils/concernRows";
 import { applyLegacyReportingStatus, deriveReportingStatus, setDiagnosisReportAs } from "../../utils/diagnosisReporting";
 import useClinicalRegistry from "../../hooks/useClinicalRegistry";
 import {
@@ -217,6 +218,7 @@ const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 // The one card every consultation step sits in.
 // Flat stack: each section inside it is its own bordered card (FormSection).
 const CONSULTATION_CARD_CLASS = "space-y-4";
+const DUPLICATE_CONCERNS_ERROR = "List each health concern only once.";
 
 
 const WIZARD_FORM = "form";
@@ -2273,6 +2275,7 @@ export default function ConsultationWorkspace() {
     const fbsError = validateFbs(fbs);
     if (fbsError) errors.fbs = fbsError;
     if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
+    if (hasDuplicateConcerns(diagnoses)) errors.diagnosis = DUPLICATE_CONCERNS_ERROR;
     if (!finalizing) return errors;
     // A follow-up that keeps monitored conditions going (or starts one) already
     // names what it addresses, and so does a referral of one of them; a
@@ -3590,6 +3593,10 @@ export default function ConsultationWorkspace() {
       setValidationErrorsAndFocus({ chiefComplaint: "Chief complaint is required." });
       return false;
     }
+    if (stepKey === ASSESSMENT_STEP && hasDuplicateConcerns(diagnoses)) {
+      setValidationErrorsAndFocus({ diagnosis: DUPLICATE_CONCERNS_ERROR });
+      return false;
+    }
     // Program completion, disposition and referral requirements apply only at finalization.
     setValidationErrorsAndFocus({});
     return true;
@@ -4732,15 +4739,19 @@ export default function ConsultationWorkspace() {
                     defaultReportAs={defaultReportAs}
                   />
                 </div>
-                <FieldTextarea
-                  label="Additional Assessment Notes"
-                  wrapperClassName="mt-4"
-                  value={assessmentNotes}
-                  onChange={(event) => setAssessmentNotes(event.target.value)}
-                  placeholder="Optional. Longer explanation that does not belong in a health concern."
-                  maxLength={5000}
-                  rows={3}
-                />
+                <div className="mt-6 border-t border-[#E5E7EB] pt-4">
+                  <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-[#111827]">
+                    <label htmlFor="assessmentNotes">Additional Assessment Notes</label>
+                  </h3>
+                  <FieldTextarea
+                    id="assessmentNotes"
+                    value={assessmentNotes}
+                    onChange={(event) => setAssessmentNotes(event.target.value)}
+                    placeholder="Optional additional findings or explanations..."
+                    maxLength={5000}
+                    rows={3}
+                  />
+                </div>
               </LockedFormContent>
             </FormSection>
 
@@ -5135,9 +5146,11 @@ function FieldTextarea({
 
   return (
     <div className={wrapperClassName}>
-      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
+      {label && (
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">
+          {label} {required && <span className="text-red-500">*</span>}
+        </label>
+      )}
       <textarea
         {...props}
         aria-invalid={Boolean(error)}

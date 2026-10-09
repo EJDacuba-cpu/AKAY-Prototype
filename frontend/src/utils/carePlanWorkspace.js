@@ -2,6 +2,7 @@ import {
   CARE_PLAN_LABELS,
   carePlanFor,
   keepsBhcFollowUp,
+  refers,
   referredContinuingRows,
   stopsRequired,
   NO_CONCERN_MESSAGE,
@@ -35,6 +36,37 @@ export function followUpPlan(disposition = {}, followUpDate = "", { hasService =
   const kept = !referred || monitors || (Boolean(hasService) && Boolean(followUpDate));
   const offered = !referred || monitors || Boolean(hasService);
   return { kept, shows: offered && (Boolean(disposition.showsFollowUp) || Boolean(followUpDate)) };
+}
+
+/**
+ * Where the visit's single referral form and single follow-up schedule are
+ * drawn on Care Plan & Next Steps. Display only: both stay one
+ * consultation-level record each, whichever card shows them.
+ *
+ * The referral sits in the first concern set to Refer to RHU, the follow-up in
+ * the first set to Recheck or Follow-up; the other concerns with that action
+ * share it. Either can also come from outside the concerns (a followed
+ * condition referred back, continuing monitoring, a service visit, a date
+ * already set): with no concern to host it, it is drawn below the cards
+ * (`...OutsideCards`). Nothing is hosted when the visit has no such form.
+ *
+ * @param disposition  { needsReferral, showsFollowUp } - the referral need and
+ *                     followUpPlan's `shows`
+ */
+export function carePlanFormHosts(concerns = [], { needsReferral = false, showsFollowUp = false } = {}) {
+  const list = concerns || [];
+  const referredConcernIds = list.filter((concern) => refers(carePlanFor(concern))).map((concern) => concern.id);
+  const followUpConcernIds = list.filter((concern) => keepsBhcFollowUp(carePlanFor(concern))).map((concern) => concern.id);
+  const referralHostId = needsReferral ? referredConcernIds[0] ?? null : null;
+  const followUpHostId = showsFollowUp ? followUpConcernIds[0] ?? null : null;
+  return {
+    referralHostId,
+    referredConcernIds,
+    referralOutsideCards: Boolean(needsReferral) && referralHostId === null,
+    followUpHostId,
+    followUpConcernIds,
+    followUpOutsideCards: Boolean(showsFollowUp) && followUpHostId === null,
+  };
 }
 
 /**

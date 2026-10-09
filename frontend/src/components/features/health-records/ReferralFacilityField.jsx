@@ -9,7 +9,6 @@ import { Drawer, ModalButton, ModalShell } from "../../common";
 import { FieldError, FieldLabel } from "./fields/ClinicalFields";
 
 const STATUS_AVAILABLE = "Available";
-const PREVIEW_LIMIT = 3;
 const REFERENCE_NOTE = "For reference only — the RHU assigns the practitioner.";
 
 function formatStamp(value) {
@@ -206,7 +205,11 @@ function AllDoctorsDrawer({ facility, providers, onClose, onOpenDoctor }) {
   );
 }
 
-function AvailabilityPanel({ facility }) {
+/**
+ * One line under the facility select: how many of that RHU's practitioners are
+ * available, and a link to the drawer that lists them (read-only reference).
+ */
+function AvailabilitySummary({ facility }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [detailsProvider, setDetailsProvider] = useState(null);
   const availability = facility.availability || {};
@@ -218,44 +221,28 @@ function AvailabilityPanel({ facility }) {
   const updated = formatStamp(availability.updated_at);
 
   return (
-    <div
-      aria-label={`${facility.name} availability`}
-      className="rounded-lg border border-[#E5E7EB] bg-[#F9FAFB]"
-    >
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-[#E5E7EB] px-3.5 py-2.5">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-[#6B7280]">
-          RHU Availability
-          <span className="ml-1.5 normal-case tracking-normal text-[#374151]">
-            · {available} of {total} available
-          </span>
-        </p>
-        {updated && (
-          <p className="text-[11px] text-[#9CA3AF]">Updated {updated}</p>
+    <div aria-label={`${facility.name} availability`}>
+      <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-[#6B7280]">
+        <span className="font-semibold text-[#374151]">RHU availability</span>
+        <span aria-hidden="true">·</span>
+        {providers.length === 0 ? (
+          <span>No practitioners listed</span>
+        ) : (
+          <>
+            <span>{available} of {total} available</span>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(true)}
+              className="inline-flex items-center gap-0.5 font-semibold text-[#B91C1C] hover:text-red-700"
+            >
+              View doctors
+              <ChevronRight size={12} aria-hidden="true" />
+            </button>
+          </>
         )}
-      </div>
-      <p className="px-3.5 pt-2 text-[11px] text-[#6B7280]">{REFERENCE_NOTE}</p>
-      {providers.length === 0 ? (
-        <p className="px-3.5 py-3 text-sm text-[#6B7280]">
-          No practitioners are listed for this facility.
-        </p>
-      ) : (
-        <ul className="divide-y divide-[#E5E7EB] pb-1">
-          {providers.slice(0, PREVIEW_LIMIT).map((provider) => (
-            <DoctorRow key={provider.id} provider={provider} onOpen={setDetailsProvider} />
-          ))}
-        </ul>
-      )}
-      {providers.length > PREVIEW_LIMIT && (
-        <div className="border-t border-[#E5E7EB] px-3.5 py-2">
-          <button
-            type="button"
-            onClick={() => setDrawerOpen(true)}
-            className="text-xs font-semibold text-[#B91C1C] hover:text-red-700"
-          >
-            View All Doctors ({providers.length})
-          </button>
-        </div>
-      )}
+        {updated && <span className="text-[11px] text-[#9CA3AF]">(updated {updated})</span>}
+      </p>
 
       {drawerOpen && (
         <AllDoctorsDrawer
@@ -277,8 +264,10 @@ function AvailabilityPanel({ facility }) {
  * Receiving facility for a referral made from the Disposition step, with a
  * read-only view of that RHU's practitioners. BHC staff never pick a doctor
  * here: the RHU assigns one, and DOC-14 stays enforced by the server.
+ *
+ * @param selectAside  optional field drawn beside the select on wide screens
  */
-export default function ReferralFacilityField({ value, onChange, error, disabled = false }) {
+export default function ReferralFacilityField({ value, onChange, error, disabled = false, selectAside = null }) {
   const user = getStoredAuthUser();
   const { data, error: loadError, refetch } = useQuery({
     queryKey: ["approved-referral-destinations", user?.id, user?.working_facility_key],
@@ -300,47 +289,50 @@ export default function ReferralFacilityField({ value, onChange, error, disabled
   }, [value, data, onChange]);
 
   return (
-    <div className="space-y-4">
-      <div data-field="receivingRhuId" tabIndex={error ? -1 : undefined}>
-        <FieldLabel label="Receiving Facility" required />
-        <select
-          aria-label="Receiving Facility"
-          name="receivingRhuId"
-          value={value || ""}
-          disabled={disabled}
-          aria-invalid={Boolean(error)}
-          onChange={(event) => onChange(event.target.value)}
-          className={`h-10 w-full rounded-lg border bg-white px-3 text-sm text-[#1F2937] outline-none transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 ${
-            error
-              ? "border-[#B91C1C] ring-2 ring-[#B91C1C]/10"
-              : "border-[#E5E7EB] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
-          }`}
-        >
-          <option value="">Select receiving facility</option>
-          {destinations.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-              {d.is_default ? " · Default" : ""}
-            </option>
-          ))}
-        </select>
-        <FieldError error={error} />
-        {loadError && (
-          <p role="alert" className="mt-1 text-[11px] font-medium text-[#B91C1C]">
-            Unable to load receiving facilities.{" "}
-            <button type="button" className="underline" onClick={() => refetch()}>
-              Retry
-            </button>
-          </p>
-        )}
-        {value && data && !selected && (
-          <p role="alert" className="mt-1 text-[11px] font-medium text-[#B91C1C]">
-            This facility is no longer authorized or active. Choose another.
-          </p>
-        )}
+    <div className="space-y-2">
+      <div className={selectAside ? "grid items-start gap-x-4 gap-y-3 md:grid-cols-2" : undefined}>
+        <div data-field="receivingRhuId" tabIndex={error ? -1 : undefined}>
+          <FieldLabel label="Receiving Facility" required />
+          <select
+            aria-label="Receiving Facility"
+            name="receivingRhuId"
+            value={value || ""}
+            disabled={disabled}
+            aria-invalid={Boolean(error)}
+            onChange={(event) => onChange(event.target.value)}
+            className={`h-10 w-full rounded-lg border bg-white px-3 text-sm text-[#1F2937] outline-none transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 ${
+              error
+                ? "border-[#B91C1C] ring-2 ring-[#B91C1C]/10"
+                : "border-[#E5E7EB] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+            }`}
+          >
+            <option value="">Select receiving facility</option>
+            {destinations.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+                {d.is_default ? " · Default" : ""}
+              </option>
+            ))}
+          </select>
+          <FieldError error={error} />
+          {loadError && (
+            <p role="alert" className="mt-1 text-[11px] font-medium text-[#B91C1C]">
+              Unable to load receiving facilities.{" "}
+              <button type="button" className="underline" onClick={() => refetch()}>
+                Retry
+              </button>
+            </p>
+          )}
+          {value && data && !selected && (
+            <p role="alert" className="mt-1 text-[11px] font-medium text-[#B91C1C]">
+              This facility is no longer authorized or active. Choose another.
+            </p>
+          )}
+        </div>
+        {selectAside}
       </div>
 
-      {selected && <AvailabilityPanel facility={selected} />}
+      {selected && <AvailabilitySummary facility={selected} />}
 
       {selected && !selected.availability?.can_submit_referral && (
         <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm text-amber-900">

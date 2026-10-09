@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   carePlanDraftPayload,
+  carePlanFormHosts,
   carePlanFollowUpErrors,
   carePlanReviewRows,
   continuedVisitLink,
@@ -302,4 +303,60 @@ test("the referral reason follows the referred diagnoses until the worker edits 
   assert.equal(shouldRegenerateReferralReason({ current: next, lastAuto: first, next }), false);
   assert.equal(shouldRegenerateReferralReason({ current: first, lastAuto: first, next: "" }), false);
   assert.equal(shouldRegenerateReferralReason({ current: undefined, lastAuto: "", next: first }), true);
+});
+
+test("the referral form sits in the first referred concern; later ones share it", () => {
+  const concerns = [
+    { id: "a", name: "Cough", carePlan: "recheck" },
+    { id: "b", name: "Chest pain", carePlan: "refer" },
+    { id: "c", name: "Fever", carePlan: "refer" },
+  ];
+  const hosts = carePlanFormHosts(concerns, { needsReferral: true, showsFollowUp: true });
+  assert.equal(hosts.referralHostId, "b");
+  assert.deepEqual(hosts.referredConcernIds, ["b", "c"]);
+  assert.equal(hosts.referralOutsideCards, false);
+  // The first referred concern changes its action: the form moves to the next one.
+  const moved = carePlanFormHosts(
+    concerns.map((concern) => (concern.id === "b" ? { ...concern, carePlan: "follow_up" } : concern)),
+    { needsReferral: true, showsFollowUp: true },
+  );
+  assert.equal(moved.referralHostId, "c");
+});
+
+test("the follow-up schedule sits in the first Recheck or Follow-up concern; later ones share it", () => {
+  const concerns = [
+    { id: "a", name: "Cough", carePlan: "refer" },
+    { id: "b", name: "Rash", carePlan: "follow_up" },
+    { id: "c", name: "Fever", carePlan: "recheck" },
+  ];
+  const hosts = carePlanFormHosts(concerns, { needsReferral: true, showsFollowUp: true });
+  assert.equal(hosts.followUpHostId, "b");
+  assert.deepEqual(hosts.followUpConcernIds, ["b", "c"]);
+  assert.equal(hosts.followUpOutsideCards, false);
+});
+
+test("a retired next action from an old draft hosts nothing", () => {
+  const hosts = carePlanFormHosts([{ id: "a", name: "HTN", carePlan: "monitor_refer" }], { needsReferral: false, showsFollowUp: false });
+  assert.equal(hosts.referralHostId, null);
+  assert.equal(hosts.followUpHostId, null);
+});
+
+test("a referral or follow-up no concern can host stays below the cards", () => {
+  // A followed condition referred to the RHU, and monitoring that keeps the follow-up.
+  const concerns = [{ id: "a", name: "Cough", carePlan: null }];
+  const hosts = carePlanFormHosts(concerns, { needsReferral: true, showsFollowUp: true });
+  assert.equal(hosts.referralHostId, null);
+  assert.equal(hosts.referralOutsideCards, true);
+  assert.equal(hosts.followUpHostId, null);
+  assert.equal(hosts.followUpOutsideCards, true);
+});
+
+test("nothing is hosted when the visit has no referral or follow-up to show", () => {
+  const concerns = [{ id: "a", name: "Cough", carePlan: "refer" }];
+  // e.g. the disposition has not caught up yet: the cards never show a form the visit does not have.
+  const hosts = carePlanFormHosts(concerns, { needsReferral: false, showsFollowUp: false });
+  assert.equal(hosts.referralHostId, null);
+  assert.equal(hosts.referralOutsideCards, false);
+  assert.equal(hosts.followUpHostId, null);
+  assert.equal(hosts.followUpOutsideCards, false);
 });
