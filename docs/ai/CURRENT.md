@@ -1,6 +1,6 @@
 # AKAY Current State / Handoff
 
-**Status date:** 2026-10-02
+**Status date:** 2026-10-09
 
 ## Current Phase
 
@@ -20,6 +20,7 @@ The immediate goal is to establish a small canonical knowledge base for Claude C
 - Established the current repository as the primary source for technical implementation.
 - Limited use of the capstone paper to project context, scope/limitations, and Agile/methodology unless later approved otherwise.
 - Created the first canonical AI-facing documentation set under `docs/ai/`.
+- Clinical boundary (2026-10-09, spec: `docs/superpowers/specs/2026-10-05-clinical-boundary-condition-confirmation-design.md`): BHC records Health Concerns, each with an optional Recheck / Follow-up / Refer, and never writes a condition. Only RHU staff (`conditions.confirm`) confirm a condition or set its status, through the Confirm Conditions block on referral feedback and on RHU health records. Conditions live in `patient_conditions` with their history in `patient_condition_events`. BHC formal monitoring starts only from an RHU-confirmed Active/Controlled condition (RHU "Recommend BHC monitoring"). Data from before the change is shown as "Unverified — recorded from BHC consultation" or "Legacy BHC Monitoring".
 
 ---
 
