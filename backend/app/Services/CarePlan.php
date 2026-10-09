@@ -4,11 +4,12 @@ namespace App\Services;
 
 /**
  * The per-diagnosis care-plan choice (health_records.diagnoses[].carePlan).
- * See docs/superpowers/specs/2026-09-30-care-plan-next-steps-design.md.
+ * See docs/superpowers/specs/2026-10-09-consultation-care-plan-workflow-revision-design.md
+ * (supersedes 2026-09-30-care-plan-next-steps-design.md).
  */
 final class CarePlan
 {
-    /** Legacy: older records hold it; a new save leaves the next action empty instead. */
+    /** No Further BHC Action: a selectable next action; older records may also hold it. */
     public const NONE = 'none';
 
     /** Legacy: BHC-owned condition monitoring, retired by the clinical boundary. */
@@ -29,8 +30,14 @@ final class CarePlan
     /** Every value a stored record may hold. */
     public const VALUES = [self::NONE, self::MONITOR, self::RECHECK, self::FOLLOW_UP, self::REFER, self::MONITOR_REFER];
 
-    /** The next actions a new save may choose; a concern may also have none. */
-    public const SELECTABLE = [self::RECHECK, self::FOLLOW_UP, self::REFER];
+    /** The next actions a new save may choose (No Further BHC Action / BHC Follow-up / Refer to RHU). */
+    public const SELECTABLE = [self::NONE, self::FOLLOW_UP, self::REFER];
+
+    /**
+     * Retired values a browser tab opened before this release may still POST;
+     * the controller stores them as follow_up (normalizeTransitionValues).
+     */
+    public const TRANSITION_ACCEPTED = [self::RECHECK];
 
     /**
      * Whether a STORED value is the retired Monitor / Monitor + Refer. For
@@ -54,8 +61,35 @@ final class CarePlan
     }
 
     /**
+     * Whether a concern schedules a BHC follow-up: Follow-up (or a stored
+     * Recheck), or Refer to RHU with the opt-in bhcFollowUp flag.
+     */
+    public static function schedulesBhcFollowUp(mixed $diagnosis): bool
+    {
+        if (! is_array($diagnosis)) {
+            return false;
+        }
+        $carePlan = $diagnosis['carePlan'] ?? null;
+
+        return self::keepsBhcFollowUp($carePlan)
+            || (self::refers($carePlan) && ($diagnosis['bhcFollowUp'] ?? null) === true);
+    }
+
+    /** Maps the retired recheck value to follow_up; every other key is kept. */
+    public static function normalizeTransitionValues(array $diagnoses): array
+    {
+        return array_map(function ($diagnosis) {
+            if (is_array($diagnosis) && ($diagnosis['carePlan'] ?? null) === self::RECHECK) {
+                $diagnosis['carePlan'] = self::FOLLOW_UP;
+            }
+
+            return $diagnosis;
+        }, $diagnoses);
+    }
+
+    /**
      * Whether a visit that refers still keeps its own next-visit follow-up:
-     * a health concern is set to Recheck or Follow-up, or it is
+     * a health concern schedules a BHC follow-up, or it is
      * a service visit (Maternal / Family Planning / EPI selected) with a
      * follow-up date set - the next dose, appointment or prenatal return.
      * A plain referral with no service hands the follow-up to the RHU.
@@ -66,7 +100,7 @@ final class CarePlan
             // monitors(): stored legacy records keep their follow-up on resync;
             // a new save can no longer choose Monitor.
             if (is_array($diagnosis) && (
-                self::keepsBhcFollowUp($diagnosis['carePlan'] ?? null)
+                self::schedulesBhcFollowUp($diagnosis)
                 || self::monitors($diagnosis['carePlan'] ?? null)
             )) {
                 return true;

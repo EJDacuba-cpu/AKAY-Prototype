@@ -24,13 +24,44 @@ class CarePlanTest extends TestCase
         $this->assertFalse(CarePlan::keepsBhcFollowUp(null));
     }
 
-    public function test_a_new_save_may_choose_only_recheck_follow_up_or_refer(): void
+    public function test_selectable_actions_are_none_follow_up_refer(): void
     {
-        $this->assertSame(['recheck', 'follow_up', 'refer'], CarePlan::SELECTABLE);
-        foreach (['none', 'monitor', 'monitor_refer'] as $legacy) {
+        $this->assertSame(['none', 'follow_up', 'refer'], CarePlan::SELECTABLE);
+        foreach (['recheck', 'monitor', 'monitor_refer'] as $legacy) {
             $this->assertContains($legacy, CarePlan::VALUES, 'stored records still read it');
             $this->assertNotContains($legacy, CarePlan::SELECTABLE);
         }
+        $this->assertSame(['recheck'], CarePlan::TRANSITION_ACCEPTED);
+    }
+
+    public function test_recheck_still_keeps_a_bhc_follow_up_for_stored_records(): void
+    {
+        $this->assertTrue(CarePlan::keepsBhcFollowUp('recheck'));
+    }
+
+    public function test_schedules_bhc_follow_up_for_follow_up_and_flagged_refer_only(): void
+    {
+        $this->assertTrue(CarePlan::schedulesBhcFollowUp(['carePlan' => 'follow_up']));
+        $this->assertTrue(CarePlan::schedulesBhcFollowUp(['carePlan' => 'refer', 'bhcFollowUp' => true]));
+        $this->assertTrue(CarePlan::schedulesBhcFollowUp(['carePlan' => 'recheck']));
+        $this->assertFalse(CarePlan::schedulesBhcFollowUp(['carePlan' => 'refer']));
+        $this->assertFalse(CarePlan::schedulesBhcFollowUp(['carePlan' => 'none']));
+        $this->assertFalse(CarePlan::schedulesBhcFollowUp(['carePlan' => 'none', 'bhcFollowUp' => true]));
+        $this->assertFalse(CarePlan::schedulesBhcFollowUp('junk'));
+    }
+
+    public function test_normalize_transition_values_maps_recheck_and_keeps_keys(): void
+    {
+        $this->assertSame(
+            [['id' => 'd1', 'name' => 'BP', 'carePlan' => 'follow_up', 'reportAs' => 'morbidity']],
+            CarePlan::normalizeTransitionValues([['id' => 'd1', 'name' => 'BP', 'carePlan' => 'recheck', 'reportAs' => 'morbidity']])
+        );
+    }
+
+    public function test_flagged_referral_keeps_the_follow_up(): void
+    {
+        $this->assertTrue(CarePlan::keepsFollowUpWithReferral([['name' => 'Cough', 'carePlan' => 'refer', 'bhcFollowUp' => true]], []));
+        $this->assertFalse(CarePlan::keepsFollowUpWithReferral([['name' => 'Cough', 'carePlan' => 'refer']], []));
     }
 
     public function test_refers_any_reads_concern_entries(): void

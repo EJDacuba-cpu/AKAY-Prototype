@@ -46,6 +46,18 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $this->assertSame(['status' => '', 'date' => ''], $sanitized['tbData']['outcome']);
     }
 
+    public function test_draft_keeps_bhc_follow_up_flag(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+
+        $payload = $this->fullFrontendPayload();
+        $payload['diagnoses'] = [['id' => 'd1', 'name' => 'Cough', 'carePlan' => 'refer', 'bhcFollowUp' => true]];
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertTrue($sanitized['diagnoses'][0]['bhcFollowUp']);
+    }
+
     public function test_unknown_referral_form_fields_are_rejected(): void
     {
         $service = new HealthRecordDraftPayloadService();

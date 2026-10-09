@@ -52,24 +52,35 @@ class CarePlanReferralFollowUpTest extends TestCase
         ]);
     }
 
-    public function test_a_referral_keeps_the_follow_up_when_another_concern_is_set_to_recheck(): void
+    public function test_a_referral_keeps_the_follow_up_when_another_concern_is_set_to_follow_up(): void
+    {
+        $id = $this->save([
+            ['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'follow_up'],
+            ['id' => 'd2', 'name' => 'Pneumonia', 'carePlan' => 'refer'],
+        ])->assertCreated()->json('data.id');
+
+        $task = FollowUpTask::where('health_record_id', $id)->sole();
+        $this->assertSame('pending', $task->state);
+        $this->assertSame(0, ConditionMonitoring::count(), 'a follow-up never starts condition monitoring');
+    }
+
+    public function test_a_stale_recheck_concern_is_stored_as_follow_up_and_keeps_the_referral_follow_up(): void
     {
         $id = $this->save([
             ['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'recheck'],
             ['id' => 'd2', 'name' => 'Pneumonia', 'carePlan' => 'refer'],
         ])->assertCreated()->json('data.id');
 
-        $task = FollowUpTask::where('health_record_id', $id)->sole();
-        $this->assertSame('pending', $task->state);
-        $this->assertSame(0, ConditionMonitoring::count(), 'a recheck never starts condition monitoring');
+        $this->assertSame('follow_up', \App\Models\HealthRecord::findOrFail($id)->diagnoses[0]['carePlan']);
+        $this->assertSame('pending', FollowUpTask::where('health_record_id', $id)->sole()->state);
     }
 
-    public function test_a_recheck_concern_with_a_referral_still_requires_the_follow_up_date(): void
+    public function test_a_follow_up_concern_with_a_referral_still_requires_the_follow_up_date(): void
     {
         $this->save([
-            ['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'recheck'],
+            ['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'follow_up'],
             ['id' => 'd2', 'name' => 'Pneumonia', 'carePlan' => 'refer'],
-        ], ['followUpStatus' => 'Follow-up Required'])
+        ], ['followUpStatus' => 'Follow-up Required', 'followUpReason' => 'BP recheck'])
             ->assertStatus(422)->assertJsonValidationErrors('monitoring_data.followUpDate');
     }
 

@@ -171,6 +171,7 @@ class HealthRecordController extends Controller
         $this->normalizeSurveillanceData($data);
         $this->normalizeDiagnosisReporting($data);
         $this->applyRecheckReason($data);
+        $this->normalizeConcernActions($data);
         $dispensedMedicines = $data['dispensed_medicines'] ?? [];
         unset($data['dispensed_medicines']);
 
@@ -728,14 +729,32 @@ class HealthRecordController extends Controller
     }
 
     /**
-     * A concern set to Recheck or Follow-up promises a return visit, so a
+     * Stored form of the per-concern actions: a stale tab's recheck becomes
+     * follow_up (its reason prefix is already applied), and bhcFollowUp is
+     * kept only on Refer to RHU.
+     */
+    private function normalizeConcernActions(array &$data): void
+    {
+        if (! is_array($data['diagnoses'] ?? null)) {
+            return;
+        }
+        $data['diagnoses'] = array_map(
+            fn ($diagnosis) => is_array($diagnosis) && ! \App\Services\CarePlan::refers($diagnosis['carePlan'] ?? null)
+                ? Arr::except($diagnosis, ['bhcFollowUp'])
+                : $diagnosis,
+            \App\Services\CarePlan::normalizeTransitionValues($data['diagnoses'])
+        );
+    }
+
+    /**
+     * A concern that schedules a BHC follow-up promises a return visit, so a
      * non-referral visit must read Follow-up Required - the status
      * FollowUpTaskSyncService schedules a task from - whatever the client sent.
      */
     private function requireConcernFollowUp(array &$data): void
     {
         $returns = collect($data['diagnoses'] ?? [])->contains(
-            fn ($diagnosis) => is_array($diagnosis) && \App\Services\CarePlan::keepsBhcFollowUp($diagnosis['carePlan'] ?? null)
+            fn ($diagnosis) => \App\Services\CarePlan::schedulesBhcFollowUp($diagnosis)
         );
         if (! $returns) {
             return;
@@ -750,7 +769,7 @@ class HealthRecordController extends Controller
     private function normalizeReferralDisposition(array &$data): void
     {
         $monitoringData = $data['monitoring_data'] ?? [];
-        // A concern set to Recheck / Follow-up, or a service visit with its next
+        // A concern that schedules a BHC follow-up, or a service visit with its next
         // date set: the BHC still owns that next visit, so its follow-up
         // survives the referral (CarePlan::keepsFollowUpWithReferral).
         $keepsFollowUp = \App\Services\CarePlan::keepsFollowUpWithReferral($data['diagnoses'] ?? [], $monitoringData);

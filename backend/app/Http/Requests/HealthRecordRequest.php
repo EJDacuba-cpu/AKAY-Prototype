@@ -311,10 +311,14 @@ class HealthRecordRequest extends FormRequest
             // Drives the derived monitoring_data.morbidityReportingStatus.
             'diagnoses.*.reportAs' => ['nullable', 'string', Rule::in(HealthRecord::DIAGNOSIS_REPORT_TYPES)],
             // Next action for this Health Concern; null = none. A new save
-            // cannot use the retired none / monitor / monitor_refer values.
+            // cannot use the retired monitor / monitor_refer values; a stale tab
+            // may still send recheck, which the controller stores as follow_up.
             'diagnoses.*.carePlan' => ['nullable', 'string', Rule::in($this->isMethod('post')
-                ? \App\Services\CarePlan::SELECTABLE
+                ? [...\App\Services\CarePlan::SELECTABLE, ...\App\Services\CarePlan::TRANSITION_ACCEPTED]
                 : \App\Services\CarePlan::VALUES)],
+            // Opt-in BHC follow-up on a Refer to RHU concern; the controller
+            // drops it for any other action.
+            'diagnoses.*.bhcFollowUp' => ['nullable', 'boolean'],
             'diagnoses.*.includeInSurveillance' => ['nullable', 'boolean'],
             // Existing follow-ups / monitoring this ITR continues (Start
             // Consultation modal), and the monitoring it stops.
@@ -478,21 +482,38 @@ class HealthRecordRequest extends FormRequest
             if ($needsReferral && blank($this->input('referral.reason_for_referral'))) {
                 $validator->errors()->add('referral.reason_for_referral', 'Reason for referral is required.');
             }
-            // A concern set to Recheck or Follow-up is the BHC bringing the
-            // patient back, so the visit needs its date - referral or not.
+            // A concern that schedules a BHC follow-up (BHC Follow-up, or Refer
+            // to RHU with its follow-up flag) needs the visit's date - referral
+            // or not.
             $needsConcernDate = $this->isMethod('post')
                 && collect($this->diagnosesInput())->contains(
-                    fn ($diagnosis) => is_array($diagnosis) && \App\Services\CarePlan::keepsBhcFollowUp($diagnosis['carePlan'] ?? null)
+                    fn ($diagnosis) => \App\Services\CarePlan::schedulesBhcFollowUp($diagnosis)
                 );
             if ($needsConcernDate && ! $date) {
                 $validator->errors()->add(
                     'monitoring_data.followUpDate',
-                    'Set the follow-up date for the concerns marked Recheck or Follow-up.'
+                    'Set the follow-up date for the concerns that schedule a BHC follow-up.'
+                );
+            }
+            // ...and its reason. A stale tab's Recheck concern gets the
+            // "Recheck: <name>" prefix instead (HealthRecordController::applyRecheckReason).
+            // A service visit (no concern schedules) stays exempt.
+            $hasStaleRecheck = collect($this->diagnosesInput())->contains(
+                fn ($diagnosis) => is_array($diagnosis) && ($diagnosis['carePlan'] ?? null) === \App\Services\CarePlan::RECHECK
+            );
+            if (
+                $needsConcernDate
+                && ! $hasStaleRecheck
+                && trim((string) ($monitoringData['followUpReason'] ?? $monitoringData['follow_up_reason'] ?? '')) === ''
+            ) {
+                $validator->errors()->add(
+                    'monitoring_data.followUpReason',
+                    'Follow-up reason is required.'
                 );
             }
             // A plain referral hands the follow-up to the RHU, so no date is
-            // needed. A referral that keeps the BHC follow-up (a concern set
-            // to Recheck / Follow-up, or a service visit with its next date
+            // needed. A referral that keeps the BHC follow-up (a concern that
+            // schedules a BHC follow-up, or a service visit with its next date
             // set - see CarePlan::keepsFollowUpWithReferral) still needs the
             // date when the visit asks for one. (The service case already has
             // a date, so only the concern case can trip this rule.)

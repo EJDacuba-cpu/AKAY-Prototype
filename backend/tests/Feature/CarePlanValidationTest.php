@@ -46,8 +46,8 @@ class CarePlanValidationTest extends TestCase
     public function test_the_retired_monitor_and_refer_value_is_rejected_on_a_new_save(): void
     {
         // Older records keep 'monitor_refer', 'monitor' and 'none'; a new visit
-        // picks Recheck, Follow-up or Refer per concern, or no next action.
-        foreach (['monitor_refer', 'monitor', 'none'] as $retired) {
+        // picks No Further BHC Action, BHC Follow-up or Refer per concern.
+        foreach (['monitor_refer', 'monitor'] as $retired) {
             $this->store([
                 'diagnosis' => 'Asthma',
                 'diagnoses' => [['id' => 'd1', 'name' => 'Asthma', 'carePlan' => $retired]],
@@ -102,7 +102,7 @@ class CarePlanValidationTest extends TestCase
         $this->assertSame(0, \App\Models\HealthRecord::count());
     }
 
-    public function test_a_refer_care_plan_with_a_referral_or_a_recheck_only_plan_saves(): void
+    public function test_a_refer_care_plan_with_a_referral_or_a_follow_up_only_plan_saves(): void
     {
         $this->store([
             'diagnosis' => 'Asthma',
@@ -112,8 +112,8 @@ class CarePlanValidationTest extends TestCase
         ])->assertCreated();
         $this->store([
             'diagnosis' => 'Asthma',
-            'diagnoses' => [['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'recheck']],
-            'monitoring_data' => ['followUpStatus' => 'Follow-up Required', 'followUpDate' => now()->addWeek()->toDateString()],
+            'diagnoses' => [['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'follow_up']],
+            'monitoring_data' => ['followUpStatus' => 'Follow-up Required', 'followUpDate' => now()->addWeek()->toDateString(), 'followUpReason' => 'Reassess wheeze'],
         ])->assertCreated();
     }
 

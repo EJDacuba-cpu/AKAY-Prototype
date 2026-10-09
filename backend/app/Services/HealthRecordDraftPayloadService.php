@@ -47,6 +47,7 @@ class HealthRecordDraftPayloadService
             'name' => self::SCALAR,
             'reportAs' => self::SCALAR,
             'carePlan' => self::SCALAR,
+            'bhcFollowUp' => self::SCALAR,
             'includeInSurveillance' => self::SCALAR,
         ]],
         'assessmentNotes' => self::SCALAR,

@@ -8,6 +8,7 @@ use App\Models\FollowUpTask;
 use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\PatientCondition;
+use App\Models\Referral;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\ActionPermissions;
@@ -120,9 +121,9 @@ class HealthConcernBoundaryTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors(['care_plan.monitoring_status_updates']);
     }
 
-    public function test_old_monitor_and_none_values_are_rejected_on_a_new_save(): void
+    public function test_old_monitor_values_are_rejected_on_a_new_save(): void
     {
-        foreach (['monitor', 'none', 'monitor_refer'] as $legacy) {
+        foreach (['monitor', 'monitor_refer'] as $legacy) {
             $this->save([['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => $legacy]])
                 ->assertUnprocessable()->assertJsonValidationErrors(['diagnoses.0.carePlan']);
         }
@@ -184,17 +185,112 @@ class HealthConcernBoundaryTest extends TestCase
     public function test_recheck_and_follow_up_need_the_follow_up_date(): void
     {
         foreach (['recheck', 'follow_up'] as $action) {
-            $response = $this->save([['id' => 'd1', 'name' => 'Elevated BP', 'carePlan' => $action]])
+            $response = $this->save(
+                [['id' => 'd1', 'name' => 'Elevated BP', 'carePlan' => $action]],
+                ['monitoring_data' => ['followUpReason' => 'Reassess wound']]
+            )
                 ->assertUnprocessable()
                 ->assertJsonValidationErrors(['monitoring_data.followUpDate']);
             $this->assertSame(
-                ['Set the follow-up date for the concerns marked Recheck or Follow-up.'],
+                ['Set the follow-up date for the concerns that schedule a BHC follow-up.'],
                 $response->json('errors')['monitoring_data.followUpDate']
             );
         }
 
-        $this->save([['id' => 'd1', 'name' => 'Elevated BP', 'carePlan' => 'recheck']], $this->followUp())->assertCreated();
-        $this->save([['id' => 'd1', 'name' => 'Elevated BP', 'carePlan' => 'follow_up']], $this->followUp())->assertCreated();
+        $id = $this->save([['id' => 'd1', 'name' => 'Elevated BP', 'carePlan' => 'recheck']], $this->followUp())->assertCreated()->json('data.id');
+        $this->assertSame('follow_up', HealthRecord::findOrFail($id)->diagnoses[0]['carePlan']);
+        $this->save([['id' => 'd1', 'name' => 'Elevated BP', 'carePlan' => 'follow_up']], $this->followUp(['followUpReason' => 'Reassess wound']))->assertCreated();
+    }
+
+    public function test_none_action_saves_with_no_task_and_no_referral(): void
+    {
+        $id = $this->save([['id' => 'd1', 'name' => 'Cough', 'carePlan' => 'none']])->assertCreated()->json('data.id');
+
+        $this->assertSame('none', HealthRecord::findOrFail($id)->diagnoses[0]['carePlan']);
+        $this->assertSame(0, FollowUpTask::count());
+        $this->assertSame(0, Referral::count() + \App\Models\ReferralHold::count());
+    }
+
+    public function test_follow_up_requires_a_reason(): void
+    {
+        $diagnoses = [['id' => 'd1', 'name' => 'Cough', 'carePlan' => 'follow_up']];
+
+        $response = $this->save($diagnoses, $this->followUp())->assertUnprocessable();
+        $this->assertSame(['Follow-up reason is required.'], $response->json('errors')['monitoring_data.followUpReason']);
+
+        $this->save($diagnoses, $this->followUp(['followUpReason' => '   ']))
+            ->assertUnprocessable()->assertJsonValidationErrors(['monitoring_data.followUpReason']);
+
+        $this->save($diagnoses, $this->followUp(['followUpReason' => 'Reassess wound']))->assertCreated();
+        $this->assertSame(1, FollowUpTask::count());
+    }
+
+    public function test_flagged_referral_keeps_its_follow_up_and_needs_date_and_reason(): void
+    {
+        $diagnoses = [['id' => 'd1', 'name' => 'Cough', 'carePlan' => 'refer', 'bhcFollowUp' => true]];
+
+        $response = $this->save($diagnoses, [...$this->referral(), 'monitoring_data' => ['followUpReason' => 'Check cough']])
+            ->assertUnprocessable();
+        $this->assertSame(
+            ['Set the follow-up date for the concerns that schedule a BHC follow-up.'],
+            $response->json('errors')['monitoring_data.followUpDate']
+        );
+
+        $this->save($diagnoses, [...$this->referral(), ...$this->followUp()])
+            ->assertUnprocessable()->assertJsonValidationErrors(['monitoring_data.followUpReason']);
+
+        $id = $this->save($diagnoses, [...$this->referral(), ...$this->followUp(['followUpReason' => 'Check cough'])])
+            ->assertCreated()->json('data.id');
+
+        // No RHU doctor is available in this setup, so the referral is held.
+        $this->assertSame(1, Referral::count() + \App\Models\ReferralHold::count());
+        $this->assertSame(1, FollowUpTask::where('health_record_id', $id)->where('state', 'pending')->count());
+        $this->assertTrue(HealthRecord::findOrFail($id)->diagnoses[0]['bhcFollowUp']);
+    }
+
+    public function test_unflagged_referral_clears_the_follow_up(): void
+    {
+        $id = $this->save(
+            [['id' => 'd1', 'name' => 'Cough', 'carePlan' => 'refer']],
+            [...$this->referral(), ...$this->followUp()]
+        )->assertCreated()->json('data.id');
+
+        $this->assertNull(HealthRecord::findOrFail($id)->monitoring_data['followUpDate']);
+        $this->assertSame(0, FollowUpTask::count());
+    }
+
+    public function test_bhc_follow_up_flag_is_dropped_unless_refer(): void
+    {
+        $id = $this->save([['id' => 'd1', 'name' => 'Cough', 'carePlan' => 'none', 'bhcFollowUp' => true]])
+            ->assertCreated()->json('data.id');
+
+        $this->assertArrayNotHasKey('bhcFollowUp', HealthRecord::findOrFail($id)->diagnoses[0]);
+    }
+
+    public function test_transition_recheck_post_saves_as_follow_up_with_prefix(): void
+    {
+        $id = $this->save([['name' => 'Elevated BP', 'carePlan' => 'recheck']], $this->followUp())
+            ->assertCreated()->json('data.id');
+
+        $this->assertSame('follow_up', HealthRecord::findOrFail($id)->diagnoses[0]['carePlan']);
+        $this->assertSame('pending', FollowUpTask::where('health_record_id', $id)->sole()->state);
+        $this->getJson("/api/patients/{$this->patient->id}/care-overview")->assertOk()
+            ->assertJsonPath('data.pending_follow_ups.0.reason', 'Recheck: Elevated BP');
+    }
+
+    public function test_service_visit_follow_up_stays_exempt_from_the_reason(): void
+    {
+        $this->save([], [
+            'category' => 'Immunization',
+            'diagnosis' => 'Vaccination visit',
+            'notes' => 'Vaccine deferred',
+            'monitoring_data' => [
+                'selectedPrograms' => ['EPI'],
+                'primaryProgram' => 'EPI',
+                'followUpStatus' => 'Follow-up Required',
+                'followUpDate' => now()->addWeek()->toDateString(),
+            ],
+        ])->assertCreated();
     }
 
     public function test_recheck_reason_lists_the_concerns(): void
