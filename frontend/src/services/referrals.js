@@ -371,6 +371,10 @@ export async function submitReturnSlip(trackingId, feedbackData = {}) {
       receiving_practitioner:
         feedbackData.receivingPractitioner || feedbackData.receiving_practitioner || null,
       remarks: feedbackData.remarks || null,
+      // RHU-confirmed condition statuses; absent when nothing was confirmed.
+      ...(feedbackData.conditionConfirmations?.length
+        ? { condition_confirmations: feedbackData.conditionConfirmations }
+        : {}),
     },
   });
 

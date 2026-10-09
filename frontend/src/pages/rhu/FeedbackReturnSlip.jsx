@@ -13,6 +13,7 @@ import {
   Clock,
   FileText,
   Send,
+  ShieldCheck,
   Stethoscope,
   UserCheck,
 } from "lucide-react";
@@ -29,6 +30,14 @@ import {
 } from "../../services/referrals";
 import { useRhuProviders } from "../../hooks/useDoctorAvailability";
 import { queryKeys } from "../../utils/queryKeys";
+import { getCurrentUser } from "../../utils/auth";
+import { can } from "../../utils/actionPermissions";
+import ConfirmConditionsBlock from "../../components/features/conditions/ConfirmConditionsBlock";
+import {
+  buildConditionConfirmations,
+  mapConditionConfirmationErrors,
+  validateConditionConfirmations,
+} from "../../utils/conditionConfirmations";
 
 const OUTCOME_OPTIONS = [
   "Managed at RHU",
@@ -355,6 +364,8 @@ export default function FeedbackReturnSlip() {
     remarks: "",
   });
   const { providers: rhuDoctors } = useRhuProviders();
+  const [conditionRows, setConditionRows] = useState([]);
+  const [conditionErrors, setConditionErrors] = useState({});
 
   function handleChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -363,6 +374,10 @@ export default function FeedbackReturnSlip() {
   async function handleSubmit(e) {
     e?.preventDefault();
     if (!selectedReferral || !canCreateReturnSlip || submitting) return;
+
+    const validationErrors = validateConditionConfirmations(conditionRows);
+    setConditionErrors(validationErrors);
+    if (Object.keys(validationErrors).length > 0) return;
 
     setSubmitting(true);
 
@@ -386,6 +401,7 @@ export default function FeedbackReturnSlip() {
     try {
       const updated = await submitReturnSlip(selectedReferral.trackingId, {
         ...feedback,
+        conditionConfirmations: buildConditionConfirmations(conditionRows),
         submittedBy: form.receivingPersonnel || "RHU Staff",
       });
 
@@ -408,12 +424,26 @@ export default function FeedbackReturnSlip() {
         queryClient.invalidateQueries({
           queryKey: queryKeys.dashboardSummary("rhu"),
         });
+        if (updated.patientId) {
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.patientConditions(updated.patientId),
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.careOverview(updated.patientId),
+          });
+        }
       }
 
       setSubmitted(true);
     } catch (error) {
       if (isReferralWorkflowConflict(error)) {
         setConflict(error.payload || {});
+      } else if (error?.status === 422 || error?.status === 403) {
+        const mapped = mapConditionConfirmationErrors(error.errors, conditionRows);
+        if (Object.keys(mapped).length > 0) setConditionErrors(mapped);
+        else if (error.status === 403 && conditionRows.some((row) => row.setOnRecord)) {
+          setConditionErrors({ conditionConfirmations: error.message });
+        }
       }
       // The form remains available for a manual retry or conflict review.
     } finally {
@@ -722,6 +752,27 @@ export default function FeedbackReturnSlip() {
                   />
                 </div>
               </section>
+
+              {can(getCurrentUser(), "conditions.confirm") && (
+                <section className="rounded-xl border border-slate-200 bg-white p-6">
+                  <SectionHeader
+                    icon={<ShieldCheck size={18} />}
+                    title="Confirm Conditions"
+                    description="Set the clinical status of the patient's conditions based on this referral."
+                  />
+                  <ConfirmConditionsBlock
+                    patientId={selectedReferral.patientId}
+                    rows={conditionRows}
+                    onChange={setConditionRows}
+                    errors={conditionErrors}
+                    context={[
+                      { label: "Reason for referral", value: selectedReferral.reasonForReferral },
+                      { label: "Chief complaint", value: selectedReferral.chiefComplaint },
+                      { label: "BHC initial diagnosis", value: selectedReferral.initialDiagnosis },
+                    ]}
+                  />
+                </section>
+              )}
 
               <section className="rounded-xl border border-slate-200 bg-white p-6">
                 <SectionHeader

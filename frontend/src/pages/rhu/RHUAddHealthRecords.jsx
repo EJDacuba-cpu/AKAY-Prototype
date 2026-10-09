@@ -11,6 +11,7 @@ import {
   Lock,
   Save,
   Search,
+  ShieldCheck,
   Stethoscope,
   Syringe,
   User,
@@ -36,12 +37,19 @@ import TbTreatmentCardForm, {
 } from "../../components/features/health-records/TbTreatmentCardForm";
 import { getPatientDetailsListByRole } from "../../services/patientService";
 import { getCurrentUser } from "../../utils/auth";
+import { can } from "../../utils/actionPermissions";
 import {
   formatDisplayValue,
   formatPatientName,
   formatUserName,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
+import ConfirmConditionsBlock from "../../components/features/conditions/ConfirmConditionsBlock";
+import {
+  buildConditionConfirmations,
+  mapConditionConfirmationErrors,
+  validateConditionConfirmations,
+} from "../../utils/conditionConfirmations";
 import {
   FP_CLIENT_TYPE_OPTIONS,
   FP_SOURCE_OPTIONS,
@@ -435,6 +443,7 @@ export default function AddHealthRecord() {
   }, []);
   const [noticeModal, setNoticeModal] = useState(null);
   const [validationErrors, setValidationErrors] = useState({});
+  const [conditionRows, setConditionRows] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [setupComplete, setSetupComplete] = useState(
@@ -794,6 +803,7 @@ export default function AddHealthRecord() {
   function selectPatient(id) {
     clearValidationError("selectedPatientId");
     if (id !== selectedPatientId) {
+      setConditionRows([]);
       resetClassificationSpecificState();
       setSetupComplete(false);
       setCareDecisionStep(false);
@@ -807,6 +817,7 @@ export default function AddHealthRecord() {
 
   function clearSelectedPatient() {
     setSelectedPatientId("");
+    setConditionRows([]);
     resetClassificationSpecificState();
     setSetupComplete(false);
     setCareDecisionStep(false);
@@ -819,6 +830,7 @@ export default function AddHealthRecord() {
   function handlePatientSearchChange(event) {
     if (selectedPatientId) {
       setSelectedPatientId("");
+      setConditionRows([]);
       resetClassificationSpecificState();
       setSetupComplete(false);
       setCareDecisionStep(false);
@@ -1278,7 +1290,10 @@ export default function AddHealthRecord() {
       return;
     }
 
-    const clientErrors = getClinicalValidationErrors();
+    const clientErrors = {
+      ...getClinicalValidationErrors(),
+      ...validateConditionConfirmations(conditionRows),
+    };
 
     if (setValidationErrorsAndFocus(clientErrors)) return;
 
@@ -1491,6 +1506,7 @@ export default function AddHealthRecord() {
             ? tbData
             : null,
         linkedTrackingId,
+        conditionConfirmations: buildConditionConfirmations(conditionRows),
         previousRecordId: isFollowUp ? recordId : "",
         status: finalPatientStatus,
         recordedBy: attendingStaff || "RHU Staff",
@@ -1543,6 +1559,12 @@ export default function AddHealthRecord() {
       if (selectedPatientId) {
         queryClient.invalidateQueries({
           queryKey: queryKeys.patientDetails("rhu", selectedPatientId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.patientConditions(selectedPatientId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.careOverview(selectedPatientId),
         });
       }
       if (savedId) {
@@ -1619,12 +1641,15 @@ export default function AddHealthRecord() {
       }
       if (error?.status === 422 && error?.errors) {
         officialSubmissionRef.current = null;
-        const backendErrors = Object.fromEntries(
-          Object.entries(error.errors).map(([field, messages]) => [
-            field,
-            Array.isArray(messages) ? messages[0] : String(messages),
-          ]),
-        );
+        const backendErrors = {
+          ...Object.fromEntries(
+            Object.entries(error.errors).map(([field, messages]) => [
+              field,
+              Array.isArray(messages) ? messages[0] : String(messages),
+            ]),
+          ),
+          ...mapConditionConfirmationErrors(error.errors, conditionRows),
+        };
         if (setValidationErrorsAndFocus(backendErrors)) return;
       }
       if ([403, 404, 422].includes(Number(error?.status))) {
@@ -2492,6 +2517,23 @@ export default function AddHealthRecord() {
             </FormSection>
             )}
           </>
+        )}
+
+        {!patientGateLocked && !isEditingRecord && can(currentUser, "conditions.confirm") && (
+          <FormSection
+            title="Confirm Conditions"
+            subtitle="Set the clinical status of the patient's conditions from this visit."
+            icon={<ShieldCheck size={14} />}
+            delay={6}
+          >
+            <ConfirmConditionsBlock
+              patientId={selectedPatientId || followUpPatientId}
+              rows={conditionRows}
+              onChange={setConditionRows}
+              errors={validationErrors}
+              context={[{ label: "Diagnosis", value: diagnosis }]}
+            />
+          </FormSection>
         )}
 
         <div
