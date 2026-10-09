@@ -1,7 +1,7 @@
 import {
   CARE_PLAN_LABELS,
   carePlanFor,
-  keepsBhcFollowUp,
+  schedulesBhcFollowUp,
   refers,
   referredContinuingRows,
   stopsRequired,
@@ -56,7 +56,7 @@ export function followUpPlan(disposition = {}, followUpDate = "", { hasService =
 export function carePlanFormHosts(concerns = [], { needsReferral = false, showsFollowUp = false } = {}) {
   const list = concerns || [];
   const referredConcernIds = list.filter((concern) => refers(carePlanFor(concern))).map((concern) => concern.id);
-  const followUpConcernIds = list.filter((concern) => keepsBhcFollowUp(carePlanFor(concern))).map((concern) => concern.id);
+  const followUpConcernIds = list.filter(schedulesBhcFollowUp).map((concern) => concern.id);
   const referralHostId = needsReferral ? referredConcernIds[0] ?? null : null;
   const followUpHostId = showsFollowUp ? followUpConcernIds[0] ?? null : null;
   return {
@@ -90,7 +90,7 @@ export const FOLLOW_UP_DATE_MESSAGE = "Set the follow-up date for the concerns m
  */
 export function carePlanFollowUpErrors({ kept = true, concerns = [], followUpDate = "", followUpReason = "" } = {}) {
   const errors = {};
-  if (!followUpDate && (concerns || []).some((concern) => keepsBhcFollowUp(carePlanFor(concern)))) {
+  if (!followUpDate && (concerns || []).some(schedulesBhcFollowUp)) {
     errors.followUpDate = FOLLOW_UP_DATE_MESSAGE;
   }
   if (kept && followUpDate && !String(followUpReason || "").trim()) {

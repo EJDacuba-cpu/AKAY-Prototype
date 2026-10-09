@@ -94,8 +94,10 @@ export function normalizeDiagnoses(list) {
       id: String(item.id || createDiagnosisId()).slice(0, 64),
       name: String(item.name).trim().slice(0, DIAGNOSIS_LIMITS.name),
       ...(Object.hasOwn(item, "reportAs") ? { reportAs: normalizeReportAs(item.reportAs) } : {}),
-      // A stored record may hold a retired value; carePlanFor decides what is a choice.
+      // A stored record may hold a historical value; carePlanFor decides what is a choice.
       ...(isCarePlanValue(item.carePlan) ? { carePlan: item.carePlan } : {}),
+      // The BHC follow-up flag belongs to a referral only.
+      ...(item.carePlan === "refer" && item.bhcFollowUp === true ? { bhcFollowUp: true } : {}),
       ...(item.includeInSurveillance === true ? { includeInSurveillance: true } : {}),
     }));
 }

@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   CARE_PLAN, CARE_PLAN_OPTIONS, CARE_PLAN_LABELS, conditionIdentity, matchConditionKey, carePlanFor,
-  keepsBhcFollowUp, refers, recheckReason, stopsRequired, referredConcerns, referredContinuingRows,
+  schedulesBhcFollowUp, withCarePlan, withBhcFollowUp, validateConcernActions, migrateLegacyConcernPlans,
+  refers, stopsRequired, referredConcerns, referredContinuingRows,
   buildReferralReason, deriveDisposition, validateCarePlan, buildCarePlanPayload, monitoredConditionKeys,
   NO_CONCERN_MESSAGE,
 } from "./carePlan.js";
@@ -17,56 +18,135 @@ const registry = {
 const htnMonitoring = { id: 3, conditionName: "Hypertension", conditionKey: "hypertension" };
 const asthmaMonitoring = { id: 4, conditionName: "Asthma", conditionKey: null };
 
-test("the offered next actions are Recheck, Follow-up and Refer to RHU, in order", () => {
-  assert.deepEqual(CARE_PLAN_OPTIONS.map((o) => o.label), ["Recheck", "Follow-up", "Refer to RHU"]);
+test("the offered care plan actions are No Further BHC Action, Schedule BHC Follow-up and Refer to RHU, in order", () => {
+  assert.deepEqual(
+    CARE_PLAN_OPTIONS.map((o) => o.label),
+    ["No Further BHC Action", "Schedule BHC Follow-up", "Refer to RHU"],
+  );
+  assert.deepEqual(CARE_PLAN_OPTIONS.map((o) => o.value), ["none", "follow_up", "refer"]);
 });
 
 test("no emergency option is offered", () => {
-  assert.deepEqual(CARE_PLAN_OPTIONS.map((o) => o.value), ["recheck", "follow_up", "refer"]);
+  assert.ok(!CARE_PLAN_OPTIONS.some((o) => /emergency/i.test(o.value) || /emergency/i.test(o.label)));
 });
 
-test("labels cover the new values and the legacy ones kept for stored records", () => {
-  assert.equal(CARE_PLAN_LABELS.recheck, "Recheck");
-  assert.equal(CARE_PLAN_LABELS.follow_up, "Follow-up");
+test("labels cover the new values and the historical ones kept for stored records", () => {
+  assert.equal(CARE_PLAN_LABELS.none, "No Further BHC Action");
+  assert.equal(CARE_PLAN_LABELS.follow_up, "Schedule BHC Follow-up");
   assert.equal(CARE_PLAN_LABELS.refer, "Refer to RHU");
-  assert.equal(CARE_PLAN_LABELS.none, "No Ongoing Tracking");
+  assert.equal(CARE_PLAN_LABELS.recheck, "Recheck");
   assert.equal(CARE_PLAN_LABELS.monitor, "Monitor at BHC");
   assert.equal(CARE_PLAN_LABELS.monitor_refer, "Monitor at BHC + Refer to RHU");
 });
 
-test("a concern has a next action only when one is chosen", () => {
+test("a concern has a care plan action only when a selectable one is chosen", () => {
   assert.equal(carePlanFor({ name: "Cough" }), null);
-  assert.equal(carePlanFor({ name: "Cough", carePlan: "recheck" }), "recheck");
+  assert.equal(carePlanFor({ name: "Cough", carePlan: "none" }), "none");
   assert.equal(carePlanFor({ name: "Cough", carePlan: "follow_up" }), "follow_up");
   assert.equal(carePlanFor({ name: "Cough", carePlan: "refer" }), "refer");
   assert.equal(carePlanFor(null), null);
 });
 
-test("a legacy monitor value from an old draft needs a new choice", () => {
+test("a historical value from an old draft needs a new choice", () => {
+  assert.equal(carePlanFor({ name: "Cough", carePlan: "recheck" }), null);
   assert.equal(carePlanFor({ name: "HTN", carePlan: "monitor" }), null);
   assert.equal(carePlanFor({ name: "HTN", carePlan: "monitor_refer" }), null);
-  assert.equal(carePlanFor({ name: "HTN", carePlan: "none" }), null);
   assert.equal(carePlanFor({ name: "HTN", carePlan: "bogus" }), null);
 });
 
-test("Recheck and Follow-up keep the BHC follow-up; Refer does not", () => {
-  assert.equal(keepsBhcFollowUp(CARE_PLAN.RECHECK), true);
-  assert.equal(keepsBhcFollowUp(CARE_PLAN.FOLLOW_UP), true);
-  assert.equal(keepsBhcFollowUp(CARE_PLAN.REFER), false);
-  assert.equal(keepsBhcFollowUp(null), false);
+test("schedulesBhcFollowUp: follow-up, or a referral with the BHC follow-up flag", () => {
+  assert.equal(schedulesBhcFollowUp({ carePlan: "follow_up" }), true);
+  assert.equal(schedulesBhcFollowUp({ carePlan: "refer", bhcFollowUp: true }), true);
+  assert.equal(schedulesBhcFollowUp({ carePlan: "refer" }), false);
+  assert.equal(schedulesBhcFollowUp({ carePlan: "refer", bhcFollowUp: false }), false);
+  assert.equal(schedulesBhcFollowUp({ carePlan: "none" }), false);
+  // The flag means nothing without a referral.
+  assert.equal(schedulesBhcFollowUp({ carePlan: "none", bhcFollowUp: true }), false);
+  // recheck is migrated to follow_up first (migrateLegacyConcernPlans).
+  assert.equal(schedulesBhcFollowUp({ carePlan: "recheck" }), false);
+  assert.equal(schedulesBhcFollowUp(null), false);
+  assert.equal(schedulesBhcFollowUp({}), false);
+});
+
+test("refers covers Refer to RHU and the historical Monitor + Refer", () => {
   assert.equal(refers(CARE_PLAN.REFER), true);
   assert.equal(refers(CARE_PLAN.MONITOR_REFER), true);
+  assert.equal(refers(CARE_PLAN.FOLLOW_UP), false);
   assert.equal(refers(CARE_PLAN.RECHECK), false);
 });
 
-test("recheck reason lists rechecked concerns only", () => {
-  assert.equal(recheckReason([{ name: "Elevated BP", carePlan: "recheck" }, { name: "Cough", carePlan: "refer" }]), "Recheck: Elevated BP");
-  assert.equal(
-    recheckReason([{ name: " Elevated BP ", carePlan: "recheck" }, { name: "Fever", carePlan: "recheck" }, { name: "Cough", carePlan: "follow_up" }]),
-    "Recheck: Elevated BP; Fever",
+test("withCarePlan drops bhcFollowUp unless refer", () => {
+  const flagged = { id: "a", name: "Pneumonia", carePlan: "refer", bhcFollowUp: true };
+  assert.equal(Object.hasOwn(withCarePlan(flagged, "none"), "bhcFollowUp"), false);
+  assert.equal(Object.hasOwn(withCarePlan(flagged, "follow_up"), "bhcFollowUp"), false);
+  // Switching back to refer does not restore it.
+  const back = withCarePlan(withCarePlan(flagged, "none"), "refer");
+  assert.equal(back.carePlan, "refer");
+  assert.equal(Object.hasOwn(back, "bhcFollowUp"), false);
+  // Re-choosing refer keeps an existing flag.
+  assert.equal(withCarePlan(flagged, "refer").bhcFollowUp, true);
+  assert.equal(withCarePlan({ id: "a", name: "Cough" }, "follow_up").carePlan, "follow_up");
+  // The input is not mutated.
+  assert.equal(flagged.carePlan, "refer");
+  assert.equal(flagged.bhcFollowUp, true);
+});
+
+test("withBhcFollowUp sets the flag on a referral only", () => {
+  const referred = { id: "a", name: "Pneumonia", carePlan: "refer" };
+  assert.equal(withBhcFollowUp(referred, true).bhcFollowUp, true);
+  assert.equal(Object.hasOwn(withBhcFollowUp(withBhcFollowUp(referred, true), false), "bhcFollowUp"), false);
+  const followUp = { id: "b", name: "Wound", carePlan: "follow_up" };
+  assert.deepEqual(withBhcFollowUp(followUp, true), followUp);
+  const none = { id: "c", name: "Cough", carePlan: "none" };
+  assert.deepEqual(withBhcFollowUp(none, true), none);
+  assert.deepEqual(withBhcFollowUp({ id: "d", name: "Rash" }, true), { id: "d", name: "Rash" });
+});
+
+test("validateConcernActions flags a concern with no choice and with a historical recheck", () => {
+  const message = "Choose a care plan action for this health concern.";
+  assert.deepEqual(
+    validateConcernActions([
+      { id: "a", name: "Cough" },
+      { id: "b", name: "Fever", carePlan: "recheck" },
+      { id: "c", name: "Wound", carePlan: "follow_up" },
+      { id: "d", name: "Rash", carePlan: "none" },
+      { id: "e", name: "TB", carePlan: "refer" },
+    ]),
+    { "carePlanAction.a": message, "carePlanAction.b": message },
   );
-  assert.equal(recheckReason([{ name: "Cough", carePlan: "follow_up" }]), "");
-  assert.equal(recheckReason(), "");
+  assert.deepEqual(validateConcernActions([]), {});
+  assert.deepEqual(validateConcernActions(), {});
+});
+
+test("migrateLegacyConcernPlans maps recheck and prefills the reason", () => {
+  const migrated = migrateLegacyConcernPlans([{ name: "Elevated BP", carePlan: "recheck" }], "");
+  assert.deepEqual(migrated, {
+    diagnoses: [{ name: "Elevated BP", carePlan: "follow_up" }],
+    followUpReason: "Recheck: Elevated BP",
+  });
+  // A typed reason is kept unchanged.
+  assert.equal(
+    migrateLegacyConcernPlans([{ name: "Elevated BP", carePlan: "recheck" }], "BP in 1 week").followUpReason,
+    "BP in 1 week",
+  );
+  // Several rechecked concerns; other concerns are left alone.
+  const several = migrateLegacyConcernPlans(
+    [
+      { name: " Elevated BP ", carePlan: "recheck" },
+      { name: "Fever", carePlan: "recheck" },
+      { name: "Cough", carePlan: "follow_up" },
+      { name: "TB", carePlan: "refer", bhcFollowUp: true },
+    ],
+    "  ",
+  );
+  assert.equal(several.followUpReason, "Recheck: Elevated BP; Fever");
+  assert.deepEqual(several.diagnoses.map((d) => d.carePlan), ["follow_up", "follow_up", "follow_up", "refer"]);
+  assert.equal(several.diagnoses[3].bhcFollowUp, true);
+  // Nothing to migrate: the reason is untouched.
+  assert.deepEqual(
+    migrateLegacyConcernPlans([{ name: "Cough", carePlan: "none" }], ""),
+    { diagnoses: [{ name: "Cough", carePlan: "none" }], followUpReason: "" },
+  );
 });
 
 test("identity uses the registry key, else the normalized name", () => {
@@ -108,14 +188,14 @@ test("a followed condition can be referred without a concern; a stop wins over a
 test("referral reason follows the concerns referred now and the referred followed conditions", () => {
   const concerns = [
     { id: "d1", name: "Pneumonia", carePlan: "refer" },
-    { id: "d2", name: "Fever", carePlan: "recheck" },
+    { id: "d2", name: "Fever", carePlan: "follow_up" },
     { id: "d3", name: "Cough" },
   ];
   assert.deepEqual(referredConcerns(concerns).map((c) => c.id), ["d1"]);
   assert.equal(buildReferralReason(concerns, [], []), "Referred for: Pneumonia");
   assert.equal(buildReferralReason(concerns, [htnMonitoring], [3]), "Referred for: Pneumonia; Hypertension");
   assert.equal(buildReferralReason([], [htnMonitoring], [3]), "Referred for: Hypertension");
-  assert.equal(buildReferralReason([{ name: "Fever", carePlan: "recheck" }], [htnMonitoring], []), "");
+  assert.equal(buildReferralReason([{ name: "Fever", carePlan: "follow_up" }], [htnMonitoring], []), "");
   // A legacy value from an old draft is not a choice, so it refers nothing.
   assert.equal(buildReferralReason([{ name: "HTN", carePlan: "monitor_refer" }], [], []), "");
 });
@@ -133,10 +213,20 @@ test("monitored condition keys: continued not stopped, plus starting conditions"
 });
 
 test("disposition: referral, follow-up visibility, monitoring", () => {
-  // Recheck keeps the BHC follow-up even through a referral.
+  // Schedule BHC Follow-up keeps the BHC follow-up even through a referral.
   assert.deepEqual(
-    deriveDisposition({ concerns: [{ name: "BP", carePlan: "recheck" }, { name: "Pneumonia", carePlan: "refer" }], registry }),
+    deriveDisposition({ concerns: [{ name: "BP", carePlan: "follow_up" }, { name: "Pneumonia", carePlan: "refer" }], registry }),
     { needsReferral: true, showsFollowUp: true, monitorsAny: false, keepsFollowUpWithReferral: true },
+  );
+  // A referral flagged for BHC follow-up keeps it too.
+  assert.deepEqual(
+    deriveDisposition({ concerns: [{ name: "Pneumonia", carePlan: "refer", bhcFollowUp: true }], registry }),
+    { needsReferral: true, showsFollowUp: true, monitorsAny: false, keepsFollowUpWithReferral: true },
+  );
+  // No Further BHC Action carries nothing.
+  assert.deepEqual(
+    deriveDisposition({ concerns: [{ name: "Cough", carePlan: "none" }], registry }),
+    { needsReferral: false, showsFollowUp: false, monitorsAny: false, keepsFollowUpWithReferral: false },
   );
   // A concern with no next action carries nothing.
   assert.deepEqual(

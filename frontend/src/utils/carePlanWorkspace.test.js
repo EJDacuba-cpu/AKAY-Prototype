@@ -71,21 +71,21 @@ test("a follow-up date needs a reason, whenever the follow-up is kept", () => {
   assert.deepEqual(carePlanFollowUpErrors({ kept: false, followUpDate: "2026-10-08", followUpReason: "" }), {});
 });
 
-test("a concern marked Recheck or Follow-up requires the follow-up date", () => {
+test("a concern that schedules a BHC follow-up requires the follow-up date", () => {
   const message = "Set the follow-up date for the concerns marked Recheck or Follow-up.";
-  for (const carePlan of ["recheck", "follow_up"]) {
+  for (const concern of [{ name: "BP", carePlan: "follow_up" }, { name: "BP", carePlan: "refer", bhcFollowUp: true }]) {
     assert.deepEqual(
-      carePlanFollowUpErrors({ kept: true, concerns: [{ name: "BP", carePlan }], followUpDate: "", followUpReason: "" }),
+      carePlanFollowUpErrors({ kept: true, concerns: [concern], followUpDate: "", followUpReason: "" }),
       { followUpDate: message },
     );
   }
   // Even through a referral that otherwise hands the follow-up to the RHU.
   assert.deepEqual(
-    carePlanFollowUpErrors({ kept: false, concerns: [{ name: "BP", carePlan: "recheck" }, { name: "TB", carePlan: "refer" }], followUpDate: "" }),
+    carePlanFollowUpErrors({ kept: false, concerns: [{ name: "BP", carePlan: "follow_up" }, { name: "TB", carePlan: "refer" }], followUpDate: "" }),
     { followUpDate: message },
   );
   assert.deepEqual(
-    carePlanFollowUpErrors({ kept: true, concerns: [{ name: "BP", carePlan: "recheck" }], followUpDate: "2026-10-08", followUpReason: "Recheck: BP" }),
+    carePlanFollowUpErrors({ kept: true, concerns: [{ name: "BP", carePlan: "follow_up" }], followUpDate: "2026-10-08", followUpReason: "Recheck: BP" }),
     {},
   );
   // Refer, no next action and old-draft legacy values never require it.
@@ -228,7 +228,7 @@ test("Care Plan continues to Monitoring Details only when a form is needed", () 
 test("review rows list each concern's next action, followed conditions, referral and follow-up", () => {
   const rows = carePlanReviewRows({
     concerns: [
-      { id: "d1", name: "Elevated BP", carePlan: "recheck" },
+      { id: "d1", name: "Elevated BP", carePlan: "none" },
       { id: "d2", name: "Wound", carePlan: "follow_up" },
       { id: "d3", name: "Pneumonia", carePlan: "refer" },
       { id: "d4", name: "Cough" },
@@ -243,8 +243,8 @@ test("review rows list each concern's next action, followed conditions, referral
     followUp: { shows: true, date: "October 8, 2026", time: "9:00 AM", reason: "Recheck: Elevated BP" },
   });
   assert.deepEqual(rows, [
-    { label: "Elevated BP", value: "Recheck" },
-    { label: "Wound", value: "Follow-up" },
+    { label: "Elevated BP", value: "No Further BHC Action" },
+    { label: "Wound", value: "Schedule BHC Follow-up" },
     { label: "Pneumonia", value: "Refer to RHU" },
     { label: "Cough", value: "No next action" },
     { label: "Hypertension", value: "Continue monitoring" },
@@ -307,7 +307,7 @@ test("the referral reason follows the referred diagnoses until the worker edits 
 
 test("the referral form sits in the first referred concern; later ones share it", () => {
   const concerns = [
-    { id: "a", name: "Cough", carePlan: "recheck" },
+    { id: "a", name: "Cough", carePlan: "follow_up" },
     { id: "b", name: "Chest pain", carePlan: "refer" },
     { id: "c", name: "Fever", carePlan: "refer" },
   ];
@@ -323,11 +323,12 @@ test("the referral form sits in the first referred concern; later ones share it"
   assert.equal(moved.referralHostId, "c");
 });
 
-test("the follow-up schedule sits in the first Recheck or Follow-up concern; later ones share it", () => {
+test("the follow-up schedule sits in the first concern that schedules one; later ones share it", () => {
   const concerns = [
     { id: "a", name: "Cough", carePlan: "refer" },
     { id: "b", name: "Rash", carePlan: "follow_up" },
-    { id: "c", name: "Fever", carePlan: "recheck" },
+    { id: "c", name: "Fever", carePlan: "refer", bhcFollowUp: true },
+    { id: "d", name: "Itch", carePlan: "none" },
   ];
   const hosts = carePlanFormHosts(concerns, { needsReferral: true, showsFollowUp: true });
   assert.equal(hosts.followUpHostId, "b");

@@ -7,7 +7,7 @@ import {
   CARE_PLAN_OPTIONS,
   NO_CONCERN_MESSAGE,
   carePlanFor,
-  keepsBhcFollowUp,
+  schedulesBhcFollowUp,
   referredContinuingRows,
   refers,
 } from "../../../../utils/carePlan";
@@ -235,7 +235,7 @@ export default function CarePlanSection({
   /** The referral or follow-up under a concern's action: the form in its host card, a note in the others. */
   function actionDetails(concern) {
     const value = carePlanFor(concern);
-    if (keepsBhcFollowUp(value) && hosts.followUpHostId) {
+    if (schedulesBhcFollowUp(concern) && hosts.followUpHostId) {
       if (concern.id !== hosts.followUpHostId) {
         return <SharedNote>Uses the next visit set under Health Concern {numberOf(hosts.followUpHostId)}.</SharedNote>;
       }

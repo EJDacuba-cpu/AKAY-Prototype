@@ -3,35 +3,38 @@ import { normalizeNameKey } from "./diagnoses.js";
 /**
  * Care Plan & Next Steps rules, kept out of the workspace so they are tested.
  *
- * A consultation records Health Concerns, each with an optional next action
- * (Recheck, Follow-up or Refer to RHU). Monitoring is decoupled from concerns:
- * the BHC continues rows it already follows and starts conditions the RHU has
- * confirmed; naming a concern never starts or stops monitoring.
+ * A consultation records Health Concerns, each with an explicit care plan action
+ * (No Further BHC Action, Schedule BHC Follow-up or Refer to RHU). A referral can
+ * also carry the BHC follow-up flag (`bhcFollowUp`), which schedules the visit's
+ * single BHC follow-up alongside the referral. Monitoring is decoupled from
+ * concerns: the BHC continues rows it already follows and starts conditions the
+ * RHU has confirmed; naming a concern never starts or stops monitoring.
  *
- * Defaults are UI defaults only; nothing clinical is inferred.
+ * The worker must choose; nothing clinical is inferred or preselected.
  */
 export const CARE_PLAN = Object.freeze({
   RECHECK: "recheck",
   FOLLOW_UP: "follow_up",
   REFER: "refer",
-  // Retired values: stored records keep them (read-back only). They are never
-  // offered, and a draft holding one resolves to no choice (carePlanFor).
   NONE: "none",
+  // Historical values: stored records keep them (read-back only). They are never
+  // offered, and a draft holding one resolves to no choice (carePlanFor). A draft
+  // holding recheck is moved to follow_up first (migrateLegacyConcernPlans).
   MONITOR: "monitor",
   MONITOR_REFER: "monitor_refer",
 });
 
-/** The next actions offered per health concern. */
+/** The care plan actions offered per health concern. */
 export const CARE_PLAN_OPTIONS = Object.freeze([
-  { value: CARE_PLAN.RECHECK, label: "Recheck" },
-  { value: CARE_PLAN.FOLLOW_UP, label: "Follow-up" },
+  { value: CARE_PLAN.NONE, label: "No Further BHC Action" },
+  { value: CARE_PLAN.FOLLOW_UP, label: "Schedule BHC Follow-up" },
   { value: CARE_PLAN.REFER, label: "Refer to RHU" },
 ]);
 
-/** Labels for every stored value, the retired ones included (read-back). */
+/** Labels for every stored value, the historical ones included (read-back). */
 export const CARE_PLAN_LABELS = Object.freeze({
   ...Object.fromEntries(CARE_PLAN_OPTIONS.map((option) => [option.value, option.label])),
-  [CARE_PLAN.NONE]: "No Ongoing Tracking",
+  [CARE_PLAN.RECHECK]: "Recheck",
   [CARE_PLAN.MONITOR]: "Monitor at BHC",
   [CARE_PLAN.MONITOR_REFER]: "Monitor at BHC + Refer to RHU",
 });
@@ -47,12 +50,10 @@ export function isCarePlanValue(value) {
   return VALUES.has(value);
 }
 
-/** Whether the BHC itself brings the patient back (Recheck or Follow-up). */
-export function keepsBhcFollowUp(value) {
-  return value === CARE_PLAN.RECHECK || value === CARE_PLAN.FOLLOW_UP;
-}
+/** Shown when a concern has no usable care plan action (validateConcernActions). */
+export const CONCERN_ACTION_MESSAGE = "Choose a care plan action for this health concern.";
 
-/** Whether the value refers to the RHU (the retired Monitor + Refer included, for stored records). */
+/** Whether the value refers to the RHU (the historical Monitor + Refer included, for stored records). */
 export function refers(value) {
   return value === CARE_PLAN.REFER || value === CARE_PLAN.MONITOR_REFER;
 }
@@ -73,23 +74,71 @@ export function conditionIdentity(name, registry = {}) {
 }
 
 /**
- * The concern's chosen next action, or null. A concern starts with none, and a
- * retired value from an old draft is not a choice, so the worker chooses again.
+ * The concern's chosen care plan action, or null. A concern starts with no
+ * action, and a historical value from an old draft (recheck, monitor) is not a
+ * choice, so the worker chooses again.
  */
 export function carePlanFor(concern) {
   return SELECTABLE.has(concern?.carePlan) ? concern.carePlan : null;
 }
 
 /**
- * "Recheck: A; B" from the concerns set to Recheck, or "". Display/preview
- * only: the server builds the stored follow-up reason itself.
+ * Whether the concern schedules the visit's BHC follow-up: Schedule BHC
+ * Follow-up, or a referral carrying the explicit BHC follow-up flag. Mirrors
+ * the server's CarePlan::schedulesBhcFollowUp, minus recheck, which a draft has
+ * already moved to follow_up (migrateLegacyConcernPlans). Takes the concern
+ * entry, not the value, because the flag lives on the entry.
  */
-export function recheckReason(concerns = []) {
-  const names = (concerns || [])
-    .filter((concern) => carePlanFor(concern) === CARE_PLAN.RECHECK)
-    .map((concern) => String(concern.name || "").trim())
-    .filter(Boolean);
-  return names.length ? `Recheck: ${names.join("; ")}` : "";
+export function schedulesBhcFollowUp(concern) {
+  const value = carePlanFor(concern);
+  return value === CARE_PLAN.FOLLOW_UP || (value === CARE_PLAN.REFER && concern.bhcFollowUp === true);
+}
+
+/**
+ * The concern with its care plan action set. The BHC follow-up flag only
+ * belongs to a referral, so any other action drops it; going back to Refer to
+ * RHU does not restore it (the worker ticks it again).
+ */
+export function withCarePlan(concern, value) {
+  const { bhcFollowUp, ...rest } = concern || {};
+  return value === CARE_PLAN.REFER && bhcFollowUp === true
+    ? { ...rest, carePlan: value, bhcFollowUp }
+    : { ...rest, carePlan: value };
+}
+
+/** The concern with the referral's BHC follow-up flag ticked or cleared; no change unless it refers to the RHU. */
+export function withBhcFollowUp(concern, checked) {
+  if (concern?.carePlan !== CARE_PLAN.REFER) return concern;
+  const next = { ...concern };
+  if (checked) next.bhcFollowUp = true;
+  else delete next.bhcFollowUp;
+  return next;
+}
+
+/** One error per concern without a usable care plan action, keyed carePlanAction.<concern id>. */
+export function validateConcernActions(concerns = []) {
+  const errors = {};
+  for (const concern of concerns || []) {
+    if (carePlanFor(concern) === null) errors[`carePlanAction.${concern?.id}`] = CONCERN_ACTION_MESSAGE;
+  }
+  return errors;
+}
+
+/**
+ * A draft or record from before Schedule BHC Follow-up: Recheck becomes
+ * follow_up, and an empty follow-up reason is prefilled "Recheck: A; B" from the
+ * concerns that were rechecked. A reason the worker already typed is kept.
+ */
+export function migrateLegacyConcernPlans(diagnoses = [], followUpReason = "") {
+  const list = diagnoses || [];
+  const rechecked = list.filter((concern) => concern?.carePlan === CARE_PLAN.RECHECK);
+  if (rechecked.length === 0) return { diagnoses: list, followUpReason };
+  const names = rechecked.map((concern) => String(concern.name || "").trim()).filter(Boolean);
+  const prefill = !String(followUpReason || "").trim() && names.length > 0;
+  return {
+    diagnoses: list.map((concern) => (concern?.carePlan === CARE_PLAN.RECHECK ? { ...concern, carePlan: CARE_PLAN.FOLLOW_UP } : concern)),
+    followUpReason: prefill ? `Recheck: ${names.join("; ")}` : followUpReason,
+  };
 }
 
 /**
@@ -143,8 +192,8 @@ export function monitoredConditionKeys(continuedMonitorings = [], startingCondit
 
 /**
  * `monitorsAny`: some condition stays monitored after this visit.
- * `keepsFollowUpWithReferral`: a concern is set to Recheck or Follow-up - the
- * concern part of the server's CarePlan::keepsFollowUpWithReferral (a dated
+ * `keepsFollowUpWithReferral`: a concern schedules a BHC follow-up (Schedule BHC
+ * Follow-up, or a referral flagged for it) - the concern part of the server's CarePlan::keepsFollowUpWithReferral (a dated
  * service visit is the other part, see followUpPlan).
  */
 export function deriveDisposition({
@@ -159,7 +208,7 @@ export function deriveDisposition({
   const needsReferral =
     referredConcerns(concerns).length > 0 || referredContinuingRows(continuedMonitorings, stops, referrals).length > 0;
   const monitorsAny = monitoredConditionKeys(continuedMonitorings, startingConditions, stops, registry).length > 0;
-  const keepsFollowUpWithReferral = (concerns || []).some((concern) => keepsBhcFollowUp(carePlanFor(concern)));
+  const keepsFollowUpWithReferral = (concerns || []).some(schedulesBhcFollowUp);
   return {
     needsReferral,
     showsFollowUp: keepsFollowUpWithReferral || monitorsAny || serviceNeedsNextVisit,

@@ -103,8 +103,11 @@ test("removing the only row clears it instead, dropping its choices", () => {
 
 test("a Care Plan choice is a next action, surveillance, or a changed report type", () => {
   assert.equal(hasCarePlanChoice({ name: "Cough", reportAs: null }, null), false);
-  assert.equal(hasCarePlanChoice({ name: "Cough", carePlan: "recheck" }, null), true);
-  // A retired value from an old draft is not a choice (carePlanFor).
+  assert.equal(hasCarePlanChoice({ name: "Cough", carePlan: "follow_up" }, null), true);
+  // No Further BHC Action is a deliberate choice too.
+  assert.equal(hasCarePlanChoice({ name: "Cough", carePlan: "none" }, null), true);
+  // A historical value from an old draft is not a choice (carePlanFor).
+  assert.equal(hasCarePlanChoice({ name: "Cough", carePlan: "recheck" }, null), false);
   assert.equal(hasCarePlanChoice({ name: "Cough", carePlan: "monitor" }, null), false);
   assert.equal(hasCarePlanChoice({ name: "Cough", includeInSurveillance: true }, null), true);
   assert.equal(hasCarePlanChoice({ name: "Cough", reportAs: "morbidity" }, "morbidity"), false);

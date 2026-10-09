@@ -5,17 +5,27 @@ import { CARE_PLAN, CARE_PLAN_LABELS } from "./carePlan.js";
  * only: nothing here is derived or suggested.
  */
 
-// New next actions and the retired Monitor values older records still hold.
+// Every stored action reads back: the current ones, the historical Recheck, and
+// the retired Monitor values older records still hold.
 const SHOWN_PLANS = new Set([
-  CARE_PLAN.RECHECK, CARE_PLAN.FOLLOW_UP, CARE_PLAN.REFER, CARE_PLAN.MONITOR, CARE_PLAN.MONITOR_REFER,
+  CARE_PLAN.NONE, CARE_PLAN.RECHECK, CARE_PLAN.FOLLOW_UP, CARE_PLAN.REFER, CARE_PLAN.MONITOR, CARE_PLAN.MONITOR_REFER,
 ]);
 
-const RETIRED_PLANS = new Set([CARE_PLAN.NONE, CARE_PLAN.MONITOR, CARE_PLAN.MONITOR_REFER]);
+// none is a current action again (No Further BHC Action), so only Monitor marks an old record.
+const RETIRED_PLANS = new Set([CARE_PLAN.MONITOR, CARE_PLAN.MONITOR_REFER]);
+
+/** Refer to RHU, with the BHC follow-up it explicitly scheduled when flagged. */
+function planLabel(diagnosis) {
+  if (diagnosis.carePlan === CARE_PLAN.REFER && diagnosis.bhcFollowUp === true) {
+    return `${CARE_PLAN_LABELS[CARE_PLAN.REFER]} · BHC follow-up`;
+  }
+  return CARE_PLAN_LABELS[diagnosis.carePlan];
+}
 
 /**
  * "Health Concerns" for a record saved with health concerns; "Care Plan" for an
- * older record, which holds a retired next action (No Ongoing Tracking,
- * Monitor at BHC) and was a suspected-condition care plan.
+ * older record, which holds a retired next action (Monitor at BHC, Monitor +
+ * Refer) and was a suspected-condition care plan.
  */
 export function diagnosisCarePlanHeading(diagnoses) {
   const retired = Array.isArray(diagnoses) && diagnoses.some((diagnosis) => RETIRED_PLANS.has(diagnosis?.carePlan));
@@ -30,9 +40,8 @@ export function formatFbs(value) {
 }
 
 /**
- * The per-diagnosis care plan of a saved record: only diagnoses set to
- * Monitor / Refer / Monitor + Refer, or included in surveillance (No Ongoing
- * Tracking rows are left out to keep the list short).
+ * The per-diagnosis care plan of a saved record: each concern's stored action
+ * (No Further BHC Action included), plus concerns included in surveillance.
  */
 export function diagnosisCarePlanItems(diagnoses) {
   if (!Array.isArray(diagnoses)) return [];
@@ -41,7 +50,7 @@ export function diagnosisCarePlanItems(diagnoses) {
     .map((diagnosis, index) => ({
       key: String(diagnosis.id || `diagnosis-${index}`),
       name: String(diagnosis.name).trim(),
-      plan: SHOWN_PLANS.has(diagnosis.carePlan) ? CARE_PLAN_LABELS[diagnosis.carePlan] : "",
+      plan: SHOWN_PLANS.has(diagnosis.carePlan) ? planLabel(diagnosis) : "",
       inSurveillance: diagnosis.includeInSurveillance === true,
     }))
     .filter((item) => item.plan || item.inSurveillance);

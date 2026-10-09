@@ -123,3 +123,16 @@ test("normalizeDiagnoses keeps care plan and surveillance choices", () => {
   const [plain] = normalizeDiagnoses([{ id: "d2", name: "Cough", carePlan: "bogus" }]);
   assert.equal(Object.hasOwn(plain, "carePlan"), false);
 });
+
+test("normalizeDiagnoses keeps bhcFollowUp on a referral only", () => {
+  const [referred] = normalizeDiagnoses([{ id: "d1", name: "Pneumonia", carePlan: "refer", bhcFollowUp: true }]);
+  assert.equal(referred.bhcFollowUp, true);
+  const [followUp] = normalizeDiagnoses([{ id: "d2", name: "Wound", carePlan: "follow_up", bhcFollowUp: true }]);
+  assert.equal(Object.hasOwn(followUp, "bhcFollowUp"), false);
+  const [none] = normalizeDiagnoses([{ id: "d3", name: "Cough", carePlan: "none", bhcFollowUp: true }]);
+  assert.equal(Object.hasOwn(none, "bhcFollowUp"), false);
+  const [unflagged] = normalizeDiagnoses([{ id: "d4", name: "TB", carePlan: "refer" }]);
+  assert.equal(Object.hasOwn(unflagged, "bhcFollowUp"), false);
+  const [falsy] = normalizeDiagnoses([{ id: "d5", name: "TB", carePlan: "refer", bhcFollowUp: false }]);
+  assert.equal(Object.hasOwn(falsy, "bhcFollowUp"), false);
+});
