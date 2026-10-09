@@ -6,24 +6,26 @@ import { checkContinuedStart } from "../utils/startConsultation";
  * Why Start Consultation could not open the workspace with the ticked
  * monitoring. `kind` is "unavailable" (the records could not be read) or
  * "inactive" (some were stopped or completed since the modal was read; their
- * ids are in `droppedMonitoringIds`).
+ * ids are in `droppedMonitoringIds`, and recommendations withdrawn since in
+ * `droppedConditionIds`).
  */
 export class ContinuedStartError extends Error {
-  constructor(kind, droppedMonitoringIds = []) {
+  constructor(kind, droppedMonitoringIds = [], droppedConditionIds = []) {
     super(kind === "inactive" ? "Some monitoring is no longer active." : "Monitoring records could not be loaded.");
     this.name = "ContinuedStartError";
     this.kind = kind;
     this.droppedMonitoringIds = droppedMonitoringIds;
+    this.droppedConditionIds = droppedConditionIds;
   }
 }
 
 /**
  * Reads the patient's monitoring fresh and confirms every ticked record is
- * still active, before the workspace opens. The result is cached under the
+ * still active (and every recommended condition still recommended), before the workspace opens. The result is cached under the
  * care-overview key, so the workspace opens already populated instead of
  * starting and then fetching. Throws ContinuedStartError otherwise.
  */
-export async function prepareContinuedStart(queryClient, patientId, monitoringIds) {
+export async function prepareContinuedStart(queryClient, patientId, monitoringIds, startConditionIds = []) {
   let overview;
   try {
     overview = await queryClient.fetchQuery({
@@ -34,7 +36,7 @@ export async function prepareContinuedStart(queryClient, patientId, monitoringId
   } catch {
     throw new ContinuedStartError("unavailable");
   }
-  const check = checkContinuedStart(overview, monitoringIds);
-  if (!check.ok) throw new ContinuedStartError("inactive", check.droppedMonitoringIds);
+  const check = checkContinuedStart(overview, monitoringIds, startConditionIds);
+  if (!check.ok) throw new ContinuedStartError("inactive", check.droppedMonitoringIds, check.droppedConditionIds);
   return overview;
 }

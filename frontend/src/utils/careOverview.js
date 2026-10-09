@@ -1,7 +1,9 @@
 /**
  * GET /patients/{id}/care-overview (CareOverviewController) in the client's
  * shape: pending follow-ups (each with the active monitored conditions it was
- * scheduled for) and active monitoring with no pending follow-up.
+ * scheduled for), active monitoring with no pending follow-up, and the
+ * confirmed conditions BHC is recommended to start monitoring. A monitoring's
+ * `conditionStatus` is null (and `legacy` true) when it predates confirmation.
  */
 export function mapCareOverview(data) {
   const source = data && typeof data === "object" ? data : {};
@@ -20,6 +22,8 @@ export function mapCareOverview(data) {
         conditionName: c.condition_name,
         conditionKey: c.condition_key || null,
         startedAt: c.started_at || "",
+        conditionStatus: c.condition_status || null,
+        legacy: c.legacy === true,
       })),
     })),
     monitoringWithoutFollowUp: (source.monitoring_without_follow_up || []).map((m) => ({
@@ -29,6 +33,16 @@ export function mapCareOverview(data) {
       startedAt: m.started_at,
       lastVisitDate: m.last_visit_date,
       lastHealthRecordId: m.last_health_record_id,
+      conditionStatus: m.condition_status || null,
+      legacy: m.legacy === true,
+    })),
+    monitoringRecommendations: (source.monitoring_recommendations || []).map((r) => ({
+      conditionId: r.condition_id,
+      conditionName: r.condition_name,
+      conditionKey: r.condition_key || null,
+      status: r.status,
+      confirmedAt: r.confirmed_at,
+      recommendedAt: r.recommended_at,
     })),
   };
 }

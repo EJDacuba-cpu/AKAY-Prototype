@@ -1,5 +1,6 @@
 import { buildPatientConsultationPath } from "./consultationRoute.js";
 import { activeMonitoringsFromOverview, resolveContinuedCare } from "./continuedCare.js";
+import { monitoringRecommendationOptions } from "./medicalConditions.js";
 
 /**
  * The conditions the modal offers: active monitoring records
@@ -24,12 +25,13 @@ export function monitoredConditionOptions(overview) {
 }
 
 /**
- * Whether Start Consultation has anything to ask. Existing monitoring is an
- * optional context on the one encounter, so a patient with no active
- * monitoring record skips the modal and goes straight to the workspace.
+ * Whether Start Consultation has anything to ask: existing monitoring to
+ * continue, or a confirmed condition BHC may start monitoring. Both are
+ * optional context on the one encounter, so a patient with neither skips the
+ * modal and goes straight to the workspace.
  */
-export function hasMonitoredConditions(overview) {
-  return monitoredConditionOptions(overview).length > 0;
+export function hasStartChoices(overview) {
+  return monitoredConditionOptions(overview).length > 0 || monitoringRecommendationOptions(overview).length > 0;
 }
 
 /**
@@ -48,30 +50,44 @@ export function startConsultationAction(consultation) {
  * The step-flow consultation route that continues the chosen follow-ups and
  * monitoring (read back by utils/consultationRoute as kind "continue").
  */
-export function selectionToRoute({ patientId, followUpIds = [], monitoringIds = [] }, basePath = "/bhc") {
+export function selectionToRoute(
+  { patientId, followUpIds = [], monitoringIds = [], startConditionIds = [] },
+  basePath = "/bhc",
+) {
   const params = new URLSearchParams({ patientId: String(patientId), mode: "continue" });
   if (followUpIds.length) params.set("followUpIds", followUpIds.join(","));
   if (monitoringIds.length) params.set("monitoringIds", monitoringIds.join(","));
+  if (startConditionIds.length) params.set("startConditionIds", startConditionIds.join(","));
   return `${basePath}/health-records/add?${params.toString()}`;
 }
 
 /**
  * The consultation route for what the worker ticked in the Start Consultation
  * modal: nothing ticked is a normal consultation, otherwise the same
- * consultation carries the chosen monitoring (no separate record).
+ * consultation carries the chosen monitoring and the confirmed conditions to
+ * start monitoring (no separate record).
  */
-export function startRoute({ patientId, monitoringIds = [] }, basePath = "/bhc") {
-  return monitoringIds.length
-    ? selectionToRoute({ patientId, monitoringIds }, basePath)
+export function startRoute({ patientId, monitoringIds = [], startConditionIds = [] }, basePath = "/bhc") {
+  return monitoringIds.length || startConditionIds.length
+    ? selectionToRoute({ patientId, monitoringIds, startConditionIds }, basePath)
     : buildPatientConsultationPath(patientId, basePath);
 }
 
 /**
- * Checks the worker's ticked monitoring against a fresh care overview just
- * before the workspace opens: a record stopped or completed since the modal
- * was read is reported (never silently dropped), so the modal can say so.
+ * Checks the worker's ticked monitoring and recommended conditions against a
+ * fresh care overview just before the workspace opens: a record stopped or
+ * completed, or a recommendation withdrawn, since the modal was read is
+ * reported (never silently dropped), so the modal can say so.
  */
-export function checkContinuedStart(overview, monitoringIds = []) {
-  const { droppedMonitoringIds } = resolveContinuedCare(overview, { monitoringIds, includeLinkedFollowUps: true });
-  return { ok: droppedMonitoringIds.length === 0, droppedMonitoringIds };
+export function checkContinuedStart(overview, monitoringIds = [], startConditionIds = []) {
+  const { droppedMonitoringIds, droppedConditionIds } = resolveContinuedCare(overview, {
+    monitoringIds,
+    startConditionIds,
+    includeLinkedFollowUps: true,
+  });
+  return {
+    ok: droppedMonitoringIds.length === 0 && droppedConditionIds.length === 0,
+    droppedMonitoringIds,
+    droppedConditionIds,
+  };
 }

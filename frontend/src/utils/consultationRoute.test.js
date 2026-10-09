@@ -20,22 +20,29 @@ test("patient-scoped routes open a new consultation directly", () => {
 test("continue routes carry the selected follow-ups and monitoring", () => {
   assert.deepEqual(
     resolveBhcConsultationRoute("?patientId=17&mode=continue&followUpIds=1,2&monitoringIds=4"),
-    { kind: "continue", patientId: "17", followUpIds: [1, 2], monitoringIds: [4] },
+    { kind: "continue", patientId: "17", followUpIds: [1, 2], monitoringIds: [4], startConditionIds: [] },
   );
   assert.deepEqual(
     resolveBhcConsultationRoute("?patientId=17&mode=followup&followUpId=9"),
-    { kind: "continue", patientId: "17", followUpIds: [9], monitoringIds: [] },
+    { kind: "continue", patientId: "17", followUpIds: [9], monitoringIds: [], startConditionIds: [] },
+  );
+});
+
+test("continue routes carry the recommended conditions to start", () => {
+  assert.deepEqual(
+    resolveBhcConsultationRoute("?patientId=17&mode=continue&startConditionIds=9,,x,10"),
+    { kind: "continue", patientId: "17", followUpIds: [], monitoringIds: [], startConditionIds: [9, 10] },
   );
 });
 
 test("legacy follow-up routes open the step flow with that task continued", () => {
   assert.deepEqual(
     resolveBhcConsultationRoute("?mode=follow-up&patientId=17&followUpId=91&recordId=4"),
-    { kind: "continue", patientId: "17", followUpIds: [91], monitoringIds: [] },
+    { kind: "continue", patientId: "17", followUpIds: [91], monitoringIds: [], startConditionIds: [] },
   );
   assert.deepEqual(
     resolveBhcConsultationRoute("?patientId=17&mode=continue&followUpIds=1,,x,-3,2&monitoringIds="),
-    { kind: "continue", patientId: "17", followUpIds: [1, 2], monitoringIds: [] },
+    { kind: "continue", patientId: "17", followUpIds: [1, 2], monitoringIds: [], startConditionIds: [] },
   );
 });
 

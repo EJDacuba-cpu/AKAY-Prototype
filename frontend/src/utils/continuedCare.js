@@ -86,6 +86,10 @@ export function activeMonitoringsFromOverview(overview) {
  * - An id no longer in the overview (fulfilled, stopped, rescheduled) is
  *   dropped and reported - the server would reject it on save. Stops of a
  *   dropped monitoring go with it.
+ * - `startConditionIds` are confirmed conditions BHC starts monitoring this
+ *   visit; each is resolved against the overview's `monitoringRecommendations`
+ *   (`startingConditions`), and one no longer recommended is dropped and
+ *   reported in `droppedConditionIds`.
  * - A follow-up may link no conditions (`conditions: []`): it is still
  *   continued, and only its source record is kept.
  */
@@ -97,6 +101,7 @@ export function resolveContinuedCare(
     stops = {},
     includeFollowUpConditions = false,
     includeLinkedFollowUps = false,
+    startConditionIds = [],
   } = {},
 ) {
   const pending = overview?.pendingFollowUps || [];
@@ -141,6 +146,14 @@ export function resolveContinuedCare(
 
   const monitoringStops = keepStopsFor(stops, continuedMonitorings);
 
+  const recommended = new Map((overview?.monitoringRecommendations || []).map((r) => [Number(r.conditionId), r]));
+  const startingConditions = [];
+  const droppedConditionIds = [];
+  for (const id of uniqueIds(startConditionIds)) {
+    if (recommended.has(id)) startingConditions.push(recommended.get(id));
+    else droppedConditionIds.push(id);
+  }
+
   return {
     continuedFollowUpTaskIds: followUps.map((task) => Number(task.id)),
     continuedFollowUps: followUps.map((task) => ({
@@ -151,6 +164,8 @@ export function resolveContinuedCare(
     monitoringStops,
     droppedFollowUpIds,
     droppedMonitoringIds,
+    startingConditions,
+    droppedConditionIds,
   };
 }
 

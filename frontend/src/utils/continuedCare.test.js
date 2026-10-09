@@ -194,3 +194,28 @@ test("without includeLinkedFollowUps a monitoring selection continues no follow-
   const r = resolveContinuedCare(linkedOverview, { monitoringIds: [4] });
   assert.deepEqual(r.continuedFollowUpTaskIds, []);
 });
+
+const recommendedOverview = {
+  pendingFollowUps: [],
+  monitoringWithoutFollowUp: [],
+  monitoringRecommendations: [
+    { conditionId: 9, conditionName: "Hypertension", conditionKey: "hypertension", status: "active", confirmedAt: "2026-10-01", recommendedAt: "2026-10-02" },
+  ],
+};
+
+test("recommended conditions to start are resolved against the overview", () => {
+  const r = resolveContinuedCare(recommendedOverview, { startConditionIds: [9] });
+  assert.deepEqual(r.startingConditions.map((c) => [c.conditionId, c.conditionName]), [[9, "Hypertension"]]);
+  assert.deepEqual(r.droppedConditionIds, []);
+  assert.deepEqual(r.continuedMonitorings, []);
+});
+
+test("a recommendation no longer in the overview is dropped and reported", () => {
+  const r = resolveContinuedCare(recommendedOverview, { startConditionIds: [9, 77, "x", 9] });
+  assert.deepEqual(r.startingConditions.map((c) => c.conditionId), [9]);
+  assert.deepEqual(r.droppedConditionIds, [77]);
+  const none = resolveContinuedCare(null, { startConditionIds: [3] });
+  assert.deepEqual(none.startingConditions, []);
+  assert.deepEqual(none.droppedConditionIds, [3]);
+  assert.deepEqual(resolveContinuedCare(overview, {}).startingConditions, []);
+});

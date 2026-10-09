@@ -7,7 +7,7 @@ function idList(value) {
 
 /**
  * Which consultation the workspace opens. "continue" is a new step-flow
- * consultation that continues follow-ups / monitoring picked in the Start
+ * consultation that continues follow-ups / monitoring (and starts monitoring of confirmed conditions) picked in the Start
  * Consultation modal; the legacy follow-up entry (Follow-ups "Record Visit",
  * `mode=followup&followUpId=X`) resolves to it too, with that one task.
  */
@@ -34,12 +34,13 @@ export function resolveBhcConsultationRoute(search = "") {
           patientId,
           followUpIds: idList(params.get("followUpIds")),
           monitoringIds: idList(params.get("monitoringIds")),
+          startConditionIds: idList(params.get("startConditionIds")),
         }
       : { kind: "redirect", reason: "missing-patient" };
   }
   if (mode === "followup") {
     if (followUpId && patientId) {
-      return { kind: "continue", patientId, followUpIds: idList(followUpId), monitoringIds: [] };
+      return { kind: "continue", patientId, followUpIds: idList(followUpId), monitoringIds: [], startConditionIds: [] };
     }
     return patientId
       ? { kind: "new", patientId }

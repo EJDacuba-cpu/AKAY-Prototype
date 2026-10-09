@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   checkContinuedStart,
-  hasMonitoredConditions,
+  hasStartChoices,
   monitoredConditionOptions,
   selectionToRoute,
   startConsultationAction,
@@ -34,12 +34,22 @@ test("lists each active monitoring once, alphabetically, with its earliest follo
 });
 
 test("the modal is only for a patient with an active monitoring record", () => {
-  assert.equal(hasMonitoredConditions(null), false);
-  assert.equal(hasMonitoredConditions({ pendingFollowUps: [], monitoringWithoutFollowUp: [] }), false);
+  assert.equal(hasStartChoices(null), false);
+  assert.equal(hasStartChoices({ pendingFollowUps: [], monitoringWithoutFollowUp: [] }), false);
   // A follow-up that links no monitoring record has nothing to select.
-  assert.equal(hasMonitoredConditions({ pendingFollowUps: [{ id: 1, conditions: [] }], monitoringWithoutFollowUp: [] }), false);
-  assert.equal(hasMonitoredConditions({ pendingFollowUps: [], monitoringWithoutFollowUp: [{ id: 7, conditionName: "Asthma" }] }), true);
-  assert.equal(hasMonitoredConditions(overview), true);
+  assert.equal(hasStartChoices({ pendingFollowUps: [{ id: 1, conditions: [] }], monitoringWithoutFollowUp: [] }), false);
+  assert.equal(hasStartChoices({ pendingFollowUps: [], monitoringWithoutFollowUp: [{ id: 7, conditionName: "Asthma" }] }), true);
+  assert.equal(hasStartChoices(overview), true);
+});
+
+test("a monitoring recommendation alone is a start choice", () => {
+  const recommended = {
+    pendingFollowUps: [],
+    monitoringWithoutFollowUp: [],
+    monitoringRecommendations: [{ conditionId: 9, conditionName: "Hypertension", status: "active" }],
+  };
+  assert.equal(hasStartChoices(recommended), true);
+  assert.equal(hasStartChoices({ ...recommended, monitoringRecommendations: [] }), false);
 });
 
 test("starting with nothing selected is a normal consultation; a selection continues it", () => {
@@ -49,6 +59,18 @@ test("starting with nothing selected is a normal consultation; a selection conti
     startRoute({ patientId: 17, monitoringIds: [4, 7] }),
     "/bhc/health-records/add?patientId=17&mode=continue&monitoringIds=4%2C7",
   );
+});
+
+test("starting recommended conditions continues the consultation with their ids", () => {
+  assert.equal(
+    startRoute({ patientId: 17, startConditionIds: [9, 10] }),
+    "/bhc/health-records/add?patientId=17&mode=continue&startConditionIds=9%2C10",
+  );
+  assert.equal(
+    startRoute({ patientId: 17, monitoringIds: [4], startConditionIds: [9] }),
+    "/bhc/health-records/add?patientId=17&mode=continue&monitoringIds=4&startConditionIds=9",
+  );
+  assert.equal(startRoute({ patientId: 17, startConditionIds: [] }), "/bhc/health-records/add?patientId=17&mode=new");
 });
 
 test("a selection becomes a continue route", () => {
@@ -79,9 +101,24 @@ test("what a Start Consultation action does: wait, open the modal, or go", () =>
 });
 
 test("a selection is checked against the fresh overview before the workspace opens", () => {
-  assert.deepEqual(checkContinuedStart(overview, [4, 7]), { ok: true, droppedMonitoringIds: [] });
-  assert.deepEqual(checkContinuedStart(overview, []), { ok: true, droppedMonitoringIds: [] });
+  assert.deepEqual(checkContinuedStart(overview, [4, 7]), { ok: true, droppedMonitoringIds: [], droppedConditionIds: [] });
+  assert.deepEqual(checkContinuedStart(overview, []), { ok: true, droppedMonitoringIds: [], droppedConditionIds: [] });
   // One stopped or completed elsewhere is reported, never silently dropped.
-  assert.deepEqual(checkContinuedStart(overview, [4, 99]), { ok: false, droppedMonitoringIds: [99] });
-  assert.deepEqual(checkContinuedStart(null, [4]), { ok: false, droppedMonitoringIds: [4] });
+  assert.deepEqual(checkContinuedStart(overview, [4, 99]), { ok: false, droppedMonitoringIds: [99], droppedConditionIds: [] });
+  assert.deepEqual(checkContinuedStart(null, [4]), { ok: false, droppedMonitoringIds: [4], droppedConditionIds: [] });
+});
+
+test("a dropped recommendation is reported, not silently removed", () => {
+  assert.deepEqual(checkContinuedStart({ monitoringRecommendations: [] }, [], [9]).droppedConditionIds, [9]);
+  const withRecommendation = { monitoringRecommendations: [{ conditionId: 9, conditionName: "Hypertension" }] };
+  assert.deepEqual(checkContinuedStart(withRecommendation, [], [9]), {
+    ok: true,
+    droppedMonitoringIds: [],
+    droppedConditionIds: [],
+  });
+  assert.deepEqual(checkContinuedStart(withRecommendation, [], [9, 10]), {
+    ok: false,
+    droppedMonitoringIds: [],
+    droppedConditionIds: [10],
+  });
 });
