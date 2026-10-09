@@ -369,6 +369,7 @@ class HealthRecordDraftPayloadService
                 'medical' => [
                     'currentDiseases' => ['*' => [
                         'name' => self::SCALAR,
+                        'note' => self::SCALAR,
                         'status' => self::SCALAR,
                         'firstRecorded' => self::SCALAR,
                         'lastConfirmed' => self::SCALAR,

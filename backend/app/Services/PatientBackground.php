@@ -32,9 +32,8 @@ class PatientBackground
         'personalSocial' => ['diet', 'smoking', 'alcohol', 'notes'],
     ];
 
-    private const DISEASE_FIELDS = ['name', 'status', 'firstRecorded', 'lastConfirmed', 'source', 'conditionKey'];
-
-    public function __construct(private readonly ClinicalRegistry $clinicalRegistry) {}
+    /** The only source a consultation can give a condition; any other stored source is legacy. */
+    private const PATIENT_REPORTED = 'Patient-reported';
 
     public static function canAccess(?User $user): bool
     {
@@ -61,11 +60,13 @@ class PatientBackground
             $medical => ['nullable', 'array'],
             "{$medical}.currentDiseases" => ['nullable', 'array', 'max:50'],
             "{$medical}.currentDiseases.*.name" => ['required', 'string', 'max:150'],
+            "{$medical}.currentDiseases.*.note" => ['nullable', 'string', 'max:500'],
+            // The client echoes the whole list back, legacy entries included; apply()
+            // ignores everything but name and note on the entries it keeps as patient-reported.
             "{$medical}.currentDiseases.*.status" => ['nullable', 'string', 'max:50'],
             "{$medical}.currentDiseases.*.firstRecorded" => ['nullable', 'date'],
             "{$medical}.currentDiseases.*.lastConfirmed" => ['nullable', 'date'],
             "{$medical}.currentDiseases.*.source" => ['nullable', 'string', 'max:100'],
-            // Always re-resolved from the name by ClinicalRegistry on apply.
             "{$medical}.currentDiseases.*.conditionKey" => ['nullable', 'string', 'max:64'],
             "{$medical}.allergies" => ['nullable', 'string', 'max:1000'],
             "{$medical}.hospitalizations" => ['nullable', 'string', 'max:1000'],
@@ -160,7 +161,7 @@ class PatientBackground
         $changes = [];
         foreach ($sections as $section => $edited) {
             $before = self::slice($background, $section);
-            $after = $this->normalize($section, $edited, $before);
+            $after = $this->normalize($section, $edited, $before, $date);
             // Loose: "" and null both mean "not recorded".
             if (self::filled($after) == self::filled($before)) {
                 continue;
@@ -197,7 +198,7 @@ class PatientBackground
      * The edited slice reduced to the keys its section owns. A key the client
      * left out keeps its current value; nested objects keep only known fields.
      */
-    private function normalize(string $section, array $edited, array $before): array
+    private function normalize(string $section, array $edited, array $before, string $date): array
     {
         $after = $before;
         foreach (self::SECTIONS[$section] as $key) {
@@ -207,11 +208,7 @@ class PatientBackground
             $value = $edited[$key];
 
             if ($key === 'currentDiseases') {
-                $diseases = array_map(
-                    fn ($disease) => array_intersect_key($disease, array_flip(self::DISEASE_FIELDS)),
-                    array_values(array_filter($value ?? [], 'is_array'))
-                );
-                $after[$key] = $this->clinicalRegistry->resolveConditionEntries($diseases);
+                $after[$key] = $this->conditionEntries($value ?? [], $before[$key] ?? [], $date);
             } elseif (isset(self::NESTED_FIELDS[$key])) {
                 $nested = [];
                 foreach (self::NESTED_FIELDS[$key] as $field) {
@@ -224,5 +221,50 @@ class PatientBackground
         }
 
         return $after;
+    }
+
+    /**
+     * Legacy entries (any stored source but Patient-reported) are kept exactly as
+     * stored, first and in order: a client entry that matches one by name is just
+     * its echo and is ignored, and a legacy entry the client left out stays. Every
+     * other client entry is a patient-reported previous condition; a name already
+     * stored as patient-reported keeps its first-recorded date.
+     */
+    private function conditionEntries(array $submitted, array $stored, string $date): array
+    {
+        $stored = array_values(array_filter($stored, 'is_array'));
+        $isReported = fn (array $entry) => ($entry['source'] ?? null) === self::PATIENT_REPORTED;
+
+        $legacy = array_values(array_filter($stored, fn ($entry) => ! $isReported($entry)));
+        $legacyNames = array_map(fn ($entry) => self::nameKey($entry['name'] ?? ''), $legacy);
+
+        $firstRecorded = [];
+        foreach (array_filter($stored, $isReported) as $entry) {
+            $firstRecorded[self::nameKey($entry['name'] ?? '')] ??= $entry['firstRecorded'] ?? null;
+        }
+
+        $reported = [];
+        foreach (array_filter($submitted, 'is_array') as $entry) {
+            $nameKey = self::nameKey($entry['name'] ?? '');
+            if (($entry['source'] ?? null) !== self::PATIENT_REPORTED && in_array($nameKey, $legacyNames, true)) {
+                continue;
+            }
+            $note = trim((string) ($entry['note'] ?? ''));
+            $reported[] = [
+                'name' => trim((string) ($entry['name'] ?? '')),
+                'note' => $note === '' ? null : $note,
+                'source' => self::PATIENT_REPORTED,
+                'firstRecorded' => $firstRecorded[$nameKey] ?? $date,
+                'status' => null,
+                'conditionKey' => null,
+            ];
+        }
+
+        return [...$legacy, ...$reported];
+    }
+
+    private static function nameKey(mixed $name): string
+    {
+        return mb_strtolower(trim((string) $name));
     }
 }

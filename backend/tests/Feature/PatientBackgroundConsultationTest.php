@@ -142,6 +142,113 @@ class PatientBackgroundConsultationTest extends TestCase
         $this->assertSame(0, $this->background()['revisions']['social']);
     }
 
+    private function legacyHypertension(): array
+    {
+        return [
+            'name' => 'Hypertension', 'status' => 'Active', 'firstRecorded' => '2026-02-01',
+            'lastConfirmed' => '2026-03-01', 'source' => 'Consultation', 'conditionKey' => 'hypertension',
+        ];
+    }
+
+    private function seedDiseases(array $diseases): void
+    {
+        $background = $this->background();
+        $background['currentDiseases'] = $diseases;
+        $this->patient->update(['medical_background' => $background]);
+    }
+
+    private function updateDiseases(array $diseases)
+    {
+        return $this->finalize([
+            'sections' => ['medical' => ['currentDiseases' => $diseases]],
+            'base_revisions' => ['medical' => 2],
+        ]);
+    }
+
+    public function test_new_condition_entries_are_saved_as_patient_reported(): void
+    {
+        $this->updateDiseases([[
+            'name' => ' Asthma ', 'note' => '  Childhood, used an inhaler  ', 'status' => 'Active',
+            'source' => 'Consultation', 'firstRecorded' => '2020-01-01', 'conditionKey' => 'asthma',
+        ]])->assertCreated();
+
+        $this->assertSame([[
+            'name' => 'Asthma', 'note' => 'Childhood, used an inhaler', 'source' => 'Patient-reported',
+            'firstRecorded' => '2026-10-03', 'status' => null, 'conditionKey' => null,
+        ]], $this->background()['currentDiseases']);
+    }
+
+    public function test_an_empty_note_is_stored_as_null(): void
+    {
+        $this->updateDiseases([['name' => 'Asthma', 'note' => '   ']])->assertCreated();
+
+        $this->assertNull($this->background()['currentDiseases'][0]['note']);
+    }
+
+    public function test_legacy_entries_cannot_be_changed_or_removed_through_a_background_update(): void
+    {
+        $legacy = $this->legacyHypertension();
+        $this->seedDiseases([$legacy]);
+
+        // The client echoes the legacy entry with edits and adds a new condition.
+        $this->updateDiseases([
+            [...$legacy, 'name' => 'hypertension ', 'status' => 'Resolved', 'lastConfirmed' => '2026-10-03', 'conditionKey' => null],
+            ['name' => 'Asthma'],
+        ])->assertCreated();
+
+        $diseases = $this->background()['currentDiseases'];
+        $this->assertCount(2, $diseases);
+        $this->assertSame($legacy, $diseases[0]);
+        $this->assertSame('Asthma', $diseases[1]['name']);
+        $this->assertSame('Patient-reported', $diseases[1]['source']);
+
+        // Dropping the legacy entry from the list does not remove it either.
+        $this->patient->update(['medical_background' => [...$this->background(), 'currentDiseases' => [$legacy]]]);
+        $this->finalize([
+            'sections' => ['medical' => ['currentDiseases' => [['name' => 'Asthma']]]],
+            'base_revisions' => ['medical' => $this->background()['revisions']['medical']],
+        ])->assertCreated();
+
+        $diseases = $this->background()['currentDiseases'];
+        $this->assertSame($legacy, $diseases[0]);
+        $this->assertSame('Asthma', $diseases[1]['name']);
+    }
+
+    public function test_a_patient_reported_entry_can_be_removed_and_keeps_its_first_recorded_date(): void
+    {
+        $legacy = $this->legacyHypertension();
+        $reported = ['name' => 'Asthma', 'note' => null, 'source' => 'Patient-reported', 'firstRecorded' => '2026-05-05', 'status' => null, 'conditionKey' => null];
+        $this->seedDiseases([$legacy, $reported]);
+
+        // Echoing a stored patient-reported entry keeps its original date.
+        $this->updateDiseases([
+            [...$legacy], [...$reported, 'firstRecorded' => '2026-10-03', 'note' => 'Wheezes at night'],
+        ])->assertCreated();
+        $diseases = $this->background()['currentDiseases'];
+        $this->assertSame('2026-05-05', $diseases[1]['firstRecorded']);
+        $this->assertSame('Wheezes at night', $diseases[1]['note']);
+
+        // Removing it from the list removes it; the legacy entry stays.
+        $revision = $this->background()['revisions']['medical'];
+        $this->finalize([
+            'sections' => ['medical' => ['currentDiseases' => [[...$legacy]]]],
+            'base_revisions' => ['medical' => $revision],
+        ])->assertCreated();
+        $this->assertSame([$legacy], $this->background()['currentDiseases']);
+    }
+
+    public function test_echoing_stored_conditions_is_not_logged_or_bumped(): void
+    {
+        $legacy = $this->legacyHypertension();
+        $reported = ['name' => 'Asthma', 'note' => 'Mild', 'source' => 'Patient-reported', 'firstRecorded' => '2026-05-05', 'status' => null, 'conditionKey' => null];
+        $this->seedDiseases([$legacy, $reported]);
+
+        $id = $this->updateDiseases([$legacy, $reported])->assertCreated()->json('data.id');
+
+        $this->assertNull(HealthRecord::findOrFail($id)->background_changes);
+        $this->assertSame(2, $this->background()['revisions']['medical']);
+    }
+
     public function test_finalizing_without_clinical_history_cannot_update_the_background(): void
     {
         $finalizer = $this->user('finalizer', ['consultations.encode', 'consultations.finalize']);
