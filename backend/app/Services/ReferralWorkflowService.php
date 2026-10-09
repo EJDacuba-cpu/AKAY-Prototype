@@ -20,7 +20,8 @@ class ReferralWorkflowService
         private readonly UserNotificationService $notifications,
         private readonly AuditLogger $auditLogger,
         private readonly AkayCacheService $cache,
-        private readonly PatientConditions $patientConditions
+        private readonly PatientConditions $patientConditions,
+        private readonly LegacyMonitoringReview $legacyMonitoringReview
     ) {
     }
 
@@ -105,8 +106,10 @@ class ReferralWorkflowService
     ): Feedback {
         $confirmations = $feedbackData['condition_confirmations'] ?? [];
         unset($feedbackData['condition_confirmations']);
+        $legacyDiscontinuations = $feedbackData['legacy_monitoring_discontinuations'] ?? [];
+        unset($feedbackData['legacy_monitoring_discontinuations']);
 
-        $feedback = DB::transaction(function () use ($request, $referralId, $feedbackData, $confirmations): Feedback {
+        $feedback = DB::transaction(function () use ($request, $referralId, $feedbackData, $confirmations, $legacyDiscontinuations): Feedback {
             $referral = $this->lockReferralForTransition($referralId);
             $this->facilityAccess->authorizeRhuReferralAction($request->user(), $referral);
             $current = $this->canonicalStatusOrConflict(
@@ -139,13 +142,29 @@ class ReferralWorkflowService
                 'received_at' => $feedbackData['received_at'] ?? now(),
             ]);
 
+            // Discontinue first: a legacy row being discontinued must not be
+            // auto-linked by a confirmation of the same condition. A feedback
+            // has no health record, so only the audit row records the review.
+            if ($legacyDiscontinuations !== []) {
+                $this->legacyMonitoringReview->discontinue(
+                    $request,
+                    $referral->patient,
+                    $legacyDiscontinuations,
+                    PatientCondition::SOURCE_RHU_FEEDBACK,
+                    $feedback->id,
+                    null
+                );
+            }
+
             if ($confirmations !== []) {
                 $this->patientConditions->apply(
                     $referral->patient,
                     $confirmations,
                     $request->user(),
                     PatientCondition::SOURCE_RHU_FEEDBACK,
-                    $feedback->id
+                    $feedback->id,
+                    'condition_confirmations',
+                    $request
                 );
             }
 

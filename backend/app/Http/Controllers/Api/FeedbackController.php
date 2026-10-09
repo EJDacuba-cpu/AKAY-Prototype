@@ -44,6 +44,11 @@ class FeedbackController extends Controller
             403,
             'Only RHU staff can confirm a condition.'
         );
+        abort_if(
+            ! empty($data['legacy_monitoring_discontinuations']) && ! PatientConditions::canConfirm($request->user()),
+            403,
+            'Only RHU staff can review legacy monitoring.'
+        );
         $feedback = $workflow->completeWithFeedback(
             $request,
             (int) $data['referral_id'],

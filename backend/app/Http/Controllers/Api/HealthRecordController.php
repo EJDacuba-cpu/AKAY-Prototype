@@ -20,6 +20,7 @@ use App\Services\FollowUpEpisodeService;
 use App\Services\FollowUpTaskSyncService;
 use App\Services\HealthRecordDraftService;
 use App\Services\HealthRecordIdempotencyService;
+use App\Services\LegacyMonitoringReview;
 use App\Services\MedicineStockService;
 use App\Services\PatientBackground;
 use App\Services\PatientConditions;
@@ -93,7 +94,8 @@ class HealthRecordController extends Controller
         ClinicalRegistry $clinicalRegistry,
         ConditionMonitoringService $monitoring,
         PatientBackground $patientBackground,
-        PatientConditions $patientConditions
+        PatientConditions $patientConditions,
+        LegacyMonitoringReview $legacyReview
     ) {
         $data = $request->validated();
         $patient = Patient::findOrFail($data['patient_id']);
@@ -120,6 +122,11 @@ class HealthRecordController extends Controller
         unset($data['condition_confirmations']);
         if ($conditionConfirmations !== [] && ! PatientConditions::canConfirm($request->user())) {
             abort(403, 'Only RHU staff can confirm a condition.');
+        }
+        $legacyDiscontinuations = $data['legacy_monitoring_discontinuations'] ?? [];
+        unset($data['legacy_monitoring_discontinuations']);
+        if ($legacyDiscontinuations !== [] && ! PatientConditions::canConfirm($request->user())) {
+            abort(403, 'Only RHU staff can review legacy monitoring.');
         }
 
         if ($existing = HealthRecord::query()
@@ -204,6 +211,8 @@ class HealthRecordController extends Controller
                 $backgroundUpdate,
                 $patientBackground,
                 $conditionConfirmations,
+                $legacyDiscontinuations,
+                $legacyReview,
                 $patientConditions
             ) {
                 $lockedDraft = $draftPublicId
@@ -229,6 +238,7 @@ class HealthRecordController extends Controller
                 // patient row first - the order PatientConditions::apply uses -
                 // so two such saves cannot deadlock on the rows below.
                 if ($conditionConfirmations !== []
+                    || $legacyDiscontinuations !== []
                     || ($carePlan['continued_monitoring_ids'] ?? []) !== []
                     || ($carePlan['start_monitoring_condition_ids'] ?? []) !== []) {
                     Patient::query()->whereKey($patient->id)->lockForUpdate()->firstOrFail();
@@ -252,13 +262,27 @@ class HealthRecordController extends Controller
                     'encoded_by' => $lockedDraft?->owner_user_id ?? $request->user()->id,
                     'background_changes' => $backgroundChanges ?: null,
                 ]);
+                // Discontinue first: a legacy row being discontinued must not be
+                // auto-linked by a confirmation of the same condition.
+                if ($legacyDiscontinuations !== []) {
+                    $legacyReview->discontinue(
+                        $request,
+                        $patient,
+                        $legacyDiscontinuations,
+                        PatientCondition::SOURCE_RHU_RECORD,
+                        $record->id,
+                        $record->id
+                    );
+                }
                 if ($conditionConfirmations !== []) {
                     $patientConditions->apply(
                         $patient,
                         $conditionConfirmations,
                         $request->user(),
                         PatientCondition::SOURCE_RHU_RECORD,
-                        $record->id
+                        $record->id,
+                        'condition_confirmations',
+                        $request
                     );
                 }
                 $monitoredNow = $monitoring->apply(

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Services\LegacyMonitoringReview;
 use App\Services\PatientConditions;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -24,6 +25,7 @@ class FeedbackRequest extends FormRequest
             'receiving_practitioner' => ['nullable', 'string', 'max:255'],
             'remarks' => ['nullable', 'string'],
             ...PatientConditions::rules(),
+            ...LegacyMonitoringReview::rules(),
         ];
     }
 }

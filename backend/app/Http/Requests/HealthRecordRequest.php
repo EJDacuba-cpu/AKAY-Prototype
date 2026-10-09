@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Models\HealthRecord;
 use App\Models\Referral;
 use App\Services\ConsultationPrograms;
+use App\Services\LegacyMonitoringReview;
 use App\Services\PatientBackground;
 use App\Services\PatientConditions;
 use Illuminate\Foundation\Http\FormRequest;
@@ -332,6 +333,10 @@ class HealthRecordRequest extends FormRequest
             ...($this->isMethod('post')
                 ? PatientConditions::rules()
                 : ['condition_confirmations' => ['prohibited']]),
+            // RHU staff discontinuing Legacy BHC Monitoring from an RHU record (create only).
+            ...($this->isMethod('post')
+                ? LegacyMonitoringReview::rules()
+                : ['legacy_monitoring_discontinuations' => ['prohibited']]),
             'care_plan' => ['nullable', 'array'],
             'care_plan.continued_follow_up_task_ids' => ['nullable', 'array', 'max:20'],
             'care_plan.continued_follow_up_task_ids.*' => ['integer', 'distinct'],

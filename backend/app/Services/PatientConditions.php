@@ -7,6 +7,7 @@ use App\Models\Patient;
 use App\Models\PatientCondition;
 use App\Models\PatientConditionEvent;
 use App\Models\User;
+use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -19,7 +20,10 @@ use Illuminate\Validation\ValidationException;
  */
 class PatientConditions
 {
-    public function __construct(private readonly ClinicalRegistry $clinicalRegistry) {}
+    public function __construct(
+        private readonly ClinicalRegistry $clinicalRegistry,
+        private readonly AuditLogger $auditLogger
+    ) {}
 
     /** The working role must be RHU: the permission alone is not enough while on duty at a BHC. */
     public static function canConfirm(?User $user): bool
@@ -46,9 +50,10 @@ class PatientConditions
      * it set (created or updated). All entries are checked before any write.
      *
      * @param  array<int, array<string, mixed>>  $confirmations validated by rules()
+     * @param  ?Request  $auditRequest when given, each legacy monitoring this links is audited as verified
      * @return Collection<int, PatientCondition>
      */
-    public function apply(Patient $patient, array $confirmations, User $user, string $sourceType, int $sourceId, string $prefix = 'condition_confirmations'): Collection
+    public function apply(Patient $patient, array $confirmations, User $user, string $sourceType, int $sourceId, string $prefix = 'condition_confirmations', ?Request $auditRequest = null): Collection
     {
         Patient::query()->whereKey($patient->id)->lockForUpdate()->firstOrFail();
 
@@ -92,13 +97,13 @@ class PatientConditions
 
         $changed = new Collection;
         foreach ($resolved as $item) {
-            $changed->push($this->set($patient, $item, $user, $sourceType, $sourceId));
+            $changed->push($this->set($patient, $item, $user, $sourceType, $sourceId, $auditRequest));
         }
 
         return $changed;
     }
 
-    private function set(Patient $patient, array $item, User $user, string $sourceType, int $sourceId): PatientCondition
+    private function set(Patient $patient, array $item, User $user, string $sourceType, int $sourceId, ?Request $auditRequest): PatientCondition
     {
         $now = now();
         $status = $item['status'];
@@ -157,11 +162,25 @@ class PatientConditions
         }
 
         if (in_array($status, PatientCondition::MONITORABLE_STATUSES, true)) {
-            ConditionMonitoring::query()->where('patient_id', $patient->id)
+            // Confirming a condition verifies the Legacy BHC Monitoring of the same identity.
+            $legacy = ConditionMonitoring::query()->where('patient_id', $patient->id)
                 ->where('condition_identity', $item['identity'])
                 ->where('status', ConditionMonitoring::STATUS_ACTIVE)
                 ->whereNull('patient_condition_id')
-                ->update(['patient_condition_id' => $condition->id]);
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+            foreach ($legacy as $monitoring) {
+                $monitoring->update(['patient_condition_id' => $condition->id]);
+                if ($auditRequest !== null) {
+                    $this->auditLogger->log(
+                        $auditRequest,
+                        'verified',
+                        'condition_monitorings',
+                        "Legacy BHC monitoring {$monitoring->id} ({$monitoring->condition_name}) verified by RHU: linked to condition {$condition->id}. Condition status: ".($from ?? 'none')." -> {$status}."
+                    );
+                }
+            }
         }
 
         return $condition;
