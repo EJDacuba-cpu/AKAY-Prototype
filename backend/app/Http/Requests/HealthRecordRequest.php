@@ -432,7 +432,9 @@ class HealthRecordRequest extends FormRequest
             // needs no new diagnosis. A referral, or a visit that stops every
             // condition it continues, still does.
             $stoppedIds = array_map('intval', array_column($this->input('care_plan.monitoring_stops', []) ?: [], 'monitoring_id'));
-            $keepsMonitoring = array_diff(array_map('intval', $this->input('care_plan.continued_monitoring_ids', []) ?: []), $stoppedIds) !== [];
+            // Starting monitoring for an RHU-confirmed condition is a reason for the visit too.
+            $keepsMonitoring = array_diff(array_map('intval', $this->input('care_plan.continued_monitoring_ids', []) ?: []), $stoppedIds) !== []
+                || ($this->input('care_plan.start_monitoring_condition_ids', []) ?: []) !== [];
             $referredIds = array_map('intval', $this->input('care_plan.monitoring_referrals', []) ?: []);
             // With no diagnosis any referral can only be of followed monitoring.
             $followUpOfMonitoring = $keepsMonitoring && (! $needsReferral || $referredIds !== []);

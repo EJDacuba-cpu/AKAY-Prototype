@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\BarangayHealthCenter;
 use App\Models\ConditionMonitoring;
 use App\Models\ConditionMonitoringVisit;
+use App\Models\FollowUpTask;
 use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\PatientCondition;
@@ -208,6 +209,33 @@ class MonitoringStartTest extends TestCase
             'tb_data' => ['diagnosis' => ['tbCaseNumber' => 'TB-001'], 'phases' => ['intensiveStart' => now()->toDateString()]],
         ])->assertCreated();
         $this->assertSame('tuberculosis', ConditionMonitoring::sole()->condition_key);
+    }
+
+    public function test_a_start_only_visit_may_schedule_its_follow_up(): void
+    {
+        $condition = $this->condition('Hypertension', 'hypertension');
+        $date = now()->addWeeks(2)->toDateString();
+
+        $id = $this->save(['start_monitoring_condition_ids' => [$condition->id]], [
+            'monitoring_data' => ['followUpStatus' => 'Follow-up Required', 'followUpDate' => $date, 'followUpReason' => 'First monitoring check'],
+        ])->assertCreated()->json('data.id');
+
+        $monitoring = ConditionMonitoring::sole();
+        $this->assertSame($condition->id, $monitoring->patient_condition_id);
+        $this->assertSame($id, $monitoring->started_health_record_id);
+        $task = FollowUpTask::where('health_record_id', $id)->sole();
+        $this->assertSame('pending', $task->state);
+        $this->assertSame($date, $task->due_date->toDateString());
+        $this->assertSame([$monitoring->id], $task->conditionMonitorings()->pluck('condition_monitorings.id')->all());
+    }
+
+    public function test_a_start_only_visit_still_needs_a_reason_to_refer(): void
+    {
+        $condition = $this->condition('Hypertension', 'hypertension');
+
+        $this->save(['start_monitoring_condition_ids' => [$condition->id]], $this->referral())
+            ->assertUnprocessable()->assertJsonValidationErrors(['diagnosis']);
+        $this->assertSame(0, ConditionMonitoring::count());
     }
 
     public function test_a_diagnosis_cannot_start_monitoring(): void
