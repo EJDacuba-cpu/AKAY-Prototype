@@ -7,6 +7,7 @@ use App\Models\ConditionMonitoring;
 use App\Models\FollowUpTask;
 use App\Models\HealthRecord;
 use App\Models\Patient;
+use App\Models\PatientCondition;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\ActionPermissions;
@@ -60,43 +61,42 @@ class CarePlanSaveTest extends TestCase
         return ConditionMonitoring::where('patient_id', $this->patient->id)->where('status', 'active')->get();
     }
 
-    public function test_monitor_starts_one_record_per_condition(): void
+    /** Continued (legacy) monitoring: a row started before any RHU condition was linked. */
+    private function legacyMonitoring(string $name, ?string $key = null, ?Patient $patient = null): ConditionMonitoring
     {
-        $id = $this->save([
-            ['id' => 'd1', 'name' => 'HTN', 'carePlan' => 'monitor'],
-            ['id' => 'd2', 'name' => 'Post-op wound care', 'carePlan' => 'monitor'],
-            ['id' => 'd3', 'name' => 'Cough', 'carePlan' => 'none'],
-        ])->assertCreated()->json('data.id');
+        $patient ??= $this->patient;
+        $record = HealthRecord::create(['patient_id' => $patient->id, 'category' => 'General Consultation', 'barangay_health_center_id' => $patient->barangay_health_center_id]);
+        $monitoring = ConditionMonitoring::create([
+            'patient_id' => $patient->id,
+            'barangay_health_center_id' => $patient->barangay_health_center_id,
+            'condition_key' => $key,
+            'condition_name' => $name,
+            'condition_identity' => $key ?? 'name:'.strtolower($name),
+            'status' => 'active',
+            'started_health_record_id' => $record->id,
+            'started_at' => now()->subWeek(),
+        ]);
+        $monitoring->visits()->create(['health_record_id' => $record->id, 'action' => 'started', 'referred' => false, 'created_at' => now()]);
 
-        $this->assertEqualsCanonicalizing(['hypertension', 'name:post-op wound care'], $this->active()->pluck('condition_identity')->all());
-        $this->assertSame('Hypertension', $this->active()->firstWhere('condition_key', 'hypertension')->condition_name);
-        $this->assertSame(['started', 'started'], \App\Models\ConditionMonitoringVisit::where('health_record_id', $id)->pluck('action')->all());
+        return $monitoring;
     }
 
-    public function test_same_condition_twice_in_one_visit_makes_one_record(): void
+    private function confirmedCondition(string $name, string $identity): PatientCondition
     {
-        $this->save([
-            ['id' => 'd1', 'name' => 'HTN', 'carePlan' => 'monitor'],
-            ['id' => 'd2', 'name' => 'Hypertension', 'carePlan' => 'refer'],
-        ], [], $this->referral())->assertCreated();
-
-        $this->assertCount(1, $this->active());
-        $this->assertTrue($this->active()->first()->visits()->sole()->referred);
-    }
-
-    public function test_a_later_monitor_of_an_active_condition_continues_it(): void
-    {
-        $this->save([['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor']])->assertCreated();
-        $this->save([['id' => 'd1', 'name' => 'HTN', 'carePlan' => 'monitor']])->assertCreated();
-
-        $this->assertCount(1, $this->active());
-        $this->assertSame(['started', 'continued'], $this->active()->first()->visits()->orderBy('id')->pluck('action')->all());
+        return PatientCondition::create([
+            'patient_id' => $this->patient->id,
+            'condition_name' => $name,
+            'condition_identity' => $identity,
+            'status' => 'active',
+            'confirmed_at' => now(),
+            'source_type' => PatientCondition::SOURCE_RHU_RECORD,
+            'source_id' => 1,
+        ]);
     }
 
     public function test_continued_monitoring_is_kept_active_without_a_diagnosis(): void
     {
-        $this->save([['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor']])->assertCreated();
-        $monitoring = $this->active()->sole();
+        $monitoring = $this->legacyMonitoring('Asthma');
 
         $this->save([], ['continued_monitoring_ids' => [$monitoring->id]])->assertCreated();
 
@@ -106,8 +106,7 @@ class CarePlanSaveTest extends TestCase
 
     public function test_a_follow_up_of_continued_monitoring_needs_no_new_diagnosis(): void
     {
-        $this->save([['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor']])->assertCreated();
-        $monitoring = $this->active()->sole();
+        $monitoring = $this->legacyMonitoring('Asthma');
 
         $id = $this->save([], ['continued_monitoring_ids' => [$monitoring->id]], [
             'monitoring_data' => [
@@ -134,8 +133,7 @@ class CarePlanSaveTest extends TestCase
 
     public function test_a_follow_up_whose_continued_monitoring_is_all_stopped_still_needs_a_diagnosis(): void
     {
-        $this->save([['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor']])->assertCreated();
-        $monitoring = $this->active()->sole();
+        $monitoring = $this->legacyMonitoring('Asthma');
 
         $this->save([], [
             'continued_monitoring_ids' => [$monitoring->id],
@@ -151,18 +149,17 @@ class CarePlanSaveTest extends TestCase
 
     public function test_a_referral_without_a_diagnosis_is_rejected_even_when_continuing_monitoring(): void
     {
-        $this->save([['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor']])->assertCreated();
-        $monitoring = $this->active()->sole();
+        $monitoring = $this->legacyMonitoring('Asthma');
 
         $this->save([], ['continued_monitoring_ids' => [$monitoring->id]], $this->referral())
             ->assertUnprocessable()->assertJsonValidationErrors(['diagnosis']);
     }
 
-    public function test_stop_ends_monitoring_but_leaves_current_conditions_status(): void
+    public function test_stop_ends_monitoring_but_leaves_the_confirmed_condition_status(): void
     {
-        $this->save([['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor']])->assertCreated();
+        $condition = $this->confirmedCondition('Hypertension', 'hypertension');
+        $this->save([], ['start_monitoring_condition_ids' => [$condition->id]])->assertCreated();
         $monitoring = $this->active()->sole();
-        $statusBefore = collect($this->patient->fresh()->medical_background['currentDiseases'] ?? [])->firstWhere('conditionKey', 'hypertension')['status'] ?? null;
 
         $id = $this->save([], [
             'continued_monitoring_ids' => [$monitoring->id],
@@ -173,14 +170,12 @@ class CarePlanSaveTest extends TestCase
         $this->assertSame('stopped', $monitoring->status);
         $this->assertSame($id, $monitoring->stopped_health_record_id);
         $this->assertSame('Transferred to another BHC', $monitoring->stop_reason);
-        $statusAfter = collect($this->patient->fresh()->medical_background['currentDiseases'] ?? [])->firstWhere('conditionKey', 'hypertension')['status'] ?? null;
-        $this->assertSame($statusBefore, $statusAfter);
+        $this->assertSame('active', $condition->fresh()->status, 'only the RHU changes a confirmed condition status');
     }
 
     public function test_a_stop_must_target_a_continued_record(): void
     {
-        $this->save([['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor']])->assertCreated();
-        $monitoring = $this->active()->sole();
+        $monitoring = $this->legacyMonitoring('Asthma');
 
         $this->save([], ['monitoring_stops' => [['monitoring_id' => $monitoring->id, 'reason' => 'Resolved']]])
             ->assertUnprocessable()->assertJsonValidationErrors(['care_plan.monitoring_stops.0.monitoring_id']);
@@ -190,33 +185,19 @@ class CarePlanSaveTest extends TestCase
     /** @return array{0: ConditionMonitoring, 1: int} */
     private function activeHypertension(): array
     {
-        $this->save([['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor']])->assertCreated();
+        $monitoring = $this->legacyMonitoring('Hypertension', 'hypertension');
 
-        return [$this->active()->sole(), HealthRecord::count()];
-    }
-
-    public function test_a_continued_condition_marked_none_must_be_stopped_with_a_reason(): void
-    {
-        [$monitoring, $before] = $this->activeHypertension();
-
-        $this->save(
-            [['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'none']],
-            ['continued_monitoring_ids' => [$monitoring->id]]
-        )->assertUnprocessable()->assertJsonValidationErrors(['care_plan.monitoring_stops']);
-
-        $this->assertSame('active', $monitoring->fresh()->status);
-        $this->assertSame($before, HealthRecord::count());
-        $this->assertSame(1, $monitoring->visits()->count());
+        return [$monitoring, HealthRecord::count()];
     }
 
     public function test_referring_a_continued_condition_keeps_its_monitoring_active(): void
     {
         [$monitoring] = $this->activeHypertension();
-
-        // No stop entry: a referral never ends monitoring by itself.
+        // No stop entry: a referral never ends monitoring by itself. The visit's
+        // referral of the followed condition is the monitoring_referrals entry.
         $id = $this->save(
             [['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'refer']],
-            ['continued_monitoring_ids' => [$monitoring->id]],
+            ['continued_monitoring_ids' => [$monitoring->id], 'monitoring_referrals' => [$monitoring->id]],
             $this->referral()
         )->assertCreated()->json('data.id');
 
@@ -226,33 +207,9 @@ class CarePlanSaveTest extends TestCase
         $this->assertTrue($visit->referred);
     }
 
-    public function test_a_continued_condition_ended_in_the_diagnosis_is_stopped_when_a_reason_is_given(): void
-    {
-        [$monitoring] = $this->activeHypertension();
-
-        $this->save([['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'none']], [
-            'continued_monitoring_ids' => [$monitoring->id],
-            'monitoring_stops' => [['monitoring_id' => $monitoring->id, 'reason' => 'Controlled, no tracking needed']],
-        ])->assertCreated();
-
-        $this->assertSame('stopped', $monitoring->fresh()->status);
-        $this->assertSame(['started', 'stopped'], $monitoring->visits()->orderBy('id')->pluck('action')->all());
-    }
-
-    public function test_a_re_diagnosed_continued_condition_without_a_care_plan_is_continued(): void
-    {
-        [$monitoring] = $this->activeHypertension();
-
-        $this->save([['id' => 'd1', 'name' => 'Hypertension']], ['continued_monitoring_ids' => [$monitoring->id]])->assertCreated();
-
-        $this->assertSame('active', $monitoring->fresh()->status);
-        $this->assertSame(['started', 'continued'], $monitoring->visits()->orderBy('id')->pluck('action')->all());
-    }
-
     public function test_stale_or_foreign_continued_monitoring_is_rejected_and_nothing_saves(): void
     {
-        $this->save([['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor']])->assertCreated();
-        $monitoring = $this->active()->sole();
+        $monitoring = $this->legacyMonitoring('Asthma');
         $monitoring->update(['status' => 'stopped', 'stopped_at' => now()]);
         $before = HealthRecord::count();
 
@@ -297,11 +254,7 @@ class CarePlanSaveTest extends TestCase
 
     public function test_a_continued_tb_monitoring_record_requires_its_monitoring_details(): void
     {
-        $this->save([['id' => 'd1', 'name' => 'Tuberculosis', 'carePlan' => 'monitor']], [], [
-            'tb_data' => ['diagnosis' => ['tbCaseNumber' => 'TB-001'], 'phases' => ['intensiveStart' => now()->toDateString()]],
-        ])->assertCreated();
-        $monitoring = $this->active()->sole();
-        $this->assertSame('tuberculosis', $monitoring->condition_key);
+        $monitoring = $this->legacyMonitoring('Tuberculosis', 'tuberculosis');
         $before = HealthRecord::count();
 
         $this->save([], ['continued_monitoring_ids' => [$monitoring->id]])
@@ -311,8 +264,9 @@ class CarePlanSaveTest extends TestCase
 
     public function test_a_concurrent_start_of_the_same_monitoring_is_a_409_and_nothing_saves(): void
     {
+        $condition = $this->confirmedCondition('Hypertension', 'hypertension');
         // A concurrent save commits an active Hypertension monitoring between
-        // this save's "is there one?" lookup and its insert. Simulated by
+        // this save's "already monitored?" check and its insert. Simulated by
         // inserting that competing row (bypassing the model) just before the
         // insert, so the partial unique index is what rejects the save.
         ConditionMonitoring::creating(function (ConditionMonitoring $monitoring): void {
@@ -324,7 +278,7 @@ class CarePlanSaveTest extends TestCase
         });
         $before = HealthRecord::count();
 
-        $this->save([['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor']])
+        $this->save([], ['start_monitoring_condition_ids' => [$condition->id]])
             ->assertStatus(409)
             ->assertJsonPath('code', 'CONDITION_MONITORING_CONFLICT');
 
@@ -342,7 +296,8 @@ class CarePlanSaveTest extends TestCase
             'category' => 'General Consultation',
             'chief_complaint' => 'BP check',
             'diagnosis' => 'Hypertension',
-            'diagnoses' => [['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor']],
+            'diagnoses' => [['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'recheck']],
+            'monitoring_data' => ['followUpStatus' => 'Follow-up Required', 'followUpDate' => now()->addWeek()->toDateString(), 'followUpReason' => 'BP recheck'],
             'care_plan' => ['continued_monitoring_ids' => [$monitoring->id]],
         ];
 
@@ -372,8 +327,7 @@ class CarePlanSaveTest extends TestCase
 
     public function test_another_patients_active_monitoring_cannot_be_continued(): void
     {
-        $this->save([['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor']], [], ['patient_id' => $this->otherPatient->id])->assertCreated();
-        $foreign = ConditionMonitoring::where('patient_id', $this->otherPatient->id)->sole();
+        $foreign = $this->legacyMonitoring('Asthma', null, $this->otherPatient);
         $before = HealthRecord::count();
 
         $this->save([], ['continued_monitoring_ids' => [$foreign->id]])

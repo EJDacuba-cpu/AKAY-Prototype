@@ -59,9 +59,12 @@ class CarePlanFollowedConditionTest extends TestCase
 
     private function followedHypertension(): ConditionMonitoring
     {
-        $this->save([['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor']])->assertCreated();
+        // Continued (legacy) monitoring: no consultation concern starts it any more.
+        $record = HealthRecord::create(['patient_id' => $this->patient->id, 'category' => 'General Consultation', 'barangay_health_center_id' => $this->bhc->id]);
+        $monitoring = ConditionMonitoring::create(['patient_id' => $this->patient->id, 'barangay_health_center_id' => $this->bhc->id, 'condition_key' => 'hypertension', 'condition_name' => 'Hypertension', 'condition_identity' => 'hypertension', 'status' => 'active', 'started_health_record_id' => $record->id, 'started_at' => now()->subWeek()]);
+        $monitoring->visits()->create(['health_record_id' => $record->id, 'action' => 'started', 'referred' => false, 'created_at' => now()]);
 
-        return ConditionMonitoring::where('patient_id', $this->patient->id)->where('status', 'active')->sole();
+        return $monitoring;
     }
 
     public function test_a_followed_condition_can_be_referred_without_a_new_diagnosis(): void

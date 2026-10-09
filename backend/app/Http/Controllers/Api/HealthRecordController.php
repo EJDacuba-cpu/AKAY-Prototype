@@ -220,7 +220,10 @@ class HealthRecordController extends Controller
                     $request->user(),
                     $lockedFollowUpTask
                 );
+                // Continued rows first, then the conditions being started - each
+                // in id order, so concurrent saves lock in the same order.
                 $continuedMonitorings = $monitoring->lockContinued($patient, $carePlan['continued_monitoring_ids'] ?? []);
+                $startingConditions = $monitoring->lockStarting($patient, $carePlan['start_monitoring_condition_ids'] ?? []);
                 // Background sections reviewed in this consultation go first: a
                 // stale edited section throws a 409 before anything is written.
                 $backgroundChanges = $backgroundUpdate !== null
@@ -248,8 +251,8 @@ class HealthRecordController extends Controller
                 $monitoredNow = $monitoring->apply(
                     $patient,
                     $record,
-                    $data['diagnoses'] ?? [],
                     $continuedMonitorings,
+                    $startingConditions,
                     $carePlan['monitoring_stops'] ?? [],
                     $request->user(),
                     $carePlan['monitoring_referrals'] ?? []

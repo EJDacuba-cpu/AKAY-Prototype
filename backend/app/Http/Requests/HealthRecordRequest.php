@@ -327,6 +327,10 @@ class HealthRecordRequest extends FormRequest
             'care_plan.continued_follow_up_task_ids.*' => ['integer', 'distinct'],
             'care_plan.continued_monitoring_ids' => ['nullable', 'array', 'max:20'],
             'care_plan.continued_monitoring_ids.*' => ['integer', 'distinct'],
+            // Confirmed (Active / Controlled) patient conditions this visit
+            // starts BHC monitoring for; the service checks each one.
+            'care_plan.start_monitoring_condition_ids' => ['nullable', 'array', 'max:20'],
+            'care_plan.start_monitoring_condition_ids.*' => ['integer', 'distinct'],
             'care_plan.monitoring_stops' => ['nullable', 'array', 'max:20'],
             'care_plan.monitoring_stops.*.monitoring_id' => ['required', 'integer', 'distinct'],
             'care_plan.monitoring_stops.*.reason' => ['required', 'string', 'max:500', 'regex:/\S/'],
@@ -559,8 +563,9 @@ class HealthRecordRequest extends FormRequest
 
     /**
      * Monitoring Details forms this visit needs: one per distinct
-     * monitoring_details key among conditions monitored now - diagnoses set to
-     * Monitor, plus continued monitoring records that are not being stopped.
+     * monitoring_details key among conditions monitored now - continued
+     * monitoring records that are not being stopped, plus the confirmed
+     * conditions this visit starts monitoring for.
      *
      * @return array<int, string>
      */
@@ -568,13 +573,6 @@ class HealthRecordRequest extends FormRequest
     {
         $registry = app(\App\Services\ClinicalRegistry::class);
         $keys = [];
-        foreach ($this->input('diagnoses', []) as $diagnosis) {
-            if (! is_array($diagnosis) || ! \App\Services\CarePlan::monitors($diagnosis['carePlan'] ?? null)) {
-                continue;
-            }
-            $match = $registry->matchCondition($diagnosis['name'] ?? null);
-            $keys[] = $registry->monitoringDetailsFor($match['key'] ?? null);
-        }
 
         $stopped = array_map('intval', array_column($this->input('care_plan.monitoring_stops', []) ?: [], 'monitoring_id'));
         $continued = array_diff(array_map('intval', $this->input('care_plan.continued_monitoring_ids', []) ?: []), $stopped);
@@ -584,6 +582,20 @@ class HealthRecordRequest extends FormRequest
                 ->where('patient_id', (int) $this->input('patient_id'))
                 ->pluck('condition_key');
             foreach ($conditionKeys as $conditionKey) {
+                $keys[] = $registry->monitoringDetailsFor($conditionKey);
+            }
+        }
+
+        $starting = array_map('intval', $this->input('care_plan.start_monitoring_condition_ids', []) ?: []);
+        if ($starting !== []) {
+            $conditions = \App\Models\PatientCondition::query()
+                ->whereIn('id', $starting)
+                ->where('patient_id', (int) $this->input('patient_id'))
+                ->whereIn('status', \App\Models\PatientCondition::MONITORABLE_STATUSES)
+                ->get(['condition_name', 'condition_identity']);
+            foreach ($conditions as $condition) {
+                $conditionKey = $registry->matchCondition($condition->condition_name)['key']
+                    ?? ($registry->isValidConditionKey($condition->condition_identity) ? $condition->condition_identity : null);
                 $keys[] = $registry->monitoringDetailsFor($conditionKey);
             }
         }

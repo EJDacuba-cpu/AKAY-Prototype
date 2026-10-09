@@ -5,12 +5,15 @@
 | Clinical Registry
 |--------------------------------------------------------------------------
 |
-| Single source of truth for the list a consultation reads from:
+| Single source of truth for recognising a condition by name:
 |
-| - monitored_conditions: diagnoses that, once recorded, automatically sync
-|   to the patient's Current Conditions (App\Services\ClinicalRegistry /
-|   App\Services\CurrentConditionsSync). An entry may declare monitoring_details:
-|   the key of the extra form a monitored visit needs.
+| - monitored_conditions: the conditions the system knows by name or alias.
+|   The registry only gives a condition one identity (so "HTN" and
+|   "Hypertension" are the same condition) and, where an entry declares
+|   monitoring_details, the key of the extra form a monitored BHC visit
+|   needs. It never writes Current Conditions or starts monitoring: a
+|   condition is confirmed by the RHU, and BHC monitoring starts only from
+|   that confirmed condition.
 |
 | Matching (App\Services\ClinicalRegistry::matchCondition)
 | is exact, case- and whitespace-insensitive, against a name or one of its

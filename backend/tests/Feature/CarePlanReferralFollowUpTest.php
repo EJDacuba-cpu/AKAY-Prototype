@@ -75,14 +75,8 @@ class CarePlanReferralFollowUpTest extends TestCase
 
     public function test_referring_a_continued_condition_keeps_monitoring_without_a_follow_up(): void
     {
-        $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
-            'patient_id' => $this->patient->id,
-            'category' => 'General Consultation',
-            'chief_complaint' => 'BP check',
-            'diagnosis' => 'Hypertension',
-            'diagnoses' => [['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor']],
-        ])->assertCreated();
-        $monitoring = ConditionMonitoring::sole();
+        $record = \App\Models\HealthRecord::create(['patient_id' => $this->patient->id, 'category' => 'General Consultation', 'barangay_health_center_id' => $this->patient->barangay_health_center_id]);
+        $monitoring = ConditionMonitoring::create(['patient_id' => $this->patient->id, 'barangay_health_center_id' => $this->patient->barangay_health_center_id, 'condition_key' => 'hypertension', 'condition_name' => 'Hypertension', 'condition_identity' => 'hypertension', 'status' => 'active', 'started_health_record_id' => $record->id, 'started_at' => now()->subWeek()]);
 
         // Monitoring stays active, but that alone asks for no BHC date: the
         // referral hands the next visit to the RHU.

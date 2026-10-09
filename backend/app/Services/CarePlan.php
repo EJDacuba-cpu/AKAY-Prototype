@@ -32,6 +32,11 @@ final class CarePlan
     /** The next actions a new save may choose; a concern may also have none. */
     public const SELECTABLE = [self::RECHECK, self::FOLLOW_UP, self::REFER];
 
+    /**
+     * Whether a STORED value is the retired Monitor / Monitor + Refer. For
+     * reading old records only (keepsFollowUpWithReferral): a new save cannot
+     * choose it, and nothing starts monitoring from a care plan any more.
+     */
     public static function monitors(?string $value): bool
     {
         return $value === self::MONITOR || $value === self::MONITOR_REFER;
@@ -46,17 +51,6 @@ final class CarePlan
     public static function keepsBhcFollowUp(?string $value): bool
     {
         return $value === self::RECHECK || $value === self::FOLLOW_UP;
-    }
-
-    public static function monitorsAny(array $diagnoses): bool
-    {
-        foreach ($diagnoses as $diagnosis) {
-            if (is_array($diagnosis) && self::monitors($diagnosis['carePlan'] ?? null)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

@@ -7,6 +7,7 @@ use App\Models\ConditionMonitoringVisit;
 use App\Models\FollowUpTask;
 use App\Models\HealthRecord;
 use App\Models\Patient;
+use App\Models\PatientCondition;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -14,7 +15,8 @@ use Illuminate\Validation\ValidationException;
 /**
  * Applies a consultation's care plan to the patient's condition monitoring.
  * Called only from HealthRecordController::store(), inside its transaction,
- * after the ITR is created. Never touches Current Conditions.
+ * after the ITR is created. Monitoring starts only from an RHU-confirmed
+ * condition and never changes that condition's status.
  */
 class ConditionMonitoringService
 {
@@ -53,13 +55,57 @@ class ConditionMonitoringService
     }
 
     /**
-     * @param  array<int, array<string, mixed>>  $diagnoses  server-resolved (conditionKey set)
+     * Locks the confirmed conditions this visit starts monitoring for, in id
+     * order, and checks each is still startable. A condition can start only
+     * while the RHU holds it Active or Controlled for this patient.
+     *
+     * @param  array<int, mixed>  $conditionIds
+     * @return Collection<int, PatientCondition> keyed by id
+     */
+    public function lockStarting(Patient $patient, array $conditionIds): Collection
+    {
+        $ids = array_values(array_map('intval', $conditionIds));
+        if ($ids === []) {
+            return collect();
+        }
+        $locked = PatientCondition::query()
+            ->where('patient_id', $patient->id)
+            ->whereIn('id', $ids)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
+
+        foreach ($ids as $index => $id) {
+            $condition = $locked->get($id);
+            if ($condition === null || ! in_array($condition->status, PatientCondition::MONITORABLE_STATUSES, true)) {
+                throw ValidationException::withMessages([
+                    "care_plan.start_monitoring_condition_ids.$index" => 'This condition is not confirmed as Active or Controlled for this patient.',
+                ]);
+            }
+            $alreadyMonitored = ConditionMonitoring::query()
+                ->where('patient_id', $patient->id)
+                ->where('condition_identity', $condition->condition_identity)
+                ->where('status', ConditionMonitoring::STATUS_ACTIVE)
+                ->exists();
+            if ($alreadyMonitored) {
+                throw ValidationException::withMessages([
+                    "care_plan.start_monitoring_condition_ids.$index" => 'This condition is already monitored at BHC.',
+                ]);
+            }
+        }
+
+        return $locked;
+    }
+
+    /**
      * @param  Collection<int, ConditionMonitoring>  $continued  from lockContinued()
+     * @param  Collection<int, PatientCondition>  $starting  from lockStarting()
      * @param  array<int, array{monitoring_id: int|string, reason: string}>  $stops
      * @param  array<int, int|string>  $referredIds  followed monitoring the visit refers to the RHU (it stays active)
      * @return Collection<int, ConditionMonitoring> active after this visit, started or continued by it
      */
-    public function apply(Patient $patient, HealthRecord $record, array $diagnoses, Collection $continued, array $stops, User $user, array $referredIds = []): Collection
+    public function apply(Patient $patient, HealthRecord $record, Collection $continued, Collection $starting, array $stops, User $user, array $referredIds = []): Collection
     {
         $referredIds = array_map('intval', $referredIds);
         $stopReasons = [];
@@ -73,59 +119,27 @@ class ConditionMonitoringService
             $stopReasons[$id] = trim((string) $stop['reason']);
         }
 
-        // One entry per condition identity this visit monitors; a condition
-        // typed twice ("HTN" Monitor, "Hypertension" Refer) collapses to one,
-        // referred if any entry refers.
-        $monitored = [];
-        foreach ($diagnoses as $diagnosis) {
-            if (! is_array($diagnosis) || ! CarePlan::monitors($diagnosis['carePlan'] ?? null)) {
-                continue;
-            }
-            $identity = $this->registry->conditionIdentity($diagnosis['conditionKey'] ?? null, (string) $diagnosis['name']);
-            $monitored[$identity] ??= ['key' => $diagnosis['conditionKey'] ?? null, 'name' => (string) $diagnosis['name'], 'referred' => $this->isReferred($diagnoses, $identity)];
-        }
-
-        $this->assertEndedConditionsAreStopped($diagnoses, $continued, $monitored, $stopReasons);
-        // The existing-row lookups below take row locks: always in the same
-        // (identity) order, whatever order the diagnoses were typed in.
-        ksort($monitored, SORT_STRING);
-
         $activeAfter = collect();
 
-        foreach ($monitored as $identity => $entry) {
-            $existing = ConditionMonitoring::query()
-                ->where('patient_id', $patient->id)
-                ->where('condition_identity', $identity)
-                ->where('status', ConditionMonitoring::STATUS_ACTIVE)
-                ->lockForUpdate()
-                ->first();
-
-            if ($existing !== null && isset($stopReasons[$existing->id])) {
-                // Monitor on the diagnosis row wins over a stale stop entry.
-                unset($stopReasons[$existing->id]);
-            }
-
-            $monitoring = $existing ?? ConditionMonitoring::create([
+        foreach ($starting->sortKeys() as $condition) {
+            $monitoring = ConditionMonitoring::create([
                 'patient_id' => $patient->id,
+                'patient_condition_id' => $condition->id,
                 'barangay_health_center_id' => $patient->barangay_health_center_id,
-                'condition_key' => $entry['key'],
-                'condition_name' => $entry['name'],
-                'condition_identity' => $identity,
+                'condition_key' => $this->conditionKey($condition),
+                'condition_name' => $condition->condition_name,
+                'condition_identity' => $condition->condition_identity,
                 'status' => ConditionMonitoring::STATUS_ACTIVE,
                 'started_health_record_id' => $record->id,
                 'started_at' => $record->date_recorded ?? now(),
                 'created_by' => $user->id,
                 'updated_by' => $user->id,
             ]);
-
-            $this->history($monitoring, $record, $existing === null ? ConditionMonitoringVisit::ACTION_STARTED : ConditionMonitoringVisit::ACTION_CONTINUED, $entry['referred'] || in_array($monitoring->id, $referredIds, true));
+            $this->history($monitoring, $record, ConditionMonitoringVisit::ACTION_STARTED, false);
             $activeAfter->put($monitoring->id, $monitoring);
         }
 
         foreach ($continued as $monitoring) {
-            if ($activeAfter->has($monitoring->id)) {
-                continue;
-            }
             if (isset($stopReasons[$monitoring->id])) {
                 $monitoring->update([
                     'status' => ConditionMonitoring::STATUS_STOPPED,
@@ -134,11 +148,11 @@ class ConditionMonitoringService
                     'stop_reason' => $stopReasons[$monitoring->id],
                     'updated_by' => $user->id,
                 ]);
-                $this->history($monitoring, $record, ConditionMonitoringVisit::ACTION_STOPPED, $this->isReferred($diagnoses, $monitoring->condition_identity));
+                $this->history($monitoring, $record, ConditionMonitoringVisit::ACTION_STOPPED, false);
 
                 continue;
             }
-            $this->history($monitoring, $record, ConditionMonitoringVisit::ACTION_CONTINUED, $this->isReferred($diagnoses, $monitoring->condition_identity) || in_array($monitoring->id, $referredIds, true));
+            $this->history($monitoring, $record, ConditionMonitoringVisit::ACTION_CONTINUED, in_array($monitoring->id, $referredIds, true));
             $activeAfter->put($monitoring->id, $monitoring);
         }
 
@@ -159,36 +173,6 @@ class ConditionMonitoringService
         $task?->conditionMonitorings()->syncWithoutDetaching($monitorings->pluck('id')->all());
     }
 
-    /**
-     * A continued condition re-diagnosed this visit as No Ongoing Tracking
-     * (none) ends monitoring, so it needs a stop with a reason. Refer to RHU
-     * does not: a referral keeps the monitoring active and is tracked on its
-     * own. An absent carePlan means "continue" (the UI default). Runs before
-     * any write so the whole save rolls back.
-     *
-     * @param  array<int, array<string, mixed>>  $diagnoses
-     * @param  Collection<int, ConditionMonitoring>  $continued
-     * @param  array<string, mixed>  $monitored  identities monitored by a diagnosis this visit
-     * @param  array<int, string>  $stopReasons
-     */
-    private function assertEndedConditionsAreStopped(array $diagnoses, Collection $continued, array $monitored, array $stopReasons): void
-    {
-        foreach ($continued as $monitoring) {
-            if (isset($monitored[$monitoring->condition_identity]) || ($stopReasons[$monitoring->id] ?? '') !== '') {
-                continue;
-            }
-            foreach ($diagnoses as $diagnosis) {
-                if (is_array($diagnosis)
-                    && ($diagnosis['carePlan'] ?? null) === CarePlan::NONE
-                    && $this->registry->conditionIdentity($diagnosis['conditionKey'] ?? null, (string) ($diagnosis['name'] ?? '')) === $monitoring->condition_identity) {
-                    throw ValidationException::withMessages([
-                        'care_plan.monitoring_stops' => 'A continued condition marked No Ongoing Tracking must be stopped with a reason.',
-                    ]);
-                }
-            }
-        }
-    }
-
     private function history(ConditionMonitoring $monitoring, HealthRecord $record, string $action, bool $referred): void
     {
         $monitoring->visits()->create([
@@ -199,17 +183,10 @@ class ConditionMonitoringService
         ]);
     }
 
-    /** Whether a diagnosis of this condition identity is referred this visit. */
-    private function isReferred(array $diagnoses, string $identity): bool
+    /** The registry key the Monitoring Details form is looked up by; null for a free-text condition. */
+    private function conditionKey(PatientCondition $condition): ?string
     {
-        foreach ($diagnoses as $diagnosis) {
-            if (is_array($diagnosis)
-                && CarePlan::refers($diagnosis['carePlan'] ?? null)
-                && $this->registry->conditionIdentity($diagnosis['conditionKey'] ?? null, (string) ($diagnosis['name'] ?? '')) === $identity) {
-                return true;
-            }
-        }
-
-        return false;
+        return $this->registry->matchCondition($condition->condition_name)['key']
+            ?? ($this->registry->isValidConditionKey($condition->condition_identity) ? $condition->condition_identity : null);
     }
 }

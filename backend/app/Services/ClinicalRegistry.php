@@ -12,8 +12,8 @@ namespace App\Services;
  * Every match here is exact, case- and whitespace-insensitive, against a
  * name or one of its aliases - never fuzzy, substring, or typo-tolerant.
  * Nothing in this class writes anything; it only answers "what does this
- * text match" for callers (HealthRecordController,
- * PatientRequest) that decide what to do with the answer.
+ * text match" for callers (HealthRecordController, HealthRecordRequest,
+ * PatientBackground, PatientConditions) that decide what to do with the answer.
  */
 class ClinicalRegistry
 {
