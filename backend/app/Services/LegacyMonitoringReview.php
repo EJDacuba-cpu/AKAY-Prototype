@@ -58,7 +58,7 @@ class LegacyMonitoringReview
         foreach ($items as $i => $item) {
             $row = $rows->get((int) $item['monitoring_id']);
             if ($row === null
-                || $row->patient_id !== $patient->id
+                || (int) $row->patient_id !== (int) $patient->id
                 || $row->status !== ConditionMonitoring::STATUS_ACTIVE
                 || ! $row->isLegacy()) {
                 throw ValidationException::withMessages([
