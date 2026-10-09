@@ -26,6 +26,16 @@ export function conditionStatusLabel(status) {
   return STATUS_LABELS[status] || String(status);
 }
 
+const EVENT_SOURCE_LABELS = Object.freeze({
+  rhu_feedback: "RHU feedback",
+  rhu_record: "RHU record",
+});
+
+/** Where a status change came from: "RHU feedback" or "RHU record". */
+export function conditionEventSourceLabel(sourceType) {
+  return EVENT_SOURCE_LABELS[sourceType] || "";
+}
+
 /** GET /patients/{id}/conditions in the client's shape. */
 export function mapPatientConditions(data) {
   const source = data && typeof data === "object" ? data : {};

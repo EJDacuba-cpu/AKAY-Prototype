@@ -110,7 +110,6 @@ import {
   shouldRegenerateReferralReason,
 } from "../../utils/carePlanWorkspace";
 import {
-  activeMonitoringsFromOverview,
   droppedContinuedCareNotice,
   keepStopsFor,
   resolveContinuedCare,
@@ -891,9 +890,6 @@ export default function ConsultationWorkspace() {
   // RHU-confirmed conditions BHC starts monitoring this visit (the care
   // overview's monitoringRecommendations, chosen in Start Consultation).
   const [startingConditions, setStartingConditions] = useState([]);
-  // Every active monitoring record of this patient (care-overview, Task 10),
-  // selected or not - only used to note "Already monitored at BHC" on a row.
-  const [activeMonitorings, setActiveMonitorings] = useState([]);
   // The Next phase has two screens: Care Plan & Next Steps, then Monitoring
   // Details when a monitored condition needs it. UI position only.
   const [nextScreen, setNextScreen] = useState(NEXT_STEP);
@@ -1600,7 +1596,6 @@ export default function ConsultationWorkspace() {
     }
     if (!isCurrent()) return;
 
-    setActiveMonitorings(activeMonitoringsFromOverview(overview));
     if (!selection) return;
 
     const resolved = resolveContinuedCare(overview, {
@@ -1727,7 +1722,6 @@ export default function ConsultationWorkspace() {
       setStartingConditions(
         restoredCarePlan.startConditionIds.map((id) => ({ id, conditionId: id, conditionName: "Recommended condition", confirmedAt: "" })),
       );
-      setActiveMonitorings([]);
       setNextScreen(NEXT_STEP);
       void loadContinuedCare(draft.patient.id, {
         followUpIds: restoredCarePlan.continuedFollowUpTaskIds,
@@ -2735,6 +2729,9 @@ export default function ConsultationWorkspace() {
     if (selectedPatientId) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.patientDetails(userRole, selectedPatientId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.patientConditions(selectedPatientId),
       });
     }
     if (savedId) {
@@ -4218,6 +4215,7 @@ export default function ConsultationWorkspace() {
                 so it sits after Chief Complaint / HPI. */}
             <FormSection title="Patient Background" subtitle="Past medical, family, and personal & social history. Changes are saved when the consultation is finalized." delay={4}>
               <ConsultationBackgroundCard
+                patientId={selectedPatientId}
                 locked={!canViewBackground}
                 loading={selectedPatientLoading}
                 background={selectedPatient?.medicalBackground}
@@ -4226,7 +4224,6 @@ export default function ConsultationWorkspace() {
                 expanded={backgroundExpanded}
                 onExpandedChange={setBackgroundExpanded}
                 followed={continuedMonitorings}
-                monitorings={activeMonitorings}
               />
             </FormSection>
           </section>

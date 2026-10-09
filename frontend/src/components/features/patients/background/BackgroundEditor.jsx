@@ -1,15 +1,14 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 
-import useClinicalRegistry from "../../../../hooks/useClinicalRegistry";
-import { groupCurrentDiseases } from "../../../../utils/currentConditions";
-import { documentedConditionFor, isFollowedThisVisit } from "../../../../utils/followUpThisVisit";
 import {
   BACKGROUND_SECTION_FIELDS,
   BACKGROUND_SECTION_KEYS,
   BACKGROUND_SECTION_LABELS,
+  newPatientReportedCondition,
 } from "../../../../utils/backgroundUpdate";
-import { BackgroundTextField, DiseaseGroupEdit } from "./BackgroundFields";
+import { UNVERIFIED_LABEL } from "../MedicalConditionsGroups";
+import { BackgroundTextField, PatientReportedEdit, UnverifiedReadOnly } from "./BackgroundFields";
 
 const PLACEHOLDERS = {
   allergies: "e.g. Penicillin",
@@ -27,23 +26,18 @@ function readValue(background, field) {
  * it now and every change calls `onChange` with the next one. It holds no
  * save logic - the consultation stages the result (utils/backgroundUpdate.js)
  * and the server applies it when the record is finalized.
+ *
+ * The only conditions editable here are the patient's own Previous Conditions
+ * (name + optional note, no status). Confirmed, under-evaluation and past
+ * conditions are RHU's; legacy consultation entries show read-only as
+ * unverified. `conditionGroups` is groupMedicalConditions over `value`.
  */
-export default function BackgroundEditor({ value, onChange, editedSections = [], onRevertSection, followed = [] }) {
+export default function BackgroundEditor({ value, onChange, conditionGroups, editedSections = [], onRevertSection }) {
   const [newDisease, setNewDisease] = useState("");
-  const { registry } = useClinicalRegistry();
+  const [newNote, setNewNote] = useState("");
   const diseases = Array.isArray(value?.currentDiseases) ? value.currentDiseases : [];
-  const grouped = groupCurrentDiseases(diseases, registry);
-  // Conditions followed in this visit are reference only here: Care Plan &
-  // Next Steps records what happens to them, so they are not editable twice.
-  const followedDiseases = [...grouped.monitored, ...grouped.other].filter((disease) => isFollowedThisVisit(disease, followed, registry));
-  const monitored = grouped.monitored.filter((disease) => !followedDiseases.includes(disease));
-  const other = grouped.other.filter((disease) => !followedDiseases.includes(disease));
-  // Shown under Currently Monitored as read-only rows with the "Addressed in
-  // this visit" indicator - even when the background never documented it.
-  const addressedRows = followed.map((monitoring) => {
-    const documented = documentedConditionFor(monitoring, diseases, registry);
-    return { key: `addressed-${monitoring.id}`, name: documented?.name || monitoring.conditionName, status: documented?.status || "" };
-  });
+  const patientReported = conditionGroups?.patientReported || [];
+  const unverified = conditionGroups?.unverified || [];
 
   function setField(field, next) {
     onChange(
@@ -58,15 +52,12 @@ export default function BackgroundEditor({ value, onChange, editedSections = [],
   }
 
   function addDisease() {
-    const name = newDisease.trim();
-    if (!name) return;
+    const entry = newPatientReportedCondition(newDisease, newNote);
+    if (!entry) return;
     setNewDisease("");
-    if (diseases.some((disease) => disease.name.toLowerCase() === name.toLowerCase())) return;
-    const today = new Date().toISOString().slice(0, 10);
-    setDiseases([
-      ...diseases,
-      { name, status: "Active", firstRecorded: today, lastConfirmed: today, source: "Consultation", conditionKey: null },
-    ]);
+    setNewNote("");
+    if (patientReported.some((disease) => disease.name.toLowerCase() === entry.name.toLowerCase())) return;
+    setDiseases([...diseases, entry]);
   }
 
   function updateDisease(index, key, next) {
@@ -106,29 +97,29 @@ export default function BackgroundEditor({ value, onChange, editedSections = [],
             <div className="@container space-y-3">
               {section === "medical" && (
                 <div className="space-y-3">
-                  {(monitored.length > 0 || addressedRows.length > 0) && (
-                    <DiseaseGroupEdit
-                      title="Currently Monitored"
-                      diseases={monitored}
-                      readOnlyRows={addressedRows}
-                      onUpdate={updateDisease}
-                      onRemove={removeDisease}
-                    />
-                  )}
-                  <DiseaseGroupEdit
-                    title="Other Conditions"
-                    diseases={other}
-                    emptyText="None recorded."
-                    onUpdate={updateDisease}
-                    onRemove={removeDisease}
-                  />
-                  <div className="flex gap-2">
+                  <UnverifiedReadOnly title={UNVERIFIED_LABEL} diseases={unverified} />
+                  <PatientReportedEdit diseases={patientReported} onUpdate={updateDisease} onRemove={removeDisease} />
+                  <div className="flex flex-wrap gap-2">
                     <input
                       type="text"
                       value={newDisease}
-                      aria-label="Add other condition"
-                      placeholder="Add other condition..."
+                      aria-label="Patient-reported previous condition"
+                      placeholder="Add a previous condition..."
                       onChange={(event) => setNewDisease(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addDisease();
+                        }
+                      }}
+                      className="min-w-0 flex-1 rounded-none border border-gray-200 px-3 py-2 text-[12.5px] outline-none transition focus:border-red-600"
+                    />
+                    <input
+                      type="text"
+                      value={newNote}
+                      aria-label="Note (optional)"
+                      placeholder="Note (optional)"
+                      onChange={(event) => setNewNote(event.target.value)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           event.preventDefault();
@@ -147,8 +138,7 @@ export default function BackgroundEditor({ value, onChange, editedSections = [],
                     </button>
                   </div>
                   <p className="text-[11px] text-gray-400">
-                    A name matching a monitored condition (e.g. &ldquo;HTN&rdquo;, &ldquo;PTB&rdquo;) is
-                    recognized and filed under Monitored Conditions once saved.
+                    Conditions the patient reports. They stay unconfirmed until RHU confirms a diagnosis.
                   </p>
                 </div>
               )}

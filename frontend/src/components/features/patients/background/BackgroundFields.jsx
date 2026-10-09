@@ -1,13 +1,9 @@
 import { X } from "lucide-react";
 
 /**
- * Pieces shared by the read-only Patient Background tab and the consultation's
- * BackgroundEditor. Current Conditions are shown in the two groups from
- * docs/superpowers/specs/2026-09-29-diagnosis-monitoring-surveillance-registry-design.md:
- * Monitored Conditions (registry-recognized) and Other Conditions (free-text).
+ * Pieces shared by the medical conditions views and the consultation's
+ * BackgroundEditor.
  */
-
-export const DISEASE_STATUS_OPTIONS = ["Active", "Controlled", "Resolved"];
 
 const FIELD_LABEL_CLASS = "text-[11px] font-semibold uppercase tracking-wide text-gray-500";
 const CONTROL_CLASS =
@@ -15,29 +11,6 @@ const CONTROL_CLASS =
 
 export function GroupHeading({ children }) {
   return <p className={FIELD_LABEL_CLASS}>{children}</p>;
-}
-
-export function DiseaseGroupView({ title, diseases, emptyText }) {
-  return (
-    <div>
-      <GroupHeading>{title}</GroupHeading>
-      <div className="mt-1 flex flex-wrap gap-1.5">
-        {diseases.length ? (
-          diseases.map((disease) => (
-            <span
-              key={`${disease.conditionKey || disease.name}-${disease.index}`}
-              className="inline-flex items-center gap-1.5 rounded-none border border-gray-200 px-2 py-0.5 text-xs text-gray-800"
-            >
-              {disease.name}
-              {disease.status ? ` · ${disease.status}` : ""}
-            </span>
-          ))
-        ) : (
-          <span className="text-sm text-gray-500">{emptyText}</span>
-        )}
-      </div>
-    </div>
-  );
 }
 
 /** Marks a condition the consultation is following today (picked in Start Consultation). */
@@ -49,29 +22,18 @@ export function AddressedBadge() {
   );
 }
 
-export function DiseaseGroupEdit({ title, diseases, emptyText, onUpdate, onRemove, readOnlyRows = [] }) {
+/**
+ * The Patient-Reported Previous Conditions in the editor: a name and an
+ * optional note each, no status (only RHU confirms a condition).
+ */
+export function PatientReportedEdit({ diseases, onUpdate, onRemove }) {
   return (
     <div>
-      <GroupHeading>{title}</GroupHeading>
+      <GroupHeading>Patient-Reported Previous Conditions</GroupHeading>
       <div className="mt-1.5 space-y-2">
-        {readOnlyRows.map((row) => (
-          <div
-            key={row.key}
-            className="flex flex-wrap items-center gap-2 rounded-none border border-gray-200 bg-gray-50 px-3 py-2 text-[12.5px]"
-          >
-            <span className="font-semibold text-gray-900">{row.name}</span>
-            {row.status && <span className="text-gray-600">· {row.status}</span>}
-            <AddressedBadge />
-          </div>
-        ))}
-        {diseases.length === 0 && readOnlyRows.length === 0 && emptyText && (
-          <p className="text-[12px] text-gray-400">{emptyText}</p>
-        )}
+        {diseases.length === 0 && <p className="text-[12px] text-gray-400">None reported.</p>}
         {diseases.map((disease) => (
-          <div
-            key={`${disease.conditionKey || disease.name}-${disease.index}`}
-            className="rounded-none border border-gray-200 bg-white p-3"
-          >
+          <div key={`${disease.name}-${disease.index}`} className="rounded-none border border-gray-200 bg-white p-3">
             <div className="flex items-center justify-between gap-3">
               <span className="text-[12.5px] font-semibold text-gray-900">{disease.name}</span>
               <button
@@ -83,44 +45,38 @@ export function DiseaseGroupEdit({ title, diseases, emptyText, onUpdate, onRemov
                 <X size={14} />
               </button>
             </div>
-            <div className="mt-2 grid gap-2 @xl:grid-cols-3">
-              <label className={FIELD_LABEL_CLASS}>
-                Status
-                <select
-                  value={disease.status || ""}
-                  onChange={(event) => onUpdate(disease.index, "status", event.target.value)}
-                  className="mt-1 w-full rounded-none border border-gray-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-gray-700 outline-none focus:border-red-600"
-                >
-                  <option value="">Select...</option>
-                  {DISEASE_STATUS_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className={FIELD_LABEL_CLASS}>
-                First Recorded
-                <input
-                  type="date"
-                  value={disease.firstRecorded || ""}
-                  onChange={(event) => onUpdate(disease.index, "firstRecorded", event.target.value)}
-                  className="mt-1 w-full rounded-none border border-gray-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-gray-700 outline-none focus:border-red-600"
-                />
-              </label>
-              <label className={FIELD_LABEL_CLASS}>
-                Last Confirmed
-                <input
-                  type="date"
-                  value={disease.lastConfirmed || ""}
-                  onChange={(event) => onUpdate(disease.index, "lastConfirmed", event.target.value)}
-                  className="mt-1 w-full rounded-none border border-gray-200 px-2 py-1.5 text-[12px] font-normal normal-case tracking-normal text-gray-700 outline-none focus:border-red-600"
-                />
-              </label>
-            </div>
+            <label className={`mt-2 block ${FIELD_LABEL_CLASS}`}>
+              Note (optional)
+              <input
+                type="text"
+                value={disease.note || ""}
+                onChange={(event) => onUpdate(disease.index, "note", event.target.value)}
+                className={`mt-1 font-normal normal-case tracking-normal ${CONTROL_CLASS}`}
+              />
+            </label>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Legacy consultation entries: shown for reference, never edited here. */
+export function UnverifiedReadOnly({ title, diseases }) {
+  if (diseases.length === 0) return null;
+  return (
+    <div>
+      <GroupHeading>{title}</GroupHeading>
+      <ul className="mt-1.5 space-y-1">
+        {diseases.map((disease) => (
+          <li
+            key={`${disease.name}-${disease.index}`}
+            className="rounded-none border border-gray-200 bg-gray-50 px-3 py-2 text-[12.5px] font-semibold text-gray-900"
+          >
+            {disease.name}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

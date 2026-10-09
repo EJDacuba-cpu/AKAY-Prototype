@@ -2,17 +2,10 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight, ShieldAlert } from "lucide-react";
 
 import { OverviewNote } from "./OverviewCard";
+import MedicalConditionsGroups from "../MedicalConditionsGroups";
 import { NO_ALLERGY_PATTERN } from "../PatientAlertChips";
 import { summarizeMedicines } from "../../../../utils/medicationSummary";
 import { formatShortDate } from "../../../../utils/patientProfile";
-
-const CONDITION_STATUS_TONE = {
-  Active: "border-red-200 bg-red-50 text-red-700",
-  Controlled: "border-amber-200 bg-amber-50 text-amber-700",
-  Resolved: "border-green-200 bg-green-50 text-green-700",
-};
-
-const CHIP = "shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
 
 /**
  * One dropdown of the facts column. The header is the toggle; open sections
@@ -59,35 +52,6 @@ function CollapsibleSection({ id, title, count, alert = false, share, children }
   );
 }
 
-function ConditionsBody({ diseases }) {
-  if (diseases.length === 0) return <OverviewNote>No documented conditions yet.</OverviewNote>;
-  return (
-    <ul className="divide-y divide-gray-100">
-      {diseases.map((disease, index) => {
-        const meta = [
-          disease.firstRecorded && `First noted ${formatShortDate(disease.firstRecorded)}`,
-          disease.lastConfirmed && `Confirmed ${formatShortDate(disease.lastConfirmed)}`,
-        ]
-          .filter(Boolean)
-          .join(" · ");
-        return (
-          <li key={`${disease.name}-${index}`} className="py-1 first:pt-0">
-            <div className="flex items-center justify-between gap-2">
-              <span className="min-w-0 break-words text-sm font-semibold text-slate-900">{disease.name}</span>
-              {disease.status && (
-                <span className={`${CHIP} ${CONDITION_STATUS_TONE[disease.status] || "border-slate-200 bg-slate-50 text-slate-600"}`}>
-                  {disease.status}
-                </span>
-              )}
-            </div>
-            {meta && <p className="mt-0.5 text-[11px] text-slate-500">{meta}</p>}
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
 function AllergiesBody({ text, recorded }) {
   if (recorded) return <p className="break-words text-[13px] font-semibold leading-snug text-red-700">{text}</p>;
   return <OverviewNote>{text ? "No known allergies" : "Allergies not recorded"}</OverviewNote>;
@@ -122,7 +86,7 @@ function MedicationsBody({ summary, isLoading }) {
 }
 
 /**
- * The dropdowns beside the body figure: Current Conditions, Findings,
+ * The dropdowns beside the body figure: Medical Conditions, Findings,
  * Allergies and Medications, all open to start with. Everything shown is
  * something a health worker recorded; Medications lists the medicines
  * dispensed on the visits loaded for this profile (newest first), not what the
@@ -130,16 +94,17 @@ function MedicationsBody({ summary, isLoading }) {
  * figure's reveal), so the caller passes it in as
  * `findings = { title, count, content }`.
  */
-export default function PatientFactsSections({ background, records = [], recordsLoading = false, findings }) {
-  const diseases = Array.isArray(background?.currentDiseases) ? background.currentDiseases : [];
+export default function PatientFactsSections({ background, conditions, records = [], recordsLoading = false, findings }) {
+  const groups = conditions?.groups;
+  const conditionCount = (groups?.confirmed.length || 0) + (groups?.underEvaluation.length || 0);
   const allergyText = String(background?.allergies || "").trim();
   const allergyRecorded = Boolean(allergyText) && !NO_ALLERGY_PATTERN.test(allergyText);
   const medicines = summarizeMedicines(records);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <CollapsibleSection id="overview-conditions" title="Current Conditions" count={diseases.length} share={3}>
-        <ConditionsBody diseases={diseases} />
+      <CollapsibleSection id="overview-conditions" title="Medical Conditions" count={conditionCount} share={3}>
+        <MedicalConditionsGroups groups={groups} isLoading={conditions?.isLoading} isError={conditions?.isError} />
       </CollapsibleSection>
       {findings && (
         <CollapsibleSection id="overview-findings" title={findings.title} count={findings.count} share={2.5}>

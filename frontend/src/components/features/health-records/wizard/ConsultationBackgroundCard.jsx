@@ -1,8 +1,9 @@
 import { Lock } from "lucide-react";
 
 import BackgroundEditor from "../../patients/background/BackgroundEditor";
-import { AddressedBadge } from "../../patients/background/BackgroundFields";
+import MedicalConditionsGroups from "../../patients/MedicalConditionsGroups";
 import useClinicalRegistry from "../../../../hooks/useClinicalRegistry";
+import { usePatientConditions } from "../../../../hooks/usePatientConditionGroups";
 import { backgroundConditionGroups } from "../../../../utils/backgroundConditions";
 import {
   buildBackgroundUpdate,
@@ -21,6 +22,7 @@ import {
  * state: the section keeps its place in the layout, its content does not.
  */
 export default function ConsultationBackgroundCard({
+  patientId,
   locked = false,
   loading = false,
   background,
@@ -29,9 +31,9 @@ export default function ConsultationBackgroundCard({
   expanded = false,
   onExpandedChange,
   followed = [],
-  monitorings = [],
 }) {
   const { registry } = useClinicalRegistry();
+  const conditionsQuery = usePatientConditions(patientId, { enabled: !locked });
   if (locked) {
     return (
       <div className="flex items-start gap-3 py-1" role="note">
@@ -59,26 +61,25 @@ export default function ConsultationBackgroundCard({
     handleChange({ ...current, ...sliceBackground(background, section) });
   }
 
-  // Read-only summary: Currently Monitored (the conditions addressed in this
-  // visit flagged), other known conditions, allergies, hospitalizations and
-  // surgeries. Assessment handles new diagnoses; Care Plan decides what
-  // happens to a followed condition.
-  const { monitored, other } = backgroundConditionGroups({
+  // Read-only summary: the patient's medical conditions by clinical source
+  // (the conditions followed in this visit flagged), allergies,
+  // hospitalizations and surgeries. Assessment handles new diagnoses; Care
+  // Plan decides what happens to a followed condition.
+  const groups = backgroundConditionGroups({
     diseases: current?.currentDiseases,
-    monitorings,
+    conditions: conditionsQuery.data?.conditions,
+    legacyMonitorings: conditionsQuery.data?.legacyMonitorings,
     followed,
     registry,
   });
-  const describe = (condition) => (condition.status ? `${condition.name} (${condition.status})` : condition.name);
   const text = (value) => String(value || "").trim();
   const lines = [
-    { key: "monitored", label: "Currently Monitored", conditions: monitored, empty: "None" },
-    { key: "other", label: "Other conditions", text: other.map(describe).join("; ") },
     { key: "allergies", label: "Allergies", text: text(current?.allergies) },
     { key: "hospitalizations", label: "Hospitalizations", text: text(current?.hospitalizations) },
     { key: "surgeries", label: "Surgeries", text: text(current?.surgeries) },
   ];
-  const isEmpty = lines.every((line) => (line.conditions ? line.conditions.length === 0 : !line.text));
+  const noConditions = Object.values(groups).every((group) => group.length === 0);
+  const isEmpty = noConditions && lines.every((line) => !line.text);
 
   return (
     <div>
@@ -93,31 +94,26 @@ export default function ConsultationBackgroundCard({
             (isEmpty ? (
               <p className="text-sm text-gray-500">No background recorded yet.</p>
             ) : (
-              <dl className="space-y-1 text-[12.5px]">
-                {lines.map((line) => (
-                  <div key={line.key} className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3">
-                    <dt className="text-gray-500">{line.label}</dt>
-                    <dd className={`m-0 min-w-0 break-words ${line.conditions ? line.conditions.length ? "text-gray-900" : "text-gray-400" : line.text ? "text-gray-900" : "text-gray-400"}`}>
-                      {line.conditions ? (
-                        line.conditions.length ? (
-                          <ul className="m-0 list-none space-y-0.5 p-0">
-                            {line.conditions.map((condition) => (
-                              <li key={condition.key} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                                <span>{describe(condition)}</span>
-                                {condition.addressed && <AddressedBadge />}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          line.empty
-                        )
-                      ) : (
-                        line.text || "Not recorded"
-                      )}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
+              <div className="space-y-2 text-[12.5px]">
+                <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3">
+                  <p className="text-gray-500">Medical Conditions</p>
+                  <MedicalConditionsGroups
+                    groups={groups}
+                    isLoading={conditionsQuery.isLoading}
+                    isError={conditionsQuery.isError}
+                  />
+                </div>
+                <dl className="space-y-1">
+                  {lines.map((line) => (
+                    <div key={line.key} className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3">
+                      <dt className="text-gray-500">{line.label}</dt>
+                      <dd className={"m-0 min-w-0 break-words " + (line.text ? "text-gray-900" : "text-gray-400")}>
+                        {line.text || "Not recorded"}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
             ))}
         </div>
         <button
@@ -135,9 +131,9 @@ export default function ConsultationBackgroundCard({
           <BackgroundEditor
             value={current}
             onChange={handleChange}
+            conditionGroups={groups}
             editedSections={editedSections}
             onRevertSection={revertSection}
-            followed={followed}
           />
         </div>
       )}

@@ -6,6 +6,7 @@ import {
   backgroundChangeRows,
   buildBackgroundUpdate,
   editedSectionKeys,
+  newPatientReportedCondition,
   overlayBackgroundUpdate,
   readBackgroundConflicts,
   resolveBackgroundConflicts,
@@ -125,4 +126,43 @@ test("conflict choices rebase kept sections and drop the others", () => {
   assert.deepEqual(resolved.baseRevisions, { medical: 5 });
   assert.deepEqual(editedSectionKeys(resolved), ["medical"]);
   assert.equal(resolveBackgroundConflicts(update, conflicts, { medical: "latest", social: "latest" }), null);
+});
+
+test("a new condition is patient-reported: name and optional note, no status", () => {
+  assert.deepEqual(newPatientReportedCondition("  Migraine ", " since 2020 "), {
+    name: "Migraine",
+    note: "since 2020",
+    source: "Patient-reported",
+  });
+  assert.deepEqual(newPatientReportedCondition("Gout"), { name: "Gout", note: "", source: "Patient-reported" });
+  assert.equal(newPatientReportedCondition("   "), null);
+});
+
+test("adding a patient-reported condition stages the medical section and keeps legacy entries unchanged", () => {
+  const withLegacy = {
+    ...loaded,
+    currentDiseases: [{ name: "Asthma", status: "Active", firstRecorded: "2025-01-02", source: "Consultation", conditionKey: null }],
+  };
+  const edited = structuredClone(withLegacy);
+  edited.currentDiseases.push(newPatientReportedCondition("Migraine", "since 2020"));
+  const update = buildBackgroundUpdate(withLegacy, edited);
+  const [legacy, added] = update.sections.medical.currentDiseases;
+
+  assert.deepEqual(editedSectionKeys(update), ["medical"]);
+  assert.deepEqual(legacy, sliceBackground(withLegacy, "medical").currentDiseases[0]);
+  assert.equal(added.name, "Migraine");
+  assert.equal(added.note, "since 2020");
+  assert.equal(added.source, "Patient-reported");
+  assert.equal(added.status, "");
+});
+
+test("a patient-reported note edit is an edit and shows as a change row", () => {
+  const before = { ...loaded, currentDiseases: [{ name: "Migraine", note: "", source: "Patient-reported" }] };
+  const after = { ...loaded, currentDiseases: [{ name: "Migraine", note: "since 2020", source: "Patient-reported" }] };
+
+  assert.notEqual(buildBackgroundUpdate(before, after), null);
+  assert.deepEqual(
+    backgroundChangeRows(before, after, "medical").map((row) => [row.before, row.after]),
+    [["Migraine", "Migraine - since 2020"]],
+  );
 });

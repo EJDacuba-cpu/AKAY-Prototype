@@ -67,7 +67,7 @@ function bmiLabel(bmi) {
  * Centre column of the Overview board: the patient's realistic body figure
  * (front or back, switched only by its flip button) with small markers for
  * findings recorded on the latest visit (default) or on every loaded visit,
- * beside the Current Conditions / Findings / Allergies / Medications
+ * beside the Medical Conditions / Findings / Allergies / Medications
  * dropdowns, and the latest BMI under the figure.
  *
  * Findings lists one row per affected area (side + region). Hovering or
@@ -86,6 +86,7 @@ export default function AnatomyFindingsPanel({
   records = [],
   recordsLoading = false,
   background,
+  conditions,
   onViewRecord,
   sex,
   birthDate,
@@ -251,7 +252,7 @@ export default function AnatomyFindingsPanel({
         {showRowLine && <FindingLinkOverlay containerRef={panelRef} itemEl={focus.el} markerRegion={focus.region} />}
 
         <div className="flex h-80 shrink-0 flex-col border-b border-gray-100 pb-2 md:h-auto md:w-2/5 md:max-w-72 md:border-b-0 md:border-r md:pb-0 md:pr-3">
-          <PatientFactsSections background={background} records={records} recordsLoading={recordsLoading} findings={findings} />
+          <PatientFactsSections background={background} conditions={conditions} records={records} recordsLoading={recordsLoading} findings={findings} />
         </div>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto [scrollbar-width:thin] md:pr-0.5">

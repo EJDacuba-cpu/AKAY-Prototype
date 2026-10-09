@@ -38,6 +38,7 @@ import { getSpecializedRecordPrograms } from "../../utils/healthRecordPrograms";
 import { getCareTracking } from "../../utils/careTracking";
 import { calculateAge, normalizePhilippineContact } from "../../utils/patientUtils";
 import { queryKeys } from "../../utils/queryKeys";
+import usePatientConditionGroups from "../../hooks/usePatientConditionGroups";
 import { getCurrentUser } from "../../utils/auth";
 import {
   createPatientForm,
@@ -203,6 +204,7 @@ export default function PatientDetails() {
     patientOverride &&
     String(patientOverride.id || patientOverride.patientId || "") === String(patientId);
   const patient = overrideMatchesPatient ? patientOverride : patientData || null;
+  const conditions = usePatientConditionGroups(patientId, patient?.medicalBackground?.currentDiseases);
   const loadError =
     patientError ||
     (canViewHistory && (recordsError || referralsError || followUpsError)) ||
@@ -490,6 +492,7 @@ export default function PatientDetails() {
                       key={patientId}
                       age={getPatientAge(patient)}
                       background={patient.medicalBackground}
+                      conditions={conditions}
                       sex={patient.sex}
                       birthDate={getPatientBirthDate(patient)}
                       records={records}
@@ -560,6 +563,7 @@ export default function PatientDetails() {
                   <PatientBackgroundTab
                     patientId={patientId}
                     background={patient.medicalBackground}
+                    conditions={conditions}
                     basePath="/bhc"
                   />
                 )}

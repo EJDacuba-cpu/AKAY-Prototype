@@ -78,12 +78,13 @@ export function normalizeMedicalBackground(source) {
           .filter((entry) => entry && typeof entry === "object")
           .map((entry) => ({
             name: entry.name || "",
+            // Optional, patient-reported entries only.
+            note: entry.note || "",
             status: entry.status || "",
             firstRecorded: normalizeDate(entry.firstRecorded),
             lastConfirmed: normalizeDate(entry.lastConfirmed),
             source: entry.source || "",
-            // Server-resolved; groupCurrentDiseases files an entry under
-            // Monitored Conditions by it.
+            // Server-resolved.
             conditionKey: entry.conditionKey || null,
           }))
       : [],

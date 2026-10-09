@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   alertConditionNames,
+  conditionEventSourceLabel,
   conditionStatusLabel,
   groupMedicalConditions,
   mapPatientConditions,
@@ -190,4 +191,10 @@ test("the conditions payload is mapped to camelCase", () => {
     ],
   });
   assert.deepEqual(mapPatientConditions(null), { conditions: [], legacyMonitorings: [] });
+});
+
+test("status change events name their source as RHU feedback or RHU record", () => {
+  assert.equal(conditionEventSourceLabel("rhu_feedback"), "RHU feedback");
+  assert.equal(conditionEventSourceLabel("rhu_record"), "RHU record");
+  assert.equal(conditionEventSourceLabel("anything_else"), "");
 });

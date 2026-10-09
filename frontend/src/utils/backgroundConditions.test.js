@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { backgroundConditionGroups } from "./backgroundConditions.js";
+import { groupMedicalConditions } from "./medicalConditions.js";
 
 const registry = {
   monitored_conditions: {
@@ -9,48 +10,65 @@ const registry = {
     diabetes_mellitus: { name: "Diabetes Mellitus", aliases: ["DM"] },
   },
 };
+const hypertension = {
+  id: 1,
+  conditionName: "Hypertension",
+  conditionIdentity: "hypertension",
+  status: "active",
+  confirmedAt: "2026-10-01",
+  monitoring: { id: 4, startedAt: "2026-10-03" },
+};
 const diseases = [
-  { name: "HTN", status: "Active", conditionKey: "hypertension" },
-  { name: "Diabetes Mellitus", status: "Controlled", conditionKey: "diabetes_mellitus" },
-  { name: "Gastritis", status: "Resolved", conditionKey: null },
+  { name: "HTN", status: "Active", source: "Consultation", conditionKey: "hypertension" },
+  { name: "Gastritis", status: "Resolved", source: "Consultation", conditionKey: null },
+  { name: "Migraine", note: "since 2020", source: "Patient-reported", status: null },
 ];
-const htn = { id: 4, conditionName: "Hypertension", conditionKey: "hypertension", startedAt: "2026-10-03" };
+const followedHtn = { id: 4, conditionName: "Hypertension", conditionKey: "hypertension", startedAt: "2026-10-03" };
 
-test("registry-monitored conditions are Currently Monitored; the rest are Other Conditions", () => {
-  const { monitored, other } = backgroundConditionGroups({ diseases, registry });
-  assert.deepEqual(monitored.map((c) => [c.name, c.status, c.addressed]), [
-    ["HTN", "Active", false],
-    ["Diabetes Mellitus", "Controlled", false],
+test("groups come from groupMedicalConditions", () => {
+  const input = { diseases, conditions: [hypertension], legacyMonitorings: [], registry };
+  const groups = backgroundConditionGroups(input);
+  const expected = groupMedicalConditions({ conditions: [hypertension], currentDiseases: diseases, registry });
+
+  assert.deepEqual(groups.confirmed.map((c) => c.conditionName), expected.confirmed.map((c) => c.conditionName));
+  assert.deepEqual(groups.unverified, expected.unverified);
+  assert.deepEqual(groups.patientReported, expected.patientReported);
+  assert.deepEqual(groups.underEvaluation, expected.underEvaluation);
+  assert.deepEqual(groups.past, expected.past);
+});
+
+test("a documented entry matching a confirmed condition is not listed twice", () => {
+  const { confirmed, unverified } = backgroundConditionGroups({ diseases, conditions: [hypertension], registry });
+  assert.equal(confirmed.length, 1);
+  assert.deepEqual(unverified.map((d) => d.name), ["Gastritis"]);
+});
+
+test("a condition followed in this visit is flagged addressed, others are not", () => {
+  const dm = { id: 2, conditionName: "Diabetes Mellitus", conditionIdentity: "diabetes_mellitus", status: "controlled" };
+  const { confirmed } = backgroundConditionGroups({
+    diseases,
+    conditions: [hypertension, dm],
+    followed: [followedHtn],
+    registry,
+  });
+  assert.deepEqual(confirmed.map((c) => [c.conditionName, c.addressed]), [
+    ["Hypertension", true],
+    ["Diabetes Mellitus", false],
   ]);
-  assert.deepEqual(other.map((c) => [c.name, c.status]), [["Gastritis", "Resolved"]]);
 });
 
-test("a condition addressed in this visit is flagged, not listed twice", () => {
-  const { monitored } = backgroundConditionGroups({ diseases, followed: [htn], registry });
-  assert.deepEqual(monitored.map((c) => [c.name, c.addressed]), [["HTN", true], ["Diabetes Mellitus", false]]);
+test("a followed legacy monitoring is flagged addressed", () => {
+  const legacy = { id: 4, conditionName: "Hypertension", conditionIdentity: "hypertension", startedAt: "2026-09-01" };
+  const { confirmed } = backgroundConditionGroups({ legacyMonitorings: [legacy], followed: [followedHtn], registry });
+  assert.deepEqual(confirmed.map((c) => [c.kind, c.addressed]), [["legacy-monitoring", true]]);
 });
 
-test("a followed condition with no documented entry still shows as Currently Monitored", () => {
-  const asthma = { id: 7, conditionName: "Asthma", conditionKey: null };
-  const { monitored, other } = backgroundConditionGroups({ diseases: [], followed: [asthma], registry });
-  assert.deepEqual(monitored.map((c) => [c.name, c.status, c.addressed]), [["Asthma", "", true]]);
-  assert.deepEqual(other, []);
-});
-
-test("an active free-text monitoring moves its documented entry out of Other Conditions", () => {
-  const gastritis = { id: 9, conditionName: "Gastritis", conditionKey: null };
-  const { monitored, other } = backgroundConditionGroups({ diseases, monitorings: [gastritis], registry });
-  assert.deepEqual(monitored.map((c) => [c.name, c.addressed]), [["HTN", false], ["Diabetes Mellitus", false], ["Gastritis", false]]);
-  assert.deepEqual(other, []);
-});
-
-test("nothing monitored and nothing followed leaves Currently Monitored empty", () => {
-  assert.deepEqual(backgroundConditionGroups({ diseases: [diseases[2]], registry }).monitored, []);
-  assert.deepEqual(backgroundConditionGroups({ registry }), { monitored: [], other: [] });
-});
-
-test("a followed condition is also an active monitoring: listed once", () => {
-  const { monitored } = backgroundConditionGroups({ diseases, monitorings: [htn], followed: [htn], registry });
-  assert.equal(monitored.filter((c) => c.name === "HTN").length, 1);
-  assert.equal(monitored.length, 2);
+test("nothing documented leaves every group empty", () => {
+  assert.deepEqual(backgroundConditionGroups({ registry }), {
+    confirmed: [],
+    underEvaluation: [],
+    unverified: [],
+    patientReported: [],
+    past: [],
+  });
 });

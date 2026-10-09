@@ -5,6 +5,7 @@ import { DottedSpinner } from "../../common/loading/SoftLoadingOverlay";
 import SummarySection from "./SummarySection";
 import PatientAlertChips from "./PatientAlertChips";
 import { formatPatientAddress } from "./PatientIdentityCard";
+import usePatientConditionGroups from "../../../hooks/usePatientConditionGroups";
 import usePatientSummary from "../../../hooks/usePatientSummary";
 import { getCurrentUser } from "../../../utils/auth";
 import { calculateBmi, formatBmi } from "../../../utils/bmi";
@@ -94,6 +95,7 @@ function VitalsGrid({ records }) {
 export default function PatientSummaryPanel({ patientId, basePath = "/bhc", showTitle = false }) {
   const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
   const { patient, records, latest, isPending, error, refetch } = usePatientSummary(patientId);
+  const { groups: conditionGroups } = usePatientConditionGroups(patientId, patient?.medicalBackground?.currentDiseases);
 
   if (isPending) {
     return (
@@ -146,7 +148,7 @@ export default function PatientSummaryPanel({ patientId, basePath = "/bhc", show
               Alerts
             </h3>
             <div className="px-3 py-2">
-              <PatientAlertChips background={patient.medicalBackground} />
+              <PatientAlertChips background={patient.medicalBackground} conditionGroups={conditionGroups} />
             </div>
           </section>
         )}

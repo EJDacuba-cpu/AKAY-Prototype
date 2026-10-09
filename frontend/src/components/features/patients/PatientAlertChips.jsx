@@ -1,3 +1,5 @@
+import { alertConditionNames } from "../../../utils/medicalConditions";
+
 export const NO_ALLERGY_PATTERN = /^(none|n\/a|na|nka|nkda|no known.*|no allergies?|-+)$/i;
 const MAX_DISEASE_CHIPS = 3;
 
@@ -19,13 +21,16 @@ export function Chip({ tone = "neutral", children, title }) {
   );
 }
 
-/** Allergies (red when recorded) and up to three active conditions, as one chip row. */
-export default function PatientAlertChips({ background = {} }) {
+/**
+ * Allergies (red when recorded) and up to three confirmed / monitored
+ * conditions, as one chip row. Only RHU-confirmed (or legacy-monitored)
+ * conditions alert; unverified, under-evaluation and patient-reported ones do not.
+ */
+export default function PatientAlertChips({ background = {}, conditionGroups }) {
   const allergies = String(background?.allergies || "").trim();
-  const activeDiseases = (Array.isArray(background?.currentDiseases) ? background.currentDiseases : [])
-    .filter((disease) => disease?.name && String(disease.status || "Active").toLowerCase() === "active");
-  const shownDiseases = activeDiseases.slice(0, MAX_DISEASE_CHIPS);
-  const hiddenCount = activeDiseases.length - shownDiseases.length;
+  const alertNames = alertConditionNames(conditionGroups).filter(Boolean);
+  const shownDiseases = alertNames.slice(0, MAX_DISEASE_CHIPS);
+  const hiddenCount = alertNames.length - shownDiseases.length;
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -36,8 +41,8 @@ export default function PatientAlertChips({ background = {} }) {
       ) : (
         <Chip tone="alert" title={allergies}>Allergy: {allergies}</Chip>
       )}
-      {shownDiseases.map((disease) => (
-        <Chip key={disease.name} tone="neutral">{disease.name}</Chip>
+      {shownDiseases.map((name) => (
+        <Chip key={name} tone="neutral">{name}</Chip>
       ))}
       {hiddenCount > 0 && <Chip tone="muted">+{hiddenCount} more</Chip>}
     </div>

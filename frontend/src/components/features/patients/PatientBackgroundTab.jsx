@@ -2,10 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 
-import useClinicalRegistry from "../../../hooks/useClinicalRegistry";
 import { getPatientBackgroundHistory } from "../../../services/patientService";
 import { formatLongDate } from "../../../utils/formatters";
-import { groupCurrentDiseases } from "../../../utils/currentConditions";
 import { queryKeys } from "../../../utils/queryKeys";
 import {
   BACKGROUND_SECTION_FIELDS,
@@ -13,7 +11,7 @@ import {
   BACKGROUND_SECTION_LABELS,
   backgroundChangeRows,
 } from "../../../utils/backgroundUpdate";
-import { DiseaseGroupView } from "./background/BackgroundFields";
+import MedicalConditionsGroups from "./MedicalConditionsGroups";
 import { FieldList, ProfileSection } from "./profile/ProfileSection";
 
 function readValue(background, field) {
@@ -104,15 +102,13 @@ function ChangesLog({ section, entries, lastUpdated, isLoading, isError, basePat
  * History, read-only, each with its dated Changes log. Reviewing and updating
  * happens inside a consultation (ConsultationBackgroundCard), never here.
  */
-export default function PatientBackgroundTab({ patientId, background, basePath = "/bhc" }) {
-  const { registry } = useClinicalRegistry();
+export default function PatientBackgroundTab({ patientId, background, conditions, basePath = "/bhc" }) {
   const history = useQuery({
     queryKey: queryKeys.patientBackgroundHistory(patientId),
     queryFn: () => getPatientBackgroundHistory(patientId),
     enabled: Boolean(patientId),
   });
   const entries = Array.isArray(history.data) ? history.data : [];
-  const { monitored, other } = groupCurrentDiseases(background?.currentDiseases, registry);
 
   return (
     <div>
@@ -131,9 +127,13 @@ export default function PatientBackgroundTab({ patientId, background, basePath =
             meta={lastUpdated ? `Updated ${formatLongDate(lastUpdated, "")}` : "Not yet recorded"}
           >
             {section === "medical" && (
-              <div className="mb-3 space-y-3">
-                <DiseaseGroupView title="Monitored Conditions" diseases={monitored} emptyText="None recorded" />
-                <DiseaseGroupView title="Other Conditions" diseases={other} emptyText="Not yet recorded" />
+              <div className="mb-3">
+                <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Medical Conditions</h3>
+                <MedicalConditionsGroups
+                  groups={conditions?.groups}
+                  isLoading={conditions?.isLoading}
+                  isError={conditions?.isError}
+                />
               </div>
             )}
             <FieldList rows={fields.map((field) => [field.label, readValue(background, field)])} />

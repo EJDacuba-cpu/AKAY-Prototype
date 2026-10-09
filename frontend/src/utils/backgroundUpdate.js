@@ -38,10 +38,22 @@ export const BACKGROUND_SECTION_FIELDS = {
   ],
 };
 
-const DISEASE_FIELDS = ["name", "status", "firstRecorded", "lastConfirmed", "source", "conditionKey"];
+const DISEASE_FIELDS = ["name", "note", "status", "firstRecorded", "lastConfirmed", "source", "conditionKey"];
 
 function text(value) {
   return value === null || value === undefined ? "" : String(value);
+}
+
+export const PATIENT_REPORTED_SOURCE = "Patient-reported";
+
+/**
+ * A Previous Condition the patient reports: a name and an optional note, no
+ * status (only RHU sets one). The server stamps the rest. Null for a blank name.
+ */
+export function newPatientReportedCondition(name, note = "") {
+  const trimmed = text(name).trim();
+  if (!trimmed) return null;
+  return { name: trimmed, note: text(note).trim(), source: PATIENT_REPORTED_SOURCE };
 }
 
 function diseaseList(value) {
@@ -122,11 +134,14 @@ export function editedSectionKeys(update) {
   return BACKGROUND_SECTION_KEYS.filter((section) => update?.sections?.[section]);
 }
 
-/** "Asthma (Controlled); Hypertension (Active)". */
+/** "Asthma (Controlled); Migraine - since 2020". */
 export function formatDiseases(diseases) {
   return diseaseList(diseases)
     .filter((disease) => disease.name.trim())
-    .map((disease) => (disease.status ? `${disease.name} (${disease.status})` : disease.name))
+    .map((disease) => {
+      const label = disease.status ? `${disease.name} (${disease.status})` : disease.name;
+      return disease.note.trim() ? `${label} - ${disease.note.trim()}` : label;
+    })
     .join("; ");
 }
 
