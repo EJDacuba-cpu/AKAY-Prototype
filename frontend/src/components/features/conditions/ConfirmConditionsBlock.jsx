@@ -8,6 +8,7 @@ import { conditionStatusLabel } from "../../../utils/medicalConditions";
 import {
   CONDITION_STATUS_OPTIONS,
   canRecommendBhcMonitoring,
+  patchConditionRow,
 } from "../../../utils/conditionConfirmations";
 
 const OPEN_STATUSES = new Set(["under_evaluation", "active", "controlled"]);
@@ -39,7 +40,12 @@ function ConditionRow({ title, row, errors, index, onPatch, onRemove, nameField 
     <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/50 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          {nameField || <p className="text-sm font-semibold text-slate-800">{title}</p>}
+          {nameField || (
+            <>
+              <p className="text-sm font-semibold text-slate-800">{title}</p>
+              <FieldError message={error("name")} />
+            </>
+          )}
         </div>
         {onRemove && (
           <button
@@ -129,7 +135,7 @@ export default function ConfirmConditionsBlock({ patientId, rows, onChange, erro
   const contextLines = context.filter((item) => item?.value);
 
   function patchRow(index, patch) {
-    onChange(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+    onChange(rows.map((row, i) => (i === index ? patchConditionRow(row, patch) : row)));
   }
 
   function patchExisting(condition, patch) {
@@ -137,15 +143,17 @@ export default function ConfirmConditionsBlock({ patientId, rows, onChange, erro
     if (index >= 0) return patchRow(index, patch);
     return onChange([
       ...rows,
-      {
-        conditionId: condition.id,
-        name: condition.conditionName,
-        status: condition.status,
-        note: "",
-        setOnRecord: false,
-        recommend: false,
-        ...patch,
-      },
+      patchConditionRow(
+        {
+          conditionId: condition.id,
+          name: condition.conditionName,
+          status: condition.status,
+          note: "",
+          setOnRecord: false,
+          recommend: false,
+        },
+        patch,
+      ),
     ]);
   }
 

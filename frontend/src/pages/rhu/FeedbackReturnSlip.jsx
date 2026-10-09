@@ -367,6 +367,12 @@ export default function FeedbackReturnSlip() {
   const [conditionRows, setConditionRows] = useState([]);
   const [conditionErrors, setConditionErrors] = useState({});
 
+  // Confirmations belong to one patient's referral: never carry them across.
+  useEffect(() => {
+    setConditionRows([]);
+    setConditionErrors({});
+  }, [selectedReferralId]);
+
   function handleChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }

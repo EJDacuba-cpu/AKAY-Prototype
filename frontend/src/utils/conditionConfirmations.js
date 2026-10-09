@@ -27,6 +27,17 @@ const nameKey = (name) => String(name || "").replace(/\s+/g, " ").trim().toLower
 
 const ticked = (rows) => (Array.isArray(rows) ? rows : []).filter((row) => row?.setOnRecord === true);
 
+/**
+ * A row after an edit. "Recommend BHC monitoring" only applies to an Active or
+ * Controlled condition, so it is cleared whenever the status stops allowing it
+ * (it must not come back by itself when the status later returns to Active).
+ */
+export function patchConditionRow(row, patch) {
+  const next = { ...row, ...patch };
+  if (!canRecommendBhcMonitoring(next.status)) next.recommend = false;
+  return next;
+}
+
 /** The request rows: only those ticked "Set on patient's record". */
 export function buildConditionConfirmations(rows) {
   return ticked(rows).map((row) => {
@@ -44,7 +55,7 @@ export function buildConditionConfirmations(rows) {
 /** Errors keyed `conditionConfirmations.<index>.<field>`; unticked rows are skipped. */
 export function validateConditionConfirmations(rows) {
   const errors = {};
-  const seen = new Set();
+  const seen = new Map();
   (Array.isArray(rows) ? rows : []).forEach((row, index) => {
     if (row?.setOnRecord !== true) return;
     const key = (field) => `${FIELD_PREFIX}.${index}.${field}`;
@@ -57,8 +68,14 @@ export function validateConditionConfirmations(rows) {
     }
     if (name) {
       const identity = nameKey(name);
-      if (seen.has(identity)) errors[key("name")] ||= "This condition is listed twice.";
-      seen.add(identity);
+      const first = seen.get(identity);
+      if (first === undefined) {
+        seen.set(identity, index);
+      } else {
+        // Show the error on an editable (new) row when one is involved, else on the later row.
+        const target = !row.conditionId ? index : !rows[first].conditionId ? first : index;
+        errors[`${FIELD_PREFIX}.${target}.name`] ||= "This condition is listed twice.";
+      }
     }
   });
   if (ticked(rows).length > MAX_CONFIRMATIONS) {
