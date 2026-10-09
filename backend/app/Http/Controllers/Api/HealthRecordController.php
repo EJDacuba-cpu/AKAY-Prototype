@@ -307,6 +307,11 @@ class HealthRecordController extends Controller
                     }
                 }
 
+                // After the referral or the hold exists, so a blocked referral is audited too.
+                if (is_array($referralData)) {
+                    $this->auditSharedReferral($request, $auditLogger, $record, $data['diagnoses'] ?? [], $carePlan, $continuedMonitorings);
+                }
+
                 $auditLogger->log($request, 'created', 'health_records', "Created health record {$record->id}.");
                 if ($lockedDraft !== null) {
                     $drafts->consumeLocked(
@@ -898,6 +903,43 @@ class HealthRecordController extends Controller
             'code' => 'CONSULTATION_ALREADY_RECORDED',
             'health_record_id' => $record?->id,
         ], 409);
+    }
+
+    /**
+     * Records that the worker confirmed one referral covers several items
+     * (the request already rejected an unconfirmed one). Not a clinical check.
+     *
+     * @param  array<int, mixed>  $diagnoses
+     * @param  array<string, mixed>  $carePlan
+     */
+    private function auditSharedReferral(
+        Request $request,
+        AuditLogger $auditLogger,
+        HealthRecord $record,
+        array $diagnoses,
+        array $carePlan,
+        \Illuminate\Support\Collection $continuedMonitorings
+    ): void {
+        $monitoringIds = $carePlan['monitoring_referrals'] ?? [];
+        $count = \App\Services\CarePlan::referralItemCount($diagnoses, $monitoringIds);
+        if ($count < 2) {
+            return;
+        }
+        $names = [];
+        foreach ($diagnoses as $diagnosis) {
+            if (is_array($diagnosis) && \App\Services\CarePlan::refers($diagnosis['carePlan'] ?? null)) {
+                $names[] = trim((string) ($diagnosis['name'] ?? ''));
+            }
+        }
+        foreach (array_unique(array_map('intval', $monitoringIds)) as $id) {
+            $names[] = (string) $continuedMonitorings->get($id)?->condition_name;
+        }
+        $auditLogger->log(
+            $request,
+            'acknowledged',
+            'referrals',
+            "Shared referral acknowledged for health record {$record->id}: {$count} items (".implode('; ', array_filter($names)).'). Not a clinical compatibility check.'
+        );
     }
 
     private function auditDraftConsumed(

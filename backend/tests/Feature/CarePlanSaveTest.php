@@ -61,13 +61,23 @@ class CarePlanSaveTest extends TestCase
         return ConditionMonitoring::where('patient_id', $this->patient->id)->where('status', 'active')->get();
     }
 
-    /** Continued (legacy) monitoring: a row started before any RHU condition was linked. */
-    private function legacyMonitoring(string $name, ?string $key = null, ?Patient $patient = null): ConditionMonitoring
+    /** Continued monitoring: an RHU-confirmed condition linked to the row (legacy rows cannot be continued). */
+    private function verifiedMonitoring(string $name, ?string $key = null, ?Patient $patient = null): ConditionMonitoring
     {
         $patient ??= $this->patient;
+        $condition = PatientCondition::create([
+            'patient_id' => $patient->id,
+            'condition_name' => $name,
+            'condition_identity' => $key ?? 'name:'.strtolower($name),
+            'status' => 'active',
+            'confirmed_at' => now(),
+            'source_type' => PatientCondition::SOURCE_RHU_RECORD,
+            'source_id' => 1,
+        ]);
         $record = HealthRecord::create(['patient_id' => $patient->id, 'category' => 'General Consultation', 'barangay_health_center_id' => $patient->barangay_health_center_id]);
         $monitoring = ConditionMonitoring::create([
             'patient_id' => $patient->id,
+            'patient_condition_id' => $condition->id,
             'barangay_health_center_id' => $patient->barangay_health_center_id,
             'condition_key' => $key,
             'condition_name' => $name,
@@ -96,7 +106,7 @@ class CarePlanSaveTest extends TestCase
 
     public function test_continued_monitoring_is_kept_active_without_a_diagnosis(): void
     {
-        $monitoring = $this->legacyMonitoring('Asthma');
+        $monitoring = $this->verifiedMonitoring('Asthma');
 
         $this->save([], ['continued_monitoring_ids' => [$monitoring->id]])->assertCreated();
 
@@ -106,7 +116,7 @@ class CarePlanSaveTest extends TestCase
 
     public function test_a_follow_up_of_continued_monitoring_needs_no_new_diagnosis(): void
     {
-        $monitoring = $this->legacyMonitoring('Asthma');
+        $monitoring = $this->verifiedMonitoring('Asthma');
 
         $id = $this->save([], ['continued_monitoring_ids' => [$monitoring->id]], [
             'monitoring_data' => [
@@ -133,7 +143,7 @@ class CarePlanSaveTest extends TestCase
 
     public function test_a_follow_up_whose_continued_monitoring_is_all_stopped_still_needs_a_diagnosis(): void
     {
-        $monitoring = $this->legacyMonitoring('Asthma');
+        $monitoring = $this->verifiedMonitoring('Asthma');
 
         $this->save([], [
             'continued_monitoring_ids' => [$monitoring->id],
@@ -149,7 +159,7 @@ class CarePlanSaveTest extends TestCase
 
     public function test_a_referral_without_a_diagnosis_is_rejected_even_when_continuing_monitoring(): void
     {
-        $monitoring = $this->legacyMonitoring('Asthma');
+        $monitoring = $this->verifiedMonitoring('Asthma');
 
         $this->save([], ['continued_monitoring_ids' => [$monitoring->id]], $this->referral())
             ->assertUnprocessable()->assertJsonValidationErrors(['diagnosis']);
@@ -175,7 +185,7 @@ class CarePlanSaveTest extends TestCase
 
     public function test_a_stop_must_target_a_continued_record(): void
     {
-        $monitoring = $this->legacyMonitoring('Asthma');
+        $monitoring = $this->verifiedMonitoring('Asthma');
 
         $this->save([], ['monitoring_stops' => [['monitoring_id' => $monitoring->id, 'reason' => 'Resolved']]])
             ->assertUnprocessable()->assertJsonValidationErrors(['care_plan.monitoring_stops.0.monitoring_id']);
@@ -185,7 +195,7 @@ class CarePlanSaveTest extends TestCase
     /** @return array{0: ConditionMonitoring, 1: int} */
     private function activeHypertension(): array
     {
-        $monitoring = $this->legacyMonitoring('Hypertension', 'hypertension');
+        $monitoring = $this->verifiedMonitoring('Hypertension', 'hypertension');
 
         return [$monitoring, HealthRecord::count()];
     }
@@ -197,7 +207,7 @@ class CarePlanSaveTest extends TestCase
         // referral of the followed condition is the monitoring_referrals entry.
         $id = $this->save(
             [['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'refer']],
-            ['continued_monitoring_ids' => [$monitoring->id], 'monitoring_referrals' => [$monitoring->id]],
+            ['continued_monitoring_ids' => [$monitoring->id], 'monitoring_referrals' => [$monitoring->id], 'shared_referral_acknowledged' => true],
             $this->referral()
         )->assertCreated()->json('data.id');
 
@@ -209,7 +219,7 @@ class CarePlanSaveTest extends TestCase
 
     public function test_stale_or_foreign_continued_monitoring_is_rejected_and_nothing_saves(): void
     {
-        $monitoring = $this->legacyMonitoring('Asthma');
+        $monitoring = $this->verifiedMonitoring('Asthma');
         $monitoring->update(['status' => 'stopped', 'stopped_at' => now()]);
         $before = HealthRecord::count();
 
@@ -254,7 +264,7 @@ class CarePlanSaveTest extends TestCase
 
     public function test_a_continued_tb_monitoring_record_requires_its_monitoring_details(): void
     {
-        $monitoring = $this->legacyMonitoring('Tuberculosis', 'tuberculosis');
+        $monitoring = $this->verifiedMonitoring('Tuberculosis', 'tuberculosis');
         $before = HealthRecord::count();
 
         $this->save([], ['continued_monitoring_ids' => [$monitoring->id]])
@@ -327,7 +337,7 @@ class CarePlanSaveTest extends TestCase
 
     public function test_another_patients_active_monitoring_cannot_be_continued(): void
     {
-        $foreign = $this->legacyMonitoring('Asthma', null, $this->otherPatient);
+        $foreign = $this->verifiedMonitoring('Asthma', null, $this->otherPatient);
         $before = HealthRecord::count();
 
         $this->save([], ['continued_monitoring_ids' => [$foreign->id]])

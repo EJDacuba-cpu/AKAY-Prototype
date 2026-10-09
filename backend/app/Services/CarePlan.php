@@ -129,6 +129,24 @@ final class CarePlan
         return $names === [] ? null : 'Recheck: '.implode('; ', $names);
     }
 
+    /**
+     * How many items one referral would cover: concerns set to Refer to RHU
+     * plus distinct monitored conditions referred in the same visit.
+     *
+     * @param  array<int, mixed>  $monitoringReferralIds
+     */
+    public static function referralItemCount(array $diagnoses, array $monitoringReferralIds): int
+    {
+        $concerns = 0;
+        foreach ($diagnoses as $diagnosis) {
+            if (is_array($diagnosis) && self::refers($diagnosis['carePlan'] ?? null)) {
+                $concerns++;
+            }
+        }
+
+        return $concerns + count(array_unique(array_map('intval', $monitoringReferralIds)));
+    }
+
     public static function refersAny(array $diagnoses): bool
     {
         foreach ($diagnoses as $diagnosis) {

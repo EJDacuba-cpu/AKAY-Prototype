@@ -350,6 +350,9 @@ class HealthRecordRequest extends FormRequest
             'care_plan.monitoring_referrals' => ['nullable', 'array', 'max:20'],
             'care_plan.monitoring_referrals.*' => ['integer', 'distinct'],
             'care_plan.monitoring_status_updates' => ['prohibited'],
+            // The worker's confirmation that one referral may cover several
+            // items; the after-validation check enforces it (not a clinical check).
+            'care_plan.shared_referral_acknowledged' => ['nullable', 'boolean'],
             'assessment_notes' => ['nullable', 'string', 'max:5000'],
             'treatment_notes' => ['nullable', 'string'],
             'medical_history' => ['nullable', 'string'],
@@ -477,6 +480,19 @@ class HealthRecordRequest extends FormRequest
                 $validator->errors()->add(
                     'needs_referral',
                     'A monitored condition is referred to the RHU, so this visit needs a referral. Add the referral or change the care plan.'
+                );
+            }
+            // One referral covering two or more items needs the worker's explicit
+            // confirmation. It is audited, never a clinical compatibility check.
+            if (
+                $this->isMethod('post')
+                && $needsReferral
+                && \App\Services\CarePlan::referralItemCount($this->diagnosesInput(), $referredIds) >= 2
+                && ! $this->boolean('care_plan.shared_referral_acknowledged')
+            ) {
+                $validator->errors()->add(
+                    'care_plan.shared_referral_acknowledged',
+                    'Confirm that all listed concerns can go to this facility with this priority, or change the care plan.'
                 );
             }
             if ($needsReferral && blank($this->input('referral.reason_for_referral'))) {

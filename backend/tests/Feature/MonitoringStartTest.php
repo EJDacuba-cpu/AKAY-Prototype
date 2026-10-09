@@ -25,6 +25,8 @@ class MonitoringStartTest extends TestCase
 
     private const ALREADY_MONITORED = 'This condition is already monitored at BHC.';
 
+    private const PENDING_RHU = 'This monitoring is pending RHU verification and cannot be continued.';
+
     private Patient $patient;
 
     private Patient $otherPatient;
@@ -294,14 +296,30 @@ class MonitoringStartTest extends TestCase
         $this->assertSame(0, ConditionMonitoring::count());
     }
 
-    public function test_legacy_monitoring_continues_refers_and_stops_as_before(): void
+    public function test_legacy_monitoring_cannot_be_continued(): void
     {
-        $htn = $this->legacyMonitoring('Hypertension', 'hypertension', 'hypertension');
         $asthma = $this->legacyMonitoring('Asthma', null, 'name:asthma');
-        $this->assertTrue($htn->isLegacy());
+        $this->assertTrue($asthma->isLegacy());
+        $before = HealthRecord::count();
 
-        $continued = $this->save(['continued_monitoring_ids' => [$htn->id, $asthma->id]])->assertCreated()->json('data.id');
-        $this->assertSame('active', $htn->fresh()->status);
+        $this->save(['continued_monitoring_ids' => [$asthma->id]])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['care_plan.continued_monitoring_ids.0' => self::PENDING_RHU]);
+        $this->assertSame($before, HealthRecord::count());
+        $this->assertSame('active', $asthma->fresh()->status);
+
+        // General Consultation and referral are never blocked by a legacy row.
+        $this->save([], [...$this->referral(), 'diagnosis' => 'Hypertension'])->assertCreated();
+        $this->save()->assertCreated();
+    }
+
+    public function test_a_linked_monitoring_continues_refers_and_stops(): void
+    {
+        $condition = $this->condition('Hypertension', 'hypertension');
+        $this->save(['start_monitoring_condition_ids' => [$condition->id]])->assertCreated();
+        $htn = ConditionMonitoring::where('patient_condition_id', $condition->id)->sole();
+
+        $continued = $this->save(['continued_monitoring_ids' => [$htn->id]])->assertCreated()->json('data.id');
         $this->assertSame('continued', $htn->visits()->where('health_record_id', $continued)->sole()->action);
 
         $referred = $this->save(['continued_monitoring_ids' => [$htn->id], 'monitoring_referrals' => [$htn->id]], $this->referral())
@@ -310,19 +328,20 @@ class MonitoringStartTest extends TestCase
         $this->assertTrue($htn->visits()->where('health_record_id', $referred)->sole()->referred);
 
         $stopped = $this->save([
-            'continued_monitoring_ids' => [$asthma->id],
-            'monitoring_stops' => [['monitoring_id' => $asthma->id, 'reason' => 'Resolved']],
+            'continued_monitoring_ids' => [$htn->id],
+            'monitoring_stops' => [['monitoring_id' => $htn->id, 'reason' => 'Resolved']],
         ])->assertCreated()->json('data.id');
-        $asthma->refresh();
-        $this->assertSame('stopped', $asthma->status);
-        $this->assertSame($stopped, $asthma->stopped_health_record_id);
-        $this->assertSame('Resolved', $asthma->stop_reason);
-        $this->assertTrue($asthma->isLegacy());
+        $htn->refresh();
+        $this->assertSame('stopped', $htn->status);
+        $this->assertSame($stopped, $htn->stopped_health_record_id);
+        $this->assertSame('Resolved', $htn->stop_reason);
     }
 
-    public function test_a_visit_can_continue_a_legacy_monitoring_and_start_a_confirmed_condition(): void
+    public function test_a_visit_can_continue_a_linked_monitoring_and_start_a_confirmed_condition(): void
     {
-        $asthma = $this->legacyMonitoring('Asthma', null, 'name:asthma');
+        $linked = $this->condition('Asthma', 'name:asthma');
+        $this->save(['start_monitoring_condition_ids' => [$linked->id]])->assertCreated();
+        $asthma = ConditionMonitoring::where('patient_condition_id', $linked->id)->sole();
         $condition = $this->condition('Hypertension', 'hypertension');
 
         $id = $this->save(['continued_monitoring_ids' => [$asthma->id], 'start_monitoring_condition_ids' => [$condition->id]])

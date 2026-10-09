@@ -42,6 +42,15 @@ class ConditionMonitoringService
 
         foreach ($ids as $index => $id) {
             $monitoring = $locked->get($id);
+            // Legacy BHC Monitoring is reconciled by the RHU; a BHC visit never continues it.
+            if ($monitoring !== null
+                && (int) $monitoring->patient_id === (int) $patient->id
+                && $monitoring->status === ConditionMonitoring::STATUS_ACTIVE
+                && $monitoring->isLegacy()) {
+                throw ValidationException::withMessages([
+                    "care_plan.continued_monitoring_ids.$index" => 'This monitoring is pending RHU verification and cannot be continued.',
+                ]);
+            }
             if ($monitoring === null
                 || (int) $monitoring->patient_id !== (int) $patient->id
                 || $monitoring->status !== ConditionMonitoring::STATUS_ACTIVE) {
