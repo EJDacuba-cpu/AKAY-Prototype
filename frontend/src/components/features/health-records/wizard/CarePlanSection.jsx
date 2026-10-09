@@ -1,17 +1,16 @@
 import { cloneElement, isValidElement } from "react";
 import { TimePickerField } from "../../../common/forms/DatePickerField";
-import { ClinicalFieldGroup, FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
+import { ClinicalFieldGroup, FieldError, FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
 import { ATTENTION_LEVELS, DEFAULT_ATTENTION } from "../../../../utils/referralAttention";
 import DiagnosisReportingField from "./DiagnosisReportingField";
 import {
+  CARE_PLAN,
   CARE_PLAN_OPTIONS,
   NO_CONCERN_MESSAGE,
   carePlanFor,
   schedulesBhcFollowUp,
-  referredContinuingRows,
   refers,
 } from "../../../../utils/carePlan";
-import { carePlanFormHosts } from "../../../../utils/carePlanWorkspace";
 import { formatDate } from "../../../../utils/formatters";
 import { conditionStatusLabel } from "../../../../utils/medicalConditions";
 
@@ -42,17 +41,55 @@ function StopReason({ monitoringId, value, error, disabled, onChange }) {
   );
 }
 
-/** "Concern A; Concern B" */
+/** "Concern 1 — Wound; Hypertension monitoring" */
 function joinNames(names) {
   return names.map((name) => String(name || "").trim()).filter(Boolean).join("; ");
 }
 
+/** What the shared follow-up or referral applies to (carePlanCoverage). */
+function Covers({ items = [] }) {
+  if (items.length === 0) return null;
+  return (
+    <p className="mb-3 text-xs text-[#374151]">
+      <span className="font-semibold">Covers:</span> {joinNames(items)}
+    </p>
+  );
+}
+
+/**
+ * The worker confirms one date, or one facility and priority, suits every
+ * listed item (H7). Unticked, Continue is blocked with the inline error below;
+ * nothing entered is cleared.
+ */
+function Acknowledgment({ name, label, checked, error, disabled, onChange }) {
+  return (
+    <div className="mt-3">
+      <label className="inline-flex cursor-pointer items-start gap-1.5 text-[13px]">
+        <input
+          type="checkbox"
+          name={name}
+          checked={checked}
+          disabled={disabled}
+          aria-invalid={Boolean(error)}
+          onChange={(event) => onChange(event.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-[#DC2626]"
+        />
+        <span className={checked ? "font-semibold text-[#111827]" : "text-[#374151]"}>{label}</span>
+      </label>
+      {error && (
+        <p role="alert" className="mt-1.5 border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium leading-relaxed text-[#B91C1C]">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /**
  * The visit's single referral: facility (with its availability panel and the
- * no-doctor warning), priority and reason. Drawn once - in the hosting concern
- * card, or below the cards when no concern hosts it.
+ * no-doctor warning), priority and reason. Drawn once, in RHU Referral Details.
  */
-function ReferralFields({ referral, referralFacilityField, includedNames, errors, disabled, onReferralChange }) {
+function ReferralFields({ referral, referralFacilityField, errors, disabled, onReferralChange }) {
   const priority = (
     <RadioChoiceGroup
       label="Referral Priority"
@@ -69,11 +106,6 @@ function ReferralFields({ referral, referralFacilityField, includedNames, errors
   return (
     // RadioChoiceGroup has no disabled prop; the fieldset disables it.
     <fieldset disabled={disabled} className="min-w-0 space-y-3">
-      {includedNames && (
-        <p className="text-xs text-[#374151]">
-          <span className="font-semibold">Included in this referral:</span> {includedNames}
-        </p>
-      )}
       {/* Priority sits beside the facility select (ReferralFacilityField's selectAside). */}
       {isValidElement(referralFacilityField) ? (
         cloneElement(referralFacilityField, { selectAside: priority })
@@ -97,18 +129,18 @@ function ReferralFields({ referral, referralFacilityField, includedNames, errors
 }
 
 /**
- * The visit's single follow-up. In a concern card the date is required (a
- * concern set to Recheck or Follow-up needs it - carePlanFollowUpErrors) and
- * so is the reason; below the cards both stay as before: the date optional,
- * the reason asked for once a date is set.
+ * The visit's single follow-up. When a concern schedules it the date is
+ * required (carePlanFollowUpErrors) and the reason is always asked for;
+ * otherwise (monitoring or a service visit only) the date stays optional and
+ * the reason is asked for once a date is set.
  */
-function FollowUpFields({ followUp, errors, disabled, inCard, onFollowUpChange }) {
+function FollowUpFields({ followUp, errors, disabled, dateRequired, onFollowUpChange }) {
   return (
     <fieldset disabled={disabled} className="min-w-0 space-y-3">
       <div className="grid gap-3 md:grid-cols-2">
         <FieldInput
           label="Follow-up Date"
-          required={inCard}
+          required={dateRequired}
           type="date"
           name="followUpDate"
           value={followUp.date || ""}
@@ -124,7 +156,7 @@ function FollowUpFields({ followUp, errors, disabled, inCard, onFollowUpChange }
           onChange={(value) => onFollowUpChange("time", value)}
         />
       </div>
-      {(inCard || followUp.date) && (
+      {(dateRequired || followUp.date) && (
         <FieldTextarea
           label="Follow-up Reason"
           required
@@ -140,57 +172,28 @@ function FollowUpFields({ followUp, errors, disabled, inCard, onFollowUpChange }
   );
 }
 
-/**
- * The part of a concern card under its action that holds the hosted referral
- * or follow-up: flat, set off by a divider like the reporting part below it.
- */
-function ActionDetails({ title, note, children }) {
-  return (
-    <div className="mt-3 border-t border-[#F3F4F6] pt-3">
-      <p className={CONCERN_LABEL_CLASS}>{title}</p>
-      {note && <p className="-mt-0.5 mb-2 text-xs text-[#6B7280]">{note}</p>}
-      {children}
-    </div>
-  );
+/** Under a concern's action: which shared section below holds its follow-up or referral. */
+function PointerLine({ children }) {
+  return <p className="border-l-2 border-[#D1D5DB] pl-2 text-xs text-[#6B7280]">{children}</p>;
 }
 
 /**
- * Recheck and Follow-up both schedule the visit's single follow-up, so both
- * draw this same section; the concern keeps its own action value.
- */
-function NextVisitDetails({ sharedWith = [], children }) {
-  return (
-    <ActionDetails
-      title="Next Visit Details"
-      note={sharedWith.length ? `Also applies to Health Concern ${sharedWith.join(", ")}.` : null}
-    >
-      {children}
-    </ActionDetails>
-  );
-}
-
-/** A concern sharing the referral or follow-up drawn in another card. */
-function SharedNote({ children }) {
-  return <p className="mt-2 border-l-2 border-[#D1D5DB] pl-2 text-xs text-[#6B7280]">{children}</p>;
-}
-
-/**
- * Care Plan & Next Steps. Two separate things:
+ * Care Plan & Next Steps, top to bottom:
  * - "This visit's health concerns": one card per concern the worker typed, in
- *   order - its optional next action (Recheck, Follow-up or Refer to RHU), the
- *   details that action needs, and its reporting controls. A concern never
- *   starts or stops monitoring.
+ *   order - its required Care Plan Action (no default), the BHC follow-up flag
+ *   under Refer to RHU, a pointer to the shared section that holds its
+ *   follow-up or referral, and its reporting controls. A concern never starts
+ *   or stops monitoring.
  * - "Condition Monitoring": monitoring the BHC already follows (continue,
  *   refer back to the RHU, or stop with a reason) and RHU-confirmed conditions
  *   it starts this visit. There is no clinical-status control: only the RHU
  *   sets a condition's status.
- *
- * The visit still has ONE referral and ONE follow-up. Each is drawn in the
- * first concern card whose action needs it, and the other concerns with that
- * action say they share it (carePlanFormHosts). When no concern needs it but
- * the visit still does - a followed condition referred back, continuing
- * monitoring, a service visit - it is drawn below the cards as before. A
- * visit with no concern and nothing monitored is a General Consultation: a
+ * - BHC Follow-up Details and RHU Referral Details: the visit's ONE follow-up
+ *   and ONE referral, each with what it covers (carePlanCoverage) and, when it
+ *   covers 2 or more items, the acknowledgment that one date / one facility
+ *   and priority suits them all.
+ * - Additional Clinical Notes.
+ * A visit with no concern and nothing monitored is a General Consultation: a
  * plain empty state. Every rule it shows comes from utils/carePlan.js.
  */
 export default function CarePlanSection({
@@ -198,65 +201,15 @@ export default function CarePlanSection({
   referrals = [],
   followUp = {}, referral = {}, referralFacilityField = null, showsFollowUp = false,
   needsReferral = false, errors = {}, disabled = false,
+  coverage = {}, followUpAcknowledged = false, referralAcknowledged = false,
   notes = "", notesLabel = "Monitoring Notes", notesPlaceholder = "Write monitoring notes if useful...",
-  onCarePlanChange, onStopChange, onMonitoringDecision, onFollowUpChange, onReferralChange, onNotesChange,
-  onReportAsChange, onSurveillanceChange,
+  onCarePlanChange, onBhcFollowUpChange, onStopChange, onMonitoringDecision, onFollowUpChange, onReferralChange,
+  onAcknowledgeChange, onNotesChange, onReportAsChange, onSurveillanceChange,
 }) {
   const hasMonitoring = continuedMonitorings.length > 0 || startingConditions.length > 0;
-  const hosts = carePlanFormHosts(concerns, { needsReferral, showsFollowUp });
-  const numberOf = (id) => concerns.findIndex((concern) => concern.id === id) + 1;
-  const nameOf = (id) => concerns.find((concern) => concern.id === id)?.name;
-  const referredFollowed = referredContinuingRows(continuedMonitorings, stops, referrals);
-  const referralIncludes = joinNames([
-    ...hosts.referredConcernIds.map(nameOf),
-    ...referredFollowed.map((monitoring) => monitoring.conditionName),
-  ]);
-
-  const referralFields = (
-    <ReferralFields
-      referral={referral}
-      referralFacilityField={referralFacilityField}
-      includedNames={referralIncludes}
-      errors={errors}
-      disabled={disabled}
-      onReferralChange={onReferralChange}
-    />
-  );
-  const followUpFields = (inCard) => (
-    <FollowUpFields
-      followUp={followUp}
-      errors={errors}
-      disabled={disabled}
-      inCard={inCard}
-      onFollowUpChange={onFollowUpChange}
-    />
-  );
-
-  /** The referral or follow-up under a concern's action: the form in its host card, a note in the others. */
-  function actionDetails(concern) {
-    const value = carePlanFor(concern);
-    if (schedulesBhcFollowUp(concern) && hosts.followUpHostId) {
-      if (concern.id !== hosts.followUpHostId) {
-        return <SharedNote>Uses the next visit set under Health Concern {numberOf(hosts.followUpHostId)}.</SharedNote>;
-      }
-      const others = hosts.followUpConcernIds.filter((id) => id !== concern.id).map(numberOf);
-      return <NextVisitDetails sharedWith={others}>{followUpFields(true)}</NextVisitDetails>;
-    }
-    if (refers(value) && hosts.referralHostId) {
-      if (concern.id !== hosts.referralHostId) {
-        return <SharedNote>Included in the referral set under Health Concern {numberOf(hosts.referralHostId)}.</SharedNote>;
-      }
-      return (
-        <ActionDetails
-          title="Referral to RHU"
-          note="One referral for this visit. The RHU receives it and assigns the practitioner."
-        >
-          {referralFields}
-        </ActionDetails>
-      );
-    }
-    return null;
-  }
+  const followUpCovers = coverage.followUpCovers || [];
+  const referralCovers = coverage.referralCovers || [];
+  const followUpDateRequired = concerns.some(schedulesBhcFollowUp);
 
   return (
     <div className="space-y-6">
@@ -267,13 +220,15 @@ export default function CarePlanSection({
       {concerns.length > 0 && (
         <section aria-labelledby="care-plan-concerns">
           <h2 id="care-plan-concerns" className="text-sm font-bold text-[#111827]">This visit&apos;s health concerns</h2>
-          {/* One card per concern, in order: its number and name, its next
-              action with that action's details, then its reporting. */}
+          {/* One card per concern, in order: its number and name, its care plan
+              action and where its follow-up / referral is set, then its reporting. */}
           <ul className="mt-2 space-y-3">
             {concerns.map((concern, index) => {
               const value = carePlanFor(concern);
               const headingId = `care-plan-concern-${concern.id}`;
               const actionLabelId = `${headingId}-action`;
+              const actionErrorKey = `carePlanAction.${concern.id}`;
+              const actionError = errors[actionErrorKey];
               return (
                 <li key={concern.id} className="border border-[#E5E7EB] bg-white">
                   <fieldset disabled={disabled} aria-labelledby={headingId} className="min-w-0">
@@ -286,17 +241,21 @@ export default function CarePlanSection({
                       {concern.name}
                     </h3>
                     <div className="space-y-3 px-3 py-3">
-                      <div>
-                        <div role="radiogroup" aria-labelledby={actionLabelId}>
-                          <p id={actionLabelId} className={CONCERN_LABEL_CLASS}>Care Plan Action</p>
+                      <div className="space-y-2">
+                        <div role="radiogroup" aria-labelledby={actionLabelId} aria-invalid={Boolean(actionError)}>
+                          <p id={actionLabelId} className={CONCERN_LABEL_CLASS}>
+                            Care Plan Action <span className="text-red-500">*</span>
+                          </p>
                           <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                            {CARE_PLAN_OPTIONS.map((option) => {
+                            {CARE_PLAN_OPTIONS.map((option, optionIndex) => {
                               const checked = value === option.value;
                               return (
                                 <label key={option.value} className="flex cursor-pointer items-center gap-1.5 text-[13px]">
                                   <input
                                     type="radio"
                                     name={`care-plan-${concern.id}`}
+                                    // The first option takes focus when no action was chosen.
+                                    data-field={optionIndex === 0 ? actionErrorKey : undefined}
                                     value={option.value}
                                     checked={checked}
                                     onChange={() => onCarePlanChange(concern.id, option.value)}
@@ -307,8 +266,26 @@ export default function CarePlanSection({
                               );
                             })}
                           </div>
+                          <FieldError error={actionError} />
                         </div>
-                        {actionDetails(concern)}
+                        {value === CARE_PLAN.REFER && (
+                          <label className="inline-flex cursor-pointer items-center gap-1.5 text-[13px]">
+                            <input
+                              type="checkbox"
+                              checked={concern.bhcFollowUp === true}
+                              onChange={(event) => onBhcFollowUpChange(concern.id, event.target.checked)}
+                              className="h-4 w-4 accent-[#DC2626]"
+                            />
+                            <span className={concern.bhcFollowUp === true ? "font-semibold text-[#DC2626]" : "text-gray-600"}>
+                              Also schedule a BHC follow-up for this concern
+                            </span>
+                          </label>
+                        )}
+                        {/* A flagged referral points to both sections. */}
+                        {schedulesBhcFollowUp(concern) && showsFollowUp && (
+                          <PointerLine>Covered by BHC Follow-up Details below</PointerLine>
+                        )}
+                        {refers(value) && needsReferral && <PointerLine>Included in RHU Referral Details below</PointerLine>}
                       </div>
                       <div className="border-t border-[#F3F4F6] pt-3">
                         <DiagnosisReportingField
@@ -364,9 +341,7 @@ export default function CarePlanSection({
                     </div>
                     {referring && (
                       <p className="mt-1.5 text-xs text-[#6B7280]">
-                        {hosts.referralHostId
-                          ? `Included in the referral set under Health Concern ${numberOf(hosts.referralHostId)}. BHC monitoring stays active.`
-                          : "BHC monitoring stays active; the referral is tracked separately."}
+                        Included in RHU Referral Details below. BHC monitoring stays active.
                       </p>
                     )}
                     {stopping && (
@@ -391,22 +366,58 @@ export default function CarePlanSection({
         </section>
       )}
 
-      {/* The referral / follow-up no concern card hosts (see carePlanFormHosts). */}
-      {hosts.referralOutsideCards && (
-        <ClinicalFieldGroup
-          title="Referral to RHU"
-          subtitle="One referral for this visit. The RHU receives it and assigns the practitioner."
-        >
-          {referralFields}
+      {/* The visit's one follow-up and one referral, with what each covers. */}
+      {showsFollowUp && (
+        <ClinicalFieldGroup title="BHC Follow-up Details" subtitle="One BHC follow-up for this visit.">
+          <Covers items={followUpCovers} />
+          <FollowUpFields
+            followUp={followUp}
+            errors={errors}
+            disabled={disabled}
+            dateRequired={followUpDateRequired}
+            onFollowUpChange={onFollowUpChange}
+          />
+          {followUpCovers.length >= 2 && (
+            <>
+              <p className="mt-3 text-xs text-[#6B7280]">
+                This one date applies to everything listed. A concern that needs a different date cannot share it.
+              </p>
+              <Acknowledgment
+                name="followUpAcknowledged"
+                label="One follow-up date is clinically appropriate for all listed concerns."
+                checked={followUpAcknowledged}
+                error={errors.followUpAcknowledged}
+                disabled={disabled}
+                onChange={(checked) => onAcknowledgeChange?.("followUp", checked)}
+              />
+            </>
+          )}
         </ClinicalFieldGroup>
       )}
 
-      {hosts.followUpOutsideCards && (
+      {needsReferral && (
         <ClinicalFieldGroup
-          title="Next follow-up"
-          subtitle="Optional. Linked to every condition monitored in this visit."
+          title="RHU Referral Details"
+          subtitle="One referral for this visit. The RHU receives it and assigns the practitioner."
         >
-          {followUpFields(false)}
+          <Covers items={referralCovers} />
+          <ReferralFields
+            referral={referral}
+            referralFacilityField={referralFacilityField}
+            errors={errors}
+            disabled={disabled}
+            onReferralChange={onReferralChange}
+          />
+          {referralCovers.length >= 2 && (
+            <Acknowledgment
+              name="referralAcknowledged"
+              label="All listed concerns can go to this facility with this priority."
+              checked={referralAcknowledged}
+              error={errors.referralAcknowledged}
+              disabled={disabled}
+              onChange={(checked) => onAcknowledgeChange?.("referral", checked)}
+            />
+          )}
         </ClinicalFieldGroup>
       )}
 

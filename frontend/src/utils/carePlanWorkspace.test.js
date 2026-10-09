@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  carePlanCoverage,
   carePlanDraftPayload,
-  carePlanFormHosts,
   carePlanFollowUpErrors,
   carePlanReviewRows,
   continuedVisitLink,
@@ -13,6 +13,7 @@ import {
   reviewBackTarget,
   setMonitoringDecision,
   setMonitoringStop,
+  sharedAcknowledgmentErrors,
   shouldRegenerateReferralReason,
 } from "./carePlanWorkspace.js";
 import { MONITORING_STEP, NEXT_STEP, REVIEW_STEP } from "./consultationSteps.js";
@@ -72,7 +73,7 @@ test("a follow-up date needs a reason, whenever the follow-up is kept", () => {
 });
 
 test("a concern that schedules a BHC follow-up requires the follow-up date", () => {
-  const message = "Set the follow-up date for the concerns marked Recheck or Follow-up.";
+  const message = "Set the follow-up date for the concerns that schedule a BHC follow-up.";
   for (const concern of [{ name: "BP", carePlan: "follow_up" }, { name: "BP", carePlan: "refer", bhcFollowUp: true }]) {
     assert.deepEqual(
       carePlanFollowUpErrors({ kept: true, concerns: [concern], followUpDate: "", followUpReason: "" }),
@@ -305,59 +306,99 @@ test("the referral reason follows the referred diagnoses until the worker edits 
   assert.equal(shouldRegenerateReferralReason({ current: undefined, lastAuto: "", next: first }), true);
 });
 
-test("the referral form sits in the first referred concern; later ones share it", () => {
-  const concerns = [
-    { id: "a", name: "Cough", carePlan: "follow_up" },
-    { id: "b", name: "Chest pain", carePlan: "refer" },
-    { id: "c", name: "Fever", carePlan: "refer" },
-  ];
-  const hosts = carePlanFormHosts(concerns, { needsReferral: true, showsFollowUp: true });
-  assert.equal(hosts.referralHostId, "b");
-  assert.deepEqual(hosts.referredConcernIds, ["b", "c"]);
-  assert.equal(hosts.referralOutsideCards, false);
-  // The first referred concern changes its action: the form moves to the next one.
-  const moved = carePlanFormHosts(
-    concerns.map((concern) => (concern.id === "b" ? { ...concern, carePlan: "follow_up" } : concern)),
-    { needsReferral: true, showsFollowUp: true },
+const ACK_MESSAGE =
+  "AKAY records one referral and one follow-up date per consultation. If these concerns need a different facility, priority or date, refer or schedule the most urgent one here, set the others to another action, and follow your facility's referral or escalation procedure for the rest. Record what you did in Additional Clinical Notes.";
+
+test("carePlanCoverage lists follow-up and referral items", () => {
+  const coverage = carePlanCoverage({
+    concerns: [
+      { id: "a", name: "Wound", carePlan: "follow_up" },
+      { id: "b", name: "Cough", carePlan: "refer", bhcFollowUp: true },
+    ],
+    continuedMonitorings: [{ id: 3, conditionName: "Hypertension", conditionKey: "hypertension" }],
+  });
+  assert.deepEqual(coverage, {
+    followUpCovers: ["Concern 1 — Wound", "Concern 2 — Cough", "Hypertension monitoring"],
+    referralCovers: ["Concern 2 — Cough"],
+  });
+});
+
+test("carePlanCoverage numbers concerns by their place, and adds referred conditions and the service visit", () => {
+  const coverage = carePlanCoverage({
+    concerns: [
+      { id: "a", name: "Rash", carePlan: "none" },
+      { id: "b", name: "Chest pain", carePlan: "refer" },
+      { id: "c", name: "Fever" },
+      { id: "d", name: "Itch", carePlan: "monitor_refer" },
+    ],
+    continuedMonitorings: [
+      { id: 3, conditionName: "Hypertension" },
+      { id: 4, conditionName: "Asthma" },
+      { id: 5, conditionName: "Diabetes Mellitus" },
+    ],
+    startingConditions: [{ id: 7, conditionName: "Tuberculosis" }],
+    stops: { 4: "Moved away" },
+    referrals: [3, 4],
+    serviceNextVisitLabel: "Prenatal next visit",
+  });
+  // A stopped condition is neither monitored nor referred; a referred one stays
+  // monitored; a condition started this visit is monitored too.
+  assert.deepEqual(coverage.followUpCovers, [
+    "Hypertension monitoring",
+    "Diabetes Mellitus monitoring",
+    "Tuberculosis monitoring",
+    "Prenatal next visit",
+  ]);
+  // A historical value from an old draft is not a choice, so it refers nothing.
+  assert.deepEqual(coverage.referralCovers, ["Concern 2 — Chest pain", "Hypertension"]);
+  assert.deepEqual(carePlanCoverage(), { followUpCovers: [], referralCovers: [] });
+});
+
+test("acknowledgment is required only for two or more covered items", () => {
+  const two = ["Concern 1 — Wound", "Concern 2 — Cough"];
+  assert.deepEqual(
+    sharedAcknowledgmentErrors({ followUpCovers: two, referralCovers: two, followUpAcknowledged: false, referralAcknowledged: false }),
+    { followUpAcknowledged: ACK_MESSAGE, referralAcknowledged: ACK_MESSAGE },
   );
-  assert.equal(moved.referralHostId, "c");
+  assert.deepEqual(
+    sharedAcknowledgmentErrors({ followUpCovers: two, referralCovers: two, followUpAcknowledged: true, referralAcknowledged: false }),
+    { referralAcknowledged: ACK_MESSAGE },
+  );
+  assert.deepEqual(
+    sharedAcknowledgmentErrors({ followUpCovers: two, referralCovers: two, followUpAcknowledged: true, referralAcknowledged: true }),
+    {},
+  );
+  // One item each: nothing to acknowledge.
+  assert.deepEqual(
+    sharedAcknowledgmentErrors({ followUpCovers: [two[0]], referralCovers: [two[1]], followUpAcknowledged: false, referralAcknowledged: false }),
+    {},
+  );
+  assert.deepEqual(sharedAcknowledgmentErrors(), {});
 });
 
-test("the follow-up schedule sits in the first concern that schedules one; later ones share it", () => {
-  const concerns = [
-    { id: "a", name: "Cough", carePlan: "refer" },
-    { id: "b", name: "Rash", carePlan: "follow_up" },
-    { id: "c", name: "Fever", carePlan: "refer", bhcFollowUp: true },
-    { id: "d", name: "Itch", carePlan: "none" },
-  ];
-  const hosts = carePlanFormHosts(concerns, { needsReferral: true, showsFollowUp: true });
-  assert.equal(hosts.followUpHostId, "b");
-  assert.deepEqual(hosts.followUpConcernIds, ["b", "c"]);
-  assert.equal(hosts.followUpOutsideCards, false);
+test("follow-up date and reason errors use the new messages and count flagged referrals", () => {
+  const flagged = [{ id: "b", name: "Cough", carePlan: "refer", bhcFollowUp: true }];
+  assert.deepEqual(carePlanFollowUpErrors({ kept: true, concerns: flagged, followUpDate: "", followUpReason: "" }), {
+    followUpDate: "Set the follow-up date for the concerns that schedule a BHC follow-up.",
+  });
+  assert.deepEqual(carePlanFollowUpErrors({ kept: true, concerns: flagged, followUpDate: "2026-10-20", followUpReason: "" }), {
+    followUpReason: "Follow-up reason is required.",
+  });
+  // An unflagged referral schedules no BHC follow-up.
+  assert.deepEqual(carePlanFollowUpErrors({ kept: false, concerns: [{ id: "b", name: "Cough", carePlan: "refer" }], followUpDate: "" }), {});
 });
 
-test("a retired next action from an old draft hosts nothing", () => {
-  const hosts = carePlanFormHosts([{ id: "a", name: "HTN", carePlan: "monitor_refer" }], { needsReferral: false, showsFollowUp: false });
-  assert.equal(hosts.referralHostId, null);
-  assert.equal(hosts.followUpHostId, null);
-});
-
-test("a referral or follow-up no concern can host stays below the cards", () => {
-  // A followed condition referred to the RHU, and monitoring that keeps the follow-up.
-  const concerns = [{ id: "a", name: "Cough", carePlan: null }];
-  const hosts = carePlanFormHosts(concerns, { needsReferral: true, showsFollowUp: true });
-  assert.equal(hosts.referralHostId, null);
-  assert.equal(hosts.referralOutsideCards, true);
-  assert.equal(hosts.followUpHostId, null);
-  assert.equal(hosts.followUpOutsideCards, true);
-});
-
-test("nothing is hosted when the visit has no referral or follow-up to show", () => {
-  const concerns = [{ id: "a", name: "Cough", carePlan: "refer" }];
-  // e.g. the disposition has not caught up yet: the cards never show a form the visit does not have.
-  const hosts = carePlanFormHosts(concerns, { needsReferral: false, showsFollowUp: false });
-  assert.equal(hosts.referralHostId, null);
-  assert.equal(hosts.referralOutsideCards, false);
-  assert.equal(hosts.followUpHostId, null);
-  assert.equal(hosts.followUpOutsideCards, false);
+test("review rows label a flagged referral", () => {
+  const rows = carePlanReviewRows({
+    concerns: [
+      { id: "a", name: "Cough", carePlan: "refer", bhcFollowUp: true },
+      { id: "b", name: "Chest pain", carePlan: "refer" },
+    ],
+    referral: { needed: false },
+    followUp: { shows: false },
+  });
+  assert.deepEqual(rows, [
+    { label: "Cough", value: "Refer to RHU · BHC follow-up" },
+    { label: "Chest pain", value: "Refer to RHU" },
+  ]);
 });

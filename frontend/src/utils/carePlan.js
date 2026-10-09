@@ -233,6 +233,7 @@ export function buildCarePlanPayload({
   startingConditions = [],
   stops = {},
   referrals = [],
+  sharedReferralAcknowledged = false,
 } = {}) {
   const required = stopsRequired(continuedMonitorings, stops);
   return {
@@ -245,5 +246,8 @@ export function buildCarePlanPayload({
       .filter((stop) => stop.reason),
     // A followed condition referred to the RHU (its monitoring stays active).
     monitoring_referrals: referredContinuingRows(continuedMonitorings, stops, referrals).map((monitoring) => Number(monitoring.id)),
+    // The worker confirmed one facility and priority suit every referred item
+    // (required by the server when the referral covers 2 or more).
+    shared_referral_acknowledged: sharedReferralAcknowledged === true,
   };
 }

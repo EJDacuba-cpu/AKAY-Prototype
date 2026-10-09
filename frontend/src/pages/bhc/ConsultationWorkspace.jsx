@@ -90,12 +90,17 @@ import {
   buildReferralReason,
   carePlanFor,
   deriveDisposition,
+  migrateLegacyConcernPlans,
   monitoredConditionKeys,
   referredContinuingRows,
   validateCarePlan,
+  validateConcernActions,
+  withBhcFollowUp,
+  withCarePlan,
 } from "../../utils/carePlan";
 import { monitoringDetailKeys as getMonitoringDetailKeys } from "../../utils/monitoringDetails";
 import {
+  carePlanCoverage,
   carePlanDraftPayload,
   carePlanFollowUpErrors,
   carePlanReviewRows,
@@ -107,6 +112,7 @@ import {
   reviewBackTarget,
   setMonitoringDecision,
   setMonitoringStop,
+  sharedAcknowledgmentErrors,
   shouldRegenerateReferralReason,
 } from "../../utils/carePlanWorkspace";
 import {
@@ -219,6 +225,14 @@ const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 // Flat stack: each section inside it is its own bordered card (FormSection).
 const CONSULTATION_CARD_CLASS = "space-y-4";
 const DUPLICATE_CONCERNS_ERROR = "List each health concern only once.";
+// An unticked H7 acknowledgment (Care Plan & Next Steps), with the covers list it was ticked for.
+const NO_ACKNOWLEDGMENT = Object.freeze({ covers: "", checked: false });
+// The service visit the follow-up date also sets, by program (Care Plan "Covers:" line).
+const SERVICE_NEXT_VISIT_LABELS = Object.freeze({
+  Maternal: "Prenatal next visit",
+  "Family Planning": "Family Planning next appointment",
+  EPI: "EPI next dose",
+});
 
 
 const WIZARD_FORM = "form";
@@ -873,6 +887,11 @@ export default function ConsultationWorkspace() {
   const [followUpDate, setFollowUpDate] = useState("");
   const [followUpTime, setFollowUpTime] = useState("");
   const [followUpReason, setFollowUpReason] = useState("");
+  // The H7 acknowledgments on Care Plan & Next Steps: one follow-up date / one
+  // referral suits every listed item. Each tick is kept with the covers list it
+  // was given for, so it counts as unticked once that list changes.
+  const [followUpAcknowledgment, setFollowUpAcknowledgment] = useState(NO_ACKNOWLEDGMENT);
+  const [referralAcknowledgment, setReferralAcknowledgment] = useState(NO_ACKNOWLEDGMENT);
   // Care Plan & Next Steps: what this ITR continues (Start Consultation modal)
   // and stops. Names come from care-overview; drafts store ids only.
   const [continuedFollowUpTaskIds, setContinuedFollowUpTaskIds] = useState([]);
@@ -1203,6 +1222,23 @@ export default function ConsultationWorkspace() {
   // consultationMode guard) keeps its dated next visit through a referral.
   const carePlanHasService = Boolean(consultationMode) && selectedPrograms.length > 0;
   const carePlanFollowUp = followUpPlan(carePlanDisposition, followUpDate, { hasService: carePlanHasService });
+  // What the visit's one follow-up and one referral cover. The follow-up covers
+  // nothing while its section is hidden, so no hidden box can block Continue.
+  const carePlanCovers = carePlanCoverage({
+    concerns: diagnoses, continuedMonitorings, startingConditions, stops: monitoringStops,
+    referrals: monitoringReferrals,
+    serviceNextVisitLabel: carePlanHasService
+      ? SERVICE_NEXT_VISIT_LABELS[primaryProgram] || SERVICE_NEXT_VISIT_LABELS[selectedPrograms[0]] || ""
+      : "",
+  });
+  const carePlanCoverageShown = {
+    followUpCovers: carePlanFollowUp.shows ? carePlanCovers.followUpCovers : [],
+    referralCovers: carePlanDisposition.needsReferral ? carePlanCovers.referralCovers : [],
+  };
+  const followUpCoversKey = carePlanCoverageShown.followUpCovers.join("\n");
+  const referralCoversKey = carePlanCoverageShown.referralCovers.join("\n");
+  const followUpAcknowledged = followUpAcknowledgment.checked && followUpAcknowledgment.covers === followUpCoversKey;
+  const referralAcknowledged = referralAcknowledgment.checked && referralAcknowledgment.covers === referralCoversKey;
   const patientGateLocked = !selectedPatientId;
 
   // ---- Step-based consultation -------------------------------------------
@@ -1663,8 +1699,15 @@ export default function ConsultationWorkspace() {
       // diagnosis when it fits, otherwise moved to the assessment notes.
       // Drafts from before per-diagnosis reporting carry one visit-level
       // status instead; each diagnosis takes it, keeping what was chosen.
+      // A draft from before Schedule BHC Follow-up: Recheck becomes follow_up,
+      // and an empty follow-up reason is prefilled from those concerns.
       const restored = restoreDiagnoses(payload);
-      setDiagnoses(applyLegacyReportingStatus(restored.diagnoses, payload.morbidityReportingStatus));
+      const migrated = migrateLegacyConcernPlans(
+        applyLegacyReportingStatus(restored.diagnoses, payload.morbidityReportingStatus),
+        payload.followUpReason || "",
+      );
+      setDiagnoses(migrated.diagnoses);
+      setFollowUpReason(migrated.followUpReason);
       setAssessmentNotes(restored.assessmentNotes);
       setDiagnosis(joinDiagnosisNames(restored.diagnoses));
     }
@@ -1682,7 +1725,9 @@ export default function ConsultationWorkspace() {
     setFollowUpStatus(payload.followUpStatus || "Routine Monitoring");
     setFollowUpDate(payload.followUpDate || "");
     setFollowUpTime(payload.followUpTime || "");
-    setFollowUpReason(payload.followUpReason || "");
+    // The acknowledgments are not stored: the worker confirms them again.
+    setFollowUpAcknowledgment(NO_ACKNOWLEDGMENT);
+    setReferralAcknowledgment(NO_ACKNOWLEDGMENT);
     setMonitoringNotes(payload.monitoringNotes || "");
     setPatientCondition(payload.patientCondition || "Improving");
     setNeedsReferral(Boolean(payload.needsReferral));
@@ -3214,6 +3259,7 @@ export default function ConsultationWorkspace() {
         startingConditions,
         stops: monitoringStops,
         referrals: monitoringReferrals,
+        sharedReferralAcknowledged: referralAcknowledged,
       }),
       ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
       monitoringData: {
@@ -3645,8 +3691,16 @@ export default function ConsultationWorkspace() {
     closeDateTimePopovers();
     if (!checkStepGate(NEXT_STEP)) return;
     if (nextScreen === NEXT_STEP) {
-      // A stop reason belongs to this screen: ask for it before moving on.
-      const carePlanErrors = validateCarePlan({ continuedMonitorings, stops: monitoringStops });
+      // This screen's own rules, asked for before moving on: a care plan action
+      // per concern, a stop reason, the follow-up date / reason, and the H7
+      // acknowledgments. Only the errors are set and the first one focused;
+      // nothing entered is cleared or chosen.
+      const carePlanErrors = {
+        ...validateConcernActions(diagnoses),
+        ...validateCarePlan({ continuedMonitorings, stops: monitoringStops }),
+        ...carePlanFollowUpErrors({ kept: carePlanFollowUp.kept, followUpDate, followUpReason, concerns: diagnoses }),
+        ...sharedAcknowledgmentErrors({ ...carePlanCoverageShown, followUpAcknowledged, referralAcknowledged }),
+      };
       if (setValidationErrorsAndFocus(carePlanErrors)) return;
     }
     goToStepKey(nextPhaseForwardTarget(nextScreen, monitoringDetailKeys));
@@ -3751,11 +3805,27 @@ export default function ConsultationWorkspace() {
       }
       showsFollowUp={carePlanFollowUp.shows}
       needsReferral={carePlanDisposition.needsReferral}
+      coverage={carePlanCoverageShown}
+      followUpAcknowledged={followUpAcknowledged}
+      referralAcknowledged={referralAcknowledged}
+      onAcknowledgeChange={(kind, checked) => {
+        if (kind === "followUp") {
+          clearValidationError("followUpAcknowledged");
+          setFollowUpAcknowledgment({ covers: followUpCoversKey, checked });
+        } else {
+          clearValidationError("referralAcknowledged");
+          setReferralAcknowledgment({ covers: referralCoversKey, checked });
+        }
+      }}
       errors={validationErrors}
       // A locked review is already disabled by the workspace fieldset.
       disabled={patientGateLocked}
       onCarePlanChange={(id, value) => {
-        setDiagnoses((current) => current.map((entry) => (entry.id === id ? { ...entry, carePlan: value } : entry)));
+        clearValidationError(`carePlanAction.${id}`);
+        setDiagnoses((current) => current.map((entry) => (entry.id === id ? withCarePlan(entry, value) : entry)));
+      }}
+      onBhcFollowUpChange={(id, checked) => {
+        setDiagnoses((current) => current.map((entry) => (entry.id === id ? withBhcFollowUp(entry, checked) : entry)));
       }}
       onReportAsChange={handleReportAsChange}
       onSurveillanceChange={handleSurveillanceChange}

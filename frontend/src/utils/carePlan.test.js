@@ -270,7 +270,14 @@ test("payload lists continued ids, starting conditions and only real stops", () 
     start_monitoring_condition_ids: [7],
     monitoring_stops: [{ monitoring_id: 4, reason: "Moved away" }],
     monitoring_referrals: [],
+    shared_referral_acknowledged: false,
   });
+});
+
+test("the payload carries shared_referral_acknowledged", () => {
+  assert.equal(buildCarePlanPayload({ sharedReferralAcknowledged: true }).shared_referral_acknowledged, true);
+  assert.equal(buildCarePlanPayload({ sharedReferralAcknowledged: false }).shared_referral_acknowledged, false);
+  assert.equal(buildCarePlanPayload().shared_referral_acknowledged, false);
 });
 
 test("payload carries starting conditions and no status updates", () => {
@@ -297,6 +304,7 @@ test("a visit with no health concern has nothing to choose", () => {
     start_monitoring_condition_ids: [],
     monitoring_stops: [],
     monitoring_referrals: [],
+    shared_referral_acknowledged: false,
   });
   assert.deepEqual(
     deriveDisposition(),

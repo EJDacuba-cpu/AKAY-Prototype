@@ -1,8 +1,9 @@
 import {
+  CARE_PLAN,
   CARE_PLAN_LABELS,
   carePlanFor,
   schedulesBhcFollowUp,
-  refers,
+  referredConcerns,
   referredContinuingRows,
   stopsRequired,
   NO_CONCERN_MESSAGE,
@@ -39,34 +40,62 @@ export function followUpPlan(disposition = {}, followUpDate = "", { hasService =
 }
 
 /**
- * Where the visit's single referral form and single follow-up schedule are
- * drawn on Care Plan & Next Steps. Display only: both stay one
- * consultation-level record each, whichever card shows them.
+ * What the visit's single BHC follow-up and single RHU referral cover, for the
+ * "Covers:" lines of BHC Follow-up Details and RHU Referral Details. Display
+ * and acknowledgment only: both stay one consultation-level record each.
  *
- * The referral sits in the first concern set to Refer to RHU, the follow-up in
- * the first set to Recheck or Follow-up; the other concerns with that action
- * share it. Either can also come from outside the concerns (a followed
- * condition referred back, continuing monitoring, a service visit, a date
- * already set): with no concern to host it, it is drawn below the cards
- * (`...OutsideCards`). Nothing is hosted when the visit has no such form.
- *
- * @param disposition  { needsReferral, showsFollowUp } - the referral need and
- *                     followUpPlan's `shows`
+ * Concerns are numbered by their place in the list ("Concern 2 — Cough"). The
+ * follow-up covers each concern that schedules it (Schedule BHC Follow-up, or a
+ * referral flagged for it), every condition still monitored after the visit
+ * ("Hypertension monitoring") and the service's next visit when a label is
+ * given. The referral covers the referred concerns and the followed conditions
+ * referred back ("Hypertension"). A stop wins over monitoring and referral.
  */
-export function carePlanFormHosts(concerns = [], { needsReferral = false, showsFollowUp = false } = {}) {
+export function carePlanCoverage({
+  concerns = [],
+  continuedMonitorings = [],
+  startingConditions = [],
+  stops = {},
+  referrals = [],
+  serviceNextVisitLabel = "",
+} = {}) {
   const list = concerns || [];
-  const referredConcernIds = list.filter((concern) => refers(carePlanFor(concern))).map((concern) => concern.id);
-  const followUpConcernIds = list.filter(schedulesBhcFollowUp).map((concern) => concern.id);
-  const referralHostId = needsReferral ? referredConcernIds[0] ?? null : null;
-  const followUpHostId = showsFollowUp ? followUpConcernIds[0] ?? null : null;
-  return {
-    referralHostId,
-    referredConcernIds,
-    referralOutsideCards: Boolean(needsReferral) && referralHostId === null,
-    followUpHostId,
-    followUpConcernIds,
-    followUpOutsideCards: Boolean(showsFollowUp) && followUpHostId === null,
-  };
+  const concernLabel = (concern) => `Concern ${list.indexOf(concern) + 1} — ${String(concern.name || "").trim()}`;
+  const monitored = [
+    ...(continuedMonitorings || []).filter((monitoring) => !Object.hasOwn(stops || {}, monitoring.id)),
+    ...(startingConditions || []),
+  ];
+  const followUpCovers = [
+    ...list.filter(schedulesBhcFollowUp).map(concernLabel),
+    ...monitored.map((condition) => `${condition.conditionName} monitoring`),
+    ...(serviceNextVisitLabel ? [serviceNextVisitLabel] : []),
+  ];
+  const referralCovers = [
+    ...referredConcerns(list).map(concernLabel),
+    ...referredContinuingRows(continuedMonitorings, stops, referrals).map((monitoring) => monitoring.conditionName),
+  ];
+  return { followUpCovers, referralCovers };
+}
+
+/** Shown under an unticked acknowledgment (H7): one referral and one follow-up date per consultation. */
+export const SHARED_ACKNOWLEDGMENT_MESSAGE =
+  "AKAY records one referral and one follow-up date per consultation. If these concerns need a different facility, priority or date, refer or schedule the most urgent one here, set the others to another action, and follow your facility's referral or escalation procedure for the rest. Record what you did in Additional Clinical Notes.";
+
+/**
+ * When the follow-up date or the referral covers 2 or more items, the worker
+ * confirms that one date / one facility and priority suits them all. Nothing
+ * is cleared or chosen for them; Continue waits for the box or a changed action.
+ */
+export function sharedAcknowledgmentErrors({
+  followUpCovers = [],
+  referralCovers = [],
+  followUpAcknowledged = false,
+  referralAcknowledged = false,
+} = {}) {
+  const errors = {};
+  if ((followUpCovers || []).length >= 2 && !followUpAcknowledged) errors.followUpAcknowledged = SHARED_ACKNOWLEDGMENT_MESSAGE;
+  if ((referralCovers || []).length >= 2 && !referralAcknowledged) errors.referralAcknowledged = SHARED_ACKNOWLEDGMENT_MESSAGE;
+  return errors;
 }
 
 /**
@@ -81,12 +110,13 @@ export function shouldRegenerateReferralReason({ current = "", lastAuto = "", ne
   return text.trim() === "" || text === lastAuto;
 }
 
-export const FOLLOW_UP_DATE_MESSAGE = "Set the follow-up date for the concerns marked Recheck or Follow-up.";
+export const FOLLOW_UP_DATE_MESSAGE = "Set the follow-up date for the concerns that schedule a BHC follow-up.";
 
 /**
- * A concern marked Recheck or Follow-up needs the follow-up date (the server's
- * rule, referral or not); the follow-up reason is required once a date is set
- * (frontend-only rule).
+ * A concern that schedules a BHC follow-up (Schedule BHC Follow-up, or a
+ * referral flagged for it) needs the follow-up date (the server's rule,
+ * referral or not); the follow-up reason is required once a kept follow-up has
+ * a date.
  */
 export function carePlanFollowUpErrors({ kept = true, concerns = [], followUpDate = "", followUpReason = "" } = {}) {
   const errors = {};
@@ -226,7 +256,8 @@ export function carePlanReviewRows({
 
   for (const concern of concerns) {
     const value = carePlanFor(concern);
-    rows.push({ label: String(concern.name || "").trim(), value: value ? CARE_PLAN_LABELS[value] : NO_NEXT_ACTION });
+    const flagged = value === CARE_PLAN.REFER && concern.bhcFollowUp === true ? " · BHC follow-up" : "";
+    rows.push({ label: String(concern.name || "").trim(), value: value ? `${CARE_PLAN_LABELS[value]}${flagged}` : NO_NEXT_ACTION });
   }
   for (const monitoring of continuedMonitorings) {
     const decision = required[monitoring.id]
