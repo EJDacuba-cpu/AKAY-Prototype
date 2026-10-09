@@ -8,8 +8,10 @@ import { conditionStatusLabel } from "../../../utils/medicalConditions";
 import {
   CONDITION_STATUS_OPTIONS,
   canRecommendBhcMonitoring,
+  existingConditionRow,
   patchConditionRow,
 } from "../../../utils/conditionConfirmations";
+import { formatShortDate } from "../../../utils/patientProfile";
 
 const OPEN_STATUSES = new Set(["under_evaluation", "active", "controlled"]);
 
@@ -106,7 +108,7 @@ function ConditionRow({ title, row, errors, index, onPatch, onRemove, nameField 
             type="checkbox"
             checked={monitorable && row.recommend}
             disabled={!monitorable}
-            onChange={(event) => onPatch({ recommend: event.target.checked })}
+            onChange={(event) => onPatch({ recommend: event.target.checked, setOnRecord: true })}
           />
           Recommend BHC monitoring
         </label>
@@ -132,6 +134,7 @@ export default function ConfirmConditionsBlock({ patientId, rows, onChange, erro
   if (!allowed) return null;
 
   const existing = (data?.conditions || []).filter((condition) => OPEN_STATUSES.has(condition.status));
+  const legacyMonitorings = data?.legacyMonitorings || [];
   const contextLines = context.filter((item) => item?.value);
 
   function patchRow(index, patch) {
@@ -141,20 +144,7 @@ export default function ConfirmConditionsBlock({ patientId, rows, onChange, erro
   function patchExisting(condition, patch) {
     const index = rows.findIndex((row) => row.conditionId === condition.id);
     if (index >= 0) return patchRow(index, patch);
-    return onChange([
-      ...rows,
-      patchConditionRow(
-        {
-          conditionId: condition.id,
-          name: condition.conditionName,
-          status: condition.status,
-          note: "",
-          setOnRecord: false,
-          recommend: false,
-        },
-        patch,
-      ),
-    ]);
+    return onChange([...rows, patchConditionRow(existingConditionRow(condition), patch)]);
   }
 
   function addRow() {
@@ -181,12 +171,28 @@ export default function ConfirmConditionsBlock({ patientId, rows, onChange, erro
         </dl>
       )}
 
+      {legacyMonitorings.length > 0 && (
+        <div className="rounded-lg border border-slate-100 bg-white p-3 text-xs text-slate-600">
+          <p className="font-medium uppercase tracking-wider text-slate-400">
+            Already monitored at BHC
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {legacyMonitorings.map((monitoring) => (
+              <li key={monitoring.id}>
+                Legacy BHC Monitoring — {monitoring.conditionName}
+                {monitoring.startedAt ? `, since ${formatShortDate(monitoring.startedAt)}` : ""}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-slate-500">
+            Confirming one of these as Active or Controlled links it to the confirmed condition.
+          </p>
+        </div>
+      )}
+
       {existing.map((condition) => {
         const index = rows.findIndex((row) => row.conditionId === condition.id);
-        const row =
-          index >= 0
-            ? rows[index]
-            : { status: condition.status, note: "", setOnRecord: false, recommend: false };
+        const row = index >= 0 ? rows[index] : existingConditionRow(condition);
         return (
           <ConditionRow
             key={condition.id}

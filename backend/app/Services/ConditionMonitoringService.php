@@ -136,6 +136,8 @@ class ConditionMonitoringService
                 'updated_by' => $user->id,
             ]);
             $this->history($monitoring, $record, ConditionMonitoringVisit::ACTION_STARTED, false);
+            // The RHU's recommendation is acted on: it must not come back when this monitoring stops.
+            $condition->update(['bhc_monitoring_recommended_at' => null, 'bhc_monitoring_recommended_by' => null]);
             $activeAfter->put($monitoring->id, $monitoring);
         }
 

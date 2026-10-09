@@ -156,6 +156,62 @@ class PatientConditionsServiceTest extends TestCase
         $this->assertSame($this->rhuUser->id, $condition->bhc_monitoring_recommended_by);
     }
 
+    public function test_leaving_active_or_controlled_clears_the_recommendation(): void
+    {
+        $patient = $this->patient();
+        $this->apply($patient, [['name' => 'Hypertension', 'status' => 'active', 'recommend_bhc_monitoring' => true]]);
+
+        $condition = $this->apply($patient, [['name' => 'Hypertension', 'status' => 'under_evaluation']], 43)->sole();
+        $this->assertNull($condition->bhc_monitoring_recommended_at);
+        $this->assertNull($condition->bhc_monitoring_recommended_by);
+
+        // Back to Active without a new recommendation: nothing is recommended.
+        $condition = $this->apply($patient, [['name' => 'Hypertension', 'status' => 'active', 'recommend_bhc_monitoring' => false]], 44)->sole();
+        $this->assertNull($condition->bhc_monitoring_recommended_at);
+        $this->assertNull($condition->fresh()->bhc_monitoring_recommended_by);
+    }
+
+    public function test_resolving_a_recommended_condition_clears_the_recommendation(): void
+    {
+        $patient = $this->patient();
+        $this->apply($patient, [['name' => 'Hypertension', 'status' => 'controlled', 'recommend_bhc_monitoring' => true]]);
+
+        $condition = $this->apply($patient, [['name' => 'Hypertension', 'status' => 'resolved']], 43)->sole();
+
+        $this->assertNull($condition->fresh()->bhc_monitoring_recommended_at);
+    }
+
+    public function test_an_explicit_false_withdraws_an_existing_recommendation(): void
+    {
+        $patient = $this->patient();
+        $first = $this->apply($patient, [['name' => 'Hypertension', 'status' => 'active', 'recommend_bhc_monitoring' => true]])->sole();
+
+        $this->apply($patient, [['condition_id' => $first->id, 'status' => 'active', 'recommend_bhc_monitoring' => false]], 43);
+
+        $condition = $first->fresh();
+        $this->assertNull($condition->bhc_monitoring_recommended_at);
+        $this->assertNull($condition->bhc_monitoring_recommended_by);
+    }
+
+    public function test_recommending_again_keeps_it_recommended(): void
+    {
+        $patient = $this->patient();
+        $first = $this->apply($patient, [['name' => 'Hypertension', 'status' => 'active', 'recommend_bhc_monitoring' => true]])->sole();
+
+        $this->apply($patient, [['condition_id' => $first->id, 'status' => 'controlled', 'recommend_bhc_monitoring' => true]], 43);
+
+        $this->assertNotNull($first->fresh()->bhc_monitoring_recommended_at);
+    }
+
+    public function test_a_condition_already_monitored_is_not_recommended(): void
+    {
+        $patient = $this->patient();
+        $this->legacyMonitoring($patient);
+
+        $condition = $this->apply($patient, [['name' => 'Hypertension', 'status' => 'active', 'recommend_bhc_monitoring' => true]])->sole();
+
+        $this->assertNull($condition->fresh()->bhc_monitoring_recommended_at);
+    }
     private function legacyMonitoring(Patient $patient): ConditionMonitoring
     {
         $record = HealthRecord::create(['patient_id' => $patient->id, 'category' => 'General Consultation', 'barangay_health_center_id' => $this->bhc->id]);

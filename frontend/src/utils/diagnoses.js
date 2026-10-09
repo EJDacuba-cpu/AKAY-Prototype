@@ -8,8 +8,8 @@
  * The record's plain-text `diagnosis` stays the copy every existing reader
  * uses (reports, referrals, follow-ups): it is the names joined with "; ".
  *
- * The Suspected Case field (the Assessment step) has no search or suggestions:
- * the worker types the case and it is kept exactly as typed.
+ * The Health Concerns field (the Assessment step) has no search or suggestions:
+ * the worker types the concern and it is kept exactly as typed.
  *
  * `reportAs` (Morbidity / Notifiable / not reported) is chosen per diagnosis
  * in its Care Plan row - see diagnosisReporting.js.

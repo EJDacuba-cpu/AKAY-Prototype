@@ -90,12 +90,20 @@ class HealthConcernBoundaryTest extends TestCase
         $this->assertCount(3, HealthRecord::findOrFail($id)->diagnoses);
     }
 
-    public function test_add_to_conditions_is_rejected(): void
+    public function test_add_to_conditions_true_is_rejected(): void
     {
         $this->save([['id' => 'd1', 'name' => 'Asthma', 'addToConditions' => true]])
             ->assertUnprocessable()->assertJsonValidationErrors(['diagnoses.0.addToConditions']);
-        $this->save([['id' => 'd1', 'name' => 'Asthma', 'addToConditions' => false]])
-            ->assertUnprocessable()->assertJsonValidationErrors(['diagnoses.0.addToConditions']);
+        $this->assertSame(0, PatientCondition::count());
+    }
+
+    public function test_a_stale_client_sending_add_to_conditions_false_is_accepted_and_ignored(): void
+    {
+        foreach ([false, 0, '0', 'false', null] as $falsy) {
+            $id = $this->save([['id' => 'd1', 'name' => 'Asthma', 'addToConditions' => $falsy]])
+                ->assertCreated()->json('data.id');
+            $this->assertArrayNotHasKey('addToConditions', HealthRecord::findOrFail($id)->diagnoses[0]);
+        }
         $this->assertSame(0, PatientCondition::count());
     }
 

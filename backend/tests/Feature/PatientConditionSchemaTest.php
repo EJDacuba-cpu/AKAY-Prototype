@@ -157,4 +157,13 @@ class PatientConditionSchemaTest extends TestCase
         $this->assertTrue($monitoring->fresh()->isLegacy());
         $this->assertSame(0, PatientConditionEvent::count());
     }
+
+    public function test_the_condition_foreign_keys_are_indexed(): void
+    {
+        foreach (['patient_condition_events', 'condition_monitorings'] as $table) {
+            $indexed = collect(\Illuminate\Support\Facades\Schema::getIndexes($table))
+                ->contains(fn (array $index) => $index['columns'] === ['patient_condition_id']);
+            $this->assertTrue($indexed, "$table.patient_condition_id has no index");
+        }
+    }
 }

@@ -52,6 +52,12 @@ function monitoredSince(condition) {
   return startedAt ? `Monitored at BHC since ${formatShortDate(startedAt)}` : "";
 }
 
+/** A closed or under-evaluation condition whose BHC monitoring is still active (the RHU does not stop it). */
+function stillMonitored(condition) {
+  const startedAt = condition.monitoring?.startedAt;
+  return condition.monitoring ? `Still monitored at BHC${startedAt ? ` since ${formatShortDate(startedAt)}` : ""}` : "";
+}
+
 function ConfirmedRow({ condition }) {
   const legacy = condition.kind === "legacy-monitoring";
   return (
@@ -82,7 +88,7 @@ function EventLine({ event }) {
 
 function PastCondition({ condition }) {
   return (
-    <Row name={condition.conditionName} chip={<StatusChip status={condition.status} />}>
+    <Row name={condition.conditionName} chip={<StatusChip status={condition.status} />} lines={[stillMonitored(condition)]}>
       {condition.events?.length > 0 && (
         <ul className="mt-0.5 space-y-0.5">
           {condition.events.map((event, index) => (
@@ -97,7 +103,7 @@ function PastCondition({ condition }) {
 /**
  * A patient's medical conditions by clinical source: Confirmed / Monitored
  * (RHU-confirmed, or monitored before confirmation existed), Under Evaluation,
- * Unverified (legacy BHC consultation entries), Patient-Reported, and Past
+ * Unverified (legacy BHC consultation entries), Patient-Reported Previous Conditions, and Past
  * (collapsed, with each status change). Read-only; `groups` is the result of
  * groupMedicalConditions. Only Confirmed / Monitored ever counts as an alert.
  */
@@ -129,7 +135,7 @@ export default function MedicalConditionsGroups({ groups, isLoading = false, isE
               key={condition.id}
               name={condition.conditionName}
               chip={<StatusChip status={condition.status} />}
-              lines={["Under RHU evaluation"]}
+              lines={["Under RHU evaluation", stillMonitored(condition)]}
             />
           ))}
         </Group>
@@ -146,7 +152,7 @@ export default function MedicalConditionsGroups({ groups, isLoading = false, isE
         </Group>
       )}
       {patientReported.length > 0 && (
-        <Group title="Patient-Reported">
+        <Group title="Patient-Reported Previous Conditions">
           {patientReported.map((disease) => (
             <Row
               key={`${disease.name}-${disease.index}`}

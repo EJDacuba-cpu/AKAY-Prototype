@@ -719,6 +719,11 @@ export default function AddHealthRecord() {
     followUpRecord?.patientId ||
     followUpRecord?.patient_id ||
     "Not recorded";
+  // The patient this record is saved for: a follow-up may carry the patient on
+  // the follow-up record rather than in the picker.
+  const savedPatientId =
+    selectedPatientId ||
+    (isFollowUp && followUpPatientId !== "Not recorded" ? followUpPatientId : "");
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -1556,15 +1561,15 @@ export default function AddHealthRecord() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.dashboardSummary("rhu"),
       });
-      if (selectedPatientId) {
+      if (savedPatientId) {
         queryClient.invalidateQueries({
-          queryKey: queryKeys.patientDetails("rhu", selectedPatientId),
+          queryKey: queryKeys.patientDetails("rhu", savedPatientId),
         });
         queryClient.invalidateQueries({
-          queryKey: queryKeys.patientConditions(selectedPatientId),
+          queryKey: queryKeys.patientConditions(savedPatientId),
         });
         queryClient.invalidateQueries({
-          queryKey: queryKeys.careOverview(selectedPatientId),
+          queryKey: queryKeys.careOverview(savedPatientId),
         });
       }
       if (savedId) {
@@ -2527,7 +2532,7 @@ export default function AddHealthRecord() {
             delay={6}
           >
             <ConfirmConditionsBlock
-              patientId={selectedPatientId || followUpPatientId}
+              patientId={savedPatientId}
               rows={conditionRows}
               onChange={setConditionRows}
               errors={validationErrors}

@@ -38,6 +38,23 @@ export function patchConditionRow(row, patch) {
   return next;
 }
 
+/**
+ * The row for an existing open condition, not yet ticked. "Recommend BHC
+ * monitoring" starts as the condition's current state, so the RHU can see a
+ * standing recommendation and withdraw it by unticking (sent as an explicit
+ * false once the row is ticked).
+ */
+export function existingConditionRow(condition) {
+  return {
+    conditionId: condition.id,
+    name: condition.conditionName,
+    status: condition.status,
+    note: "",
+    setOnRecord: false,
+    recommend: Boolean(condition.bhcMonitoringRecommendedAt) && canRecommendBhcMonitoring(condition.status),
+  };
+}
+
 /** The request rows: only those ticked "Set on patient's record". */
 export function buildConditionConfirmations(rows) {
   return ticked(rows).map((row) => {

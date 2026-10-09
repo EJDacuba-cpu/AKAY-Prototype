@@ -30,6 +30,7 @@ use App\Support\StoredFunction;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -99,7 +100,10 @@ class HealthRecordController extends Controller
         $this->facilityAccess->authorizePatientModification($request->user(), $patient);
         // conditionKey is always server-resolved from the diagnosis name here -
         // any client-sent conditionKey is discarded and replaced, never trusted.
-        $data['diagnoses'] = $clinicalRegistry->resolveConditionEntries($data['diagnoses'] ?? []);
+        // A stale client may still send a falsy addToConditions; it is never stored.
+        $data['diagnoses'] = $clinicalRegistry->resolveConditionEntries(
+            array_map(fn ($diagnosis) => Arr::except($diagnosis, ['addToConditions']), $data['diagnoses'] ?? [])
+        );
         $draftPublicId = $data['draft_public_id'] ?? null;
         unset($data['draft_public_id']);
         $idempotencyKey = $data['idempotency_key'];
@@ -220,6 +224,14 @@ class HealthRecordController extends Controller
                     $request->user(),
                     $lockedFollowUpTask
                 );
+                // A save that confirms conditions or changes monitoring locks the
+                // patient row first - the order PatientConditions::apply uses -
+                // so two such saves cannot deadlock on the rows below.
+                if ($conditionConfirmations !== []
+                    || ($carePlan['continued_monitoring_ids'] ?? []) !== []
+                    || ($carePlan['start_monitoring_condition_ids'] ?? []) !== []) {
+                    Patient::query()->whereKey($patient->id)->lockForUpdate()->firstOrFail();
+                }
                 // Continued rows first, then the conditions being started - each
                 // in id order, so concurrent saves lock in the same order.
                 $continuedMonitorings = $monitoring->lockContinued($patient, $carePlan['continued_monitoring_ids'] ?? []);

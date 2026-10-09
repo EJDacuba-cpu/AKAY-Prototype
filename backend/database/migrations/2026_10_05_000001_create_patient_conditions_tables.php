@@ -56,11 +56,15 @@ return new class extends Migration
             $table->unsignedBigInteger('source_id');
             $table->foreignId('changed_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('changed_at');
+
+            // PostgreSQL does not index a foreign key by itself.
+            $table->index('patient_condition_id');
         });
 
         // null = Legacy BHC Monitoring (started before RHU confirmation existed).
         Schema::table('condition_monitorings', function (Blueprint $table) {
             $table->foreignId('patient_condition_id')->nullable()->constrained('patient_conditions')->nullOnDelete();
+            $table->index('patient_condition_id');
         });
         $this->restoreMonitoringPartialIndex();
 
@@ -80,6 +84,9 @@ return new class extends Migration
 
     public function down(): void
     {
+        Schema::table('condition_monitorings', function (Blueprint $table) {
+            $table->dropIndex(['patient_condition_id']);
+        });
         Schema::table('condition_monitorings', function (Blueprint $table) {
             $table->dropConstrainedForeignId('patient_condition_id');
         });

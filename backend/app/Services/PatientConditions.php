@@ -119,9 +119,18 @@ class PatientConditions
             'source_id' => $sourceId,
             'updated_by' => $user->id,
         ];
-        if ($item['recommend']) {
-            $stamp += ['bhc_monitoring_recommended_at' => $now, 'bhc_monitoring_recommended_by' => $user->id];
-        }
+        // The recommendation always follows what the RHU sent: ticked sets it,
+        // anything else (including leaving Active/Controlled) clears it. A
+        // condition BHC already monitors needs no recommendation.
+        $alreadyMonitored = ConditionMonitoring::query()->where('patient_id', $patient->id)
+            ->where('condition_identity', $item['identity'])
+            ->where('status', ConditionMonitoring::STATUS_ACTIVE)
+            ->exists();
+        $recommended = $item['recommend'] && ! $alreadyMonitored;
+        $stamp += [
+            'bhc_monitoring_recommended_at' => $recommended ? $now : null,
+            'bhc_monitoring_recommended_by' => $recommended ? $user->id : null,
+        ];
 
         if ($condition === null) {
             $condition = PatientCondition::create($stamp + [

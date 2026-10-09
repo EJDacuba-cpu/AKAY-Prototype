@@ -7,6 +7,7 @@ import {
   mapConditionConfirmationErrors,
   canRecommendBhcMonitoring,
   patchConditionRow,
+  existingConditionRow,
 } from "./conditionConfirmations.js";
 
 test("status options are the five RHU statuses with their labels", () => {
@@ -140,4 +141,47 @@ test("recommend is cleared when the status becomes non-monitorable and stays cle
   row = patchConditionRow(row, { recommend: true });
   assert.equal(row.recommend, true);
   assert.equal(patchConditionRow(row, { note: "x" }).recommend, true);
+});
+
+test("an existing condition's row starts with the box ticked when BHC monitoring is recommended", () => {
+  const recommended = existingConditionRow({
+    id: 7,
+    conditionName: "Hypertension",
+    status: "active",
+    bhcMonitoringRecommendedAt: "2026-10-01T08:00:00Z",
+  });
+  assert.deepEqual(recommended, {
+    conditionId: 7,
+    name: "Hypertension",
+    status: "active",
+    note: "",
+    setOnRecord: false,
+    recommend: true,
+  });
+
+  const plain = existingConditionRow({ id: 8, conditionName: "Asthma", status: "controlled", bhcMonitoringRecommendedAt: null });
+  assert.equal(plain.recommend, false);
+  // A recommendation only exists for an Active or Controlled condition.
+  assert.equal(
+    existingConditionRow({ id: 9, conditionName: "Flu", status: "under_evaluation", bhcMonitoringRecommendedAt: "2026-10-01" }).recommend,
+    false,
+  );
+});
+
+test("unticking Recommend on a ticked existing condition sends a withdrawal", () => {
+  const row = existingConditionRow({ id: 7, conditionName: "Hypertension", status: "active", bhcMonitoringRecommendedAt: "2026-10-01" });
+
+  // Ticked with the pre-filled box left alone: the recommendation stays.
+  assert.deepEqual(buildConditionConfirmations([patchConditionRow(row, { setOnRecord: true })]), [
+    { condition_id: 7, status: "active", recommend_bhc_monitoring: true },
+  ]);
+  // The RHU unticks the box: an explicit false withdraws it.
+  const withdrawn = patchConditionRow(patchConditionRow(row, { setOnRecord: true }), { recommend: false });
+  assert.deepEqual(buildConditionConfirmations([withdrawn]), [
+    { condition_id: 7, status: "active", recommend_bhc_monitoring: false },
+  ]);
+  // Moving it to Resolved also sends false.
+  assert.deepEqual(buildConditionConfirmations([patchConditionRow(row, { status: "resolved", setOnRecord: true })]), [
+    { condition_id: 7, status: "resolved", recommend_bhc_monitoring: false },
+  ]);
 });

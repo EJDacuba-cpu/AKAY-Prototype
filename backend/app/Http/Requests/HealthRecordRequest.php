@@ -295,7 +295,13 @@ class HealthRecordRequest extends FormRequest
             'diagnoses.*.name' => ['required', 'string', 'max:150'],
             // The BHC never adds a concern to Current Conditions or sets a
             // condition status - only the RHU confirms conditions.
-            'diagnoses.*.addToConditions' => ['prohibited'],
+            // Only a falsy value is tolerated (a browser tab opened before this
+            // change still sends false); it is dropped on save. true is rejected.
+            'diagnoses.*.addToConditions' => ['nullable', function (string $attribute, mixed $value, \Closure $fail): void {
+                if (! in_array($value, [false, 0, '0', 'false'], true)) {
+                    $fail('A health concern cannot be added to the patient\'s conditions.');
+                }
+            }],
             'diagnoses.*.conditionStatus' => ['prohibited'],
             // Server-resolved from the name by ClinicalRegistry on save
             // (HealthRecordController::store); any value sent here is accepted

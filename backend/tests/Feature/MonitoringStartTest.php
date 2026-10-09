@@ -196,6 +196,47 @@ class MonitoringStartTest extends TestCase
             ->assertJsonPath('data.monitoring_without_follow_up.0.legacy', false);
     }
 
+    public function test_starting_monitoring_clears_the_recommendation_and_a_later_stop_does_not_bring_it_back(): void
+    {
+        $condition = $this->condition('Hypertension', 'hypertension', 'active', null, true);
+        $condition->update(['bhc_monitoring_recommended_by' => null]);
+
+        $this->save(['start_monitoring_condition_ids' => [$condition->id]])->assertCreated();
+
+        $condition->refresh();
+        $this->assertNull($condition->bhc_monitoring_recommended_at);
+        $this->assertNull($condition->bhc_monitoring_recommended_by);
+
+        $monitoring = ConditionMonitoring::sole();
+        $this->save(['continued_monitoring_ids' => [$monitoring->id], 'monitoring_stops' => [['monitoring_id' => $monitoring->id, 'reason' => 'Resolved']]])
+            ->assertCreated();
+        $this->assertSame('stopped', $monitoring->fresh()->status);
+
+        $this->getJson("/api/patients/{$this->patient->id}/care-overview")->assertOk()
+            ->assertJsonCount(0, 'data.monitoring_recommendations')
+            ->assertJsonCount(0, 'data.monitoring_without_follow_up');
+    }
+    public function test_a_monitoring_save_locks_the_patient_before_the_condition_rows(): void
+    {
+        $condition = $this->condition('Hypertension', 'hypertension');
+        $queries = [];
+        $inTransaction = false;
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Database\Events\TransactionBeginning::class, function () use (&$inTransaction): void {
+            $inTransaction = true;
+        });
+        \Illuminate\Support\Facades\DB::listen(function ($query) use (&$queries, &$inTransaction): void {
+            if ($inTransaction) {
+                $queries[] = $query->sql;
+            }
+        });
+
+        $this->save(['start_monitoring_condition_ids' => [$condition->id]])->assertCreated();
+
+        $firstOf = fn (string $table) => collect($queries)->search(fn (string $sql) => str_starts_with($sql, 'select') && str_contains($sql, "from \"$table\""));
+        $patientLock = $firstOf('patients');
+        $this->assertNotFalse($patientLock);
+        $this->assertLessThan($firstOf('patient_conditions'), $patientLock);
+    }
     public function test_starting_tb_requires_its_monitoring_details(): void
     {
         $condition = $this->condition('Tuberculosis', 'tuberculosis');
