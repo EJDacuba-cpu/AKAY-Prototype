@@ -45,8 +45,6 @@ class HealthRecordDraftPayloadService
         'diagnoses' => ['*' => [
             'id' => self::SCALAR,
             'name' => self::SCALAR,
-            'addToConditions' => self::SCALAR,
-            'conditionStatus' => self::SCALAR,
             'reportAs' => self::SCALAR,
             'carePlan' => self::SCALAR,
             'includeInSurveillance' => self::SCALAR,
@@ -359,10 +357,7 @@ class HealthRecordDraftPayloadService
                 'reason' => self::SCALAR,
             ]],
             'monitoringReferrals' => ['*' => self::SCALAR],
-            'monitoringStatuses' => ['*' => [
-                'monitoringId' => self::SCALAR,
-                'status' => self::SCALAR,
-            ]],
+            'startConditionIds' => ['*' => self::SCALAR],
         ],
         // Patient Background sections edited in this consultation, applied to
         // the patient on finalize (PatientBackground::apply). Only the sections
@@ -561,8 +556,6 @@ class HealthRecordDraftPayloadService
             'payload.diagnoses' => ['nullable', 'array', 'max:20'],
             'payload.diagnoses.*.id' => ['nullable', 'string', 'max:64'],
             'payload.diagnoses.*.name' => ['required', 'string', 'max:150'],
-            'payload.diagnoses.*.addToConditions' => ['nullable', 'boolean'],
-            'payload.diagnoses.*.conditionStatus' => ['nullable', 'string', Rule::in(CurrentConditionsSync::STATUSES)],
             'payload.diagnoses.*.reportAs' => ['nullable', 'string', Rule::in(HealthRecord::DIAGNOSIS_REPORT_TYPES)],
             'payload.assessmentNotes' => ['nullable', 'string', 'max:5000'],
             'payload.dateOfVisit' => ['nullable', 'date_format:Y-m-d'],

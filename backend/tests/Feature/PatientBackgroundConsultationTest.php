@@ -155,40 +155,6 @@ class PatientBackgroundConsultationTest extends TestCase
         $this->assertSame('Dust', $this->background()['allergies']);
     }
 
-    public function test_diagnosis_sync_builds_on_the_edited_medical_section(): void
-    {
-        $id = $this->finalize([
-            'sections' => ['medical' => ['allergies' => 'Penicillin', 'currentDiseases' => [['name' => 'Asthma', 'status' => 'Controlled']]]],
-            'base_revisions' => ['medical' => 2],
-        ], [
-            'diagnosis' => 'Hypertension',
-            'diagnoses' => [['id' => 'd1', 'name' => 'HTN']],
-        ])->assertCreated()->json('data.id');
-
-        $background = $this->background();
-        $this->assertSame('Penicillin', $background['allergies']);
-        $this->assertSame(['Asthma', 'Hypertension'], array_column($background['currentDiseases'], 'name'));
-        $this->assertSame(4, $background['revisions']['medical']);
-
-        $changes = HealthRecord::findOrFail($id)->background_changes;
-        $this->assertSame(['consultation', 'diagnosis'], array_column($changes, 'source'));
-        $this->assertSame([3, 4], array_column($changes, 'revision'));
-    }
-
-    public function test_a_diagnosis_sync_bumps_the_medical_revision_for_later_conflicts(): void
-    {
-        $this->finalize(null, [
-            'diagnosis' => 'Hypertension',
-            'diagnoses' => [['id' => 'd1', 'name' => 'Hypertension']],
-        ])->assertCreated();
-
-        $this->assertSame(3, $this->background()['revisions']['medical']);
-        $this->finalize([
-            'sections' => ['medical' => ['allergies' => 'Penicillin']],
-            'base_revisions' => ['medical' => 2],
-        ])->assertStatus(409);
-    }
-
     public function test_background_history_lists_changes_newest_first(): void
     {
         $this->finalize([

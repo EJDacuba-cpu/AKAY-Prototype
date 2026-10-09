@@ -300,8 +300,8 @@ class ConsultationProgramsTest extends TestCase
             'payload' => [
                 'chiefComplaint' => 'Wheezing',
                 'diagnoses' => [
-                    ['id' => 'd1', 'name' => 'Bronchial asthma', 'addToConditions' => true, 'conditionStatus' => 'Active'],
-                    ['id' => 'd2', 'name' => 'Allergic rhinitis', 'addToConditions' => false, 'conditionStatus' => null],
+                    ['id' => 'd1', 'name' => 'Bronchial asthma'],
+                    ['id' => 'd2', 'name' => 'Allergic rhinitis'],
                 ],
                 'assessmentNotes' => 'Mild exacerbation; no distress.',
                 'wizardPhase' => 'program',
@@ -310,8 +310,7 @@ class ConsultationProgramsTest extends TestCase
 
         $this->getJson("/api/health-record-drafts/$draft")->assertOk()
             ->assertJsonPath('data.payload.diagnoses.0.name', 'Bronchial asthma')
-            ->assertJsonPath('data.payload.diagnoses.0.addToConditions', true)
-            ->assertJsonPath('data.payload.diagnoses.1.addToConditions', false)
+            ->assertJsonPath('data.payload.diagnoses.1.name', 'Allergic rhinitis')
             ->assertJsonPath('data.payload.assessmentNotes', 'Mild exacerbation; no distress.');
     }
 

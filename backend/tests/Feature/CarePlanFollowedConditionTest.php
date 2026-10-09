@@ -64,11 +64,6 @@ class CarePlanFollowedConditionTest extends TestCase
         return ConditionMonitoring::where('patient_id', $this->patient->id)->where('status', 'active')->sole();
     }
 
-    private function hypertensionStatus(): ?string
-    {
-        return collect($this->patient->fresh()->medical_background['currentDiseases'] ?? [])->firstWhere('conditionKey', 'hypertension')['status'] ?? null;
-    }
-
     public function test_a_followed_condition_can_be_referred_without_a_new_diagnosis(): void
     {
         $monitoring = $this->followedHypertension();
@@ -119,78 +114,5 @@ class CarePlanFollowedConditionTest extends TestCase
             'monitoring_referrals' => [$monitoring->id],
             'monitoring_stops' => [['monitoring_id' => $monitoring->id, 'reason' => 'Moved away']],
         ], $this->referral())->assertUnprocessable()->assertJsonValidationErrors(['care_plan.monitoring_referrals.0']);
-    }
-
-    public function test_a_status_update_changes_the_documented_condition_and_is_recorded(): void
-    {
-        $monitoring = $this->followedHypertension();
-        $this->assertSame('Active', $this->hypertensionStatus());
-        $revisionBefore = (int) ($this->patient->fresh()->medical_background['revisions']['medical'] ?? 0);
-
-        $id = $this->save([], [
-            'continued_monitoring_ids' => [$monitoring->id],
-            'monitoring_status_updates' => [['monitoring_id' => $monitoring->id, 'status' => 'Controlled']],
-        ])->assertCreated()->json('data.id');
-
-        $this->assertSame('Controlled', $this->hypertensionStatus());
-        $this->assertSame('active', $monitoring->fresh()->status, 'a documented status does not end BHC monitoring');
-        $this->assertSame($revisionBefore + 1, (int) $this->patient->fresh()->medical_background['revisions']['medical']);
-        $changes = HealthRecord::findOrFail($id)->background_changes;
-        $this->assertSame('medical', $changes[0]['section']);
-        $this->assertSame('consultation', $changes[0]['source']);
-    }
-
-    public function test_no_status_update_leaves_the_documented_condition_alone(): void
-    {
-        $monitoring = $this->followedHypertension();
-        $revisionBefore = (int) ($this->patient->fresh()->medical_background['revisions']['medical'] ?? 0);
-
-        $this->save([], ['continued_monitoring_ids' => [$monitoring->id]])->assertCreated();
-
-        $this->assertSame('Active', $this->hypertensionStatus());
-        $this->assertSame($revisionBefore, (int) ($this->patient->fresh()->medical_background['revisions']['medical'] ?? 0));
-    }
-
-    public function test_a_status_must_be_a_real_status_for_a_followed_condition(): void
-    {
-        $monitoring = $this->followedHypertension();
-
-        $this->save([], [
-            'continued_monitoring_ids' => [$monitoring->id],
-            'monitoring_status_updates' => [['monitoring_id' => $monitoring->id, 'status' => 'Cured']],
-        ])->assertUnprocessable()->assertJsonValidationErrors(['care_plan.monitoring_status_updates.0.status']);
-
-        $this->save([], [
-            'monitoring_status_updates' => [['monitoring_id' => $monitoring->id, 'status' => 'Resolved']],
-        ])->assertUnprocessable()->assertJsonValidationErrors(['care_plan.monitoring_status_updates.0.monitoring_id']);
-
-        $this->assertSame('Active', $this->hypertensionStatus());
-    }
-
-    public function test_changing_a_documented_status_needs_clinical_history_access(): void
-    {
-        $monitoring = $this->followedHypertension();
-        $this->actingAs($this->user(array_values(array_diff(ActionPermissions::PRESETS['clinical'], ['clinical.history']))), 'sanctum');
-
-        $this->save([], [
-            'continued_monitoring_ids' => [$monitoring->id],
-            'monitoring_status_updates' => [['monitoring_id' => $monitoring->id, 'status' => 'Resolved']],
-        ])->assertForbidden();
-
-        $this->assertSame('Active', $this->hypertensionStatus());
-    }
-
-    public function test_a_status_update_for_a_condition_missing_from_the_background_changes_nothing(): void
-    {
-        $monitoring = $this->followedHypertension();
-        $this->patient->update(['medical_background' => ['currentDiseases' => [], 'revisions' => ['medical' => 2]]]);
-
-        $this->save([], [
-            'continued_monitoring_ids' => [$monitoring->id],
-            'monitoring_status_updates' => [['monitoring_id' => $monitoring->id, 'status' => 'Resolved']],
-        ])->assertCreated();
-
-        $this->assertSame([], $this->patient->fresh()->medical_background['currentDiseases']);
-        $this->assertSame(2, (int) $this->patient->fresh()->medical_background['revisions']['medical']);
     }
 }

@@ -45,14 +45,16 @@ class CarePlanValidationTest extends TestCase
 
     public function test_the_retired_monitor_and_refer_value_is_rejected_on_a_new_save(): void
     {
-        // Older records keep 'monitor_refer'; a new visit picks Monitor at BHC
-        // or Refer to RHU per diagnosis.
-        $this->store([
-            'diagnosis' => 'Asthma',
-            'diagnoses' => [['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor_refer']],
-            'needs_referral' => true,
-            'referral' => ['reason_for_referral' => 'Referred for: Asthma', 'urgency_level' => 'Routine'],
-        ])->assertUnprocessable()->assertJsonValidationErrors(['diagnoses.0.carePlan']);
+        // Older records keep 'monitor_refer', 'monitor' and 'none'; a new visit
+        // picks Recheck, Follow-up or Refer per concern, or no next action.
+        foreach (['monitor_refer', 'monitor', 'none'] as $retired) {
+            $this->store([
+                'diagnosis' => 'Asthma',
+                'diagnoses' => [['id' => 'd1', 'name' => 'Asthma', 'carePlan' => $retired]],
+                'needs_referral' => true,
+                'referral' => ['reason_for_referral' => 'Referred for: Asthma', 'urgency_level' => 'Routine'],
+            ])->assertUnprocessable()->assertJsonValidationErrors(['diagnoses.0.carePlan']);
+        }
         $this->assertSame(0, \App\Models\HealthRecord::count());
     }
 
@@ -80,13 +82,6 @@ class CarePlanValidationTest extends TestCase
             ->assertUnprocessable()->assertJsonValidationErrors(['care_plan.monitoring_stops.0.reason']);
     }
 
-    public function test_monitored_tb_requires_its_monitoring_details(): void
-    {
-        $this->store(['diagnoses' => [['id' => 'd1', 'name' => 'PTB', 'carePlan' => 'monitor']]])
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors(['tb_data.diagnosis.tbCaseNumber', 'tb_data.phases.intensiveStart']);
-    }
-
     public function test_tb_diagnosis_without_monitoring_needs_no_tb_card(): void
     {
         $this->store([
@@ -107,7 +102,7 @@ class CarePlanValidationTest extends TestCase
         $this->assertSame(0, \App\Models\HealthRecord::count());
     }
 
-    public function test_a_refer_care_plan_with_a_referral_or_a_monitor_only_plan_saves(): void
+    public function test_a_refer_care_plan_with_a_referral_or_a_recheck_only_plan_saves(): void
     {
         $this->store([
             'diagnosis' => 'Asthma',
@@ -117,7 +112,8 @@ class CarePlanValidationTest extends TestCase
         ])->assertCreated();
         $this->store([
             'diagnosis' => 'Asthma',
-            'diagnoses' => [['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor']],
+            'diagnoses' => [['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'recheck']],
+            'monitoring_data' => ['followUpStatus' => 'Follow-up Required', 'followUpDate' => now()->addWeek()->toDateString()],
         ])->assertCreated();
     }
 
@@ -137,17 +133,17 @@ class CarePlanValidationTest extends TestCase
             'payload' => [
                 'chiefComplaint' => 'Check-up',
                 'fbs' => '126',
-                'diagnoses' => [['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'monitor', 'includeInSurveillance' => true]],
-                'carePlan' => ['continuedFollowUpTaskIds' => [], 'continuedMonitoringIds' => [7], 'monitoringStops' => [['monitoringId' => 7, 'reason' => 'Moved away']], 'monitoringReferrals' => [8], 'monitoringStatuses' => [['monitoringId' => 8, 'status' => 'Controlled']]],
+                'diagnoses' => [['id' => 'd1', 'name' => 'Asthma', 'carePlan' => 'recheck', 'includeInSurveillance' => true]],
+                'carePlan' => ['continuedFollowUpTaskIds' => [], 'continuedMonitoringIds' => [7], 'monitoringStops' => [['monitoringId' => 7, 'reason' => 'Moved away']], 'monitoringReferrals' => [8], 'startConditionIds' => [11, 12]],
             ],
         ])->assertCreated()->json('data.id');
 
         $this->getJson("/api/health-record-drafts/$draft")->assertOk()
             ->assertJsonPath('data.payload.fbs', '126')
-            ->assertJsonPath('data.payload.diagnoses.0.carePlan', 'monitor')
+            ->assertJsonPath('data.payload.diagnoses.0.carePlan', 'recheck')
             ->assertJsonPath('data.payload.diagnoses.0.includeInSurveillance', true)
             ->assertJsonPath('data.payload.carePlan.monitoringStops.0.reason', 'Moved away')
             ->assertJsonPath('data.payload.carePlan.monitoringReferrals.0', 8)
-            ->assertJsonPath('data.payload.carePlan.monitoringStatuses.0.status', 'Controlled');
+            ->assertJsonPath('data.payload.carePlan.startConditionIds.1', 12);
     }
 }

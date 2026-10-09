@@ -5,7 +5,6 @@ namespace App\Http\Requests;
 use App\Models\HealthRecord;
 use App\Models\Referral;
 use App\Services\ConsultationPrograms;
-use App\Services\CurrentConditionsSync;
 use App\Services\PatientBackground;
 use App\Services\PatientConditions;
 use Illuminate\Foundation\Http\FormRequest;
@@ -294,8 +293,10 @@ class HealthRecordRequest extends FormRequest
             'diagnoses' => ['nullable', 'array', 'max:20'],
             'diagnoses.*.id' => ['nullable', 'string', 'max:64'],
             'diagnoses.*.name' => ['required', 'string', 'max:150'],
-            'diagnoses.*.addToConditions' => ['nullable', 'boolean'],
-            'diagnoses.*.conditionStatus' => ['nullable', 'string', Rule::in(CurrentConditionsSync::STATUSES)],
+            // The BHC never adds a concern to Current Conditions or sets a
+            // condition status - only the RHU confirms conditions.
+            'diagnoses.*.addToConditions' => ['prohibited'],
+            'diagnoses.*.conditionStatus' => ['prohibited'],
             // Server-resolved from the name by ClinicalRegistry on save
             // (HealthRecordController::store); any value sent here is accepted
             // by validation but always discarded and recomputed, never trusted.
@@ -303,8 +304,8 @@ class HealthRecordRequest extends FormRequest
             // Which report this diagnosis is included in; null = not reported.
             // Drives the derived monitoring_data.morbidityReportingStatus.
             'diagnoses.*.reportAs' => ['nullable', 'string', Rule::in(HealthRecord::DIAGNOSIS_REPORT_TYPES)],
-            // Care Plan & Next Steps, per diagnosis. null = no ongoing tracking.
-            // A new save cannot use the retired monitor_refer value.
+            // Next action for this Health Concern; null = none. A new save
+            // cannot use the retired none / monitor / monitor_refer values.
             'diagnoses.*.carePlan' => ['nullable', 'string', Rule::in($this->isMethod('post')
                 ? \App\Services\CarePlan::SELECTABLE
                 : \App\Services\CarePlan::VALUES)],
@@ -330,13 +331,11 @@ class HealthRecordRequest extends FormRequest
             'care_plan.monitoring_stops.*.monitoring_id' => ['required', 'integer', 'distinct'],
             'care_plan.monitoring_stops.*.reason' => ['required', 'string', 'max:500', 'regex:/\S/'],
             // What the visit decides for the monitoring it followed: referred to
-            // the RHU (the monitoring stays active) or an intentional change of
-            // the documented condition status.
+            // the RHU (the monitoring stays active). The documented condition
+            // status is the RHU's to change, never a BHC visit's.
             'care_plan.monitoring_referrals' => ['nullable', 'array', 'max:20'],
             'care_plan.monitoring_referrals.*' => ['integer', 'distinct'],
-            'care_plan.monitoring_status_updates' => ['nullable', 'array', 'max:20'],
-            'care_plan.monitoring_status_updates.*.monitoring_id' => ['required', 'integer', 'distinct'],
-            'care_plan.monitoring_status_updates.*.status' => ['required', Rule::in(\App\Services\CarePlan::CONDITION_STATUSES)],
+            'care_plan.monitoring_status_updates' => ['prohibited'],
             'assessment_notes' => ['nullable', 'string', 'max:5000'],
             'treatment_notes' => ['nullable', 'string'],
             'medical_history' => ['nullable', 'string'],
@@ -464,26 +463,30 @@ class HealthRecordRequest extends FormRequest
                     'A monitored condition is referred to the RHU, so this visit needs a referral. Add the referral or change the care plan.'
                 );
             }
-            foreach (array_column($this->input('care_plan.monitoring_status_updates', []) ?: [], 'monitoring_id') as $index => $id) {
-                if (! in_array((int) $id, $continuedIds, true)) {
-                    $validator->errors()->add(
-                        "care_plan.monitoring_status_updates.$index.monitoring_id",
-                        'Only a monitored condition continued in this consultation can have its status updated.'
-                    );
-                }
-            }
             if ($needsReferral && blank($this->input('referral.reason_for_referral'))) {
                 $validator->errors()->add('referral.reason_for_referral', 'Reason for referral is required.');
             }
+            // A concern set to Recheck or Follow-up is the BHC bringing the
+            // patient back, so the visit needs its date - referral or not.
+            $needsConcernDate = $this->isMethod('post')
+                && collect($this->diagnosesInput())->contains(
+                    fn ($diagnosis) => is_array($diagnosis) && \App\Services\CarePlan::keepsBhcFollowUp($diagnosis['carePlan'] ?? null)
+                );
+            if ($needsConcernDate && ! $date) {
+                $validator->errors()->add(
+                    'monitoring_data.followUpDate',
+                    'Set the follow-up date for the concerns marked Recheck or Follow-up.'
+                );
+            }
             // A plain referral hands the follow-up to the RHU, so no date is
-            // needed. A referral that keeps the BHC follow-up (another
-            // diagnosis set to Monitor, or a service visit with its next date set - see
-            // CarePlan::keepsFollowUpWithReferral) still needs the date when
-            // the visit asks for one. (The service case already has a date, so
-            // only the monitored case can trip this rule.)
+            // needed. A referral that keeps the BHC follow-up (a concern set
+            // to Recheck / Follow-up, or a service visit with its next date
+            // set - see CarePlan::keepsFollowUpWithReferral) still needs the
+            // date when the visit asks for one. (The service case already has
+            // a date, so only the concern case can trip this rule.)
             $keptWithReferral = $needsReferral
                 && \App\Services\CarePlan::keepsFollowUpWithReferral($this->diagnosesInput(), $monitoringData);
-            if ((! $needsReferral || $keptWithReferral) && $normalizedStatus === 'follow up required' && ! $date) {
+            if ((! $needsReferral || $keptWithReferral) && $normalizedStatus === 'follow up required' && ! $date && ! $needsConcernDate) {
                 $validator->errors()->add(
                     'monitoring_data.followUpDate',
                     'Follow-up date is required when status is Follow-up Required.'

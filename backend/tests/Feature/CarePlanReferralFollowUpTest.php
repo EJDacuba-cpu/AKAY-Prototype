@@ -52,23 +52,22 @@ class CarePlanReferralFollowUpTest extends TestCase
         ]);
     }
 
-    public function test_a_referral_keeps_the_follow_up_when_another_diagnosis_is_monitored(): void
+    public function test_a_referral_keeps_the_follow_up_when_another_concern_is_set_to_recheck(): void
     {
         $id = $this->save([
-            ['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor'],
+            ['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'recheck'],
             ['id' => 'd2', 'name' => 'Pneumonia', 'carePlan' => 'refer'],
         ])->assertCreated()->json('data.id');
 
         $task = FollowUpTask::where('health_record_id', $id)->sole();
         $this->assertSame('pending', $task->state);
-        $this->assertTrue($task->conditionMonitorings()->where('condition_key', 'hypertension')->exists());
-        $this->assertSame('active', ConditionMonitoring::sole()->status);
+        $this->assertSame(0, ConditionMonitoring::count(), 'a recheck never starts condition monitoring');
     }
 
-    public function test_a_monitored_diagnosis_with_a_referral_still_requires_the_follow_up_date_when_one_is_asked_for(): void
+    public function test_a_recheck_concern_with_a_referral_still_requires_the_follow_up_date(): void
     {
         $this->save([
-            ['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'monitor'],
+            ['id' => 'd1', 'name' => 'Hypertension', 'carePlan' => 'recheck'],
             ['id' => 'd2', 'name' => 'Pneumonia', 'carePlan' => 'refer'],
         ], ['followUpStatus' => 'Follow-up Required'])
             ->assertStatus(422)->assertJsonValidationErrors('monitoring_data.followUpDate');

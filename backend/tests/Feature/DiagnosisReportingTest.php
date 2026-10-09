@@ -96,7 +96,7 @@ class DiagnosisReportingTest extends TestCase
         $this->assertSame('morbidity', HealthRecord::findOrFail($id)->monitoring_data['morbidityReportingStatus']);
 
         $id = $this->store(
-            [['id' => 'd1', 'name' => 'Asthma', 'addToConditions' => false]],
+            [['id' => 'd1', 'name' => 'Asthma']],
             ['morbidityReportingStatus' => 'notifiable']
         )->assertCreated()->json('data.id');
         $this->assertSame('notifiable', HealthRecord::findOrFail($id)->monitoring_data['morbidityReportingStatus']);
@@ -134,7 +134,7 @@ class DiagnosisReportingTest extends TestCase
             'patient_id' => $this->patient->id, 'classification' => 'General Consultation',
             'payload' => [
                 'chiefComplaint' => 'Fever',
-                'diagnoses' => [['id' => 'd1', 'name' => 'Dengue fever', 'addToConditions' => false, 'reportAs' => 'notifiable']],
+                'diagnoses' => [['id' => 'd1', 'name' => 'Dengue fever', 'reportAs' => 'notifiable']],
             ],
         ])->assertCreated()->json('data.id');
 

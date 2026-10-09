@@ -15,7 +15,6 @@ use App\Services\AkayCacheService;
 use App\Services\AuditLogger;
 use App\Services\ClinicalRegistry;
 use App\Services\ConditionMonitoringService;
-use App\Services\CurrentConditionsSync;
 use App\Services\FacilityAccessService;
 use App\Services\FollowUpEpisodeService;
 use App\Services\FollowUpTaskSyncService;
@@ -90,7 +89,6 @@ class HealthRecordController extends Controller
         HealthRecordIdempotencyService $idempotency,
         ReferralCreationService $referralCreation,
         HealthRecordDraftService $drafts,
-        CurrentConditionsSync $currentConditions,
         ClinicalRegistry $clinicalRegistry,
         ConditionMonitoringService $monitoring,
         PatientBackground $patientBackground,
@@ -102,7 +100,6 @@ class HealthRecordController extends Controller
         // conditionKey is always server-resolved from the diagnosis name here -
         // any client-sent conditionKey is discarded and replaced, never trusted.
         $data['diagnoses'] = $clinicalRegistry->resolveConditionEntries($data['diagnoses'] ?? []);
-        $currentConditions->assertAllowed($request->user(), $data['diagnoses']);
         $draftPublicId = $data['draft_public_id'] ?? null;
         unset($data['draft_public_id']);
         $idempotencyKey = $data['idempotency_key'];
@@ -167,6 +164,7 @@ class HealthRecordController extends Controller
         $this->normalizeFamilyPlanningData($data);
         $this->normalizeSurveillanceData($data);
         $this->normalizeDiagnosisReporting($data);
+        $this->applyRecheckReason($data);
         $dispensedMedicines = $data['dispensed_medicines'] ?? [];
         unset($data['dispensed_medicines']);
 
@@ -194,7 +192,6 @@ class HealthRecordController extends Controller
                 $idempotencyKey,
                 $drafts,
                 $draftPublicId,
-                $currentConditions,
                 $monitoring,
                 $carePlan,
                 $backgroundUpdate,
@@ -222,15 +219,8 @@ class HealthRecordController extends Controller
                     $lockedFollowUpTask
                 );
                 $continuedMonitorings = $monitoring->lockContinued($patient, $carePlan['continued_monitoring_ids'] ?? []);
-                $statusUpdates = $carePlan['monitoring_status_updates'] ?? [];
-                abort_if(
-                    $statusUpdates !== [] && ! PatientBackground::canAccess($request->user()),
-                    403,
-                    'Your current facility assignment does not permit changing a documented condition status.'
-                );
                 // Background sections reviewed in this consultation go first: a
-                // stale edited section throws a 409 before anything is written,
-                // and the diagnosis sync below then builds on the merged result.
+                // stale edited section throws a 409 before anything is written.
                 $backgroundChanges = $backgroundUpdate !== null
                     ? $patientBackground->apply(
                         $patient,
@@ -239,19 +229,6 @@ class HealthRecordController extends Controller
                         Carbon::parse($data['date_recorded'])->toDateString()
                     )
                     : [];
-                // A documented status the clinician intentionally changed for a
-                // followed condition (Care Plan & Next Steps), after any
-                // Review / Update edit so the clinician's last word stands.
-                $backgroundChanges = [
-                    ...$backgroundChanges,
-                    ...$patientBackground->applyConditionStatuses(
-                        $patient,
-                        $continuedMonitorings,
-                        $statusUpdates,
-                        $request->user(),
-                        Carbon::parse($data['date_recorded'])->toDateString()
-                    ),
-                ];
                 $record = HealthRecord::create([
                     ...$data,
                     'encoded_by' => $lockedDraft?->owner_user_id ?? $request->user()->id,
@@ -265,17 +242,6 @@ class HealthRecordController extends Controller
                         PatientCondition::SOURCE_RHU_RECORD,
                         $record->id
                     );
-                }
-                // Registered diagnoses (conditionKey set) always sync; free-text
-                // diagnoses sync only when the user ticked "Add to Current Conditions".
-                $conditionsChange = $currentConditions->sync(
-                    $patient,
-                    $data['diagnoses'] ?? [],
-                    $record->date_recorded->toDateString(),
-                    $request->user()
-                );
-                if ($conditionsChange !== null) {
-                    $record->update(['background_changes' => [...$backgroundChanges, $conditionsChange]]);
                 }
                 $monitoredNow = $monitoring->apply(
                     $patient,
@@ -726,10 +692,28 @@ class HealthRecordController extends Controller
             || is_array($referralData);
     }
 
+    /**
+     * The follow-up reason a Recheck concern implies ("Recheck: A; B"), with
+     * whatever the worker typed after it. Follow-up and Refer concerns add none.
+     */
+    private function applyRecheckReason(array &$data): void
+    {
+        $reason = \App\Services\CarePlan::recheckReason($data['diagnoses'] ?? []);
+        if ($reason === null) {
+            return;
+        }
+        $monitoringData = $data['monitoring_data'] ?? [];
+        $typed = trim((string) ($monitoringData['followUpReason'] ?? ''));
+        $data['monitoring_data'] = [
+            ...$monitoringData,
+            'followUpReason' => $typed === '' ? $reason : "$reason — $typed",
+        ];
+    }
+
     private function normalizeReferralDisposition(array &$data): void
     {
         $monitoringData = $data['monitoring_data'] ?? [];
-        // A diagnosis set to Monitor at BHC, or a service visit with its next
+        // A concern set to Recheck / Follow-up, or a service visit with its next
         // date set: the BHC still owns that next visit, so its follow-up
         // survives the referral (CarePlan::keepsFollowUpWithReferral).
         $keepsFollowUp = \App\Services\CarePlan::keepsFollowUpWithReferral($data['diagnoses'] ?? [], $monitoringData);
