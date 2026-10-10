@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { compactReviewRows, compactReviewSections } from "./consultationReview.js";
+import { compactReviewRows, compactReviewSections, patientReviewRow } from "./consultationReview.js";
 
 test("review rows with no value are omitted", () => {
   assert.deepEqual(
@@ -27,4 +27,20 @@ test("a section left with no rows is dropped and the rest keep their keys and Ed
     { key: "b", title: "B", stepKey: "b2", rows: [{ label: "Y", value: "1" }, { label: "Z", value: "" }] },
   ]);
   assert.deepEqual(sections, [{ key: "b", title: "B", stepKey: "b2", rows: [{ label: "Y", value: "1" }] }]);
+});
+
+test("the Patient identity row is always present and stays first in the Patient Interview group", () => {
+  const patient = patientReviewRow({ name: "Maria Santos", id: 42 });
+  assert.deepEqual(patient, { label: "Patient", value: "Maria Santos · #42" });
+  const [interview] = compactReviewSections([
+    {
+      key: "interview",
+      title: "Patient Interview",
+      stepKey: "interview",
+      rows: [patient, { label: "Chief Complaint", value: "Cough" }, { label: "History of Present Illness", value: "" }],
+    },
+  ]);
+  assert.deepEqual(interview.rows.map((row) => row.label), ["Patient", "Chief Complaint"]);
+  // Even with nothing else filled in, the group (and the identity) survives.
+  assert.equal(compactReviewSections([{ key: "i", title: "I", rows: [patientReviewRow({ name: "A", id: 1 })] }]).length, 1);
 });

@@ -22,3 +22,8 @@ export function compactReviewSections(sections = []) {
     .map((section) => ({ ...section, rows: compactReviewRows(section.rows) }))
     .filter((section) => section.rows.length > 0);
 }
+
+/** The identity row that opens the review, so a record is never finalized without showing whose it is. */
+export function patientReviewRow({ name, id }) {
+  return { label: "Patient", value: `${name} · #${id}` };
+}

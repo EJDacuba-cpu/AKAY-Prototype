@@ -282,7 +282,7 @@ export function ConsultationReviewStep({
                     {label}
                   </dt>
                   <dd className="min-w-0 whitespace-pre-line break-words text-[13px] text-[#111827]">
-                    {value || <span className="text-[#9CA3AF]">Not recorded</span>}
+                    {value === null || value === undefined || value === "" ? <span className="text-[#9CA3AF]">Not recorded</span> : value}
                   </dd>
                 </div>
               ))}

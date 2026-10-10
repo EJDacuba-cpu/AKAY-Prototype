@@ -1,4 +1,4 @@
-import { compactReviewSections, programReviewRows } from "../../utils/consultationReview";
+import { compactReviewSections, patientReviewRow, programReviewRows } from "../../utils/consultationReview";
 import { Button } from "../../components/ui/button";
 import ReferralFacilityField from "../../components/features/health-records/ReferralFacilityField";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -4106,6 +4106,7 @@ export default function ConsultationWorkspace() {
       title: "Patient Interview",
       stepKey: INTERVIEW_STEP,
       rows: [
+        patientReviewRow({ name: getPatientName(selectedPatient), id: selectedPatientId }),
         { label: "Chief Complaint", value: chiefComplaint },
         { label: "History of Present Illness", value: summaryOfPresentIllness },
       ],
