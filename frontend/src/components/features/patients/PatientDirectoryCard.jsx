@@ -1,6 +1,8 @@
 import { Link } from "react-router";
 import { MapPin } from "lucide-react";
 
+import ButtonSpinner from "../../common/loading/ButtonSpinner";
+import useOpenPatientProfile from "../../../hooks/useOpenPatientProfile";
 import { formatDisplayValue, formatPatientName } from "../../../utils/formatters";
 
 function normalizeDate(value) {
@@ -56,14 +58,6 @@ function getPatientAge(patient) {
   if (!agePart || /male|female/i.test(agePart)) return "";
 
   return agePart;
-}
-
-function getPatientAgeSex(patient) {
-  return formatDisplayValue(
-    patient.ageSex ||
-      [patient.age, getPatientSex(patient)].filter(Boolean).join(" / "),
-    "Not recorded",
-  );
 }
 
 function getPatientContact(patient) {
@@ -124,143 +118,137 @@ function getPatientDisplayId(patient) {
   return formatDisplayValue(patient.patientId || patient.id, "Not recorded");
 }
 
-function DetailField({ label, value }) {
+/**
+ * Open Profile link that loads the profile's data first. It stays a real link
+ * (new-tab and copy-link still work); only a plain left click is intercepted.
+ */
+function OpenProfileLink({ to, patientId, role, className, onClick, children, ...linkProps }) {
+  const { openProfile, opening, error } = useOpenPatientProfile(role);
+
+  function handleClick(event) {
+    onClick?.(event);
+    const plainClick =
+      event.button === 0 && !(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey);
+    if (event.defaultPrevented || !plainClick) return;
+    event.preventDefault();
+    openProfile(patientId, to);
+  }
+
   return (
-    <div className="min-w-0">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-        {label}
-      </p>
-      <p className="truncate text-[11.5px] font-medium text-gray-600">{value}</p>
-    </div>
+    <>
+      <Link
+        to={to}
+        className={`${className}${opening ? " pointer-events-none gap-2 opacity-90" : ""}`}
+        onClick={handleClick}
+        aria-busy={opening}
+        aria-disabled={opening || undefined}
+        {...linkProps}
+      >
+        {opening ? (
+          <>
+            <ButtonSpinner />
+            <span>Opening...</span>
+          </>
+        ) : (
+          children
+        )}
+      </Link>
+      {error && (
+        <p role="alert" className="mt-1.5 text-[11px] font-medium text-red-600">
+          Could not load this profile. Please try again.
+        </p>
+      )}
+    </>
   );
 }
 
-export default function PatientDirectoryCard({ patient, basePath, variant, onSelect, selected = false }) {
+export default function PatientDirectoryCard({
+  patient,
+  basePath,
+  role = basePath === "/rhu" ? "rhu" : "bhc",
+  onSelect,
+  selected = false,
+}) {
   const routePatientId = formatDisplayValue(patient.id || patient.patientId, "");
   const patientName = formatPatientName(patient, "Unnamed Patient");
   const displayId = getPatientDisplayId(patient);
   const age = getPatientAge(patient);
   const sex = getPatientSex(patient);
-  const ageSex = getPatientAgeSex(patient);
   const contact = getPatientContact(patient);
   const location = getPatientLocation(patient);
   const occupation = formatDisplayValue(patient.occupation, "Not recorded");
   const registrationType = getRegistrationType(patient);
   const birthDate = formatDate(getBirthDate(patient));
   const registeredDate = formatDate(getRegisteredDate(patient));
-  // Sex and age head the card on their own now; the barangay moved down to the
-  // pinned line, so it is no longer part of this joined string.
-  const sexAge =
-    [sex, age].filter(Boolean).join(` ${String.fromCharCode(183)} `) || ageSex;
 
-  if (variant === "clinical") {
-    // With onSelect the whole card opens the directory's summary panel; the
-    // Open Profile link below still navigates straight to the full profile.
-    const selectProps = onSelect
-      ? {
-          role: "button",
-          tabIndex: 0,
-          "aria-pressed": selected,
-          "aria-label": `View summary: ${patientName}, ID ${displayId}`,
-          "data-selected": selected,
-          onClick: () => onSelect(routePatientId),
-          onKeyDown: (event) => {
-            if (event.target !== event.currentTarget) return;
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              onSelect(routePatientId);
-            }
-          },
-        }
-      : {};
-
-    return (
-      <article className="clinical-patient" {...selectProps}>
-        <div className="clinical-patient__top">
-          <span className="clinical-patient__barangay">
-            <MapPin size={12} aria-hidden="true" />
-            <span>
-              <span className="sr-only">Barangay: </span>
-              {formatDisplayValue(location, "Barangay not recorded")}
-            </span>
-          </span>
-          <span
-            className="clinical-patient__badge"
-            data-type={registrationType.toLowerCase()}
-          >
-            {registrationType}
-          </span>
-        </div>
-        <header className="clinical-patient__identity">
-          <h3 className="clinical-patient__name">{patientName}</h3>
-          <p className="clinical-patient__id">Patient ID #{displayId}</p>
-        </header>
-        <dl className="clinical-patient__fields">
-          {[
-            ["Age", formatDisplayValue(age, "Not recorded")],
-            ["Sex", formatDisplayValue(sex, "Not recorded")],
-            ["Occupation", occupation],
-            ["Date of birth", birthDate],
-            ["Contact", contact],
-            ["Registered", registeredDate],
-          ].map(([label, value]) => (
-            <div key={label}>
-              <dt>{label}</dt>
-              <dd>{value}</dd>
-            </div>
-          ))}
-        </dl>
-        <footer className="clinical-patient__footer">
-          <Link
-            to={`${basePath}/patients/${routePatientId}`}
-            className="clinical-patient__open"
-            onClick={(event) => event.stopPropagation()}
-            aria-label={`Open Profile: ${patientName}, ID ${displayId}`}
-          >
-            Open Profile
-          </Link>
-        </footer>
-      </article>
-    );
-  }
+  // With onSelect the whole card opens the directory's summary panel; the
+  // Open Profile link below still navigates straight to the full profile.
+  const selectProps = onSelect
+    ? {
+        role: "button",
+        tabIndex: 0,
+        "aria-pressed": selected,
+        "aria-label": `View summary: ${patientName}, ID ${displayId}`,
+        "data-selected": selected,
+        onClick: () => onSelect(routePatientId),
+        onKeyDown: (event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect(routePatientId);
+          }
+        },
+      }
+    : {};
 
   return (
-    <article className="group flex flex-col rounded-none border border-[#E5E7EB] bg-white p-3 transition-all duration-200 hover:border-red-100 ">
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <h3 className="min-w-0 truncate text-[13px] font-bold leading-5 text-gray-900">
-          {patientName}
-        </h3>
-        <span className="shrink-0 rounded-none border border-red-100 bg-white px-2 py-0.5 font-mono text-[10px] font-semibold text-red-600">
-          ID #{displayId}
+    <article className="clinical-patient" {...selectProps}>
+      <div className="clinical-patient__top">
+        <span className="clinical-patient__barangay">
+          <MapPin size={12} aria-hidden="true" />
+          <span>
+            <span className="sr-only">Barangay: </span>
+            {formatDisplayValue(location, "Barangay not recorded")}
+          </span>
+        </span>
+        <span
+          className="clinical-patient__badge"
+          data-type={registrationType.toLowerCase()}
+        >
+          {registrationType}
         </span>
       </div>
-
-      <div className="mt-2.5 grid min-w-0 grid-cols-2 gap-x-3 gap-y-2">
-        <div className="min-w-0 space-y-1.5">
-          <p className="truncate text-[11.5px] font-semibold text-gray-900">
-            {sexAge}
-          </p>
-          {location && (
-            <p className="flex min-w-0 items-start gap-1 text-[11px] font-medium text-gray-500">
-              <MapPin size={12} className="mt-px shrink-0 text-gray-400" />
-              <span className="min-w-0">{location}</span>
-            </p>
-          )}
-        </div>
-
-        <div className="min-w-0 space-y-2">
-          <DetailField label="Date of Birth" value={birthDate} />
-          <DetailField label="Contact" value={contact} />
-          <DetailField label="Registered" value={registeredDate} />
-        </div>
-      </div>
-
-      <Link
-        to={`${basePath}/patients/${routePatientId}`}
-        className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-none bg-red-600 px-3 text-[11.5px] font-semibold text-white transition-colors hover:bg-red-700"
-      >
-        Open Profile
-      </Link>
+      <header className="clinical-patient__identity">
+        <h3 className="clinical-patient__name">{patientName}</h3>
+        <p className="clinical-patient__id">Patient ID #{displayId}</p>
+      </header>
+      <dl className="clinical-patient__fields">
+        {[
+          ["Age", formatDisplayValue(age, "Not recorded")],
+          ["Sex", formatDisplayValue(sex, "Not recorded")],
+          ["Occupation", occupation],
+          ["Date of birth", birthDate],
+          ["Contact", contact],
+          ["Registered", registeredDate],
+        ].map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <footer className="clinical-patient__footer">
+        <OpenProfileLink
+          to={`${basePath}/patients/${routePatientId}`}
+          patientId={routePatientId}
+          role={role}
+          className="clinical-patient__open"
+          onClick={(event) => event.stopPropagation()}
+          aria-label={`Open Profile: ${patientName}, ID ${displayId}`}
+        >
+          Open Profile
+        </OpenProfileLink>
+      </footer>
     </article>
   );
 }

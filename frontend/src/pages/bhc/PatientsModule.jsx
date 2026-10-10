@@ -434,7 +434,7 @@ function PatientDirectory({
                   key={patient.id || patient.patientId}
                   patient={patient}
                   basePath="/bhc"
-                  variant="clinical"
+                  role="bhc"
                   onSelect={onSelectPatient}
                   selected={getPatientKey(patient) === selectedPatientId}
                 />

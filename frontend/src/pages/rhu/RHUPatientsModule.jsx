@@ -406,6 +406,7 @@ function RHUPatientsDirectory({
                   key={patient.id || patient.patientId}
                   patient={patient}
                   basePath="/rhu"
+                  role="rhu"
                 />
               ))}
             </div>

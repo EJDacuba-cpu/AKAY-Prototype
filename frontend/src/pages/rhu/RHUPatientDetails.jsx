@@ -26,13 +26,7 @@ import {
   getBmiCategory,
   getLatestBmiRecord,
 } from "../../utils/bmi";
-import { getHealthRecordsByPatient } from "../../services/healthRecordService";
-import {
-  getPatientByIdForRole,
-  getPatientDetailsListByRole,
-  getPatientsByRole,
-} from "../../services/patients";
-import { getReferrals } from "../../services/referrals";
+import { getRhuPatientProfileQueries } from "../../services/patientProfileQueries";
 import {
   formatDate,
   formatDisplayValue,
@@ -45,7 +39,6 @@ import {
   getServiceTypeLabel,
   getSpecializedRecordPrograms,
 } from "../../utils/healthRecordPrograms";
-import { queryKeys } from "../../utils/queryKeys";
 
 const keyframes = `
   @keyframes fadeUp {
@@ -66,63 +59,27 @@ export default function RHUPatientDetails() {
     setShowAllReferrals(false);
   }, [patientId]);
 
+  const profileQueries = getRhuPatientProfileQueries(patientId);
+
   const {
     data: patientData,
     isLoading: patientLoading,
     isFetching: patientFetching,
-  } = useQuery({
-    queryKey: queryKeys.patientDetails("rhu", patientId),
-    queryFn: async () => {
-      const [patientDetailsResult, detailsListResult, patientListResult] =
-        await Promise.allSettled([
-          getPatientByIdForRole(patientId, "rhu"),
-          getPatientDetailsListByRole("rhu"),
-          getPatientsByRole("rhu"),
-        ]);
-
-      const patientDetails =
-        patientDetailsResult.status === "fulfilled"
-          ? patientDetailsResult.value
-          : null;
-      const patientDetailsList =
-        detailsListResult.status === "fulfilled" ? detailsListResult.value : [];
-      const patientList =
-        patientListResult.status === "fulfilled" ? patientListResult.value : [];
-      const allPatients = [
-        ...(Array.isArray(patientDetailsList) ? patientDetailsList : []),
-        ...(Array.isArray(patientList) ? patientList : []),
-      ];
-
-      return (
-        patientDetails ||
-        allPatients.find((item) => sameId(item?.id, patientId)) ||
-        null
-      );
-    },
-    enabled: Boolean(patientId),
-  });
+  } = useQuery(profileQueries.patient);
 
   const {
     data: recordsData = [],
     isLoading: recordsLoading,
     isFetching: recordsFetching,
     isError: recordsError,
-  } = useQuery({
-    queryKey: [...queryKeys.healthRecords("rhu"), "patient", patientId],
-    queryFn: () => getHealthRecordsByPatient(patientId),
-    enabled: Boolean(patientId),
-  });
+  } = useQuery(profileQueries.records);
 
   const {
     data: referralsData = [],
     isLoading: referralsLoading,
     isFetching: referralsFetching,
     isError: referralsError,
-  } = useQuery({
-    queryKey: [...queryKeys.referrals("rhu"), "patient", patientId],
-    queryFn: getReferrals,
-    enabled: Boolean(patientId),
-  });
+  } = useQuery(profileQueries.referrals);
 
   const rawRecords = useMemo(
     () => (Array.isArray(recordsData) ? recordsData : []),

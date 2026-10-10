@@ -25,14 +25,8 @@ import {
 } from "../../components/features/patients/profile/FollowUpsAndReferrals";
 import { getConditionalProgramTabs } from "../../utils/programApplicability";
 import { isConnectionError } from "../../services/apiClient";
-import { getFollowUpTasks } from "../../services/followUpTaskService";
-import {
-  getPatientById,
-  getPatientHealthRecords,
-  getPatientReferrals,
-  getPatientDetailsListByRole,
-  updatePatient,
-} from "../../services/patientService";
+import { getBhcPatientProfileQueries } from "../../services/patientProfileQueries";
+import { updatePatient } from "../../services/patientService";
 import { getProfileReturnPath } from "../../utils/profileNavigation";
 import { getSpecializedRecordPrograms } from "../../utils/healthRecordPrograms";
 import { getCareTracking } from "../../utils/careTracking";
@@ -135,18 +129,15 @@ export default function PatientDetails() {
   const [recordsFilter, setRecordsFilter] = useState("all");
   const editingSectionRef = useRef(null);
 
+  const profileQueries = getBhcPatientProfileQueries(patientId, { canViewHistory });
+
   const {
     data: patientData,
     isLoading: patientLoading,
     isFetching: patientFetching,
     error: patientError,
     refetch: refetchPatient,
-  } = useQuery({
-    queryKey: queryKeys.patientDetails("bhc", patientId),
-    queryFn: () => getPatientById(patientId),
-    enabled: Boolean(patientId),
-    retry: false,
-  });
+  } = useQuery({ ...profileQueries.patient, enabled: Boolean(patientId) });
 
   const {
     data: recordsData = [],
@@ -154,12 +145,7 @@ export default function PatientDetails() {
     isFetching: recordsFetching,
     error: recordsError,
     refetch: refetchRecords,
-  } = useQuery({
-    queryKey: [...queryKeys.healthRecords("bhc"), "patient", patientId],
-    queryFn: () => getPatientHealthRecords(patientId),
-    enabled: Boolean(patientId) && canViewHistory,
-    retry: false,
-  });
+  } = useQuery(profileQueries.records);
 
   const {
     data: referralsData = [],
@@ -167,38 +153,21 @@ export default function PatientDetails() {
     isFetching: referralsFetching,
     error: referralsError,
     refetch: refetchReferrals,
-  } = useQuery({
-    queryKey: [...queryKeys.referrals("bhc"), "patient", patientId],
-    queryFn: () => getPatientReferrals(patientId),
-    enabled: Boolean(patientId) && canViewHistory,
-    retry: false,
-  });
+  } = useQuery(profileQueries.referrals);
 
   const {
     data: followUpTasksData = [],
     isFetching: followUpsFetching,
     error: followUpsError,
     refetch: refetchFollowUps,
-  } = useQuery({
-    queryKey: queryKeys.followUpTasks("bhc"),
-    queryFn: () => getFollowUpTasks(),
-    enabled: Boolean(patientId) && canViewHistory,
-    staleTime: 30_000,
-    retry: false,
-  });
+  } = useQuery(profileQueries.followUps);
 
   const {
     data: registeredPatients = [],
     isFetching: registeredPatientsFetching,
     error: registeredPatientsError,
     refetch: refetchRegisteredPatients,
-  } = useQuery({
-    queryKey: queryKeys.patients("bhc"),
-    queryFn: () => getPatientDetailsListByRole("bhc"),
-    staleTime: 30_000,
-    enabled: Boolean(patientId),
-    retry: false,
-  });
+  } = useQuery(profileQueries.registeredPatients);
 
   const overrideMatchesPatient =
     patientOverride &&

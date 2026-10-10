@@ -169,9 +169,6 @@ export default function PatientSummaryPanel({ patientId, basePath = "/bhc", show
             <SummarySection variant="clinical" title="Latest Consultation" rows={latest ? [
               ["Date", formatLongDate(getRecordDateValue(latest))],
               ["Program", getServiceTypeLabel(latest)],
-              ["Chief Complaint", latest.chiefComplaint],
-              ["Initial Diagnosis", latest.diagnosis],
-              ["Medicine / Treatment", latest.medication || latest.treatmentNotes],
               ["Outcome", latest.outcome],
             ] : [["Consultation", "No consultation recorded yet"]]} />
           </>
