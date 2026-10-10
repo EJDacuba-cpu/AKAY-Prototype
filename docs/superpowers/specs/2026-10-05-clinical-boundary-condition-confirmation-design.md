@@ -2,6 +2,8 @@
 
 Date: 2026-10-05 · Status: approved in brainstorming, awaiting spec review
 
+> Superseded for actions: the per-concern actions (Recheck / Follow-up / Refer) in this spec are superseded by `2026-10-09-consultation-care-plan-workflow-revision-design.md`.
+
 Part 1 of 4 of the Patient Background rework. Order: **Clinical boundary /
 assessment (this spec)** → Patient Background dashboard → Family relationships
 → Family Medical History / service integration (e.g. Maternal Care).
