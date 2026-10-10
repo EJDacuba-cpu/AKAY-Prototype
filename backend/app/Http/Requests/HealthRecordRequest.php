@@ -8,6 +8,7 @@ use App\Services\ConsultationPrograms;
 use App\Services\LegacyMonitoringReview;
 use App\Services\PatientBackground;
 use App\Services\PatientConditions;
+use App\Services\ReportingEntries;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -38,7 +39,54 @@ class HealthRecordRequest extends FormRequest
         return (bool) $this->user();
     }
 
+    /**
+     * The BHC-only General Consultation v2 request: a POST that names the
+     * workflow discriminator. Anything else is validated exactly as before.
+     */
+    public function isBhcGeneralV2(): bool
+    {
+        return $this->isMethod('post')
+            && $this->input('consultation_workflow') === HealthRecord::WORKFLOW_BHC_GENERAL_V2;
+    }
+
     public function rules(): array
+    {
+        $rules = $this->baseRules();
+        $v2 = $this->isBhcGeneralV2();
+
+        $rules['consultation_workflow'] = $this->isMethod('post')
+            ? ['nullable', Rule::in([HealthRecord::WORKFLOW_BHC_GENERAL_V2]), function (string $attribute, mixed $value, \Closure $fail): void {
+                if ($value !== null && $this->user()?->isRhuStaff()) {
+                    $fail('This consultation workflow is for BHC consultations only.');
+                }
+            }]
+            : ['prohibited'];
+
+        if ($v2) {
+            // Entries are reporting-only: a name and where it is reported.
+            // The visit decides follow-up and referral (care_plan flags).
+            $rules['diagnosis'] = ['prohibited'];
+            $rules['diagnoses.*.name'] = ['required', 'string', 'max:150', 'distinct:ignore_case'];
+            $rules['diagnoses.*.reportIn'] = ['required', 'array', 'min:1'];
+            $rules['diagnoses.*.reportIn.*'] = ['string', 'distinct', Rule::in(ReportingEntries::DESTINATIONS)];
+            foreach (['carePlan', 'bhcFollowUp', 'addToConditions', 'conditionStatus', 'conditionKey'] as $key) {
+                $rules["diagnoses.*.$key"] = ['prohibited'];
+            }
+            $rules['care_plan.bhc_follow_up'] = ['nullable', 'boolean'];
+            $rules['care_plan.refer_to_rhu'] = ['nullable', 'boolean'];
+            $rules['care_plan.referral_multiple_issues'] = ['nullable', 'boolean'];
+        } else {
+            $rules['diagnoses.*.reportIn'] = ['prohibited'];
+            $rules['care_plan.bhc_follow_up'] = ['prohibited'];
+            $rules['care_plan.refer_to_rhu'] = ['prohibited'];
+            $rules['care_plan.referral_multiple_issues'] = ['prohibited'];
+        }
+
+        return $rules;
+    }
+
+    /** @return array<string, mixed> */
+    private function baseRules(): array
     {
         return [
             ...ConsultationPrograms::rules('monitoring_data'),
@@ -457,13 +505,15 @@ class HealthRecordRequest extends FormRequest
             // With no diagnosis any referral can only be of followed monitoring.
             $followUpOfMonitoring = $keepsMonitoring && (! $needsReferral || $referredIds !== []);
 
-            if (($needsReferral || $normalizedStatus === 'follow up required') && blank($this->input('diagnosis')) && ! $followUpOfMonitoring) {
+            $v2 = $this->isBhcGeneralV2();
+            if (! $v2 && ($needsReferral || $normalizedStatus === 'follow up required') && blank($this->input('diagnosis')) && ! $followUpOfMonitoring) {
                 $validator->errors()->add('diagnosis', 'BHC Assessment is required for follow-up or referral.');
             }
             // A diagnosis set to Refer to RHU is a referral: the ITR would
             // otherwise say "Refer to RHU" with none.
             if (
-                $this->isMethod('post')
+                ! $v2
+                && $this->isMethod('post')
                 && ! $needsReferral
                 && \App\Services\CarePlan::refersAny($this->diagnosesInput())
             ) {
@@ -490,7 +540,8 @@ class HealthRecordRequest extends FormRequest
             // One referral covering two or more items needs the worker's explicit
             // confirmation. It is audited, never a clinical compatibility check.
             if (
-                $this->isMethod('post')
+                ! $v2
+                && $this->isMethod('post')
                 && $needsReferral
                 && \App\Services\CarePlan::referralItemCount($this->diagnosesInput(), $referredIds) >= 2
                 && ! $this->boolean('care_plan.shared_referral_acknowledged')
@@ -503,10 +554,14 @@ class HealthRecordRequest extends FormRequest
             if ($needsReferral && blank($this->input('referral.reason_for_referral'))) {
                 $validator->errors()->add('referral.reason_for_referral', 'Reason for referral is required.');
             }
+            if ($v2) {
+                $this->validateV2NextActions($validator, $needsReferral, $keepsMonitoring, $referredIds, $date, $monitoringData);
+            }
             // A concern that schedules a BHC follow-up (BHC Follow-up, or Refer
             // to RHU with its follow-up flag) needs the visit's date - referral
             // or not.
-            $needsConcernDate = $this->isMethod('post')
+            $needsConcernDate = ! $v2
+                && $this->isMethod('post')
                 && collect($this->diagnosesInput())->contains(
                     fn ($diagnosis) => \App\Services\CarePlan::schedulesBhcFollowUp($diagnosis)
                 );
@@ -538,7 +593,8 @@ class HealthRecordRequest extends FormRequest
             // set - see CarePlan::keepsFollowUpWithReferral) still needs the
             // date when the visit asks for one. (The service case already has
             // a date, so only the concern case can trip this rule.)
-            $keptWithReferral = $needsReferral
+            $keptWithReferral = ! $v2
+                && $needsReferral
                 && \App\Services\CarePlan::keepsFollowUpWithReferral($this->diagnosesInput(), $monitoringData);
             if ((! $needsReferral || $keptWithReferral) && $normalizedStatus === 'follow up required' && ! $date && ! $needsConcernDate) {
                 $validator->errors()->add(
@@ -601,6 +657,53 @@ class HealthRecordRequest extends FormRequest
                 }
             }
         });
+    }
+
+    /**
+     * The visit-level next actions of a v2 General Consultation. They replace
+     * the per-concern checks (which are skipped for v2).
+     *
+     * @param  array<int, int>  $referredIds
+     */
+    private function validateV2NextActions($validator, bool $needsReferral, bool $keepsMonitoring, array $referredIds, mixed $date, mixed $monitoringData): void
+    {
+        $refers = $this->boolean('care_plan.refer_to_rhu');
+
+        if ($refers && ! $needsReferral) {
+            $validator->errors()->add('needs_referral', 'Refer to RHU is selected, so this visit needs a referral.');
+        }
+        if ($needsReferral && ! $refers && $referredIds === []) {
+            $validator->errors()->add('care_plan.refer_to_rhu', 'Select Refer to RHU or refer a monitored condition.');
+        }
+
+        if ($this->boolean('care_plan.bhc_follow_up')) {
+            if (! $date) {
+                $validator->errors()->add('monitoring_data.followUpDate', 'Set the follow-up date.');
+            }
+            // A service visit (a program is selected) or one that keeps
+            // monitoring a condition is exempt from stating a reason.
+            $exempt = ! empty($this->input('monitoring_data.selectedPrograms')) || $keepsMonitoring;
+            $reason = is_array($monitoringData)
+                ? trim((string) ($monitoringData['followUpReason'] ?? $monitoringData['follow_up_reason'] ?? ''))
+                : '';
+            if ($reason === '' && ! $exempt) {
+                $validator->errors()->add('monitoring_data.followUpReason', 'Follow-up reason is required.');
+            }
+        }
+
+        // One referral covering two or more issues needs the worker's explicit
+        // confirmation. It is audited, never a clinical compatibility check.
+        $count = ($refers ? 1 : 0) + count(array_unique($referredIds));
+        if (
+            $needsReferral
+            && ($count >= 2 || $this->boolean('care_plan.referral_multiple_issues'))
+            && ! $this->boolean('care_plan.shared_referral_acknowledged')
+        ) {
+            $validator->errors()->add(
+                'care_plan.shared_referral_acknowledged',
+                'Confirm that all listed concerns can go to this facility with this priority, or change the care plan.'
+            );
+        }
     }
 
     /** @return array<int, mixed> */
