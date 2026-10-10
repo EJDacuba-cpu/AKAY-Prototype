@@ -235,14 +235,46 @@ test("a ticked follow-up with no explicit status leaves the status to the server
 });
 
 test("the draft holds the three booleans and restoring is lenient", () => {
-  const state = { bhcFollowUp: true, referToRhu: false, referralMultipleIssues: true };
+  const state = { bhcFollowUp: true, referToRhu: true, referralMultipleIssues: true };
   assert.deepEqual(nextActionsDraft(state), state);
   assert.deepEqual(restoreNextActions(nextActionsDraft(state)), state);
+  const noRefer = { bhcFollowUp: true, referToRhu: false, referralMultipleIssues: false };
+  assert.deepEqual(restoreNextActions(nextActionsDraft(noRefer)), noRefer);
   assert.deepEqual(restoreNextActions({ bhcFollowUp: true }), { bhcFollowUp: true, referToRhu: false, referralMultipleIssues: false });
   assert.deepEqual(restoreNextActions({}), initialNextActions());
   assert.deepEqual(restoreNextActions(null), initialNextActions());
   assert.deepEqual(restoreNextActions(undefined), initialNextActions());
   assert.deepEqual(restoreNextActions({ bhcFollowUp: "true", referToRhu: 1, referralMultipleIssues: "yes" }), initialNextActions());
+});
+
+test("restoring keeps multiple-issues only with Refer ticked, and a referral-only draft does not tick the follow-up", () => {
+  assert.deepEqual(restoreNextActions({ referToRhu: false, referralMultipleIssues: true }), {
+    bhcFollowUp: false,
+    referToRhu: false,
+    referralMultipleIssues: false,
+  });
+  assert.deepEqual(restoreNextActions({ referToRhu: true, referralMultipleIssues: true }), {
+    bhcFollowUp: false,
+    referToRhu: true,
+    referralMultipleIssues: true,
+  });
+  const referralOnly = restoreNextActions({ referToRhu: true });
+  assert.equal(referralOnly.bhcFollowUp, false);
+  assert.equal(referralOnly.referToRhu, true);
+});
+
+test("a stale multiple-issues flag with Refer unticked demands no acknowledgment", () => {
+  const errors = nextActionErrors({
+    state: initialNextActions(),
+    followUp: {},
+    referral: {},
+    reasonExempt: false,
+    acknowledged: false,
+    count: 0,
+    multipleIssues: true,
+  });
+  assert.equal("referralAcknowledged" in errors, false);
+  assert.deepEqual(errors, {});
 });
 
 test("review rows omit unticked sections", () => {

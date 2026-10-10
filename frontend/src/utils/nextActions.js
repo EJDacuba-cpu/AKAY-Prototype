@@ -43,7 +43,10 @@ export function serviceDateSuggestions({ immunizationNextDate = "", familyPlanni
   ].filter((suggestion) => suggestion.date !== "");
 }
 
-/** Non-blocking: one warning per suggestion that the entered date differs from. Never an error. */
+/**
+ * Non-blocking: one warning per suggestion that the entered date differs from. Never an error.
+ * Callers show these warnings only while Schedule BHC Follow-up is ticked.
+ */
 export function followUpDateWarnings(enteredDate, suggestions = []) {
   const entered = text(enteredDate);
   if (!entered) return [];
@@ -78,7 +81,9 @@ export function nextActionErrors({
   }
   if (state.referToRhu === true && !text(referral?.reason)) errors.reasonForReferral = REFERRAL_REASON_ERROR;
   // The shared acknowledgment also covers monitoring referrals made with Refer unticked.
-  if (referralNeedsAcknowledgment({ count, multipleIssues }) && acknowledged !== true) {
+  // The multiple-issues trigger only counts while Refer to RHU is ticked (the payload sends it false otherwise).
+  const multiple = state.referToRhu === true && multipleIssues === true;
+  if (referralNeedsAcknowledgment({ count, multipleIssues: multiple }) && acknowledged !== true) {
     errors.referralAcknowledged = SHARED_ACKNOWLEDGMENT_MESSAGE;
   }
   return errors;
@@ -117,21 +122,44 @@ export function nextActionsDraft(state) {
   };
 }
 
-/** Any missing or non-boolean value becomes false. */
+/**
+ * Any missing or non-boolean value becomes false. referralMultipleIssues is
+ * kept only when referToRhu is true, so a stale draft cannot break the invariant.
+ */
 export function restoreNextActions(draftCarePlan) {
   const draft = draftCarePlan && typeof draftCarePlan === "object" ? draftCarePlan : {};
-  return nextActionsDraft({
-    bhcFollowUp: draft.bhcFollowUp,
-    referToRhu: draft.referToRhu,
-    referralMultipleIssues: draft.referralMultipleIssues,
-  });
+  const referToRhu = draft.referToRhu === true;
+  return {
+    bhcFollowUp: draft.bhcFollowUp === true,
+    referToRhu,
+    referralMultipleIssues: referToRhu && draft.referralMultipleIssues === true,
+  };
 }
 
 function coverageName(item) {
   return text(typeof item === "string" ? item : item?.name);
 }
 
-/** Review & Confirm rows for this step. Unticked sections and empty values are omitted. */
+/**
+ * Review & Confirm rows for this step, in order: BHC Follow-up, RHU Referral,
+ * Covers, Reporting, Completes follow-up. Unticked sections and empty rows are omitted.
+ *
+ * @param {object} input
+ * @param {{bhcFollowUp: boolean, referToRhu: boolean}} input.state - the next-actions state.
+ * @param {{date?: string, time?: string, reason?: string}} input.followUp - shown only when bhcFollowUp is ticked.
+ *   Value is "date · time · reason" (blank parts skipped); "Not scheduled" when all are blank.
+ * @param {{priority?: string, reason?: string}} input.referral - shown only when referToRhu is ticked.
+ *   Value is "priority · reason" (blank parts skipped); "Refer to RHU" when both are blank.
+ * @param {Array<string | {name: string}>} input.coverage - the concerns covered, as plain names or objects with a
+ *   `name`. Joined with ", " in the "Covers" row; blank names are dropped.
+ * @param {Array<{name: string, reportIn?: string[]}>} input.entries - reporting-only entries. `name` plus whatever
+ *   formatEntryDestinations reads: `reportIn` (subset of "morbidity" | "notifiable" | "surveillance"), or the legacy
+ *   `reportAs` / `includeInSurveillance`. The "Reporting" row has one `name — destinations` line per entry, the
+ *   lines joined with a newline character (a name with no destinations shows the name alone).
+ * @param {{followUpTaskId?: number | string} | null} input.continuedLink - the continuedVisitLink() result. When
+ *   `followUpTaskId` is present the row "Completes follow-up" reads `FU-<followUpTaskId>`.
+ * @returns {Array<{label: string, value: string}>}
+ */
 export function nextStepsReviewRows({
   state = initialNextActions(),
   followUp = {},
