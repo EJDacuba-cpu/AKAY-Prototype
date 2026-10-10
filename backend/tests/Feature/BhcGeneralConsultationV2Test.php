@@ -128,6 +128,35 @@ class BhcGeneralConsultationV2Test extends TestCase
         $this->v2(['diagnoses' => [['name' => 'Cough', 'reportIn' => ReportingEntries::DESTINATIONS]]])->assertCreated();
     }
 
+    public function test_v2_two_entries_may_share_a_report(): void
+    {
+        $this->v2(['diagnoses' => [
+            ['name' => 'Cough', 'reportIn' => ['morbidity']],
+            ['name' => 'Fever', 'reportIn' => ['morbidity']],
+        ]])->assertCreated();
+    }
+
+    public function test_v2_rejects_duplicate_destination_within_an_entry(): void
+    {
+        $this->v2(['diagnoses' => [['name' => 'Cough', 'reportIn' => ['morbidity', 'morbidity']]]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['diagnoses.0.reportIn']);
+    }
+
+    public function test_v2_non_string_entry_name_is_a_validation_error_not_a_500(): void
+    {
+        $this->v2(['diagnoses' => [['name' => ['x'], 'reportIn' => ['morbidity']]]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['diagnoses.0.name']);
+    }
+
+    public function test_admin_without_bhc_facility_cannot_send_v2(): void
+    {
+        $admin = User::create(['name' => 'V2 Admin', 'email' => 'v2admin@example.test', 'password' => 'password123', 'role' => User::ROLE_ADMIN, 'status' => 'active', 'permissions' => ActionPermissions::PRESETS['clinical']]);
+        Sanctum::actingAs($admin, ['akay:access']);
+
+        $this->v2()->assertUnprocessable()->assertJsonValidationErrors(['consultation_workflow']);
+        $this->assertDatabaseCount('health_records', 0);
+    }
+
     public function test_v2_rejects_duplicate_entry_names(): void
     {
         $this->v2(['diagnoses' => [
@@ -140,13 +169,13 @@ class BhcGeneralConsultationV2Test extends TestCase
     {
         $base = ['patient_id' => $this->patient->id, 'category' => 'General Consultation', 'chief_complaint' => 'Routine visit'];
         foreach ([
-            ['care_plan' => ['bhc_follow_up' => true]],
-            ['care_plan' => ['refer_to_rhu' => true]],
-            ['care_plan' => ['referral_multiple_issues' => true]],
-            ['diagnoses' => [['name' => 'Cough', 'reportIn' => ['morbidity']]]],
-        ] as $extra) {
+            'care_plan.bhc_follow_up' => ['care_plan' => ['bhc_follow_up' => true]],
+            'care_plan.refer_to_rhu' => ['care_plan' => ['refer_to_rhu' => true]],
+            'care_plan.referral_multiple_issues' => ['care_plan' => ['referral_multiple_issues' => true]],
+            'diagnoses.0.reportIn' => ['diagnoses' => [['name' => 'Cough', 'reportIn' => ['morbidity']]]],
+        ] as $key => $extra) {
             $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [...$base, ...$extra])
-                ->assertUnprocessable();
+                ->assertUnprocessable()->assertJsonValidationErrors([$key]);
         }
         $this->assertDatabaseCount('health_records', 0);
     }

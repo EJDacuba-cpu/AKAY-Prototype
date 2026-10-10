@@ -56,7 +56,7 @@ class HealthRecordRequest extends FormRequest
 
         $rules['consultation_workflow'] = $this->isMethod('post')
             ? ['nullable', Rule::in([HealthRecord::WORKFLOW_BHC_GENERAL_V2]), function (string $attribute, mixed $value, \Closure $fail): void {
-                if ($value !== null && $this->user()?->isRhuStaff()) {
+                if ($value !== null && ! $this->user()?->isBhw()) {
                     $fail('This consultation workflow is for BHC consultations only.');
                 }
             }]
@@ -66,9 +66,16 @@ class HealthRecordRequest extends FormRequest
             // Entries are reporting-only: a name and where it is reported.
             // The visit decides follow-up and referral (care_plan flags).
             $rules['diagnosis'] = ['prohibited'];
-            $rules['diagnoses.*.name'] = ['required', 'string', 'max:150', 'distinct:ignore_case'];
-            $rules['diagnoses.*.reportIn'] = ['required', 'array', 'min:1'];
-            $rules['diagnoses.*.reportIn.*'] = ['string', 'distinct', Rule::in(ReportingEntries::DESTINATIONS)];
+            $rules['diagnoses.*.name'] = ['bail', 'required', 'string', 'max:150', 'distinct:ignore_case'];
+            // Several entries may share a report, so the values are not
+            // `distinct` across entries (that rule compares the whole
+            // diagnoses array); only a repeat inside one entry is rejected.
+            $rules['diagnoses.*.reportIn'] = ['bail', 'required', 'array', 'min:1', function (string $attribute, mixed $value, \Closure $fail): void {
+                if (is_array($value) && count(array_unique($value, SORT_REGULAR)) !== count($value)) {
+                    $fail('Each report can be chosen once per entry.');
+                }
+            }];
+            $rules['diagnoses.*.reportIn.*'] = ['string', Rule::in(ReportingEntries::DESTINATIONS)];
             foreach (['carePlan', 'bhcFollowUp', 'addToConditions', 'conditionStatus', 'conditionKey'] as $key) {
                 $rules["diagnoses.*.$key"] = ['prohibited'];
             }
