@@ -49,7 +49,7 @@
 
 ## Review Focus
 
-1. **An EPI next-dose suggestion never creates a follow-up on its own.** For an EPI visit with a proposed next-dose date and Schedule BHC Follow-up unticked, the payload has an empty `followUpDate` and an empty `followUpStatus`, and the server creates no follow-up task. Tests are in Task 7 (`nextActionsPayload`) and Task 3 (`test_v2_epi_next_dose_without_follow_up_creates_no_task`).
+1. **An EPI next-dose suggestion never creates a follow-up on its own.** For an EPI visit with a proposed next-dose date and Schedule BHC Follow-up unticked, the payload has an empty `followUpDate` and an empty `followUpStatus` (the workspace sends "Completed", and the server derives the same value), and the server creates no follow-up task. Tests are in Task 7 (`nextActionsPayload`) and Task 3 (`test_v2_epi_next_dose_without_follow_up_creates_no_task`).
 2. **Unticking Refer to RHU keeps the typed referral values but sends no referral.** The facility and reason are kept in state and in the draft. The payload has no `referral` and `needs_referral: false`. Re-ticking shows the same values. Test is in Task 7 (`nextActionsPayload`).
 3. **Duplicate reporting entries are rejected.** Two entries whose names differ only by case or whitespace give an error in the frontend (Task 6) and a 422 on the backend (Task 2, `distinct:ignore_case` on the trimmed name).
 4. **RHU users can never use v2.** An RHU user who sends `consultation_workflow`, including one whose working facility is an RHU, gets a 422 and nothing is saved. Test is in Task 2.

@@ -607,7 +607,10 @@ class HealthRecordRequest extends FormRequest
             $keptWithReferral = ! $v2
                 && $needsReferral
                 && \App\Services\CarePlan::keepsFollowUpWithReferral($this->diagnosesInput(), $monitoringData);
-            if ((! $needsReferral || $keptWithReferral) && $normalizedStatus === 'follow up required' && ! $date && ! $needsConcernDate) {
+            // v2 never reads the client's followUpStatus (the server derives
+            // it from care_plan.bhc_follow_up); validateV2NextActions owns the
+            // v2 follow-up date rule.
+            if (! $v2 && (! $needsReferral || $keptWithReferral) && $normalizedStatus === 'follow up required' && ! $date && ! $needsConcernDate) {
                 $validator->errors()->add(
                     'monitoring_data.followUpDate',
                     'Follow-up date is required when status is Follow-up Required.'
@@ -704,10 +707,13 @@ class HealthRecordRequest extends FormRequest
 
         // One referral covering two or more issues needs the worker's explicit
         // confirmation. It is audited, never a clinical compatibility check.
+        // "Covers more than one health issue" belongs to Refer to RHU: it
+        // counts only when that box is ticked (as in the controller's audit).
         $count = ($refers ? 1 : 0) + count(array_unique($referredIds));
+        $multipleIssues = $refers && $this->boolean('care_plan.referral_multiple_issues');
         if (
             $needsReferral
-            && ($count >= 2 || $this->boolean('care_plan.referral_multiple_issues'))
+            && ($count >= 2 || $multipleIssues)
             && ! $this->boolean('care_plan.shared_referral_acknowledged')
         ) {
             $validator->errors()->add(

@@ -490,6 +490,30 @@ class BhcGeneralConsultationV2Test extends TestCase
         $this->assertSame(0, AuditLog::where('module', 'referrals')->where('action', 'acknowledged')->count());
     }
 
+    public function test_v2_multiple_issues_flag_counts_only_with_refer_to_rhu(): void
+    {
+        // The flag belongs to Refer to RHU. With only a monitoring referral
+        // (count 1) it asks for no acknowledgment and writes no audit note.
+        $monitoring = $this->followedHypertension();
+        $this->v2([
+            'care_plan' => ['continued_monitoring_ids' => [$monitoring->id], 'monitoring_referrals' => [$monitoring->id], 'referral_multiple_issues' => true],
+            ...$this->referral(),
+        ])->assertCreated();
+
+        $this->assertSame(0, AuditLog::where('description', 'like', '%Worker indicated multiple health issues.%')->count());
+        $this->assertSame(0, AuditLog::where('module', 'referrals')->where('action', 'acknowledged')->count());
+    }
+
+    public function test_v2_client_follow_up_status_needs_no_date_without_bhc_follow_up(): void
+    {
+        // The generic "status is Follow-up Required" rule never reads the
+        // client's followUpStatus in v2; only care_plan.bhc_follow_up asks for a date.
+        $id = $this->v2(['monitoring_data' => ['followUpStatus' => 'Follow-up Required']])
+            ->assertCreated()->json('data.id');
+
+        $this->assertSame('Completed', HealthRecord::findOrFail($id)->monitoring_data['followUpStatus']);
+    }
+
     // --- Task 3 fix round 1: server-controlled markers, v2 mirrors ---
 
     private function legacy(array $extra = [])

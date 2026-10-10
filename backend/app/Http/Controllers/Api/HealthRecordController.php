@@ -1039,9 +1039,10 @@ class HealthRecordController extends Controller
             // v2 (B4): the structural count is the visit's own Refer to RHU
             // plus the distinct referred monitorings; reporting entries never
             // count. The worker's "covers more than one health issue" flag
-            // also asks for the acknowledgment, and is noted in the audit.
+            // also asks for the acknowledgment, and is noted in the audit -
+            // only with Refer to RHU ticked, as in HealthRecordRequest.
             $refers = filter_var($carePlan['refer_to_rhu'] ?? false, FILTER_VALIDATE_BOOLEAN);
-            $multipleIssues = filter_var($carePlan['referral_multiple_issues'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $multipleIssues = $refers && filter_var($carePlan['referral_multiple_issues'] ?? false, FILTER_VALIDATE_BOOLEAN);
             $count = ($refers ? 1 : 0) + count(array_unique(array_map('intval', $monitoringIds)));
             if ($count < 2 && ! $multipleIssues) {
                 return;
