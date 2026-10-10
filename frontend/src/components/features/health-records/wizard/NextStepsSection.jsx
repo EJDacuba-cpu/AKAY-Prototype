@@ -237,6 +237,8 @@ function DateWarnings({ warnings = [] }) {
  *   was typed. Nothing ticks either box except the worker or a restored draft.
  *   The referral form also shows for a monitoring referral alone.
  * - Reporting: `reportingSlot` (ReportingEntriesField).
+ * - Earlier draft notes and, when that text did not fit one field, Earlier
+ *   draft notes (continued): read-only text of a converted legacy draft.
  * Rules live in utils/nextActions.js; nothing here decides a clinical action.
  */
 export default function NextStepsSection({
@@ -250,7 +252,7 @@ export default function NextStepsSection({
   suggestions = [], onUseSuggestedDate, warnings = [],
   referral = {}, onReferralChange, coverage = [],
   acknowledgmentRequired = false, referralAcknowledged = false, onAcknowledgeChange,
-  treatmentSlot = null, reportingSlot = null, earlierDraftNotes = "",
+  treatmentSlot = null, reportingSlot = null, earlierDraftNotes = "", earlierDraftContinued = "",
 }) {
   const hasMonitoring = continuedMonitorings.length > 0 || startingConditions.length > 0;
   const referredIds = new Set(referrals.map(Number));
@@ -425,6 +427,18 @@ export default function NextStepsSection({
         <section aria-labelledby="next-steps-earlier-notes">
           <h2 id="next-steps-earlier-notes" className={SECTION_HEADING_CLASS}>Earlier draft notes</h2>
           <p className="mt-1 whitespace-pre-wrap text-[13px] text-[#374151]">{earlierDraftNotes}</p>
+        </section>
+      )}
+
+      {/* Read-only: the rest of a converted draft's text, kept in monitoringNotes
+          because it did not fit one field (draftConversion.js). */}
+      {earlierDraftContinued && (
+        <section aria-labelledby="next-steps-earlier-notes-continued">
+          <h2 id="next-steps-earlier-notes-continued" className={SECTION_HEADING_CLASS}>Earlier draft notes (continued)</h2>
+          <p className="mt-1 text-xs text-[#6B7280]">
+            The earlier draft had more text than fits in one field. The rest is kept here and saved with this visit.
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-[13px] text-[#374151]">{earlierDraftContinued}</p>
         </section>
       )}
     </div>

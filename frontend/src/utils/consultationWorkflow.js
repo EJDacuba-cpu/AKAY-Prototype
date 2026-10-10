@@ -68,3 +68,34 @@ export function earlierDraftNotes(record) {
   if (!isBhcGeneralV2(record)) return "";
   return String(firstNonBlank(record.assessment_notes, record.assessmentNotes) ?? "").trim();
 }
+
+/** The label a converted legacy draft puts in front of the text it keeps. */
+export const EARLIER_DRAFT_LABEL = "Earlier draft — ";
+
+/**
+ * Monitoring notes that a converted legacy draft kept because the earlier text
+ * did not fit the assessment notes (draftConversion.js). They start with the
+ * "Earlier draft — " label. Trimmed text, or "" for any other notes.
+ */
+export function continuedDraftNotes(monitoringNotes) {
+  const value = String(monitoringNotes ?? "").trim();
+  return value.startsWith(EARLIER_DRAFT_LABEL) ? value : "";
+}
+
+/**
+ * The "Earlier draft notes (continued)" of a v2 record: its saved monitoring
+ * notes when a converted legacy draft put earlier text there. "" otherwise,
+ * and always "" for a legacy record (its history view is unchanged).
+ */
+export function earlierDraftContinuedNotes(record) {
+  if (!isBhcGeneralV2(record)) return "";
+  const md = (value) => (value && typeof value === "object" ? value : {});
+  return continuedDraftNotes(
+    firstNonBlank(
+      record.monitoringNotes,
+      record.monitoring_notes,
+      md(record.monitoring_data).monitoringNotes,
+      md(record.monitoringData).monitoringNotes,
+    ),
+  );
+}

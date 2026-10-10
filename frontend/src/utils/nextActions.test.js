@@ -343,3 +343,15 @@ test("a converted draft adds an Earlier draft notes row, last, only when the not
   assert.deepEqual(nextStepsReviewRows({ earlierDraftNotes: null }), []);
   assert.deepEqual(nextStepsReviewRows(), []);
 });
+
+test("the rest of a long converted draft adds an Earlier draft notes (continued) row after Earlier draft notes", () => {
+  const rows = nextStepsReviewRows({
+    earlierDraftNotes: "Earlier draft — Health concerns: Cough",
+    earlierDraftContinued: "  Earlier draft — Additional clinical notes: Fever at night  ",
+  });
+  assert.deepEqual(rows, [
+    { label: "Earlier draft notes", value: "Earlier draft — Health concerns: Cough" },
+    { label: "Earlier draft notes (continued)", value: "Earlier draft — Additional clinical notes: Fever at night" },
+  ]);
+  assert.deepEqual(nextStepsReviewRows({ earlierDraftContinued: "   " }), []);
+});

@@ -128,7 +128,7 @@ import {
   reportingEntryPayload,
   restoreReportingEntries,
 } from "../../utils/reportingEntries";
-import { BHC_GENERAL_V2 } from "../../utils/consultationWorkflow";
+import { BHC_GENERAL_V2, continuedDraftNotes } from "../../utils/consultationWorkflow";
 import { convertLegacyDraft } from "../../utils/draftConversion";
 import {
   droppedContinuedCareNotice,
@@ -3581,6 +3581,11 @@ export default function ConsultationWorkspace() {
       : showFollowUpMonitoringFields
         ? "Write the monitoring plan or return-visit instructions..."
         : "Write monitoring notes if useful...";
+  // A converted legacy draft whose text did not fit one field keeps the rest in
+  // monitoringNotes (draftConversion.js). Without a monitoring card to edit it
+  // there, it shows read-only in step 3 and in Review; it is saved as entered.
+  const earlierDraftContinued =
+    continuedMonitorings.length || startingConditions.length ? "" : continuedDraftNotes(monitoringNotes);
 
   const wizardVisitDate = dateOfVisit
     ? new Date(`${dateOfVisit}T00:00:00`).toLocaleDateString("en-US", {
@@ -3967,6 +3972,7 @@ export default function ConsultationWorkspace() {
         />
       }
       earlierDraftNotes={assessmentNotes}
+      earlierDraftContinued={earlierDraftContinued}
     />
     </>
   );
@@ -4184,6 +4190,7 @@ export default function ConsultationWorkspace() {
           entries: reportingEntryPayload(reportingEntries),
           continuedLink: null,
           earlierDraftNotes: assessmentNotes,
+          earlierDraftContinued,
         }),
       ],
     },

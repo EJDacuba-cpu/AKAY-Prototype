@@ -2,9 +2,14 @@
  * Converts a draft saved before the BHC General Consultation simplification
  * (per-concern Health Concerns) into the bhc_general_v2 shape, once, on restore.
  *
- * Nothing the worker typed is dropped: concerns reported nowhere, the old
- * assessment notes and the monitoring notes that no monitoring card would show
- * are kept as read-only "Earlier draft" text (sent as assessment_notes).
+ * Nothing the worker typed is dropped or cut: concerns reported nowhere, the
+ * old assessment notes and the monitoring notes that no monitoring card would
+ * show are kept as read-only "Earlier draft" text (sent as assessment_notes).
+ * Text is never sliced away. When it would not fit the assessment_notes limit,
+ * the monitoring notes stay in monitoringNotes (labelled; the save path has no
+ * cap there), and any rest of the concerns / assessment text continues there
+ * too, labelled "Earlier draft — continued: ". Both show read-only as
+ * "Earlier draft notes (continued)".
  * The referral form and the follow-up date / time / reason pass through
  * unchanged. Dates are never invented: the checkboxes start ticked only when
  * the old draft already had the matching data.
@@ -12,11 +17,11 @@
 import { DIAGNOSIS_LIMITS, createDiagnosisId } from "./diagnoses.js";
 import { applyLegacyReportingStatus } from "./diagnosisReporting.js";
 import { entryDestinations } from "./reportingEntries.js";
-import { BHC_GENERAL_V2 } from "./consultationWorkflow.js";
+import { BHC_GENERAL_V2, EARLIER_DRAFT_LABEL } from "./consultationWorkflow.js";
 
-const CONCERNS_PREFIX = "Earlier draft — Health concerns: ";
-const CLINICAL_NOTES_PREFIX = "Earlier draft — Additional clinical notes: ";
-const ELLIPSIS = "…";
+const CONCERNS_PREFIX = `${EARLIER_DRAFT_LABEL}Health concerns: `;
+const CLINICAL_NOTES_PREFIX = `${EARLIER_DRAFT_LABEL}Additional clinical notes: `;
+const CONTINUED_PREFIX = `${EARLIER_DRAFT_LABEL}continued: `;
 
 const text = (value) => String(value ?? "").trim();
 const hasIds = (value) => Array.isArray(value) && value.length > 0;
@@ -37,9 +42,42 @@ function legacyConcerns(payload) {
   return visitText ? [...list, { name: visitText }] : list;
 }
 
-function truncateNotes(value) {
+/** Where text longer than the limit is split: at the limit, never inside a surrogate pair. */
+function splitIndex(value, limit) {
+  const code = value.charCodeAt(limit - 1);
+  return code >= 0xd800 && code <= 0xdbff ? limit - 1 : limit;
+}
+
+/**
+ * The converted assessmentNotes and monitoringNotes. Every character of the
+ * earlier text is kept in one of the two; only labels are added.
+ */
+function placeEarlierText({ concernsLine, assessmentNotes, rawMonitoringNotes, movesMonitoringNotes }) {
   const limit = DIAGNOSIS_LIMITS.notes;
-  return value.length > limit ? `${value.slice(0, limit - 1)}${ELLIPSIS}` : value;
+  const monitoringNotes = text(rawMonitoringNotes);
+  const labelledMonitoringNotes = monitoringNotes ? `${CLINICAL_NOTES_PREFIX}${monitoringNotes}` : "";
+  const joined = [concernsLine, assessmentNotes, movesMonitoringNotes ? labelledMonitoringNotes : ""]
+    .filter(Boolean)
+    .join("\n");
+  // Everything fits in the assessment notes: the monitoring notes move there
+  // when no monitoring card shows them (as before).
+  if (joined.length <= limit) {
+    return { assessmentNotes: joined, monitoringNotes: movesMonitoringNotes ? "" : rawMonitoringNotes ?? "" };
+  }
+
+  // Too long: the monitoring notes are not moved. Without a monitoring card
+  // they stay labelled, so they show read-only as earlier draft text.
+  const keptNotes = movesMonitoringNotes ? labelledMonitoringNotes : rawMonitoringNotes ?? "";
+  const base = [concernsLine, assessmentNotes].filter(Boolean).join("\n");
+  if (base.length <= limit) return { assessmentNotes: base, monitoringNotes: keptNotes };
+
+  // Even the concerns and the old assessment notes are too long: the part
+  // past the limit continues, labelled, ahead of the monitoring notes.
+  const cut = splitIndex(base, limit);
+  return {
+    assessmentNotes: base.slice(0, cut),
+    monitoringNotes: [`${CONTINUED_PREFIX}${base.slice(cut)}`, keptNotes].filter(Boolean).join("\n"),
+  };
 }
 
 /**
@@ -70,30 +108,31 @@ export function convertLegacyDraft(payload) {
     ? payload.carePlan
     : {};
   const continuesOrStartsMonitoring = hasIds(carePlan.continuedMonitoringIds) || hasIds(carePlan.startConditionIds);
-  const monitoringNotes = text(payload.monitoringNotes);
-
-  const earlierNotes = [
-    unreportedNames.length > 0 ? `${CONCERNS_PREFIX}${unreportedNames.join("; ")}` : "",
-    text(payload.assessmentNotes),
-    !continuesOrStartsMonitoring && monitoringNotes ? `${CLINICAL_NOTES_PREFIX}${monitoringNotes}` : "",
-  ].filter(Boolean);
+  const notes = placeEarlierText({
+    concernsLine: unreportedNames.length > 0 ? `${CONCERNS_PREFIX}${unreportedNames.join("; ")}` : "",
+    assessmentNotes: text(payload.assessmentNotes),
+    rawMonitoringNotes: payload.monitoringNotes,
+    movesMonitoringNotes: !continuesOrStartsMonitoring,
+  });
 
   const planOf = (concern) => concern.carePlan;
   const bhcFollowUp =
     concerns.some((concern) => planOf(concern) === "follow_up" || planOf(concern) === "recheck") ||
     concerns.some((concern) => planOf(concern) === "refer" && concern.bhcFollowUp === true) ||
     text(payload.followUpDate) !== "";
+  // needsReferral alone ticks Refer to RHU only when no monitored condition
+  // was referred: a monitoring-only referral stays a monitoring referral.
   const referToRhu =
     concerns.some((concern) => planOf(concern) === "refer" || planOf(concern) === "monitor_refer") ||
-    payload.needsReferral === true;
+    (payload.needsReferral === true && !hasIds(carePlan.monitoringReferrals));
 
   return {
     ...payload,
     consultationWorkflow: BHC_GENERAL_V2,
     diagnoses: entries,
     diagnosis: "",
-    assessmentNotes: truncateNotes(earlierNotes.join("\n")),
-    monitoringNotes: continuesOrStartsMonitoring ? payload.monitoringNotes ?? "" : "",
+    assessmentNotes: notes.assessmentNotes,
+    monitoringNotes: notes.monitoringNotes,
     carePlan: { ...carePlan, bhcFollowUp, referToRhu, referralMultipleIssues: false },
   };
 }

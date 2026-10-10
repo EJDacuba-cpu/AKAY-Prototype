@@ -103,6 +103,32 @@ test("convertLegacyDraft: monitor_refer and needsReferral tick Refer to RHU", ()
   assert.equal(none.carePlan.referToRhu, false);
 });
 
+test("convertLegacyDraft: a monitoring-only referral does not tick Refer to RHU", () => {
+  const monitoringOnly = convertLegacyDraft(
+    legacyDraft({
+      diagnoses: [{ id: "a", name: "Asthma", carePlan: "none" }],
+      needsReferral: true,
+      carePlan: { continuedMonitoringIds: [7], monitoringReferrals: [7] },
+    }),
+  );
+  assert.equal(monitoringOnly.carePlan.referToRhu, false);
+  assert.deepEqual(monitoringOnly.carePlan.monitoringReferrals, [7]);
+
+  const withReferConcern = convertLegacyDraft(
+    legacyDraft({
+      diagnoses: [{ id: "a", name: "Cough", carePlan: "refer" }],
+      needsReferral: true,
+      carePlan: { continuedMonitoringIds: [7], monitoringReferrals: [7] },
+    }),
+  );
+  assert.equal(withReferConcern.carePlan.referToRhu, true);
+
+  const emptyList = convertLegacyDraft(
+    legacyDraft({ diagnoses: [{ id: "a", name: "Asthma", carePlan: "none" }], needsReferral: true, carePlan: { monitoringReferrals: [] } }),
+  );
+  assert.equal(emptyList.carePlan.referToRhu, true);
+});
+
 test("convertLegacyDraft: the converted care plan restores as the same checkbox state", () => {
   const converted = convertLegacyDraft(legacyDraft({ followUpDate: "2026-11-02" }));
   assert.deepEqual(restoreNextActions(converted.carePlan), {
@@ -210,15 +236,79 @@ test("convertLegacyDraft: a visit-level diagnosis with no concern list is not lo
   assert.equal(long.assessmentNotes, `Earlier draft — Health concerns: ${"x".repeat(200)}`);
 });
 
-test("convertLegacyDraft: combined notes over 5000 characters are cut with a trailing ellipsis", () => {
-  const converted = convertLegacyDraft(legacyDraft({ assessmentNotes: "n".repeat(6000) }));
-  assert.equal(converted.assessmentNotes.length, 5000);
-  assert.ok(converted.assessmentNotes.endsWith("…"));
-  assert.ok(converted.assessmentNotes.startsWith("Earlier draft — Health concerns: Cough\nnnn"));
+const LABELS = /Earlier draft — (Health concerns|Additional clinical notes|continued): /g;
 
+/** The worker's characters in the converted notes: labels and the joining newlines removed. */
+function keptCharacters(converted) {
+  return [converted.assessmentNotes, converted.monitoringNotes].join("\n").replace(LABELS, "").replace(/\n/g, "");
+}
+
+test("convertLegacyDraft: notes that fit 5000 characters are kept whole in the assessment notes", () => {
   const exact = convertLegacyDraft(legacyDraft({ diagnoses: [], diagnosis: "", assessmentNotes: "n".repeat(5000) }));
-  assert.equal(exact.assessmentNotes.length, 5000);
-  assert.ok(!exact.assessmentNotes.endsWith("…"));
+  assert.equal(exact.assessmentNotes, "n".repeat(5000));
+  assert.equal(exact.monitoringNotes, "");
+});
+
+test("convertLegacyDraft: 4000 + 3000 characters lose nothing; the monitoring notes stay in monitoringNotes", () => {
+  const assessment = "a".repeat(4000);
+  const monitoring = "m".repeat(3000);
+  const converted = convertLegacyDraft(legacyDraft({ assessmentNotes: assessment, monitoringNotes: monitoring }));
+
+  assert.equal(converted.assessmentNotes, `Earlier draft — Health concerns: Cough\n${assessment}`);
+  assert.equal(converted.monitoringNotes, `Earlier draft — Additional clinical notes: ${monitoring}`);
+  assert.ok(!converted.assessmentNotes.includes("…"));
+  // Every input character is kept: only labels were added.
+  assert.equal(keptCharacters(converted), `Cough${assessment}${monitoring}`);
+  assert.equal(keptCharacters(converted).length, "Cough".length + 4000 + 3000);
+});
+
+test("convertLegacyDraft: concerns and assessment notes over 5000 characters continue in monitoringNotes", () => {
+  const assessment = "a".repeat(5000);
+  const monitoring = "m".repeat(9000);
+  const converted = convertLegacyDraft(legacyDraft({ assessmentNotes: assessment, monitoringNotes: monitoring }));
+
+  assert.equal(converted.assessmentNotes.length, 5000);
+  assert.ok(converted.assessmentNotes.startsWith("Earlier draft — Health concerns: Cough\naaa"));
+  assert.ok(converted.monitoringNotes.startsWith("Earlier draft — continued: aaa"));
+  assert.ok(converted.monitoringNotes.endsWith(`\nEarlier draft — Additional clinical notes: ${monitoring}`));
+  assert.equal(keptCharacters(converted), `Cough${assessment}${monitoring}`);
+});
+
+test("convertLegacyDraft: with monitoring, the rest continues ahead of the worker's own monitoring notes", () => {
+  const converted = convertLegacyDraft(
+    legacyDraft({ assessmentNotes: "a".repeat(5000), monitoringNotes: "BP stable", carePlan: { continuedMonitoringIds: [7] } }),
+  );
+  assert.equal(converted.assessmentNotes.length, 5000);
+  assert.ok(converted.monitoringNotes.startsWith("Earlier draft — continued: "));
+  assert.ok(converted.monitoringNotes.endsWith("\nBP stable"));
+  assert.equal(keptCharacters(converted), `Cough${"a".repeat(5000)}BP stable`);
+});
+
+test("convertLegacyDraft: never slices text away and never adds an ellipsis", () => {
+  const cases = [
+    [0, 0], [10, 10], [4000, 900], [4000, 3000], [4900, 200], [4999, 1], [5000, 0], [5000, 10000], [10, 10000],
+  ];
+  for (const [assessmentLength, monitoringLength] of cases) {
+    for (const carePlan of [{}, { startConditionIds: [3] }]) {
+      const assessment = "a".repeat(assessmentLength);
+      const monitoring = "m".repeat(monitoringLength);
+      const converted = convertLegacyDraft(legacyDraft({ assessmentNotes: assessment, monitoringNotes: monitoring, carePlan }));
+      const label = `${assessmentLength} + ${monitoringLength} ${JSON.stringify(carePlan)}`;
+      assert.ok(converted.assessmentNotes.length <= 5000, label);
+      assert.ok(!`${converted.assessmentNotes}${converted.monitoringNotes}`.includes("…"), label);
+      assert.equal(keptCharacters(converted), `Cough${assessment}${monitoring}`, label);
+    }
+  }
+});
+
+test("convertLegacyDraft: a split never breaks a surrogate pair", () => {
+  // The concerns line and its newline take 39 units, so a high surrogate sits at index 4999.
+  const assessment = "\u{1F600}".repeat(3000);
+  const converted = convertLegacyDraft(legacyDraft({ assessmentNotes: assessment }));
+  assert.equal(converted.assessmentNotes.length, 4999);
+  assert.ok(!/[\uD800-\uDBFF]$/.test(converted.assessmentNotes));
+  assert.ok(converted.monitoringNotes.startsWith("Earlier draft — continued: \u{1F600}"));
+  assert.equal(keptCharacters(converted), `Cough${assessment}`);
 });
 
 test("convertLegacyDraft: is idempotent on its own output", () => {

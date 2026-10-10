@@ -1,7 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { BHC_GENERAL_V2, earlierDraftNotes, isBhcGeneralV2, showsDiagnosisRow, visitAssessmentDisplay } from "./consultationWorkflow.js";
+import {
+  BHC_GENERAL_V2,
+  continuedDraftNotes,
+  earlierDraftContinuedNotes,
+  earlierDraftNotes,
+  isBhcGeneralV2,
+  showsDiagnosisRow,
+  visitAssessmentDisplay,
+} from "./consultationWorkflow.js";
+import { convertLegacyDraft } from "./draftConversion.js";
 
 test("BHC_GENERAL_V2 marker", () => {
   assert.equal(BHC_GENERAL_V2, "bhc_general_v2");
@@ -106,4 +115,44 @@ test("earlierDraftNotes: blank or missing notes on a v2 record give an empty str
 test("earlierDraftNotes: a legacy record always gives an empty string", () => {
   assert.equal(earlierDraftNotes({ assessment_notes: "Legacy notes" }), "");
   assert.equal(earlierDraftNotes({ assessmentNotes: "Legacy notes", monitoring_data: {} }), "");
+});
+
+test("continuedDraftNotes: only notes that start with the Earlier draft label", () => {
+  assert.equal(continuedDraftNotes("  Earlier draft — continued: rest  "), "Earlier draft — continued: rest");
+  assert.equal(continuedDraftNotes("Earlier draft — Additional clinical notes: fever"), "Earlier draft — Additional clinical notes: fever");
+  assert.equal(continuedDraftNotes("BP stable"), "");
+  assert.equal(continuedDraftNotes(""), "");
+  assert.equal(continuedDraftNotes(null), "");
+});
+
+test("earlierDraftContinuedNotes: a v2 record shows monitoring notes a converted draft kept, either spelling", () => {
+  const notes = "Earlier draft — Additional clinical notes: Mother says fever at night";
+  const v2 = { consultationWorkflow: "bhc_general_v2" };
+  assert.equal(earlierDraftContinuedNotes({ monitoring_data: { ...v2, monitoringNotes: notes } }), notes);
+  assert.equal(earlierDraftContinuedNotes({ monitoringData: { ...v2 }, monitoringNotes: notes }), notes);
+  assert.equal(earlierDraftContinuedNotes({ monitoring_data: { ...v2 }, monitoring_notes: `  ${notes}  ` }), notes);
+  // Notes the worker typed for a monitored condition are not earlier draft text.
+  assert.equal(earlierDraftContinuedNotes({ monitoring_data: { ...v2, monitoringNotes: "BP stable" } }), "");
+  assert.equal(earlierDraftContinuedNotes({ monitoring_data: { ...v2 } }), "");
+});
+
+test("earlierDraftContinuedNotes: a legacy record always gives an empty string", () => {
+  const notes = "Earlier draft — continued: rest";
+  assert.equal(earlierDraftContinuedNotes({ monitoring_data: { monitoringNotes: notes } }), "");
+  assert.equal(earlierDraftContinuedNotes({ monitoringNotes: notes }), "");
+  assert.equal(earlierDraftContinuedNotes(null), "");
+});
+
+test("earlierDraftContinuedNotes: a long converted draft reads back whole across both fields", () => {
+  const converted = convertLegacyDraft({
+    diagnoses: [],
+    assessmentNotes: "a".repeat(4000),
+    monitoringNotes: "m".repeat(3000),
+  });
+  const record = {
+    assessment_notes: converted.assessmentNotes,
+    monitoring_data: { consultationWorkflow: "bhc_general_v2", monitoringNotes: converted.monitoringNotes },
+  };
+  assert.equal(earlierDraftNotes(record), "a".repeat(4000));
+  assert.equal(earlierDraftContinuedNotes(record), `Earlier draft — Additional clinical notes: ${"m".repeat(3000)}`);
 });
