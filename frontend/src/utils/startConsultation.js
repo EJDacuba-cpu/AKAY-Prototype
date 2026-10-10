@@ -47,13 +47,41 @@ export function legacyMonitoringOptions(overview) {
 }
 
 /**
- * Whether Start Consultation has anything to ask: existing monitoring to
- * continue, or a confirmed condition BHC may start monitoring. Both are
- * optional context on the one encounter, so a patient with neither skips the
- * modal and goes straight to the workspace.
+ * Pending follow-up tasks the worker may optionally attend this visit: those
+ * with no RHU-verified active condition behind them (Health Concern
+ * follow-ups, which link none, and tasks whose only monitoring is legacy).
+ * A task linked to verified monitoring stays with that monitoring - ticking
+ * the monitoring continues it. Earliest due first.
+ */
+export function scheduledFollowUpOptions(overview) {
+  return (overview?.pendingFollowUps || [])
+    .filter((task) =>
+      !(task.conditions || []).some((condition) => Number(condition.monitoringId) > 0 && condition.legacy !== true),
+    )
+    .map((task) => ({
+      followUpId: Number(task.id),
+      reason: task.reason || "",
+      dueDate: task.dueDate || "",
+      isOverdue: task.isOverdue === true,
+      sourceDate: task.sourceDate || "",
+    }))
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.followUpId - b.followUpId);
+}
+
+/**
+ * Whether Start Consultation has anything to ask: verified monitoring to
+ * continue, a confirmed condition BHC may start monitoring, a scheduled
+ * follow-up to attend, or legacy monitoring to show as pending RHU
+ * verification. All of it is optional context on the one encounter, so a
+ * patient with none of it skips the modal and goes straight to the workspace.
  */
 export function hasStartChoices(overview) {
-  return monitoredConditionOptions(overview).length > 0 || monitoringRecommendationOptions(overview).length > 0;
+  return (
+    monitoredConditionOptions(overview).length > 0 ||
+    monitoringRecommendationOptions(overview).length > 0 ||
+    scheduledFollowUpOptions(overview).length > 0 ||
+    legacyMonitoringOptions(overview).length > 0
+  );
 }
 
 /**
@@ -86,30 +114,36 @@ export function selectionToRoute(
 /**
  * The consultation route for what the worker ticked in the Start Consultation
  * modal: nothing ticked is a normal consultation, otherwise the same
- * consultation carries the chosen monitoring and the confirmed conditions to
- * start monitoring (no separate record).
+ * consultation carries the chosen monitoring, scheduled follow-ups and the
+ * confirmed conditions to start monitoring (no separate record).
  */
-export function startRoute({ patientId, monitoringIds = [], startConditionIds = [] }, basePath = "/bhc") {
-  return monitoringIds.length || startConditionIds.length
-    ? selectionToRoute({ patientId, monitoringIds, startConditionIds }, basePath)
+export function startRoute(
+  { patientId, monitoringIds = [], startConditionIds = [], followUpIds = [] },
+  basePath = "/bhc",
+) {
+  return monitoringIds.length || startConditionIds.length || followUpIds.length
+    ? selectionToRoute({ patientId, monitoringIds, startConditionIds, followUpIds }, basePath)
     : buildPatientConsultationPath(patientId, basePath);
 }
 
 /**
- * Checks the worker's ticked monitoring and recommended conditions against a
- * fresh care overview just before the workspace opens: a record stopped or
- * completed, or a recommendation withdrawn, since the modal was read is
- * reported (never silently dropped), so the modal can say so.
+ * Checks the worker's ticked monitoring, scheduled follow-ups and recommended
+ * conditions against a fresh care overview just before the workspace opens: a
+ * record stopped or completed, a follow-up fulfilled, or a recommendation
+ * withdrawn, since the modal was read is reported (never silently dropped), so
+ * the modal can say so.
  */
-export function checkContinuedStart(overview, monitoringIds = [], startConditionIds = []) {
-  const { droppedMonitoringIds, droppedConditionIds } = resolveContinuedCare(overview, {
+export function checkContinuedStart(overview, monitoringIds = [], startConditionIds = [], followUpIds = []) {
+  const { droppedMonitoringIds, droppedConditionIds, droppedFollowUpIds } = resolveContinuedCare(overview, {
+    followUpIds,
     monitoringIds,
     startConditionIds,
     includeLinkedFollowUps: true,
   });
   return {
-    ok: droppedMonitoringIds.length === 0 && droppedConditionIds.length === 0,
+    ok: droppedMonitoringIds.length === 0 && droppedConditionIds.length === 0 && droppedFollowUpIds.length === 0,
     droppedMonitoringIds,
     droppedConditionIds,
+    droppedFollowUpIds,
   };
 }

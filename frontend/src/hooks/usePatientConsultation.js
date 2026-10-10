@@ -88,16 +88,17 @@ export default function usePatientConsultation(patientId) {
     needsStartModal: !draft && hasStartChoices(careOverview),
     /**
      * Opens the consultation for what the Start Consultation modal chose.
-     * With monitoring or RHU recommendations ticked it first reads them fresh
-     * and rejects (ContinuedStartError) if a record is gone or a recommendation
-     * withdrawn, so the workspace never opens half loaded; with none ticked it
-     * opens at once.
+     * With monitoring, scheduled follow-ups or RHU recommendations ticked it
+     * first reads them fresh and rejects (ContinuedStartError) if a record is
+     * gone, a follow-up fulfilled or a recommendation withdrawn, so the
+     * workspace never opens half loaded; with none ticked it opens at once.
+     * Opening never completes a follow-up; only a successful save does.
      */
-    start: async ({ monitoringIds = [], startConditionIds = [] } = {}) => {
-      if (monitoringIds.length || startConditionIds.length) {
-        await prepareContinuedStart(queryClient, patientId, monitoringIds, startConditionIds);
+    start: async ({ monitoringIds = [], startConditionIds = [], followUpIds = [] } = {}) => {
+      if (monitoringIds.length || startConditionIds.length || followUpIds.length) {
+        await prepareContinuedStart(queryClient, patientId, monitoringIds, startConditionIds, followUpIds);
       }
-      navigate(startRoute({ patientId, monitoringIds, startConditionIds }));
+      navigate(startRoute({ patientId, monitoringIds, startConditionIds, followUpIds }));
     },
     retry: () => queryClient.invalidateQueries({ queryKey }),
     discarding: discard.isPending,

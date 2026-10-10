@@ -5,6 +5,7 @@ import {
   hasStartChoices,
   legacyMonitoringOptions,
   monitoredConditionOptions,
+  scheduledFollowUpOptions,
   selectionToRoute,
   startConsultationAction,
   startRoute,
@@ -34,11 +35,9 @@ test("lists each active monitoring once, alphabetically, with its earliest follo
   assert.deepEqual(monitoredConditionOptions({ pendingFollowUps: [], monitoringWithoutFollowUp: [] }), []);
 });
 
-test("the modal is only for a patient with an active monitoring record", () => {
+test("the modal is for a patient with monitoring, a recommendation, a scheduled follow-up or a legacy row", () => {
   assert.equal(hasStartChoices(null), false);
   assert.equal(hasStartChoices({ pendingFollowUps: [], monitoringWithoutFollowUp: [] }), false);
-  // A follow-up that links no monitoring record has nothing to select.
-  assert.equal(hasStartChoices({ pendingFollowUps: [{ id: 1, conditions: [] }], monitoringWithoutFollowUp: [] }), false);
   assert.equal(hasStartChoices({ pendingFollowUps: [], monitoringWithoutFollowUp: [{ id: 7, conditionName: "Asthma" }] }), true);
   assert.equal(hasStartChoices(overview), true);
 });
@@ -102,11 +101,11 @@ test("what a Start Consultation action does: wait, open the modal, or go", () =>
 });
 
 test("a selection is checked against the fresh overview before the workspace opens", () => {
-  assert.deepEqual(checkContinuedStart(overview, [4, 7]), { ok: true, droppedMonitoringIds: [], droppedConditionIds: [] });
-  assert.deepEqual(checkContinuedStart(overview, []), { ok: true, droppedMonitoringIds: [], droppedConditionIds: [] });
+  assert.deepEqual(checkContinuedStart(overview, [4, 7]), { ok: true, droppedMonitoringIds: [], droppedConditionIds: [], droppedFollowUpIds: [] });
+  assert.deepEqual(checkContinuedStart(overview, []), { ok: true, droppedMonitoringIds: [], droppedConditionIds: [], droppedFollowUpIds: [] });
   // One stopped or completed elsewhere is reported, never silently dropped.
-  assert.deepEqual(checkContinuedStart(overview, [4, 99]), { ok: false, droppedMonitoringIds: [99], droppedConditionIds: [] });
-  assert.deepEqual(checkContinuedStart(null, [4]), { ok: false, droppedMonitoringIds: [4], droppedConditionIds: [] });
+  assert.deepEqual(checkContinuedStart(overview, [4, 99]), { ok: false, droppedMonitoringIds: [99], droppedConditionIds: [], droppedFollowUpIds: [] });
+  assert.deepEqual(checkContinuedStart(null, [4]), { ok: false, droppedMonitoringIds: [4], droppedConditionIds: [], droppedFollowUpIds: [] });
 });
 
 test("a dropped recommendation is reported, not silently removed", () => {
@@ -116,11 +115,13 @@ test("a dropped recommendation is reported, not silently removed", () => {
     ok: true,
     droppedMonitoringIds: [],
     droppedConditionIds: [],
+    droppedFollowUpIds: [],
   });
   assert.deepEqual(checkContinuedStart(withRecommendation, [], [9, 10]), {
     ok: false,
     droppedMonitoringIds: [],
     droppedConditionIds: [10],
+    droppedFollowUpIds: [],
   });
 });
 
@@ -153,7 +154,84 @@ test("legacyMonitoringOptions lists only legacy rows", () => {
   assert.deepEqual(legacyMonitoringOptions(null), []);
 });
 
-test("a patient with only legacy monitoring has no start choices, so consultation is never blocked", () => {
+test("a patient with only legacy monitoring still sees the modal, to read the pending-verification list", () => {
   const onlyLegacy = { pendingFollowUps: [], monitoringWithoutFollowUp: [{ id: 9, conditionName: "Arthritis", legacy: true }] };
-  assert.equal(hasStartChoices(onlyLegacy), false);
+  assert.equal(hasStartChoices(onlyLegacy), true);
+});
+
+const concernTask = {
+  id: 31, dueDate: "2026-10-12", isOverdue: true, reason: "Wound check", sourceHealthRecordId: 95, sourceDate: "2026-10-05",
+  conditions: [],
+};
+const legacyOnlyTask = {
+  id: 32, dueDate: "2026-10-15", isOverdue: false, reason: "Gout review", sourceHealthRecordId: 96, sourceDate: "2026-10-06",
+  conditions: [{ monitoringId: 8, conditionName: "Gout", legacy: true }],
+};
+const verifiedTask = {
+  id: 33, dueDate: "2026-10-20", isOverdue: false, reason: "BP recheck", sourceHealthRecordId: 97, sourceDate: "2026-10-07",
+  conditions: [{ monitoringId: 4, conditionName: "Hypertension", legacy: false }],
+};
+const mixedTask = {
+  id: 34, dueDate: "2026-10-21", isOverdue: false, reason: "", sourceHealthRecordId: 98, sourceDate: "2026-10-07",
+  conditions: [
+    { monitoringId: 4, conditionName: "Hypertension", legacy: false },
+    { monitoringId: 8, conditionName: "Gout", legacy: true },
+  ],
+};
+
+test("scheduledFollowUpOptions lists concern follow-ups and legacy-only follow-ups, not verified-monitoring ones", () => {
+  const withTasks = { pendingFollowUps: [verifiedTask, legacyOnlyTask, concernTask, mixedTask], monitoringWithoutFollowUp: [] };
+  assert.deepEqual(scheduledFollowUpOptions(withTasks), [
+    { followUpId: 31, reason: "Wound check", dueDate: "2026-10-12", isOverdue: true, sourceDate: "2026-10-05" },
+    { followUpId: 32, reason: "Gout review", dueDate: "2026-10-15", isOverdue: false, sourceDate: "2026-10-06" },
+  ]);
+  assert.deepEqual(scheduledFollowUpOptions(null), []);
+  assert.deepEqual(scheduledFollowUpOptions({ pendingFollowUps: [], monitoringWithoutFollowUp: [] }), []);
+});
+
+test("scheduledFollowUpOptions is ordered by due date", () => {
+  const later = { ...concernTask, id: 35, dueDate: "2026-10-30" };
+  const earlier = { ...concernTask, id: 36, dueDate: "2026-10-02" };
+  assert.deepEqual(
+    scheduledFollowUpOptions({ pendingFollowUps: [later, earlier] }).map((o) => o.followUpId),
+    [36, 35],
+  );
+});
+
+test("hasStartChoices is true for a pending concern follow-up alone", () => {
+  assert.equal(hasStartChoices({ pendingFollowUps: [concernTask], monitoringWithoutFollowUp: [] }), true);
+  assert.equal(hasStartChoices({ pendingFollowUps: [legacyOnlyTask], monitoringWithoutFollowUp: [] }), true);
+});
+
+test("hasStartChoices is false for a first-visit patient", () => {
+  assert.equal(hasStartChoices({ pendingFollowUps: [], monitoringWithoutFollowUp: [], monitoringRecommendations: [] }), false);
+  assert.equal(hasStartChoices({}), false);
+});
+
+test("startRoute carries followUpIds", () => {
+  assert.equal(
+    startRoute({ patientId: 17, followUpIds: [31] }),
+    "/bhc/health-records/add?patientId=17&mode=continue&followUpIds=31",
+  );
+  assert.equal(
+    startRoute({ patientId: 17, followUpIds: [31, 32], monitoringIds: [4] }),
+    "/bhc/health-records/add?patientId=17&mode=continue&followUpIds=31%2C32&monitoringIds=4",
+  );
+  assert.equal(startRoute({ patientId: 17, followUpIds: [] }), "/bhc/health-records/add?patientId=17&mode=new");
+});
+
+test("checkContinuedStart reports a fulfilled follow-up as dropped", () => {
+  const fresh = { pendingFollowUps: [concernTask], monitoringWithoutFollowUp: [] };
+  assert.deepEqual(checkContinuedStart(fresh, [], [], [31]), {
+    ok: true,
+    droppedMonitoringIds: [],
+    droppedConditionIds: [],
+    droppedFollowUpIds: [],
+  });
+  assert.deepEqual(checkContinuedStart(fresh, [], [], [31, 99]), {
+    ok: false,
+    droppedMonitoringIds: [],
+    droppedConditionIds: [],
+    droppedFollowUpIds: [99],
+  });
 });
