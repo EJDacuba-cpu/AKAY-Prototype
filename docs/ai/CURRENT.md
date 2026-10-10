@@ -132,7 +132,7 @@ Do not skip the approval gate.
 At the end of a substantial Claude Code session, update this section.
 
 ### Last task
-Consultation & Care Plan workflow revision (spec: `docs/superpowers/specs/2026-10-09-consultation-care-plan-workflow-revision-design.md`; plan: `docs/superpowers/plans/2026-10-10-consultation-care-plan-workflow-revision.md`). Tasks 0-9 plus this documentation task are done on branch `care-plan-workflow-revision` (commits `f2504e1..306bee6`, not merged, not deployed). Task 11 (release 2) is NOT done: it is gated, see Next action. Before that: Care Plan & Next Steps (2026-09-30), whose Supabase migrations are still pending (see Open risks).
+Consultation & Care Plan workflow revision (spec: `docs/superpowers/specs/2026-10-09-consultation-care-plan-workflow-revision-design.md`; plan: `docs/superpowers/plans/2026-10-10-consultation-care-plan-workflow-revision.md`). Tasks 0-9 plus this documentation task are done on branch `care-plan-workflow-revision` (Tasks 1-9: `f04e9f3..306bee6`, not merged, not deployed). Task 11 (release 2) is NOT done: it is gated, see Next action. Before that: Care Plan & Next Steps (2026-09-30), whose Supabase migrations are still pending (see Open risks).
 
 ### Changes made
 - Final decisions H1-H7 (approved 2026-10-10; spec section H):
@@ -217,3 +217,13 @@ The `store()`-seam test classes (`HealthRecordIdempotencyTest`, `HealthRecordDra
 
    Then implement: `CarePlan::TRANSITION_ACCEPTED = []`; a closure rule on POST that rejects `carePlan === 'recheck'` with 422 "Recheck is no longer offered. Choose Schedule BHC Follow-up and describe the purpose in Follow-up Reason."; for BHC users, a missing `diagnoses.*.carePlan` returns 422 "Choose a care plan action for this health concern." (scoped to BHC; `HealthRecordRequest` is shared with RHU records, which carry no care-plan action). Remove `test_transition_recheck_post_saves_as_follow_up_with_prefix`; keep `test_recheck_still_keeps_a_bhc_follow_up_for_stored_records` and add `test_resync_keeps_a_historical_referred_recheck_task`. Commit `feat(care-plan): release 2 rejects recheck and requires a BHC concern action`; deploy the backend only.
 3. Then investigate the pre-existing backend test failures.
+
+### Previous session (2026-09-30 to 2026-10-04)
+Care Plan & Next Steps (spec `docs/superpowers/specs/2026-09-30-care-plan-next-steps-design.md`) and the fix waves after it. Details are in git history and `.superpowers/sdd/2026-09-30-care-plan-next-steps/final-fix-report.md`.
+- Monitoring: condition monitoring tables replace the Care Pathway enrollment layer; follow-up tasks can be fulfilled by a shared follow-up. One care-overview read serves Care & Programs, Monitoring Details and the consultation.
+- Start Consultation modal and one consultation step flow (Patient Interview, Physical Exam & Assessment, Service Details, Actions Taken, Care Plan & Next Steps, Monitoring Details, Review & Confirm). TB is no longer a Visit Service and is identified by data (`tbRecords.isTbRecord`).
+- Barangay Health Services panel (Maternal Care, Family Planning, EPI as one flat list); per-diagnosis "Include in Surveillance" and a Surveillance Report replace the HFMD registry.
+- Optional Fasting Blood Sugar (mg/dL, 0-1000) in Vital Signs, stored in `vital_signs.fbs`, recorded only (nothing flagged or derived).
+- Fix wave 2026-10-02: a referral on a service visit keeps its next-visit follow-up (`CarePlan::keepsFollowUpWithReferral`, same rule in `carePlanWorkspace.followUpPlan`); the server rejects Refer without a referral (422 `needs_referral`); legacy `surveillanceTags` validated again; row locks in a stable order; the monitoring 409 `CONDITION_MONITORING_CONFLICT` is also recognised on SQLite.
+- Care Plan by suspected condition (2026-10-04): no condition = General Consultation (empty state plus Additional Clinical Notes); with conditions, one row per condition holds the care-plan choice and its reporting; a new condition defaults to No Ongoing Tracking. Not done then: stopping a monitoring outside a consultation.
+- Tests at that time: backend 568 tests / 194 failed (same failing names as the pre-existing baseline), frontend 305/305 before the fix wave and 397/397 after the 2026-10-04 change; `DiagnosisReportingTest` 7/7. Not exercised in a browser.
