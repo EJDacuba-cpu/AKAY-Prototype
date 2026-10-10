@@ -91,7 +91,8 @@ final class CarePlan
      * Whether a visit that refers still keeps its own next-visit follow-up:
      * a health concern schedules a BHC follow-up, or it is
      * a service visit (Maternal / Family Planning / EPI selected) with a
-     * follow-up date set - the next dose, appointment or prenatal return.
+     * follow-up date set - the next dose, appointment or prenatal return -
+     * or a v2 visit with Schedule BHC Follow-up ticked (monitoring_data.bhcFollowUp).
      * A plain referral with no service hands the follow-up to the RHU.
      */
     public static function keepsFollowUpWithReferral(array $diagnoses, mixed $monitoringData): bool
@@ -107,6 +108,12 @@ final class CarePlan
             }
         }
         $monitoringData = is_array($monitoringData) ? $monitoringData : [];
+        // v2 (bhc_general_v2): the visit-level Schedule BHC Follow-up flag the
+        // controller stores as a real boolean. The re-sync reads it too, so a
+        // v2 visit with both a follow-up and a referral keeps its task.
+        if (($monitoringData['bhcFollowUp'] ?? null) === true) {
+            return true;
+        }
         $programs = $monitoringData['selectedPrograms'] ?? [];
         $date = $monitoringData['followUpDate'] ?? $monitoringData['follow_up_date'] ?? null;
 

@@ -99,4 +99,13 @@ class CarePlanTest extends TestCase
         $this->assertFalse(CarePlan::keepsFollowUpWithReferral($refer, ['followUpDate' => '2026-11-01']));
         $this->assertFalse(CarePlan::keepsFollowUpWithReferral($refer, null));
     }
+
+    public function test_bhc_follow_up_flag_keeps_follow_up_with_referral(): void
+    {
+        // v2: the visit-level Schedule BHC Follow-up flag survives a referral,
+        // read strictly as the boolean the controller stores.
+        $this->assertTrue(CarePlan::keepsFollowUpWithReferral([], ['bhcFollowUp' => true]));
+        $this->assertFalse(CarePlan::keepsFollowUpWithReferral([], ['bhcFollowUp' => 'true']));
+        $this->assertFalse(CarePlan::keepsFollowUpWithReferral([], ['bhcFollowUp' => false]));
+    }
 }

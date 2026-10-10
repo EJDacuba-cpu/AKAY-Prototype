@@ -101,12 +101,30 @@ class HealthRecordController extends Controller
         $data = $request->validated();
         $patient = Patient::findOrFail($data['patient_id']);
         $this->facilityAccess->authorizePatientModification($request->user(), $patient);
-        // conditionKey is always server-resolved from the diagnosis name here -
-        // any client-sent conditionKey is discarded and replaced, never trusted.
-        // A stale client may still send a falsy addToConditions; it is never stored.
-        $data['diagnoses'] = $clinicalRegistry->resolveConditionEntries(
-            array_map(fn ($diagnosis) => Arr::except($diagnosis, ['addToConditions']), $data['diagnoses'] ?? [])
-        );
+        // BHC-only General Consultation v2 (consultation_workflow: bhc_general_v2).
+        // A request without the discriminator runs every legacy step below unchanged.
+        $v2 = $request->isBhcGeneralV2();
+        unset($data['consultation_workflow']);
+        if ($v2) {
+            // Reporting-only entries: stored exactly as typed, never resolved
+            // against the condition registry, never touching patient conditions.
+            $data['diagnoses'] = array_values(array_map(
+                fn (array $entry) => ReportingEntries::normalizeForSave($entry),
+                array_filter($data['diagnoses'] ?? [], 'is_array')
+            ));
+            $data['diagnosis'] = null;
+            $data['monitoring_data'] = [
+                ...(is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : []),
+                'consultationWorkflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
+            ];
+        } else {
+            // conditionKey is always server-resolved from the diagnosis name here -
+            // any client-sent conditionKey is discarded and replaced, never trusted.
+            // A stale client may still send a falsy addToConditions; it is never stored.
+            $data['diagnoses'] = $clinicalRegistry->resolveConditionEntries(
+                array_map(fn ($diagnosis) => Arr::except($diagnosis, ['addToConditions']), $data['diagnoses'] ?? [])
+            );
+        }
         $draftPublicId = $data['draft_public_id'] ?? null;
         unset($data['draft_public_id']);
         $idempotencyKey = $data['idempotency_key'];
@@ -167,11 +185,20 @@ class HealthRecordController extends Controller
         $referralData = $data['referral'] ?? null;
         unset($data['referral']);
 
-        $this->castBhcFollowUpFlags($data);
-        if ($this->isReferralDisposition($data, $referralData)) {
-            $this->normalizeReferralDisposition($data);
+        if ($v2) {
+            // The visit-level follow-up first: normalizeReferralDisposition
+            // reads the bhcFollowUp it stores (CarePlan::keepsFollowUpWithReferral).
+            $this->applyV2NextActions($data, $carePlan);
+            if ($this->isReferralDisposition($data, $referralData)) {
+                $this->normalizeReferralDisposition($data);
+            }
         } else {
-            $this->requireConcernFollowUp($data);
+            $this->castBhcFollowUpFlags($data);
+            if ($this->isReferralDisposition($data, $referralData)) {
+                $this->normalizeReferralDisposition($data);
+            } else {
+                $this->requireConcernFollowUp($data);
+            }
         }
 
         $this->normalizeVisitTypeData($request, $data, true);
@@ -179,8 +206,10 @@ class HealthRecordController extends Controller
         $this->normalizeFamilyPlanningData($data);
         $this->normalizeSurveillanceData($data);
         $this->normalizeDiagnosisReporting($data);
-        $this->applyRecheckReason($data);
-        $this->normalizeConcernActions($data);
+        if (! $v2) {
+            $this->applyRecheckReason($data);
+            $this->normalizeConcernActions($data);
+        }
         $dispensedMedicines = $data['dispensed_medicines'] ?? [];
         unset($data['dispensed_medicines']);
 
@@ -215,7 +244,8 @@ class HealthRecordController extends Controller
                 $conditionConfirmations,
                 $legacyDiscontinuations,
                 $legacyReview,
-                $patientConditions
+                $patientConditions,
+                $v2
             ) {
                 $lockedDraft = $draftPublicId
                     ? $drafts->lockForOfficialSave(
@@ -335,7 +365,7 @@ class HealthRecordController extends Controller
 
                 // After the referral or the hold exists, so a blocked referral is audited too.
                 if (is_array($referralData)) {
-                    $this->auditSharedReferral($request, $auditLogger, $record, $data['diagnoses'] ?? [], $carePlan, $continuedMonitorings);
+                    $this->auditSharedReferral($request, $auditLogger, $record, $data['diagnoses'] ?? [], $carePlan, $continuedMonitorings, $v2);
                 }
 
                 $auditLogger->log($request, 'created', 'health_records', "Created health record {$record->id}.");
@@ -812,6 +842,44 @@ class HealthRecordController extends Controller
         ];
     }
 
+    /**
+     * v2 (bhc_general_v2) visit-level follow-up. The status is server-derived
+     * from care_plan.bhc_follow_up; the client's followUpStatus is never
+     * trusted. Without the checkbox the visit schedules nothing: every
+     * follow-up field is cleared (a service-proposed date such as the EPI next
+     * dose stays in its service record) and the status reads 'Completed', the
+     * value the BHC frontend already sends for no follow-up. Runs before
+     * normalizeReferralDisposition, which reads the stored bhcFollowUp and
+     * overrides the status to 'Needs Referral' for a referral.
+     *
+     * @param  array<string, mixed>  $carePlan
+     */
+    private function applyV2NextActions(array &$data, array $carePlan): void
+    {
+        $monitoringData = is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : [];
+        $followUp = filter_var($carePlan['bhc_follow_up'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        $data['monitoring_data'] = $followUp
+            ? [
+                ...$monitoringData,
+                'bhcFollowUp' => true,
+                'followUpStatus' => 'Follow-up Required',
+                'follow_up_status' => 'Follow-up Required',
+            ]
+            : [
+                ...$monitoringData,
+                'bhcFollowUp' => false,
+                'followUpStatus' => 'Completed',
+                'follow_up_status' => 'Completed',
+                'followUpDate' => null,
+                'follow_up_date' => null,
+                'followUpTime' => null,
+                'follow_up_time' => null,
+                'followUpReason' => null,
+                'follow_up_reason' => null,
+            ];
+    }
+
     private function normalizeReferralDisposition(array &$data): void
     {
         $monitoringData = $data['monitoring_data'] ?? [];
@@ -959,27 +1027,49 @@ class HealthRecordController extends Controller
         HealthRecord $record,
         array $diagnoses,
         array $carePlan,
-        \Illuminate\Support\Collection $continuedMonitorings
+        \Illuminate\Support\Collection $continuedMonitorings,
+        bool $v2 = false
     ): void {
         $monitoringIds = $carePlan['monitoring_referrals'] ?? [];
-        $count = \App\Services\CarePlan::referralItemCount($diagnoses, $monitoringIds);
-        if ($count < 2) {
-            return;
-        }
         $names = [];
-        foreach ($diagnoses as $diagnosis) {
-            if (is_array($diagnosis) && \App\Services\CarePlan::refers($diagnosis['carePlan'] ?? null)) {
-                $names[] = trim((string) ($diagnosis['name'] ?? ''));
+        $note = '';
+        if ($v2) {
+            // v2 (B4): the structural count is the visit's own Refer to RHU
+            // plus the distinct referred monitorings; reporting entries never
+            // count. The worker's "covers more than one health issue" flag
+            // also asks for the acknowledgment, and is noted in the audit.
+            $refers = filter_var($carePlan['refer_to_rhu'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $multipleIssues = filter_var($carePlan['referral_multiple_issues'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $count = ($refers ? 1 : 0) + count(array_unique(array_map('intval', $monitoringIds)));
+            if ($count < 2 && ! $multipleIssues) {
+                return;
+            }
+            if ($refers) {
+                $names[] = 'General consultation';
+            }
+            if ($multipleIssues) {
+                $note = ' Worker indicated multiple health issues.';
+            }
+        } else {
+            $count = \App\Services\CarePlan::referralItemCount($diagnoses, $monitoringIds);
+            if ($count < 2) {
+                return;
+            }
+            foreach ($diagnoses as $diagnosis) {
+                if (is_array($diagnosis) && \App\Services\CarePlan::refers($diagnosis['carePlan'] ?? null)) {
+                    $names[] = trim((string) ($diagnosis['name'] ?? ''));
+                }
             }
         }
         foreach (array_unique(array_map('intval', $monitoringIds)) as $id) {
             $names[] = (string) $continuedMonitorings->get($id)?->condition_name;
         }
+        $items = $count === 1 ? 'item' : 'items';
         $auditLogger->log(
             $request,
             'acknowledged',
             'referrals',
-            "Shared referral acknowledged for health record {$record->id}: {$count} items (".implode('; ', array_filter($names)).'). Not a clinical compatibility check.'
+            "Shared referral acknowledged for health record {$record->id}: {$count} {$items} (".implode('; ', array_filter($names)).").{$note} Not a clinical compatibility check."
         );
     }
 
