@@ -327,3 +327,19 @@ test("review rows keep a ticked section that has no details", () => {
     { label: "RHU Referral", value: "Refer to RHU" },
   ]);
 });
+
+test("a converted draft adds an Earlier draft notes row, last, only when the notes are not blank", () => {
+  const withNotes = nextStepsReviewRows({
+    state: { bhcFollowUp: true, referToRhu: false, referralMultipleIssues: false },
+    followUp: { date: "2026-10-20" },
+    earlierDraftNotes: "  Cough x3 days\nNo fever  ",
+  });
+  assert.deepEqual(withNotes, [
+    { label: "BHC Follow-up", value: "2026-10-20" },
+    { label: "Earlier draft notes", value: "Cough x3 days\nNo fever" },
+  ]);
+  assert.deepEqual(nextStepsReviewRows({ earlierDraftNotes: "   " }), []);
+  assert.deepEqual(nextStepsReviewRows({ earlierDraftNotes: "" }), []);
+  assert.deepEqual(nextStepsReviewRows({ earlierDraftNotes: null }), []);
+  assert.deepEqual(nextStepsReviewRows(), []);
+});

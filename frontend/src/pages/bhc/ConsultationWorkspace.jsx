@@ -1,4 +1,4 @@
-import { programReviewRows } from "../../utils/consultationReview";
+import { compactReviewSections, programReviewRows } from "../../utils/consultationReview";
 import { Button } from "../../components/ui/button";
 import ReferralFacilityField from "../../components/features/health-records/ReferralFacilityField";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -4095,38 +4095,20 @@ export default function ConsultationWorkspace() {
   ]
     .filter(Boolean)
     .join(" \u00b7 ");
-  // One block per step, in wizard order, each with an Edit shortcut back to
-  // the screen that owns it. Every value is read from the page's own state -
-  // nothing here is a second copy of the data.
-  const reviewSections = [
+  // Three compact groups (Patient Interview, Physical Examination, Medication,
+  // Treatment & Next Steps), each with an Edit shortcut back to the screen that
+  // owns it. Background updates and service forms follow the Interview group
+  // with their own Edit links. Every value is read from the page's own state and
+  // compactReviewSections drops the rows and groups with no value.
+  const reviewSections = compactReviewSections([
     {
       key: INTERVIEW_STEP,
       title: "Patient Interview",
       stepKey: INTERVIEW_STEP,
       rows: [
-        {
-          label: "Patient",
-          value: `${getPatientName(selectedPatient)} · #${selectedPatientId}`,
-        },
-        {
-          label: "Visit",
-          value: [
-            dateOfVisit && formatLongDate(dateOfVisit, ""),
-            timeOfVisit && formatDisplayTime(timeOfVisit),
-          ]
-            .filter(Boolean)
-            .join(" · "),
-        },
         { label: "Chief Complaint", value: chiefComplaint },
         { label: "History of Present Illness", value: summaryOfPresentIllness },
       ],
-    },
-    {
-      key: "vitals",
-      title: "Vital Signs",
-      // A subsection of Physical Examination.
-      stepKey: ASSESSMENT_STEP,
-      rows: [{ label: "Measurements", value: vitalsSummary }],
     },
     // Only when a section was edited; Edit reopens the card expanded.
     ...(canViewBackground && editedSectionKeys(backgroundUpdate).length
@@ -4142,31 +4124,6 @@ export default function ConsultationWorkspace() {
           ),
         }]
       : []),
-    {
-      key: ASSESSMENT_STEP,
-      title: "Physical Examination",
-      stepKey: ASSESSMENT_STEP,
-      rows: [
-        { label: "Physical Exam", value: physicalExam },
-        { label: "Body Findings", value: formatBodyFindings(bodyFindings) },
-
-        // The selection itself is listed under Program / Service Details
-        // when there is one; only its absence is stated here.
-        ...(programFormSteps.length === 0
-          ? [{ label: "Programs / Services", value: "None — General Consultation" }]
-          : []),
-      ],
-    },
-    {
-      key: "actions-taken",
-      title: "Actions Taken",
-      // Sits on Medication, Treatment & Next Steps.
-      stepKey: NEXT_STEP,
-      rows: [
-        { label: "Actions Taken", value: treatmentValue },
-        { label: "Medicines / Supplies", value: dispensedMedicines.map(item => item.medicineName + " · " + item.quantity + " " + item.unit + " · " + (item.confirmedGiven ? "Dispensed/Given" : "Planned")).join("\n") },
-      ],
-    },
     // Present only when a program was chosen. Edit opens the first program
     // form; Next from there walks the rest in order.
     ...programFormSteps.map(step => ({
@@ -4179,11 +4136,23 @@ export default function ConsultationWorkspace() {
       }[step.classification]),
     })),
     {
+      key: ASSESSMENT_STEP,
+      title: "Physical Examination",
+      stepKey: ASSESSMENT_STEP,
+      rows: [
+        { label: "Vital Signs", value: vitalsSummary },
+        { label: "Physical Findings", value: physicalExam },
+        { label: "Body Findings", value: formatBodyFindings(bodyFindings) },
+      ],
+    },
+    {
       key: NEXT_STEP,
       title: "Medication, Treatment & Next Steps",
       stepKey: NEXT_STEP,
       rows: [
-        // Continued follow-ups and monitoring decisions only (no concerns, no
+        { label: "Actions Taken", value: treatmentValue },
+        { label: "Medicines / Supplies", value: dispensedMedicines.map(item => item.medicineName + " · " + item.quantity + " " + item.unit + " · " + (item.confirmedGiven ? "Dispensed/Given" : "Planned")).join("\n") },
+        // Continued, starting and stopped monitoring only (no concerns, no
         // referral / follow-up rows: those come from nextStepsReviewRows).
         ...carePlanReviewRows({
           continuedFollowUps,
@@ -4192,8 +4161,13 @@ export default function ConsultationWorkspace() {
           stops: monitoringStops,
           referrals: monitoringReferrals,
         }).filter((row) => row.label !== "Next Steps"),
+        // The Additional Clinical Notes entered with Condition Monitoring.
+        ...(continuedMonitorings.length || startingConditions.length
+          ? [{ label: "Monitoring Notes", value: monitoringNotes }]
+          : []),
         // BHC Follow-up, RHU Referral (also for a monitoring referral alone),
-        // Covers and Reporting. The continued follow-ups are listed above.
+        // Covers, Reporting and, for a converted draft, Earlier draft notes.
+        // The continued follow-ups are listed above.
         ...nextStepsReviewRows({
           state: { ...nextActions, referToRhu: needsReferral },
           followUp: {
@@ -4208,10 +4182,8 @@ export default function ConsultationWorkspace() {
           coverage: referralCoverage,
           entries: reportingEntryPayload(reportingEntries),
           continuedLink: null,
+          earlierDraftNotes: assessmentNotes,
         }),
-        // The Additional Clinical Notes entered with Condition Monitoring.
-        ...(monitoringNotes ? [{ label: "Notes", value: monitoringNotes }] : []),
-        ...(assessmentNotes ? [{ label: "Earlier draft notes", value: assessmentNotes }] : []),
       ],
     },
     ...(monitoringDetailKeys.includes("tb_dots")
@@ -4222,7 +4194,7 @@ export default function ConsultationWorkspace() {
           rows: programReviewRows(tbData),
         }]
       : []),
-  ];
+  ]);
   const reviewErrorMessages = Object.values(validationErrors).filter(Boolean);
 
   /**

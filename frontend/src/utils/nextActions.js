@@ -142,7 +142,7 @@ function coverageName(item) {
 
 /**
  * Review & Confirm rows for this step, in order: BHC Follow-up, RHU Referral,
- * Covers, Reporting, Completes follow-up. Unticked sections and empty rows are omitted.
+ * Covers, Reporting, Completes follow-up, Earlier draft notes. Unticked sections and empty rows are omitted.
  *
  * @param {object} input
  * @param {{bhcFollowUp: boolean, referToRhu: boolean}} input.state - the next-actions state.
@@ -158,6 +158,8 @@ function coverageName(item) {
  *   lines joined with a newline character (a name with no destinations shows the name alone).
  * @param {{followUpTaskId?: number | string} | null} input.continuedLink - the continuedVisitLink() result. When
  *   `followUpTaskId` is present the row "Completes follow-up" reads `FU-<followUpTaskId>`.
+ * @param {string} [input.earlierDraftNotes] - read-only text carried over from a converted legacy draft
+ *   (the workspace `assessmentNotes`). The last row, "Earlier draft notes", only when non-blank.
  * @returns {Array<{label: string, value: string}>}
  */
 export function nextStepsReviewRows({
@@ -167,6 +169,7 @@ export function nextStepsReviewRows({
   coverage = [],
   entries = [],
   continuedLink = null,
+  earlierDraftNotes = "",
 } = {}) {
   const rows = [];
   if (state.bhcFollowUp === true) {
@@ -191,5 +194,6 @@ export function nextStepsReviewRows({
   if (continuedLink?.followUpTaskId !== undefined && continuedLink?.followUpTaskId !== null) {
     rows.push({ label: "Completes follow-up", value: `FU-${continuedLink.followUpTaskId}` });
   }
+  if (text(earlierDraftNotes)) rows.push({ label: "Earlier draft notes", value: text(earlierDraftNotes) });
   return rows;
 }
