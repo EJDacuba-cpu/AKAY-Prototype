@@ -375,6 +375,10 @@ export async function submitReturnSlip(trackingId, feedbackData = {}) {
       ...(feedbackData.conditionConfirmations?.length
         ? { condition_confirmations: feedbackData.conditionConfirmations }
         : {}),
+      // RHU review of legacy BHC monitorings (corrected or discontinued); applied before the confirmations.
+      ...(feedbackData.legacyMonitoringDiscontinuations?.length
+        ? { legacy_monitoring_discontinuations: feedbackData.legacyMonitoringDiscontinuations }
+        : {}),
     },
   });
 

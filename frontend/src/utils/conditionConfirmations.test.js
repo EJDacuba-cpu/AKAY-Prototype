@@ -8,6 +8,12 @@ import {
   canRecommendBhcMonitoring,
   patchConditionRow,
   existingConditionRow,
+  legacyDecisionRow,
+  applyLegacyDecision,
+  buildLegacyDiscontinuations,
+  validateLegacyDecisions,
+  mapLegacyDiscontinuationErrors,
+  MAX_LEGACY_REASON_LENGTH,
 } from "./conditionConfirmations.js";
 
 test("status options are the five RHU statuses with their labels", () => {
@@ -184,4 +190,136 @@ test("unticking Recommend on a ticked existing condition sends a withdrawal", ()
   assert.deepEqual(buildConditionConfirmations([patchConditionRow(row, { status: "resolved", setOnRecord: true })]), [
     { condition_id: 7, status: "resolved", recommend_bhc_monitoring: false },
   ]);
+});
+
+const legacy = (id, name) => legacyDecisionRow({ id, conditionName: name, startedAt: "2026-01-05" });
+
+test("a legacy row starts undecided", () => {
+  assert.deepEqual(legacy(4, "Hypertension"), {
+    monitoringId: 4,
+    conditionName: "Hypertension",
+    decision: "",
+    correctedName: "",
+    reason: "",
+  });
+});
+
+test("confirm adds a prefilled condition row and no discontinuation", () => {
+  const { rows, legacyRows } = applyLegacyDecision([], [legacy(4, "Hypertension")], 4, { decision: "confirm" });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].name, "Hypertension");
+  assert.equal(rows[0].conditionId, null);
+  assert.equal(rows[0].setOnRecord, true);
+  assert.equal(rows[0].legacyMonitoringId, 4);
+  assert.deepEqual(buildLegacyDiscontinuations(legacyRows), []);
+  // Choosing Active links it through the existing identity auto-link.
+  assert.deepEqual(buildConditionConfirmations([{ ...rows[0], status: "active" }]), [
+    { name: "Hypertension", status: "active", recommend_bhc_monitoring: false },
+  ]);
+});
+
+test("correct discontinues with the corrected reason and adds the corrected condition row", () => {
+  const { rows, legacyRows } = applyLegacyDecision([], [legacy(4, "Hypertension")], 4, {
+    decision: "correct",
+    correctedName: " Pre-eclampsia ",
+  });
+  assert.equal(rows[0].name, " Pre-eclampsia ");
+  assert.equal(rows[0].legacyMonitoringId, 4);
+  assert.equal(legacyRows[0].reason, "Corrected by RHU to Pre-eclampsia");
+  assert.deepEqual(buildLegacyDiscontinuations(legacyRows), [
+    { monitoring_id: 4, reason: "Corrected by RHU to Pre-eclampsia" },
+  ]);
+  assert.deepEqual(validateLegacyDecisions(legacyRows), {});
+});
+
+test("editing the corrected name keeps the condition row and reason in step, preserving the RHU's status", () => {
+  let state = applyLegacyDecision([], [legacy(4, "Hypertension")], 4, { decision: "correct", correctedName: "Asthma" });
+  state = {
+    ...state,
+    rows: state.rows.map((row) => patchConditionRow(row, { status: "active", recommend: true })),
+  };
+  state = applyLegacyDecision(state.rows, state.legacyRows, 4, { correctedName: "Gout" });
+  assert.equal(state.rows.length, 1);
+  assert.equal(state.rows[0].name, "Gout");
+  assert.equal(state.rows[0].status, "active");
+  assert.equal(state.rows[0].recommend, true);
+  assert.equal(state.legacyRows[0].reason, "Corrected by RHU to Gout");
+});
+
+test("discontinue requires a reason and adds no condition row", () => {
+  const { rows, legacyRows } = applyLegacyDecision([], [legacy(4, "Hypertension")], 4, { decision: "discontinue" });
+  assert.deepEqual(rows, []);
+  assert.deepEqual(Object.keys(validateLegacyDecisions(legacyRows)), ["legacyMonitoringDiscontinuations.4.reason"]);
+  const withBlank = applyLegacyDecision(rows, legacyRows, 4, { reason: "   " });
+  assert.deepEqual(Object.keys(validateLegacyDecisions(withBlank.legacyRows)), ["legacyMonitoringDiscontinuations.4.reason"]);
+  const typed = applyLegacyDecision(rows, legacyRows, 4, { reason: " Entered in error " });
+  assert.deepEqual(validateLegacyDecisions(typed.legacyRows), {});
+  assert.deepEqual(buildLegacyDiscontinuations(typed.legacyRows), [{ monitoring_id: 4, reason: "Entered in error" }]);
+});
+
+test("a discontinue reason is capped at 488 characters", () => {
+  assert.equal(MAX_LEGACY_REASON_LENGTH, 488);
+  const row = { ...legacy(4, "Hypertension"), decision: "discontinue", reason: "x".repeat(489) };
+  assert.ok(validateLegacyDecisions([row])["legacyMonitoringDiscontinuations.4.reason"]);
+  assert.deepEqual(validateLegacyDecisions([{ ...row, reason: "x".repeat(488) }]), {});
+});
+
+test("correct requires a corrected name different from the legacy one", () => {
+  const blank = { ...legacy(4, "Hypertension"), decision: "correct" };
+  assert.deepEqual(Object.keys(validateLegacyDecisions([blank])), ["legacyMonitoringDiscontinuations.4.correctedName"]);
+  const same = { ...blank, correctedName: " hypertension " };
+  assert.ok(validateLegacyDecisions([same])["legacyMonitoringDiscontinuations.4.correctedName"]);
+  const tooLong = { ...blank, correctedName: "x".repeat(151) };
+  assert.ok(validateLegacyDecisions([tooLong])["legacyMonitoringDiscontinuations.4.correctedName"]);
+});
+
+test("undecided legacy rows send nothing", () => {
+  const rows = [legacy(4, "Hypertension"), legacy(5, "Asthma")];
+  assert.deepEqual(buildLegacyDiscontinuations(rows), []);
+  assert.deepEqual(validateLegacyDecisions(rows), {});
+});
+
+test("changing or clearing a decision removes the condition row it added, and only that one", () => {
+  const manual = { conditionId: null, name: "Gout", status: "active", note: "", setOnRecord: true, recommend: false };
+  let state = applyLegacyDecision([manual], [legacy(4, "Hypertension"), legacy(5, "Asthma")], 4, { decision: "confirm" });
+  state = applyLegacyDecision(state.rows, state.legacyRows, 5, { decision: "confirm" });
+  assert.equal(state.rows.length, 3);
+
+  state = applyLegacyDecision(state.rows, state.legacyRows, 4, { decision: "discontinue", reason: "Wrong patient" });
+  assert.deepEqual(state.rows.map((row) => row.name), ["Gout", "Asthma"]);
+  assert.deepEqual(buildLegacyDiscontinuations(state.legacyRows), [{ monitoring_id: 4, reason: "Wrong patient" }]);
+
+  state = applyLegacyDecision(state.rows, state.legacyRows, 4, { decision: "" });
+  state = applyLegacyDecision(state.rows, state.legacyRows, 5, { decision: "" });
+  assert.deepEqual(state.rows, [manual]);
+  assert.deepEqual(buildLegacyDiscontinuations(state.legacyRows), []);
+});
+
+test("switching from correct to discontinue drops the corrected-name reason", () => {
+  let state = applyLegacyDecision([], [legacy(4, "Hypertension")], 4, { decision: "correct", correctedName: "Asthma" });
+  state = applyLegacyDecision(state.rows, state.legacyRows, 4, { decision: "discontinue" });
+  assert.equal(state.legacyRows[0].reason, "");
+  assert.deepEqual(state.rows, []);
+});
+
+test("server errors on legacy_monitoring_discontinuations land on the decided rows", () => {
+  const rows = [
+    legacy(3, "Gout"),
+    { ...legacy(4, "Hypertension"), decision: "discontinue", reason: "x" },
+    { ...legacy(5, "Asthma"), decision: "correct", correctedName: "Flu", reason: "Corrected by RHU to Flu" },
+  ];
+  assert.deepEqual(
+    mapLegacyDiscontinuationErrors(
+      {
+        "legacy_monitoring_discontinuations.1.reason": ["The reason is too long."],
+        "legacy_monitoring_discontinuations.0.monitoring_id": ["Already discontinued."],
+        "rhu_diagnosis": ["Required."],
+      },
+      rows,
+    ),
+    {
+      "legacyMonitoringDiscontinuations.5.reason": "The reason is too long.",
+      "legacyMonitoringDiscontinuations.4.decision": "Already discontinued.",
+    },
+  );
 });

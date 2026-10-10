@@ -815,6 +815,8 @@ function toPayload(record = {}, { partial = false } = {}) {
     background_update: record.backgroundUpdate || null,
     // RHU-confirmed condition statuses (create only; RHU staff).
     condition_confirmations: record.conditionConfirmations || null,
+    // RHU review of legacy BHC monitorings (create only; RHU staff).
+    legacy_monitoring_discontinuations: record.legacyMonitoringDiscontinuations || null,
     assessment_notes: record.assessmentNotes || null,
     treatment_notes:
       record.treatmentNotes ||
@@ -999,6 +1001,7 @@ function toPayload(record = {}, { partial = false } = {}) {
   if (!hasAny(record, ["carePlan"])) delete payload.care_plan;
   if (!record.backgroundUpdate) delete payload.background_update;
   if (!record.conditionConfirmations?.length) delete payload.condition_confirmations;
+  if (!record.legacyMonitoringDiscontinuations?.length) delete payload.legacy_monitoring_discontinuations;
   if (!hasAny(record, ["assessmentNotes"])) delete payload.assessment_notes;
   if (
     !hasAny(record, [

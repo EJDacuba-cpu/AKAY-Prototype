@@ -119,3 +119,128 @@ export function mapConditionConfirmationErrors(serverErrors, rows) {
   });
   return mapped;
 }
+
+/**
+ * Legacy BHC monitoring review (D7). A legacy monitoring has no RHU
+ * verification; the RHU may decide each one:
+ *  - confirm: add a condition row with the legacy name (Active/Controlled links
+ *    it through the server's identity auto-link);
+ *  - correct: discontinue it ("Corrected by RHU to <name>") and add a condition
+ *    row with the corrected name;
+ *  - discontinue: stop it with a typed reason;
+ *  - no decision (''): nothing is sent.
+ * The legacy row and its visits are never edited or deleted, only superseded.
+ */
+
+/** The server prefixes "RHU review: " to fit a 500-character column. */
+export const MAX_LEGACY_REASON_LENGTH = 488;
+export const MAX_LEGACY_DISCONTINUATIONS = 20;
+const LEGACY_PREFIX = "legacyMonitoringDiscontinuations";
+const CORRECTED_REASON_PREFIX = "Corrected by RHU to ";
+
+const trimmed = (value) => String(value || "").trim();
+const correctedReason = (correctedName) => `${CORRECTED_REASON_PREFIX}${trimmed(correctedName)}`;
+
+export function legacyDecisionRow(monitoring) {
+  return {
+    monitoringId: monitoring.id,
+    conditionName: monitoring.conditionName,
+    decision: "",
+    correctedName: "",
+    reason: "",
+  };
+}
+
+/**
+ * Applies a patch ({ decision?, correctedName?, reason? }) to one legacy row and
+ * keeps the condition rows in step: a confirm/correct decision owns exactly one
+ * row (tagged `legacyMonitoringId`), kept across edits so the RHU's status and
+ * note survive, and removed when the decision changes to one that adds none.
+ * `legacyRows` must contain the row for `monitoringId`.
+ */
+export function applyLegacyDecision(rows, legacyRows, monitoringId, patch) {
+  const current = legacyRows.find((row) => row.monitoringId === monitoringId);
+  if (!current) return { rows, legacyRows };
+
+  const next = { ...current, ...patch };
+  if (patch.decision !== undefined && patch.decision !== current.decision) {
+    if (next.decision !== "correct" && patch.correctedName === undefined) next.correctedName = "";
+    if (patch.reason === undefined) next.reason = "";
+  }
+  if (next.decision === "correct") next.reason = correctedReason(next.correctedName);
+
+  const ownedName = next.decision === "confirm" ? current.conditionName : next.decision === "correct" ? next.correctedName : null;
+  const ownedIndex = rows.findIndex((row) => row.legacyMonitoringId === monitoringId);
+  let nextRows;
+  if (ownedName === null) {
+    nextRows = rows.filter((row) => row.legacyMonitoringId !== monitoringId);
+  } else if (ownedIndex >= 0) {
+    nextRows = rows.map((row, index) => (index === ownedIndex ? { ...row, name: ownedName } : row));
+  } else {
+    nextRows = [
+      ...rows,
+      { conditionId: null, name: ownedName, status: "", note: "", setOnRecord: true, recommend: false, legacyMonitoringId: monitoringId },
+    ];
+  }
+
+  return {
+    rows: nextRows,
+    legacyRows: legacyRows.map((row) => (row.monitoringId === monitoringId ? next : row)),
+  };
+}
+
+const discontinuing = (row) => row?.decision === "correct" || row?.decision === "discontinue";
+
+/** The request items: only corrected and discontinued monitorings. */
+export function buildLegacyDiscontinuations(legacyRows) {
+  return (Array.isArray(legacyRows) ? legacyRows : []).filter(discontinuing).map((row) => ({
+    monitoring_id: row.monitoringId,
+    reason: row.decision === "correct" ? correctedReason(row.correctedName) : trimmed(row.reason),
+  }));
+}
+
+/** Errors keyed `legacyMonitoringDiscontinuations.<monitoringId>.<field>`. */
+export function validateLegacyDecisions(legacyRows) {
+  const errors = {};
+  const list = Array.isArray(legacyRows) ? legacyRows : [];
+  list.forEach((row) => {
+    const key = (field) => `${LEGACY_PREFIX}.${row.monitoringId}.${field}`;
+    if (row.decision === "discontinue") {
+      const reason = trimmed(row.reason);
+      if (!reason) errors[key("reason")] = "Enter the reason for discontinuing.";
+      else if (reason.length > MAX_LEGACY_REASON_LENGTH) {
+        errors[key("reason")] = `Keep the reason within ${MAX_LEGACY_REASON_LENGTH} characters.`;
+      }
+    } else if (row.decision === "correct") {
+      const name = trimmed(row.correctedName);
+      if (!name) errors[key("correctedName")] = "Enter the corrected condition name.";
+      else if (name.length > MAX_NAME_LENGTH) errors[key("correctedName")] = `Keep the name within ${MAX_NAME_LENGTH} characters.`;
+      else if (nameKey(name) === nameKey(row.conditionName)) {
+        errors[key("correctedName")] = "Same condition - choose Confirm instead.";
+      }
+    }
+  });
+  if (list.filter(discontinuing).length > MAX_LEGACY_DISCONTINUATIONS) {
+    errors[LEGACY_PREFIX] = `Review at most ${MAX_LEGACY_DISCONTINUATIONS} legacy monitorings at a time.`;
+  }
+  return errors;
+}
+
+/**
+ * Maps a 422 `errors` object onto the legacy rows. The server counts the items
+ * that were sent (corrected and discontinued rows), so its index is translated
+ * back to the row's monitoring id.
+ */
+export function mapLegacyDiscontinuationErrors(serverErrors, legacyRows) {
+  const sent = (Array.isArray(legacyRows) ? legacyRows : []).filter(discontinuing);
+  const mapped = {};
+  Object.entries(serverErrors || {}).forEach(([path, messages]) => {
+    const match = /^legacy_monitoring_discontinuations\.(\d+)\.(\w+)$/.exec(path);
+    if (!match) return;
+    const row = sent[Number(match[1])];
+    if (!row) return;
+    const field = match[2] === "monitoring_id" ? "decision" : match[2];
+    mapped[`${LEGACY_PREFIX}.${row.monitoringId}.${field}`] = Array.isArray(messages) ? messages[0] : String(messages);
+  });
+  return mapped;
+}

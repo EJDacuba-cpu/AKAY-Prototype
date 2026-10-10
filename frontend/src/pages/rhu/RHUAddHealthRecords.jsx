@@ -47,8 +47,11 @@ import { queryKeys } from "../../utils/queryKeys";
 import ConfirmConditionsBlock from "../../components/features/conditions/ConfirmConditionsBlock";
 import {
   buildConditionConfirmations,
+  buildLegacyDiscontinuations,
   mapConditionConfirmationErrors,
+  mapLegacyDiscontinuationErrors,
   validateConditionConfirmations,
+  validateLegacyDecisions,
 } from "../../utils/conditionConfirmations";
 import {
   FP_CLIENT_TYPE_OPTIONS,
@@ -444,6 +447,7 @@ export default function AddHealthRecord() {
   const [noticeModal, setNoticeModal] = useState(null);
   const [validationErrors, setValidationErrors] = useState({});
   const [conditionRows, setConditionRows] = useState([]);
+  const [legacyRows, setLegacyRows] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [setupComplete, setSetupComplete] = useState(
@@ -809,6 +813,7 @@ export default function AddHealthRecord() {
     clearValidationError("selectedPatientId");
     if (id !== selectedPatientId) {
       setConditionRows([]);
+      setLegacyRows([]);
       resetClassificationSpecificState();
       setSetupComplete(false);
       setCareDecisionStep(false);
@@ -823,6 +828,7 @@ export default function AddHealthRecord() {
   function clearSelectedPatient() {
     setSelectedPatientId("");
     setConditionRows([]);
+    setLegacyRows([]);
     resetClassificationSpecificState();
     setSetupComplete(false);
     setCareDecisionStep(false);
@@ -836,6 +842,7 @@ export default function AddHealthRecord() {
     if (selectedPatientId) {
       setSelectedPatientId("");
       setConditionRows([]);
+      setLegacyRows([]);
       resetClassificationSpecificState();
       setSetupComplete(false);
       setCareDecisionStep(false);
@@ -1298,6 +1305,7 @@ export default function AddHealthRecord() {
     const clientErrors = {
       ...getClinicalValidationErrors(),
       ...validateConditionConfirmations(conditionRows),
+      ...validateLegacyDecisions(legacyRows),
     };
 
     if (setValidationErrorsAndFocus(clientErrors)) return;
@@ -1512,6 +1520,7 @@ export default function AddHealthRecord() {
             : null,
         linkedTrackingId,
         conditionConfirmations: buildConditionConfirmations(conditionRows),
+        legacyMonitoringDiscontinuations: buildLegacyDiscontinuations(legacyRows),
         previousRecordId: isFollowUp ? recordId : "",
         status: finalPatientStatus,
         recordedBy: attendingStaff || "RHU Staff",
@@ -1654,6 +1663,7 @@ export default function AddHealthRecord() {
             ]),
           ),
           ...mapConditionConfirmationErrors(error.errors, conditionRows),
+          ...mapLegacyDiscontinuationErrors(error.errors, legacyRows),
         };
         if (setValidationErrorsAndFocus(backendErrors)) return;
       }
@@ -2535,6 +2545,8 @@ export default function AddHealthRecord() {
               patientId={savedPatientId}
               rows={conditionRows}
               onChange={setConditionRows}
+              legacyRows={legacyRows}
+              onLegacyChange={setLegacyRows}
               errors={validationErrors}
               context={[{ label: "Diagnosis", value: diagnosis }]}
             />

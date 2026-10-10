@@ -35,8 +35,11 @@ import { can } from "../../utils/actionPermissions";
 import ConfirmConditionsBlock from "../../components/features/conditions/ConfirmConditionsBlock";
 import {
   buildConditionConfirmations,
+  buildLegacyDiscontinuations,
   mapConditionConfirmationErrors,
+  mapLegacyDiscontinuationErrors,
   validateConditionConfirmations,
+  validateLegacyDecisions,
 } from "../../utils/conditionConfirmations";
 
 const OUTCOME_OPTIONS = [
@@ -365,11 +368,13 @@ export default function FeedbackReturnSlip() {
   });
   const { providers: rhuDoctors } = useRhuProviders();
   const [conditionRows, setConditionRows] = useState([]);
+  const [legacyRows, setLegacyRows] = useState([]);
   const [conditionErrors, setConditionErrors] = useState({});
 
   // Confirmations belong to one patient's referral: never carry them across.
   useEffect(() => {
     setConditionRows([]);
+    setLegacyRows([]);
     setConditionErrors({});
   }, [selectedReferralId]);
 
@@ -381,7 +386,10 @@ export default function FeedbackReturnSlip() {
     e?.preventDefault();
     if (!selectedReferral || !canCreateReturnSlip || submitting) return;
 
-    const validationErrors = validateConditionConfirmations(conditionRows);
+    const validationErrors = {
+      ...validateConditionConfirmations(conditionRows),
+      ...validateLegacyDecisions(legacyRows),
+    };
     setConditionErrors(validationErrors);
     if (Object.keys(validationErrors).length > 0) return;
 
@@ -408,6 +416,7 @@ export default function FeedbackReturnSlip() {
       const updated = await submitReturnSlip(selectedReferral.trackingId, {
         ...feedback,
         conditionConfirmations: buildConditionConfirmations(conditionRows),
+        legacyMonitoringDiscontinuations: buildLegacyDiscontinuations(legacyRows),
         submittedBy: form.receivingPersonnel || "RHU Staff",
       });
 
@@ -445,9 +454,15 @@ export default function FeedbackReturnSlip() {
       if (isReferralWorkflowConflict(error)) {
         setConflict(error.payload || {});
       } else if (error?.status === 422 || error?.status === 403) {
-        const mapped = mapConditionConfirmationErrors(error.errors, conditionRows);
+        const mapped = {
+          ...mapConditionConfirmationErrors(error.errors, conditionRows),
+          ...mapLegacyDiscontinuationErrors(error.errors, legacyRows),
+        };
         if (Object.keys(mapped).length > 0) setConditionErrors(mapped);
-        else if (error.status === 403 && conditionRows.some((row) => row.setOnRecord)) {
+        else if (
+          error.status === 403 &&
+          (conditionRows.some((row) => row.setOnRecord) || buildLegacyDiscontinuations(legacyRows).length > 0)
+        ) {
           setConditionErrors({ conditionConfirmations: error.message });
         }
       }
@@ -770,6 +785,8 @@ export default function FeedbackReturnSlip() {
                     patientId={selectedReferral.patientId}
                     rows={conditionRows}
                     onChange={setConditionRows}
+                    legacyRows={legacyRows}
+                    onLegacyChange={setLegacyRows}
                     errors={conditionErrors}
                     context={[
                       { label: "Reason for referral", value: selectedReferral.reasonForReferral },

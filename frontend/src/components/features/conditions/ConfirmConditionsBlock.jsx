@@ -7,8 +7,11 @@ import { queryKeys } from "../../../utils/queryKeys";
 import { conditionStatusLabel } from "../../../utils/medicalConditions";
 import {
   CONDITION_STATUS_OPTIONS,
+  MAX_LEGACY_REASON_LENGTH,
+  applyLegacyDecision,
   canRecommendBhcMonitoring,
   existingConditionRow,
+  legacyDecisionRow,
   patchConditionRow,
 } from "../../../utils/conditionConfirmations";
 import { formatShortDate } from "../../../utils/patientProfile";
@@ -34,32 +37,39 @@ function Label({ children }) {
   );
 }
 
-function ConditionRow({ title, row, errors, index, onPatch, onRemove, nameField }) {
+/**
+ * `bare` is the row for a legacy monitoring's Confirm / Correct decision: it is
+ * always set on the record and its name comes from that decision, so only the
+ * status, note and recommendation are shown, without a card of its own.
+ */
+function ConditionRow({ title, row, errors, index, onPatch, onRemove, nameField, bare = false }) {
   const error = (field) => errors?.[`conditionConfirmations.${index}.${field}`];
   const monitorable = canRecommendBhcMonitoring(row.status);
 
   return (
-    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          {nameField || (
-            <>
-              <p className="text-sm font-semibold text-slate-800">{title}</p>
-              <FieldError message={error("name")} />
-            </>
+    <div className={bare ? "space-y-3" : "space-y-3 rounded-lg border border-slate-200 bg-slate-50/50 p-4"}>
+      {!bare && (
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            {nameField || (
+              <>
+                <p className="text-sm font-semibold text-slate-800">{title}</p>
+                <FieldError message={error("name")} />
+              </>
+            )}
+          </div>
+          {onRemove && (
+            <button
+              type="button"
+              onClick={onRemove}
+              aria-label="Remove condition"
+              className="mt-6 text-slate-400 transition-colors hover:text-red-600"
+            >
+              <Trash2 size={15} />
+            </button>
           )}
         </div>
-        {onRemove && (
-          <button
-            type="button"
-            onClick={onRemove}
-            aria-label="Remove condition"
-            className="mt-6 text-slate-400 transition-colors hover:text-red-600"
-          >
-            <Trash2 size={15} />
-          </button>
-        )}
-      </div>
+      )}
       <div className="grid gap-3 lg:grid-cols-2">
         <div>
           <Label>Status</Label>
@@ -93,14 +103,16 @@ function ConditionRow({ title, row, errors, index, onPatch, onRemove, nameField 
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={row.setOnRecord}
-            onChange={(event) => onPatch({ setOnRecord: event.target.checked })}
-          />
-          Set on patient's record
-        </label>
+        {!bare && (
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={row.setOnRecord}
+              onChange={(event) => onPatch({ setOnRecord: event.target.checked })}
+            />
+            Set on patient's record
+          </label>
+        )}
         <label
           className={`flex items-center gap-2 text-sm ${monitorable ? "text-slate-700" : "text-slate-400"}`}
         >
@@ -118,12 +130,105 @@ function ConditionRow({ title, row, errors, index, onPatch, onRemove, nameField 
   );
 }
 
+const LEGACY_DECISIONS = [
+  { value: "confirm", label: "Confirm" },
+  { value: "correct", label: "Correct" },
+  { value: "discontinue", label: "Discontinue" },
+  { value: "", label: "No decision" },
+];
+
+/** One legacy monitoring: its label, a decision, and only the inputs that decision needs. */
+function LegacyReviewItem({ monitoring, legacy, rows, errors, onDecide, onPatchRow }) {
+  const key = (field) => `legacyMonitoringDiscontinuations.${monitoring.id}.${field}`;
+  const rowIndex = rows.findIndex((row) => row.legacyMonitoringId === monitoring.id);
+  const row = rowIndex >= 0 ? rows[rowIndex] : null;
+  const nameError = rowIndex >= 0 ? errors?.[`conditionConfirmations.${rowIndex}.name`] : null;
+
+  return (
+    <li className="space-y-3 py-3 first:pt-0 last:pb-0">
+      <p className="text-sm font-medium text-slate-800">
+        Legacy — Pending RHU Verification — {monitoring.conditionName}
+        {monitoring.startedAt ? `, since ${formatShortDate(monitoring.startedAt)}` : ""}
+      </p>
+      <fieldset data-field={key("decision")} tabIndex={errors?.[key("decision")] ? -1 : undefined}>
+        <legend className="sr-only">Decision for {monitoring.conditionName}</legend>
+        <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+          {LEGACY_DECISIONS.map((option) => (
+            <label key={option.label} className="flex items-center gap-1.5 text-sm text-slate-700">
+              <input
+                type="radio"
+                name={`legacy-decision-${monitoring.id}`}
+                value={option.value}
+                checked={legacy.decision === option.value}
+                onChange={() => onDecide({ decision: option.value })}
+                className="accent-[#B91C1C]"
+              />
+              {option.label}
+            </label>
+          ))}
+        </div>
+        <FieldError message={errors?.[key("decision")]} />
+      </fieldset>
+
+      {legacy.decision === "correct" && (
+        <div>
+          <Label>Corrected condition</Label>
+          <input
+            type="text"
+            name={key("correctedName")}
+            value={legacy.correctedName}
+            maxLength={150}
+            autoComplete="off"
+            onChange={(event) => onDecide({ correctedName: event.target.value })}
+            placeholder="Condition name"
+            className={fieldClass(errors?.[key("correctedName")] || nameError)}
+          />
+          <FieldError message={errors?.[key("correctedName")] || nameError} />
+          <p className="mt-1 text-xs text-slate-500">
+            The legacy monitoring is discontinued as "Corrected by RHU to {legacy.correctedName.trim() || "…"}" and kept as history.
+          </p>
+        </div>
+      )}
+
+      {legacy.decision === "discontinue" && (
+        <div>
+          <Label>Reason for discontinuing</Label>
+          <input
+            type="text"
+            name={key("reason")}
+            value={legacy.reason}
+            maxLength={MAX_LEGACY_REASON_LENGTH}
+            autoComplete="off"
+            onChange={(event) => onDecide({ reason: event.target.value })}
+            placeholder="Required"
+            className={fieldClass(errors?.[key("reason")])}
+          />
+          <FieldError message={errors?.[key("reason")]} />
+        </div>
+      )}
+
+      {legacy.decision === "confirm" && <FieldError message={nameError} />}
+      {row && (
+        <ConditionRow bare row={row} index={rowIndex} errors={errors} onPatch={(patch) => onPatchRow(rowIndex, patch)} />
+      )}
+    </li>
+  );
+}
+
 /**
  * RHU-only block: set a patient condition's clinical status. State lives in the
  * form (`rows`, see utils/conditionConfirmations.js); this only edits it. The
  * condition name is plain text - no suggestions.
  */
-export default function ConfirmConditionsBlock({ patientId, rows, onChange, errors, context = [] }) {
+export default function ConfirmConditionsBlock({
+  patientId,
+  rows,
+  onChange,
+  legacyRows = [],
+  onLegacyChange = () => {},
+  errors,
+  context = [],
+}) {
   const allowed = can(getCurrentUser(), "conditions.confirm");
   const { data } = useQuery({
     queryKey: queryKeys.patientConditions(patientId),
@@ -136,6 +241,16 @@ export default function ConfirmConditionsBlock({ patientId, rows, onChange, erro
   const existing = (data?.conditions || []).filter((condition) => OPEN_STATUSES.has(condition.status));
   const legacyMonitorings = data?.legacyMonitorings || [];
   const contextLines = context.filter((item) => item?.value);
+  // Every legacy monitoring has a decision row, undecided until the RHU chooses.
+  const legacyDecisions = legacyMonitorings.map(
+    (monitoring) => legacyRows.find((row) => row.monitoringId === monitoring.id) || legacyDecisionRow(monitoring),
+  );
+
+  function decideLegacy(monitoringId, patch) {
+    const next = applyLegacyDecision(rows, legacyDecisions, monitoringId, patch);
+    onChange(next.rows);
+    onLegacyChange(next.legacyRows);
+  }
 
   function patchRow(index, patch) {
     onChange(rows.map((row, i) => (i === index ? patchConditionRow(row, patch) : row)));
@@ -172,21 +287,28 @@ export default function ConfirmConditionsBlock({ patientId, rows, onChange, erro
       )}
 
       {legacyMonitorings.length > 0 && (
-        <div className="rounded-lg border border-slate-100 bg-white p-3 text-xs text-slate-600">
-          <p className="font-medium uppercase tracking-wider text-slate-400">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wider text-slate-400">
             Already monitored at BHC
           </p>
-          <ul className="mt-1 space-y-0.5">
-            {legacyMonitorings.map((monitoring) => (
-              <li key={monitoring.id}>
-                Legacy BHC Monitoring — {monitoring.conditionName}
-                {monitoring.startedAt ? `, since ${formatShortDate(monitoring.startedAt)}` : ""}
-              </li>
+          <p className="mt-1 text-xs text-slate-500">
+            Not yet verified by RHU. Corrected or discontinued monitoring is stopped, never deleted; its
+            visits stay in the history. With no decision it stays pending.
+          </p>
+          <ul className="mt-3 divide-y divide-slate-100">
+            {legacyMonitorings.map((monitoring, i) => (
+              <LegacyReviewItem
+                key={monitoring.id}
+                monitoring={monitoring}
+                legacy={legacyDecisions[i]}
+                rows={rows}
+                errors={errors}
+                onDecide={(patch) => decideLegacy(monitoring.id, patch)}
+                onPatchRow={patchRow}
+              />
             ))}
           </ul>
-          <p className="mt-1 text-slate-500">
-            Confirming one of these as Active or Controlled links it to the confirmed condition.
-          </p>
+          <FieldError message={errors?.legacyMonitoringDiscontinuations} />
         </div>
       )}
 
@@ -206,7 +328,7 @@ export default function ConfirmConditionsBlock({ patientId, rows, onChange, erro
       })}
 
       {rows.map((row, index) =>
-        row.conditionId ? null : (
+        row.conditionId || row.legacyMonitoringId ? null : (
           <ConditionRow
             key={index}
             row={row}
