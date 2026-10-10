@@ -173,7 +173,10 @@ Consultation & Care Plan workflow revision (spec: `docs/superpowers/specs/2026-1
 
 ### Deploy order
 1. Run the migrations still pending from the earlier feature on Supabase BEFORE deploying new backend code: `2026_09_30_000001_drop_care_pathway_tables`, then `2026_09_30_000002_create_condition_monitoring_tables`, then `2026_09_30_000003_allow_shared_follow_up_fulfilment`. This revision adds no migration.
-2. Backend release 1 BEFORE the frontend: `f04e9f3`, `ab6a9da`, `415352a`, `dde26ef`. It still accepts `recheck` and `null` POSTs. An old open frontend tab that ticks a legacy monitoring gets a 422 after this deploy until the page is reloaded (accepted).
+2. Backend release 1 BEFORE the frontend: `f04e9f3`, `ab6a9da`, `415352a`, `dde26ef`. It still accepts `recheck` and `null` POSTs. Deploy frontend release 1 in the same window as backend release 1, and reload any open tabs. An OLD open frontend tab against the new backend breaks as follows until reloaded (accepted; impact depends on which frontend each environment runs):
+   - Ticking a legacy monitoring gets a 422.
+   - Record Visit on a task linked to a legacy monitoring gets a 422 with nothing ticked. The old `resolveContinuedCare` (with `includeFollowUpConditions: true`) pulls every condition linked to the task, legacy included, into `continued_monitoring_ids`, and `lockContinued` rejects it. The old UI cannot remove it, and with drafts off a reload loses the typed consultation.
+   - Any save whose referral covers 2+ items (two Refer concerns, or a concern plus a referred monitoring) gets a 422 on `care_plan.shared_referral_acknowledged`. The old UI has no checkbox, and the message appears only in the Review error list.
 3. Frontend release 1: `52f25b0..306bee6`.
 4. Release-2 gate (checklist under Next action), one full deployed release cycle later. Release 2 is a small backend-only change.
 
