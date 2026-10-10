@@ -166,6 +166,7 @@ class HealthRecordController extends Controller
         $referralData = $data['referral'] ?? null;
         unset($data['referral']);
 
+        $this->castBhcFollowUpFlags($data);
         if ($this->isReferralDisposition($data, $referralData)) {
             $this->normalizeReferralDisposition($data);
         } else {
@@ -755,6 +756,24 @@ class HealthRecordController extends Controller
             ...$monitoringData,
             'followUpReason' => $typed === '' ? $reason : "$reason — $typed",
         ];
+    }
+
+    /**
+     * The request's boolean rule accepts 1 / "1" / "true"; store and read
+     * bhcFollowUp as a real boolean from here on (CarePlan compares it strictly).
+     * Runs before anything that reads the flag.
+     */
+    private function castBhcFollowUpFlags(array &$data): void
+    {
+        if (! is_array($data['diagnoses'] ?? null)) {
+            return;
+        }
+        $data['diagnoses'] = array_map(
+            fn ($diagnosis) => is_array($diagnosis) && array_key_exists('bhcFollowUp', $diagnosis)
+                ? [...$diagnosis, 'bhcFollowUp' => filter_var($diagnosis['bhcFollowUp'], FILTER_VALIDATE_BOOLEAN)]
+                : $diagnosis,
+            $data['diagnoses']
+        );
     }
 
     /**

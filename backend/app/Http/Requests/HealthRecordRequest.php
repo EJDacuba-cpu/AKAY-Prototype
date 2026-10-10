@@ -607,8 +607,18 @@ class HealthRecordRequest extends FormRequest
     private function diagnosesInput(): array
     {
         $diagnoses = $this->input('diagnoses', []);
+        if (! is_array($diagnoses)) {
+            return [];
+        }
 
-        return is_array($diagnoses) ? $diagnoses : [];
+        // The boolean rule accepts 1 / "1" / "true"; read the flag the way the
+        // controller stores it, so validation and the saved record agree.
+        return array_map(
+            fn ($diagnosis) => is_array($diagnosis) && array_key_exists('bhcFollowUp', $diagnosis)
+                ? [...$diagnosis, 'bhcFollowUp' => filter_var($diagnosis['bhcFollowUp'], FILTER_VALIDATE_BOOLEAN)]
+                : $diagnosis,
+            $diagnoses
+        );
     }
 
     /**

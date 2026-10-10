@@ -248,6 +248,29 @@ class HealthConcernBoundaryTest extends TestCase
         $this->assertTrue(HealthRecord::findOrFail($id)->diagnoses[0]['bhcFollowUp']);
     }
 
+    public function test_bhc_follow_up_string_one_is_honoured(): void
+    {
+        $diagnoses = [['id' => 'd1', 'name' => 'Cough', 'carePlan' => 'refer', 'bhcFollowUp' => '1']];
+
+        // Honoured: the flagged referral needs the follow-up date and reason...
+        $this->save($diagnoses, [...$this->referral(), 'monitoring_data' => ['followUpReason' => 'Check cough']])
+            ->assertUnprocessable()->assertJsonValidationErrors(['monitoring_data.followUpDate']);
+
+        // ...keeps its BHC follow-up task, and is stored as a real boolean.
+        $id = $this->save($diagnoses, [...$this->referral(), ...$this->followUp(['followUpReason' => 'Check cough'])])
+            ->assertCreated()->json('data.id');
+        $this->assertSame(1, FollowUpTask::where('health_record_id', $id)->where('state', 'pending')->count());
+        $this->assertTrue(HealthRecord::findOrFail($id)->diagnoses[0]['bhcFollowUp']);
+
+        // "0" is false: a plain referral with no BHC follow-up.
+        $plain = $this->save(
+            [['id' => 'd1', 'name' => 'Cough', 'carePlan' => 'refer', 'bhcFollowUp' => '0']],
+            [...$this->referral(), ...$this->followUp()]
+        )->assertCreated()->json('data.id');
+        $this->assertFalse(HealthRecord::findOrFail($plain)->diagnoses[0]['bhcFollowUp']);
+        $this->assertSame(0, FollowUpTask::where('health_record_id', $plain)->count());
+    }
+
     public function test_unflagged_referral_clears_the_follow_up(): void
     {
         $id = $this->save(
