@@ -29,7 +29,7 @@ function StatusBadge({ status }) {
 }
 
 /**
- * @param programs        [{ key, title, description, disabled, disabledReason }]
+ * @param programs        [{ key, title, description, disabled, disabledReason, disabledNote }]
  * @param selected        selected program keys
  * @param primary         the primary program key
  * @param statusByProgram { [programKey]: { status, stepKey } } for selected programs
@@ -106,7 +106,7 @@ export default function ConsultationProgramPanel({
                   )}
                   {program.disabled && (
                     <span className="mt-1 block text-[11px] italic text-[#6B7280]">
-                      Not applicable to this patient
+                      {program.disabledNote || "Not applicable to this patient"}
                     </span>
                   )}
                 </span>

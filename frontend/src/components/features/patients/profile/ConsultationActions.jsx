@@ -3,16 +3,20 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import { Plus } from "lucide-react";
 
-import { ConfirmationModal } from "../../../common";
+import { ButtonSpinner, ConfirmationModal } from "../../../common";
 import usePatientConsultation from "../../../../hooks/usePatientConsultation";
 import StartConsultationModal from "./StartConsultationModal";
 import { TextAction } from "./ProfileSection";
 import { formatDate } from "../../../../utils/formatters";
 
-/** `onStart` replaces the link (Start Consultation opens the modal instead). */
+/**
+ * `onStart` replaces the link (Start Consultation opens the modal instead).
+ * Without it, a plain click loads the patient first (spinner) and then opens
+ * the workspace; it stays a real link for new-tab and copy-link.
+ */
 export function ConsultationButton({ consultation, onStart }) {
-  const { isPending, isError, discarding, primaryLabel, startPath } = consultation;
-  const disabled = isPending || isError || discarding;
+  const { isPending, isError, discarding, opening, primaryLabel, startPath, open } = consultation;
+  const disabled = isPending || isError || discarding || opening;
   const className =
     "inline-flex h-9 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-none bg-red-600 px-3.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40 focus-visible:ring-offset-2 disabled:bg-gray-300 disabled:text-gray-500";
 
@@ -24,7 +28,16 @@ export function ConsultationButton({ consultation, onStart }) {
         title={isError ? "Unable to check unfinished consultations. Retry from the notice below." : undefined}
         className={className}
       >
-        {isPending ? "Checking consultation..." : primaryLabel}
+        {opening ? (
+          <>
+            <ButtonSpinner />
+            Opening consultation...
+          </>
+        ) : isPending ? (
+          "Checking consultation..."
+        ) : (
+          primaryLabel
+        )}
       </button>
     );
   }
@@ -39,7 +52,17 @@ export function ConsultationButton({ consultation, onStart }) {
   }
 
   return (
-    <Link to={startPath} className={className}>
+    <Link
+      to={startPath}
+      className={className}
+      onClick={(event) => {
+        const plainClick =
+          event.button === 0 && !(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey);
+        if (!plainClick) return;
+        event.preventDefault();
+        open();
+      }}
+    >
       <Plus size={15} aria-hidden="true" />
       {primaryLabel}
     </Link>

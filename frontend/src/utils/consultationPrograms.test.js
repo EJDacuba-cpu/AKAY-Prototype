@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PROGRAM_CLASSIFICATIONS, restoredClassification, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "./consultationPrograms.js";
+import { PATIENT_LOADING_REASON, PROGRAM_CLASSIFICATIONS, lockProgramsWhilePatientLoads, restoredClassification, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "./consultationPrograms.js";
 import { getSpecializedRecordPrograms, getServiceTypeLabel } from "./healthRecordPrograms.js";
 
 test("removing the primary selects a remaining program without losing the others", () => {
@@ -42,4 +42,20 @@ test("a restored draft with a removed classification follows its remaining prima
 test("TB is no longer a consultation program", () => {
   assert.deepEqual(Object.keys(PROGRAM_CLASSIFICATIONS), ["Maternal", "Family Planning", "EPI"]);
   assert.deepEqual(getConsultationPrograms({ selectedPrograms: ["TB", "EPI"] }), ["EPI"]);
+});
+
+test("every service is disabled while the patient is still loading", () => {
+  const programs = [
+    { key: "Maternal", disabled: false, disabledReason: "" },
+    { key: "EPI", disabled: true, disabledReason: "Adult" },
+  ];
+  const locked = lockProgramsWhilePatientLoads(programs, true);
+  assert.ok(locked.every((program) => program.disabled));
+  assert.ok(locked.every((program) => program.disabledReason === PATIENT_LOADING_REASON));
+  assert.ok(locked.every((program) => program.disabledNote === PATIENT_LOADING_REASON));
+});
+
+test("once the patient has loaded, eligibility is left exactly as computed", () => {
+  const programs = [{ key: "Maternal", disabled: true, disabledReason: "Male patient" }];
+  assert.equal(lockProgramsWhilePatientLoads(programs, false), programs);
 });

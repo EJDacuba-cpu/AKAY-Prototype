@@ -59,7 +59,7 @@ import UnfinishedConsultationModal from "../../components/features/health-record
 import {
   locationToPath,
 } from "../../utils/profileNavigation";
-import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, restoredClassification, toggleConsultationProgram } from "../../utils/consultationPrograms";
+import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, lockProgramsWhilePatientLoads, restoredClassification, toggleConsultationProgram } from "../../utils/consultationPrograms";
 import {
   MATERNAL_LAB_TEST_KEYS,
   MATERNAL_LAB_TESTS,
@@ -188,7 +188,7 @@ import {
   loadMedicineAvailability,
   refreshRhuMedicines,
 } from "../../services/medicineService";
-import { getBhcPatientById } from "../../services/patientService";
+import { consultationPatientQueryKey, getConsultationPatientQuery } from "../../services/consultationPatientQuery";
 import { isConnectionError } from "../../services/apiClient";
 import { getCurrentUser } from "../../utils/auth";
 import {
@@ -1184,8 +1184,7 @@ export default function ConsultationWorkspace() {
   }, [currentUserName, attendingStaff]);
 
   const { data: selectedPatientDetails, isLoading: selectedPatientLoading } = useQuery({
-    queryKey: ["consultation-selected-patient", selectedPatientId],
-    queryFn: () => getBhcPatientById(selectedPatientId),
+    ...getConsultationPatientQuery(selectedPatientId),
     enabled: Boolean(selectedPatientId),
   });
   const selectedPatient = selectedPatientDetails || null;
@@ -2624,7 +2623,7 @@ export default function ConsultationWorkspace() {
     setConnectionIssue(null);
     setLastFailedSubmit(null);
     setBackgroundConflicts(conflicts);
-    queryClient.invalidateQueries({ queryKey: ["consultation-selected-patient", selectedPatientId] });
+    queryClient.invalidateQueries({ queryKey: consultationPatientQueryKey(selectedPatientId) });
     goToStepKey(REVIEW_STEP);
     return true;
   }
@@ -3696,14 +3695,15 @@ export default function ConsultationWorkspace() {
   }
 
   // ---- Wizard view models -------------------------------------------------
-  const wizardPrograms = Object.entries(PROGRAM_CLASSIFICATIONS).map(([key, classification]) => {
+  // Services stay disabled until the patient they are restricted by has loaded.
+  const wizardPrograms = lockProgramsWhilePatientLoads(Object.entries(PROGRAM_CLASSIFICATIONS).map(([key, classification]) => {
     const eligibility = key === "Maternal" ? getMaternalEligibility(selectedPatient)
       : key === "Family Planning" ? familyPlanningEligibility
       : key === "EPI" && immunizationPatientInfo.mode === "adult" ? { eligible: false, message: getAdultImmunizationMessage(immunizationPatientInfo.age) }
       : { eligible: true, message: "" };
     return { key, title: key === "Maternal" ? "Maternal Care" : key, description: key === "EPI" ? "Immunization and child vaccination services." : RECORD_TYPE_DETAILS[classification]?.description,
       icon: RECORD_TYPE_DETAILS[classification]?.icon || Stethoscope, disabled: !eligibility.eligible, disabledReason: eligibility.message };
-  });
+  }), selectedPatientLoading);
 
   function closeDraftDecision() {
     if (draftDecisionBusy) return;

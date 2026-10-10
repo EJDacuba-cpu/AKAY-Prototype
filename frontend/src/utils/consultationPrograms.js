@@ -31,3 +31,20 @@ export function restoredClassification(classification, primaryProgram) {
   const known = classification === "General Consultation" || Object.values(PROGRAM_CLASSIFICATIONS).includes(classification);
   return known ? classification : PROGRAM_CLASSIFICATIONS[primaryProgram] || "General Consultation";
 }
+
+export const PATIENT_LOADING_REASON = "Loading patient details...";
+
+/**
+ * Service eligibility depends on the patient (sex, age), so until the patient
+ * record has loaded every service stays disabled rather than briefly looking
+ * open to everyone.
+ */
+export function lockProgramsWhilePatientLoads(programs, patientLoading) {
+  if (!patientLoading) return programs;
+  return programs.map((program) => ({
+    ...program,
+    disabled: true,
+    disabledReason: PATIENT_LOADING_REASON,
+    disabledNote: PATIENT_LOADING_REASON,
+  }));
+}

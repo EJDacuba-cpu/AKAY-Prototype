@@ -85,9 +85,9 @@ function SectionHeading({ id, children }) {
  * condition). Scheduled follow-ups and RHU recommendations are optional
  * context under either type: nothing is preselected, and opening never
  * completes a follow-up (only a successful save does). Legacy monitoring is
- * listed read-only and can never be ticked. With anything ticked, `onStart`
- * (async) first reads the records fresh and the modal stays open on a spinner
- * until the workspace can open already populated; if a record is no longer
+ * listed read-only and can never be ticked. `onStart` (async) always loads
+ * the patient first; with anything ticked it also reads the records fresh. The
+ * modal stays open on a spinner until the workspace can open already populated; if a record is no longer
  * active, a follow-up was fulfilled, a recommendation was withdrawn, or they
  * cannot be read, the modal says so instead of opening half loaded. It does
  * not pick a service - Barangay Health Services stays in the workspace. Mount
@@ -115,6 +115,8 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
   const effectiveMonitoringIds = monitoringMode ? monitoringIds : [];
   const needsMonitoringTick = monitoringMode && monitoringIds.length === 0;
   const hasPendingFollowUp = options.some((o) => o.followUp && effectiveMonitoringIds.includes(o.monitoringId));
+  const nothingTicked =
+    effectiveMonitoringIds.length === 0 && startConditionIds.length === 0 && followUpIds.length === 0;
 
   function chooseVisitType(next) {
     setVisitType(next);
@@ -125,10 +127,6 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
   async function handleStart() {
     setProblem("");
     if (needsMonitoringTick) return;
-    if (effectiveMonitoringIds.length === 0 && startConditionIds.length === 0 && followUpIds.length === 0) {
-      onStart({ monitoringIds: [], startConditionIds: [], followUpIds: [] });
-      return;
-    }
     const names = new Map(options.map((option) => [option.monitoringId, option.conditionName]));
     const recommendedNames = new Map(recommendations.map((option) => [Number(option.conditionId), option.conditionName]));
     setStarting(true);
@@ -156,7 +154,11 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
         }
         setProblem(`${messages.join(" ")} Check the list, then start again.`);
       } else {
-        setProblem("Records could not be loaded. Try again, or untick them to start a normal consultation.");
+        setProblem(
+          nothingTicked
+            ? "Patient details could not be loaded. Try again."
+            : "Records could not be loaded. Try again, or untick them to start a normal consultation.",
+        );
       }
       setStarting(false);
     }
@@ -186,7 +188,7 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
             {starting ? (
               <>
                 <Loader2 size={15} className="animate-spin" aria-hidden="true" />
-                Checking records…
+                {nothingTicked ? "Opening consultation…" : "Checking records…"}
               </>
             ) : (
               "Start Consultation"

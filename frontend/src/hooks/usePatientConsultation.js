@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import toast from "react-hot-toast";
@@ -7,6 +8,7 @@ import {
   listHealthRecordDrafts,
 } from "../services/healthRecordDraftService";
 import { getCareOverview } from "../services/careOverviewService";
+import { getConsultationPatientQuery } from "../services/consultationPatientQuery";
 import { prepareContinuedStart } from "../services/startConsultationService";
 import { getCurrentUser } from "../utils/auth";
 import { buildPatientConsultationPath } from "../utils/consultationRoute";
@@ -27,6 +29,10 @@ import { hasStartChoices, startRoute } from "../utils/startConsultation";
  * the consultation. A draft always wins - Resume goes straight back to it. An
  * overview that fails to load never blocks starting: the button falls back to
  * a new consultation.
+ *
+ * Start and Resume load the patient record the workspace restricts services
+ * by before navigating (`opening` is true meanwhile), so the form never opens
+ * with every service briefly available.
  */
 export default function usePatientConsultation(patientId) {
   const queryClient = useQueryClient();
@@ -38,6 +44,25 @@ export default function usePatientConsultation(patientId) {
   const canReadCareOverview =
     permissions.includes("consultations.encode") || permissions.includes("clinical.history");
   const queryKey = ["unfinished-consultations", ownerId];
+  const [opening, setOpening] = useState(false);
+  const openingRef = useRef(false);
+
+  /** Loads the patient the workspace needs (plus `prepare`), then navigates. */
+  async function openWorkspace(path, prepare) {
+    if (openingRef.current) return;
+    openingRef.current = true;
+    setOpening(true);
+    try {
+      await Promise.all([queryClient.fetchQuery(getConsultationPatientQuery(patientId)), prepare?.()]);
+      // Stays "opening" until the profile unmounts, so the button never flashes back.
+      navigate(path);
+    } catch (error) {
+      setOpening(false);
+      throw error;
+    } finally {
+      openingRef.current = false;
+    }
+  }
 
   const { data: unfinished = [], isPending, isError } = useQuery({
     queryKey,
@@ -78,12 +103,16 @@ export default function usePatientConsultation(patientId) {
   const resumeParams = draft
     ? new URLSearchParams({ patientId: String(patientId), draftId: draft.id })
     : null;
+  const startPath = draft
+    ? `/bhc/health-records/add?${resumeParams}`
+    : buildPatientConsultationPath(patientId);
 
   return {
     draft,
     // Without a draft the overview decides where Start goes, so wait for it.
     isPending: (DRAFTS_ENABLED && isPending) || (!draft && careOverviewPending),
     isError: DRAFTS_ENABLED && isError,
+    opening,
     careOverview,
     needsStartModal: !draft && hasStartChoices(careOverview),
     /**
@@ -94,18 +123,25 @@ export default function usePatientConsultation(patientId) {
      * workspace never opens half loaded; with none ticked it opens at once.
      * Opening never completes a follow-up; only a successful save does.
      */
-    start: async ({ monitoringIds = [], startConditionIds = [], followUpIds = [] } = {}) => {
-      if (monitoringIds.length || startConditionIds.length || followUpIds.length) {
-        await prepareContinuedStart(queryClient, patientId, monitoringIds, startConditionIds, followUpIds);
+    start: ({ monitoringIds = [], startConditionIds = [], followUpIds = [] } = {}) =>
+      openWorkspace(
+        startRoute({ patientId, monitoringIds, startConditionIds, followUpIds }),
+        monitoringIds.length || startConditionIds.length || followUpIds.length
+          ? () => prepareContinuedStart(queryClient, patientId, monitoringIds, startConditionIds, followUpIds)
+          : undefined,
+      ),
+    /** Start / Resume without the modal: loads the patient, then opens `startPath`. */
+    open: async () => {
+      try {
+        await openWorkspace(startPath);
+      } catch {
+        toast.error("Unable to open the consultation. Please try again.");
       }
-      navigate(startRoute({ patientId, monitoringIds, startConditionIds, followUpIds }));
     },
     retry: () => queryClient.invalidateQueries({ queryKey }),
     discarding: discard.isPending,
     discard: () => draft && discard.mutateAsync(draft.id),
-    startPath: draft
-      ? `/bhc/health-records/add?${resumeParams}`
-      : buildPatientConsultationPath(patientId),
+    startPath,
     primaryLabel: draft ? "Resume Consultation" : "Start Consultation",
   };
 }
