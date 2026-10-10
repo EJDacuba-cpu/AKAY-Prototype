@@ -205,7 +205,7 @@ class HealthRecordController extends Controller
         $this->normalizeMaternalSupplements($request, $data);
         $this->normalizeFamilyPlanningData($data);
         $this->normalizeSurveillanceData($data);
-        $this->normalizeDiagnosisReporting($data);
+        $this->normalizeDiagnosisReporting($data, $v2);
         if (! $v2) {
             $this->applyRecheckReason($data);
             $this->normalizeConcernActions($data);
@@ -684,12 +684,14 @@ class HealthRecordController extends Controller
      * diagnoses carry no reportAs key at all (the follow-up form's free-text
      * assessment, or an older client) leaves the visit-level keys exactly as
      * the client sent them, mirroring normalizeSurveillanceData.
+     * A v2 save ($alwaysDerive) always writes the mirrors from its entries -
+     * with no entries that is not_included / false, never the client's value.
      */
-    private function normalizeDiagnosisReporting(array &$data): void
+    private function normalizeDiagnosisReporting(array &$data, bool $alwaysDerive = false): void
     {
         $diagnoses = array_values(array_filter($data['diagnoses'] ?? [], 'is_array'));
         $reported = array_filter($diagnoses, fn (array $diagnosis) => array_key_exists('reportAs', $diagnosis));
-        if ($reported === []) {
+        if ($reported === [] && ! $alwaysDerive) {
             return;
         }
 

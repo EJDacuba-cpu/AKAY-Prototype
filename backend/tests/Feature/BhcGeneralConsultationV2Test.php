@@ -416,32 +416,37 @@ class BhcGeneralConsultationV2Test extends TestCase
     public function test_v2_bhc_follow_up_does_not_touch_monitoring(): void
     {
         Carbon::setTestNow(now()->startOfMinute());
-        $monitoring = $this->followedHypertension();
-        $carePlan = ['continued_monitoring_ids' => [$monitoring->id]];
+        try {
+            $monitoring = $this->followedHypertension();
+            $carePlan = ['continued_monitoring_ids' => [$monitoring->id]];
 
-        // Baseline: the same payload without bhc_follow_up (the legacy continuation path).
-        $without = $this->v2(['care_plan' => $carePlan])->assertCreated()->json('data.id');
-        $baseline = $monitoring->fresh();
-        $baselineVisit = $monitoring->visits()->where('health_record_id', $without)->sole();
+            // Baseline: the same payload without bhc_follow_up (the legacy continuation path).
+            $without = $this->v2(['care_plan' => $carePlan])->assertCreated()->json('data.id');
+            $baseline = $monitoring->fresh();
+            $baselineVisit = $monitoring->visits()->where('health_record_id', $without)->sole();
 
-        $with = $this->v2([
-            'care_plan' => [...$carePlan, 'bhc_follow_up' => true],
-            'monitoring_data' => ['followUpDate' => $this->nextWeek(), 'followUpTime' => '09:30'],
-        ])->assertCreated()->json('data.id');
+            // A later clock: any write to the monitoring row would move updated_at.
+            Carbon::setTestNow(now()->addMinute());
+            $with = $this->v2([
+                'care_plan' => [...$carePlan, 'bhc_follow_up' => true],
+                'monitoring_data' => ['followUpDate' => $this->nextWeek(), 'followUpTime' => '09:30'],
+            ])->assertCreated()->json('data.id');
 
-        $after = $monitoring->fresh();
-        $this->assertSame($baseline->status, $after->status);
-        $this->assertEquals($baseline->updated_at, $after->updated_at);
-        $this->assertSame(
-            collect($baseline->getAttributes())->except('updated_at')->all(),
-            collect($after->getAttributes())->except('updated_at')->all()
-        );
-        $visit = $monitoring->visits()->where('health_record_id', $with)->sole();
-        $this->assertSame($baselineVisit->action, $visit->action);
-        $this->assertSame((bool) $baselineVisit->referred, (bool) $visit->referred);
-        $this->assertSame(1, ConditionMonitoring::count(), 'no monitoring is started');
-        $this->assertTrue(FollowUpTask::where('health_record_id', $with)->exists());
-        Carbon::setTestNow();
+            $after = $monitoring->fresh();
+            $this->assertSame($baseline->status, $after->status);
+            $this->assertEquals($baseline->updated_at, $after->updated_at);
+            $this->assertSame(
+                collect($baseline->getAttributes())->except('updated_at')->all(),
+                collect($after->getAttributes())->except('updated_at')->all()
+            );
+            $visit = $monitoring->visits()->where('health_record_id', $with)->sole();
+            $this->assertSame($baselineVisit->action, $visit->action);
+            $this->assertSame((bool) $baselineVisit->referred, (bool) $visit->referred);
+            $this->assertSame(1, ConditionMonitoring::count(), 'no monitoring is started');
+            $this->assertTrue(FollowUpTask::where('health_record_id', $with)->exists());
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_v2_acknowledgment_is_audited_with_multiple_issues_note(): void
@@ -479,5 +484,79 @@ class BhcGeneralConsultationV2Test extends TestCase
         $this->v2(['care_plan' => ['referral_multiple_issues' => true, 'shared_referral_acknowledged' => true]])->assertCreated();
 
         $this->assertSame(0, AuditLog::where('module', 'referrals')->where('action', 'acknowledged')->count());
+    }
+
+    // --- Task 3 fix round 1: server-controlled markers, v2 mirrors ---
+
+    private function legacy(array $extra = [])
+    {
+        return $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
+            'patient_id' => $this->patient->id,
+            'category' => 'General Consultation',
+            'chief_complaint' => 'Cough for 3 days',
+            ...$extra,
+        ]);
+    }
+
+    public function test_legacy_payload_cannot_forge_bhc_follow_up(): void
+    {
+        // A legacy referral visit whose only concern is Refer to RHU hands the
+        // follow-up to the RHU; a client-sent bhcFollowUp must not keep it.
+        $id = $this->legacy([
+            'diagnosis' => 'Pneumonia',
+            'diagnoses' => [['id' => 'd1', 'name' => 'Pneumonia', 'carePlan' => 'refer']],
+            ...$this->referral(),
+            'monitoring_data' => [
+                'followUpStatus' => 'Follow-up Required',
+                'followUpDate' => $this->nextWeek(),
+                'followUpReason' => 'Recheck',
+                'bhcFollowUp' => true,
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $monitoringData = HealthRecord::findOrFail($id)->monitoring_data;
+        $this->assertNull($monitoringData['followUpDate']);
+        $this->assertNotTrue($monitoringData['bhcFollowUp'] ?? null);
+        $this->assertArrayNotHasKey('bhcFollowUp', $monitoringData);
+        $this->assertFalse(FollowUpTask::where('health_record_id', $id)->whereIn('state', FollowUpTask::ACTIVE_STATES)->exists());
+
+        // The background re-sync cannot be fooled either.
+        app(FollowUpTaskSyncService::class)->syncEligibleRecordsForUser($this->worker);
+        $this->assertFalse(FollowUpTask::where('health_record_id', $id)->whereIn('state', FollowUpTask::ACTIVE_STATES)->exists());
+    }
+
+    public function test_legacy_payload_cannot_forge_v2_marker(): void
+    {
+        $forged = ['monitoring_data' => ['consultationWorkflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2]];
+
+        $bhcId = $this->legacy($forged)->assertCreated()->json('data.id');
+        $this->assertArrayNotHasKey('consultationWorkflow', HealthRecord::findOrFail($bhcId)->monitoring_data ?? []);
+        $this->assertFalse(HealthRecord::findOrFail($bhcId)->isBhcGeneralV2());
+
+        $rhuUser = User::create(['name' => 'V2 RHU Forger', 'email' => 'v2rhuforge@example.test', 'password' => 'password123', 'role' => User::ROLE_RHU_STAFF, 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id, 'permissions' => [...ActionPermissions::PRESETS['clinical'], 'rhu.manage', 'conditions.confirm']]);
+        Sanctum::actingAs($rhuUser, ['akay:access']);
+
+        $rhuId = $this->legacy($forged)->assertCreated()->json('data.id');
+        $this->assertArrayNotHasKey('consultationWorkflow', HealthRecord::findOrFail($rhuId)->monitoring_data ?? []);
+        $this->assertFalse(HealthRecord::findOrFail($rhuId)->isBhcGeneralV2());
+    }
+
+    public function test_v2_without_entries_writes_not_included_mirrors(): void
+    {
+        $id = $this->v2(['monitoring_data' => [
+            'morbidityReportingStatus' => 'notifiable',
+            'morbidity_reporting_status' => 'notifiable',
+            'includeInMorbidityReport' => true,
+            'include_in_morbidity_report' => true,
+            'isNotifiableDisease' => true,
+            'is_notifiable_disease' => true,
+        ]])->assertCreated()->json('data.id');
+
+        $monitoringData = HealthRecord::findOrFail($id)->monitoring_data;
+        $this->assertSame('not_included', $monitoringData['morbidityReportingStatus']);
+        $this->assertSame('not_included', $monitoringData['morbidity_reporting_status']);
+        foreach (['includeInMorbidityReport', 'include_in_morbidity_report', 'isNotifiableDisease', 'is_notifiable_disease'] as $key) {
+            $this->assertFalse($monitoringData[$key], $key);
+        }
     }
 }

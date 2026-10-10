@@ -23,6 +23,10 @@ class HealthRecordRequest extends FormRequest
             // visitPurpose they stored (it is still displayed and read there);
             // a new record never gains one, so it is no longer validated either.
             unset($monitoringData['visitPurpose']);
+            // Server-controlled v2 markers: never taken from the client on any
+            // path. The v2 save writes both itself (HealthRecordController::store
+            // and applyV2NextActions); a legacy or RHU save never gains them.
+            unset($monitoringData['bhcFollowUp'], $monitoringData['consultationWorkflow']);
             $this->merge(['monitoring_data' => $monitoringData]);
         }
 
