@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { ArrowRight, CalendarClock, FileText } from "lucide-react";
 
 import { formatLongDate } from "../../../utils/formatters";
+import { visitAssessmentDisplay } from "../../../utils/consultationWorkflow";
 import { formatDisplayTime } from "./recordDetailsHelpers";
 import { buildRecordFollowUpVisitPath } from "../followups/followUpStatusStyles.jsx";
 
@@ -22,6 +23,13 @@ function recordLabel(record) {
   return record.visitType === "follow_up_visit"
     ? "Follow-up Visit"
     : "Initial Consultation";
+}
+
+/** " · <diagnosis>" as stored; a v2 record without one shows " · Chief Complaint: <text>". */
+function assessmentSuffix(record) {
+  if (record.diagnosis) return ` · ${record.diagnosis}`;
+  const assessment = visitAssessmentDisplay(record);
+  return assessment ? ` · ${assessment.label}: ${assessment.value}` : "";
 }
 
 export default function FollowUpEpisodePanel({ episode }) {
@@ -157,7 +165,7 @@ export function FollowUpEpisodeContent({
                     </p>
                     <p className="mt-1 truncate text-xs text-slate-500">
                       {formatLongDate(record.dateRecorded, "Date not recorded")}
-                      {record.diagnosis ? ` · ${record.diagnosis}` : ""}
+                      {assessmentSuffix(record)}
                     </p>
                   </div>
                 </div>

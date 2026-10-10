@@ -110,3 +110,22 @@ export function reportingEntryErrors(entries) {
 export function formatEntryDestinations(entry) {
   return entryDestinations(entry).map((destination) => DESTINATION_LABELS[destination]).join(" · ");
 }
+
+/**
+ * The "Reporting" block of a saved v2 record: one line per named entry,
+ * "Name — Morbidity · Surveillance" (just the name when it is reported nowhere).
+ * Empty when the record reported nothing, so the caller renders no block at all.
+ */
+export function recordReportingLines(record) {
+  const entries = Array.isArray(record?.diagnoses) ? record.diagnoses : [];
+  return entries
+    .filter((entry) => entry && typeof entry === "object" && String(entry.name ?? "").trim() !== "")
+    .map((entry, index) => {
+      const name = String(entry.name).trim();
+      const destinations = formatEntryDestinations(entry);
+      return {
+        key: String(entry.id || `reporting-${index}`),
+        text: destinations ? `${name} \u2014 ${destinations}` : name,
+      };
+    });
+}

@@ -10,15 +10,26 @@
 
 export const BHC_GENERAL_V2 = "bhc_general_v2";
 
-function monitoringDataOf(record) {
-  if (!record || typeof record !== "object") return {};
-  const md = record.monitoring_data ?? record.monitoringData;
-  return md && typeof md === "object" ? md : {};
+/** First value that is not null, undefined or blank text (so "" does not mask a later key). */
+function firstNonBlank(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    if (typeof value === "string" && value.trim() === "") continue;
+    return value;
+  }
+  return undefined;
+}
+
+/** The workflow marker, read from whichever monitoring-data key actually carries it. */
+function workflowMarkerOf(record) {
+  if (!record || typeof record !== "object") return undefined;
+  const read = (md) => (md && typeof md === "object" ? md.consultationWorkflow : undefined);
+  return firstNonBlank(read(record.monitoring_data), read(record.monitoringData));
 }
 
 /** True when the record was saved by the v2 BHC General Consultation. */
 export function isBhcGeneralV2(record) {
-  return monitoringDataOf(record).consultationWorkflow === BHC_GENERAL_V2;
+  return workflowMarkerOf(record) === BHC_GENERAL_V2;
 }
 
 /**
@@ -32,6 +43,17 @@ export function visitAssessmentDisplay(record) {
   const diagnosis = String(record.diagnosis ?? "").trim();
   if (diagnosis) return { label: "Diagnosis", value: diagnosis };
   if (!isBhcGeneralV2(record)) return null;
-  const complaint = String(record.chief_complaint ?? record.chiefComplaint ?? "").trim();
+  const complaint = String(firstNonBlank(record.chief_complaint, record.chiefComplaint) ?? "").trim();
   return complaint ? { label: "Chief Complaint", value: complaint } : null;
+}
+
+/**
+ * Whether a detail view should show its own Diagnosis row. A stored diagnosis
+ * always shows. A v2 record without one has only the Chief Complaint fallback,
+ * which those views already show as the Chief Complaint, so no empty
+ * "Diagnosis: Not recorded" row is added. Legacy records are unchanged.
+ */
+export function showsDiagnosisRow(record, storedDiagnosis = record?.diagnosis) {
+  if (String(storedDiagnosis ?? "").trim()) return true;
+  return !isBhcGeneralV2(record);
 }

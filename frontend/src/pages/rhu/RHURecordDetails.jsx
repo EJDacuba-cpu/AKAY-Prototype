@@ -23,6 +23,7 @@ import {
   getPatientsByRole,
 } from "../../services/patients";
 import { queryKeys } from "../../utils/queryKeys";
+import { showsDiagnosisRow } from "../../utils/consultationWorkflow";
 import { getBmiDisplayValue } from "../../components/features/health-records/recordDetailsHelpers";
 import {
   formatDisplayValue,
@@ -276,6 +277,7 @@ export default function RHURecordDetails() {
               hasClinicalAssessmentDetails={hasClinicalAssessmentDetails}
               chiefComplaintValue={chiefComplaintValue}
               diagnosisValue={diagnosisValue}
+              showDiagnosisRow={showsDiagnosisRow(record, diagnosisValue)}
               summaryValue={summaryValue}
               hasTreatmentDetails={hasTreatmentDetails}
               initialActionsValue={initialActionsValue}
@@ -477,6 +479,7 @@ function GenericRecordDetails({
   hasClinicalAssessmentDetails,
   chiefComplaintValue,
   diagnosisValue,
+  showDiagnosisRow = true,
   summaryValue,
   hasTreatmentDetails,
   initialActionsValue,
@@ -503,10 +506,13 @@ function GenericRecordDetails({
               label="Chief Complaint"
               value={chiefComplaintValue || "Not recorded"}
             />
-            <PatientDetailItem
-              label="Initial Diagnosis"
-              value={diagnosisValue || "Not recorded"}
-            />
+            {/* A v2 consultation has no diagnosis; its Chief Complaint is shown beside this. */}
+            {showDiagnosisRow && (
+              <PatientDetailItem
+                label="Initial Diagnosis"
+                value={diagnosisValue || "Not recorded"}
+              />
+            )}
           </div>
 
           {summaryValue && (

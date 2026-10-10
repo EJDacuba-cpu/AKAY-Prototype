@@ -1,4 +1,5 @@
 import ReferralDestinationPicker from "../../components/features/health-records/ReferralDestinationPicker";
+import { showsDiagnosisRow } from "../../utils/consultationWorkflow";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { buildProfileReturnState } from "../../utils/profileNavigation";
@@ -1466,13 +1467,18 @@ export default function CreateReferral() {
               />
             </div>
 
-            <SectionDivider label="Initial Diagnosis" />
-            <div className="pt-3">
-              <NarrativeField
-                value={record.diagnosis || record.assessment}
-                emptyText="No initial diagnosis recorded."
-              />
-            </div>
+            {/* A v2 consultation has no diagnosis: its assessment is the Chief Complaint above. */}
+            {showsDiagnosisRow(record, record.diagnosis || record.assessment) && (
+              <>
+                <SectionDivider label="Initial Diagnosis" />
+                <div className="pt-3">
+                  <NarrativeField
+                    value={record.diagnosis || record.assessment}
+                    emptyText="No initial diagnosis recorded."
+                  />
+                </div>
+              </>
+            )}
 
             <SectionDivider label="Initial Actions Taken" />
             <div className="pt-3 pb-1">

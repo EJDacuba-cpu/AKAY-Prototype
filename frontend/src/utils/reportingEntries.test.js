@@ -9,6 +9,7 @@ import {
   reportingEntryErrors,
   reportingEntryDraft,
   reportingEntryPayload,
+  recordReportingLines,
   restoreReportingEntries,
   toggleDestination,
 } from "./reportingEntries.js";
@@ -152,4 +153,28 @@ test("reportingEntryDraft keeps named entries with reportIn always an array, and
       { id: "c", name: "Flu", reportIn: ["morbidity"] },
     ],
   );
+});
+
+test("recordReportingLines: name, an em dash, then the destinations", () => {
+  assert.deepEqual(
+    recordReportingLines({
+      diagnoses: [
+        { id: "a", name: " Dengue ", reportIn: ["surveillance", "notifiable"] },
+        { id: "b", name: "Flu", reportIn: [] },
+        { id: "c", name: "Old", reportAs: "morbidity", includeInSurveillance: true },
+      ],
+    }),
+    [
+      { key: "a", text: "Dengue — Notifiable · Surveillance" },
+      { key: "b", text: "Flu" },
+      { key: "c", text: "Old — Morbidity · Surveillance" },
+    ],
+  );
+});
+
+test("recordReportingLines: nameless entries and a missing list give nothing", () => {
+  assert.deepEqual(recordReportingLines({ diagnoses: [{ id: "a", name: "  ", reportIn: ["morbidity"] }, null] }), []);
+  assert.deepEqual(recordReportingLines({ diagnoses: [] }), []);
+  assert.deepEqual(recordReportingLines({}), []);
+  assert.deepEqual(recordReportingLines(null), []);
 });

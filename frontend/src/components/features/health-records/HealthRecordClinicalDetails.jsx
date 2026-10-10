@@ -60,6 +60,8 @@ import {
   getRecordVisitTypeValue,
 } from "./recordDetailsHelpers";
 import { diagnosisCarePlanHeading, diagnosisCarePlanItems } from "../../../utils/recordCarePlan";
+import { isBhcGeneralV2, showsDiagnosisRow } from "../../../utils/consultationWorkflow";
+import { recordReportingLines } from "../../../utils/reportingEntries";
 
 /* ─────────────────────────────────────────────
    HealthRecordClinicalDetails
@@ -70,6 +72,20 @@ import { diagnosisCarePlanHeading, diagnosisCarePlanItems } from "../../../utils
 ──────────────────────────────────────────── */
 
 export default function HealthRecordClinicalDetails(props) {
+  // A v2 record has no per-concern next actions: it lists what was reported,
+  // and nothing at all when it reported nothing.
+  if (isBhcGeneralV2(props.record)) {
+    const reportingLines = recordReportingLines(props.record);
+    const v2Details = <RecordDetailsBody {...props} />;
+    if (reportingLines.length === 0) return v2Details;
+    return (
+      <div className="space-y-4">
+        {v2Details}
+        <ReportingSummary lines={reportingLines} />
+      </div>
+    );
+  }
+
   // Health concerns and their next actions as saved (display only), under
   // whichever record layout applies.
   const carePlanItems = diagnosisCarePlanItems(props.record?.diagnoses);
@@ -80,6 +96,22 @@ export default function HealthRecordClinicalDetails(props) {
       {details}
       <DiagnosisCarePlanSummary title={diagnosisCarePlanHeading(props.record?.diagnoses)} items={carePlanItems} />
     </div>
+  );
+}
+
+function ReportingSummary({ lines }) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-5">
+      <TabbedSubsection title="Reporting">
+        <ul className="divide-y divide-slate-100">
+          {lines.map((line) => (
+            <li key={line.key} className="py-2 text-sm font-medium text-[#0F172A]">
+              {line.text}
+            </li>
+          ))}
+        </ul>
+      </TabbedSubsection>
+    </section>
   );
 }
 
@@ -164,6 +196,9 @@ function RecordDetailsBody({
       : getRecordNotes(record, "");
   const chiefComplaintValue = getRecordChiefComplaint(record, "");
   const diagnosisValue = getRecordDiagnosis(record, "");
+  // A v2 record without a stored diagnosis shows its Chief Complaint (already
+  // shown) and no Diagnosis row. Legacy records always keep the row.
+  const diagnosisRowShown = showsDiagnosisRow(record, diagnosisValue);
   const physicalExamValue = getRecordPhysicalExam(record, "");
   const summaryValue = getRecordSummary(record, "");
   const hasClinicalAssessmentDetails = Boolean(
@@ -254,6 +289,7 @@ function RecordDetailsBody({
         chiefComplaint={chiefComplaintValue}
         physicalExam={physicalExamValue}
         diagnosis={diagnosisValue}
+        showDiagnosisRow={diagnosisRowShown}
         signsSymptoms={summaryValue}
         treatmentAction={initialActionsValue}
         treatmentNotes={treatmentNotesValue}
@@ -278,6 +314,7 @@ function RecordDetailsBody({
       chiefComplaintValue={chiefComplaintValue}
       physicalExamValue={physicalExamValue}
       diagnosisValue={diagnosisValue}
+      showDiagnosisRow={diagnosisRowShown}
       initialActionsValue={initialActionsValue}
       summaryValue={summaryValue}
       treatmentNotesValue={treatmentNotesValue}
@@ -412,6 +449,7 @@ function GenericRecordDetails({
   chiefComplaintValue,
   physicalExamValue,
   diagnosisValue,
+  showDiagnosisRow = true,
   initialActionsValue,
   summaryValue,
   treatmentNotesValue,
@@ -442,10 +480,12 @@ function GenericRecordDetails({
               label="Chief Complaint"
               value={chiefComplaintValue || "Not recorded"}
             />
-            <PatientDetailItem
-              label="Diagnosis / Assessment"
-              value={diagnosisValue || "Not recorded"}
-            />
+            {showDiagnosisRow && (
+              <PatientDetailItem
+                label="Diagnosis / Assessment"
+                value={diagnosisValue || "Not recorded"}
+              />
+            )}
           </div>
           {physicalExamValue && (
             <NarrativeBox label="Physical Exam" value={physicalExamValue} />
@@ -608,6 +648,7 @@ function GeneralConsultationRecordDetails({
   chiefComplaint,
   physicalExam,
   diagnosis,
+  showDiagnosisRow = true,
   signsSymptoms,
   treatmentAction,
   treatmentNotes,
@@ -671,7 +712,9 @@ function GeneralConsultationRecordDetails({
                 value={signsSymptoms}
               />
               <TabbedNarrativeBlock label="Physical Exam" value={physicalExam} />
-              <TabbedNarrativeBlock label="Diagnosis / Assessment" value={diagnosis} />
+              {showDiagnosisRow && (
+                <TabbedNarrativeBlock label="Diagnosis / Assessment" value={diagnosis} />
+              )}
             </div>
           ) : (
             <SectionEmptyState text="No consultation details recorded." />

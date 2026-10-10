@@ -142,6 +142,12 @@ class FollowUpEpisodeService
             'diagnosis' => $record->diagnosis,
             'treatment_notes' => $record->treatment_notes,
             'notes' => $record->notes,
+            // Only the workflow marker, so a visit-chain row can tell a v2 record
+            // (Chief Complaint fallback) from a legacy one. The rest of
+            // monitoring_data stays out of this summary.
+            'monitoring_data' => $record->isBhcGeneralV2()
+                ? ['consultationWorkflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2]
+                : null,
         ];
     }
 

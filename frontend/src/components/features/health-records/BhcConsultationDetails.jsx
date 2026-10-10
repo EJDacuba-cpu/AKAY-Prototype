@@ -2,6 +2,7 @@ import HealthRecordClinicalDetails from './HealthRecordClinicalDetails';
 import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms } from '../../../utils/consultationPrograms';
 import { VISIT_SERVICES, TEENAGE_PREGNANCY_MESSAGE } from '../../../utils/visitPurpose';
 import { formatFbs } from '../../../utils/recordCarePlan';
+import { showsDiagnosisRow } from '../../../utils/consultationWorkflow';
 
 function Details({ rows }) {
   return <dl className="grid gap-4 sm:grid-cols-2">{rows.map(([label, value]) => <div key={label}><dt className="text-xs font-semibold text-slate-500">{label}</dt><dd className="mt-1 whitespace-pre-wrap text-sm text-slate-900">{String(value ?? '').trim() || 'Not recorded'}</dd></div>)}</dl>;
@@ -28,7 +29,8 @@ export default function BhcConsultationDetails({ record, ...props }) {
         ['Chief Complaint', record.chiefComplaint || record.chief_complaint],
         ['History of Present Illness', record.summaryOfPresentIllness || record.history_of_present_illness],
         ['Physical Exam', record.physicalExam || record.physical_exam],
-        ['Assessment / Diagnosis', record.diagnosis],
+        // A v2 record has no diagnosis of its own; the Chief Complaint above is its assessment.
+        ...(showsDiagnosisRow(record) ? [['Assessment / Diagnosis', record.diagnosis]] : []),
       ]} />
     </section>}
     {categories.length === 0 && <HealthRecordClinicalDetails record={record} {...props} />}
