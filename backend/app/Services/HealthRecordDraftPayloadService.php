@@ -18,6 +18,8 @@ class HealthRecordDraftPayloadService
         // a real column for lookup. Optional, so drafts saved before it existed
         // still decrypt - sanitize() runs on READ as well as write.
         'consultationUuid' => self::SCALAR,
+        // Marks a draft as the BHC general v2 flow. Optional: legacy drafts never carry it.
+        'consultationWorkflow' => self::SCALAR,
         'receivingRhuId' => self::SCALAR,
         'selectedPrograms' => ['*' => self::SCALAR],
         'primaryProgram' => self::SCALAR,
@@ -49,6 +51,8 @@ class HealthRecordDraftPayloadService
             'carePlan' => self::SCALAR,
             'bhcFollowUp' => self::SCALAR,
             'includeInSurveillance' => self::SCALAR,
+            // v2: destinations this diagnosis is reported in (ReportingEntries::DESTINATIONS).
+            'reportIn' => ['*' => self::SCALAR],
         ]],
         'assessmentNotes' => self::SCALAR,
         'medication' => self::SCALAR,
@@ -359,6 +363,10 @@ class HealthRecordDraftPayloadService
             ]],
             'monitoringReferrals' => ['*' => self::SCALAR],
             'startConditionIds' => ['*' => self::SCALAR],
+            // v2 visit-level next actions.
+            'bhcFollowUp' => self::SCALAR,
+            'referToRhu' => self::SCALAR,
+            'referralMultipleIssues' => self::SCALAR,
         ],
         // Patient Background sections edited in this consultation, applied to
         // the patient on finalize (PatientBackground::apply). Only the sections
@@ -544,6 +552,7 @@ class HealthRecordDraftPayloadService
             ...ConsultationPrograms::rules('payload'),
             ...PatientBackground::rules('payload.backgroundUpdate', 'baseRevisions'),
             'payload.consultationUuid' => ['nullable', 'uuid'],
+            'payload.consultationWorkflow' => ['nullable', Rule::in([HealthRecord::WORKFLOW_BHC_GENERAL_V2])],
             'payload.consultationMode' => ['nullable', 'in:general,program'],
             'payload.wizardPhase' => ['nullable', 'in:program,form,next,review'],
             'payload.formStep' => ['nullable', 'string', 'max:100'],
@@ -559,6 +568,11 @@ class HealthRecordDraftPayloadService
             'payload.diagnoses.*.id' => ['nullable', 'string', 'max:64'],
             'payload.diagnoses.*.name' => ['required', 'string', 'max:150'],
             'payload.diagnoses.*.reportAs' => ['nullable', 'string', Rule::in(HealthRecord::DIAGNOSIS_REPORT_TYPES)],
+            'payload.diagnoses.*.reportIn' => ['nullable', 'array'],
+            'payload.diagnoses.*.reportIn.*' => ['string', Rule::in(ReportingEntries::DESTINATIONS)],
+            'payload.carePlan.bhcFollowUp' => ['nullable', 'boolean'],
+            'payload.carePlan.referToRhu' => ['nullable', 'boolean'],
+            'payload.carePlan.referralMultipleIssues' => ['nullable', 'boolean'],
             'payload.assessmentNotes' => ['nullable', 'string', 'max:5000'],
             'payload.dateOfVisit' => ['nullable', 'date_format:Y-m-d'],
             'payload.timeOfVisit' => ['nullable', 'date_format:H:i'],

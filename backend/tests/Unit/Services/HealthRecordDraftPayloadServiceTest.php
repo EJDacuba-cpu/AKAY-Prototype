@@ -58,6 +58,65 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $this->assertTrue($sanitized['diagnoses'][0]['bhcFollowUp']);
     }
 
+    public function test_v2_draft_keys_survive_sanitize_round_trip(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+
+        $payload = $this->fullFrontendPayload();
+        $payload['consultationWorkflow'] = 'bhc_general_v2';
+        $payload['diagnoses'] = [[
+            'id' => 'd1',
+            'name' => 'Cough',
+            'reportIn' => ['morbidity', 'surveillance'],
+        ]];
+        $payload['carePlan']['bhcFollowUp'] = true;
+        $payload['carePlan']['referToRhu'] = false;
+        $payload['carePlan']['referralMultipleIssues'] = true;
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertSame('bhc_general_v2', $sanitized['consultationWorkflow']);
+        $this->assertSame(['morbidity', 'surveillance'], $sanitized['diagnoses'][0]['reportIn']);
+        $this->assertTrue($sanitized['carePlan']['bhcFollowUp']);
+        $this->assertFalse($sanitized['carePlan']['referToRhu']);
+        $this->assertTrue($sanitized['carePlan']['referralMultipleIssues']);
+    }
+
+    public function test_legacy_draft_with_care_plan_concerns_still_validates(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+
+        $payload = $this->fullFrontendPayload();
+        $payload['diagnoses'] = [[
+            'id' => 'd1',
+            'name' => 'Cough',
+            'reportAs' => 'morbidity',
+            'carePlan' => 'refer',
+            'bhcFollowUp' => true,
+            'includeInSurveillance' => false,
+        ]];
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertSame('refer', $sanitized['diagnoses'][0]['carePlan']);
+        $this->assertSame('morbidity', $sanitized['diagnoses'][0]['reportAs']);
+        $this->assertTrue($sanitized['diagnoses'][0]['bhcFollowUp']);
+        $this->assertFalse($sanitized['diagnoses'][0]['includeInSurveillance']);
+        $this->assertArrayNotHasKey('consultationWorkflow', $sanitized);
+    }
+
+    public function test_unknown_report_in_value_rejected(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+
+        $payload = $this->fullFrontendPayload();
+        $payload['diagnoses'] = [['id' => 'd1', 'name' => 'Cough', 'reportIn' => ['morbidity', 'bogus']]];
+
+        $this->expectException(ValidationException::class);
+
+        $service->sanitize($payload);
+    }
+
     public function test_unknown_referral_form_fields_are_rejected(): void
     {
         $service = new HealthRecordDraftPayloadService();
