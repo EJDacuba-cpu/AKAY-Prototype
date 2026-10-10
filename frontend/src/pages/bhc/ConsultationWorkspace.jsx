@@ -74,6 +74,7 @@ import {
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
 import { RadioChoiceGroup } from "../../components/features/health-records/fields/ClinicalFields";
 import CarePlanSection from "../../components/features/health-records/wizard/CarePlanSection";
+import FollowUpVisitLine from "../../components/features/health-records/wizard/FollowUpVisitLine";
 import MonitoringDetailsForms from "../../components/features/health-records/wizard/MonitoringDetailsForms";
 import ConsultationBackgroundCard from "../../components/features/health-records/wizard/ConsultationBackgroundCard";
 import BackgroundConflictPanel from "../../components/features/health-records/wizard/BackgroundConflictPanel";
@@ -118,6 +119,7 @@ import {
 import {
   droppedContinuedCareNotice,
   keepStopsFor,
+  removeContinuedFollowUp,
   resolveContinuedCare,
   tbPrefillRecordId,
 } from "../../utils/continuedCare";
@@ -3769,6 +3771,18 @@ export default function ConsultationWorkspace() {
   // The step flow's Next phase: Care Plan & Next Steps, then Monitoring
   // Details when a condition monitored in this visit needs it.
   const monitoringDetailErrors = Object.values(pickErrorsForStep(validationErrors, MONITORING_STEP)).filter(Boolean);
+  // Unlink a follow-up before saving; saving is what completes the rest.
+  function removeFollowUpLink(id) {
+    const next = removeContinuedFollowUp(
+      { continuedFollowUpTaskIds, continuedFollowUps, continuedMonitorings, monitoringStops, monitoringReferrals },
+      id,
+    );
+    setContinuedFollowUpTaskIds(next.continuedFollowUpTaskIds);
+    setContinuedFollowUps(next.continuedFollowUps);
+    setContinuedMonitorings(next.continuedMonitorings);
+    setMonitoringStops(next.monitoringStops);
+    setMonitoringReferrals(next.monitoringReferrals);
+  }
   const carePlanScreen = nextScreen === MONITORING_STEP ? (
     <LockedFormContent locked={patientGateLocked}>
       {monitoringDetailErrors.length > 0 && (
@@ -3791,6 +3805,8 @@ export default function ConsultationWorkspace() {
       />
     </LockedFormContent>
   ) : (
+    <>
+    <FollowUpVisitLine followUps={continuedFollowUps} disabled={patientGateLocked} onRemove={removeFollowUpLink} />
     <CarePlanSection
       concerns={diagnoses}
       continuedMonitorings={continuedMonitorings}
@@ -3864,6 +3880,7 @@ export default function ConsultationWorkspace() {
       notesPlaceholder={monitoringNotesPlaceholder}
       onNotesChange={setMonitoringNotes}
     />
+    </>
   );
 
 
@@ -4129,6 +4146,7 @@ export default function ConsultationWorkspace() {
       rows: [
         ...carePlanReviewRows({
           concerns: diagnoses,
+          continuedFollowUps,
           continuedMonitorings,
           startingConditions,
           stops: monitoringStops,

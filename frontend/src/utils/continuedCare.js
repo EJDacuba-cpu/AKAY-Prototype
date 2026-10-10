@@ -121,13 +121,26 @@ export function resolveContinuedCare(
   }
 
   // A selected follow-up's own conditions keep the follow-up's source record.
+  // `viaFollowUpId` marks one pulled in only through a single follow-up (not
+  // ticked, not shared with another selected follow-up), so unlinking that
+  // follow-up can take it along (removeContinuedFollowUp). UI state only: the
+  // draft and the payload carry ids.
   const fromSelectedFollowUps = new Map();
   if (includeFollowUpConditions) {
+    const ticked = new Set(uniqueIds(monitoringIds));
+    const owners = new Map();
     for (const task of followUps) {
       for (const condition of followUpConditions(task)) {
         const id = Number(condition.monitoringId);
-        if (!fromSelectedFollowUps.has(id)) fromSelectedFollowUps.set(id, fromFollowUpCondition(task, condition));
+        owners.set(id, (owners.get(id) || 0) + 1);
+        if (!fromSelectedFollowUps.has(id)) {
+          const monitoring = fromFollowUpCondition(task, condition);
+          fromSelectedFollowUps.set(id, ticked.has(id) ? monitoring : { ...monitoring, viaFollowUpId: Number(task.id) });
+        }
       }
+    }
+    for (const [id, count] of owners) {
+      if (count > 1) delete fromSelectedFollowUps.get(id).viaFollowUpId;
     }
   }
 
@@ -165,6 +178,9 @@ export function resolveContinuedCare(
     continuedFollowUps: followUps.map((task) => ({
       id: Number(task.id),
       sourceHealthRecordId: task.sourceHealthRecordId || null,
+      reason: task.reason || "",
+      dueDate: task.dueDate || "",
+      sourceDate: task.sourceDate || "",
     })),
     continuedMonitorings,
     monitoringStops,
@@ -179,6 +195,37 @@ export function resolveContinuedCare(
 export function keepStopsFor(stops = {}, continuedMonitorings = []) {
   const continuedIds = new Set(continuedMonitorings.map((monitoring) => Number(monitoring.id)));
   return Object.fromEntries(Object.entries(stops || {}).filter(([id]) => continuedIds.has(Number(id))));
+}
+
+/**
+ * Unlink one continued follow-up before saving: it is dropped, and so are the
+ * monitorings that came in only through it (`viaFollowUpId`), with their stops
+ * and RHU referral ticks. Monitorings the worker ticked directly stay. Pure.
+ */
+export function removeContinuedFollowUp(
+  {
+    continuedFollowUpTaskIds = [],
+    continuedFollowUps = [],
+    continuedMonitorings = [],
+    monitoringStops = {},
+    monitoringReferrals = [],
+  } = {},
+  id,
+) {
+  const removed = Number(id);
+  const keptMonitorings = continuedMonitorings.filter((monitoring) => Number(monitoring.viaFollowUpId) !== removed);
+  return {
+    continuedFollowUpTaskIds: continuedFollowUpTaskIds.filter((taskId) => Number(taskId) !== removed),
+    continuedFollowUps: continuedFollowUps.filter((task) => Number(task.id) !== removed),
+    continuedMonitorings: keptMonitorings,
+    monitoringStops: keepStopsFor(monitoringStops, keptMonitorings),
+    monitoringReferrals: keepReferralsFor(monitoringReferrals, keptMonitorings),
+  };
+}
+
+function keepReferralsFor(referrals = [], continuedMonitorings = []) {
+  const continuedIds = new Set(continuedMonitorings.map((monitoring) => Number(monitoring.id)));
+  return referrals.filter((id) => continuedIds.has(Number(id)));
 }
 
 function countLabel(count, singular, plural) {

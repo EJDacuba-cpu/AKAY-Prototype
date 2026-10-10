@@ -249,6 +249,7 @@ function stopText(reason) {
 /** Review & Confirm rows for Care Plan & Next Steps, from the same rules the screen uses. */
 export function carePlanReviewRows({
   concerns = [],
+  continuedFollowUps = [],
   continuedMonitorings = [],
   startingConditions = [],
   stops = {},
@@ -260,6 +261,10 @@ export function carePlanReviewRows({
   const referredIds = new Set(referredContinuingRows(continuedMonitorings, stops, referrals).map((m) => m.id));
   const rows = [];
 
+  // Saving this visit fulfils each continued follow-up task.
+  for (const task of continuedFollowUps) {
+    rows.push({ label: "Completes follow-up", value: `FU-${task.id}` });
+  }
   for (const concern of concerns) {
     const value = carePlanFor(concern);
     const flagged = value === CARE_PLAN.REFER && concern.bhcFollowUp === true ? " · BHC follow-up" : "";

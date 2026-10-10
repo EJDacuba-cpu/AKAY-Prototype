@@ -435,3 +435,28 @@ test("review rows label a flagged referral", () => {
     { label: "Chest pain", value: "Refer to RHU" },
   ]);
 });
+
+test("review rows list completed follow-ups", () => {
+  const rows = carePlanReviewRows({
+    concerns: [{ id: "d1", name: "Cough", carePlan: "none" }],
+    continuedFollowUps: [{ id: 12 }, { id: "15" }],
+    registry,
+    referral: { needed: false },
+    followUp: { shows: false },
+  });
+  assert.deepEqual(rows, [
+    { label: "Completes follow-up", value: "FU-12" },
+    { label: "Completes follow-up", value: "FU-15" },
+    { label: "Cough", value: "No Further BHC Action" },
+  ]);
+  assert.equal(rows.some((row) => row.label === "Next Steps"), false);
+});
+
+test("the draft carries ids only, never the follow-up link provenance", () => {
+  const draft = carePlanDraftPayload({
+    continuedFollowUpTaskIds: [12],
+    continuedMonitorings: [{ id: 4, conditionName: "Hypertension", viaFollowUpId: 12 }],
+  });
+  assert.deepEqual(draft.continuedMonitoringIds, [4]);
+  assert.equal(JSON.stringify(draft).includes("viaFollowUpId"), false);
+});

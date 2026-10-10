@@ -5,6 +5,7 @@ import {
   activeMonitoringsFromOverview,
   droppedContinuedCareNotice,
   keepStopsFor,
+  removeContinuedFollowUp,
   resolveContinuedCare,
   tbPrefillRecordId,
   uniqueById,
@@ -71,8 +72,8 @@ test("seeding from the modal continues the selected follow-ups' conditions too",
   });
   assert.deepEqual(result.continuedFollowUpTaskIds, [1, 2]);
   assert.deepEqual(result.continuedFollowUps, [
-    { id: 1, sourceHealthRecordId: 50 },
-    { id: 2, sourceHealthRecordId: 51 },
+    { id: 1, sourceHealthRecordId: 50, reason: "", dueDate: "2026-10-01", sourceDate: "" },
+    { id: 2, sourceHealthRecordId: 51, reason: "", dueDate: "2026-10-05", sourceDate: "" },
   ]);
   assert.deepEqual(result.continuedMonitorings.map((m) => [m.id, m.conditionName]), [
     [3, "Hypertension"],
@@ -106,7 +107,9 @@ test("a resumed draft's placeholders are re-hydrated from the overview", () => {
     monitoringIds: restored.continuedMonitorings.map((m) => m.id),
     stops: restored.monitoringStops,
   });
-  assert.deepEqual(result.continuedFollowUps, [{ id: 1, sourceHealthRecordId: 50 }]);
+  assert.deepEqual(result.continuedFollowUps, [
+    { id: 1, sourceHealthRecordId: 50, reason: "", dueDate: "2026-10-01", sourceDate: "" },
+  ]);
   assert.deepEqual(result.continuedMonitorings.map((m) => [m.id, m.conditionName, m.conditionKey, m.startedAt]), [
     [3, "Hypertension", null, ""],
     [5, "Tuberculosis", "tuberculosis", "2026-07-01"],
@@ -261,4 +264,78 @@ test("a recommendation no longer in the overview is dropped and reported", () =>
   assert.deepEqual(none.startingConditions, []);
   assert.deepEqual(none.droppedConditionIds, [3]);
   assert.deepEqual(resolveContinuedCare(overview, {}).startingConditions, []);
+});
+
+const visitOverview = {
+  pendingFollowUps: [
+    {
+      id: 12, dueDate: "2026-10-20", reason: "BP recheck", sourceHealthRecordId: 91, sourceDate: "2026-10-06",
+      conditions: [
+        { monitoringId: 4, conditionName: "Hypertension" },
+        { monitoringId: 5, conditionName: "Diabetes Mellitus" },
+      ],
+    },
+    { id: 13, dueDate: "2026-10-25", sourceHealthRecordId: 92, conditions: [{ monitoringId: 6, conditionName: "Asthma" }] },
+  ],
+  monitoringWithoutFollowUp: [],
+};
+
+test("resolveContinuedCare carries reason, due date and source date", () => {
+  const r = resolveContinuedCare(visitOverview, { followUpIds: [12, 13] });
+  assert.deepEqual(r.continuedFollowUps, [
+    { id: 12, sourceHealthRecordId: 91, reason: "BP recheck", dueDate: "2026-10-20", sourceDate: "2026-10-06" },
+    { id: 13, sourceHealthRecordId: 92, reason: "", dueDate: "2026-10-25", sourceDate: "" },
+  ]);
+});
+
+test("a monitoring pulled in only by a follow-up records which one; a ticked one does not", () => {
+  const r = resolveContinuedCare(visitOverview, {
+    followUpIds: [12, 13], monitoringIds: [5], includeFollowUpConditions: true,
+  });
+  assert.deepEqual(r.continuedMonitorings.map((m) => [m.id, m.viaFollowUpId]), [
+    [4, 12],
+    [5, undefined],
+    [6, 13],
+  ]);
+  // A resumed draft stores no provenance, so none is invented.
+  const resumed = resolveContinuedCare(visitOverview, { followUpIds: [12], monitoringIds: [4, 5] });
+  assert.deepEqual(resumed.continuedMonitorings.map((m) => m.viaFollowUpId), [undefined, undefined]);
+});
+
+test("removeContinuedFollowUp drops the task and its task-only monitorings but keeps ticked ones", () => {
+  const r = resolveContinuedCare(visitOverview, {
+    followUpIds: [12, 13], monitoringIds: [5], includeFollowUpConditions: true,
+  });
+  const next = removeContinuedFollowUp(
+    {
+      continuedFollowUpTaskIds: r.continuedFollowUpTaskIds,
+      continuedFollowUps: r.continuedFollowUps,
+      continuedMonitorings: r.continuedMonitorings,
+      monitoringStops: { 4: "Done", 5: "Kept", 6: "Other task" },
+      monitoringReferrals: [4, 5, 6],
+    },
+    12,
+  );
+  assert.deepEqual(next.continuedFollowUpTaskIds, [13]);
+  assert.deepEqual(next.continuedFollowUps.map((t) => t.id), [13]);
+  assert.deepEqual(next.continuedMonitorings.map((m) => m.id), [5, 6]);
+  assert.deepEqual(next.monitoringStops, { 5: "Kept", 6: "Other task" });
+  assert.deepEqual(next.monitoringReferrals, [5, 6]);
+});
+
+test("removeContinuedFollowUp works on follow-ups alone and ignores an id that is not linked", () => {
+  const r = resolveContinuedCare(visitOverview, { followUpIds: [12, 13] });
+  const state = { continuedFollowUpTaskIds: r.continuedFollowUpTaskIds, continuedFollowUps: r.continuedFollowUps };
+  assert.deepEqual(removeContinuedFollowUp(state, "13").continuedFollowUpTaskIds, [12]);
+  assert.deepEqual(removeContinuedFollowUp(state, 99).continuedFollowUpTaskIds, [12, 13]);
+  assert.deepEqual(removeContinuedFollowUp({}, 1), {
+    continuedFollowUpTaskIds: [], continuedFollowUps: [], continuedMonitorings: [], monitoringStops: {}, monitoringReferrals: [],
+  });
+});
+
+test("a monitoring shared by two selected follow-ups is kept when either is removed", () => {
+  const r = resolveContinuedCare(linkedOverview, { followUpIds: [11, 12], includeFollowUpConditions: true });
+  assert.deepEqual(r.continuedMonitorings.map((m) => [m.id, m.viaFollowUpId]), [[4, undefined], [5, 11]]);
+  const next = removeContinuedFollowUp({ ...r }, 11);
+  assert.deepEqual(next.continuedMonitorings.map((m) => m.id), [4]);
 });
