@@ -100,3 +100,37 @@ test("formatReportAs labels", () => {
   assert.equal(formatReportAs("notifiable"), "Notifiable");
   assert.equal(formatReportAs(null), "Not reported");
 });
+
+test("getReportedDiagnoses: a v2 entry appears once per destination it is reported in", () => {
+  const record = {
+    diagnoses: [{ id: "a", name: "X", reportIn: ["morbidity", "notifiable"], reportAs: "notifiable", includeInSurveillance: false }],
+  };
+  assert.deepEqual(getReportedDiagnoses(record, "morbidity"), ["X"]);
+  assert.deepEqual(getReportedDiagnoses(record, "notifiable"), ["X"]);
+});
+
+test("getReportedDiagnoses: a surveillance-only v2 entry is in neither the morbidity nor the notifiable report", () => {
+  const record = { diagnoses: [{ id: "a", name: "X", reportIn: ["surveillance"] }] };
+  assert.deepEqual(getReportedDiagnoses(record, "morbidity"), []);
+  assert.deepEqual(getReportedDiagnoses(record, "notifiable"), []);
+});
+
+test("usesDiagnosisReporting is also true for a reportIn entry", () => {
+  assert.equal(usesDiagnosisReporting([{ name: "X", reportIn: [] }]), true);
+});
+
+test("deriveReportingStatus reads reportIn as well as reportAs", () => {
+  assert.equal(deriveReportingStatus([{ reportIn: ["surveillance"] }]), "not_included");
+  assert.equal(deriveReportingStatus([{ reportIn: ["morbidity", "surveillance"] }]), "morbidity");
+  assert.equal(deriveReportingStatus([{ reportIn: ["morbidity"] }, { reportIn: ["notifiable"] }]), "notifiable");
+  assert.equal(deriveReportingStatus([{ reportIn: [], reportAs: "notifiable" }]), "not_included");
+});
+
+test("a v2 record is not given the visit-level plain-text fallback", () => {
+  const record = {
+    diagnosis: "",
+    diagnoses: [{ id: "a", name: "X", reportIn: [] }],
+    monitoring_data: { consultationWorkflow: "bhc_general_v2", morbidityReportingStatus: "morbidity" },
+  };
+  assert.deepEqual(getReportedDiagnoses(record, "morbidity"), []);
+});

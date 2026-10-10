@@ -85,3 +85,26 @@ test("the Surveillance Report has one entry per included diagnosis, grouped by n
   assert.deepEqual(getSurveillanceReportEntries([flagged], "DENG").map(({ diagnosis }) => diagnosis), ["Dengue"]);
   assert.deepEqual(getSurveillanceReportEntries(null), []);
 });
+
+test("a v2 reportIn entry with surveillance appears once", () => {
+  assert.deepEqual(
+    getSurveillanceDiagnoses({
+      diagnoses: [
+        { id: "a", name: "Dengue", reportIn: ["morbidity", "surveillance"] },
+        { id: "b", name: "Cough", reportIn: ["morbidity"] },
+        { id: "c", name: "Mumps", reportIn: [] , includeInSurveillance: true },
+      ],
+    }),
+    [{ name: "Dengue" }],
+  );
+});
+
+test("legacy HFMD tags still give one HFMD row beside non-surveillance v2 entries", () => {
+  assert.deepEqual(
+    getSurveillanceDiagnoses({
+      diagnoses: [{ id: "a", name: "Cough", reportIn: ["morbidity"] }],
+      monitoring_data: { surveillanceTags: ["hfmd"] },
+    }),
+    [{ name: "Hand, Foot and Mouth Disease" }],
+  );
+});

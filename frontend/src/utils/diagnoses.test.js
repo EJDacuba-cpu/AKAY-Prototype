@@ -97,6 +97,17 @@ test("normalizeDiagnoses keeps reportAs only when the entry had it", () => {
   assert.equal(Object.hasOwn(without, "reportAs"), false);
 });
 
+test("normalizeDiagnoses keeps reportIn as a canonical list", () => {
+  const [withIn, empty, without] = normalizeDiagnoses([
+    { id: "a", name: "Dengue", reportIn: ["surveillance", "morbidity", "bogus"] },
+    { id: "b", name: "Cough", reportIn: [] },
+    { id: "c", name: "Rhinitis", reportAs: null },
+  ]);
+  assert.deepEqual(withIn.reportIn, ["morbidity", "surveillance"]);
+  assert.deepEqual(empty.reportIn, []);
+  assert.equal(Object.hasOwn(without, "reportIn"), false);
+});
+
 test("a duplicate, blank or over-limit diagnosis is not added and says why", () => {
   const list = addDiagnosis([], "Pneumonia");
   assert.equal(getAddDiagnosisError(list, "  pneumonia "), "duplicate");

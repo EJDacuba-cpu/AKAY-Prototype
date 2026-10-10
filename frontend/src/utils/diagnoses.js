@@ -16,6 +16,7 @@
  */
 import { normalizeReportAs } from "./diagnosisReporting.js";
 import { isCarePlanValue } from "./carePlan.js";
+import { entryDestinations } from "./reportingEntries.js";
 
 /** Case/whitespace-insensitive key for comparing diagnosis or condition names. */
 export function normalizeNameKey(name) {
@@ -94,6 +95,8 @@ export function normalizeDiagnoses(list) {
       id: String(item.id || createDiagnosisId()).slice(0, 64),
       name: String(item.name).trim().slice(0, DIAGNOSIS_LIMITS.name),
       ...(Object.hasOwn(item, "reportAs") ? { reportAs: normalizeReportAs(item.reportAs) } : {}),
+      // A v2 reporting entry's source of truth; kept as a canonical list.
+      ...(Array.isArray(item.reportIn) ? { reportIn: entryDestinations({ reportIn: item.reportIn }) } : {}),
       // A stored record may hold a historical value; carePlanFor decides what is a choice.
       ...(isCarePlanValue(item.carePlan) ? { carePlan: item.carePlan } : {}),
       // The BHC follow-up flag belongs to a referral only.

@@ -18,6 +18,8 @@
  * record details and BHCReports - each used to keep its own copy.
  */
 
+import { entryDestinations } from "./reportingEntries.js";
+
 export const DIAGNOSIS_REPORT_TYPES = Object.freeze(["morbidity", "notifiable"]);
 
 export const REPORT_AS_OPTIONS = Object.freeze([
@@ -60,13 +62,17 @@ export function normalizeReportingStatus(value) {
  */
 export function usesDiagnosisReporting(diagnoses) {
   return Array.isArray(diagnoses) && diagnoses.some(
-    (entry) => entry && typeof entry === "object" && Object.hasOwn(entry, "reportAs"),
+    (entry) => entry && typeof entry === "object" && (Object.hasOwn(entry, "reportAs") || Object.hasOwn(entry, "reportIn")),
   );
 }
 
-/** The visit-level status a diagnosis list implies: notifiable > morbidity > not_included. */
+/**
+ * The visit-level status a diagnosis list implies: notifiable > morbidity >
+ * not_included. Surveillance alone does not include the visit. Reads reportIn
+ * (v2 entries) and falls back to reportAs (see reportingEntries.js).
+ */
 export function deriveReportingStatus(diagnoses) {
-  const types = (Array.isArray(diagnoses) ? diagnoses : []).map((entry) => normalizeReportAs(entry?.reportAs));
+  const types = (Array.isArray(diagnoses) ? diagnoses : []).flatMap((entry) => entryDestinations(entry));
   if (types.includes("notifiable")) return "notifiable";
   if (types.includes("morbidity")) return "morbidity";
   return "not_included";
@@ -138,7 +144,7 @@ export function getReportedDiagnoses(record = {}, reportType) {
   const diagnoses = record.diagnoses;
   if (usesDiagnosisReporting(diagnoses)) {
     return diagnoses
-      .filter((entry) => normalizeReportAs(entry?.reportAs) === reportType)
+      .filter((entry) => entryDestinations(entry).includes(reportType))
       .map((entry) => String(entry.name || "").trim())
       .filter(Boolean);
   }

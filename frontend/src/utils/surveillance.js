@@ -11,6 +11,8 @@
  * send surveillanceTags.
  */
 
+import { entryDestinations } from "./reportingEntries.js";
+
 function firstPresent(candidates) {
   for (const value of candidates) {
     if (value !== undefined && value !== null && value !== "") return value;
@@ -52,7 +54,7 @@ const LEGACY_HFMD_NAME = "Hand, Foot and Mouth Disease";
 /** Diagnoses included in the Surveillance Report; legacy HFMD-tagged records read as one HFMD row. */
 export function getSurveillanceDiagnoses(record = {}) {
   const flagged = (Array.isArray(record.diagnoses) ? record.diagnoses : [])
-    .filter((diagnosis) => diagnosis?.includeInSurveillance === true && String(diagnosis.name || "").trim())
+    .filter((diagnosis) => entryDestinations(diagnosis).includes("surveillance") && String(diagnosis.name || "").trim())
     .map((diagnosis) => ({ name: String(diagnosis.name).trim() }));
   if (flagged.length) return flagged;
   return hasSurveillanceTag(getSurveillanceTags(record), "hfmd") ? [{ name: LEGACY_HFMD_NAME }] : [];

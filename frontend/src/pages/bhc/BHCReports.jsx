@@ -1142,7 +1142,7 @@ function MorbidityDailyLogTable({ rows, title, emptyTitle }) {
     "Sex",
     "Birthday",
     "Signs & Symptoms",
-    "Diagnosis",
+    "Diagnosis / Suspected Case",
     "Medication and Treatment",
   ];
 
