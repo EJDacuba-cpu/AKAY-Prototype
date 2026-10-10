@@ -98,10 +98,7 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
 
         $sanitized = $service->sanitize($payload);
 
-        $this->assertSame('refer', $sanitized['diagnoses'][0]['carePlan']);
-        $this->assertSame('morbidity', $sanitized['diagnoses'][0]['reportAs']);
-        $this->assertTrue($sanitized['diagnoses'][0]['bhcFollowUp']);
-        $this->assertFalse($sanitized['diagnoses'][0]['includeInSurveillance']);
+        $this->assertSame($payload['diagnoses'], $sanitized['diagnoses']);
         $this->assertArrayNotHasKey('consultationWorkflow', $sanitized);
     }
 
@@ -112,9 +109,29 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $payload = $this->fullFrontendPayload();
         $payload['diagnoses'] = [['id' => 'd1', 'name' => 'Cough', 'reportIn' => ['morbidity', 'bogus']]];
 
-        $this->expectException(ValidationException::class);
+        try {
+            $service->sanitize($payload);
+            $this->fail('Expected a ValidationException for the unknown reportIn value.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('payload.diagnoses.0.reportIn.1', $e->errors());
+            $this->assertArrayNotHasKey('payload.diagnoses.0.reportIn.0', $e->errors());
+        }
+    }
 
-        $service->sanitize($payload);
+    public function test_every_known_report_in_destination_is_accepted(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+
+        $payload = $this->fullFrontendPayload();
+        $payload['diagnoses'] = [[
+            'id' => 'd1',
+            'name' => 'Cough',
+            'reportIn' => ['morbidity', 'notifiable', 'surveillance'],
+        ]];
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertSame(['morbidity', 'notifiable', 'surveillance'], $sanitized['diagnoses'][0]['reportIn']);
     }
 
     public function test_unknown_referral_form_fields_are_rejected(): void
