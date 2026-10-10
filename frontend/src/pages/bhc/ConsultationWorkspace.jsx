@@ -129,6 +129,7 @@ import {
   restoreReportingEntries,
 } from "../../utils/reportingEntries";
 import { BHC_GENERAL_V2 } from "../../utils/consultationWorkflow";
+import { convertLegacyDraft } from "../../utils/draftConversion";
 import {
   droppedContinuedCareNotice,
   keepStopsFor,
@@ -1692,7 +1693,11 @@ export default function ConsultationWorkspace() {
   }
 
   function restoreHealthRecordDraft(draft) {
-    const payload = draft.payload || {};
+    // A draft saved before the v2 model is converted once, here, before any
+    // state is set from it: the first autosave then writes the converted
+    // content (every autosave stamps consultationWorkflow, so an unconverted
+    // legacy draft would lose its concerns for good).
+    const payload = convertLegacyDraft(draft.payload || {});
     setReceivingRhuId(payload.receivingRhuId || "");
     setSelectedPatientId(draft.patient.id);
     // Adopt the consultation's existing identity - never mint a fresh one for
@@ -1712,8 +1717,8 @@ export default function ConsultationWorkspace() {
     setSummaryOfPresentIllness(payload.summaryOfPresentIllness || "");
     setPhysicalExam(payload.physicalExam || "");
     setBodyFindings(normalizeBodyFindings(payload.bodyFindings));
-    // Reporting entries are the diagnoses that carry reportIn (a v2 draft).
-    // A legacy draft's concern list restores no entries here.
+    // Reporting entries are the diagnoses that carry reportIn. A legacy draft
+    // was already converted above: its unreported concerns are in assessmentNotes.
     setReportingEntries(restoreReportingEntries(payload.diagnoses));
     setAssessmentNotes(typeof payload.assessmentNotes === "string" ? payload.assessmentNotes : "");
     // Only the draft's own checkboxes: nothing is ticked from a date.
