@@ -57,3 +57,14 @@ export function showsDiagnosisRow(record, storedDiagnosis = record?.diagnosis) {
   if (String(storedDiagnosis ?? "").trim()) return true;
   return !isBhcGeneralV2(record);
 }
+
+/**
+ * The "Earlier draft notes" of a v2 record: text a converted legacy draft kept
+ * (unreported concern names, old assessment and monitoring notes), stored as
+ * assessment_notes. Trimmed text, or "" when blank. Legacy records always give
+ * "": their assessment_notes are not shown by the history views.
+ */
+export function earlierDraftNotes(record) {
+  if (!isBhcGeneralV2(record)) return "";
+  return String(firstNonBlank(record.assessment_notes, record.assessmentNotes) ?? "").trim();
+}

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { BHC_GENERAL_V2, isBhcGeneralV2, showsDiagnosisRow, visitAssessmentDisplay } from "./consultationWorkflow.js";
+import { BHC_GENERAL_V2, earlierDraftNotes, isBhcGeneralV2, showsDiagnosisRow, visitAssessmentDisplay } from "./consultationWorkflow.js";
 
 test("BHC_GENERAL_V2 marker", () => {
   assert.equal(BHC_GENERAL_V2, "bhc_general_v2");
@@ -87,4 +87,23 @@ test("showsDiagnosisRow: hidden only for a v2 record with no stored diagnosis", 
   assert.equal(showsDiagnosisRow(v2, "From initial diagnosis"), true);
   assert.equal(showsDiagnosisRow({ diagnosis: "" }), true);
   assert.equal(showsDiagnosisRow({}), true);
+});
+
+test("earlierDraftNotes: a v2 record returns its trimmed assessment notes, either spelling", () => {
+  const marker = { monitoring_data: { consultationWorkflow: "bhc_general_v2" } };
+  assert.equal(earlierDraftNotes({ ...marker, assessment_notes: "  Asthma\nNotes  " }), "Asthma\nNotes");
+  assert.equal(earlierDraftNotes({ ...marker, assessment_notes: "", assessmentNotes: "From camel" }), "From camel");
+});
+
+test("earlierDraftNotes: blank or missing notes on a v2 record give an empty string", () => {
+  const marker = { monitoring_data: { consultationWorkflow: "bhc_general_v2" } };
+  assert.equal(earlierDraftNotes({ ...marker, assessment_notes: "   " }), "");
+  assert.equal(earlierDraftNotes({ ...marker, assessment_notes: null }), "");
+  assert.equal(earlierDraftNotes(marker), "");
+  assert.equal(earlierDraftNotes(null), "");
+});
+
+test("earlierDraftNotes: a legacy record always gives an empty string", () => {
+  assert.equal(earlierDraftNotes({ assessment_notes: "Legacy notes" }), "");
+  assert.equal(earlierDraftNotes({ assessmentNotes: "Legacy notes", monitoring_data: {} }), "");
 });

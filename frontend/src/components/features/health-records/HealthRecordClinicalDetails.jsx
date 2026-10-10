@@ -60,7 +60,7 @@ import {
   getRecordVisitTypeValue,
 } from "./recordDetailsHelpers";
 import { diagnosisCarePlanHeading, diagnosisCarePlanItems } from "../../../utils/recordCarePlan";
-import { isBhcGeneralV2, showsDiagnosisRow } from "../../../utils/consultationWorkflow";
+import { earlierDraftNotes, isBhcGeneralV2, showsDiagnosisRow } from "../../../utils/consultationWorkflow";
 import { recordReportingLines } from "../../../utils/reportingEntries";
 
 /* ─────────────────────────────────────────────
@@ -76,12 +76,18 @@ export default function HealthRecordClinicalDetails(props) {
   // and nothing at all when it reported nothing.
   if (isBhcGeneralV2(props.record)) {
     const reportingLines = recordReportingLines(props.record);
+    const draftNotes = earlierDraftNotes(props.record);
     const v2Details = <RecordDetailsBody {...props} />;
-    if (reportingLines.length === 0) return v2Details;
+    if (reportingLines.length === 0 && !draftNotes) return v2Details;
     return (
       <div className="space-y-4">
         {v2Details}
-        <ReportingSummary lines={reportingLines} />
+        {reportingLines.length > 0 && <ReportingSummary lines={reportingLines} />}
+        {draftNotes && (
+          <section className="rounded-xl border border-slate-200 bg-white p-5">
+            <TabbedNarrativeBlock label="Earlier draft notes" value={draftNotes} />
+          </section>
+        )}
       </div>
     );
   }
