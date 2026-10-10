@@ -2,14 +2,20 @@ import { buildPatientConsultationPath } from "./consultationRoute.js";
 import { activeMonitoringsFromOverview, resolveContinuedCare } from "./continuedCare.js";
 import { monitoringRecommendationOptions } from "./medicalConditions.js";
 
+function byConditionName(a, b) {
+  return a.conditionName.localeCompare(b.conditionName, undefined, { sensitivity: "base" });
+}
+
 /**
- * The conditions the modal offers: active monitoring records
- * only (not Past Medical History), each once, alphabetical. `followUp` is the
+ * The conditions the modal offers: active, RHU-verified monitoring records
+ * only (not Past Medical History, not legacy rows - those wait for the RHU,
+ * see legacyMonitoringOptions), each once, alphabetical. `followUp` is the
  * earliest-due pending follow-up that links the condition, else null.
  */
 export function monitoredConditionOptions(overview) {
   const pending = overview?.pendingFollowUps || [];
   return activeMonitoringsFromOverview(overview)
+    .filter((monitoring) => monitoring.legacy !== true)
     .map((monitoring) => {
       const due = pending
         .filter((task) => (task.conditions || []).some((c) => Number(c.monitoringId) === monitoring.id))
@@ -21,7 +27,23 @@ export function monitoredConditionOptions(overview) {
         followUp: due ? { dueDate: due.dueDate, isOverdue: due.isOverdue === true } : null,
       };
     })
-    .sort((a, b) => a.conditionName.localeCompare(b.conditionName, undefined, { sensitivity: "base" }));
+    .sort(byConditionName);
+}
+
+/**
+ * Legacy BHC monitoring (no RHU-confirmed condition behind it): listed for
+ * information, never selectable, because the server rejects continuing one
+ * until the RHU reconciles it.
+ */
+export function legacyMonitoringOptions(overview) {
+  return activeMonitoringsFromOverview(overview)
+    .filter((monitoring) => monitoring.legacy === true)
+    .map((monitoring) => ({
+      monitoringId: monitoring.id,
+      conditionName: monitoring.conditionName,
+      startedAt: monitoring.startedAt,
+    }))
+    .sort(byConditionName);
 }
 
 /**

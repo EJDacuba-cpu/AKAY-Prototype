@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   checkContinuedStart,
   hasStartChoices,
+  legacyMonitoringOptions,
   monitoredConditionOptions,
   selectionToRoute,
   startConsultationAction,
@@ -121,4 +122,38 @@ test("a dropped recommendation is reported, not silently removed", () => {
     droppedMonitoringIds: [],
     droppedConditionIds: [10],
   });
+});
+
+const withLegacy = {
+  pendingFollowUps: [
+    {
+      id: 21, dueDate: "2026-10-03", isOverdue: false, sourceHealthRecordId: 92,
+      conditions: [
+        { monitoringId: 4, conditionName: "Hypertension", legacy: false },
+        { monitoringId: 8, conditionName: "Gout", legacy: true },
+      ],
+    },
+  ],
+  monitoringWithoutFollowUp: [
+    { id: 7, conditionName: "Asthma", startedAt: "2026-01-02", legacy: false },
+    { id: 9, conditionName: "Arthritis", startedAt: "2026-02-03", legacy: true },
+  ],
+};
+
+test("monitoredConditionOptions excludes legacy rows", () => {
+  assert.deepEqual(monitoredConditionOptions(withLegacy).map((o) => o.monitoringId), [7, 4]);
+});
+
+test("legacyMonitoringOptions lists only legacy rows", () => {
+  assert.deepEqual(legacyMonitoringOptions(withLegacy), [
+    { monitoringId: 9, conditionName: "Arthritis", startedAt: "2026-02-03" },
+    { monitoringId: 8, conditionName: "Gout", startedAt: "" },
+  ]);
+  assert.deepEqual(legacyMonitoringOptions(overview), []);
+  assert.deepEqual(legacyMonitoringOptions(null), []);
+});
+
+test("a patient with only legacy monitoring has no start choices, so consultation is never blocked", () => {
+  const onlyLegacy = { pendingFollowUps: [], monitoringWithoutFollowUp: [{ id: 9, conditionName: "Arthritis", legacy: true }] };
+  assert.equal(hasStartChoices(onlyLegacy), false);
 });

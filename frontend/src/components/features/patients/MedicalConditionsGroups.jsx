@@ -65,7 +65,7 @@ function ConfirmedRow({ condition }) {
       name={condition.conditionName}
       chip={legacy ? null : <StatusChip status={condition.status} />}
       lines={[
-        legacy ? "Legacy BHC Monitoring" : `Confirmed by RHU · ${formatShortDate(condition.confirmedAt)}`,
+        legacy ? "Legacy — Pending RHU Verification" : `Confirmed by RHU · ${formatShortDate(condition.confirmedAt)}`,
         monitoredSince(condition),
       ]}
       badge={condition.addressed ? <div className="mt-1"><AddressedBadge /></div> : null}

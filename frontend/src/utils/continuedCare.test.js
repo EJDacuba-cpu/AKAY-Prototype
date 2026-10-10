@@ -160,7 +160,7 @@ test("TB-DOTS prefill comes from the continued TB monitoring's last ITR", () => 
   assert.equal(tbPrefillRecordId([{ id: 4, conditionName: "Asthma", lastHealthRecordId: 40 }], registry), null);
 });
 
-test("a continued monitoring carries the RHU status and the legacy flag from the overview", () => {
+test("a continued monitoring carries the RHU status from the overview; a legacy row is never continued", () => {
   const withStatus = {
     pendingFollowUps: [
       {
@@ -176,9 +176,9 @@ test("a continued monitoring carries the RHU status and the legacy flag from the
   const result = resolveContinuedCare(withStatus, { followUpIds: [1], monitoringIds: [4, 5], includeFollowUpConditions: true });
   assert.deepEqual(result.continuedMonitorings.map((m) => [m.id, m.conditionStatus, m.legacy]), [
     [3, "Controlled", false],
-    [4, null, true],
     [5, "Resolved", false],
   ]);
+  assert.deepEqual(result.droppedMonitoringIds, [4]);
 });
 
 test("a withdrawn RHU recommendation is reported in the notice, never silently dropped", () => {
@@ -338,4 +338,60 @@ test("a monitoring shared by two selected follow-ups is kept when either is remo
   assert.deepEqual(r.continuedMonitorings.map((m) => [m.id, m.viaFollowUpId]), [[4, undefined], [5, 11]]);
   const next = removeContinuedFollowUp({ ...r }, 11);
   assert.deepEqual(next.continuedMonitorings.map((m) => m.id), [4]);
+});
+
+const legacyOverview = {
+  pendingFollowUps: [
+    {
+      id: 1, dueDate: "2026-10-01", sourceHealthRecordId: 50,
+      conditions: [{ monitoringId: 3, conditionName: "Hypertension", legacy: true }],
+    },
+    {
+      id: 2, dueDate: "2026-10-02", sourceHealthRecordId: 51,
+      conditions: [
+        { monitoringId: 6, conditionName: "Diabetes", legacy: false },
+        { monitoringId: 3, conditionName: "Hypertension", legacy: true },
+      ],
+    },
+  ],
+  monitoringWithoutFollowUp: [
+    { id: 4, conditionName: "Asthma", conditionKey: null, legacy: true },
+    { id: 5, conditionName: "Tuberculosis", conditionKey: "tuberculosis", legacy: false },
+  ],
+};
+
+test("resolveContinuedCare continues a task but skips its legacy conditions", () => {
+  const result = resolveContinuedCare(legacyOverview, { followUpIds: [1], includeFollowUpConditions: true });
+  assert.deepEqual(result.continuedFollowUpTaskIds, [1]);
+  assert.deepEqual(result.continuedMonitorings, []);
+  assert.deepEqual(result.legacyConditionNames, ["Hypertension"]);
+  assert.deepEqual(result.droppedMonitoringIds, []);
+});
+
+test("a mixed task continues its verified condition and names the legacy one once", () => {
+  const result = resolveContinuedCare(legacyOverview, { followUpIds: [1, 2], includeFollowUpConditions: true });
+  assert.deepEqual(result.continuedFollowUpTaskIds, [1, 2]);
+  assert.deepEqual(result.continuedMonitorings.map((m) => m.id), [6]);
+  assert.deepEqual(result.legacyConditionNames, ["Hypertension"]);
+});
+
+test("a legacy monitoringId passed directly is dropped and reported", () => {
+  const result = resolveContinuedCare(legacyOverview, { monitoringIds: [4, 5] });
+  assert.deepEqual(result.continuedMonitorings.map((m) => m.id), [5]);
+  assert.deepEqual(result.droppedMonitoringIds, [4]);
+  assert.deepEqual(result.droppedLegacyMonitoringIds, [4]);
+  assert.deepEqual(result.legacyConditionNames, ["Asthma"]);
+  assert.match(droppedContinuedCareNotice(result), /pending RHU verification/);
+  assert.doesNotMatch(droppedContinuedCareNotice(result), /already completed or stopped/);
+});
+
+test("a legacy condition on a linked follow-up is reported without being continued", () => {
+  const result = resolveContinuedCare(legacyOverview, { monitoringIds: [6], includeLinkedFollowUps: true });
+  assert.deepEqual(result.continuedFollowUpTaskIds, [2]);
+  assert.deepEqual(result.continuedMonitorings.map((m) => m.id), [6]);
+  assert.deepEqual(result.legacyConditionNames, ["Hypertension"]);
+});
+
+test("no legacy conditions gives an empty list", () => {
+  assert.deepEqual(resolveContinuedCare(overview, { followUpIds: [1] }).legacyConditionNames, []);
 });

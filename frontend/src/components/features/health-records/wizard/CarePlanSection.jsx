@@ -319,9 +319,6 @@ export default function CarePlanSection({
                 <li key={monitoring.id} className="py-3">
                   <fieldset disabled={disabled} className="min-w-0">
                     <legend className="text-sm font-semibold text-[#111827]">{monitoring.conditionName}</legend>
-                    {monitoring.legacy && (
-                      <p className="mt-0.5 text-xs font-semibold text-[#92400E]">Legacy BHC Monitoring</p>
-                    )}
                     {closedByRhu && (
                       <p className="mt-0.5 text-xs text-[#6B7280]">
                         RHU marked this condition {conditionStatusLabel(monitoring.conditionStatus)}

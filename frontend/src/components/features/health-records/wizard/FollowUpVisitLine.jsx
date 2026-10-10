@@ -3,9 +3,10 @@ import { formatDate } from "../../../../utils/formatters";
 /**
  * One compact line per follow-up task this visit will complete. Opening the
  * workspace completes nothing: saving the visit fulfils them, and "Remove
- * link" is how the worker unlinks one before that.
+ * link" is how the worker unlinks one before that. A legacy condition on those
+ * follow-ups is named and left out of monitoring until the RHU verifies it.
  */
-export default function FollowUpVisitLine({ followUps = [], onRemove, disabled = false }) {
+export default function FollowUpVisitLine({ followUps = [], legacyConditionNames = [], onRemove, disabled = false }) {
   if (followUps.length === 0) return null;
   return (
     <ul aria-label="Follow-up visit" className="mb-4 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
@@ -33,6 +34,11 @@ export default function FollowUpVisitLine({ followUps = [], onRemove, disabled =
           </li>
         );
       })}
+      {legacyConditionNames.map((name) => (
+        <li key={`legacy-${name}`} className="py-2 text-[13px] text-[#92400E]">
+          {name} (Legacy — Pending RHU Verification) is not continued as monitoring.
+        </li>
+      ))}
     </ul>
   );
 }

@@ -95,6 +95,11 @@ export function activeMonitoringsFromOverview(overview) {
  *   visit; each is resolved against the overview's `monitoringRecommendations`
  *   (`startingConditions`), and one no longer recommended is dropped and
  *   reported in `droppedConditionIds`.
+ * - Legacy monitoring (`legacy: true`, no RHU-confirmed condition) is never
+ *   continued: the server rejects it. A selected follow-up is still continued
+ *   and its legacy condition names come back in `legacyConditionNames`; a
+ *   legacy `monitoringId` passed directly is dropped (also reported in
+ *   `droppedLegacyMonitoringIds`, a subset of `droppedMonitoringIds`).
  * - A follow-up may link no conditions (`conditions: []`): it is still
  *   continued, and only its source record is kept.
  */
@@ -131,6 +136,9 @@ export function resolveContinuedCare(
     const owners = new Map();
     for (const task of followUps) {
       for (const condition of followUpConditions(task)) {
+        // Legacy monitoring is pending RHU verification: the server rejects
+        // continuing it, so only the task is continued (legacyConditionNames).
+        if (condition.legacy === true) continue;
         const id = Number(condition.monitoringId);
         owners.set(id, (owners.get(id) || 0) + 1);
         if (!fromSelectedFollowUps.has(id)) {
@@ -156,11 +164,23 @@ export function resolveContinuedCare(
 
   const continuedMonitorings = [];
   const droppedMonitoringIds = [];
+  const droppedLegacyMonitoringIds = [];
+  const legacyNames = [];
   for (const id of uniqueIds([...fromSelectedFollowUps.keys(), ...monitoringIds])) {
     const monitoring = fromSelectedFollowUps.get(id) || active.get(id);
-    if (monitoring) continuedMonitorings.push(monitoring);
+    if (monitoring?.legacy === true) {
+      droppedMonitoringIds.push(id);
+      droppedLegacyMonitoringIds.push(id);
+      legacyNames.push(monitoring.conditionName);
+    } else if (monitoring) continuedMonitorings.push(monitoring);
     else droppedMonitoringIds.push(id);
   }
+  for (const task of followUps) {
+    for (const condition of followUpConditions(task)) {
+      if (condition.legacy === true) legacyNames.push(condition.conditionName || "");
+    }
+  }
+  const legacyConditionNames = [...new Set(legacyNames.filter(Boolean))];
 
   const monitoringStops = keepStopsFor(stops, continuedMonitorings);
 
@@ -186,6 +206,8 @@ export function resolveContinuedCare(
     monitoringStops,
     droppedFollowUpIds,
     droppedMonitoringIds,
+    droppedLegacyMonitoringIds,
+    legacyConditionNames,
     startingConditions,
     droppedConditionIds,
   };
@@ -239,9 +261,12 @@ function countLabel(count, singular, plural) {
  */
 export function droppedContinuedCareNotice({
   droppedFollowUpIds = [],
-  droppedMonitoringIds = [],
+  droppedMonitoringIds: droppedIds = [],
+  droppedLegacyMonitoringIds = [],
   droppedConditionIds = [],
 } = {}) {
+  const legacyIds = new Set(droppedLegacyMonitoringIds.map(Number));
+  const droppedMonitoringIds = droppedIds.filter((id) => !legacyIds.has(Number(id)));
   const sentences = [];
   const parts = [];
   if (droppedFollowUpIds.length) parts.push(countLabel(droppedFollowUpIds.length, "follow-up", "follow-ups"));
@@ -254,6 +279,14 @@ export function droppedContinuedCareNotice({
       `${parts.join(" and ")} ${one ? "is" : "are"} no longer active (already completed or stopped) and ${
         one ? "was" : "were"
       } removed from Care Plan.`,
+    );
+  }
+  if (legacyIds.size) {
+    const one = legacyIds.size === 1;
+    sentences.push(
+      `${countLabel(legacyIds.size, "legacy monitored condition", "legacy monitored conditions")} ${
+        one ? "is" : "are"
+      } pending RHU verification and cannot be continued, so ${one ? "it was" : "they were"} removed from Care Plan.`,
     );
   }
   if (droppedConditionIds.length) {

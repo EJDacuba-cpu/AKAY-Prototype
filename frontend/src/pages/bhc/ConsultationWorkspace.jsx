@@ -900,6 +900,8 @@ export default function ConsultationWorkspace() {
   // { id, sourceHealthRecordId } per continued follow-up; the first one's
   // source ITR becomes parent_health_record_id (display/compatibility only).
   const [continuedFollowUps, setContinuedFollowUps] = useState([]);
+  // Legacy conditions on the continued follow-ups: shown, never continued.
+  const [legacyConditionNames, setLegacyConditionNames] = useState([]);
   const [continuedMonitorings, setContinuedMonitorings] = useState([]);
   // True while a continued consultation is still reading the monitoring it
   // continues (route entry from Start Consultation / Record Visit, or a resume).
@@ -1648,6 +1650,7 @@ export default function ConsultationWorkspace() {
     });
     setContinuedFollowUpTaskIds(resolved.continuedFollowUpTaskIds);
     setContinuedFollowUps(resolved.continuedFollowUps);
+    setLegacyConditionNames(resolved.legacyConditionNames);
     setContinuedMonitorings(resolved.continuedMonitorings);
     setMonitoringStops((current) => keepStopsFor(current, resolved.continuedMonitorings));
     const stillContinued = new Set(resolved.continuedMonitorings.map((monitoring) => Number(monitoring.id)));
@@ -1765,6 +1768,7 @@ export default function ConsultationWorkspace() {
       const restoredCarePlan = restoreCarePlanDraft(payload.carePlan);
       setContinuedFollowUpTaskIds(restoredCarePlan.continuedFollowUpTaskIds);
       setContinuedFollowUps([]);
+      setLegacyConditionNames([]);
       setContinuedMonitorings(restoredCarePlan.continuedMonitorings);
       setMonitoringStops(restoredCarePlan.monitoringStops);
       setMonitoringReferrals(restoredCarePlan.monitoringReferrals);
@@ -3806,7 +3810,7 @@ export default function ConsultationWorkspace() {
     </LockedFormContent>
   ) : (
     <>
-    <FollowUpVisitLine followUps={continuedFollowUps} disabled={patientGateLocked} onRemove={removeFollowUpLink} />
+    <FollowUpVisitLine followUps={continuedFollowUps} legacyConditionNames={continuedFollowUps.length ? legacyConditionNames : []} disabled={patientGateLocked} onRemove={removeFollowUpLink} />
     <CarePlanSection
       concerns={diagnoses}
       continuedMonitorings={continuedMonitorings}
