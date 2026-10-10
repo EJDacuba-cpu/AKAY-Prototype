@@ -63,6 +63,13 @@ class HealthRecord extends Model
      */
     public const DIAGNOSIS_REPORT_TYPES = ['morbidity', 'notifiable'];
 
+    /**
+     * monitoring_data.consultationWorkflow value of a simplified BHC General
+     * Consultation, whose diagnoses[] are reporting-only entries
+     * (App\Services\ReportingEntries).
+     */
+    public const WORKFLOW_BHC_GENERAL_V2 = 'bhc_general_v2';
+
     protected $hidden = [
         'idempotency_key',
         'idempotency_hash',
@@ -92,6 +99,11 @@ class HealthRecord extends Model
         'items_planned' => 'array',
         'finalized_at' => 'datetime',
     ];
+
+    public function isBhcGeneralV2(): bool
+    {
+        return ($this->monitoring_data['consultationWorkflow'] ?? null) === self::WORKFLOW_BHC_GENERAL_V2;
+    }
 
     public function patient(): BelongsTo
     {

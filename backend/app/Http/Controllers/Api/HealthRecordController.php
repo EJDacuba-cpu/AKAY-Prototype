@@ -27,6 +27,7 @@ use App\Services\PatientConditions;
 use App\Services\ReferralCreationService;
 use App\Services\ReferralHoldService;
 use App\Services\ReferralRoutingService;
+use App\Services\ReportingEntries;
 use App\Support\StoredFunction;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\QueryException;
@@ -662,10 +663,7 @@ class HealthRecordController extends Controller
             return;
         }
 
-        $types = array_column($reported, 'reportAs');
-        $status = in_array('notifiable', $types, true)
-            ? 'notifiable'
-            : (in_array('morbidity', $types, true) ? 'morbidity' : 'not_included');
+        $status = ReportingEntries::visitStatus($reported);
 
         $monitoringData = is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : [];
         $monitoringData['morbidityReportingStatus'] = $status;
