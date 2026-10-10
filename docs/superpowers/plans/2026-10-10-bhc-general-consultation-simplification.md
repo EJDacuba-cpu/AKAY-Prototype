@@ -40,11 +40,16 @@
   - **Return dates come only from existing service forms.** Use only the dates those forms actually supply, as verified in Task 0 Step 4b. Never invent dates. H6 is preserved, and a required service return cannot be bypassed.
   - **The 403 test-setup blocker is resolved before any new feature-test result is relied on.**
   - RHU records, legacy consultations and historical drafts stay compatible.
-- **Execution gate:** after Task 0, report the baseline, migration findings and blockers to the developer, and wait for approval before Task 1.
+- **Execution gate:** after Task 0, report the baseline, migration findings and blockers to the developer, and wait for approval before Task 1. (Done: on 2026-10-10 the developer approved continuing with Task 0.5, then Task 1 onward.)
+- **Return dates (developer decision 2026-10-10, after Task 0):** Schedule BHC Follow-up starts unticked and is ticked only by the worker or by restoring a saved draft.
+  - Service-proposed dates (`immunizationNextScheduleDate`, FP `nextAppointmentDate`) are **suggestions only**. They stay in their service records, are never copied into `monitoring_data.followUpDate`, and never create a follow-up task unless the worker ticks the box.
+  - A date that differs from a suggestion gets a non-blocking warning.
+  - No new mandatory return rule is added.
+  - H6 is unchanged, and the date is always required when the box is ticked.
 
 ## Review Focus
 
-1. **A resumed draft must not re-tick a follow-up the worker unticked.** Example: an EPI visit whose next dose is pending, where the worker unticked Schedule BHC Follow-up and later resumes the draft. The checkbox stays unticked and the worker sees the required-date error. Test is in Task 7 (`restoreNextActions` sets `followUpTouched`).
+1. **An EPI next-dose suggestion never creates a follow-up on its own.** For an EPI visit with a proposed next-dose date and Schedule BHC Follow-up unticked, the payload has an empty `followUpDate` and an empty `followUpStatus`, and the server creates no follow-up task. Tests are in Task 7 (`nextActionsPayload`) and Task 3 (`test_v2_epi_next_dose_without_follow_up_creates_no_task`).
 2. **Unticking Refer to RHU keeps the typed referral values but sends no referral.** The facility and reason are kept in state and in the draft. The payload has no `referral` and `needs_referral: false`. Re-ticking shows the same values. Test is in Task 7 (`nextActionsPayload`).
 3. **Duplicate reporting entries are rejected.** Two entries whose names differ only by case or whitespace give an error in the frontend (Task 6) and a 422 on the backend (Task 2, `distinct:ignore_case` on the trimmed name).
 4. **RHU users can never use v2.** An RHU user who sends `consultation_workflow`, including one whose working facility is an RHU, gets a 422 and nothing is saved. Test is in Task 2.
@@ -85,6 +90,37 @@
   - Use `DB_CONNECTION=pgsql php artisan migrate --database=<disposable>`, then `migrate:rollback --step=3`, and record the output.
   - If no disposable PostgreSQL is available, write **UNVERIFIED — no disposable PostgreSQL available** and do not deploy.
 - [ ] **Step 7:** Commit with `docs: test baseline and pending migration review for consultation simplification`.
+
+---
+
+### Task 0.5: Targeted 403 test-setup sweep (tests only)
+
+**Files (tests only, no application code):**
+- Modify: `backend/tests/Feature/HealthRecordIdempotencyTest.php`
+- Modify: `backend/tests/Feature/HealthRecordDraftFinalizationTest.php`
+- Modify: `backend/tests/Feature/FollowUpConcurrencyTest.php`
+- Modify: `backend/tests/Feature/ReferralSubmissionGateTest.php`
+- Modify: `backend/tests/Feature/FacilityIsolationSecurityTest.php`
+- Modify: `docs/ai/test-baseline-2026-10-10.md` (a new "After Task 0.5" section)
+
+**Why:** these classes cover the `store()` path the v2 work changes, but today their BHW users have `permissions = null`. Such users get the encoder preset (`ActionPermissions.php:26-27`) and are rejected with a 403 (`EnforceActionPermissions.php:40`). Until that's fixed they give no regression coverage.
+
+**Rules:**
+- Give each test user the preset its test's intent needs. For a BHW that saves, refers or dispenses, that's `ActionPermissions::PRESETS['clinical']`. A test whose purpose is to check that a permission is *denied* keeps the restricted user. RHU users get the RHU preset that `RhuConditionConfirmationTest` uses.
+- **Never change application code.**
+- Classify each failure that remains after the setup fix:
+  - **(a) Clearly obsolete expectation.** The test asserts behavior that a later, documented change removed, for example a rule now enforced differently. Update the test, and add a one-line comment citing the current rule as file:line. Record the change in the baseline doc.
+  - **(b) Anything else.** This includes a possible real bug, any security, facility-isolation, idempotency or concurrency assertion, and any case you're unsure about. Leave the test unchanged, so it keeps failing. Record the name, the failure and your suspicion under "Open after Task 0.5".
+- **Never weaken or delete an assertion** about security, facility isolation, idempotency, concurrency or stock.
+
+- [ ] **Step 1:** For each class, read its setUp and user helpers, apply the preset fix, and run `--filter <Class>`. Record the before and after pass counts.
+- [ ] **Step 2:** Classify each remaining failure as (a) or (b), as defined above. Apply only (a) fixes.
+- [ ] **Step 3:** Run the full backend suite with JUnit (scratch output outside the repo). Diff the failing names against the Task 0 baseline.
+  - Expected: no new failing name anywhere.
+  - Fewer failing names in the five classes.
+  - Every remaining name in those classes is listed under "Open after Task 0.5" with its cause.
+- [ ] **Step 4:** Update the baseline doc. The new failing-name list becomes the baseline that later tasks are compared against.
+- [ ] **Step 5:** Commit with `test: give store()-path test users real permissions (targeted 403 sweep)`.
 
 ---
 
@@ -237,6 +273,7 @@ All other checks stay shared. Add a v2 block with these exact messages:
     - `test_v2_follow_up_only_creates_task_without_condition`: one `follow_up_tasks` row (use the table and columns `FollowUpTaskSchedulingTest` asserts on), and no `condition_monitorings` change.
     - `test_v2_referral_only_has_no_follow_up_task`: a referral with no follow-up. Assert the same follow-up task count that `CarePlanReferralFollowUpTest` asserts for a plain referral.
     - `test_v2_follow_up_and_referral_keep_the_follow_up`: `monitoring_data.followUpDate` stays set and the task exists. Then call `app(FollowUpTaskSyncService::class)->syncEligibleRecordsForUser($this->worker)` and assert the task is still active.
+    - `test_v2_epi_next_dose_without_follow_up_creates_no_task`: an EPI service visit with an `immunization_data` next-schedule date and no `bhc_follow_up` creates no follow-up task, and `monitoring_data.followUpDate` is null. If the server derives a task from `immunization_data` by itself, report it as DONE_WITH_CONCERNS. Don't change the legacy derivation.
     - `test_v2_bhc_follow_up_does_not_touch_monitoring`: a continued monitoring plus `bhc_follow_up`. The monitoring row's status and `updated_at` are unchanged apart from what the legacy continuation path writes. Compare with the same payload without `bhc_follow_up`.
     - `test_v2_acknowledgment_is_audited_with_multiple_issues_note`: an `audit_logs.description` LIKE '%Worker indicated multiple health issues.%'.
 - [ ] **Step 2:** Run them. Expected: FAIL.
@@ -363,26 +400,21 @@ Existing legacy keys stay.
 - Modify: `frontend/package.json` (add it to `test:consultation-steps`)
 
 **Interfaces (produces):**
-- State shape: `{ bhcFollowUp: boolean, referToRhu: boolean, referralMultipleIssues: boolean, followUpTouched: boolean }`.
-- `initialNextActions(): State`. Everything false.
-- `setFollowUpChecked(state, checked): State`. Sets `followUpTouched: true`.
+- State shape: `{ bhcFollowUp: boolean, referToRhu: boolean, referralMultipleIssues: boolean }`.
+- `initialNextActions(): State`. Everything false. Nothing in this module ever ticks `bhcFollowUp` except `setFollowUpChecked` and `restoreNextActions`.
+- `setFollowUpChecked(state, checked): State`.
 - `setReferChecked(state, checked): State`. Unticking also clears `referralMultipleIssues`.
-- `returnRequirement({ selectedPrograms, monitorsAny, immunizationNextDate }): { required: boolean, reasonExempt: boolean, mandatoryDate: string }`.
-  - `required = monitorsAny || Boolean(immunizationNextDate)`;
-  - `reasonExempt = selectedPrograms.length > 0 || monitorsAny`;
-  - `mandatoryDate = immunizationNextDate || ""`.
-- `applyReturnRequirement(state, { required, previouslyRequired }): State`. Ticks `bhcFollowUp` only when `required && !previouslyRequired && !state.followUpTouched`. Otherwise it returns `state` unchanged (same reference).
-- `followUpDateConflict(enteredDate, mandatoryDate): boolean`. True when both are set and they differ.
+- `followUpReasonExempt({ selectedPrograms, monitorsAny }): boolean`. `selectedPrograms.length > 0 || monitorsAny` (H6).
+- `serviceDateSuggestions({ immunizationNextDate, familyPlanningNextDate }): Array<{ source: "EPI next dose" | "FP next appointment", date: string }>`. Only non-blank dates, in that order.
+- `followUpDateWarnings(enteredDate, suggestions): string[]`. For each suggestion whose date differs from a non-blank `enteredDate`, returns `` `The follow-up date differs from the ${source} (${date}).` ``. These are warnings: never blocking, never merged into errors.
 - `referralItemCount({ referToRhu, monitoringReferralIds }): number`.
 - `referralNeedsAcknowledgment({ count, multipleIssues }): boolean`. `count >= 2 || multipleIssues === true`.
-- `nextActionErrors({ state, followUp: { date, reason }, referral: { reason }, requirement, acknowledged, count, monitoringReferralIds }): Record<string, string>`. Keys and exact messages:
+- `nextActionErrors({ state, followUp: { date, reason }, referral: { reason }, reasonExempt, acknowledged, count, multipleIssues }): Record<string, string>`. Keys and exact messages:
 
 | Key | Message |
 |---|---|
 | `followUpDate` | "Set the follow-up date." |
 | `followUpReason` | "Follow-up reason is required." (not when `reasonExempt`) |
-| `followUpRequired` | "This visit has a required return date (`<mandatoryDate>`). Keep Schedule BHC Follow-up selected." (unticked while `mandatoryDate` is set) |
-| `followUpDateConflict` | "The follow-up date differs from the required return date `<mandatoryDate>`. One consultation has one follow-up — choose one date." |
 | `reasonForReferral` | "Reason for referral is required." |
 | `referralAcknowledged` | the existing acknowledgment message from `sharedAcknowledgmentErrors` |
 
@@ -391,18 +423,18 @@ Existing legacy keys stay.
   - With the follow-up unticked, the follow-up fields are `""` and `followUpStatus` is `""`, so the workspace keeps its existing default.
   - The caller never sends `referral` when `needs_referral` is false.
 - `nextActionsDraft(state): { bhcFollowUp, referToRhu, referralMultipleIssues }`.
-- `restoreNextActions(draftCarePlan): State`. Sets `followUpTouched: true` when the draft has a boolean `bhcFollowUp`.
+- `restoreNextActions(draftCarePlan): State`. Restores the three booleans; any missing or non-boolean value becomes false.
 - `nextStepsReviewRows({ state, followUp, referral, coverage, entries, continuedLink }): Array<{ label, value }>`. Omits empty rows.
   - Labels: "BHC Follow-up", "RHU Referral", "Covers", "Reporting", "Completes follow-up".
   - "Reporting" has one value line per entry: `name — formatEntryDestinations`.
 
 - [ ] **Step 1: Write failing tests.** Each assertion uses the exact values above:
-  - auto-tick on the false→true transition;
-  - no re-tick after an untick;
-  - no tick when it's already required (previouslyRequired);
-  - `restoreNextActions({bhcFollowUp:false})` followed by `applyReturnRequirement` → stays unticked (Review Focus 1);
-  - a required date blocks the untick;
-  - conflict detection (`"2026-10-20"` vs `"2026-11-07"` → true; equal → false; blank → false);
+  - `initialNextActions()` is all false;
+  - an EPI visit with suggestion `"2026-11-07"` and the follow-up unticked → the payload `monitoring_data.followUpDate === ""` and `followUpStatus === ""` (Review Focus 1);
+  - `restoreNextActions({bhcFollowUp:true})` → ticked; `restoreNextActions({})` → all false;
+  - `serviceDateSuggestions` drops blanks and keeps the order;
+  - `followUpDateWarnings("2026-10-20", [{source:"EPI next dose", date:"2026-11-07"}])` → `["The follow-up date differs from the EPI next dose (2026-11-07)."]`; equal date → `[]`; blank entered date → `[]`;
+  - `nextActionErrors` never contains a warning key;
   - H6: Maternal selected, ticked, no reason → no `followUpReason` error but a `followUpDate` error when blank;
   - general visit, ticked, no reason → `followUpReason` error;
   - count and acknowledgment: refer only → 1, false; refer + 1 monitoring → 2, true; refer + multipleIssues → true;
@@ -430,7 +462,7 @@ Existing legacy keys stay.
 - `ReportingEntriesField({ entries, errors, disabled, onChange(entries) })`. Renders the Reporting section with the exact copy from the Global Constraints.
 - `NextStepsSection` props:
   - Kept from CarePlanSection: `continuedMonitorings`, `startingConditions`, `stops`, `referralFacilityField`, `errors`, `disabled`, the monitoring callbacks, and `monitoringNotes` with `onMonitoringNotesChange`.
-  - New: `nextActions`, `onFollowUpCheckedChange(checked)`, `onReferCheckedChange(checked)`, `onMultipleIssuesChange(checked)`, `followUp {date,time,reason}`, `onFollowUpChange`, `followUpHint`, `mandatoryDate`, `onUseMandatoryDate()`, `referral {reason, urgencyLevel}`, `onReferralChange`, `coverage`, `acknowledgmentRequired`, `referralAcknowledged`, `onAcknowledgeChange(checked)`, `treatmentSlot` (ReactNode: Actions Taken + FP supplies + dispensed medicines, rendered by the workspace), and `reportingSlot` (ReactNode).
+  - New: `nextActions`, `onFollowUpCheckedChange(checked)`, `onReferCheckedChange(checked)`, `onMultipleIssuesChange(checked)`, `followUp {date,time,reason}`, `onFollowUpChange`, `followUpHint`, `suggestions` (from `serviceDateSuggestions`), `onUseSuggestedDate(date)` (fills the date only), `warnings` (from `followUpDateWarnings`, shown non-blocking), `referral {reason, urgencyLevel}`, `onReferralChange`, `coverage`, `acknowledgmentRequired`, `referralAcknowledged`, `onAcknowledgeChange(checked)`, `treatmentSlot` (ReactNode: Actions Taken + FP supplies + dispensed medicines, rendered by the workspace), and `reportingSlot` (ReactNode).
   - Removed: `concerns`, `onCarePlanChange`, `onBhcFollowUpChange`, `followUpAcknowledged`, and the concern rows.
   - Internal `ReferralFields`, `FollowUpFields`, `Covers`, `Acknowledgment` and `StopReason` are reused.
 
@@ -445,7 +477,9 @@ Existing legacy keys stay.
   - `nextActions` state comes from `initialNextActions()`.
   - The `assessmentNotes` state is kept read-only, for the converted-draft text.
   - Remove the per-concern acknowledgment state.
-- **Effect:** when `returnRequirement(...).required` changes, call `applyReturnRequirement` with the previous value, kept in a ref. Never call it on every render.
+- **No auto-tick:** nothing ticks `bhcFollowUp` except the checkbox and draft restore.
+  - For v2, remove the effect that forces `followUpStatus` from `followUpDate` (around `ConsultationWorkspace.jsx:1303-1306`). The status now comes from `nextActionsPayload`.
+  - The v2 payload must not use the legacy `followUpDate || immunizationNextScheduleDate` fallback. Service dates stay in `immunization_data` and `family_planning_data` only.
 - **Referral reason:** call `buildReferralReason([], continuedMonitorings, monitoringReferrals)` together with `shouldRegenerateReferralReason`, so only a monitoring referral prefills. A general referral is never prefilled from the Chief Complaint or HPI.
 - **Validation:** replace the concern and duplicate checks for the next step with `nextActionErrors(...)` merged with `reportingEntryErrors(...)`. Remove the frontend "A health concern is required…" rule.
 - **Payload (`handleSubmit`):**

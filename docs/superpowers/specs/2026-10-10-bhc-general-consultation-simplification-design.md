@@ -1,7 +1,7 @@
 # BHC General Consultation Simplification — Design (approved 2026-10-10)
 
 **Date:** 2026-10-10
-**Status:** Approved 2026-10-10 (G3 corrected). Implementation plan pending approval.
+**Status:** Approved 2026-10-10 (G3 corrected). Sections B3 and C amended 2026-10-10 after Task 0: return dates are suggestions only.
 **Builds on:** `2026-10-09-consultation-care-plan-workflow-revision-design.md` (branch `care-plan-workflow-revision`, unmerged, undeployed). This design **supersedes that spec's per-concern Care Plan Action UI** (H4, H5, the concern part of H7, and its release 2). Every other part of it stays: H1 transition reads, H2, H3 legacy monitoring review, H6 and the visit type.
 **Branch:** `bhc-general-consultation-simplification`, cut from `care-plan-workflow-revision`. The two branches merge together.
 
@@ -52,7 +52,8 @@ Goal: digitize the BHC Daily Log Sheet workflow without making the health worker
 - **Schedule BHC Follow-up:** `care_plan.bhc_follow_up: true`. The controller stores `monitoring_data.bhcFollowUp = true` and sets `followUpStatus = 'Follow-up Required'`.
   - `followUpDate` is **always** required when it is ticked.
   - `followUpReason` is required unless the return covers only a selected service or continued monitoring (H6). The exemption applies to the reason only, never to the date.
-- When the follow-up is not ticked, a service's required return date (e.g. the EPI next dose) is still enforced by the existing rules.
+- No service or monitoring requires a return date (verified in Task 0). Service-proposed dates (the EPI next dose, and the FP next appointment where present) stay in their service records. They are never copied into `monitoring_data.followUpDate`, and never turn into a follow-up task, unless the worker ticks Schedule BHC Follow-up. No new mandatory return rule is added without RHU/MHO validation.
+- **Consequence (accepted 2026-10-10):** in the legacy flow, an EPI visit's next-dose date became the visit's follow-up date and so created a follow-up task. In v2 it creates one only when the worker ticks Schedule BHC Follow-up. Legacy records and their tasks are unchanged.
 - `CarePlan::keepsFollowUpWithReferral` also returns true for `monitoring_data.bhcFollowUp === true`, so ticking both keeps the follow-up. `FollowUpTaskSyncService` re-sync reads the same stored flag.
 - `bhcFollowUp` never reads or writes `condition_monitorings`. Continue, stop and refer of monitoring stay on their own `care_plan.*` keys and services.
 - The one-follow-up and one-referral per consultation limits are unchanged.
@@ -108,9 +109,10 @@ Patient Interview → Physical Examination → Medication, Treatment & Next Step
      - Each entry has a "Reported Health Problem / Suspected Case" text field (no suggestions, never prefilled) and three checkboxes: Morbidity Report, Notifiable Disease Report and Community-Based Surveillance. There is a Remove link per entry.
 - **Behavior**
   - Unticking a box hides its form but keeps the values in state and in the draft. Submit sends only the ticked actions.
-  - Follow-up is auto-ticked **once**, when a selected service or continued monitoring starts requiring a return. It is never ticked on re-render, never re-ticked after the worker unticks it, and a restored draft keeps its saved state.
-  - Unticking while a service requires a return date shows an inline error.
-  - If two sources propose different return dates, an inline conflict warning appears and finalizing is blocked until the worker sets one date. Nothing is overwritten.
+  - Schedule BHC Follow-up starts unticked. Only the worker ticks it, or a saved draft restores it. Nothing ticks it automatically: not a service, not monitoring, not a re-render.
+  - Service-proposed return dates are shown in the follow-up area as suggestions, e.g. "EPI next dose: <date> — Use this date". Using one fills the follow-up date only. It does not tick the box or create a task.
+  - If the follow-up date differs from a suggested service date, a **non-blocking** warning appears. Finalizing is not blocked and nothing is overwritten.
+  - Selecting Maternal Care, FP or EPI never ticks the follow-up, starts an enrollment or schedules a return.
   - There is no "No Further BHC Action" card and no "No health concern was recorded" text.
 4. **Review & Finalize.** Rows with no value are omitted.
    - *Patient Interview:* CC, HPI, Background updates and services.
@@ -191,9 +193,9 @@ Patient Interview → Physical Examination → Medication, Treatment & Next Step
   - v2, legacy, visit-status-only and HFMD records;
   - no double counting.
 - **Next actions:**
-  - auto-tick happens once, and unticking stays unticked;
-  - a required service date is enforced;
-  - date conflicts are caught;
+  - the follow-up starts unticked and nothing ticks it automatically;
+  - a service-date suggestion fills only the date;
+  - the non-blocking date-difference warning;
   - an unticked action is left out of the payload but kept in the draft.
 - **Scenario-level payload tests:**
   - General Consultation;
@@ -315,7 +317,7 @@ Each step that changes behavior is test-first. Each step ends with its focused t
 | 4 | Draft schema for the v2 keys. | `HealthRecordDraftPayloadService.php` |
 | 5 | Backend v2 feature tests (F2) with real permissions, then a full-suite comparison by name. | `tests/Feature/BhcGeneralConsultationV2Test.php` and related |
 | 6 | Frontend `reportingEntries.js`. Rewire `diagnosisReporting`, `surveillance`, `healthRecordService` and `BHCReports` (including the column label). | `utils/`, `pages/bhc/BHCReports.jsx` |
-| 7 | Next-actions state helpers, test-first: auto-tick, sticky untick, required service date, date conflicts, payload builder. | `utils/nextActions.js` |
+| 7 | Next-actions state helpers, test-first: checkbox state, service-date suggestions, non-blocking date warning, payload builder. | `utils/nextActions.js` |
 | 8 | Steps and UI: Interview copy; remove Assessment from Physical Examination; step 3 (monitoring block, Actions Taken and medicines, Next Actions, Reporting); `consultation_workflow` in the payload. | `ConsultationWorkspace.jsx`, `consultationSteps.js`, a new `wizard/NextStepsSection.jsx` |
 | 9 | Draft conversion on restore (legacy → v2, Earlier draft notes). | `utils/draftConversion.js`, `ConsultationWorkspace.jsx` |
 | 10 | Review & Finalize with the v2 groups. | `ConsultationWorkspace.jsx` |
