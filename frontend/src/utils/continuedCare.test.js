@@ -330,6 +330,7 @@ test("removeContinuedFollowUp works on follow-ups alone and ignores an id that i
   assert.deepEqual(removeContinuedFollowUp(state, 99).continuedFollowUpTaskIds, [12, 13]);
   assert.deepEqual(removeContinuedFollowUp({}, 1), {
     continuedFollowUpTaskIds: [], continuedFollowUps: [], continuedMonitorings: [], monitoringStops: {}, monitoringReferrals: [],
+    legacyNamesByFollowUp: {}, legacyConditionNames: [],
   });
 });
 
@@ -390,6 +391,27 @@ test("a legacy condition on a linked follow-up is reported without being continu
   assert.deepEqual(result.continuedFollowUpTaskIds, [2]);
   assert.deepEqual(result.continuedMonitorings.map((m) => m.id), [6]);
   assert.deepEqual(result.legacyConditionNames, ["Hypertension"]);
+});
+
+test("removing a follow-up keeps only the legacy names a remaining follow-up still owns", () => {
+  const twoLegacy = {
+    pendingFollowUps: [
+      { id: 1, dueDate: "2026-10-01", sourceHealthRecordId: 50, conditions: [{ monitoringId: 3, conditionName: "Hypertension", legacy: true }] },
+      { id: 2, dueDate: "2026-10-02", sourceHealthRecordId: 51, conditions: [{ monitoringId: 4, conditionName: "Asthma", legacy: true }] },
+    ],
+    monitoringWithoutFollowUp: [],
+  };
+  const r = resolveContinuedCare(twoLegacy, { followUpIds: [1, 2], includeFollowUpConditions: true });
+  assert.deepEqual(r.legacyConditionNames, ["Hypertension", "Asthma"]);
+  assert.deepEqual(r.legacyNamesByFollowUp, { 1: ["Hypertension"], 2: ["Asthma"] });
+
+  const afterOne = removeContinuedFollowUp(r, 1);
+  assert.deepEqual(afterOne.legacyConditionNames, ["Asthma"]);
+  assert.deepEqual(afterOne.legacyNamesByFollowUp, { 2: ["Asthma"] });
+
+  const afterBoth = removeContinuedFollowUp({ ...r, ...afterOne }, 2);
+  assert.deepEqual(afterBoth.legacyConditionNames, []);
+  assert.deepEqual(afterBoth.legacyNamesByFollowUp, {});
 });
 
 test("no legacy conditions gives an empty list", () => {

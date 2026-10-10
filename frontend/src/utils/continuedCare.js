@@ -97,7 +97,8 @@ export function activeMonitoringsFromOverview(overview) {
  *   reported in `droppedConditionIds`.
  * - Legacy monitoring (`legacy: true`, no RHU-confirmed condition) is never
  *   continued: the server rejects it. A selected follow-up is still continued
- *   and its legacy condition names come back in `legacyConditionNames`; a
+ *   and its legacy condition names come back in `legacyConditionNames`
+ *   (per task in `legacyNamesByFollowUp`, so unlinking one can update them); a
  *   legacy `monitoringId` passed directly is dropped (also reported in
  *   `droppedLegacyMonitoringIds`, a subset of `droppedMonitoringIds`).
  * - A follow-up may link no conditions (`conditions: []`): it is still
@@ -166,6 +167,7 @@ export function resolveContinuedCare(
   const droppedMonitoringIds = [];
   const droppedLegacyMonitoringIds = [];
   const legacyNames = [];
+  const legacyNamesByFollowUp = {};
   for (const id of uniqueIds([...fromSelectedFollowUps.keys(), ...monitoringIds])) {
     const monitoring = fromSelectedFollowUps.get(id) || active.get(id);
     if (monitoring?.legacy === true) {
@@ -177,7 +179,11 @@ export function resolveContinuedCare(
   }
   for (const task of followUps) {
     for (const condition of followUpConditions(task)) {
-      if (condition.legacy === true) legacyNames.push(condition.conditionName || "");
+      if (condition.legacy === true) {
+        legacyNames.push(condition.conditionName || "");
+        const owned = (legacyNamesByFollowUp[Number(task.id)] ||= []);
+        if (condition.conditionName && !owned.includes(condition.conditionName)) owned.push(condition.conditionName);
+      }
     }
   }
   const legacyConditionNames = [...new Set(legacyNames.filter(Boolean))];
@@ -208,6 +214,7 @@ export function resolveContinuedCare(
     droppedMonitoringIds,
     droppedLegacyMonitoringIds,
     legacyConditionNames,
+    legacyNamesByFollowUp,
     startingConditions,
     droppedConditionIds,
   };
@@ -222,7 +229,8 @@ export function keepStopsFor(stops = {}, continuedMonitorings = []) {
 /**
  * Unlink one continued follow-up before saving: it is dropped, and so are the
  * monitorings that came in only through it (`viaFollowUpId`), with their stops
- * and RHU referral ticks. Monitorings the worker ticked directly stay. Pure.
+ * and RHU referral ticks, and recomputes the legacy condition names from the
+ * follow-ups that remain. Monitorings the worker ticked directly stay. Pure.
  */
 export function removeContinuedFollowUp(
   {
@@ -231,17 +239,27 @@ export function removeContinuedFollowUp(
     continuedMonitorings = [],
     monitoringStops = {},
     monitoringReferrals = [],
+    legacyNamesByFollowUp = {},
   } = {},
   id,
 ) {
   const removed = Number(id);
+  const remainingTaskIds = continuedFollowUpTaskIds.filter((taskId) => Number(taskId) !== removed);
+  const remainingLegacyNames = Object.fromEntries(
+    remainingTaskIds
+      .filter((taskId) => legacyNamesByFollowUp[Number(taskId)]?.length)
+      .map((taskId) => [Number(taskId), legacyNamesByFollowUp[Number(taskId)]]),
+  );
   const keptMonitorings = continuedMonitorings.filter((monitoring) => Number(monitoring.viaFollowUpId) !== removed);
   return {
-    continuedFollowUpTaskIds: continuedFollowUpTaskIds.filter((taskId) => Number(taskId) !== removed),
+    continuedFollowUpTaskIds: remainingTaskIds,
     continuedFollowUps: continuedFollowUps.filter((task) => Number(task.id) !== removed),
     continuedMonitorings: keptMonitorings,
     monitoringStops: keepStopsFor(monitoringStops, keptMonitorings),
     monitoringReferrals: keepReferralsFor(monitoringReferrals, keptMonitorings),
+    legacyNamesByFollowUp: remainingLegacyNames,
+    // Only names a remaining follow-up still owns stay on the "legacy" line.
+    legacyConditionNames: [...new Set(Object.values(remainingLegacyNames).flat())],
   };
 }
 

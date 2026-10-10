@@ -331,6 +331,20 @@ export function getErrorOwnerStepKey(errorKey) {
   return null;
 }
 
+// Server-only 422 keys, renamed to the field keys Care Plan reads.
+const SERVER_ERROR_KEYS = {
+  "monitoring_data.followUpReason": "followUpReason",
+  "monitoring_data.followUpDate": "followUpDate",
+  "care_plan.shared_referral_acknowledged": "referralAcknowledged",
+};
+
+/** Renames server validation keys to the form's field keys; other keys pass through. */
+export function remapServerErrorKeys(errors) {
+  return Object.fromEntries(
+    Object.entries(errors || {}).map(([key, message]) => [SERVER_ERROR_KEYS[key] || key, message]),
+  );
+}
+
 /** The subset of errors whose field lives on the given screen. */
 export function pickErrorsForStep(errors, stepKey) {
   return Object.fromEntries(

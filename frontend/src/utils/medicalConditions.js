@@ -73,8 +73,10 @@ export function mapPatientConditions(data) {
 
 /**
  * Groups conditions for display:
- * - confirmed: active/controlled conditions (kind "rhu") + legacy monitorings
- *   (kind "legacy-monitoring"), which were monitored before confirmation existed;
+ * - confirmed: active/controlled conditions (kind "rhu"); alerts;
+ * - legacyPending: legacy monitorings (kind "legacy-monitoring"), monitored
+ *   before confirmation existed and pending RHU verification; listed apart from
+ *   verified monitoring and never alert;
  * - underEvaluation / past: separate, and never alert;
  * - unverified: background entries not marked Patient-reported (legacy
  *   consultation entries) that match no condition or legacy monitoring, so a
@@ -106,8 +108,8 @@ export function groupMedicalConditions({
   return {
     confirmed: [
       ...conditions.filter((c) => CONFIRMED_STATUSES.has(c.status)).map((c) => ({ ...c, kind: "rhu" })),
-      ...legacyMonitorings.map((m) => ({ ...m, kind: "legacy-monitoring" })),
     ],
+    legacyPending: legacyMonitorings.map((m) => ({ ...m, kind: "legacy-monitoring" })),
     underEvaluation: conditions.filter((c) => c.status === "under_evaluation").map((c) => ({ ...c, kind: "rhu" })),
     unverified,
     patientReported,
@@ -115,7 +117,7 @@ export function groupMedicalConditions({
   };
 }
 
-/** Condition names that raise an alert: confirmed only. */
+/** Condition names that raise an alert: RHU-confirmed only (not legacy pending verification). */
 export function alertConditionNames(groups) {
   return (groups?.confirmed || []).map((c) => c.conditionName);
 }

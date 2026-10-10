@@ -96,7 +96,7 @@ function MedicationsBody({ summary, isLoading }) {
  */
 export default function PatientFactsSections({ background, conditions, records = [], recordsLoading = false, findings }) {
   const groups = conditions?.groups;
-  const conditionCount = (groups?.confirmed.length || 0) + (groups?.underEvaluation.length || 0);
+  const conditionCount = (groups?.confirmed.length || 0) + (groups?.legacyPending?.length || 0) + (groups?.underEvaluation.length || 0);
   const allergyText = String(background?.allergies || "").trim();
   const allergyRecorded = Boolean(allergyText) && !NO_ALLERGY_PATTERN.test(allergyText);
   const medicines = summarizeMedicines(records);

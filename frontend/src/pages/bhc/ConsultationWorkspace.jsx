@@ -152,6 +152,7 @@ import {
   EXIT_STEP,
   buildConsultationSteps,
   findFirstErrorStepKey,
+  remapServerErrorKeys,
   getErrorOwnerStepKey,
   getFormSequence,
   getGlobalStepKey,
@@ -902,6 +903,8 @@ export default function ConsultationWorkspace() {
   const [continuedFollowUps, setContinuedFollowUps] = useState([]);
   // Legacy conditions on the continued follow-ups: shown, never continued.
   const [legacyConditionNames, setLegacyConditionNames] = useState([]);
+  // The same names per follow-up, so unlinking one can drop its names from the line.
+  const [legacyNamesByFollowUp, setLegacyNamesByFollowUp] = useState({});
   const [continuedMonitorings, setContinuedMonitorings] = useState([]);
   // True while a continued consultation is still reading the monitoring it
   // continues (route entry from Start Consultation / Record Visit, or a resume).
@@ -1651,6 +1654,7 @@ export default function ConsultationWorkspace() {
     setContinuedFollowUpTaskIds(resolved.continuedFollowUpTaskIds);
     setContinuedFollowUps(resolved.continuedFollowUps);
     setLegacyConditionNames(resolved.legacyConditionNames);
+    setLegacyNamesByFollowUp(resolved.legacyNamesByFollowUp);
     setContinuedMonitorings(resolved.continuedMonitorings);
     setMonitoringStops((current) => keepStopsFor(current, resolved.continuedMonitorings));
     const stillContinued = new Set(resolved.continuedMonitorings.map((monitoring) => Number(monitoring.id)));
@@ -1769,6 +1773,7 @@ export default function ConsultationWorkspace() {
       setContinuedFollowUpTaskIds(restoredCarePlan.continuedFollowUpTaskIds);
       setContinuedFollowUps([]);
       setLegacyConditionNames([]);
+      setLegacyNamesByFollowUp({});
       setContinuedMonitorings(restoredCarePlan.continuedMonitorings);
       setMonitoringStops(restoredCarePlan.monitoringStops);
       setMonitoringReferrals(restoredCarePlan.monitoringReferrals);
@@ -3393,12 +3398,12 @@ export default function ConsultationWorkspace() {
       }
       if (error?.status === 422 && error?.errors) {
         clearOfficialSubmission();
-        const backendErrors = Object.fromEntries(
+        const backendErrors = remapServerErrorKeys(Object.fromEntries(
           Object.entries(error.errors).map(([field, messages]) => [
             field,
             Array.isArray(messages) ? messages[0] : String(messages),
           ]),
-        );
+        ));
         if (setValidationErrorsAndFocus(backendErrors)) return;
       }
       if (isConnectionError(error)) {
@@ -3778,11 +3783,20 @@ export default function ConsultationWorkspace() {
   // Unlink a follow-up before saving; saving is what completes the rest.
   function removeFollowUpLink(id) {
     const next = removeContinuedFollowUp(
-      { continuedFollowUpTaskIds, continuedFollowUps, continuedMonitorings, monitoringStops, monitoringReferrals },
+      {
+        continuedFollowUpTaskIds,
+        continuedFollowUps,
+        continuedMonitorings,
+        monitoringStops,
+        monitoringReferrals,
+        legacyNamesByFollowUp,
+      },
       id,
     );
     setContinuedFollowUpTaskIds(next.continuedFollowUpTaskIds);
     setContinuedFollowUps(next.continuedFollowUps);
+    setLegacyNamesByFollowUp(next.legacyNamesByFollowUp);
+    setLegacyConditionNames(next.legacyConditionNames);
     setContinuedMonitorings(next.continuedMonitorings);
     setMonitoringStops(next.monitoringStops);
     setMonitoringReferrals(next.monitoringReferrals);

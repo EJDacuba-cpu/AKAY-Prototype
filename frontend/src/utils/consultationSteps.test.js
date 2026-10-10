@@ -12,6 +12,7 @@ import {
   buildConsultationSteps,
   deferUntilProgramDecision,
   findFirstErrorStepKey,
+  remapServerErrorKeys,
   getErrorOwnerStepKey,
   getFormSequence,
   getServiceFormReturnTarget,
@@ -469,4 +470,17 @@ test("care plan action and acknowledgment errors route to Care Plan & Next Steps
   const order = getStepOrder([], []);
   assert.equal(findFirstErrorStepKey({ referralAcknowledged: "x" }, order), NEXT_STEP);
   assert.equal(findFirstErrorStepKey({ "carePlanAction.d2": "x", followUpAcknowledged: "y" }, order), NEXT_STEP);
+});
+
+test("server-only 422 keys are renamed to the Care Plan field keys and route to Care Plan", () => {
+  const remapped = remapServerErrorKeys({
+    "monitoring_data.followUpReason": "a",
+    "monitoring_data.followUpDate": "b",
+    "care_plan.shared_referral_acknowledged": "c",
+    chiefComplaint: "d",
+  });
+  assert.deepEqual(remapped, { followUpReason: "a", followUpDate: "b", referralAcknowledged: "c", chiefComplaint: "d" });
+  assert.equal(findFirstErrorStepKey({ "care_plan.shared_referral_acknowledged": "c" }, getStepOrder([], [])), "");
+  assert.equal(findFirstErrorStepKey(remapServerErrorKeys({ "care_plan.shared_referral_acknowledged": "c" }), getStepOrder([], [])), NEXT_STEP);
+  assert.deepEqual(remapServerErrorKeys(), {});
 });

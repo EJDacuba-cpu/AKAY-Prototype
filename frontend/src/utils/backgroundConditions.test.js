@@ -59,13 +59,19 @@ test("a condition followed in this visit is flagged addressed, others are not", 
 
 test("a followed legacy monitoring is flagged addressed", () => {
   const legacy = { id: 4, conditionName: "Hypertension", conditionIdentity: "hypertension", startedAt: "2026-09-01" };
-  const { confirmed } = backgroundConditionGroups({ legacyMonitorings: [legacy], followed: [followedHtn], registry });
-  assert.deepEqual(confirmed.map((c) => [c.kind, c.addressed]), [["legacy-monitoring", true]]);
+  const { confirmed, legacyPending } = backgroundConditionGroups({
+    legacyMonitorings: [legacy],
+    followed: [followedHtn],
+    registry,
+  });
+  assert.deepEqual(confirmed, []);
+  assert.deepEqual(legacyPending.map((c) => [c.kind, c.addressed]), [["legacy-monitoring", true]]);
 });
 
 test("nothing documented leaves every group empty", () => {
   assert.deepEqual(backgroundConditionGroups({ registry }), {
     confirmed: [],
+    legacyPending: [],
     underEvaluation: [],
     unverified: [],
     patientReported: [],

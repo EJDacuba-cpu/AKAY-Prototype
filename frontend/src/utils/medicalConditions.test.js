@@ -42,13 +42,15 @@ test("an entry with no source is unverified; Patient-reported entries are their 
   assert.deepEqual(g.patientReported.map((d) => [d.name, d.note, d.index]), [["Migraine", "since 2020", 1]]);
 });
 
-test("legacy monitoring is confirmed/monitored but labelled legacy", () => {
+test("legacy monitoring is listed apart from confirmed/monitored and never alerts", () => {
   const g = groupMedicalConditions({ legacyMonitorings: [{ id: 1, conditionName: "Hypertension" }] });
-  assert.equal(g.confirmed[0].kind, "legacy-monitoring");
-  assert.equal(g.confirmed[0].conditionName, "Hypertension");
+  assert.deepEqual(g.confirmed, []);
+  assert.equal(g.legacyPending[0].kind, "legacy-monitoring");
+  assert.equal(g.legacyPending[0].conditionName, "Hypertension");
+  assert.deepEqual(alertConditionNames(g), []);
 });
 
-test("active and controlled conditions are confirmed (rhu), ahead of legacy monitoring", () => {
+test("active and controlled conditions are confirmed (rhu); legacy monitoring is separate", () => {
   const g = groupMedicalConditions({
     conditions: [
       condition({ id: 1, status: "controlled" }),
@@ -56,7 +58,8 @@ test("active and controlled conditions are confirmed (rhu), ahead of legacy moni
     ],
     legacyMonitorings: [{ id: 9, conditionName: "Tuberculosis" }],
   });
-  assert.deepEqual(g.confirmed.map((c) => [c.kind, c.id]), [["rhu", 1], ["rhu", 2], ["legacy-monitoring", 9]]);
+  assert.deepEqual(g.confirmed.map((c) => [c.kind, c.id]), [["rhu", 1], ["rhu", 2]]);
+  assert.deepEqual(g.legacyPending.map((c) => [c.kind, c.id]), [["legacy-monitoring", 9]]);
 });
 
 test("an unverified entry matching a confirmed condition is not listed twice", () => {
@@ -91,12 +94,14 @@ test("under evaluation and past are separate and never alert", () => {
   });
   assert.deepEqual(g.underEvaluation.map((c) => c.id), [2]);
   assert.deepEqual(g.past.map((c) => c.id), [3, 4]);
-  assert.deepEqual(alertConditionNames(g), ["Hypertension", "Tuberculosis"]);
+  assert.deepEqual(g.legacyPending.map((c) => c.id), [8]);
+  assert.deepEqual(alertConditionNames(g), ["Hypertension"]);
 });
 
 test("grouping tolerates missing input", () => {
   assert.deepEqual(groupMedicalConditions(), {
     confirmed: [],
+    legacyPending: [],
     underEvaluation: [],
     unverified: [],
     patientReported: [],

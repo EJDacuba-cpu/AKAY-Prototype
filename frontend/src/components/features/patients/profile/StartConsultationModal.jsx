@@ -111,8 +111,10 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
   const recommendations = monitoringRecommendationOptions(overview);
   const legacy = legacyMonitoringOptions(overview);
   const monitoringMode = options.length > 0 && visitType === MONITORING;
+  // Ticks only count in Monitoring Visit mode; a hidden tick is never sent.
+  const effectiveMonitoringIds = monitoringMode ? monitoringIds : [];
   const needsMonitoringTick = monitoringMode && monitoringIds.length === 0;
-  const hasPendingFollowUp = options.some((o) => o.followUp && monitoringIds.includes(o.monitoringId));
+  const hasPendingFollowUp = options.some((o) => o.followUp && effectiveMonitoringIds.includes(o.monitoringId));
 
   function chooseVisitType(next) {
     setVisitType(next);
@@ -123,7 +125,7 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
   async function handleStart() {
     setProblem("");
     if (needsMonitoringTick) return;
-    if (monitoringIds.length === 0 && startConditionIds.length === 0 && followUpIds.length === 0) {
+    if (effectiveMonitoringIds.length === 0 && startConditionIds.length === 0 && followUpIds.length === 0) {
       onStart({ monitoringIds: [], startConditionIds: [], followUpIds: [] });
       return;
     }
@@ -131,7 +133,7 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
     const recommendedNames = new Map(recommendations.map((option) => [Number(option.conditionId), option.conditionName]));
     setStarting(true);
     try {
-      await onStart({ monitoringIds, startConditionIds, followUpIds });
+      await onStart({ monitoringIds: effectiveMonitoringIds, startConditionIds, followUpIds });
       // Navigation takes over; the modal unmounts with the page.
     } catch (error) {
       if (error?.kind === "inactive") {

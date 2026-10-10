@@ -207,6 +207,11 @@ function LegacyReviewItem({ monitoring, legacy, rows, errors, onDecide, onPatchR
         </div>
       )}
 
+      {legacy.decision === "confirm" && (
+        <p className="text-xs text-slate-500">
+          Only Active or Controlled verifies this monitoring; otherwise choose Discontinue.
+        </p>
+      )}
       {legacy.decision === "confirm" && <FieldError message={nameError} />}
       {row && (
         <ConditionRow bare row={row} index={rowIndex} errors={errors} onPatch={(patch) => onPatchRow(rowIndex, patch)} />

@@ -30,11 +30,14 @@ export function backgroundConditionGroups({
   });
   const addressed = new Set(followed.map((monitoring) => monitoringIdentity(monitoring, registry)));
 
+  const flag = (condition) => ({
+    ...condition,
+    addressed: addressed.has(condition.conditionIdentity || conditionIdentity(condition.conditionName, registry)),
+  });
+
   return {
     ...groups,
-    confirmed: groups.confirmed.map((condition) => ({
-      ...condition,
-      addressed: addressed.has(condition.conditionIdentity || conditionIdentity(condition.conditionName, registry)),
-    })),
+    confirmed: groups.confirmed.map(flag),
+    legacyPending: groups.legacyPending.map(flag),
   };
 }

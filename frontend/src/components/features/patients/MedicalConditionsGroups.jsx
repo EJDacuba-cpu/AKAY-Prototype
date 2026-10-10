@@ -2,6 +2,7 @@ import { AddressedBadge, GroupHeading } from "./background/BackgroundFields";
 import { conditionEventSourceLabel, conditionStatusLabel } from "../../../utils/medicalConditions";
 import { formatShortDate } from "../../../utils/patientProfile";
 
+export const LEGACY_PENDING_LABEL = "Legacy — Pending RHU Verification";
 export const UNVERIFIED_LABEL = "Unverified — recorded from BHC consultation";
 
 const STATUS_TONE = {
@@ -65,7 +66,7 @@ function ConfirmedRow({ condition }) {
       name={condition.conditionName}
       chip={legacy ? null : <StatusChip status={condition.status} />}
       lines={[
-        legacy ? "Legacy — Pending RHU Verification" : `Confirmed by RHU · ${formatShortDate(condition.confirmedAt)}`,
+        legacy ? "Monitored at BHC; not yet confirmed by RHU" : `Confirmed by RHU · ${formatShortDate(condition.confirmedAt)}`,
         monitoredSince(condition),
       ]}
       badge={condition.addressed ? <div className="mt-1"><AddressedBadge /></div> : null}
@@ -102,14 +103,22 @@ function PastCondition({ condition }) {
 
 /**
  * A patient's medical conditions by clinical source: Confirmed / Monitored
- * (RHU-confirmed, or monitored before confirmation existed), Under Evaluation,
+ * (RHU-confirmed), Legacy — Pending RHU Verification (monitored before confirmation
+ * existed), Under Evaluation,
  * Unverified (legacy BHC consultation entries), Patient-Reported Previous Conditions, and Past
  * (collapsed, with each status change). Read-only; `groups` is the result of
- * groupMedicalConditions. Only Confirmed / Monitored ever counts as an alert.
+ * groupMedicalConditions. Only Confirmed / Monitored counts as an alert.
  */
 export default function MedicalConditionsGroups({ groups, isLoading = false, isError = false }) {
-  const { confirmed = [], underEvaluation = [], unverified = [], patientReported = [], past = [] } = groups || {};
-  const empty = [confirmed, underEvaluation, unverified, patientReported, past].every((group) => group.length === 0);
+  const {
+    confirmed = [],
+    legacyPending = [],
+    underEvaluation = [],
+    unverified = [],
+    patientReported = [],
+    past = [],
+  } = groups || {};
+  const empty = [confirmed, legacyPending, underEvaluation, unverified, patientReported, past].every((group) => group.length === 0);
 
   return (
     <div className="space-y-3">
@@ -124,6 +133,13 @@ export default function MedicalConditionsGroups({ groups, isLoading = false, isE
       {confirmed.length > 0 && (
         <Group title="Confirmed / Monitored">
           {confirmed.map((condition) => (
+            <ConfirmedRow key={`${condition.kind}-${condition.id}`} condition={condition} />
+          ))}
+        </Group>
+      )}
+      {legacyPending.length > 0 && (
+        <Group title={LEGACY_PENDING_LABEL}>
+          {legacyPending.map((condition) => (
             <ConfirmedRow key={`${condition.kind}-${condition.id}`} condition={condition} />
           ))}
         </Group>
