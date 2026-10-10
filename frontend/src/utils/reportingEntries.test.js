@@ -7,7 +7,9 @@ import {
   formatEntryDestinations,
   newReportingEntry,
   reportingEntryErrors,
+  reportingEntryDraft,
   reportingEntryPayload,
+  restoreReportingEntries,
   toggleDestination,
 } from "./reportingEntries.js";
 
@@ -114,4 +116,40 @@ test("formatEntryDestinations joins labels in canonical order", () => {
   );
   assert.equal(formatEntryDestinations({ reportAs: "notifiable" }), "Notifiable");
   assert.equal(formatEntryDestinations({ reportIn: [] }), "");
+});
+
+test("restoreReportingEntries keeps only v2 entries (those carrying reportIn)", () => {
+  const restored = restoreReportingEntries([
+    { id: "a", name: "Dengue", reportIn: ["surveillance", "notifiable"] },
+    { id: "b", name: "Cough", carePlan: "refer", reportAs: "morbidity" },
+    { id: "c", name: "Flu", reportIn: [] },
+    null,
+  ]);
+  assert.deepEqual(restored, [
+    { id: "a", name: "Dengue", reportIn: ["notifiable", "surveillance"] },
+    { id: "c", name: "Flu", reportIn: [] },
+  ]);
+});
+
+test("restoreReportingEntries gives a legacy or missing list no entries, and an id to an entry without one", () => {
+  assert.deepEqual(restoreReportingEntries([{ name: "Cough", reportAs: "morbidity" }]), []);
+  assert.deepEqual(restoreReportingEntries(undefined), []);
+  assert.deepEqual(restoreReportingEntries("x"), []);
+  const [entry] = restoreReportingEntries([{ name: "Dengue", reportIn: ["morbidity"] }]);
+  assert.equal(typeof entry.id, "string");
+  assert.ok(entry.id.length > 0);
+});
+
+test("reportingEntryDraft keeps named entries with reportIn always an array, and drops nameless ones", () => {
+  assert.deepEqual(
+    reportingEntryDraft([
+      { id: "a", name: " Dengue ", reportIn: [] },
+      { id: "b", name: "", reportIn: ["morbidity"] },
+      { id: "c", name: "Flu", reportIn: ["morbidity"] },
+    ]),
+    [
+      { id: "a", name: "Dengue", reportIn: [] },
+      { id: "c", name: "Flu", reportIn: ["morbidity"] },
+    ],
+  );
 });

@@ -73,7 +73,8 @@ import {
 } from "../../utils/savedDrafts";
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
 import { RadioChoiceGroup } from "../../components/features/health-records/fields/ClinicalFields";
-import CarePlanSection from "../../components/features/health-records/wizard/CarePlanSection";
+import NextStepsSection from "../../components/features/health-records/wizard/NextStepsSection";
+import ReportingEntriesField from "../../components/features/health-records/wizard/ReportingEntriesField";
 import FollowUpVisitLine from "../../components/features/health-records/wizard/FollowUpVisitLine";
 import MonitoringDetailsForms from "../../components/features/health-records/wizard/MonitoringDetailsForms";
 import ConsultationBackgroundCard from "../../components/features/health-records/wizard/ConsultationBackgroundCard";
@@ -89,33 +90,45 @@ import {
 import {
   buildCarePlanPayload,
   buildReferralReason,
-  carePlanFor,
-  deriveDisposition,
-  migrateLegacyConcernPlans,
   monitoredConditionKeys,
   referredContinuingRows,
   validateCarePlan,
-  validateConcernActions,
-  withBhcFollowUp,
-  withCarePlan,
 } from "../../utils/carePlan";
 import { monitoringDetailKeys as getMonitoringDetailKeys } from "../../utils/monitoringDetails";
 import {
-  carePlanCoverage,
   carePlanDraftPayload,
-  carePlanFollowUpErrors,
   carePlanReviewRows,
   continuedVisitLink,
-  followUpPlan,
   nextPhaseBackTarget,
   nextPhaseForwardTarget,
   restoreCarePlanDraft,
   reviewBackTarget,
   setMonitoringDecision,
   setMonitoringStop,
-  sharedAcknowledgmentErrors,
   shouldRegenerateReferralReason,
 } from "../../utils/carePlanWorkspace";
+import {
+  followUpDateWarnings,
+  followUpReasonExempt,
+  initialNextActions,
+  nextActionErrors,
+  nextActionsDraft,
+  nextActionsPayload,
+  nextStepsReviewRows,
+  referralItemCount,
+  referralNeedsAcknowledgment,
+  restoreNextActions,
+  serviceDateSuggestions,
+  setFollowUpChecked,
+  setReferChecked,
+} from "../../utils/nextActions";
+import {
+  reportingEntryDraft,
+  reportingEntryErrors,
+  reportingEntryPayload,
+  restoreReportingEntries,
+} from "../../utils/reportingEntries";
+import { BHC_GENERAL_V2 } from "../../utils/consultationWorkflow";
 import {
   droppedContinuedCareNotice,
   keepStopsFor,
@@ -132,10 +145,7 @@ import ConsultationProgramPanel from "../../components/features/health-records/w
 import BodyPreviewPanel, { BodyFindingsList } from "../../components/features/health-records/wizard/BodyPreviewPanel";
 import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindings";
 import { DRAFTS_ENABLED } from "../../utils/featureFlags";
-import DiagnosisListField from "../../components/features/health-records/wizard/DiagnosisListField";
-import { formatDiagnoses, joinDiagnosisNames, restoreDiagnoses } from "../../utils/diagnoses";
-import { hasDuplicateConcerns } from "../../utils/concernRows";
-import { applyLegacyReportingStatus, deriveReportingStatus, setDiagnosisReportAs } from "../../utils/diagnosisReporting";
+import { deriveReportingStatus } from "../../utils/diagnosisReporting";
 import useClinicalRegistry from "../../hooks/useClinicalRegistry";
 import {
   ConsultationActionBar,
@@ -227,15 +237,15 @@ const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 // The one card every consultation step sits in.
 // Flat stack: each section inside it is its own bordered card (FormSection).
 const CONSULTATION_CARD_CLASS = "space-y-4";
-const DUPLICATE_CONCERNS_ERROR = "List each health concern only once.";
-// An unticked H7 acknowledgment (Care Plan & Next Steps), with the covers list it was ticked for.
+// An unticked shared-referral acknowledgment (H7), with the covers list it was ticked for.
 const NO_ACKNOWLEDGMENT = Object.freeze({ covers: "", checked: false });
-// The service visit the follow-up date also sets, by program (Care Plan "Covers:" line).
-const SERVICE_NEXT_VISIT_LABELS = Object.freeze({
-  Maternal: "Prenatal next visit",
-  "Family Planning": "Family Planning next appointment",
-  EPI: "EPI next dose",
-});
+// The "Covers:" name of this visit's own referral (Refer to RHU).
+const GENERAL_CONSULTATION_COVER = "General consultation";
+// H6: shown under Follow-up Reason when the reason may be left blank.
+const FOLLOW_UP_REASON_EXEMPT_HINT =
+  "Optional when the return is for a selected service or continued monitoring.";
+// Sub-label inside the Actions Taken / Treatment slot.
+const TREATMENT_LABEL_CLASS = "mb-1 block text-xs font-semibold uppercase tracking-wide text-[#374151]";
 
 
 const WIZARD_FORM = "form";
@@ -295,19 +305,8 @@ const RECORD_TYPE_DETAILS = {
   },
 };
 
-/**
- * The report a diagnosis starts with on this visit: Morbidity on a General
- * Consultation, not reported on a program visit. The worker changes it per
- * diagnosis in its Care Plan row (see utils/diagnosisReporting.js).
- */
-function getDefaultReportAs(recordType = "") {
-  return normalizeRecordType(recordType) === "General Consultation" ? "morbidity" : null;
-}
-
-// Surveillance is flagged per diagnosis (diagnoses[].includeInSurveillance),
-// and morbidity / notifiable reads go through
-// utils/diagnosisReporting.js - see healthRecordService.js for the same
-// consolidation note.
+// Reporting is per entry (diagnoses[].reportIn, see utils/reportingEntries.js);
+// morbidity / notifiable / surveillance reads go through that normalizer.
 
 const EMPTY_FAMILY_PLANNING_DATA = {
   clientType: "",
@@ -804,7 +803,7 @@ export default function ConsultationWorkspace() {
   const patientsPath = `${basePath}/patients`;
   const routeContext = resolveBhcConsultationRoute(searchParams);
   // "continue" (Start Consultation modal, Follow-ups "Record Visit") opens the
-  // same step-flow New Consultation as "new", then seeds Care Plan from it.
+  // same step-flow New Consultation as "new", then seeds step 3 from it.
   const opensNewConsultation =
     routeContext.kind === "new" || routeContext.kind === "continue";
 
@@ -852,10 +851,11 @@ export default function ConsultationWorkspace() {
   );
   const [chiefComplaint, setChiefComplaint] = useState("");
   const [summaryOfPresentIllness, setSummaryOfPresentIllness] = useState("");
-  const [diagnosis, setDiagnosis] = useState("");
-  // Assessment step: structured diagnoses (the `diagnosis` text above is kept
-  // as their joined names) and optional longer assessment notes.
-  const [diagnoses, setDiagnoses] = useState([]);
+  // Reporting (optional) on step 3: [{ id, name, reportIn[] }], sent as the
+  // v2 diagnoses[]. The visit sends no plain-text diagnosis.
+  const [reportingEntries, setReportingEntries] = useState([]);
+  // Read-only: the text a converted earlier draft carries (sent as
+  // assessment_notes). There is no assessment-notes input any more.
   const [assessmentNotes, setAssessmentNotes] = useState("");
   // Physical examination findings. Persisted in the existing monitoring_data
   // JSON column, so no health-record column was added for it.
@@ -886,16 +886,19 @@ export default function ConsultationWorkspace() {
   // suggest or alert.
   const [fbs, setFbs] = useState("");
 
-  const [followUpStatus, setFollowUpStatus] = useState("Completed");
+  // Step 3's two independent Next Actions: { bhcFollowUp, referToRhu,
+  // referralMultipleIssues }. Only the checkboxes and a restored draft set them.
+  const [nextActions, setNextActions] = useState(initialNextActions);
+  // The follow-up form. Kept while Schedule BHC Follow-up is unticked; only
+  // sent while it is ticked (nextActionsPayload).
   const [followUpDate, setFollowUpDate] = useState("");
   const [followUpTime, setFollowUpTime] = useState("");
   const [followUpReason, setFollowUpReason] = useState("");
-  // The H7 acknowledgments on Care Plan & Next Steps: one follow-up date / one
-  // referral suits every listed item. Each tick is kept with the covers list it
-  // was given for, so it counts as unticked once that list changes.
-  const [followUpAcknowledgment, setFollowUpAcknowledgment] = useState(NO_ACKNOWLEDGMENT);
+  // The H7 shared-referral acknowledgment: one facility and priority suit every
+  // listed item. The tick is kept with the covers list it was given for, so it
+  // counts as unticked once that list changes.
   const [referralAcknowledgment, setReferralAcknowledgment] = useState(NO_ACKNOWLEDGMENT);
-  // Care Plan & Next Steps: what this ITR continues (Start Consultation modal)
+  // Medication, Treatment & Next Steps: what this ITR continues (Start Consultation modal)
   // and stops. Names come from care-overview; drafts store ids only.
   const [continuedFollowUpTaskIds, setContinuedFollowUpTaskIds] = useState([]);
   // { id, sourceHealthRecordId } per continued follow-up; the first one's
@@ -918,12 +921,11 @@ export default function ConsultationWorkspace() {
   // RHU-confirmed conditions BHC starts monitoring this visit (the care
   // overview's monitoringRecommendations, chosen in Start Consultation).
   const [startingConditions, setStartingConditions] = useState([]);
-  // The Next phase has two screens: Care Plan & Next Steps, then Monitoring
+  // The Next phase has two screens: Medication, Treatment & Next Steps, then Monitoring
   // Details when a monitored condition needs it. UI position only.
   const [nextScreen, setNextScreen] = useState(NEXT_STEP);
   const [monitoringNotes, setMonitoringNotes] = useState("");
   const [patientCondition, setPatientCondition] = useState("Improving");
-  const [needsReferral, setNeedsReferral] = useState(false);
   // Same server-backed source the BHC dashboard and CreateReferral use.
   const [receivingRhuId, setReceivingRhuId] = useState("");
   const [referralForm, setReferralForm] = useState({
@@ -1202,21 +1204,13 @@ export default function ConsultationWorkspace() {
   const isImmunization = recordTypeKey === "immunization" || selectedPrograms.includes("EPI");
   const isMaternal = recordTypeKey === "maternal" || selectedPrograms.includes("Maternal");
   const isFamilyPlanning = recordTypeKey === "family planning" || selectedPrograms.includes("Family Planning");
-  // Care Plan & Next Steps, derived from the per-concern next actions and the
-  // continued/started/stopped monitoring (rules in utils/carePlan.js).
-  const carePlanDisposition = useMemo(
-    () => deriveDisposition({
-      concerns: diagnoses, continuedMonitorings, startingConditions, stops: monitoringStops,
-      referrals: monitoringReferrals, registry: clinicalRegistry,
-      serviceNeedsNextVisit: isImmunization,
-    }),
-    [diagnoses, continuedMonitorings, startingConditions, monitoringStops, monitoringReferrals, clinicalRegistry, isImmunization],
-  );
-  // Followed conditions the worker refers to the RHU, by name: the referral's
-  // diagnosis when no concern was entered (the followed condition is why).
-  const referredFollowedNames = referredContinuingRows(
+  // Followed conditions the worker refers back to the RHU (not stopped). Their
+  // names are the referral's initial diagnosis; the visit sends none of its own.
+  const referredMonitoringRows = referredContinuingRows(
     continuedMonitorings, monitoringStops, monitoringReferrals,
-  ).map((monitoring) => monitoring.conditionName).join("; ");
+  );
+  const monitoringReferralIds = referredMonitoringRows.map((monitoring) => Number(monitoring.id));
+  const referredFollowedNames = referredMonitoringRows.map((monitoring) => monitoring.conditionName).join("; ");
   const monitoringDetailKeys = useMemo(
     () => getMonitoringDetailKeys(
       monitoredConditionKeys(continuedMonitorings, startingConditions, monitoringStops, clinicalRegistry),
@@ -1224,43 +1218,62 @@ export default function ConsultationWorkspace() {
     ),
     [continuedMonitorings, startingConditions, monitoringStops, clinicalRegistry],
   );
-  // Whether the visit's follow-up survives a referral, and whether its fields
-  // show. A service visit (programs selected, and sent - see the payload's
-  // consultationMode guard) keeps its dated next visit through a referral.
+  // Some condition stays monitored after this visit (H6 reason exemption).
+  const monitorsAny = monitoredConditionKeys(
+    continuedMonitorings, startingConditions, monitoringStops, clinicalRegistry,
+  ).length > 0;
+  // A service visit: programs selected, and sent (see the payload's
+  // consultationMode guard) - the server's monitoring_data.selectedPrograms.
   const carePlanHasService = Boolean(consultationMode) && selectedPrograms.length > 0;
-  const carePlanFollowUp = followUpPlan(carePlanDisposition, followUpDate, { hasService: carePlanHasService });
-  // What the visit's one follow-up and one referral cover. The follow-up covers
-  // nothing while its section is hidden, so no hidden box can block Continue.
-  const carePlanCovers = carePlanCoverage({
-    concerns: diagnoses, continuedMonitorings, startingConditions, stops: monitoringStops,
-    referrals: monitoringReferrals,
-    serviceNextVisitLabel: carePlanHasService
-      ? SERVICE_NEXT_VISIT_LABELS[primaryProgram] || SERVICE_NEXT_VISIT_LABELS[selectedPrograms[0]] || ""
-      : "",
+  // ---- Next Actions (step 3). Visit level; rules in utils/nextActions.js ----
+  // The visit needs a referral when Refer to RHU is ticked or a followed
+  // condition is referred back. The follow-up status follows the checkbox
+  // only (the server derives the stored one); nothing else ticks it.
+  const needsReferral = nextActions.referToRhu || monitoringReferralIds.length > 0;
+  const followUpStatus = nextActions.bhcFollowUp ? "Follow-up Required" : "Completed";
+  const followUpReasonIsExempt = followUpReasonExempt({
+    selectedPrograms: carePlanHasService ? selectedPrograms : [],
+    monitorsAny,
   });
-  const carePlanCoverageShown = {
-    followUpCovers: carePlanFollowUp.shows ? carePlanCovers.followUpCovers : [],
-    followUpConcernCount: carePlanFollowUp.shows ? carePlanCovers.followUpConcernCount : 0,
-    referralCovers: carePlanDisposition.needsReferral ? carePlanCovers.referralCovers : [],
-  };
-  const followUpCoversKey = carePlanCoverageShown.followUpCovers.join("\n");
-  const referralCoversKey = carePlanCoverageShown.referralCovers.join("\n");
-  const followUpAcknowledged = followUpAcknowledgment.checked && followUpAcknowledgment.covers === followUpCoversKey;
-  const referralAcknowledged = referralAcknowledgment.checked && referralAcknowledgment.covers === referralCoversKey;
+  // Service-proposed return dates stay in their service records. They are
+  // offered as "Use this date" only, and warned about while ticked.
+  const followUpSuggestions = serviceDateSuggestions({
+    immunizationNextDate: isImmunization
+      ? getVaccineEntries(immunizationData).find((entry) => entry.nextScheduleDate)?.nextScheduleDate || ""
+      : "",
+    familyPlanningNextDate: isFamilyPlanning ? familyPlanningData.nextAppointmentDate || "" : "",
+  });
+  const followUpWarnings = nextActions.bhcFollowUp
+    ? followUpDateWarnings(followUpDate, followUpSuggestions)
+    : [];
+  // What the one referral covers: this visit's own referral, then each
+  // followed condition referred back.
+  const referralCoverage = [
+    ...(nextActions.referToRhu ? [GENERAL_CONSULTATION_COVER] : []),
+    ...referredMonitoringRows.map((monitoring) => monitoring.conditionName),
+  ];
+  const referralCount = referralItemCount({ referToRhu: nextActions.referToRhu, monitoringReferralIds });
+  const referralMultipleIssues = nextActions.referToRhu && nextActions.referralMultipleIssues === true;
+  const referralAcknowledgmentRequired = referralNeedsAcknowledgment({
+    count: referralCount,
+    multipleIssues: referralMultipleIssues,
+  });
+  const referralCoversKey = [...referralCoverage, referralMultipleIssues ? "multiple-issues" : ""].join("\n");
+  const referralAcknowledged =
+    referralAcknowledgment.checked && referralAcknowledgment.covers === referralCoversKey;
   const patientGateLocked = !selectedPatientId;
 
   // ---- Step-based consultation -------------------------------------------
-  // Every consultation (new, continued or resumed) walks Interview -> Vital
-  // Signs -> Clinical Assessment -> one screen per selected program (primary
-  // first; skipped when none) -> Treatment & Management -> Care Plan & Next
-  // Steps (-> Monitoring Details) -> Review & Save - see utils/consultationSteps.
+  // Every consultation (new, continued or resumed) walks Patient Interview ->
+  // Physical Examination -> Medication, Treatment & Next Steps (-> Monitoring
+  // Details) -> Review & Finalize; the service forms are a detour from the
+  // Interview - see utils/consultationSteps.
   // A TB record is one carrying TB-DOTS data: a visit monitoring a condition
   // whose Monitoring Details include the TB card.
   const isTb = monitoringDetailKeys.includes("tb_dots");
-  // What this visit reports: the Assessment step's per-diagnosis choices.
-  // The server re-derives the same value from the diagnoses on save.
-  const effectiveReportingStatus = deriveReportingStatus(diagnoses);
-  const defaultReportAs = getDefaultReportAs(normalizedHealthRecordType);
+  // What this visit reports: a mirror of the Reporting entries. The server
+  // re-derives the same value from the diagnoses on save.
+  const effectiveReportingStatus = deriveReportingStatus(reportingEntries);
   const consultationSteps = useMemo(
     () => buildConsultationSteps({ monitoringDetailKeys }),
     [monitoringDetailKeys],
@@ -1296,25 +1309,16 @@ export default function ConsultationWorkspace() {
     }
   }, [monitoringDetailKeys.length, nextScreen]);
 
-  // The visit-level needsReferral / followUpStatus every existing save rule,
-  // reader and draft uses are derived from the care plan.
-  useEffect(() => {
-    if (needsReferral !== carePlanDisposition.needsReferral) {
-      setNeedsReferral(carePlanDisposition.needsReferral);
-    }
-    const derivedStatus = followUpDate ? "Follow-up Required" : "Completed";
-    if (followUpStatus !== derivedStatus) setFollowUpStatus(derivedStatus);
-  }, [carePlanDisposition.needsReferral, needsReferral, followUpDate, followUpStatus]);
-
-  // Pre-fill the referral reason ("Referred for: ...") from the diagnoses
-  // referred, and keep it in step when that set changes - but only while the
-  // text is empty or still exactly the last pre-fill. Once the worker edits it
-  // (or it came back from a draft) it is never overwritten.
+  // Pre-fill the referral reason ("Referred for: ...") from the followed
+  // conditions referred back, and keep it in step when that set changes - but
+  // only while the text is empty or still exactly the last pre-fill. Once the
+  // worker edits it (or it came back from a draft) it is never overwritten.
+  // A general referral is never pre-filled (not from the Chief Complaint or HPI).
   const lastAutoReferralReasonRef = useRef("");
   const currentReferralReason = referralForm.reasonForReferral || "";
   useEffect(() => {
-    if (!carePlanDisposition.needsReferral) return;
-    const next = buildReferralReason(diagnoses, continuedMonitorings, monitoringReferrals);
+    if (!needsReferral) return;
+    const next = buildReferralReason([], continuedMonitorings, monitoringReferrals);
     if (!shouldRegenerateReferralReason({
       current: currentReferralReason,
       lastAuto: lastAutoReferralReasonRef.current,
@@ -1322,7 +1326,7 @@ export default function ConsultationWorkspace() {
     })) return;
     lastAutoReferralReasonRef.current = next;
     setReferralForm((prev) => ({ ...prev, reasonForReferral: next }));
-  }, [carePlanDisposition.needsReferral, diagnoses, continuedMonitorings, monitoringReferrals, currentReferralReason]);
+  }, [needsReferral, continuedMonitorings, monitoringReferrals, currentReferralReason]);
 
   const activeProgramStep =
     programFormSteps.find((step) => step.key === activeFormStep) || null;
@@ -1366,9 +1370,6 @@ export default function ConsultationWorkspace() {
     () => getEpiCompletionState(epiHistoryByCode, immunizationVaccineEntries),
     [epiHistoryByCode, immunizationVaccineEntries],
   );
-  const epiWillComplete = isImmunization && epiCompletion.completeAfterSave;
-  const epiNeedsNextFollowUp =
-    isImmunization && !needsReferral && !epiWillComplete;
   const canSaveCurrentDraft =
     (activeDraft?.reviewState !== "review" || (canFinalize && (currentUser?.permissions || []).includes("records.correct"))) &&
     isDraftRouteEligible &&
@@ -1408,14 +1409,16 @@ export default function ConsultationWorkspace() {
       // opens there. Never a new wizardPhase value: the draft allowlist
       // accepts only program / form / next.
       formStep: activeFormStep,
+      // Every draft written here is a v2 General Consultation draft.
+      consultationWorkflow: BHC_GENERAL_V2,
       dateOfVisit,
       timeOfVisit,
       chiefComplaint,
       summaryOfPresentIllness,
       physicalExam,
       bodyFindings,
-      diagnosis,
-      diagnoses,
+      // Reporting entries with reportIn (always an array).
+      diagnoses: reportingEntryDraft(reportingEntries),
       assessmentNotes,
       medication,
       attendingStaff,
@@ -1572,13 +1575,18 @@ export default function ConsultationWorkspace() {
       tbData,
       ...(canViewBackground && backgroundUpdate ? { backgroundUpdate } : {}),
       // Ids and stops only; condition names are re-read from care-overview.
-      carePlan: carePlanDraftPayload({
-        continuedFollowUpTaskIds,
-        continuedMonitorings,
-        monitoringStops,
-        monitoringReferrals,
-        startingConditions,
-      }),
+      // Plus the two Next Actions checkboxes (the hidden forms stay in the
+      // draft: followUpDate/Time/Reason and referralForm above and below).
+      carePlan: {
+        ...carePlanDraftPayload({
+          continuedFollowUpTaskIds,
+          continuedMonitorings,
+          monitoringStops,
+          monitoringReferrals,
+          startingConditions,
+        }),
+        ...nextActionsDraft(nextActions),
+      },
       referralForm: pickDraftFields(referralForm, [
         "urgencyLevel",
         "dateOfReferral",
@@ -1605,7 +1613,7 @@ export default function ConsultationWorkspace() {
   // resumed draft it re-hydrates the stored ids (names, registry keys, each
   // follow-up's source ITR) and drops ids that are no longer active, which the
   // server would reject. Either way it lists the patient's active monitoring
-  // for Care Plan's "Monitored at BHC" note. A newer load (a draft resumed
+  // for the "Monitored at BHC" note. A newer load (a draft resumed
   // over a seeded route) supersedes one still in flight.
   const careOverviewRequestRef = useRef(0);
   async function loadContinuedCare(patientId, selection = null) {
@@ -1704,23 +1712,13 @@ export default function ConsultationWorkspace() {
     setSummaryOfPresentIllness(payload.summaryOfPresentIllness || "");
     setPhysicalExam(payload.physicalExam || "");
     setBodyFindings(normalizeBodyFindings(payload.bodyFindings));
-    {
-      // Drafts from before the structured list keep their typed text: one
-      // diagnosis when it fits, otherwise moved to the assessment notes.
-      // Drafts from before per-diagnosis reporting carry one visit-level
-      // status instead; each diagnosis takes it, keeping what was chosen.
-      // A draft from before Schedule BHC Follow-up: Recheck becomes follow_up,
-      // and an empty follow-up reason is prefilled from those concerns.
-      const restored = restoreDiagnoses(payload);
-      const migrated = migrateLegacyConcernPlans(
-        applyLegacyReportingStatus(restored.diagnoses, payload.morbidityReportingStatus),
-        payload.followUpReason || "",
-      );
-      setDiagnoses(migrated.diagnoses);
-      setFollowUpReason(migrated.followUpReason);
-      setAssessmentNotes(restored.assessmentNotes);
-      setDiagnosis(joinDiagnosisNames(restored.diagnoses));
-    }
+    // Reporting entries are the diagnoses that carry reportIn (a v2 draft).
+    // A legacy draft's concern list restores no entries here.
+    setReportingEntries(restoreReportingEntries(payload.diagnoses));
+    setAssessmentNotes(typeof payload.assessmentNotes === "string" ? payload.assessmentNotes : "");
+    // Only the draft's own checkboxes: nothing is ticked from a date.
+    setNextActions(restoreNextActions(payload.carePlan));
+    setFollowUpReason(payload.followUpReason || "");
     setMedication(payload.medication || "");
     setAttendingStaff(payload.attendingStaff || currentUserName);
     setConsultationNotes(payload.consultationNotes || "");
@@ -1732,15 +1730,12 @@ export default function ConsultationWorkspace() {
     setWeight(payload.weight || "");
     setHeight(payload.height || "");
     setFbs(payload.fbs === undefined || payload.fbs === null ? "" : String(payload.fbs));
-    setFollowUpStatus(payload.followUpStatus || "Routine Monitoring");
     setFollowUpDate(payload.followUpDate || "");
     setFollowUpTime(payload.followUpTime || "");
-    // The acknowledgments are not stored: the worker confirms them again.
-    setFollowUpAcknowledgment(NO_ACKNOWLEDGMENT);
+    // The acknowledgment is not stored: the worker confirms it again.
     setReferralAcknowledgment(NO_ACKNOWLEDGMENT);
     setMonitoringNotes(payload.monitoringNotes || "");
     setPatientCondition(payload.patientCondition || "Improving");
-    setNeedsReferral(Boolean(payload.needsReferral));
     setExpectedDeliveryDate(payload.expectedDeliveryDate || "");
     setAog(payload.aog || "");
     setMaternalData(mergeMaternalData(payload.maternalData));
@@ -2283,11 +2278,37 @@ export default function ConsultationWorkspace() {
     `PR: ${pulse || "N/A"} bpm | SpO2: ${spo2 || "N/A"}% | ` +
     `Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
 
-  /** Assessment-step diagnoses; the plain-text `diagnosis` follows them. */
-  function updateDiagnoses(next) {
-    setDiagnoses(next);
-    setDiagnosis(joinDiagnosisNames(next));
-    clearValidationError("diagnosis");
+  /**
+   * Step 3's own blocking rules: a stop reason per stopped monitoring, the
+   * Next Actions (follow-up date / reason, referral reason, the shared-referral
+   * acknowledgment) and the Reporting entries. Date-mismatch warnings are never
+   * errors. Nothing entered is cleared or chosen.
+   */
+  function getNextStepErrors() {
+    return {
+      ...validateCarePlan({ continuedMonitorings, stops: monitoringStops }),
+      ...nextActionErrors({
+        state: nextActions,
+        followUp: { date: followUpDate, reason: followUpReason },
+        referral: { reason: referralForm.reasonForReferral },
+        reasonExempt: followUpReasonIsExempt,
+        acknowledged: referralAcknowledged,
+        count: referralCount,
+        multipleIssues: nextActions.referralMultipleIssues === true,
+      }),
+      ...reportingEntryErrors(reportingEntries),
+    };
+  }
+
+  function handleReportingEntriesChange(next) {
+    setReportingEntries(next);
+    // Entry errors are re-checked on Continue / Save.
+    setValidationErrors((current) => {
+      const kept = Object.fromEntries(
+        Object.entries(current).filter(([key]) => !key.startsWith("reportingEntry.") && !key.startsWith("diagnoses.")),
+      );
+      return Object.keys(kept).length === Object.keys(current).length ? current : kept;
+    });
   }
 
   function clearValidationError(field) {
@@ -2332,35 +2353,17 @@ export default function ConsultationWorkspace() {
     const fbsError = validateFbs(fbs);
     if (fbsError) errors.fbs = fbsError;
     if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
-    if (hasDuplicateConcerns(diagnoses)) errors.diagnosis = DUPLICATE_CONCERNS_ERROR;
     if (!finalizing) return errors;
-    // A follow-up that keeps monitored conditions going (or starts one) already
-    // names what it addresses, and so does a referral of one of them; a
-    // referral of a concern, or a visit stopping every continued condition,
-    // still needs one.
-    const followUpOfMonitoring =
-      (startingConditions.length > 0 ||
-        continuedMonitorings.some((monitoring) => !Object.hasOwn(monitoringStops, monitoring.id))) &&
-      (!needsReferral || referredFollowedNames !== "");
-    if ((needsReferral || normalizePatientStatus(followUpStatus) === "Follow-up Required") && !diagnosis.trim() && !followUpOfMonitoring) errors.diagnosis = "A health concern is required for follow-up or referral.";
+    // The Chief Complaint and the two reasons carry the visit's purpose; no
+    // health concern or diagnosis is required for a follow-up or referral.
     if (needsReferral && !receivingRhuId) errors.receivingRhuId = "Receiving facility is required.";
     if (needsReferral && !ATTENTION_LEVELS.includes(referralForm.urgencyLevel)) errors.urgencyLevel = "Referral priority is required.";
     if (needsReferral && !referralForm.reasonForReferral?.trim()) errors.reasonForReferral = "Reason for referral is required.";
-    // Care Plan: a stop reason for every monitoring this visit ends, and a
-    // reason whenever a kept follow-up has a date (the date is optional and
-    // the status follows it, so there is no "date required" case here).
-    // validateCarePlan must run before buildCarePlanPayload, which drops
-    // blank-reason stops.
-    // Same Care Plan rules Continue checks: a care plan action per concern and
-    // the H7 acknowledgments (never stored in a draft, so a draft resumed onto
-    // Review is asked again - revealErrorStep goes back to Care Plan).
-    Object.assign(
-      errors,
-      validateConcernActions(diagnoses),
-      validateCarePlan({ continuedMonitorings, stops: monitoringStops }),
-      carePlanFollowUpErrors({ kept: carePlanFollowUp.kept, followUpDate, followUpReason, concerns: diagnoses }),
-      sharedAcknowledgmentErrors({ ...carePlanCoverageShown, followUpAcknowledged, referralAcknowledged }),
-    );
+    // The same step 3 rules Continue checks. validateCarePlan (inside) must run
+    // before buildCarePlanPayload, which drops blank-reason stops. The
+    // acknowledgment is never stored in a draft, so a draft resumed onto
+    // Review is asked again - revealErrorStep goes back to step 3.
+    Object.assign(errors, getNextStepErrors());
 
     if (hasPendingDispensedMedicineDraft) {
       errors.dispensedMedicines =
@@ -2383,10 +2386,8 @@ export default function ConsultationWorkspace() {
         errors.vaccineEntries =
           "This vaccine/service was already recorded for this patient.";
       }
-      if (!needsReferral && normalizePatientStatus(followUpStatus) === "Follow-up Required" && epiNeedsNextFollowUp && !followUpDate) {
-        errors.followUpDate =
-          "Next follow-up date is required because there are still remaining EPI vaccines/services.";
-      }
+      // The EPI next dose is a suggestion only: no return date is required
+      // unless Schedule BHC Follow-up is ticked (nextActionErrors).
 
     }
 
@@ -2559,10 +2560,8 @@ export default function ConsultationWorkspace() {
 
 
   function handleFamilyPlanningChange(field, value) {
-    if (field === "nextAppointmentDate") {
-      clearValidationError("followUpDate");
-      setFollowUpDate(value);
-    }
+    // The FP next appointment stays in family_planning_data. It is offered on
+    // step 3 as "Use this date" only, never copied into the follow-up.
     setFamilyPlanningData((prev) => ({
       ...prev,
       [field]: value,
@@ -3033,10 +3032,20 @@ export default function ConsultationWorkspace() {
       }
     }
 
-    const immunizationNextScheduleDate =
-      preparedVaccineEntries.find((entry) => entry.nextScheduleDate)
-        ?.nextScheduleDate || "";
-    const finalNeedsReferral = carePlanDisposition.needsReferral;
+    // The visit's Next Actions (v2): only what is ticked is sent. The EPI next
+    // dose and the FP next appointment stay in their service data; they never
+    // become the follow-up date or a follow-up task by themselves.
+    const nextActionsFragments = nextActionsPayload(nextActions, {
+      followUp: {
+        // Passed through only while ticked; the server derives the stored status.
+        status: "Follow-up Required",
+        date: followUpDate,
+        time: followUpTime,
+        reason: followUpReason.trim(),
+      },
+      monitoringReferralIds,
+    });
+    const finalNeedsReferral = nextActionsFragments.needs_referral;
     // Continued follow-ups (Start Consultation modal): the visit is a
     // follow-up visit of the first one's source record. Every continued task
     // is fulfilled through care_plan either way.
@@ -3050,30 +3059,7 @@ export default function ConsultationWorkspace() {
     const submittedFollowUpTaskId = continuedLink
       ? continuedLink.followUpTaskId
       : "";
-    // A referral cancels the follow-up, unless a concern is set to Recheck or
-    // Follow-up or a service visit has its
-    // next date (the EPI next dose counts as that date) - followUpPlan.
-    const followUpKept = followUpPlan(
-      carePlanDisposition,
-      followUpDate || immunizationNextScheduleDate,
-      { hasService: carePlanHasService },
-    ).kept;
-    const immunizationWillComplete = false;
-    const effectiveFollowUpDate = followUpKept
-      ? followUpDate || immunizationNextScheduleDate || ""
-      : "";
-    const effectiveFollowUpTime =
-      !followUpKept || immunizationWillComplete ? "" : followUpTime;
-
-    if (
-      effectiveHealthRecordType === "Immunization" &&
-      followUpKept &&
-      !immunizationWillComplete &&
-      !followUpDate &&
-      immunizationNextScheduleDate
-    ) {
-      setFollowUpDate(immunizationNextScheduleDate);
-    }
+    const nextActionsMonitoring = nextActionsFragments.monitoring_data;
 
     const finalChiefComplaint =
       isImmunization && !chiefComplaint
@@ -3178,17 +3164,11 @@ export default function ConsultationWorkspace() {
       medicines_supplies: familyPlanningData.medicinesSupplies || "",
     };
 
-    const finalPatientStatus =
-      effectiveHealthRecordType === "Immunization"
-        ? effectiveFollowUpDate
-          ? "Follow-up Required"
-          : "Completed"
-        : recordTypeKey === "general consultation"
-          ? normalizePatientStatus(followUpStatus)
-        : effectiveFollowUpDate
-          ? "Follow-up Required"
-          : "Completed";
+    // "" while Schedule BHC Follow-up is unticked: keep the existing default.
+    const finalPatientStatus = nextActionsMonitoring.followUpStatus || "Completed";
     const formData = {
+      // Every consultation from this workspace is a v2 BHC General Consultation.
+      consultationWorkflow: BHC_GENERAL_V2,
       patientId: selectedPatientId,
       patientName: getPatientName(selectedPatient),
       category: effectiveHealthRecordType,
@@ -3207,9 +3187,9 @@ export default function ConsultationWorkspace() {
       summaryOfPresentIllness,
       physicalExam,
       bodyFindings,
-      diagnosis,
-      // Each health concern carries its chosen next action (null when none).
-      diagnoses: diagnoses.map((entry) => ({ ...entry, carePlan: carePlanFor(entry) })),
+      // Reporting entries only; v2 sends no plain-text `diagnosis`.
+      diagnoses: reportingEntryPayload(reportingEntries),
+      // A converted earlier draft's read-only text, if any.
       assessmentNotes,
       vitalSigns: consultationVitalSigns,
       systolicBp: systolicBp || null,
@@ -3227,18 +3207,14 @@ export default function ConsultationWorkspace() {
       attendingStaff: attendingStaff || currentUserName,
       consultationNotes,
       followUpStatus: finalPatientStatus,
-      followUpDate: effectiveFollowUpDate,
-      followUpTime: effectiveFollowUpTime,
-      followUpReason:
-        followUpKept &&
-        normalizePatientStatus(finalPatientStatus) === "Follow-up Required"
-          ? followUpReason.trim()
-          : "",
+      followUpDate: nextActionsMonitoring.followUpDate,
+      followUpTime: nextActionsMonitoring.followUpTime,
+      followUpReason: nextActionsMonitoring.followUpReason,
       monitoringNotes,
       patientCondition:
-        effectiveFollowUpDate ? patientCondition : "",
+        nextActionsMonitoring.followUpDate ? patientCondition : "",
       // healthRecordService derives the legacy include/notifiable flags from
-      // this; the server re-derives all three from diagnoses[].reportAs.
+      // this; the server re-derives all three from diagnoses[].reportIn.
       morbidityReportingStatus: effectiveReportingStatus,
       needsReferral: finalNeedsReferral,
       needs_referral: finalNeedsReferral,
@@ -3270,14 +3246,19 @@ export default function ConsultationWorkspace() {
       // What this visit continues, starts and stops. validateCarePlan already
       // ran in getClinicalValidationErrors above (this payload drops blank
       // stops). A condition's status is the RHU's to set: never sent from here.
-      carePlan: buildCarePlanPayload({
-        continuedFollowUpTaskIds,
-        continuedMonitorings,
-        startingConditions,
-        stops: monitoringStops,
-        referrals: monitoringReferrals,
-        sharedReferralAcknowledged: referralAcknowledged,
-      }),
+      // Plus the visit's Next Actions: bhc_follow_up, refer_to_rhu and
+      // referral_multiple_issues.
+      carePlan: {
+        ...buildCarePlanPayload({
+          continuedFollowUpTaskIds,
+          continuedMonitorings,
+          startingConditions,
+          stops: monitoringStops,
+          referrals: monitoringReferrals,
+          sharedReferralAcknowledged: referralAcknowledged,
+        }),
+        ...nextActionsFragments.care_plan,
+      },
       ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
       monitoringData: {
         ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
@@ -3308,13 +3289,10 @@ export default function ConsultationWorkspace() {
         philHealthCategory:
           prev.philHealthCategory || getPatientPhilHealthCategory(selectedPatient),
         chiefComplaint: prev.chiefComplaint || finalChiefComplaint,
-        initialDiagnosis: prev.initialDiagnosis || diagnosis || referredFollowedNames,
+        initialDiagnosis: prev.initialDiagnosis || referredFollowedNames,
         initialActionsTaken: prev.initialActionsTaken || medication,
-        reasonForReferral:
-          prev.reasonForReferral ||
-          diagnosis ||
-          finalChiefComplaint ||
-          "RHU referral requested",
+        // Required before saving (never pre-filled from the Chief Complaint).
+        reasonForReferral: prev.reasonForReferral,
         clinicalSummary:
           prev.clinicalSummary ||
           [summaryOfPresentIllness, consultationNotes].filter(Boolean).join("\n\n"),
@@ -3332,14 +3310,10 @@ export default function ConsultationWorkspace() {
         formData,
         referralOverrides: {
           chiefComplaint: referralForm.chiefComplaint || finalChiefComplaint,
-          initialDiagnosis: referralForm.initialDiagnosis || diagnosis || referredFollowedNames,
+          initialDiagnosis: referralForm.initialDiagnosis || referredFollowedNames,
           initialActionsTaken:
             referralForm.initialActionsTaken || medication,
-          reasonForReferral:
-            referralForm.reasonForReferral ||
-            diagnosis ||
-            finalChiefComplaint ||
-            "RHU referral requested",
+          reasonForReferral: referralForm.reasonForReferral,
           referringPractitioner: attendingStaff || currentUserName,
           dateOfReferral: dateOfVisit || toDateInputValue(),
           timeOfReferral: timeOfVisit || toTimeInputValue(),
@@ -3474,8 +3448,7 @@ export default function ConsultationWorkspace() {
         reasonForReferral: referral.reasonForReferral,
         chiefComplaint:
           referral.chiefComplaint || attempt.formData.chiefComplaint,
-        initialDiagnosis:
-          referral.initialDiagnosis || attempt.formData.diagnosis,
+        initialDiagnosis: referral.initialDiagnosis || null,
         initialActionsTaken:
           referral.initialActionsTaken || attempt.formData.medication,
         referringPractitioner:
@@ -3639,7 +3612,7 @@ export default function ConsultationWorkspace() {
     // Opening a service form from any other screen remembers that screen.
     if (isServiceForm && !activeProgramStep) setServiceFormOrigin(getServiceFormReturnTarget(currentStepKey));
     if (phase === "form") setFormStep(target);
-    // Care Plan and Monitoring Details are the two screens of the Next phase.
+    // Step 3 and Monitoring Details are the two screens of the Next phase.
     if (phase === "next") setNextScreen(target === MONITORING_STEP ? MONITORING_STEP : NEXT_STEP);
     goToWizardPhase(WIZARD_PHASE_FOR_STEP[phase]);
     if (scroll) scrollWorkflowToTop();
@@ -3654,10 +3627,6 @@ export default function ConsultationWorkspace() {
   function checkStepGate(stepKey) {
     if (stepKey === INTERVIEW_STEP && !chiefComplaint.trim()) {
       setValidationErrorsAndFocus({ chiefComplaint: "Chief complaint is required." });
-      return false;
-    }
-    if (stepKey === ASSESSMENT_STEP && hasDuplicateConcerns(diagnoses)) {
-      setValidationErrorsAndFocus({ diagnosis: DUPLICATE_CONCERNS_ERROR });
       return false;
     }
     // Program completion, disposition and referral requirements apply only at finalization.
@@ -3708,17 +3677,10 @@ export default function ConsultationWorkspace() {
     closeDateTimePopovers();
     if (!checkStepGate(NEXT_STEP)) return;
     if (nextScreen === NEXT_STEP) {
-      // This screen's own rules, asked for before moving on: a care plan action
-      // per concern, a stop reason, the follow-up date / reason, and the H7
-      // acknowledgments. Only the errors are set and the first one focused;
-      // nothing entered is cleared or chosen.
-      const carePlanErrors = {
-        ...validateConcernActions(diagnoses),
-        ...validateCarePlan({ continuedMonitorings, stops: monitoringStops }),
-        ...carePlanFollowUpErrors({ kept: carePlanFollowUp.kept, followUpDate, followUpReason, concerns: diagnoses }),
-        ...sharedAcknowledgmentErrors({ ...carePlanCoverageShown, followUpAcknowledged, referralAcknowledged }),
-      };
-      if (setValidationErrorsAndFocus(carePlanErrors)) return;
+      // This screen's own rules, asked for before moving on (getNextStepErrors).
+      // Only the errors are set and the first one focused; nothing entered is
+      // cleared or chosen.
+      if (setValidationErrorsAndFocus(getNextStepErrors())) return;
     }
     goToStepKey(nextPhaseForwardTarget(nextScreen, monitoringDetailKeys));
   }
@@ -3777,7 +3739,7 @@ export default function ConsultationWorkspace() {
     setHealthRecordType(PROGRAM_CLASSIFICATIONS[next.primaryProgram] || "General Consultation");
   }
 
-  // The step flow's Next phase: Care Plan & Next Steps, then Monitoring
+  // The step flow's Next phase: Medication, Treatment & Next Steps, then Monitoring
   // Details when a condition monitored in this visit needs it.
   const monitoringDetailErrors = Object.values(pickErrorsForStep(validationErrors, MONITORING_STEP)).filter(Boolean);
   // Unlink a follow-up before saving; saving is what completes the rest.
@@ -3801,107 +3763,6 @@ export default function ConsultationWorkspace() {
     setMonitoringStops(next.monitoringStops);
     setMonitoringReferrals(next.monitoringReferrals);
   }
-  const carePlanScreen = nextScreen === MONITORING_STEP ? (
-    <LockedFormContent locked={patientGateLocked}>
-      {monitoringDetailErrors.length > 0 && (
-        <div role="alert" className="mb-4 border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-[#B91C1C]">
-          {monitoringDetailErrors.map((message) => (
-            <p key={message}>{message}</p>
-          ))}
-        </div>
-      )}
-      <MonitoringDetailsForms
-        detailKeys={monitoringDetailKeys}
-        tbData={tbData}
-        onTbDataChange={(next) => {
-          setTbData(next);
-          setValidationErrors((current) => Object.fromEntries(
-            Object.entries(current).filter(([key]) => !key.startsWith("tbData.")),
-          ));
-        }}
-        recordId={null}
-      />
-    </LockedFormContent>
-  ) : (
-    <>
-    <FollowUpVisitLine followUps={continuedFollowUps} legacyConditionNames={continuedFollowUps.length ? legacyConditionNames : []} disabled={patientGateLocked} onRemove={removeFollowUpLink} />
-    <CarePlanSection
-      concerns={diagnoses}
-      continuedMonitorings={continuedMonitorings}
-      startingConditions={startingConditions}
-      stops={monitoringStops}
-      followUp={{ date: followUpDate, time: followUpTime, reason: followUpReason }}
-      referral={{ reason: referralForm.reasonForReferral, urgencyLevel: referralForm.urgencyLevel }}
-      referralFacilityField={
-        <ReferralFacilityField
-          value={receivingRhuId}
-          error={validationErrors.receivingRhuId}
-          disabled={patientGateLocked}
-          onChange={(id) => {
-            clearValidationError("receivingRhuId");
-            setReceivingRhuId(id);
-          }}
-        />
-      }
-      showsFollowUp={carePlanFollowUp.shows}
-      needsReferral={carePlanDisposition.needsReferral}
-      coverage={carePlanCoverageShown}
-      followUpAcknowledged={followUpAcknowledged}
-      referralAcknowledged={referralAcknowledged}
-      onAcknowledgeChange={(kind, checked) => {
-        if (kind === "followUp") {
-          clearValidationError("followUpAcknowledged");
-          setFollowUpAcknowledgment({ covers: followUpCoversKey, checked });
-        } else {
-          clearValidationError("referralAcknowledged");
-          setReferralAcknowledgment({ covers: referralCoversKey, checked });
-        }
-      }}
-      errors={validationErrors}
-      // A locked review is already disabled by the workspace fieldset.
-      disabled={patientGateLocked}
-      onCarePlanChange={(id, value) => {
-        clearValidationError(`carePlanAction.${id}`);
-        setDiagnoses((current) => current.map((entry) => (entry.id === id ? withCarePlan(entry, value) : entry)));
-      }}
-      onBhcFollowUpChange={(id, checked) => {
-        setDiagnoses((current) => current.map((entry) => (entry.id === id ? withBhcFollowUp(entry, checked) : entry)));
-      }}
-      onReportAsChange={handleReportAsChange}
-      onSurveillanceChange={handleSurveillanceChange}
-      onStopChange={(monitoringId, reason) => {
-        clearValidationError(`carePlanStop.${monitoringId}`);
-        setMonitoringStops((current) => setMonitoringStop(current, monitoringId, reason));
-      }}
-      onMonitoringDecision={(monitoringId, decision) => {
-        clearValidationError(`carePlanStop.${monitoringId}`);
-        const next = setMonitoringDecision({ stops: monitoringStops, referrals: monitoringReferrals }, monitoringId, decision);
-        setMonitoringStops(next.stops);
-        setMonitoringReferrals(next.referrals);
-      }}
-      referrals={monitoringReferrals}
-      onFollowUpChange={(field, value) => {
-        const [errorKey, setter] = {
-          date: ["followUpDate", setFollowUpDate],
-          time: ["followUpTime", setFollowUpTime],
-          reason: ["followUpReason", setFollowUpReason],
-        }[field];
-        clearValidationError(errorKey);
-        setter(value);
-      }}
-      onReferralChange={(field, value) =>
-        handleReferralFormChange(field === "reason" ? "reasonForReferral" : field, value)
-      }
-      // Additional Clinical Notes (monitoringNotes on the record).
-      notes={monitoringNotes}
-      notesLabel={monitoringNotesLabel}
-      notesPlaceholder={monitoringNotesPlaceholder}
-      onNotesChange={setMonitoringNotes}
-    />
-    </>
-  );
-
-
   const isGeneralOnly =
     !isImmunization &&
     !isFamilyPlanning &&
@@ -3937,17 +3798,174 @@ export default function ConsultationWorkspace() {
     treatmentBindings.forEach((binding) => binding.set(value));
   };
 
-  // Reporting is per condition, inside that condition's Care Plan row. Two
-  // independent decisions: report it as Morbidity or Notifiable (or not at
-  // all), and include it in the Surveillance Report or not - neither gates the
-  // other. Both reuse this same consultation's patient/encounter data; nothing
-  // extra is created, and the visit itself is counted from its own record.
-  function handleReportAsChange(id, reportAs) {
-    setDiagnoses((current) => setDiagnosisReportAs(current, id, reportAs));
-  }
-  function handleSurveillanceChange(id, value) {
-    setDiagnoses((current) => current.map((d) => (d.id === id ? { ...d, includeInSurveillance: value } : d)));
-  }
+  // Step 3's Actions Taken / Treatment: the same fields, handlers and
+  // items.dispense gate as before, moved from Physical Examination. Flat
+  // (no cards): NextStepsSection draws the section heading and rules.
+  const canDispenseItems = (currentUser?.permissions || []).includes("items.dispense");
+  const treatmentSlot = (
+    <LockedFormContent locked={patientGateLocked}>
+      <div className="space-y-4">
+        {treatmentBindings.length > 0 && (
+          <FieldTextarea
+            label="Actions Taken"
+            value={treatmentValue}
+            onChange={(event) => handleTreatmentChange(event.target.value)}
+            placeholder="Medications, procedures, advice given..."
+            rows={4}
+          />
+        )}
+        {isFamilyPlanning && (
+          <FieldTextarea
+            label="Family Planning Medicines / Supplies"
+            value={familyPlanningData.medicinesSupplies}
+            onChange={(event) =>
+              handleFamilyPlanningChange(
+                "medicinesSupplies",
+                event.target.value,
+              )
+            }
+            placeholder="List items dispensed..."
+            rows={3}
+          />
+        )}
+        <div>
+          <p className={TREATMENT_LABEL_CLASS}>Medicines / Supplies Dispensed</p>
+          <p className="mb-2 text-xs text-[#6B7280]">
+            Optional medicines or supplies given from BHC inventory during this visit.
+          </p>
+          <DispensedMedicinesSection
+            inventory={bhcMedicineInventory}
+            value={dispensedMedicines}
+            onChange={handleDispensedMedicinesChange}
+            pendingDraftError={validationErrors.dispensedMedicines}
+            onPendingDraftChange={handlePendingDispensedMedicineChange}
+            disabled={!canDispenseItems}
+            loading={bhcMedicineInventoryLoading}
+            error={bhcMedicineInventoryError}
+            onRetry={() =>
+              setBhcMedicineInventoryReloadKey((key) => key + 1)
+            }
+          />
+        </div>
+      </div>
+    </LockedFormContent>
+  );
+
+  const carePlanScreen = nextScreen === MONITORING_STEP ? (
+    <LockedFormContent locked={patientGateLocked}>
+      {monitoringDetailErrors.length > 0 && (
+        <div role="alert" className="mb-4 border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-[#B91C1C]">
+          {monitoringDetailErrors.map((message) => (
+            <p key={message}>{message}</p>
+          ))}
+        </div>
+      )}
+      <MonitoringDetailsForms
+        detailKeys={monitoringDetailKeys}
+        tbData={tbData}
+        onTbDataChange={(next) => {
+          setTbData(next);
+          setValidationErrors((current) => Object.fromEntries(
+            Object.entries(current).filter(([key]) => !key.startsWith("tbData.")),
+          ));
+        }}
+        recordId={null}
+      />
+    </LockedFormContent>
+  ) : (
+    <>
+    <FollowUpVisitLine followUps={continuedFollowUps} legacyConditionNames={continuedFollowUps.length ? legacyConditionNames : []} disabled={patientGateLocked} onRemove={removeFollowUpLink} />
+    <NextStepsSection
+      continuedMonitorings={continuedMonitorings}
+      startingConditions={startingConditions}
+      stops={monitoringStops}
+      referrals={monitoringReferrals}
+      errors={validationErrors}
+      // A locked review is already disabled by the workspace fieldset.
+      disabled={patientGateLocked}
+      onStopChange={(monitoringId, reason) => {
+        clearValidationError(`carePlanStop.${monitoringId}`);
+        setMonitoringStops((current) => setMonitoringStop(current, monitoringId, reason));
+      }}
+      onMonitoringDecision={(monitoringId, decision) => {
+        clearValidationError(`carePlanStop.${monitoringId}`);
+        const next = setMonitoringDecision({ stops: monitoringStops, referrals: monitoringReferrals }, monitoringId, decision);
+        setMonitoringStops(next.stops);
+        setMonitoringReferrals(next.referrals);
+      }}
+      // Additional Clinical Notes (monitoringNotes), inside Condition Monitoring.
+      monitoringNotes={monitoringNotes}
+      notesLabel={monitoringNotesLabel}
+      notesPlaceholder={monitoringNotesPlaceholder}
+      onMonitoringNotesChange={setMonitoringNotes}
+      treatmentSlot={treatmentSlot}
+      nextActions={nextActions}
+      onFollowUpCheckedChange={(checked) => {
+        ["followUpDate", "followUpTime", "followUpReason"].forEach(clearValidationError);
+        setNextActions((current) => setFollowUpChecked(current, checked));
+      }}
+      onReferCheckedChange={(checked) => {
+        ["reasonForReferral", "receivingRhuId", "urgencyLevel", "referralAcknowledged", "care_plan.refer_to_rhu", "needs_referral"].forEach(clearValidationError);
+        setNextActions((current) => setReferChecked(current, checked));
+      }}
+      onMultipleIssuesChange={(checked) => {
+        clearValidationError("referralAcknowledged");
+        setNextActions((current) => ({ ...current, referralMultipleIssues: checked === true }));
+      }}
+      followUp={{ date: followUpDate, time: followUpTime, reason: followUpReason }}
+      onFollowUpChange={(field, value) => {
+        const [errorKey, setter] = {
+          date: ["followUpDate", setFollowUpDate],
+          time: ["followUpTime", setFollowUpTime],
+          reason: ["followUpReason", setFollowUpReason],
+        }[field];
+        clearValidationError(errorKey);
+        setter(value);
+      }}
+      reasonExempt={followUpReasonIsExempt}
+      followUpHint={FOLLOW_UP_REASON_EXEMPT_HINT}
+      suggestions={followUpSuggestions}
+      // Fills the date only: never ticks the follow-up or schedules anything.
+      onUseSuggestedDate={(date) => {
+        clearValidationError("followUpDate");
+        setFollowUpDate(date);
+      }}
+      warnings={followUpWarnings}
+      referral={{ reason: referralForm.reasonForReferral, urgencyLevel: referralForm.urgencyLevel }}
+      referralFacilityField={
+        <ReferralFacilityField
+          value={receivingRhuId}
+          error={validationErrors.receivingRhuId}
+          disabled={patientGateLocked}
+          onChange={(id) => {
+            clearValidationError("receivingRhuId");
+            setReceivingRhuId(id);
+          }}
+        />
+      }
+      onReferralChange={(field, value) =>
+        handleReferralFormChange(field === "reason" ? "reasonForReferral" : field, value)
+      }
+      coverage={referralCoverage}
+      acknowledgmentRequired={referralAcknowledgmentRequired}
+      referralAcknowledged={referralAcknowledged}
+      onAcknowledgeChange={(checked) => {
+        clearValidationError("referralAcknowledged");
+        setReferralAcknowledgment({ covers: referralCoversKey, checked });
+      }}
+      reportingSlot={
+        <ReportingEntriesField
+          entries={reportingEntries}
+          errors={validationErrors}
+          disabled={patientGateLocked}
+          onChange={handleReportingEntriesChange}
+        />
+      }
+      earlierDraftNotes={assessmentNotes}
+    />
+    </>
+  );
+
 
   const autosaveStatus = canSaveCurrentDraft ? (
     <span role="status" aria-live="polite" className="text-xs text-gray-500">
@@ -3982,9 +4000,9 @@ export default function ConsultationWorkspace() {
     [INTERVIEW_STEP]:
       "Record the patient's reason for visit, present illness and background.",
     [ASSESSMENT_STEP]:
-      "Record the vital signs and examination findings, the health concerns, and the actions taken for this visit.",
+      "Record the vital signs and examination findings for this visit.",
     [NEXT_STEP]:
-      "Set a next action for each health concern, review condition monitoring, then plan any referral and the next follow-up and classify it for reporting.",
+      "Record the treatment and medicines given, then any follow-up, referral and reporting for this visit.",
     [MONITORING_STEP]:
       "Details a monitored condition needs beyond this consultation record.",
     [REVIEW_STEP]: "Confirm the consultation details below before saving.",
@@ -4121,13 +4139,11 @@ export default function ConsultationWorkspace() {
       : []),
     {
       key: ASSESSMENT_STEP,
-      title: "Physical Exam & Assessment",
+      title: "Physical Examination",
       stepKey: ASSESSMENT_STEP,
       rows: [
         { label: "Physical Exam", value: physicalExam },
         { label: "Body Findings", value: formatBodyFindings(bodyFindings) },
-        { label: "Health Concerns", value: formatDiagnoses(diagnoses) || diagnosis },
-        { label: "Assessment Notes", value: assessmentNotes },
 
         // The selection itself is listed under Program / Service Details
         // when there is one; only its absence is stated here.
@@ -4139,8 +4155,8 @@ export default function ConsultationWorkspace() {
     {
       key: "actions-taken",
       title: "Actions Taken",
-      // Sits under Assessment on the same screen.
-      stepKey: ASSESSMENT_STEP,
+      // Sits on Medication, Treatment & Next Steps.
+      stepKey: NEXT_STEP,
       rows: [
         { label: "Actions Taken", value: treatmentValue },
         { label: "Medicines / Supplies", value: dispensedMedicines.map(item => item.medicineName + " · " + item.quantity + " " + item.unit + " · " + (item.confirmedGiven ? "Dispensed/Given" : "Planned")).join("\n") },
@@ -4159,30 +4175,38 @@ export default function ConsultationWorkspace() {
     })),
     {
       key: NEXT_STEP,
-      title: "Care Plan & Next Steps",
+      title: "Medication, Treatment & Next Steps",
       stepKey: NEXT_STEP,
       rows: [
+        // Continued follow-ups and monitoring decisions only (no concerns, no
+        // referral / follow-up rows: those come from nextStepsReviewRows).
         ...carePlanReviewRows({
-          concerns: diagnoses,
           continuedFollowUps,
           continuedMonitorings,
           startingConditions,
           stops: monitoringStops,
           referrals: monitoringReferrals,
-          referral: {
-            needed: carePlanDisposition.needsReferral,
-            reason: referralForm.reasonForReferral,
-            priority: normalizeAttention(referralForm.urgencyLevel),
-          },
+        }).filter((row) => row.label !== "Next Steps"),
+        // BHC Follow-up, RHU Referral (also for a monitoring referral alone),
+        // Covers and Reporting. The continued follow-ups are listed above.
+        ...nextStepsReviewRows({
+          state: { ...nextActions, referToRhu: needsReferral },
           followUp: {
-            shows: carePlanFollowUp.shows,
             date: followUpDate && formatLongDate(followUpDate, ""),
             time: followUpTime && formatDisplayTime(followUpTime),
             reason: followUpReason,
           },
+          referral: {
+            priority: normalizeAttention(referralForm.urgencyLevel),
+            reason: referralForm.reasonForReferral,
+          },
+          coverage: referralCoverage,
+          entries: reportingEntryPayload(reportingEntries),
+          continuedLink: null,
         }),
-        // The Additional Clinical Notes entered on Care Plan & Next Steps.
+        // The Additional Clinical Notes entered with Condition Monitoring.
         ...(monitoringNotes ? [{ label: "Notes", value: monitoringNotes }] : []),
+        ...(assessmentNotes ? [{ label: "Earlier draft notes", value: assessmentNotes }] : []),
       ],
     },
     ...(monitoringDetailKeys.includes("tb_dots")
@@ -4321,12 +4345,14 @@ export default function ConsultationWorkspace() {
           // The first step is the Patient Interview: Chief Complaint / HPI and
           // Patient Background, each section under its own heading.
           <section className={CONSULTATION_CARD_CLASS}>
-            {/* HPI is marked required for a general consultation; whether that
-                applies is decided at Clinical Assessment, which enforces it. */}
+            {/* HPI is optional. */}
             <FormSection title="Chief Complaint & History of Present Illness" subtitle="Why the patient is here today, in their own words and yours." delay={3}>
             <div className="grid gap-4 @xl:grid-cols-2">
-              <FieldTextarea label="Chief Complaint" required name="chiefComplaint" error={validationErrors.chiefComplaint} value={chiefComplaint} onChange={event => { clearValidationError("chiefComplaint"); setChiefComplaint(event.target.value); }} placeholder="Describe the patient's chief complaint..." rows={3} />
-              <FieldTextarea label="History of Present Illness" name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }}  rows={3} />
+              <div>
+                <FieldTextarea label="Chief Complaint" required name="chiefComplaint" error={validationErrors.chiefComplaint} value={chiefComplaint} onChange={event => { clearValidationError("chiefComplaint"); setChiefComplaint(event.target.value); }} placeholder="Describe the patient's chief complaint..." rows={3} />
+                <p className="mt-1 text-xs text-[#6B7280]">Reason for the visit — symptoms or a service, e.g. Initial prenatal checkup.</p>
+              </div>
+              <FieldTextarea label="History of Present Illness (optional)" name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }}  rows={3} />
             </div>
             </FormSection>
 
@@ -4837,98 +4863,6 @@ export default function ConsultationWorkspace() {
               </LockedFormContent>
             </FormSection>
 
-            <FormSection
-              title="Assessment"
-              subtitle="Record the health concerns found in this visit."
-              delay={3}
-            >
-              <LockedFormContent locked={patientGateLocked}>
-                <div data-field="diagnosis" tabIndex={-1} className="outline-none">
-                  <DiagnosisListField
-                    diagnoses={diagnoses}
-                    onChange={updateDiagnoses}
-                    error={validationErrors.diagnosis}
-                    defaultReportAs={defaultReportAs}
-                  />
-                </div>
-                <div className="mt-6 border-t border-[#E5E7EB] pt-4">
-                  <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-[#111827]">
-                    <label htmlFor="assessmentNotes">Additional Assessment Notes</label>
-                  </h3>
-                  <FieldTextarea
-                    id="assessmentNotes"
-                    value={assessmentNotes}
-                    onChange={(event) => setAssessmentNotes(event.target.value)}
-                    placeholder="Optional additional findings or explanations..."
-                    maxLength={5000}
-                    rows={3}
-                  />
-                </div>
-              </LockedFormContent>
-            </FormSection>
-
-            {/* Actions Taken: treatment given and inventory dispensed. It sits under
-                Assessment on the same screen (it used to be its own step). */}
-            {treatmentBindings.length > 0 && (
-              <FormSection
-                title="Actions Taken"
-                subtitle="Document the treatment, medication plan, or other management for this visit."
-                delay={3}
-              >
-                <LockedFormContent locked={patientGateLocked}>
-                  <FieldTextarea
-                    label="Actions Taken"
-                    value={treatmentValue}
-                    onChange={(event) => handleTreatmentChange(event.target.value)}
-                    placeholder="Medications, procedures, advice given..."
-                    rows={4}
-                  />
-                </LockedFormContent>
-              </FormSection>
-            )}
-            {isFamilyPlanning && (
-              <FormSection
-                title="Family Planning Medicines / Supplies"
-                subtitle="Record medicines or supplies given to the client."
-                delay={4}
-              >
-                <LockedFormContent locked={patientGateLocked}>
-                  <FieldTextarea
-                    label="Medicines / Supplies"
-                    value={familyPlanningData.medicinesSupplies}
-                    onChange={(event) =>
-                      handleFamilyPlanningChange(
-                        "medicinesSupplies",
-                        event.target.value,
-                      )
-                    }
-                    placeholder="List items dispensed..."
-                    rows={3}
-                  />
-                </LockedFormContent>
-              </FormSection>
-            )}
-            <FormSection
-              title="Medicines / Supplies Dispensed"
-              subtitle="Optional medicines or supplies given from BHC inventory during this visit."
-              delay={5}
-            >
-              <LockedFormContent locked={patientGateLocked}>
-                <DispensedMedicinesSection
-                  inventory={bhcMedicineInventory}
-                  value={dispensedMedicines}
-                  onChange={handleDispensedMedicinesChange}
-                  pendingDraftError={validationErrors.dispensedMedicines}
-                  onPendingDraftChange={handlePendingDispensedMedicineChange}
-                  disabled={!(currentUser?.permissions || []).includes("items.dispense")}
-                  loading={bhcMedicineInventoryLoading}
-                  error={bhcMedicineInventoryError}
-                  onRetry={() =>
-                    setBhcMedicineInventoryReloadKey((key) => key + 1)
-                  }
-                />
-              </LockedFormContent>
-            </FormSection>
           </>
         )}
 

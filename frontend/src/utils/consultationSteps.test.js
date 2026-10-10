@@ -48,7 +48,7 @@ function walkForward() {
 
 /* ── The flows ───────────────────────────────────────────────────────── */
 
-test("GENERAL CONSULTATION: Interview & Vitals → Assessment (with Actions Taken) → Care Plan → Review", () => {
+test("GENERAL CONSULTATION: Interview → Physical Examination → Medication, Treatment & Next Steps → Review", () => {
   assert.deepEqual(walkForward([], ""), [
     INTERVIEW_STEP,
     ASSESSMENT_STEP,
@@ -95,7 +95,7 @@ test("Previous from Interview exits to patient context", () => {
   assert.equal(getPreviousStepKey(getFormSequence([]), INTERVIEW_STEP), EXIT_STEP);
 });
 
-test("Next from Assessment (no programs) goes to Care Plan & Next Steps", () => {
+test("Next from Physical Examination (no programs) goes to Medication, Treatment & Next Steps", () => {
   assert.equal(getNextStepKey(getFormSequence([]), ASSESSMENT_STEP), NEXT_STEP);
 });
 
@@ -110,9 +110,9 @@ test("the global steps read in the new order with the new names", () => {
     steps.map((step) => step.label),
     [
       "Patient Interview",
-      "Physical Exam & Assessment",
-      "Care Plan & Next Steps",
-      "Review & Confirm",
+      "Physical Examination",
+      "Medication, Treatment & Next Steps",
+      "Review & Finalize",
     ],
   );
 });
@@ -231,7 +231,7 @@ for (const [label, programs, primary] of [
       subtitle: SUBTITLES[INTERVIEW_STEP],
     });
     assert.deepEqual(headingFor(ASSESSMENT_STEP, programs, primary), {
-      title: "Physical Exam & Assessment",
+      title: "Physical Examination",
       subtitle: SUBTITLES[ASSESSMENT_STEP],
     });
   });
@@ -262,8 +262,8 @@ test("later steps never show a program title", () => {
     const heading = headingFor(stepKey, ["Family Planning"], "Family Planning");
     assert.doesNotMatch(heading.title, /Family Planning|Program \d/);
   }
-  assert.equal(headingFor(NEXT_STEP, ["EPI"], "EPI").title, "Care Plan & Next Steps");
-  assert.equal(headingFor(REVIEW_STEP, ["EPI"], "EPI").title, "Review & Confirm");
+  assert.equal(headingFor(NEXT_STEP, ["EPI"], "EPI").title, "Medication, Treatment & Next Steps");
+  assert.equal(headingFor(REVIEW_STEP, ["EPI"], "EPI").title, "Review & Finalize");
 });
 
 /* ── Validation ownership ────────────────────────────────────────────── */
@@ -277,15 +277,22 @@ test("each validation error is owned by the screen that shows its field", () => 
   }
   assert.equal(getErrorOwnerStepKey("hypertensionDiabeticData.conditionType"), null);
   assert.equal(getErrorOwnerStepKey("tbData.diagnosis.tbCaseNumber"), MONITORING_STEP);
-  assert.equal(getErrorOwnerStepKey("diagnosis"), ASSESSMENT_STEP);
+  // Reporting entries (and any server diagnoses error) live on step 3.
+  assert.equal(getErrorOwnerStepKey("diagnosis"), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("reportingEntry.r1.name"), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("reportingEntry.r1.reportIn"), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("diagnoses.0.name"), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("familyPlanningMethodUsed"), FP);
   assert.equal(getErrorOwnerStepKey("vaccineEntries"), EPI);
-  // Actions Taken (and the medicines dispensed) sit on the Assessment screen.
-  assert.equal(getErrorOwnerStepKey("dispensedMedicines"), ASSESSMENT_STEP);
+  // Actions Taken (and the medicines dispensed) sit on Medication, Treatment & Next Steps.
+  assert.equal(getErrorOwnerStepKey("dispensedMedicines"), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("followUpDate"), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("followUpReason"), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("receivingRhuId"), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("urgencyLevel"), NEXT_STEP);
+  // Server-only v2 next-action keys.
+  assert.equal(getErrorOwnerStepKey("care_plan.refer_to_rhu"), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("needs_referral"), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("somethingElse"), null);
 });
 
@@ -296,7 +303,8 @@ test("per-screen validation only blocks on that screen's own errors", () => {
     familyPlanningMethodUsed: "Method is required.",
   };
   assert.deepEqual(Object.keys(pickErrorsForStep(errors, MONITORING_STEP)), ["tbData.diagnosis.tbCaseNumber"]);
-  assert.deepEqual(Object.keys(pickErrorsForStep(errors, ASSESSMENT_STEP)), ["dispensedMedicines"]);
+  assert.deepEqual(Object.keys(pickErrorsForStep(errors, NEXT_STEP)), ["dispensedMedicines"]);
+  assert.deepEqual(Object.keys(pickErrorsForStep(errors, ASSESSMENT_STEP)), []);
 });
 
 test("the earliest failing screen is revealed, in the NEW order", () => {
@@ -312,6 +320,10 @@ test("the earliest failing screen is revealed, in the NEW order", () => {
   assert.equal(
     findFirstErrorStepKey({ dispensedMedicines: "x", pulse: "y" }, order),
     ASSESSMENT_STEP,
+  );
+  assert.equal(
+    findFirstErrorStepKey({ dispensedMedicines: "x", "tbData.phases.intensiveStart": "y" }, order),
+    NEXT_STEP,
   );
   assert.equal(findFirstErrorStepKey({}, order), "");
 });
@@ -347,7 +359,7 @@ function payloadFor(wizardPhase, formStep) {
 
 for (const [stage, formStep] of [
   ["Patient Interview", INTERVIEW_STEP],
-  ["Physical Exam & Assessment", ASSESSMENT_STEP],
+  ["Physical Examination", ASSESSMENT_STEP],
   ["Program 1 (Maternal)", MATERNAL],
   ["Program 2 (EPI)", EPI],
 ]) {
@@ -427,7 +439,7 @@ test("there is no separate Vital Signs screen to click Next through", () => {
   assert.equal(getPreviousStepKey(sequence, ASSESSMENT_STEP), INTERVIEW_STEP);
 });
 
-test("vitals errors stop the user on the Physical Exam & Assessment step", () => {
+test("vitals errors stop the user on the Physical Examination step", () => {
   const errors = { pulse: "Pulse required.", chiefComplaint: "Required." };
   assert.deepEqual(Object.keys(pickErrorsForStep(errors, INTERVIEW_STEP)), ["chiefComplaint"]);
   assert.deepEqual(Object.keys(pickErrorsForStep(errors, ASSESSMENT_STEP)), ["pulse"]);
@@ -448,9 +460,9 @@ test("a draft saved on the removed Hypertension / Diabetic form reopens on a rea
   assert.ok(sequence.includes(resolveFormStep(stale, sequence, getProgramFormSteps(["Maternal"], "Maternal"))));
 });
 
-test("Care Plan replaces Disposition and Monitoring Details appears only when needed", () => {
+test("four steps, and Monitoring Details appears only when needed", () => {
   const labels = buildConsultationSteps({ selectedPrograms: [], primaryProgram: "" }).map((s) => s.label);
-  assert.deepEqual(labels, ["Patient Interview", "Physical Exam & Assessment", "Care Plan & Next Steps", "Review & Confirm"]);
+  assert.deepEqual(labels, ["Patient Interview", "Physical Examination", "Medication, Treatment & Next Steps", "Review & Finalize"]);
 
   const withTb = buildConsultationSteps({ selectedPrograms: [], primaryProgram: "", monitoringDetailKeys: ["tb_dots"] }).map((s) => s.key);
   assert.deepEqual(withTb, [INTERVIEW_STEP, ASSESSMENT_STEP, NEXT_STEP, MONITORING_STEP, REVIEW_STEP]);
@@ -462,7 +474,7 @@ test("TB and stop-reason errors route to their screens", () => {
   assert.equal(getErrorOwnerStepKey("carePlanStop.3"), NEXT_STEP);
 });
 
-test("care plan action and acknowledgment errors route to Care Plan & Next Steps", () => {
+test("acknowledgment errors route to Medication, Treatment & Next Steps", () => {
   assert.equal(getErrorOwnerStepKey("carePlanAction.d1"), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("followUpAcknowledged"), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("referralAcknowledged"), NEXT_STEP);

@@ -63,6 +63,29 @@ export function reportingEntryPayload(entries) {
     .filter((entry) => entry.name !== "" || entry.reportIn.length > 0);
 }
 
+/**
+ * The draft copy: the payload entries that have a name (the draft schema
+ * requires one). reportIn stays an array, never null, even when empty.
+ */
+export function reportingEntryDraft(entries) {
+  return reportingEntryPayload(entries).filter((entry) => entry.name !== "");
+}
+
+/**
+ * The reporting entries of a saved draft: only v2 entries, which carry
+ * `reportIn`. A legacy concern list (no reportIn) restores no entries here;
+ * converting it is the legacy draft conversion's job.
+ */
+export function restoreReportingEntries(list) {
+  return (Array.isArray(list) ? list : [])
+    .filter((entry) => entry && typeof entry === "object" && Array.isArray(entry.reportIn))
+    .map((entry) => ({
+      id: entry.id ? String(entry.id) : newReportingEntry().id,
+      name: String(entry.name ?? ""),
+      reportIn: entryDestinations(entry),
+    }));
+}
+
 /** Validation messages keyed `reportingEntry.<id>.<name|reportIn|duplicate>`. */
 export function reportingEntryErrors(entries) {
   const errors = {};

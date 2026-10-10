@@ -4,10 +4,11 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
  * Step model for the New Consultation workspace.
  *
  *   Patient Interview
- *       -> Physical Exam & Assessment (Vital Signs and Physical Findings, then Assessment and Actions Taken)
- *       -> Care Plan & Next Steps (each condition row also holds its reporting)
+ *       -> Physical Examination (Vital Signs, Physical Findings and the body map)
+ *       -> Medication, Treatment & Next Steps (existing monitoring, Actions Taken
+ *          and medicines, Schedule BHC Follow-up / Refer to RHU, and Reporting)
  *       -> Monitoring Details (when a monitored condition needs it)
- *       -> Review & Confirm
+ *       -> Review & Finalize
  *
  * The service forms (Prenatal / Family Planning / EPI) are NOT part of that
  * chain. Patient Interview is the hub: the worker ticks the services in the
@@ -15,8 +16,7 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
  * finished form returns to where it was opened (the hub, or Review when edited
  * from there). The panel shows each service as Completed / Incomplete.
  *
- * Vital Signs are recorded under Physical Examination on the Physical Exam &
- * Assessment step; Patient Interview holds the Chief Complaint / HPI and the
+ * Vital Signs are recorded on the Physical Examination step; Patient Interview holds the Chief Complaint / HPI and the
  * Patient Background. The interview step's key is INTERVIEW_STEP.
  *
  * Two levels:
@@ -119,13 +119,13 @@ export function getProgramFormSteps(selectedPrograms = [], primaryProgram = "") 
 export function buildConsultationSteps({ monitoringDetailKeys = [] } = {}) {
   return [
     { key: INTERVIEW_STEP, phase: "form", label: "Patient Interview" },
-    { key: ASSESSMENT_STEP, phase: "form", label: "Physical Exam & Assessment" },
-    { key: NEXT_STEP, phase: "next", label: "Care Plan & Next Steps" },
+    { key: ASSESSMENT_STEP, phase: "form", label: "Physical Examination" },
+    { key: NEXT_STEP, phase: "next", label: "Medication, Treatment & Next Steps" },
     // Only when a monitored condition needs data the ITR does not hold (TB today).
     ...(monitoringDetailKeys.length > 0
       ? [{ key: MONITORING_STEP, phase: "next", label: "Monitoring Details" }]
       : []),
-    { key: REVIEW_STEP, phase: "review", label: "Review & Confirm" },
+    { key: REVIEW_STEP, phase: "review", label: "Review & Finalize" },
   ];
 }
 
@@ -254,8 +254,8 @@ const LEGACY_CURRENT_VISIT_PHASE = "program";
 // Vital Signs was briefly a screen of its own. A draft saved there still
 // reopens on the first step; the fields now live under Physical Examination.
 const LEGACY_VITALS_STEP = "vitals";
-// Actions Taken was briefly a screen of its own. Its fields now sit under
-// Physical Exam & Assessment, so a draft saved there reopens on that step.
+// Actions Taken was briefly a screen of its own. A draft saved there still
+// reopens on Physical Examination (the fields now sit on step 3).
 const LEGACY_TREATMENT_STEP = "treatment";
 const FORM_PHASE = "form";
 const NEXT_CARE_PHASE = "next";
@@ -272,7 +272,8 @@ const NEXT_CARE_PHASE = "next";
  * A stored program form that is no longer selected is resolved to Interview by
  * resolveFormStep at render time.
  *
- * Monitoring Details is saved as the next phase, so it resumes on Care Plan.
+ * Monitoring Details is saved as the next phase, so it resumes on
+ * Medication, Treatment & Next Steps.
  */
 export function resolveRestoredPosition(payload = {}) {
   const phase = payload?.wizardPhase;
@@ -319,19 +320,21 @@ export function getErrorOwnerStepKey(errorKey) {
     return programStepKey("Family Planning");
   }
   if (key === "vaccineEntries") return programStepKey("Immunization");
-  // The diagnosis list lives on Physical Exam & Assessment.
-  if (key === "diagnosis") return ASSESSMENT_STEP;
-  // Actions Taken (and the medicines dispensed) sit on the Assessment screen.
-  if (key === "dispensedMedicines") return ASSESSMENT_STEP;
+  // The Reporting entries (and any server error on diagnoses) live on step 3.
+  if (key === "diagnosis" || key.startsWith("diagnoses.") || key.startsWith("reportingEntry.")) return NEXT_STEP;
+  // Actions Taken (and the medicines dispensed) sit on step 3 too.
+  if (key === "dispensedMedicines") return NEXT_STEP;
   if (key.startsWith("carePlanStop.") || key.startsWith("carePlanAction.")) return NEXT_STEP;
   if (key === "followUpAcknowledged" || key === "referralAcknowledged") return NEXT_STEP;
+  // Server-only v2 next-action keys.
+  if (key === "care_plan.refer_to_rhu" || key === "needs_referral") return NEXT_STEP;
   if (key === "reasonForReferral" || key === "receivingRhuId" || key === "urgencyLevel" || key === "followUpDate" || key === "followUpTime" || key === "followUpReason" || key === "followUpStatus") {
     return NEXT_STEP;
   }
   return null;
 }
 
-// Server-only 422 keys, renamed to the field keys Care Plan reads.
+// Server-only 422 keys, renamed to the field keys step 3 reads.
 const SERVER_ERROR_KEYS = {
   "monitoring_data.followUpReason": "followUpReason",
   "monitoring_data.followUpDate": "followUpDate",

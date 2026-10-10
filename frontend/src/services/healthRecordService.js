@@ -803,6 +803,9 @@ function toPayload(record = {}, { partial = false } = {}) {
     // only for its TB category (each sends null otherwise).
     tb_data: record.tbData || record.tb_data || null,
     needs_referral: needsReferral,
+    // The BHC General Consultation v2 discriminator (create only); sent only
+    // when the caller sets it, so every other save is unchanged.
+    ...(record.consultationWorkflow ? { consultation_workflow: record.consultationWorkflow } : {}),
     chief_complaint: record.chiefComplaint || null,
     physical_exam: record.physicalExam || null,
     body_findings: serializeBodyFindings(record.bodyFindings),
@@ -879,6 +882,9 @@ function toPayload(record = {}, { partial = false } = {}) {
         }
       : undefined,
   };
+
+  // v2 carries no plain-text visit diagnosis (the server rejects one).
+  if (payload.consultation_workflow) delete payload.diagnosis;
 
   if (!partial) return payload;
 
