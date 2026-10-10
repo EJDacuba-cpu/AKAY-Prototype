@@ -614,3 +614,37 @@ Full backend run at the end of Task 5 (junit kept outside the repository): 765 t
 Comparison by name against the 144 names under "Failing names after Task 0.5": **no new failing name**, and the failing set is identical.
 
 Noted, not credited (baseline names that now pass): none.
+
+## After implementation (Task 12)
+
+Branch `bhc-general-consultation-simplification`, full verification after Task 11. No application code was changed in this task.
+
+### Backend
+
+Command (from `backend/`): `php -d memory_limit=2G vendor/bin/phpunit --log-junit <scratchpad>/after-junit.xml`
+
+| Suite | After Task 0.5 (baseline) | After implementation |
+|---|---|---|
+| Backend full run | 697 tests, 532 passed, 144 failing names (141 F + 3 E), 21 skipped | 766 tests, 601 passed, **144 failing names** (141 F + 3 E), 21 skipped |
+| New failing names | | **none** |
+| Baseline names now passing | | none (the 144 names are exactly the same set) |
+
+The failing names were taken from the junit file (every `<testcase>` holding a `<failure>` or `<error>`, as `Class::method`) and compared one by one against the 144 names under "Failing names after Task 0.5". The sets are identical: 0 new, 0 changed. The 69 added tests (766 vs 697) all pass. The 144 remain the pre-existing failures described above (stale 403 preset/payload drift and the open items (b) 1-7); none was touched or masked.
+
+### Frontend
+
+| Command (from `frontend/`) | Result |
+|---|---|
+| `node --test` | 603 tests, 603 pass, 0 fail, 0 skipped |
+| `npm run lint` | 0 errors, 1 warning (the pre-existing `react-hooks/exhaustive-deps` in `src/pages/rhu/RHUAddHealthRecords.jsx:791`) |
+| `npm run build` | passes (`built in 2.13s`; only the usual >500 kB chunk-size notice) |
+
+### Responsive check (harness only)
+
+A throwaway Vite entry rendered the real `NextStepsSection`, `ReportingEntriesField`, `ReferralFacilityField` and `ConsultationReviewStep` (inside `NextActionStep`) with stubbed props and data, at 1366x768 and 390x844 in headless Microsoft Edge via DevTools device-metrics override. The harness was written to a temporary folder in `frontend/` and deleted afterwards; `git status` shows no leftover files, and `package.json` was not touched. Results are **harness only**: they are not a check of the real workspace page (no login, no DashboardLayout sidebar, no sticky action bar).
+
+All five states, at both widths: no horizontal scroll (document scrollWidth never exceeded the viewport), no element past the viewport edge, no clipped control, the UI copy matched the plan's "UI copy (exact)" list, and no card sits inside a card. In step 3 the one wizard card holds flat sections divided by thin rules; the only bordered box inside it is the amber non-blocking date warning, which is an inline notice, not a card. Review shows one bordered block per group, side by side in a stack, none nested, and the Patient row is first.
+
+Not covered: `DispensedMedicinesSection` (Medicines / Supplies Dispensed) was replaced by the Actions Taken field, so its layout is UNVERIFIED. Step 3 runs full width by design (the right-hand services column appears on Patient Interview only), so there is no services sidebar to check on step 3.
+
+Minor finding (cosmetic, not a defect to block on): at 390 px the required asterisk of "Reported Health Problem / Suspected Case" wraps to its own line, because the Remove button takes width beside the input (`ReportingEntriesField.jsx`, the `flex items-start gap-3` row at line 59).
