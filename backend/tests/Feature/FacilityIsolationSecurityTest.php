@@ -10,6 +10,7 @@ use App\Models\Patient;
 use App\Models\Referral;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Services\ActionPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -491,10 +492,10 @@ class FacilityIsolationSecurityTest extends TestCase
             ->assertCreated();
 
         $recordId = $response->json('data.id');
+        // Saved records are read-only; update() always answers 409 (HealthRecordController.php:497).
         $this->actingAs($this->bhwA, 'sanctum')
             ->patchJson("/api/health-records/{$recordId}", ['notes' => 'Updated follow-up notes.'])
-            ->assertOk()
-            ->assertJsonPath('data.notes', 'Updated follow-up notes.');
+            ->assertConflict();
 
         $this->assertSame($recordId, $this->taskA->fresh()->fulfilled_by_health_record_id);
     }
@@ -516,9 +517,11 @@ class FacilityIsolationSecurityTest extends TestCase
     public function test_valid_same_bhc_medicine_selection_succeeds(): void
     {
         $payload = $this->healthRecordPayload($this->patientA);
+        // Only an item marked given deducts stock (HealthRecordController.php:298).
         $payload['dispensed_medicines'] = [[
             'medicine_id' => $this->medicineA->id,
             'quantity' => 2,
+            'confirmed_given' => true,
         ]];
 
         $this->postHealthRecord($this->bhwA, $payload)
@@ -620,6 +623,8 @@ class FacilityIsolationSecurityTest extends TestCase
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhcId,
             'rural_health_unit_id' => $rhuId,
+            // A BHW with null permissions gets the encoder preset and is refused with 403 on save.
+            ...($role === User::ROLE_BHW ? ['permissions' => ActionPermissions::PRESETS['clinical']] : []),
         ]);
     }
 
@@ -756,6 +761,8 @@ class FacilityIsolationSecurityTest extends TestCase
             'visit_type' => 'follow_up_visit',
             'parent_health_record_id' => $parent->id,
             'category' => 'General Consultation',
+            // chief_complaint is required on POST (HealthRecordRequest.php:281).
+            'chief_complaint' => 'Scheduled return visit',
             'monitoring_data' => [
                 'followUpTaskId' => $task->id,
                 'follow_up_task_id' => $task->id,

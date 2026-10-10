@@ -11,6 +11,7 @@ use App\Models\Patient;
 use App\Models\Referral;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Services\ActionPermissions;
 use App\Services\ReferralRoutingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -56,6 +57,9 @@ class FollowUpConcurrencyTest extends TestCase
         [$parent, $task] = $this->scheduledFollowUp();
         $medicine = $this->medicine(20);
         $payload = $this->followUpPayload($parent, $task, [
+            // A follow-up or referral requires a BHC Assessment (HealthRecordRequest.php:460);
+            // only an item marked given deducts stock (HealthRecordController.php:298).
+            'diagnosis' => 'Needs RHU assessment',
             'monitoring_data' => [
                 'followUpTaskId' => $task->id,
                 'followUpStatus' => 'Follow-up Required',
@@ -65,6 +69,7 @@ class FollowUpConcurrencyTest extends TestCase
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
                 'quantity' => 3,
+                'confirmed_given' => true,
             ]],
             'needs_referral' => true,
             'referral' => [
@@ -274,6 +279,8 @@ class FollowUpConcurrencyTest extends TestCase
         [$parent, $task] = $this->scheduledFollowUp();
         $this->bhc->update(['rural_health_unit_id' => null]);
         $payload = $this->followUpPayload($parent, $task, [
+            // A follow-up or referral requires a BHC Assessment (HealthRecordRequest.php:460).
+            'diagnosis' => 'Needs RHU assessment',
             'monitoring_data' => [
                 'followUpTaskId' => $task->id,
                 'followUpStatus' => 'Follow-up Required',
@@ -430,6 +437,8 @@ class FollowUpConcurrencyTest extends TestCase
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $role === User::ROLE_BHW ? $facilityId : null,
             'rural_health_unit_id' => $role === User::ROLE_RHU_STAFF ? $facilityId : null,
+            // A BHW with null permissions gets the encoder preset and is refused with 403 on save.
+            ...($role === User::ROLE_BHW ? ['permissions' => ActionPermissions::PRESETS['clinical']] : []),
         ]);
     }
 }

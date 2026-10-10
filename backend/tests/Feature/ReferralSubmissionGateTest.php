@@ -8,6 +8,7 @@ use App\Models\Referral;
 use App\Models\RhuProvider;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Services\ActionPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -53,6 +54,8 @@ class ReferralSubmissionGateTest extends TestCase
             'role' => User::ROLE_BHW,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $this->bhc->id,
+            // A BHW with null permissions gets the encoder preset and is refused with 403 on save/refer.
+            'permissions' => ActionPermissions::PRESETS['clinical'],
         ]);
         $this->patient = Patient::create([
             'first_name' => 'Gate',

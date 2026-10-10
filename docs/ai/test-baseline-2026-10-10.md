@@ -348,3 +348,261 @@ Other places the date is only validated as a date: `HealthRecordRequest.php:148-
 2. The only mandatory-date rule that exists is a concern that schedules a follow-up (row 1), plus the API-only status rule (row 7).
 3. `reasonExempt` already matches the server in spirit: the reason is required only when a concern schedules the follow-up (`HealthRecordRequest.php:524-536`); a service-only or monitoring-only visit is exempt on the server. On the frontend `carePlanFollowUpErrors` requires the reason for *any kept follow-up that has a date* (`carePlanWorkspace.js:133`), which is stricter than the server for service and monitoring visits. A mismatch exists today.
 4. Prenatal and Family Planning: Prenatal has no return-date field at all; Family Planning's `nextAppointmentDate` has no BHC input. If the plan needs a service return date, the single `followUpDate` is the only field, labelled by `SERVICE_NEXT_VISIT_LABELS`.
+
+## After Task 0.5 (targeted 403 test-setup sweep, tests only)
+
+**This section supersedes the failing-name list above as the baseline that later tasks are compared against.** Only test files changed (`backend/tests/Feature/` x5) plus this document; no application code, config, migration or route was touched.
+
+| Suite | Before (Task 0) | After Task 0.5 |
+|---|---|---|
+| Backend full run | 697 tests, 490 passed, 186 failing names (183 F + 3 E) | 697 tests, 532 passed, **144 failing names** (141 F + 3 E), 21 skipped |
+| New failing names | | **none** |
+| Names fixed | | 42 (all in the five classes) |
+
+Per class (tests passing / total):
+
+| Class | Before | After |
+|---|---|---|
+| HealthRecordIdempotencyTest | 1/12 | 11/12 |
+| HealthRecordDraftFinalizationTest | 7/13 | 12/13 |
+| FollowUpConcurrencyTest | 1/10 | 9/10 |
+| ReferralSubmissionGateTest | 0/8 | 7/8 |
+| FacilityIsolationSecurityTest | 24/45 | 36/45 |
+
+### Setup fix (all five classes)
+
+BHW test users created without `permissions` got the encoder preset and a 403. Each class's user helper now gives BHW users `ActionPermissions::PRESETS['clinical']` (RHU and admin users are unchanged). `HealthRecordDraftFinalizationTest` already had the preset; its failures were all second-layer drift.
+
+### (a) Fixes: clearly obsolete test input or expectation
+
+No assertion on security, facility isolation, idempotency, concurrency or stock was weakened or removed. Payload-only fixes keep every assertion exactly as written; they make the request valid under the current rules so the original assertions run for real.
+
+| Where | Old | New | Current rule |
+|---|---|---|---|
+| HealthRecordIdempotencyTest: `same_key_rejects_material_payload_changes_without_mutation`, `follow_up_completion_and_next_task_are_replayed_once`, `referral_and_database_notifications_are_created_once`, `late_referral_failure_rolls_back_record_stock_and_follow_up` | follow-up or referral payload with no `diagnosis`; medicine entries with no `confirmed_given` | add `diagnosis`; add `confirmed_given: true` to the medicine entries whose stock the test asserts | `HealthRecordRequest.php:460` (BHC Assessment required for follow-up or referral); `HealthRecordController.php:298` (only `confirmed_given === true` items deduct stock) |
+| FollowUpConcurrencyTest: `one_different_key_submission_wins_and_the_second_has_no_effects`, `referral_failure_after_lock_rolls_back_completion_and_next_task` | same | same | same |
+| FacilityIsolationSecurityTest `followUpPayload()` helper (feeds 6 tests that failed, plus `bhw_cannot_fulfill_other_bhc_follow_up_task`, which only passed before because the preset 403 matched its expected 403) | no `chief_complaint` | add `chief_complaint` | `HealthRecordRequest.php:281` |
+| FacilityIsolationSecurityTest `valid_same_bhc_medicine_selection_succeeds` | planned item (no flag), asserts 18 left | add `confirmed_given: true` | `HealthRecordController.php:298` |
+| FacilityIsolationSecurityTest `existing_follow_up_record_can_be_edited_without_reusing_task` | PATCH expected 200 with the notes echoed | PATCH expected 409; the final "task still fulfilled by the original record" assertion is unchanged; the notes-echo assertion is dropped because no edit exists | `HealthRecordController.php:497` (`update()` always answers 409: saved records are read-only). The test name still says "can be edited"; kept so the name stays traceable |
+| HealthRecordDraftFinalizationTest `finalize()` helper | no draft version header | send `X-Draft-Version` = the draft's current version (caller-supplied headers still win) | `HealthRecordDraftService.php:367` |
+| HealthRecordDraftFinalizationTest `officialPayload()` | medicine without `confirmed_given` | add `confirmed_given: true` (the rollback and replay tests now deduct, and roll back, real stock) | `HealthRecordController.php:298` |
+| HealthRecordDraftFinalizationTest `referral_failure_rolls_back_official_work_and_keeps_encrypted_draft` | referral payload with no `diagnosis` | add `diagnosis` | `HealthRecordRequest.php:460` |
+| HealthRecordDraftFinalizationTest `follow_up_failure_rolls_back_official_work_and_keeps_draft_active` | mock had only `lockTaskForProcessing` and `syncRecord`; the 500 came from an unmocked call, not from the forced failure | add `lockAdditionalTasks` to the mock | `HealthRecordController.php:232` |
+| HealthRecordDraftFinalizationTest `custom_header_validation_and_absent_header_ordinary_save_contract`, `draft_binding_and_terminal_states_are_enforced_before_official_creation` direct POST payloads | no `chief_complaint` | add `chief_complaint` | `HealthRecordRequest.php:281` |
+
+### Open after Task 0.5 (b): left failing, unchanged (13 names)
+
+1. `HealthRecordIdempotencyTest::test_medicine_is_deducted_once_and_failure_rolls_back_record` (stock). Fails with `Failed asserting that 10 is identical to 6` because its payload is a planned item. Even with `confirmed_given`, its last step expects a 409 `INSUFFICIENT_STOCK` when a given quantity exceeds stock; `MedicineStockService.php:455-468` now records a shortage (`discrepancy`, `reconciliation_required`) and clamps to 0 instead of refusing (`ConsultationWorkflowRevisionTest::test_shortage_records_actual_quantity_once_on_retry` pins the new rule). Needs a stock-assertion rewrite, so a human decision. Suspicion: obsolete expectation, not a bug.
+2. `FollowUpConcurrencyTest::test_medicine_failure_after_lock_leaves_task_active` (stock): expects 409 `INSUFFICIENT_STOCK`; same cause as item 1 (plus a missing `diagnosis`). Same suspicion.
+3. `ReferralSubmissionGateTest::test_embedded_referral_path_is_gated_too` (referral gate): expects 422 `NO_PROVIDER_AVAILABLE` and no record from the embedded health-record path. The payload also lacks `chief_complaint` and `diagnosis`, but the deeper change is behavioral: `HealthRecordController.php:325-333` now finalizes the record and parks the referral in a hold ("Awaiting Doctor Availability"), pinned by `ConsultationWorkflowRevisionTest::test_zero_doctors_finalizes_without_submitting_referral`. Needs an assertion rewrite, so a human decision. Suspicion: obsolete expectation.
+4. `FacilityIsolationSecurityTest::test_bhw_cannot_dispense_other_bhc_medicine_during_record_creation` (facility isolation): the request returns **201** instead of 422; stock is unchanged. The payload is a planned item (no `confirmed_given`), and planned items are stored in `items_planned` (`HealthRecordController.php:190`) with **no facility-ownership check**; only given items go through the `MedicineStockService` ownership check. A scratch copy with `confirmed_given: true` returned 422 and left stock at 20 (checked, then deleted). **Possible real gap**: another BHC's medicine id can be saved as a planned item. No stock effect, and the stored value is only the id and quantity, but it deserves a decision. Not fixed here.
+5. `FacilityIsolationSecurityTest::test_health_record_update_cannot_reassign_patient` (facility isolation): expects 422 on `patient_id`, receives 409 because `update()` always answers 409 (`HealthRecordController.php:497`). The reassignment still cannot happen. Left for a human decision. Suspicion: obsolete expectation; the new expectation would be 409.
+6. `HealthRecordDraftFinalizationTest::test_draft_binding_and_terminal_states_are_enforced_before_official_creation` (draft ownership isolation): another BHW of the same BHC finalizing the owner's draft is expected to get 404 and now gets 409. Drafts are looked up by BHC, not owner (`HealthRecordDraftService.php:341-343`), and guarded by an editor lease (`assertEditor`, `:473`: "Your editing session ended or was taken over"). The user cannot finalize the other's draft (409), so there is no visible escalation, but the old "invisible to other users" contract is gone, and the expired, discarded and other-facility checks after that assertion are not executed. Suspicion: obsolete after the draft editor-lease redesign, but it is an ownership-isolation assertion, so a human decision (probably a rewrite around the lease).
+7. Seven user-admin names in `FacilityIsolationSecurityTest` (not the `store()` path): `test_rejects_bhw_without_bhc_assignment`, `test_rejects_bhw_with_both_facility_assignments`, `test_rejects_rhu_staff_without_rhu_assignment`, `test_rejects_rhu_staff_with_both_facility_assignments`, `test_rejects_clinical_account_assignment_to_inactive_facility`, `test_rejects_update_that_removes_bhw_bhc_assignment`, `test_rejects_update_that_adds_bhc_to_rhu_staff`. Cause: `UserRequest.php:33` now needs `permissions` and `permissions_confirmed`, so the 422 lacks the expected key. These are account facility-assignment assertions outside the 403 sweep, so left. A scratch copy with `permissions: []` and `permissions_confirmed: true` in `userPayload()` made the 5 POST tests pass; the 2 PATCH tests need `permissions_confirmed: true` as well (not retried). Suspicion: stale payload only.
+
+### Failing names after Task 0.5 (144): the new baseline
+
+The Task 0 list minus the 42 names fixed above (all in the five classes). The group labels in the earlier sections still describe the cause of every other name.
+
+**AkayApiTest** (5)
+- `AkayApiTest::test_bhw_can_manage_assigned_bhc_medicine_inventory`
+- `AkayApiTest::test_empty_reports_return_zero_counts`
+- `AkayApiTest::test_family_planning_health_record_saves_json_payload_and_can_be_filtered`
+- `AkayApiTest::test_referral_creation_generates_tracking_notification_and_audit_log`
+- `AkayApiTest::test_referral_creation_is_idempotent_by_client_submission_id`
+
+**ApprovedFacilityPermissionsTest** (4)
+- `ApprovedFacilityPermissionsTest::test_admin_has_no_automatic_clinical_finalization`
+- `ApprovedFacilityPermissionsTest::test_encoder_cannot_browse_clinical_history_or_finalize_via_direct_api`
+- `ApprovedFacilityPermissionsTest::test_other_users_assignment_and_cross_facility_patient_are_denied`
+- `ApprovedFacilityPermissionsTest::test_rhu_nurse_can_select_a_dated_bhc_assignment_without_changing_home`
+
+**AuthenticationSessionSecurityTest** (7)
+- `AuthenticationSessionSecurityTest::test_active_and_facility_middleware_revoke_tokens_after_out_of_band_context_changes`
+- `AuthenticationSessionSecurityTest::test_admin_password_change_revokes_existing_sessions`
+- `AuthenticationSessionSecurityTest::test_bhc_and_rhu_assignment_changes_revoke_existing_tokens`
+- `AuthenticationSessionSecurityTest::test_correcting_a_mixed_assignment_revokes_existing_tokens`
+- `AuthenticationSessionSecurityTest::test_deactivation_revokes_all_tokens_and_reactivation_does_not_restore_them`
+- `AuthenticationSessionSecurityTest::test_harmless_profile_update_does_not_revoke_valid_tokens`
+- `AuthenticationSessionSecurityTest::test_role_and_facility_change_revokes_tokens_and_new_login_uses_new_context`
+
+**BrowserSessionPrivacyTest** (3)
+- `BrowserSessionPrivacyTest::test_health_record_responses_disable_browser_and_proxy_caching`
+- `BrowserSessionPrivacyTest::test_referral_responses_disable_browser_and_proxy_caching`
+- `BrowserSessionPrivacyTest::test_report_source_responses_disable_browser_and_proxy_caching`
+
+**ClinicalFlowEndToEndTest** (5)
+- `ClinicalFlowEndToEndTest::test_follow_up_visit_fulfils_the_task_and_links_to_the_parent_record`
+- `ClinicalFlowEndToEndTest::test_health_records_list_exposes_the_resolved_outcome`
+- `ClinicalFlowEndToEndTest::test_referral_disposition_creates_the_referral_and_reads_referred`
+- `ClinicalFlowEndToEndTest::test_routine_disposition_creates_no_follow_up_and_reads_routine`
+- `ClinicalFlowEndToEndTest::test_scheduled_follow_up_appears_in_the_follow_ups_module`
+
+**ConsultationIdentityTest** (9)
+- `ConsultationIdentityTest::test_a_discarded_draft_never_blocks_its_consultation_from_saving_again`
+- `ConsultationIdentityTest::test_another_users_record_is_never_identified_by_a_shared_uuid`
+- `ConsultationIdentityTest::test_consultation_uuid_cannot_be_changed_on_an_existing_record`
+- `ConsultationIdentityTest::test_consultation_uuid_is_hidden_from_health_record_responses`
+- `ConsultationIdentityTest::test_consultation_uuid_is_never_an_authorization_key`
+- `ConsultationIdentityTest::test_final_record_receives_the_consultations_uuid_separate_from_idempotency_key`
+- `ConsultationIdentityTest::test_idempotent_replay_is_unchanged_and_ignores_consultation_uuid`
+- `ConsultationIdentityTest::test_records_without_an_identity_never_collide_with_each_other`
+- `ConsultationIdentityTest::test_the_same_consultation_cannot_become_two_records_under_a_new_key`
+
+**ConsultationProgramsTest** (2)
+- `ConsultationProgramsTest::test_patient_past_medical_history_is_untouched_by_record_writes`
+- `ConsultationProgramsTest::test_secondary_program_data_round_trips_without_changing_primary_category`
+
+**FacilityIsolationSecurityTest** (9)
+- `FacilityIsolationSecurityTest::test_bhw_cannot_dispense_other_bhc_medicine_during_record_creation`
+- `FacilityIsolationSecurityTest::test_health_record_update_cannot_reassign_patient`
+- `FacilityIsolationSecurityTest::test_rejects_bhw_with_both_facility_assignments`
+- `FacilityIsolationSecurityTest::test_rejects_bhw_without_bhc_assignment`
+- `FacilityIsolationSecurityTest::test_rejects_clinical_account_assignment_to_inactive_facility`
+- `FacilityIsolationSecurityTest::test_rejects_rhu_staff_with_both_facility_assignments`
+- `FacilityIsolationSecurityTest::test_rejects_rhu_staff_without_rhu_assignment`
+- `FacilityIsolationSecurityTest::test_rejects_update_that_adds_bhc_to_rhu_staff`
+- `FacilityIsolationSecurityTest::test_rejects_update_that_removes_bhw_bhc_assignment`
+
+**FollowUpCalendarEndpointTest** (4)
+- `FollowUpCalendarEndpointTest::test_calendar_groups_tasks_by_due_date`
+- `FollowUpCalendarEndpointTest::test_calendar_includes_superseded_rows_on_their_original_day`
+- `FollowUpCalendarEndpointTest::test_calendar_is_facility_scoped`
+- `FollowUpCalendarEndpointTest::test_calendar_requires_a_date_range`
+
+**FollowUpConcurrencyTest** (1)
+- `FollowUpConcurrencyTest::test_medicine_failure_after_lock_leaves_task_active`
+
+**FollowUpEpisodeTest** (1)
+- `FollowUpEpisodeTest::test_details_return_the_explicit_episode_in_visit_and_schedule_order`
+
+**FollowUpRescheduleModelTest** (5)
+- `FollowUpRescheduleModelTest::test_a_superseded_and_its_active_replacement_can_coexist`
+- `FollowUpRescheduleModelTest::test_a_superseded_task_is_no_longer_processable`
+- `FollowUpRescheduleModelTest::test_index_shows_only_the_current_task_after_reschedule`
+- `FollowUpRescheduleModelTest::test_rescheduling_a_no_show_task_leaves_its_state_as_no_show`
+- `FollowUpRescheduleModelTest::test_rescheduling_a_pending_task_supersedes_it_with_a_new_row`
+
+**FollowUpTaskSchedulingTest** (8)
+- `FollowUpTaskSchedulingTest::test_active_patient_lookup_returns_all_unrelated_episodes_in_schedule_order`
+- `FollowUpTaskSchedulingTest::test_cancel_preserves_history_and_removes_task_from_active_lookup`
+- `FollowUpTaskSchedulingTest::test_follow_up_visit_requires_time_when_scheduling_another_visit`
+- `FollowUpTaskSchedulingTest::test_general_consultation_follow_up_required_needs_a_date_and_time`
+- `FollowUpTaskSchedulingTest::test_initial_health_record_save_creates_one_schedule_with_required_time`
+- `FollowUpTaskSchedulingTest::test_one_active_task_is_returned_without_auto_linking_a_new_consultation`
+- `FollowUpTaskSchedulingTest::test_referral_disposition_ignores_stale_follow_up_fields`
+- `FollowUpTaskSchedulingTest::test_reschedule_updates_date_time_notes_and_rejects_terminal_tasks`
+
+**FollowUpTaskSyncServiceTest** (1)
+- `FollowUpTaskSyncServiceTest::test_resyncing_a_record_does_not_undo_a_reschedule`
+
+**FormsFinalizationChecklistTest** (3)
+- `FormsFinalizationChecklistTest::test_maternal_td_doses_are_accepted_and_persisted_separately_from_tt`
+- `FormsFinalizationChecklistTest::test_pulse_and_spo2_vitals_are_accepted_and_persisted`
+- `FormsFinalizationChecklistTest::test_tb_comorbidity_screening_fields_are_accepted_and_persisted`
+
+**HealthRecordDraftFinalizationTest** (1)
+- `HealthRecordDraftFinalizationTest::test_draft_binding_and_terminal_states_are_enforced_before_official_creation`
+
+**HealthRecordDraftTest** (2)
+- `HealthRecordDraftTest::test_official_failure_keeps_draft_active_and_successful_commit_consumes_it`
+- `HealthRecordDraftTest::test_other_users_roles_and_invalid_facility_assignments_cannot_access_draft`
+
+**HealthRecordIdempotencyTest** (1)
+- `HealthRecordIdempotencyTest::test_medicine_is_deducted_once_and_failure_rolls_back_record`
+
+**MedicineInventoryWorkflowTest** (14)
+- `MedicineInventoryWorkflowTest::test_adjustment_actions_use_positive_input_and_record_signed_deltas`
+- `MedicineInventoryWorkflowTest::test_authorized_bhc_and_rhu_restock_increment_and_create_one_ledger_row`
+- `MedicineInventoryWorkflowTest::test_batch_key_supports_multiple_medicines_but_same_batch_cannot_repeat`
+- `MedicineInventoryWorkflowTest::test_creation_derives_facility_and_records_only_positive_opening_balance`
+- `MedicineInventoryWorkflowTest::test_expired_disposal_succeeds_but_invalid_or_excessive_outflow_does_not_mutate`
+- `MedicineInventoryWorkflowTest::test_generic_metadata_update_cannot_replace_quantity`
+- `MedicineInventoryWorkflowTest::test_history_is_paginated_newest_first_and_facility_scoped`
+- `MedicineInventoryWorkflowTest::test_history_response_uses_a_safe_allowlist_for_all_transaction_types`
+- `MedicineInventoryWorkflowTest::test_negative_opening_balance_and_client_facility_override_fail_validation`
+- `MedicineInventoryWorkflowTest::test_non_correction_direction_is_rejected`
+- `MedicineInventoryWorkflowTest::test_restock_requires_reason_and_rejects_cross_facility_access`
+- `MedicineInventoryWorkflowTest::test_rhu_health_record_dispensing_is_rejected_and_rolled_back`
+- `MedicineInventoryWorkflowTest::test_rhu_history_is_available_only_to_its_own_rhu_staff`
+- `MedicineInventoryWorkflowTest::test_used_medicine_is_archived_while_unused_zero_stock_can_be_deleted`
+
+**MedicineStockConcurrencyTest** (14)
+- `MedicineStockConcurrencyTest::test_all_rows_are_validated_before_any_multi_item_deduction`
+- `MedicineStockConcurrencyTest::test_authorized_submission_deducts_locked_stock_and_creates_one_normalized_history_row`
+- `MedicineStockConcurrencyTest::test_cross_facility_inventory_is_rejected_without_stock_details`
+- `MedicineStockConcurrencyTest::test_different_keys_use_current_stock_while_same_key_replays_without_another_deduction`
+- `MedicineStockConcurrencyTest::test_direct_dispense_endpoint_deducts_once_for_an_existing_record`
+- `MedicineStockConcurrencyTest::test_health_record_without_medicines_still_succeeds`
+- `MedicineStockConcurrencyTest::test_idempotency_hash_normalizes_reordered_and_combined_medicine_entries`
+- `MedicineStockConcurrencyTest::test_insufficient_stock_returns_safe_conflict_and_creates_no_official_effects`
+- `MedicineStockConcurrencyTest::test_invalid_unavailable_expired_and_missing_items_create_no_effects`
+- `MedicineStockConcurrencyTest::test_late_audit_failure_rolls_back_record_stock_and_history`
+- `MedicineStockConcurrencyTest::test_multiple_sufficient_items_deduct_once_regardless_of_browser_order`
+- `MedicineStockConcurrencyTest::test_pre_phase_2c_medicine_hash_remains_replayable`
+- `MedicineStockConcurrencyTest::test_processed_follow_up_conflict_precedes_stock_validation`
+- `MedicineStockConcurrencyTest::test_stock_conflict_leaves_linked_follow_up_active_and_creates_no_next_task`
+
+**NotificationRemediationTest** (4)
+- `NotificationRemediationTest::test_counts_reflects_true_totals_across_categories`
+- `NotificationRemediationTest::test_mark_unread_persists_across_a_refetch`
+- `NotificationRemediationTest::test_search_matches_on_title_and_message`
+- `NotificationRemediationTest::test_trash_and_restore_round_trip`
+
+**PrenatalFormFieldsTest** (2)
+- `PrenatalFormFieldsTest::test_official_record_keeps_the_new_prenatal_fields`
+- `PrenatalFormFieldsTest::test_official_record_validates_the_new_prenatal_fields`
+
+**ReferralAttentionTransitionTest** (8)
+- `ReferralAttentionTransitionTest::test_direct_referral_accepts_priority`
+- `ReferralAttentionTransitionTest::test_direct_referral_accepts_routine`
+- `ReferralAttentionTransitionTest::test_direct_referral_rejects_every_retired_value`
+- `ReferralAttentionTransitionTest::test_direct_referral_requires_an_explicit_value`
+- `ReferralAttentionTransitionTest::test_embedded_referral_accepts_priority`
+- `ReferralAttentionTransitionTest::test_embedded_referral_rejects_retired_value`
+- `ReferralAttentionTransitionTest::test_embedded_referral_requires_an_explicit_value`
+- `ReferralAttentionTransitionTest::test_health_record_without_a_referral_is_unaffected`
+
+**ReferralHoldTest** (10)
+- `ReferralHoldTest::test_blocked_submission_records_a_waiting_hold`
+- `ReferralHoldTest::test_discard_is_forbidden_for_another_bhws_hold`
+- `ReferralHoldTest::test_discard_rejects_an_already_resolved_hold`
+- `ReferralHoldTest::test_existing_waiting_hold_does_not_change_the_gate_decision`
+- `ReferralHoldTest::test_flip_to_available_notifies_waiting_holds`
+- `ReferralHoldTest::test_flip_to_unavailable_and_unrelated_edits_notify_nobody`
+- `ReferralHoldTest::test_index_returns_only_the_callers_waiting_holds`
+- `ReferralHoldTest::test_notification_cooldown_suppresses_rapid_repeat_notifications`
+- `ReferralHoldTest::test_resume_hold_id_is_scoped_to_its_creator`
+- `ReferralHoldTest::test_successful_resubmission_resolves_the_hold`
+
+**ReferralQrSecurityTest** (8)
+- `ReferralQrSecurityTest::test_admin_keeps_existing_details_access_but_cannot_use_clinical_qr_workflows`
+- `ReferralQrSecurityTest::test_authorized_bhw_lazily_obtains_an_opaque_secure_qr_without_serializing_secrets`
+- `ReferralQrSecurityTest::test_authorized_rhu_resolves_qr_then_details_authorizes_again_and_audits_safely`
+- `ReferralQrSecurityTest::test_regeneration_replaces_token_without_changing_referral_identity_or_ownership`
+- `ReferralQrSecurityTest::test_repeated_display_reuses_one_active_token_and_one_generation_audit`
+- `ReferralQrSecurityTest::test_tracking_lookup_and_regeneration_have_independent_rate_limits`
+- `ReferralQrSecurityTest::test_tracking_lookup_is_authenticated_exact_and_facility_scoped`
+- `ReferralQrSecurityTest::test_valid_token_does_not_bypass_rhu_or_role_isolation`
+
+**ReferralRoutingSecurityTest** (5)
+- `ReferralRoutingSecurityTest::test_changing_mapping_does_not_rewrite_existing_referral_destination`
+- `ReferralRoutingSecurityTest::test_client_destination_overrides_are_ignored`
+- `ReferralRoutingSecurityTest::test_inactive_mapped_rhu_blocks_referral_creation`
+- `ReferralRoutingSecurityTest::test_unmapped_bhc_cannot_create_a_referral`
+- `ReferralRoutingSecurityTest::test_valid_referral_is_routed_from_authenticated_bhc_to_mapped_rhu`
+
+**ReferralStatusStateMachineTest** (1)
+- `ReferralStatusStateMachineTest::test_new_referral_forces_pending_and_creates_one_initial_history`
+
+**ReferralSubmissionGateTest** (1)
+- `ReferralSubmissionGateTest::test_embedded_referral_path_is_gated_too`
+
+**SecureServerCacheTest** (6)
+- `SecureServerCacheTest::test_medicine_cache_records_miss_then_hit_with_identical_allowlisted_response`
+- `SecureServerCacheTest::test_official_dispensing_invalidates_bhc_display_after_commit`
+- `SecureServerCacheTest::test_referral_receive_feedback_and_no_show_each_invalidate_aggregate_cache`
+- `SecureServerCacheTest::test_report_cache_is_invalidated_by_committed_referral_for_affected_facilities_only`
+- `SecureServerCacheTest::test_rhu_medicine_and_patient_volume_mutations_invalidate_only_affected_report`
+- `SecureServerCacheTest::test_successful_and_failed_stock_mutations_handle_invalidation_and_database_authority`
+
