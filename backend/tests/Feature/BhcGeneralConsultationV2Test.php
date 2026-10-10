@@ -7,8 +7,12 @@ use App\Models\BarangayHealthCenter;
 use App\Models\ConditionMonitoring;
 use App\Models\FollowUpTask;
 use App\Models\HealthRecord;
+use App\Models\HealthRecordDraft;
+use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\PatientCondition;
+use App\Models\Referral;
+use App\Models\ReferralHold;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\ActionPermissions;
@@ -558,5 +562,164 @@ class BhcGeneralConsultationV2Test extends TestCase
         foreach (['includeInMorbidityReport', 'include_in_morbidity_report', 'isNotifiableDisease', 'is_notifiable_disease'] as $key) {
             $this->assertFalse($monitoringData[$key], $key);
         }
+    }
+
+    // --- Task 5: compatibility, authorization, idempotency ---
+
+    public function test_legacy_refer_concern_payload_unchanged(): void
+    {
+        $id = $this->legacy([
+            'diagnosis' => 'Pneumonia',
+            'diagnoses' => [['id' => 'd1', 'name' => 'Pneumonia', 'carePlan' => 'refer']],
+            ...$this->referral(),
+        ])->assertCreated()->json('data.id');
+
+        $record = HealthRecord::findOrFail($id);
+        $this->assertSame('refer', $record->diagnoses[0]['carePlan']);
+        $this->assertSame('Pneumonia', $record->diagnosis);
+        $this->assertArrayNotHasKey('consultationWorkflow', $record->monitoring_data ?? []);
+        $this->assertFalse($record->isBhcGeneralV2());
+        $this->assertSame(1, Referral::count() + ReferralHold::count(), "one referral or one hold, never both or neither");
+    }
+
+    public function test_rhu_health_record_save_unaffected(): void
+    {
+        $rhuUser = User::create(['name' => 'V2 RHU Saver', 'email' => 'v2rhusave@example.test', 'password' => 'password123', 'role' => User::ROLE_RHU_STAFF, 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id, 'permissions' => [...ActionPermissions::PRESETS['clinical'], 'rhu.manage', 'conditions.confirm']]);
+
+        $response = $this->actingAs($rhuUser, 'sanctum')
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/health-records', [
+                'patient_id' => $this->patient->id,
+                'date_recorded' => '2026-07-19 09:30:00',
+                'category' => 'General Consultation',
+                'chief_complaint' => 'Routine consultation',
+                'diagnosis' => 'Hypertension',
+            ])->assertCreated();
+
+        $record = HealthRecord::findOrFail($response->json('data.id'));
+        $this->assertFalse($record->isBhcGeneralV2());
+        $this->assertArrayNotHasKey('consultationWorkflow', $record->monitoring_data ?? []);
+    }
+
+    public function test_v2_replay_with_same_idempotency_key_returns_same_record(): void
+    {
+        $key = (string) Str::uuid();
+        $followUp = $this->followUp();
+        $payload = [
+            'patient_id' => $this->patient->id,
+            'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
+            'chief_complaint' => 'Cough for 3 days',
+            'category' => 'General Consultation',
+            'diagnoses' => [['id' => 'e1', 'name' => 'Cough', 'reportIn' => ['morbidity']]],
+            ...$followUp,
+            'care_plan' => [...$followUp['care_plan'], 'refer_to_rhu' => true],
+            ...$this->referral(),
+        ];
+
+        $first = $this->withHeader('Idempotency-Key', $key)->postJson('/api/health-records', $payload)
+            ->assertCreated()->assertJsonPath('idempotent_replay', false);
+        $id = $first->json('data.id');
+
+        $this->withHeader('Idempotency-Key', $key)->postJson('/api/health-records', $payload)
+            ->assertOk()
+            ->assertJsonPath('idempotent_replay', true)
+            ->assertJsonPath('data.id', $id);
+
+        $this->assertDatabaseCount('health_records', 1);
+        $this->assertSame(1, FollowUpTask::where('health_record_id', $id)->count());
+        $this->assertSame(1, Referral::count() + ReferralHold::count(), "one referral or one hold, never both or neither");
+    }
+
+    public function test_v2_dispense_requires_items_dispense(): void
+    {
+        $this->worker->update(['permissions' => ['patients.register', 'consultations.encode', 'clinical.history', 'consultations.finalize']]);
+        $medicine = Medicine::create(['name' => 'Restricted item', 'quantity' => 6, 'availability_status' => 'Available', 'barangay_health_center_id' => $this->bhc->id, 'created_by' => $this->worker->id]);
+
+        $this->v2(['dispensed_medicines' => [['medicine_id' => $medicine->id, 'quantity' => 1, 'confirmed_given' => true]]])
+            ->assertForbidden();
+
+        $this->assertSame(6, $medicine->fresh()->quantity);
+        $this->assertDatabaseCount('health_records', 0);
+    }
+
+    public function test_v2_follow_up_task_completes_only_on_save(): void
+    {
+        $parentId = $this->v2($this->followUp())->assertCreated()->json('data.id');
+        $task = FollowUpTask::where('health_record_id', $parentId)->sole();
+        $this->assertSame(FollowUpTask::STATE_PENDING, $task->state);
+
+        $visit = [
+            'visit_type' => 'follow_up_visit',
+            'parent_health_record_id' => $parentId,
+            'care_plan' => ['bhc_follow_up' => true],
+            // The reason is missing, so the next follow-up is rejected.
+            'monitoring_data' => ['followUpTaskId' => $task->id, 'followUpDate' => now()->addWeeks(2)->toDateString(), 'followUpTime' => '09:30'],
+        ];
+        $this->v2($visit)->assertUnprocessable()->assertJsonValidationErrors(['monitoring_data.followUpReason']);
+        $this->assertSame(FollowUpTask::STATE_PENDING, $task->fresh()->state);
+        $this->assertDatabaseCount('health_records', 1);
+
+        $visit['monitoring_data']['followUpReason'] = 'Second recheck';
+        $visitId = $this->v2($visit)->assertCreated()->json('data.id');
+
+        $task->refresh();
+        $this->assertSame(FollowUpTask::STATE_FULFILLED, $task->state);
+        $this->assertSame($visitId, $task->fulfilled_by_health_record_id);
+        $this->assertSame($task->id, HealthRecord::findOrFail($visitId)->monitoring_data['followUpTaskId']);
+        $this->assertSame(1, FollowUpTask::where('health_record_id', $visitId)->count(), 'the next follow-up is scheduled');
+    }
+
+    public function test_v2_follow_up_visit_without_next_follow_up_keeps_task_link_and_completes_it(): void
+    {
+        $parentId = $this->v2($this->followUp())->assertCreated()->json('data.id');
+        $task = FollowUpTask::where('health_record_id', $parentId)->sole();
+
+        $visitId = $this->v2([
+            'visit_type' => 'follow_up_visit',
+            'parent_health_record_id' => $parentId,
+            'monitoring_data' => ['followUpTaskId' => $task->id],
+        ])->assertCreated()->json('data.id');
+
+        $this->assertSame(FollowUpTask::STATE_FULFILLED, $task->fresh()->state);
+        $this->assertSame($task->id, HealthRecord::findOrFail($visitId)->monitoring_data['followUpTaskId']);
+        $this->assertSame('Completed', HealthRecord::findOrFail($visitId)->monitoring_data['followUpStatus']);
+        $this->assertFalse(FollowUpTask::where('health_record_id', $visitId)->exists());
+    }
+
+    public function test_v2_draft_finalize_consumes_draft(): void
+    {
+        $draftId = $this->postJson('/api/health-record-drafts', [
+            'patient_id' => $this->patient->id,
+            'classification' => 'General Consultation',
+            'payload' => [
+                'consultationWorkflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
+                'chiefComplaint' => 'Draft complaint.',
+                'diagnoses' => [['id' => 'e1', 'name' => 'Cough', 'reportIn' => ['morbidity']]],
+                'carePlan' => ['bhcFollowUp' => true],
+            ],
+        ])->assertCreated()->json('data.id');
+        $version = (string) HealthRecordDraft::where('public_id', $draftId)->value('version');
+
+        $response = $this->withHeaders([
+            'Idempotency-Key' => (string) Str::uuid(),
+            'X-Health-Record-Draft-ID' => $draftId,
+            'X-Draft-Version' => $version,
+        ])->postJson('/api/health-records', [
+            'patient_id' => $this->patient->id,
+            'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
+            'category' => 'General Consultation',
+            'chief_complaint' => 'Draft complaint.',
+            'diagnoses' => [['id' => 'e1', 'name' => 'Cough', 'reportIn' => ['morbidity']]],
+            ...$this->followUp(),
+        ])->assertCreated();
+
+        $id = $response->json('data.id');
+        $this->assertTrue(HealthRecord::findOrFail($id)->isBhcGeneralV2());
+        $this->assertDatabaseHas('health_record_drafts', [
+            'public_id' => $draftId,
+            'status' => HealthRecordDraft::STATUS_CONSUMED,
+            'consumed_health_record_id' => $id,
+            'encrypted_payload' => null,
+        ]);
     }
 }

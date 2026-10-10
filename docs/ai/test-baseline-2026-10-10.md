@@ -606,3 +606,11 @@ The Task 0 list minus the 42 names fixed above (all in the five classes). The gr
 - `SecureServerCacheTest::test_rhu_medicine_and_patient_volume_mutations_invalidate_only_affected_report`
 - `SecureServerCacheTest::test_successful_and_failed_stock_mutations_handle_invalidation_and_database_authority`
 
+
+## After Task 5 (BHC General Consultation v2, backend complete)
+
+Full backend run at the end of Task 5 (junit kept outside the repository): 765 tests, 600 passed, **144 failing names** (141 F + 3 E), 21 skipped. The 68 added tests since Task 0.5 are the new v2 tests in `BhcGeneralConsultationV2Test` (51 in that class, all passing) and the Task 4 draft tests.
+
+Comparison by name against the 144 names under "Failing names after Task 0.5": **no new failing name**, and the failing set is identical.
+
+Noted, not credited (baseline names that now pass): none.
