@@ -27,7 +27,7 @@ const FACILITY_TYPES = [
 const ROLE_ICONS = { midwife: Stethoscope, bhw: HandHeart, encoder: Keyboard, nurse: Syringe, doctor: UserRound };
 const HEADINGS = {
   [STEPS.facility]: ["Where will this account work?", "Choose the facility type, then the facility."],
-  [STEPS.personal]: ["Personal details", "How this person signs in and can be reached."],
+  [STEPS.personal]: ["Personal details", "How this person can be reached."],
   [STEPS.access]: ["Role & access", "Pick a role, then adjust what this account can do."],
   [STEPS.review]: ["Review", "Check everything before saving."],
 };

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { ArrowLeft, Check, Circle, Mail } from "lucide-react";
+import { ArrowLeft, Check, Circle, Mail, RotateCw } from "lucide-react";
 import Field from "../components/features/access/FieldError";
 import Input from "../components/common/atoms/Input";
 import { acceptInvite, verifyInvite } from "../services/accountInviteService";
@@ -10,6 +10,8 @@ import { meetsPasswordRules, passwordRules } from "../utils/passwordRules";
 const LOGO_SRC = "/akay-logo.png";
 const INVALID_LINK_MESSAGE =
   "This invite link is invalid or expired. Ask your MHO to send a new one.";
+const CHECK_FAILED_MESSAGE =
+  "We couldn't check this link right now. Check your connection and try again.";
 const SIGN_IN_NOTICE = "Your password is set. Sign in to continue.";
 
 export default function AcceptInvite() {
@@ -18,6 +20,9 @@ export default function AcceptInvite() {
   const token = searchParams.get("token") || "";
   const [verifying, setVerifying] = useState(Boolean(token));
   const [invite, setInvite] = useState(null);
+  // Only a 422 means the link is bad; a network or server error can be retried.
+  const [checkFailed, setCheckFailed] = useState(false);
+  const [verifyAttempt, setVerifyAttempt] = useState(0);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [touched, setTouched] = useState({});
@@ -33,8 +38,10 @@ export default function AcceptInvite() {
       try {
         const response = await verifyInvite(token);
         if (active) setInvite(response?.data || null);
-      } catch {
-        if (active) setInvite(null);
+      } catch (error) {
+        if (!active) return;
+        setInvite(null);
+        setCheckFailed(error?.status !== 422);
       } finally {
         if (active) setVerifying(false);
       }
@@ -44,7 +51,13 @@ export default function AcceptInvite() {
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, verifyAttempt]);
+
+  function retryVerify() {
+    setCheckFailed(false);
+    setVerifying(true);
+    setVerifyAttempt((current) => current + 1);
+  }
 
   const rules = passwordRules(password);
   const rulesMet = meetsPasswordRules(password);
@@ -197,6 +210,23 @@ export default function AcceptInvite() {
               </button>
             </form>
           </>
+        ) : checkFailed ? (
+          <div className="space-y-4">
+            <div
+              role="alert"
+              className="rounded-xl border border-red-100 bg-red-50 px-3 py-3 text-sm font-medium leading-5 text-[#B91C1C]"
+            >
+              {CHECK_FAILED_MESSAGE}
+            </div>
+            <button
+              type="button"
+              onClick={retryVerify}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#B91C1C] text-sm font-bold text-white shadow-md shadow-red-900/10 transition-colors duration-200 hover:bg-[#991B1B]"
+            >
+              <RotateCw size={15} aria-hidden="true" />
+              Try again
+            </button>
+          </div>
         ) : (
           <div className="space-y-4">
             <div

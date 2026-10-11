@@ -80,8 +80,9 @@ export function inviteStatus(row, now = new Date()) {
     case "expired":
       return result("pending", "Link expired", ["resend", "editEmail", "temporaryPassword"]);
     case "temporary": {
+      // No expiry counts as expired: sign-in refuses such a password too.
       const expiresAt = row.temp_password_expires_at;
-      if (expiresAt && new Date(expiresAt).getTime() <= now.getTime()) {
+      if (!expiresAt || new Date(expiresAt).getTime() <= now.getTime()) {
         return result("pending", "Temporary password expired", ["resend", "temporaryPassword"]);
       }
       return result("in_progress", "Temporary password issued", ["temporaryPassword"]);

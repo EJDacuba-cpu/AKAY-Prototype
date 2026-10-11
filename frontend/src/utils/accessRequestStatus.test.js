@@ -111,6 +111,13 @@ const INVITE_ROWS = [
     ["resend", "temporaryPassword"],
   ],
   [
+    "temporary, no expiry (cannot sign in, so expired)",
+    inviteRow({ status: "temporary", delivery: null, temp_password_expires_at: null }),
+    "pending",
+    "Temporary password expired",
+    ["resend", "temporaryPassword"],
+  ],
+  [
     "pending + sent",
     inviteRow({ status: "pending", delivery: "sent", expires_at: inHours(41) }),
     "in_progress",

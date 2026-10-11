@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { Check, Circle, KeyRound } from "lucide-react";
+import { Check, Circle, KeyRound, LogOut } from "lucide-react";
 import Field from "../components/features/access/FieldError";
 import Input from "../components/common/atoms/Input";
 import { changePassword } from "../services/apiClient";
+import { logoutUser } from "../utils/auth";
 import { fieldState } from "../utils/fieldState";
 import { meetsPasswordRules, passwordRules } from "../utils/passwordRules";
 
@@ -21,6 +22,7 @@ export default function ChangePassword() {
   const [passwordError, setPasswordError] = useState("");
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   const rules = passwordRules(password);
   const rulesMet = meetsPasswordRules(password);
@@ -73,6 +75,24 @@ export default function ChangePassword() {
         setFormError(error.message || "Unable to change your password. Try again.");
       }
       setSubmitting(false);
+    }
+  }
+
+  /** The same sign-out as the app's menu: the local session always ends, even if the server cannot be reached. */
+  async function handleSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await logoutUser();
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.warn("Logout endpoint was unavailable; local session cleared.", {
+          status: error?.status || null,
+          code: error?.code || "",
+        });
+      }
+    } finally {
+      navigate("/login", { replace: true });
     }
   }
 
@@ -167,6 +187,16 @@ export default function ChangePassword() {
           >
             <KeyRound size={15} aria-hidden="true" />
             {submitting ? "Saving..." : "Change password"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSignOut}
+            disabled={signingOut || submitting}
+            className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white text-sm font-bold text-[#64748B] transition-colors hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <LogOut size={15} aria-hidden="true" />
+            {signingOut ? "Signing out..." : "Sign out"}
           </button>
         </form>
       </main>
