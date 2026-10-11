@@ -8,11 +8,15 @@ use App\Http\Requests\LoginRequest;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
+use App\Services\PasswordSetRecorder;
 use App\Services\UserNotificationService;
 use App\Services\UserSessionRevocationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Validation\Rules\Password as PasswordRule;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Cookie;
 
 class AuthController extends Controller
@@ -40,6 +44,13 @@ class AuthController extends Controller
             return response()->json([
                 'message' => 'The provided credentials are incorrect.',
                 'code' => 'LOGIN_FAILED',
+            ], 422);
+        }
+
+        if ($user->must_change_password && $user->temp_password_expires_at?->isPast()) {
+            return response()->json([
+                'message' => 'This temporary password has expired. Ask the MHO for a new one.',
+                'code' => 'TEMP_PASSWORD_EXPIRED',
             ], 422);
         }
 
@@ -99,6 +110,46 @@ class AuthController extends Controller
     {
         return response()->json([
             'user' => $this->userPayload($request->user()),
+        ]);
+    }
+
+    public function changePassword(
+        Request $request,
+        PasswordSetRecorder $recorder,
+        AuditLogger $auditLogger
+    ) {
+        $validated = $request->validate([
+            'current_password' => ['required', 'string'],
+            'password' => ['required', 'confirmed', 'different:current_password', PasswordRule::min(8)->mixedCase()->numbers()],
+        ]);
+
+        $user = $request->user();
+
+        if (! Hash::check($validated['current_password'], $user->password)) {
+            throw ValidationException::withMessages([
+                'current_password' => 'The current password is incorrect.',
+            ]);
+        }
+
+        $wasTemporary = (bool) $user->must_change_password;
+
+        DB::transaction(function () use ($user, $validated, $wasTemporary, $recorder): void {
+            $user->forceFill([
+                'password' => $validated['password'],
+                'must_change_password' => false,
+                'temp_password_expires_at' => null,
+            ])->save();
+
+            if ($wasTemporary) {
+                $recorder->record($user, PasswordSetRecorder::ROUTE_TEMPORARY_PASSWORD);
+            }
+        });
+
+        $auditLogger->log($request, 'password changed', 'auth', 'User changed their password.');
+
+        return response()->json([
+            'message' => 'Password changed.',
+            'user' => $this->userPayload($user->fresh()),
         ]);
     }
 
@@ -171,6 +222,7 @@ class AuthController extends Controller
             'name' => $user->name,
             'role' => $user->role,
             'status' => $user->status,
+            'must_change_password' => (bool) $user->must_change_password,
             'staff_role' => $user->staff_role,
             'contact_number' => $user->contact_number,
             'permissions' => \App\Services\ActionPermissions::home($user),

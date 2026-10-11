@@ -49,6 +49,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'active' => EnsureUserIsActive::class,
+            'password.current' => \App\Http\Middleware\EnsurePasswordIsCurrent::class,
             'facility.assigned' => EnsureValidFacilityAssignment::class,
             'actions.allowed' => \App\Http\Middleware\EnforceActionPermissions::class,
             'role' => EnsureRole::class,

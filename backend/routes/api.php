@@ -40,10 +40,12 @@ Route::post('/auth/password-reset/complete', [PasswordResetRequestController::cl
 Route::get('/auth/invites/verify', [AccountInviteController::class, 'verify'])->middleware('throttle:20,1');
 Route::post('/auth/invites/accept', [AccountInviteController::class, 'accept'])->middleware('throttle:10,1');
 
-Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'active'])->group(function () {
+Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'active', 'password.current'])->group(function () {
     Route::get('/auth/profile', [AuthController::class, 'profile']);
     Route::post('/auth/logout', [AuthController::class, 'logout'])
         ->middleware('auth.session-request');
+    Route::post('/auth/change-password', [AuthController::class, 'changePassword'])
+        ->middleware('throttle:10,1');
 
     Route::middleware('facility.assigned')->group(function () {
     Route::get('/clinical-registry', [\App\Http\Controllers\Api\ClinicalRegistryController::class, 'index']);
