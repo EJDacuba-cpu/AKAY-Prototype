@@ -19,18 +19,18 @@ class PatientCreationPermissionsTest extends TestCase
     {
         return [
             'admin' => ['admin', null, null, true],
-            'clinical BHC staff' => ['bhw', 'Midwife', ['patients.register', 'clinical.history'], true],
-            'registration only' => ['bhw', 'Encoder', ['patients.register'], false],
-            'encoder granted history' => ['bhw', 'Encoder', ['patients.register', 'clinical.history'], true],
-            'midwife without history' => ['bhw', 'Midwife', ['patients.register'], false],
-            'RHU staff' => ['rhu_staff', 'Nurse', ['patients.register', 'clinical.history'], true],
-            'RHU registration only' => ['rhu_staff', 'Nurse', ['patients.register'], false],
+            'clinical BHC staff' => ['bhw', 'midwife', ['patients.register', 'clinical.history'], true],
+            'registration only' => ['bhw', 'encoder', ['patients.register'], false],
+            'encoder granted history' => ['bhw', 'encoder', ['patients.register', 'clinical.history'], true],
+            'midwife without history' => ['bhw', 'midwife', ['patients.register'], false],
+            'RHU staff' => ['rhu_staff', 'nurse', ['patients.register', 'clinical.history'], true],
+            'RHU registration only' => ['rhu_staff', 'nurse', ['patients.register'], false],
         ];
     }
 
     #[DataProvider('accounts')]
     public function test_creation_respects_assigned_permissions_and_protects_linked_mother(
-        string $role, ?string $designation, ?array $permissions, bool $canAccessHistory
+        string $role, ?string $staffRole, ?array $permissions, bool $canAccessHistory
     ): void {
         $bhc = BarangayHealthCenter::create(['name' => 'Registration BHC']);
         $rhu = RuralHealthUnit::create(['name' => 'Registration RHU']);
@@ -40,7 +40,7 @@ class PatientCreationPermissionsTest extends TestCase
         $user = User::create([
             'name' => 'Registration Staff', 'email' => 'registration@example.test',
             'password' => 'password123', 'status' => 'active', 'role' => $role,
-            'professional_designation' => $designation, 'permissions' => $permissions,
+            'staff_role' => $staffRole, 'permissions' => $permissions,
             ...$facility,
         ]);
         $mother = Patient::create([

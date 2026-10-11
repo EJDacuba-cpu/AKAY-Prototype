@@ -7,6 +7,7 @@ use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\ActionPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class RequestTraceTest extends TestCase
@@ -24,7 +25,7 @@ class RequestTraceTest extends TestCase
 
         $rhu = RuralHealthUnit::create(['name' => 'Trace RHU', 'status' => 'active']);
         $bhc = BarangayHealthCenter::create(['name' => 'Trace BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
-        $user = User::create(['name' => 'Trace BHW', 'email' => 'trace@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHW, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $bhc->id, 'permissions' => ActionPermissions::PRESETS['clinical']]);
+        $user = User::create(['name' => 'Trace BHW', 'email' => 'trace@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHW, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
         $this->actingAs($user, 'sanctum');
     }
 

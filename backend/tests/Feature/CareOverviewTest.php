@@ -11,6 +11,7 @@ use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\ActionPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class CareOverviewTest extends TestCase
@@ -50,7 +51,7 @@ class CareOverviewTest extends TestCase
 
     public function test_lists_pending_follow_ups_and_unscheduled_monitoring(): void
     {
-        $this->actAs(ActionPermissions::PRESETS['encoder']);
+        $this->actAs(StaffRoles::defaults('encoder'));
         $source = $this->record(['followUpReason' => 'BP recheck']);
         $htn = $this->monitoring($source, 'Hypertension', 'hypertension');
         $asthma = $this->monitoring($source, 'Asthma', null);
@@ -81,7 +82,7 @@ class CareOverviewTest extends TestCase
 
     public function test_fulfilled_rescheduled_and_stopped_items_are_excluded(): void
     {
-        $this->actAs(ActionPermissions::PRESETS['clinical']);
+        $this->actAs(StaffRoles::defaults('midwife'));
         $source = $this->record();
         $stopped = $this->monitoring($source, 'Asthma', null);
         $stopped->update(['status' => 'stopped']);

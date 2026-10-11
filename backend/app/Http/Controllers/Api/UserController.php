@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UserRequest;
 use App\Models\User;
-use App\Services\ActionPermissions;
 use App\Services\AuditLogger;
+use App\Services\StaffRoles;
 use App\Services\UserNotificationService;
 use App\Services\UserSessionRevocationService;
 use Illuminate\Http\Request;
@@ -41,12 +41,11 @@ class UserController extends Controller
         $data['created_by'] = $request->user()->id;
         $data['status'] ??= User::STATUS_ACTIVE;
 
-        $acknowledged = $data['acknowledged_overrides'] ?? [];
-        unset($data['facility_assignments'], $data['permissions_confirmed'], $data['acknowledged_overrides']);
+        unset($data['facility_assignments'], $data['permissions_confirmed'], $data['password_confirmation']);
         $user = User::create($data);
 
         $notifications->notifyUser($user, 'Account created', 'Your AKAY account has been created.', 'account_created');
-        $auditLogger->log($request, 'created', 'users', "Created user {$user->email}.".$this->accessAudit($user, [], $acknowledged));
+        $auditLogger->log($request, 'created', 'users', "Created user {$user->email}.".$this->accessAudit($user, []));
 
         return response()->json(['data' => $user->load(['barangayHealthCenter', 'ruralHealthUnit'])], 201);
     }
@@ -68,11 +67,10 @@ class UserController extends Controller
             unset($data['password']);
         }
 
-        $acknowledged = $data['acknowledged_overrides'] ?? [];
         $previousPermissions = $user->permissions ?? [];
-        unset($data['permissions_confirmed'], $data['acknowledged_overrides']);
+        unset($data['permissions_confirmed'], $data['password_confirmation']);
         unset($data['facility_assignments']);
-        $securityContextChanged = array_key_exists('password', $data) || array_key_exists('permissions', $data) || array_key_exists('professional_designation', $data);
+        $securityContextChanged = array_key_exists('password', $data) || array_key_exists('permissions', $data) || array_key_exists('staff_role', $data);
         foreach (['role', 'status', 'barangay_health_center_id', 'rural_health_unit_id'] as $field) {
             if (array_key_exists($field, $data)
                 && (string) $user->{$field} !== (string) $data[$field]) {
@@ -88,8 +86,7 @@ class UserController extends Controller
             $auditLogger,
             $notifications,
             $sessions,
-            $previousPermissions,
-            $acknowledged
+            $previousPermissions
         ): void {
             $previousStatus = $user->status;
             $user->update($data);
@@ -102,7 +99,7 @@ class UserController extends Controller
                 $notifications->notifyUser($user, 'Account deactivated', 'Your AKAY account has been deactivated.', 'account_deactivated');
             }
 
-            $auditLogger->log($request, 'updated', 'users', "Updated user {$user->email}.".$this->accessAudit($user, $previousPermissions, $acknowledged));
+            $auditLogger->log($request, 'updated', 'users', "Updated user {$user->email}.".$this->accessAudit($user, $previousPermissions));
         });
 
         return response()->json(['data' => $user->fresh()->load(['barangayHealthCenter', 'ruralHealthUnit', 'facilityAssignments.barangayHealthCenter'])]);
@@ -123,8 +120,8 @@ class UserController extends Controller
         return response()->json(['data' => $user->fresh()]);
     }
 
-    /** Audit wording for duties added or removed and the overrides the admin acknowledged in this request. */
-    private function accessAudit(User $user, array $previous, array $acknowledged): string
+    /** Audit wording for duties added or removed, and for licensed duties held by a non-licensed role. */
+    private function accessAudit(User $user, array $previous): string
     {
         $current = $user->permissions ?? [];
         $parts = [];
@@ -134,12 +131,8 @@ class UserController extends Controller
         if ($removed = array_values(array_diff($previous, $current))) {
             $parts[] = 'Permissions removed: '.implode(', ', $removed).'.';
         }
-        $overrides = array_intersect(ActionPermissions::overrides($current, $user->professional_designation, $user->role), $acknowledged);
-        if ($overrides) {
-            $parts[] = 'Overrides acknowledged: '.implode(', ', array_map(
-                fn ($p) => ActionPermissions::overrideTier($p, $user->professional_designation) === 'critical' ? "{$p} (CRITICAL)" : $p,
-                $overrides
-            )).'.';
+        if ($user->staff_role && $licensed = StaffRoles::licensedGrants($user->staff_role, $current)) {
+            $parts[] = 'Licensed duties granted to a non-licensed role ('.StaffRoles::label($user->staff_role).'): '.implode(', ', $licensed).'.';
         }
 
         return $parts ? ' '.implode(' ', $parts) : '';

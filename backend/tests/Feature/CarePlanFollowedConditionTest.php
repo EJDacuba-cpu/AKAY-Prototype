@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\ActionPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 /** What a consultation decides for the existing monitoring it followed (Care Plan & Next Steps). */
@@ -28,7 +29,7 @@ class CarePlanFollowedConditionTest extends TestCase
         $rhu = RuralHealthUnit::create(['name' => 'Followed RHU', 'status' => 'active']);
         $this->bhc = BarangayHealthCenter::create(['name' => 'Followed BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
         $this->patient = Patient::create(['first_name' => 'Followed', 'last_name' => 'One', 'sex' => 'Female', 'barangay_health_center_id' => $this->bhc->id]);
-        $this->actingAs($this->user(ActionPermissions::PRESETS['clinical']), 'sanctum');
+        $this->actingAs($this->user(StaffRoles::defaults('midwife')), 'sanctum');
     }
 
     private function user(array $permissions): User

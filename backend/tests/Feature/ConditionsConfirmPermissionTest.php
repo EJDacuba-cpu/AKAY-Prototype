@@ -8,6 +8,7 @@ use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\ActionPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class ConditionsConfirmPermissionTest extends TestCase
@@ -19,9 +20,9 @@ class ConditionsConfirmPermissionTest extends TestCase
     public function test_rhu_preset_includes_conditions_confirm_and_clinical_does_not(): void
     {
         $this->assertContains('conditions.confirm', ActionPermissions::ALL);
-        $this->assertContains('conditions.confirm', ActionPermissions::PRESETS['rhu']);
-        $this->assertNotContains('conditions.confirm', ActionPermissions::PRESETS['clinical']);
-        $this->assertNotContains('conditions.confirm', ActionPermissions::PRESETS['encoder']);
+        $this->assertContains('conditions.confirm', StaffRoles::defaults('nurse'));
+        $this->assertNotContains('conditions.confirm', StaffRoles::defaults('midwife'));
+        $this->assertNotContains('conditions.confirm', StaffRoles::defaults('encoder'));
     }
 
     public function test_migration_grants_it_to_users_and_assignments_holding_rhu_manage(): void

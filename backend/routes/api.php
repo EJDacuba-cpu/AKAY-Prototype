@@ -142,6 +142,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::get('/staff-assignments/eligible-nurses', [\App\Http\Controllers\Api\StaffAssignmentController::class, 'eligible']);
         Route::post('/staff-assignments', [\App\Http\Controllers\Api\StaffAssignmentController::class, 'store']);
         Route::post('/staff-assignments/{staffAssignment}/revoke', [\App\Http\Controllers\Api\StaffAssignmentController::class, 'revoke']);
+        Route::get('/staff-roles', [\App\Http\Controllers\Api\StaffRoleController::class, 'index']);
         Route::apiResource('users', UserController::class);
         Route::apiResource('barangay-health-centers', BarangayHealthCenterController::class);
         Route::apiResource('rural-health-units', RuralHealthUnitController::class);

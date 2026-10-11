@@ -6,6 +6,7 @@ use App\Models\BarangayHealthCenter;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\ActionPermissions;
+use App\Services\StaffRoles;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -24,16 +25,16 @@ class UserRequest extends FormRequest
         return [
             'name' => [$isUpdate ? 'sometimes' : 'required', 'string', 'max:255'],
             'email' => [$isUpdate ? 'sometimes' : 'required', 'email', Rule::unique('users', 'email')->ignore($userId)],
-            'password' => [$isUpdate ? 'nullable' : 'required', 'string', 'min:8'],
+            'password' => [$isUpdate ? 'nullable' : 'required', 'string', 'min:8', 'confirmed'],
+            'contact_number' => [$isUpdate ? 'sometimes' : 'required', 'required', 'regex:/^09\d{9}$/'],
             'role' => [$isUpdate ? 'sometimes' : 'required', Rule::in([User::ROLE_ADMIN, User::ROLE_BHW, User::ROLE_RHU_STAFF])],
             'status' => ['sometimes', Rule::in([User::STATUS_ACTIVE, User::STATUS_INACTIVE])],
-            'professional_designation' => ['nullable', 'string', 'max:100'],
+            'staff_role' => ['nullable', Rule::in(StaffRoles::keys())],
             'permissions' => [$isUpdate ? 'sometimes' : 'present', 'array'],
             'permissions.*' => ['string', 'distinct', Rule::in(ActionPermissions::ALL)],
             'facility_assignments' => ['prohibited'],
-            'permissions_confirmed' => ['required_with:permissions', 'accepted'],
-            'acknowledged_overrides' => ['sometimes', 'array'],
-            'acknowledged_overrides.*' => ['string', Rule::in(ActionPermissions::ALL)],
+            // Only an access change asks for the review confirmation; a status-only update does not.
+            'permissions_confirmed' => ['exclude_without:permissions', 'required', 'accepted'],
             'barangay_health_center_id' => ['nullable', 'exists:barangay_health_centers,id'],
             'rural_health_unit_id' => ['nullable', 'exists:rural_health_units,id'],
         ];
@@ -44,7 +45,7 @@ class UserRequest extends FormRequest
         $validator->after(function ($validator): void {
             if ($validator->errors()->isNotEmpty()) return;
             $existingUser = $this->route('user');
-            $designation = $this->input('professional_designation', $existingUser?->professional_designation);
+            $staffRole = $this->input('staff_role', $existingUser?->staff_role);
             $role = $this->input('role', $existingUser?->role);
             $permissions = (array) $this->input('permissions', $existingUser?->permissions ?? []);
             if ($this->exists('permissions')) {
@@ -55,12 +56,19 @@ class UserRequest extends FormRequest
                     $validator->errors()->add('permissions', "{$permission} also requires ".implode(', ', $required).'.');
                 }
             }
-            // Any designation may hold any duty, but every duty outside its usual scope must be acknowledged
-            // whenever the request changes what the account can do, including a designation-only change.
-            if ($role !== User::ROLE_ADMIN && $this->hasAny(['permissions', 'professional_designation', 'role'])) {
-                $unacknowledged = array_diff(ActionPermissions::overrides($permissions, $designation, $role), (array) $this->input('acknowledged_overrides', []));
-                if ($unacknowledged) {
-                    $validator->errors()->add('acknowledged_overrides', 'Confirm these overrides before saving: '.implode(', ', $unacknowledged).'.');
+            if ($role === User::ROLE_ADMIN && $staffRole !== null) {
+                $validator->errors()->add('staff_role', 'Municipal Health Officer accounts do not have a staff role.');
+            }
+            if ($role !== User::ROLE_ADMIN && $this->hasAny(['permissions', 'staff_role', 'role'])) {
+                $tierLabel = $role === User::ROLE_RHU_STAFF ? 'RHU' : 'BHC';
+                if ($staffRole === null) {
+                    $validator->errors()->add('staff_role', 'Select a role for this account.');
+                } elseif (! StaffRoles::allowedAt($staffRole, $role)) {
+                    $facility = StaffRoles::ROLES[$staffRole]['tier'] === User::ROLE_RHU_STAFF ? 'Rural Health Unit' : 'Barangay Health Center';
+                    $validator->errors()->add('staff_role', 'A '.StaffRoles::label($staffRole)." account must be based at a {$facility}.");
+                }
+                foreach (array_diff($permissions, StaffRoles::available($role)) as $permission) {
+                    $validator->errors()->add('permissions', "{$permission} is not available to {$tierLabel} accounts.");
                 }
             }
             $bhcId = $this->exists('barangay_health_center_id')

@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\ActionPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 /**
@@ -42,7 +43,7 @@ class PatientMedicalBackgroundTest extends TestCase
             'role' => User::ROLE_BHW,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $this->bhc->id,
-            'permissions' => ActionPermissions::PRESETS['clinical'],
+            'permissions' => StaffRoles::defaults('midwife'),
         ]);
         $this->patient = Patient::create([
             'first_name' => 'Background',

@@ -19,6 +19,7 @@ use Illuminate\Support\Str;
 use LogicException;
 use Mockery\MockInterface;
 use RuntimeException;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class HealthRecordDraftFinalizationTest extends TestCase
@@ -580,7 +581,7 @@ class HealthRecordDraftFinalizationTest extends TestCase
             'role' => User::ROLE_BHW,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhcId,
-            'permissions' => ActionPermissions::PRESETS['clinical'],
+            'permissions' => StaffRoles::defaults('midwife'),
         ]);
     }
 }

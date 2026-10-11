@@ -14,6 +14,7 @@ use App\Services\ActionPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class FacilityIsolationSecurityTest extends TestCase
@@ -624,7 +625,7 @@ class FacilityIsolationSecurityTest extends TestCase
             'barangay_health_center_id' => $bhcId,
             'rural_health_unit_id' => $rhuId,
             // A BHW with null permissions gets the encoder preset and is refused with 403 on save.
-            ...($role === User::ROLE_BHW ? ['permissions' => ActionPermissions::PRESETS['clinical']] : []),
+            ...($role === User::ROLE_BHW ? ['permissions' => StaffRoles::defaults('midwife')] : []),
         ]);
     }
 
@@ -718,7 +719,12 @@ class FacilityIsolationSecurityTest extends TestCase
             'name' => 'Security User',
             'email' => $email,
             'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'contact_number' => '09171234567',
             'role' => $role,
+            'staff_role' => $staffRole = $role === User::ROLE_RHU_STAFF ? 'nurse' : 'encoder',
+            'permissions' => StaffRoles::defaults($staffRole),
+            'permissions_confirmed' => true,
         ];
     }
 

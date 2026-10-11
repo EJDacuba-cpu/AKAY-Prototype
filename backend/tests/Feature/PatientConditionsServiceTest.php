@@ -14,6 +14,7 @@ use App\Services\PatientConditions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class PatientConditionsServiceTest extends TestCase
@@ -29,7 +30,7 @@ class PatientConditionsServiceTest extends TestCase
         parent::setUp();
         $rhu = RuralHealthUnit::create(['name' => 'Cond RHU', 'status' => 'active']);
         $this->bhc = BarangayHealthCenter::create(['name' => 'Cond BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
-        $this->rhuUser = $this->user('rhu@example.test', ['role' => User::ROLE_RHU_STAFF, 'rural_health_unit_id' => $rhu->id, 'permissions' => ActionPermissions::PRESETS['rhu']]);
+        $this->rhuUser = $this->user('rhu@example.test', ['role' => User::ROLE_RHU_STAFF, 'rural_health_unit_id' => $rhu->id, 'permissions' => StaffRoles::defaults('nurse')]);
     }
 
     private function user(string $email, array $attributes): User
@@ -254,10 +255,10 @@ class PatientConditionsServiceTest extends TestCase
         $this->assertFalse(PatientConditions::canConfirm(null));
 
         $onDuty = clone $this->rhuUser;
-        $onDuty->workingFacility = ['id' => $this->bhc->id, 'name' => $this->bhc->name, 'type' => 'bhc', 'is_home' => false, 'permissions' => ActionPermissions::PRESETS['rhu']];
+        $onDuty->workingFacility = ['id' => $this->bhc->id, 'name' => $this->bhc->name, 'type' => 'bhc', 'is_home' => false, 'permissions' => StaffRoles::defaults('nurse')];
         $this->assertFalse(PatientConditions::canConfirm($onDuty));
 
-        $clinical = $this->user('bhw@example.test', ['role' => User::ROLE_BHW, 'barangay_health_center_id' => $this->bhc->id, 'permissions' => ActionPermissions::PRESETS['clinical']]);
+        $clinical = $this->user('bhw@example.test', ['role' => User::ROLE_BHW, 'barangay_health_center_id' => $this->bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
         $this->assertFalse(PatientConditions::canConfirm($clinical));
     }
 }

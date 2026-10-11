@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\ActionPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 /**
@@ -39,7 +40,7 @@ class SharedReferralAcknowledgmentTest extends TestCase
         parent::setUp();
         $rhu = RuralHealthUnit::create(['name' => 'Shared RHU', 'status' => 'active']);
         $this->bhc = BarangayHealthCenter::create(['name' => 'Shared BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
-        $this->user = User::create(['name' => 'Shared BHW', 'email' => 'shared@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHW, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $this->bhc->id, 'permissions' => ActionPermissions::PRESETS['clinical']]);
+        $this->user = User::create(['name' => 'Shared BHW', 'email' => 'shared@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHW, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $this->bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
         $this->patient = Patient::create(['first_name' => 'Shared', 'last_name' => 'Referral', 'sex' => 'Female', 'barangay_health_center_id' => $this->bhc->id]);
         $this->actingAs($this->user, 'sanctum');
     }

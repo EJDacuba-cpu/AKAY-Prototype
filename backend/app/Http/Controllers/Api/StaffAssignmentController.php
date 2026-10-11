@@ -15,12 +15,12 @@ class StaffAssignmentController extends Controller
 {
     public function index()
     {
-        return response()->json(['data' => FacilityAssignment::with(['user:id,name,email,professional_designation,rural_health_unit_id', 'barangayHealthCenter:id,name'])->latest()->get()]);
+        return response()->json(['data' => FacilityAssignment::with(['user:id,name,email,staff_role,rural_health_unit_id', 'barangayHealthCenter:id,name'])->latest()->get()]);
     }
 
     public function eligible()
     {
-        return response()->json(['data' => User::where('role', 'rhu_staff')->where('status', 'active')->whereRaw('LOWER(TRIM(professional_designation)) = ?', ['nurse'])->whereNotNull('rural_health_unit_id')->whereNull('barangay_health_center_id')->whereHas('ruralHealthUnit', fn ($q) => $q->where('status', 'active'))->with('ruralHealthUnit:id,name')->get(['id', 'name', 'email', 'professional_designation', 'rural_health_unit_id'])]);
+        return response()->json(['data' => User::where('role', 'rhu_staff')->where('status', 'active')->where('staff_role', 'nurse')->whereNotNull('rural_health_unit_id')->whereNull('barangay_health_center_id')->whereHas('ruralHealthUnit', fn ($q) => $q->where('status', 'active'))->with('ruralHealthUnit:id,name')->get(['id', 'name', 'email', 'staff_role', 'rural_health_unit_id'])]);
     }
 
     public function store(Request $request, AuditLogger $audit)

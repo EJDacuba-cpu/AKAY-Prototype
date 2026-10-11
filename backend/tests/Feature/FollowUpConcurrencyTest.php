@@ -16,6 +16,7 @@ use App\Services\ReferralRoutingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class FollowUpConcurrencyTest extends TestCase
@@ -438,7 +439,7 @@ class FollowUpConcurrencyTest extends TestCase
             'barangay_health_center_id' => $role === User::ROLE_BHW ? $facilityId : null,
             'rural_health_unit_id' => $role === User::ROLE_RHU_STAFF ? $facilityId : null,
             // A BHW with null permissions gets the encoder preset and is refused with 403 on save.
-            ...($role === User::ROLE_BHW ? ['permissions' => ActionPermissions::PRESETS['clinical']] : []),
+            ...($role === User::ROLE_BHW ? ['permissions' => StaffRoles::defaults('midwife')] : []),
         ]);
     }
 }

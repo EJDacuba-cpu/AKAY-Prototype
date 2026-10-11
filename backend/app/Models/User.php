@@ -19,7 +19,8 @@ use Laravel\Sanctum\HasApiTokens;
     'barangay_health_center_id',
     'rural_health_unit_id',
     'created_by',
-    'professional_designation',
+    'staff_role',
+    'contact_number',
     'permissions',
 ])]
 #[Hidden(['password', 'remember_token'])]

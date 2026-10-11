@@ -13,6 +13,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Schema;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 /**
@@ -55,7 +56,7 @@ class ReferralSubmissionGateTest extends TestCase
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $this->bhc->id,
             // A BHW with null permissions gets the encoder preset and is refused with 403 on save/refer.
-            'permissions' => ActionPermissions::PRESETS['clinical'],
+            'permissions' => StaffRoles::defaults('midwife'),
         ]);
         $this->patient = Patient::create([
             'first_name' => 'Gate',

@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\ActionPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 /**
@@ -34,8 +35,8 @@ class PatientBackgroundConsultationTest extends TestCase
         parent::setUp();
         $rhu = RuralHealthUnit::create(['name' => 'Background RHU', 'status' => 'active']);
         $this->bhc = BarangayHealthCenter::create(['name' => 'Background BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
-        $this->clinician = $this->user('clinician', ActionPermissions::PRESETS['clinical']);
-        $this->encoder = $this->user('encoder', ActionPermissions::PRESETS['encoder']);
+        $this->clinician = $this->user('clinician', StaffRoles::defaults('midwife'));
+        $this->encoder = $this->user('encoder', StaffRoles::defaults('encoder'));
         $this->patient = Patient::create([
             'first_name' => 'Background', 'last_name' => 'Patient', 'sex' => 'Female',
             'barangay_health_center_id' => $this->bhc->id,

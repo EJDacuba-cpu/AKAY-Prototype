@@ -12,6 +12,7 @@ use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\ActionPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class PatientConditionReadTest extends TestCase
@@ -71,7 +72,7 @@ class PatientConditionReadTest extends TestCase
         $legacy = $this->monitoring('Gout', 'name:gout');
         $this->monitoring('Anemia', 'name:anemia')->update(['status' => 'stopped']);
 
-        $this->actingAs($this->bhw(ActionPermissions::PRESETS['clinical']), 'sanctum');
+        $this->actingAs($this->bhw(StaffRoles::defaults('midwife')), 'sanctum');
         $response = $this->getJson("/api/patients/{$this->patient->id}/conditions")->assertOk();
 
         $this->assertSame(['conditions', 'legacy_monitorings'], array_keys($response->json('data')));
@@ -112,12 +113,12 @@ class PatientConditionReadTest extends TestCase
 
     public function test_conditions_list_needs_clinical_history_and_facility_access(): void
     {
-        $this->actingAs($this->bhw(ActionPermissions::PRESETS['encoder']), 'sanctum');
+        $this->actingAs($this->bhw(StaffRoles::defaults('encoder')), 'sanctum');
         $this->getJson("/api/patients/{$this->patient->id}/conditions")->assertForbidden();
 
         $rhu = RuralHealthUnit::create(['name' => 'Other RHU', 'status' => 'active']);
         $other = BarangayHealthCenter::create(['name' => 'Other BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
-        $this->actingAs($this->bhw(ActionPermissions::PRESETS['clinical'], $other, 'other-read@example.test'), 'sanctum');
+        $this->actingAs($this->bhw(StaffRoles::defaults('midwife'), $other, 'other-read@example.test'), 'sanctum');
         $this->getJson("/api/patients/{$this->patient->id}/conditions")->assertForbidden();
     }
 
@@ -126,7 +127,7 @@ class PatientConditionReadTest extends TestCase
         $htn = $this->condition('Hypertension', 'hypertension', 'active', ['bhc_monitoring_recommended_at' => now()->subDay()]);
         $this->condition('Asthma', 'name:asthma', 'active'); // not recommended
 
-        $this->actingAs($this->bhw(ActionPermissions::PRESETS['encoder']), 'sanctum');
+        $this->actingAs($this->bhw(StaffRoles::defaults('encoder')), 'sanctum');
         $response = $this->getJson("/api/patients/{$this->patient->id}/care-overview")->assertOk();
         $response->assertJsonCount(1, 'data.monitoring_recommendations')
             ->assertJsonPath('data.monitoring_recommendations.0.condition_id', $htn->id)
@@ -148,7 +149,7 @@ class PatientConditionReadTest extends TestCase
         $htn = $this->condition('Hypertension', 'hypertension', 'active', ['bhc_monitoring_recommended_at' => now()->subDay()]);
         $asthma = $this->condition('Asthma', 'name:asthma', 'controlled', ['bhc_monitoring_recommended_at' => now()->subDay()]);
 
-        $this->actingAs($this->bhw(ActionPermissions::PRESETS['clinical']), 'sanctum');
+        $this->actingAs($this->bhw(StaffRoles::defaults('midwife')), 'sanctum');
         $this->getJson("/api/patients/{$this->patient->id}/care-overview")->assertOk()
             ->assertJsonCount(2, 'data.monitoring_recommendations');
 
@@ -164,7 +165,7 @@ class PatientConditionReadTest extends TestCase
         $monitoring = $this->monitoring('Hypertension', 'hypertension', $htn, 'hypertension');
         $htn->update(['status' => 'resolved']);
 
-        $this->actingAs($this->bhw(ActionPermissions::PRESETS['clinical']), 'sanctum');
+        $this->actingAs($this->bhw(StaffRoles::defaults('midwife')), 'sanctum');
         $this->getJson("/api/patients/{$this->patient->id}/care-overview")->assertOk()
             ->assertJsonCount(1, 'data.monitoring_without_follow_up')
             ->assertJsonPath('data.monitoring_without_follow_up.0.id', $monitoring->id)
@@ -182,7 +183,7 @@ class PatientConditionReadTest extends TestCase
         $task->conditionMonitorings()->attach([$linked->id, $legacy->id]);
         $legacyOnly = $this->monitoring('Anemia', 'name:anemia');
 
-        $this->actingAs($this->bhw(ActionPermissions::PRESETS['clinical']), 'sanctum');
+        $this->actingAs($this->bhw(StaffRoles::defaults('midwife')), 'sanctum');
         $response = $this->getJson("/api/patients/{$this->patient->id}/care-overview")->assertOk();
 
         $scheduled = collect($response->json('data.pending_follow_ups.0.conditions'))->keyBy('monitoring_id');

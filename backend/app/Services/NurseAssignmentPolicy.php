@@ -11,7 +11,7 @@ class NurseAssignmentPolicy
     public static function eligible(User $user): bool
     {
         return $user->isActive() && $user->getRawOriginal('role') === User::ROLE_RHU_STAFF
-            && strtolower(trim((string) $user->professional_designation)) === 'nurse'
+            && $user->staff_role === 'nurse'
             && $user->getRawOriginal('rural_health_unit_id') !== null
             && $user->getRawOriginal('barangay_health_center_id') === null;
     }

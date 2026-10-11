@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\ActionPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class ApprovedFacilityPermissionsTest extends TestCase
@@ -37,8 +38,8 @@ class ApprovedFacilityPermissionsTest extends TestCase
     {
         $home = RuralHealthUnit::create(['name' => 'RHU Home']);
         $bhc = BarangayHealthCenter::create(['name' => 'Duty BHC']);
-        $user = $this->account(['role' => 'rhu_staff', 'barangay_health_center_id' => null, 'rural_health_unit_id' => $home->id, 'professional_designation' => 'Nurse']);
-        $assignment = $user->facilityAssignments()->create(['barangay_health_center_id' => $bhc->id, 'permissions' => ActionPermissions::PRESETS['clinical'], 'starts_on' => today(), 'ends_on' => today()]);
+        $user = $this->account(['role' => 'rhu_staff', 'barangay_health_center_id' => null, 'rural_health_unit_id' => $home->id, 'staff_role' => 'nurse']);
+        $assignment = $user->facilityAssignments()->create(['barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife'), 'starts_on' => today(), 'ends_on' => today()]);
         $patient = Patient::create(['first_name' => 'Duty', 'last_name' => 'Patient', 'sex' => 'Female', 'barangay_health_center_id' => $bhc->id, 'created_by' => $user->id]);
         Sanctum::actingAs($user, ['access']);
         $this->getJson('/api/patients')->assertForbidden();
@@ -52,7 +53,7 @@ class ApprovedFacilityPermissionsTest extends TestCase
     {
         $user = $this->account();
         $other = $this->account();
-        $assignment = $other->facilityAssignments()->create(['barangay_health_center_id' => $user->barangay_health_center_id, 'permissions' => ActionPermissions::PRESETS['clinical']]);
+        $assignment = $other->facilityAssignments()->create(['barangay_health_center_id' => $user->barangay_health_center_id, 'permissions' => StaffRoles::defaults('midwife')]);
         Sanctum::actingAs($user, ['access']);
         $this->withHeader('X-Working-Facility', (string) $assignment->id)->getJson('/api/patients')->assertForbidden();
     }

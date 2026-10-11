@@ -16,6 +16,7 @@ use App\Services\ActionPermissions;
 use App\Services\ClinicalRegistry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 /** The RHU reconciles Legacy BHC Monitoring: verify it (by confirming the condition) or discontinue it. */
@@ -39,7 +40,7 @@ class LegacyMonitoringReviewTest extends TestCase
         $this->rhuUser = $this->user('rhu@example.test', [
             'role' => User::ROLE_RHU_STAFF,
             'rural_health_unit_id' => $this->rhu->id,
-            'permissions' => [...ActionPermissions::PRESETS['clinical'], 'rhu.manage', 'conditions.confirm'],
+            'permissions' => [...StaffRoles::defaults('midwife'), 'rhu.manage', 'conditions.confirm'],
         ]);
         $this->patient = Patient::create([
             'first_name' => 'Legacy', 'last_name' => 'Patient', 'sex' => 'Female',
@@ -233,7 +234,7 @@ class LegacyMonitoringReviewTest extends TestCase
         $bhw = $this->user('bhw@example.test', [
             'role' => User::ROLE_BHW,
             'barangay_health_center_id' => $this->bhc->id,
-            'permissions' => ActionPermissions::PRESETS['clinical'],
+            'permissions' => StaffRoles::defaults('midwife'),
         ]);
 
         $this->recordPost($bhw, [

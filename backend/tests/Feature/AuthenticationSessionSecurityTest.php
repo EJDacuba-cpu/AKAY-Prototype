@@ -12,6 +12,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Sanctum\PersonalAccessToken;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class AuthenticationSessionSecurityTest extends TestCase
@@ -303,6 +304,7 @@ class AuthenticationSessionSecurityTest extends TestCase
         $this->usingToken($adminToken)
             ->patchJson("/api/users/{$this->bhw->id}", [
                 'password' => 'AdminChangedPassword9',
+                'password_confirmation' => 'AdminChangedPassword9',
             ])->assertOk();
 
         $this->assertNull(PersonalAccessToken::findToken($token));
@@ -320,6 +322,9 @@ class AuthenticationSessionSecurityTest extends TestCase
         $this->usingToken($adminToken)
             ->patchJson("/api/users/{$this->bhw->id}", [
                 'role' => User::ROLE_RHU_STAFF,
+                'staff_role' => 'nurse',
+                'permissions' => StaffRoles::defaults('nurse'),
+                'permissions_confirmed' => true,
                 'barangay_health_center_id' => null,
                 'rural_health_unit_id' => $this->rhuB->id,
             ])->assertOk();

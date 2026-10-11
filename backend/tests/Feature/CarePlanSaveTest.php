@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\ActionPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class CarePlanSaveTest extends TestCase
@@ -28,7 +29,7 @@ class CarePlanSaveTest extends TestCase
         parent::setUp();
         $rhu = RuralHealthUnit::create(['name' => 'Save RHU', 'status' => 'active']);
         $bhc = BarangayHealthCenter::create(['name' => 'Save BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
-        $user = User::create(['name' => 'Save BHW', 'email' => 'save@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHW, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $bhc->id, 'permissions' => ActionPermissions::PRESETS['clinical']]);
+        $user = User::create(['name' => 'Save BHW', 'email' => 'save@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHW, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
         $this->patient = Patient::create(['first_name' => 'Save', 'last_name' => 'One', 'sex' => 'Female', 'barangay_health_center_id' => $bhc->id]);
         $this->otherPatient = Patient::create(['first_name' => 'Save', 'last_name' => 'Two', 'sex' => 'Male', 'barangay_health_center_id' => $bhc->id]);
         $this->actingAs($user, 'sanctum');

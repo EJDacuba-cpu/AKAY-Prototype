@@ -18,6 +18,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class HealthRecordIdempotencyTest extends TestCase
@@ -420,7 +421,7 @@ class HealthRecordIdempotencyTest extends TestCase
             'barangay_health_center_id' => $role === User::ROLE_BHW ? $this->bhc->id : null,
             'rural_health_unit_id' => $rhuId,
             // A BHW with null permissions gets the encoder preset and is refused with 403 on save.
-            ...($role === User::ROLE_BHW ? ['permissions' => ActionPermissions::PRESETS['clinical']] : []),
+            ...($role === User::ROLE_BHW ? ['permissions' => StaffRoles::defaults('midwife')] : []),
         ]);
     }
 }
