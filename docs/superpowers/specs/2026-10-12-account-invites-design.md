@@ -26,6 +26,7 @@ Out of band, the MHO phones the person before creating the account to confirm wh
 | D9 | Forgot password is unchanged: the user asks, the MHO approves, a link is emailed. Only its wording changes (section F). |
 | D10 | Every field on the account forms shows a live, animated validation icon on its right edge (section E1). |
 | D11 | No SMS. Emails go through the existing mailer (Gmail SMTP). |
+| D12 | Both tabs use the same **four statuses**: **Pending** (the MHO must act), **In progress** (waiting for the user), **Complete** (the user has a password), **Cancelled** (stopped: declined, or the account was deactivated). The exact reason shows in a tooltip on the badge and in View details (section F). |
 
 ---
 
@@ -39,22 +40,27 @@ New migration `backend/database/migrations/2026_10_12_000001_create_account_invi
 | `id` | |
 | `user_id` | FK `users`, cascade on delete, **unique**: one invite row per account. Resending rotates the token in place. |
 | `email` | The address the current link was sent to. |
-| `token_hash` | `sha256` of the raw token, nullable. Cleared when the invite is accepted, expired or superseded. |
-| `status` | `pending`, `accepted`, `expired`, `superseded`. |
+| `token_hash` | `sha256` of the raw token, nullable. Cleared when the invite is completed, expires, or a temporary password is issued. |
+| `status` | `pending` (a link is out), `expired`, `temporary` (a temporary password was issued and not yet changed), `completed`. |
+| `completed_via` | Nullable: `link`, `temporary_password` or `reset`: how the user got their password. |
 | `delivery` | `sent` or `failed`: whether the last send reached the mailer. |
 | `expires_at` | 48 hours after the last send. |
-| `sent_at`, `accepted_at` | Timestamps. |
+| `sent_at`, `completed_at` | Timestamps. |
 | `created_by` | FK `users` (the MHO), nullable on delete. |
 | timestamps | |
 
-`superseded` means the account got its password another way: a temporary password was issued, or a reset request was completed.
+"Cancelled" is not stored: it is shown whenever the account is inactive and the invite is not completed, so reactivating the account brings the previous status back.
 
 ### B2. `users`
 - `must_change_password` boolean, default `false`.
 - `temp_password_expires_at` timestamp, nullable.
 
 ### B3. `password_reset_requests`
-- `delivery` string, nullable: `sent` or `failed` for the last emailed link (section F3).
+- `delivery` string, nullable: `sent` or `failed` for the last emailed link (section F4).
+- `completed_via` string, nullable: `link`, `invite` or `temporary_password`.
+
+### B4. One rule for every route
+Whenever a user sets a password, by an invite link, a reset link, or by changing a temporary password, every open item for that user (invite not `completed`; reset request `pending`, `approved` or `expired`) becomes `completed` with `completed_via` naming the route that was used. A new `PasswordSetRecorder` service applies this in one place.
 
 ---
 
@@ -69,26 +75,26 @@ New migration `backend/database/migrations/2026_10_12_000001_create_account_invi
 ### C2. Invite links (new `AccountInviteService`, `AccountInviteController`)
 Public, throttled routes, matching the reset routes:
 - `GET /api/auth/invites/verify?token=` → `{ name, email, expires_at }`, or 422 "This invite link is invalid or expired."
-- `POST /api/auth/invites/accept` `{ token, password, password_confirmation }` → sets the password, `must_change_password = false`, invite `accepted`, token cleared, audit log; returns a message. The frontend then goes to `/login`.
+- `POST /api/auth/invites/accept` `{ token, password, password_confirmation }` → sets the password, `must_change_password = false`, records it through `PasswordSetRecorder` (invite `completed` via `link`), clears the token, audit log; returns a message. The frontend then goes to `/login`.
 - An expired token is marked `expired` when it is checked, as resets do today.
 
 Admin routes (inside `role:admin`):
 - `GET /api/account-invites` → paginated list with the same filters as reset requests (`status`, `search`).
 - `POST /api/account-invites/{invite}/resend` → new token, new 48-hour window, email sent again. The old link stops working.
-- `PATCH /api/account-invites/{invite}/email` `{ email }` → updates the user's email (unique, same rule as `UserRequest`) and resends. Only while `pending` or `expired`.
+- `PATCH /api/account-invites/{invite}/email` `{ email }` → updates the user's email (unique, same rule as `UserRequest`) and resends. Only while the invite is not `completed`.
 - `POST /api/account-invites/{invite}/link` → **Copy link**: rotates the token and returns the new URL for the MHO to share another way (Messenger, Viber). The emailed link stops working. Tokens are stored hashed, so an existing link cannot be shown again.
-- `POST /api/account-invites/{invite}/temporary-password` → D5. Generates the password, sets `must_change_password = true` and `temp_password_expires_at = now + 72h`, marks the invite `superseded`, revokes the user's sessions, and returns the password **in this response only**.
+- `POST /api/account-invites/{invite}/temporary-password` → D5. Generates the password, sets `must_change_password = true` and `temp_password_expires_at = now + 72h`, sets the invite to `temporary` and clears its token, revokes the user's sessions, and returns the password **in this response only**. It can be issued again (for example after the 72 hours pass); each issue replaces the previous one.
 
-Accepted invites refuse every action with 422.
+Completed invites, and invites of inactive accounts, refuse every action with 422.
 
 ### C3. Temporary passwords at sign-in (`AuthController`, new middleware)
 - Login with a temporary password past `temp_password_expires_at` fails with code `TEMP_PASSWORD_EXPIRED` and "This temporary password has expired. Ask the MHO for a new one."
 - The session payload gains `must_change_password`.
-- New `POST /api/auth/change-password` `{ current_password, password, password_confirmation }` for a signed-in user. It clears `must_change_password` and `temp_password_expires_at`.
+- New `POST /api/auth/change-password` `{ current_password, password, password_confirmation }` for a signed-in user. It clears `must_change_password` and `temp_password_expires_at` and records the password through `PasswordSetRecorder` (`completed_via = temporary_password`).
 - New middleware `password.current`, added to the authenticated route group, returns 403 with code `PASSWORD_CHANGE_REQUIRED` for every route except `auth/profile`, `auth/logout`, `auth/refresh` and `auth/change-password` while `must_change_password` is true.
 
 ### C4. Reset requests
-- Completing a password reset marks a `pending` invite for the same user `superseded`.
+- Completing a password reset records it through `PasswordSetRecorder` (reset `completed` via `link`; an open invite becomes `completed` via `reset`).
 - `toResponse` adds `staff_role` so the Reset requests tab can show "Midwife" instead of the facility type (section F).
 
 ### C5. Mail
@@ -96,7 +102,7 @@ Accepted invites refuse every action with 422.
 - The frontend URL helper used by reset links moves to a small shared class so invites and resets build links the same way.
 
 ### C6. Audit log
-`account invite sent`, `account invite resent`, `account invite email changed`, `account invite link copied`, `account invite accepted`, `temporary password issued`, `password changed`. Passwords and tokens are never written to logs; email addresses are masked as reset logs do.
+`account invite sent`, `account invite resent`, `account invite email changed`, `account invite link copied`, `account invite completed`, `temporary password issued`, `password changed`, `reset link resent`, `reset link copied`. Passwords and tokens are never written to logs; email addresses are masked as reset logs do.
 
 ---
 
@@ -115,8 +121,8 @@ When the session says `must_change_password`, every route redirects here. Fields
 
 ### D4. Password & Invites (`PasswordResetRequests.jsx`)
 - Sidebar label and page title become **Password & Invites**. The URL stays `/admin/password-reset-requests`; `?tab=invites` opens the second tab.
-- Two tabs with pending counts: **Reset requests (n)** and **Invites (n)**.
-- The Invites tab uses the same table component, toolbar (search, status filter) and detail drawer as reset requests. Columns: Account, Email, Role, Facility, Sent, Status, Actions.
+- Two tabs, each counting its **Pending** rows: **Reset requests (n)** and **Invites (n)**.
+- The Invites tab uses the same table component, toolbar (search, status filter) and detail drawer as reset requests. Columns: Account, Email, Role, Facility, Date, Status, Actions.
 - Invite actions: **Resend**, **Edit email**, **Copy link**, **Issue temporary password**. Copy link puts the URL on the clipboard and says "Link copied. The emailed link no longer works." Issue temporary password confirms first, then shows the password once in a dialog with a copy button and "This is the only time it is shown. It expires in 72 hours."
 
 ---
@@ -136,48 +142,70 @@ Used on: Create/Edit Account (name, email, contact number), Accept invite and Ch
 
 ---
 
-## F. Wording: one vocabulary for both tabs
+## F. Statuses and wording: one vocabulary for both tabs
 
-Password & Invites is one module, so the same event has the same name on both tabs. Each tab shows only the terms that can happen to it. UI text only; stored status values do not change.
+Password & Invites is one module, so both tabs use the same four statuses and the same labels. The status is computed from the stored values below; the reason is shown in a tooltip on the badge and in View details.
 
-### F1. Statuses
-| Term | Meaning | Reset requests (stored value) | Invites (stored value) |
+### F1. The four statuses
+| Status | Badge | Meaning |
+|---|---|---|
+| **Pending** | amber | The MHO has to act. These rows are counted on the tab and in "Needs action". |
+| **In progress** | blue | Waiting for the user. |
+| **Complete** | green | The user has a password. |
+| **Cancelled** | grey | Stopped without a password being set. |
+
+### F2. How each tab maps to them
+Reset requests:
+| Stored | Status | Reason (tooltip) | Row actions |
 |---|---|---|---|
-| **Awaiting approval** | The MHO has to decide. | `pending` | does not happen |
-| **Link sent** | A one-time link was emailed; waiting for the user. | `approved` + `delivery = sent` | `pending` + `delivery = sent` |
-| **Email not sent** | The link could not be emailed. Resend, or copy the link. | `approved` + `delivery = failed` | `pending` + `delivery = failed` |
-| **Link expired** | The link was not used in time. | `expired` | `expired` |
-| **Password set** | The user chose their password through the link. | `completed` | `accepted` |
-| **Declined** | The MHO turned the request down. | `rejected` | does not happen |
-| **Temporary password issued** | The MHO gave a temporary password instead. | does not happen | `superseded` by a temporary password |
-| **Closed by reset** | A completed reset made the invite unnecessary. | does not happen | `superseded` by a reset |
+| `pending` | Pending | Awaiting approval | Approve, Decline |
+| `approved` + `delivery = failed` | Pending | Email not sent | Resend link, Copy link |
+| `expired` | Pending | Link expired | Resend link |
+| `approved` + `delivery = sent` | In progress | Link sent · expires in {time} | Resend link, Copy link |
+| `completed` via `link` | Complete | Password set | none |
+| `completed` via `invite` / `temporary_password` | Complete | Completed through the account invite / a temporary password | none |
+| `rejected` | Cancelled | Declined | none |
+| not completed, account inactive | Cancelled | Account deactivated | none |
 
-### F2. Shared labels
+Invites:
+| Stored | Status | Reason (tooltip) | Row actions |
+|---|---|---|---|
+| `pending` + `delivery = failed` | Pending | Email not sent | Resend link; menu: Copy link, Edit email, Issue temporary password |
+| `expired` | Pending | Link expired | Resend link; menu: Edit email, Issue temporary password |
+| `temporary`, past `temp_password_expires_at` | Pending | Temporary password expired | Resend link; menu: Issue temporary password |
+| `pending` + `delivery = sent` | In progress | Link sent · expires in {time} | Resend link; menu: Copy link, Edit email, Issue temporary password |
+| `temporary` | In progress | Temporary password issued | menu: Issue temporary password |
+| `completed` via `link` | Complete | Password set | none |
+| `completed` via `temporary_password` / `reset` | Complete | Temporary password changed / Completed through a password reset | none |
+| not completed, account inactive | Cancelled | Account deactivated | none |
+
+Every row also has **View details**.
+
+### F3. Shared labels
 | Where | Today | New (both tabs) |
 |---|---|---|
 | Sidebar, page title, Users page link | Password Resets / Password Reset Requests | Password & Invites |
-| Tabs | (none) | Reset requests (n) · Invites (n), where n counts rows that need the MHO: Awaiting approval, Email not sent and Link expired |
-| Status filter | All Status | All statuses, listing only that tab's terms |
+| Tabs | (none) | Reset requests (n) · Invites (n), n = Pending rows |
+| Status filter | All Status, Pending, Approved, Rejected, Completed, Expired | All statuses, Pending, In progress, Complete, Cancelled |
 | Summary cards | Pending Review / Visible Requests / Security: Admin approval required | Needs action / Showing / Links expire in: 60 minutes (resets) or 48 hours (invites) |
 | Table columns | User, Email, Role, Facility, Requested, Status | Account, Email, Role (staff role, e.g. "Midwife"), Facility, Date (requested or invited), Status |
-| Link actions | Approve and send link | **Approve** stays on Awaiting approval (it sends the link). **Resend link** on both tabs for Link sent, Email not sent and Link expired |
-| Copy link | (none) | **Copy link** on both tabs for Link sent and Email not sent |
-| Row actions | View details, Approve, Reject | View details plus the status's main action. Invites keep Copy link, Edit email and Issue temporary password in a `⋯` menu; Reset requests show Copy link as a button |
-| Reject action and dialog | Reject request / Reject password reset? | Decline request / Decline this reset request? (Reset requests only) |
+| Decline action and dialog | Reject / Reject password reset? | Decline / Decline this reset request? |
+| Approve dialog | Approve password reset? / Approve and send link | unchanged |
 
-### F3. What this adds to reset requests
+### F4. What this adds to reset requests
 For "Email not sent", "Resend link" and "Copy link" to mean the same on both tabs, reset requests gain what invites have:
-- `password_reset_requests.delivery` (`sent` or `failed`, nullable), set when a link is emailed. Today an approval whose email fails returns a server error but leaves the request `approved`, so the MHO sees a sent link that never arrived; after this change the approval saves with `delivery = failed` and shows **Email not sent**.
+- `password_reset_requests.delivery` (`sent` or `failed`, nullable), set when a link is emailed. Today an approval whose email fails returns a server error but leaves the request `approved`, so the MHO sees a sent link that never arrived; after this change the approval saves with `delivery = failed` and shows as **Pending** (Email not sent).
 - `POST /api/password-reset-requests/{request}/resend` and `/link` behave like the invite actions: rotate the token, restart the 60-minute window, email it or return the URL.
 
 ---
 
 ## G. Errors and edge cases
 
-- Mail failure on create or resend: the action still saves; the invite shows **Email not sent**.
-- Editing the email of a pending invite checks uniqueness and resends; an accepted invite cannot be edited from this tab (use Edit Account).
+- Mail failure on create, approve or resend: the action still saves; the row shows **Pending** (Email not sent).
+- Editing the email of a pending invite checks uniqueness and resends; a completed invite cannot be edited from this tab (use Edit Account).
 - A user who signs in with a temporary password and closes the tab stays forced to change it on the next sign-in, until it expires.
-- Deactivating an account leaves its invite as is; verify and accept refuse inactive accounts, as resets do.
+- Deactivating an account shows its open invite and reset requests as **Cancelled**; verify and accept refuse inactive accounts, as resets do. Reactivating shows the previous status again.
+- A user with a link out on both tabs who finishes one: both rows become **Complete** (B4).
 - Two MHOs acting on the same invite: the last token wins; the earlier link simply stops working.
 
 ---
@@ -188,12 +216,12 @@ Backend (PHPUnit):
 - Create sends an invite, stores a hashed token, sets an unusable password; a mailer failure still creates the account with `delivery = failed`.
 - `password` on create or update is rejected.
 - Verify and accept: valid, used, expired, wrong token, inactive account; weak passwords rejected.
-- Resend, edit email (uniqueness), copy link: each rotates the token and kills the old one; refused once accepted; admin only.
+- Resend, edit email (uniqueness), copy link: each rotates the token and kills the old one; refused once completed or when the account is inactive; admin only.
 - Temporary password: returned once, never logged; expired one cannot sign in; `password.current` blocks other routes until changed; change-password clears the flags.
-- Completing a reset supersedes a pending invite.
+- `PasswordSetRecorder`: each route (invite link, reset link, temporary password change) completes every open item of that user with the right `completed_via`.
 - Reset requests: an approval whose email fails saves `delivery = failed`; resend and copy link rotate the token and restart the 60-minute window.
 
-Frontend (`node --test`): the shared status terms (each stored value on each tab maps to the right term), the Field state rules (when a field becomes valid), and the forced-change redirect rule.
+Frontend (`node --test`): the status mapping (every row of the F2 tables gives the right status, reason and actions), the Field state rules (when a field becomes valid), and the forced-change redirect rule.
 
 Browser: create an account and see the notice, open the invite link from the mail log, set a password and sign in; issue a temporary password and get forced to change it; check the icons and the new wording.
 
