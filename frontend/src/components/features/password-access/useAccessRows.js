@@ -1,0 +1,73 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { DEFAULT_FILTERS } from "./AccessRequestTable";
+
+const SEARCH_DELAY_MS = 300;
+
+/**
+ * Rows, filters and per-row action state for one Password & Invites tab. The first load shows the
+ * loading overlay; later loads (filters, after an action) refresh in place so the toolbar keeps focus.
+ * `runAction(row, fn)` runs one row action, then reloads the tab and calls `onChanged` (the tab counts).
+ */
+export default function useAccessRows(fetchRows, onChanged) {
+  const [rows, setRows] = useState([]);
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState(null);
+  const busyRef = useRef(false);
+  const requestRef = useRef(0);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(filters.search), SEARCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [filters.search]);
+
+  const reload = useCallback(async () => {
+    const request = ++requestRef.current;
+    try {
+      const next = await fetchRows({ search, status: filters.status, perPage: 50 });
+      if (request !== requestRef.current) return;
+      setRows(next);
+      setError("");
+    } catch (loadError) {
+      if (request === requestRef.current) setError(loadError.message || "Unable to load this list.");
+    } finally {
+      if (request === requestRef.current) setLoading(false);
+    }
+  }, [fetchRows, search, filters.status]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  function updateFilters(next) {
+    setFilters((current) => ({ ...current, ...next }));
+  }
+
+  /** Returns fn's result, or undefined when another action is running or fn failed (the error is shown). */
+  async function runAction(row, fn) {
+    if (busyRef.current) return undefined;
+    busyRef.current = true;
+    setBusyId(row.id);
+    setError("");
+    try {
+      return await fn();
+    } catch (actionError) {
+      setError(actionError.message || "This action could not be completed.");
+      return undefined;
+    } finally {
+      busyRef.current = false;
+      setBusyId(null);
+      refresh();
+    }
+  }
+
+  /** Reloads the rows and the tab counts after a change made outside `runAction`. */
+  function refresh() {
+    void reload();
+    onChanged?.();
+  }
+
+  return { rows, filters, updateFilters, loading, error, busyId, runAction, refresh };
+}

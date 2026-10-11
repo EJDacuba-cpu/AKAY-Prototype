@@ -50,7 +50,7 @@ export const menuByRole = {
       section: "Accountability",
       items: [
         {
-          label: "Password Resets",
+          label: "Password & Invites",
           path: "/admin/password-reset-requests",
           icon: KeyRound,
         },

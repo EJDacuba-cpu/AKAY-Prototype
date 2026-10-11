@@ -399,7 +399,7 @@ function AccountActions({ user, onUpdateStatus }) {
             className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-[#4B5563] transition-colors hover:bg-[#F9FAFB] hover:text-[#111827]"
           >
             <KeyRound size={14} className="text-[#9CA3AF]" />
-            Password Reset Requests
+            Password & Invites
           </Link>
 
           <button
