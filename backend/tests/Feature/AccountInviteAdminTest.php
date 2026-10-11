@@ -80,7 +80,7 @@ class AccountInviteAdminTest extends TestCase
         $this->postJson("/api/account-invites/{$invite->id}/resend")
             ->assertOk()
             ->assertJsonPath('data.id', $invite->id)
-            ->assertJsonPath('data.status', 'in_progress')
+            ->assertJsonPath('data.display_status', 'in_progress')
             ->assertJsonPath('data.delivery', 'sent');
 
         $this->getJson('/api/auth/invites/verify?token=old-token')->assertUnprocessable();
@@ -231,8 +231,11 @@ class AccountInviteAdminTest extends TestCase
         ];
 
         foreach ($expected as $status => $keys) {
-            $actual = collect($this->getJson("/api/account-invites?status={$status}&per_page=100")->assertOk()->json('data.data'))
-                ->pluck('id')->sort()->values()->all();
+            $returned = collect($this->getJson("/api/account-invites?status={$status}&per_page=100")->assertOk()->json('data.data'));
+            foreach ($returned as $row) {
+                $this->assertSame($status, $row['display_status'], "Row {$row['id']} came back under {$status}");
+            }
+            $actual = $returned->pluck('id')->sort()->values()->all();
             $want = collect($keys)->map(fn ($key) => $ids[$key]->id)->sort()->values()->all();
             $this->assertSame($want, $actual, "Filter {$status}");
         }
@@ -240,10 +243,14 @@ class AccountInviteAdminTest extends TestCase
         // Each row reports its computed status and the stale link was marked expired.
         $rows = collect($this->getJson('/api/account-invites?per_page=100')->json('data.data'))->keyBy('id');
         $this->assertCount(13, $rows);
-        $this->assertSame('pending', $rows[$ids['pending_stale_link']->id]['status']);
-        $this->assertSame('cancelled', $rows[$ids['cancelled_failed']->id]['status']);
-        $this->assertSame('complete', $rows[$ids['complete_inactive']->id]['status']);
-        $this->assertSame('in_progress', $rows[$ids['progress_temp']->id]['status']);
+        $this->assertSame('pending', $rows[$ids['pending_stale_link']->id]['display_status']);
+        // `status` stays the stored value; `display_status` is the computed one.
+        $this->assertSame('expired', $rows[$ids['pending_stale_link']->id]['status']);
+        $this->assertSame('temporary', $rows[$ids['progress_temp']->id]['status']);
+        $this->assertSame('completed', $rows[$ids['complete_link']->id]['status']);
+        $this->assertSame('cancelled', $rows[$ids['cancelled_failed']->id]['display_status']);
+        $this->assertSame('complete', $rows[$ids['complete_inactive']->id]['display_status']);
+        $this->assertSame('in_progress', $rows[$ids['progress_temp']->id]['display_status']);
         $this->assertSame(AccountInvite::STATUS_EXPIRED, $ids['pending_stale_link']->fresh()->status);
         $this->assertNull($ids['pending_stale_link']->fresh()->token_hash);
 

@@ -259,7 +259,8 @@ class AccountInviteController extends Controller
         return [
             'id' => $invite->id,
             'email' => $user?->email ?? $invite->email,
-            'status' => AccessRequestStatus::forInvite($invite),
+            'status' => $invite->status,
+            'display_status' => AccessRequestStatus::forInvite($invite),
             'delivery' => $invite->delivery,
             'completed_via' => $invite->completed_via,
             'sent_at' => $invite->sent_at,
