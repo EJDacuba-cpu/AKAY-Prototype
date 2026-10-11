@@ -1,6 +1,6 @@
 import { Link } from "react-router";
-import { Lock } from "lucide-react";
 
+import RestrictedArea from "../../common/access/RestrictedArea";
 import { DottedSpinner } from "../../common/loading/SoftLoadingOverlay";
 import SummarySection from "./SummarySection";
 import PatientAlertChips from "./PatientAlertChips";
@@ -142,7 +142,18 @@ export default function PatientSummaryPanel({ patientId, basePath = "/bhc", show
       </header>
 
       <div className="flex-1 px-4 pb-4">
-        {canViewHistory && (
+        <RestrictedArea
+          locked={!canViewHistory}
+          label="Patient alerts"
+          compact
+          className="mt-4"
+          placeholder={
+            <section className="border border-gray-200 bg-white">
+              <h3 className="border-b border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-700">Alerts</h3>
+              <div className="flex gap-2 px-3 py-2"><span className="h-5 w-20 rounded bg-gray-100" /><span className="h-5 w-16 rounded bg-gray-100" /></div>
+            </section>
+          }
+        >
           <section aria-labelledby="summary-alerts-title" className="mt-4 border border-gray-200 bg-white">
             <h3 id="summary-alerts-title" className="border-b border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-700">
               Alerts
@@ -151,7 +162,7 @@ export default function PatientSummaryPanel({ patientId, basePath = "/bhc", show
               <PatientAlertChips background={patient.medicalBackground} conditionGroups={conditionGroups} />
             </div>
           </section>
-        )}
+        </RestrictedArea>
 
         <SummarySection variant="clinical" title="Profile Details" rows={[
           ["Age / Sex", formatDisplayValue(ageSex)],
@@ -163,21 +174,23 @@ export default function PatientSummaryPanel({ patientId, basePath = "/bhc", show
           ["PhilHealth", formatDisplayValue(philHealth)],
         ]} />
 
-        {canViewHistory ? (
-          <>
-            <VitalsGrid records={records} />
-            <SummarySection variant="clinical" title="Latest Consultation" rows={latest ? [
-              ["Date", formatLongDate(getRecordDateValue(latest))],
-              ["Program", getServiceTypeLabel(latest)],
-              ["Outcome", latest.outcome],
-            ] : [["Consultation", "No consultation recorded yet"]]} />
-          </>
-        ) : (
-          <p className="mt-4 flex items-center gap-2 border border-gray-200 border-l-4 border-l-red-600 bg-gray-50 p-3 text-xs text-gray-700">
-            <Lock size={14} className="shrink-0" aria-hidden="true" />
-            Clinical history is restricted for your role.
-          </p>
-        )}
+        <RestrictedArea
+          locked={!canViewHistory}
+          label="Health Records & History"
+          placeholder={
+            <>
+              <VitalsGrid records={[]} />
+              <SummarySection variant="clinical" title="Latest Consultation" rows={[["Consultation", "—"]]} />
+            </>
+          }
+        >
+          <VitalsGrid records={records} />
+          <SummarySection variant="clinical" title="Latest Consultation" rows={latest ? [
+            ["Date", formatLongDate(getRecordDateValue(latest))],
+            ["Program", getServiceTypeLabel(latest)],
+            ["Outcome", latest.outcome],
+          ] : [["Consultation", "No consultation recorded yet"]]} />
+        </RestrictedArea>
       </div>
 
       <footer className="patient-summary__footer">

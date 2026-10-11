@@ -1,10 +1,9 @@
-import { ALL_PERMISSIONS, PERMISSION_PRESETS } from "./actionPermissions.js";
+import { PERMISSION_PRESETS } from "./actionPermissions.js";
+import { designationScope, overrideTier } from "./accessPolicy.js";
 
+/** The duties a designation normally holds. Not a limit: anything else can be granted as an acknowledged override. */
 export function compatiblePermissions(designation, role) {
-  const clinical = ["nurse", "midwife", "doctor"].includes(String(designation).toLowerCase());
-  if (clinical) return ALL_PERMISSIONS.filter(p => role === "rhu_staff" || !["rhu.manage", "conditions.confirm"].includes(p));
-  if (String(designation).toLowerCase() === "logistics") return PERMISSION_PRESETS.inventory.permissions;
-  return PERMISSION_PRESETS.encoder.permissions;
+  return designationScope(designation, role);
 }
 
 export function suggestedPreset(designation, role) {
@@ -14,12 +13,32 @@ export function suggestedPreset(designation, role) {
 }
 
 export function accessProfile(user) {
-  if (["admin", "Admin"].includes(user.role)) return "Admin / MHO";
+  return accessSummary(user).label;
+}
+
+// Directory accounts carry the frontend role ("bhc"/"rhu"); the access policy speaks the backend's.
+const BACKEND_ROLES = { bhc: "bhw", rhu: "rhu_staff" };
+
+/** Directory label: the base profile plus how many duties sit outside the designation's scope. */
+export function accessSummary(user = {}) {
+  const plain = label => ({ label, overrides: 0, critical: false });
+  if (["admin", "Admin"].includes(user.role)) return plain("Admin / MHO");
   const p = user.permissions;
-  if (!Array.isArray(p)) return "Legacy · review access";
+  if (!Array.isArray(p)) return plain("Legacy · review access");
+  if (!p.length) return plain("No access assigned");
+  const role = user.backendRole || BACKEND_ROLES[user.role] || user.role;
+  const tiers = p.map(key => overrideTier(key, user.professional_designation, role)).filter(Boolean);
+  const base = baseProfile({ ...user, role }, p);
+  if (!tiers.length) return plain(base);
+  return { label: `${base} · +${tiers.length} override${tiers.length === 1 ? "" : "s"}`, overrides: tiers.length, critical: tiers.includes("critical") };
+}
+
+function baseProfile(user, p) {
+  const suggested = PERMISSION_PRESETS[suggestedPreset(user.professional_designation, user.role)];
+  if (suggested.permissions.every(key => p.includes(key))) return suggested.label;
   if (p.includes("consultations.finalize")) return "Clinical Staff";
   if (p.includes("rhu.manage")) return "RHU Staff";
   if (p.includes("inventory.manage")) return "Inventory Staff";
   if (p.includes("consultations.encode")) return "Encoder";
-  return p.length ? "Custom" : "No access assigned";
+  return "Custom";
 }

@@ -1,5 +1,5 @@
-import { Lock } from "lucide-react";
-
+import RestrictedArea from "../../../common/access/RestrictedArea";
+import LockedPlaceholder from "../../../common/access/LockedPlaceholder";
 import BackgroundEditor from "../../patients/background/BackgroundEditor";
 import MedicalConditionsGroups from "../../patients/MedicalConditionsGroups";
 import useClinicalRegistry from "../../../../hooks/useClinicalRegistry";
@@ -36,13 +36,12 @@ export default function ConsultationBackgroundCard({
   const conditionsQuery = usePatientConditions(patientId, { enabled: !locked });
   if (locked) {
     return (
-      <div className="flex items-start gap-3 py-1" role="note">
-        <Lock size={16} className="mt-0.5 shrink-0 text-gray-500" aria-hidden="true" />
-        <div>
-          <p className="text-[13px] font-semibold text-gray-900">Clinical history restricted</p>
-          <p className="mt-0.5 text-xs text-gray-600">You are not allowed to view or update this section.</p>
-        </div>
-      </div>
+      <RestrictedArea
+        locked
+        label="Patient background"
+        className="rounded-md"
+        placeholder={<LockedPlaceholder lines={3} className="min-h-28" />}
+      />
     );
   }
 

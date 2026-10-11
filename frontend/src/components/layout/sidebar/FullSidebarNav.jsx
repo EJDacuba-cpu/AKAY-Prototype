@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Lock } from "lucide-react";
+import { RESTRICTED_MESSAGE } from "../../common/access/RestrictedArea";
 import {
+  LOCKED_NAV_ITEM_CLASS,
   SECTION_LABEL_CLASS,
   childLinkClass,
   navItemClass,
@@ -38,6 +40,24 @@ export default function FullSidebarNav({ menuSections, isMenuActive, onNavigate 
               const active = isMenuActive(item.path);
               const hasChildren = item.children?.length > 0;
               const expanded = active || expandedGroups[item.path];
+
+              if (item.locked) {
+                return (
+                  <span
+                    key={`${section.section}-${item.label}`}
+                    role="link"
+                    aria-disabled="true"
+                    tabIndex={0}
+                    aria-label={`${item.label}: ${RESTRICTED_MESSAGE}`}
+                    title={RESTRICTED_MESSAGE}
+                    className={`${LOCKED_NAV_ITEM_CLASS} gap-2.5 pl-2.5 pr-3`}
+                  >
+                    <Icon size={16} strokeWidth={1.9} className="shrink-0" />
+                    <span className="truncate">{item.label}</span>
+                    <Lock size={13} className="ml-auto shrink-0" aria-hidden="true" />
+                  </span>
+                );
+              }
 
               if (hasChildren) {
                 return (

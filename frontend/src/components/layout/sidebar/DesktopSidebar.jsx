@@ -1,6 +1,7 @@
 import {
   ChevronDown,
   ChevronRight,
+  Lock,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
@@ -8,8 +9,10 @@ import {
 import { Link } from "react-router";
 import { useEffect, useState } from "react";
 import LogoMark, { LogoWordmark } from "./LogoMark";
+import { RESTRICTED_MESSAGE } from "../../common/access/RestrictedArea";
 import {
   FOCUS_RING,
+  LOCKED_NAV_ITEM_CLASS,
   SECTION_LABEL_CLASS,
   SIGN_OUT_CLASS,
   childLinkClass,
@@ -158,6 +161,24 @@ export default function DesktopSidebar({
                     </span>
                   </>
                 );
+
+                if (item.locked) {
+                  return (
+                    <span
+                      key={`${section.section}-${item.label}`}
+                      role="link"
+                      aria-disabled="true"
+                      tabIndex={0}
+                      aria-label={`${item.label}: ${RESTRICTED_MESSAGE}`}
+                      title={expanded ? RESTRICTED_MESSAGE : undefined}
+                      {...tooltipHandlers(`${item.label} · Not permitted`)}
+                      className={`${LOCKED_NAV_ITEM_CLASS} ${itemLayout}`}
+                    >
+                      {content}
+                      {expanded && <Lock size={13} className="ml-auto shrink-0" aria-hidden="true" />}
+                    </span>
+                  );
+                }
 
                 if (hasChildren) {
                   return (

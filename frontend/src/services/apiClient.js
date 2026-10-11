@@ -91,9 +91,15 @@ export function storeAuthSession({ token, user }) {
     const key = normalized.working_facility_key || (authenticatedUser?.id === normalized.id ? authenticatedUser?.working_facility_key : null);
     const selected = choices.find(f => f.key === key) || (choices.length === 1 ? choices[0] : null);
     authenticatedUser = selected && normalized.role !== "admin" ? withFacility(normalized, selected) : normalized;
+    announceAuthChange();
   }
 
   removeLegacyPersistedAuth();
+}
+
+// Lets permission guards (hooks/useAccess) re-read the in-memory user when it changes.
+function announceAuthChange() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("akay:auth-changed"));
 }
 
 function withFacility(user, facility) {
@@ -107,12 +113,14 @@ export async function selectWorkingFacility(key) {
   if (!selected) throw new Error("This facility assignment is unavailable.");
   await clearSensitiveSessionState({ queryClient, reason: "facility-switched", broadcast: false, preserveAuthentication: true });
   authenticatedUser = withFacility(authenticatedUser, selected);
+  announceAuthChange();
   return authenticatedUser;
 }
 
 export function clearAuthSession() {
   accessToken = null;
   authenticatedUser = null;
+  announceAuthChange();
   removeLegacyPersistedAuth();
 }
 

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Lock } from "lucide-react";
+import RestrictedArea from "../../components/common/access/RestrictedArea";
+import LockedPlaceholder from "../../components/common/access/LockedPlaceholder";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
@@ -492,15 +493,19 @@ export default function PatientDetails() {
                   }
                 />
               ) : (
-                <p
+                <div
                   role="tabpanel"
                   id="profile-panel-overview"
                   aria-labelledby="profile-tab-overview"
-                  className="flex items-center gap-2 py-2 text-sm text-gray-600"
+                  className="flex min-h-0 flex-1 flex-col"
                 >
-                  <Lock size={14} className="shrink-0" aria-hidden="true" />
-                  Clinical history is restricted for your role.
-                </p>
+                  <RestrictedArea
+                    locked
+                    label="Health Records & History"
+                    className="min-h-0 flex-1 rounded-md"
+                    placeholder={<LockedOverviewPlaceholder />}
+                  />
+                </div>
               ))}
 
             {activeTab !== "overview" && (
@@ -599,5 +604,16 @@ export default function PatientDetails() {
         onClose={() => setOpenSuccess(false)}
       />
     </>
+  );
+}
+
+// Same column geometry as PatientOverviewBoard, with static blocks only: no patient history is ever rendered.
+function LockedOverviewPlaceholder() {
+  return (
+    <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2 xl:grid-cols-[minmax(0,20fr)_minmax(0,52fr)_minmax(0,28fr)]">
+      <LockedPlaceholder lines={4} className="min-h-72 xl:order-1" />
+      <LockedPlaceholder lines={5} className="min-h-72 xl:order-3" />
+      <LockedPlaceholder lines={6} className="min-h-72 md:col-span-2 xl:order-2 xl:col-span-1" />
+    </div>
   );
 }

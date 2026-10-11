@@ -75,9 +75,10 @@ export default function DashboardLayout({
   const { shouldShowRouteLoading } = useAkayLoadingLifecycle();
   const routeKey = location.pathname;
 
+  // Unassigned modules stay listed but locked, so every account keeps the same navigation layout.
   const menuSections = (menuByRole[role] || []).map(section => ({ ...section,
-    items: section.items.filter(item => navigationAllowed(getCurrentUser(), item.path)),
-  })).filter(section => section.items.length);
+    items: section.items.map(item => ({ ...item, locked: !navigationAllowed(getCurrentUser(), item.path) })),
+  }));
   const user = getCurrentUser() || {
     name: "AKAY User",
     position: "Personnel",

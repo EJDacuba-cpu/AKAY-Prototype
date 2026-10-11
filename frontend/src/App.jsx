@@ -27,6 +27,8 @@ import {
 } from "./utils/auth";
 import DashboardLayout from "./components/layout/DashboardLayout";
 import { FullScreenAkayLoader } from "./components/common";
+import LockedModulePage from "./components/common/access/LockedModulePage";
+import useAccess from "./hooks/useAccess";
 import { AkayLoadingLifecycleProvider } from "./hooks/useAkayLoadingLifecycle";
 import {
   getConsultationBackground,
@@ -108,9 +110,10 @@ function shouldClearStoredSession(error) {
   return error?.status === 401 || error?.status === 403;
 }
 
-function ProtectedPage({ allowedRole, children }) {
+function ProtectedPage({ allowedRole, module, children }) {
   const location = useLocation();
   const { status, user } = useContext(AuthStateContext);
+  const access = useAccess();
 
   if (status === "restoring") return <FullScreenAkayLoader message="Restoring your secure session..." />;
   if (status === "unauthenticated" || !user) {
@@ -123,6 +126,8 @@ function ProtectedPage({ allowedRole, children }) {
     );
   }
   if (user.role !== allowedRole) return <Navigate to="/unauthorized" replace />;
+  // A locked module keeps the page frame but never mounts the page, so none of its data is requested.
+  if (module && !access.canModule(module)) return <LockedModulePage role={allowedRole} module={module} />;
   return children;
 }
 
@@ -513,7 +518,7 @@ export default function App() {
       <Route
         path="/bhc/patients"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="patients">
             <PatientsModule />
           </ProtectedPage>
         }
@@ -521,7 +526,7 @@ export default function App() {
       <Route
         path="/bhc/patients/add"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="patients">
             <AddPatient />
           </ProtectedPage>
         }
@@ -529,7 +534,7 @@ export default function App() {
       <Route
         path="/bhc/health-records"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="history">
             <HealthRecords />
           </ProtectedPage>
         }
@@ -545,7 +550,7 @@ export default function App() {
       <Route
         path="/bhc/follow-ups"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="history">
             <FollowUps />
           </ProtectedPage>
         }
@@ -553,7 +558,7 @@ export default function App() {
       <Route
         path="/bhc/follow-ups/:taskId"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="history">
             <FollowUpDetails />
           </ProtectedPage>
         }
@@ -561,7 +566,7 @@ export default function App() {
       <Route
         path="/bhc/referrals"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="history">
             <Referrals />
           </ProtectedPage>
         }
@@ -569,7 +574,7 @@ export default function App() {
       <Route
         path="/bhc/referrals/create"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="referrals">
             <CreateReferral />
           </ProtectedPage>
         }
@@ -578,7 +583,7 @@ export default function App() {
       <Route
         path="/bhc/referrals/:trackingId"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="history">
             <ReferralDetails />
           </ProtectedPage>
         }
@@ -586,7 +591,7 @@ export default function App() {
       <Route
         path="/bhc/programs"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="history">
             <Programs />
           </ProtectedPage>
         }
@@ -594,7 +599,7 @@ export default function App() {
       <Route
         path="/bhc/programs/:programId"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="history">
             <ProgramDetails />
           </ProtectedPage>
         }
@@ -602,7 +607,7 @@ export default function App() {
       <Route
         path="/bhc/medicine-availability"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="inventory">
             <MedicineAvailability />
           </ProtectedPage>
         }
@@ -610,7 +615,7 @@ export default function App() {
       <Route
         path="/bhc/reports"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="reports">
             <BHCReports />
           </ProtectedPage>
         }
@@ -622,7 +627,7 @@ export default function App() {
       <Route
         path="/bhc/patients/:patientId"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="patients">
             <PatientDetails />
           </ProtectedPage>
         }
@@ -630,7 +635,7 @@ export default function App() {
       <Route
         path="/bhc/health-records/:recordId"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="history">
             <HealthRecordDetails />
           </ProtectedPage>
         }
@@ -647,7 +652,7 @@ export default function App() {
       <Route
         path="/rhu/incoming-referrals"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="history">
             <IncomingReferrals />
           </ProtectedPage>
         }
@@ -655,7 +660,7 @@ export default function App() {
       <Route
         path="/rhu/referrals/:trackingId"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="history">
             <RHUReferralDetails />
           </ProtectedPage>
         }
@@ -663,7 +668,7 @@ export default function App() {
       <Route
         path="/rhu/qr-scanner"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="history">
             <QRScanner />
           </ProtectedPage>
         }
@@ -671,7 +676,7 @@ export default function App() {
       <Route
         path="/rhu/patients"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="patients">
             <RHUPatientsModule />
           </ProtectedPage>
         }
@@ -679,7 +684,7 @@ export default function App() {
       <Route
         path="/rhu/patients/add"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="patients">
             <RHUAddPatient />
           </ProtectedPage>
         }
@@ -687,7 +692,7 @@ export default function App() {
       <Route
         path="/rhu/patients/:patientId"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="patients">
             <RHUPatientDetails />
           </ProtectedPage>
         }
@@ -695,7 +700,7 @@ export default function App() {
       <Route
         path="/rhu/health-records"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="history">
             <RHUHealthRecord />
           </ProtectedPage>
         }
@@ -711,7 +716,7 @@ export default function App() {
       <Route
         path="/rhu/health-records/:recordId"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="history">
             <RHURecordDetails />
           </ProtectedPage>
         }
@@ -731,7 +736,7 @@ export default function App() {
       <Route
         path="/rhu/medicine-management"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="inventory">
             <MedicineManagement />
           </ProtectedPage>
         }
@@ -739,7 +744,7 @@ export default function App() {
       <Route
         path="/rhu/medicine-management/add"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="inventoryManage">
             <AddMedicineItem />
           </ProtectedPage>
         }
@@ -749,7 +754,7 @@ export default function App() {
       <Route
         path="/rhu/feedback/:trackingId"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="rhu">
             <FeedbackReturnSlip />
           </ProtectedPage>
         }
@@ -757,7 +762,7 @@ export default function App() {
       <Route
         path="/rhu/reports"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="reports">
             <RHUReports />
           </ProtectedPage>
         }
@@ -810,7 +815,7 @@ export default function App() {
           <Route
             path="/bhc/patients/:patientId"
             element={
-              <ProtectedPage allowedRole="bhc">
+              <ProtectedPage allowedRole="bhc" module="patients">
                 <PatientDetails />
               </ProtectedPage>
             }

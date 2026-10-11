@@ -1,4 +1,4 @@
-import { accessProfile } from "../../utils/accountSetup";
+import { accessProfile, accessSummary } from "../../utils/accountSetup";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
@@ -262,7 +262,7 @@ function assignmentSummary(user) {
 function AccountsTable({ users, onUpdateStatus }) {
   return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
     <TableHeader title="Account Directory" description="Manage personal accounts, home access, and additional nurse assignments." count={users.length}/>
-    <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[1050px] text-left"><thead><tr className="bg-slate-50 text-xs text-slate-500">{["Account","Designation","Access Profile","Home Facility","Additional Assignments","Status","Actions"].map(label=><th key={label} className="px-4 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{users.length===0 ? <EmptyRow colSpan={7} message="No accounts match the current filters."/> : users.map(user=><tr key={user.id}><td className="px-4 py-4"><p className="text-sm font-semibold">{getDisplayName(user)}</p><p className="text-xs text-slate-500">{user.email}</p></td><td className="px-4 py-4 text-sm">{user.professional_designation || "Not recorded"}</td><td className="px-4 py-4"><RoleBadge role={accessProfile(user)}/></td><td className="px-4 py-4 text-sm">{getFacilityName(user)}</td><td className="px-4 py-4 text-xs"><Link className="text-red-700" to={"/admin/staff-assignments?userId="+user.id}>{assignmentSummary(user)}</Link></td><td className="px-4 py-4"><StatusBadge status={user.status}/></td><td className="px-4 py-4"><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></td></tr>)}</tbody></table></div>
+    <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[1050px] text-left"><thead><tr className="bg-slate-50 text-xs text-slate-500">{["Account","Designation","Access Profile","Home Facility","Additional Assignments","Status","Actions"].map(label=><th key={label} className="px-4 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{users.length===0 ? <EmptyRow colSpan={7} message="No accounts match the current filters."/> : users.map(user=><tr key={user.id}><td className="px-4 py-4"><p className="text-sm font-semibold">{getDisplayName(user)}</p><p className="text-xs text-slate-500">{user.email}</p></td><td className="px-4 py-4 text-sm">{user.professional_designation || "Not recorded"}</td><td className="px-4 py-4"><AccessProfileBadge user={user}/></td><td className="px-4 py-4 text-sm">{getFacilityName(user)}</td><td className="px-4 py-4 text-xs"><Link className="text-red-700" to={"/admin/staff-assignments?userId="+user.id}>{assignmentSummary(user)}</Link></td><td className="px-4 py-4"><StatusBadge status={user.status}/></td><td className="px-4 py-4"><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></td></tr>)}</tbody></table></div>
     <div className="divide-y divide-slate-100 md:hidden">{users.map(user=><article key={user.id} className="space-y-3 p-4"><div className="flex justify-between"><div><h3 className="font-semibold">{getDisplayName(user)}</h3><p className="text-xs text-slate-500">{user.email}</p></div><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></div><dl className="grid grid-cols-2 gap-3 text-sm">{[["Designation",user.professional_designation||"Not recorded"],["Access Profile",accessProfile(user)],["Home Facility",getFacilityName(user)],["Status",user.status]].map(([label,value])=><div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl><Link className="block text-xs text-red-700" to={"/admin/staff-assignments?userId="+user.id}>Additional Assignments: {assignmentSummary(user)}</Link></article>)}</div>
     <TablePagination currentPage={1} totalPages={1}/>
   </div>;
@@ -432,7 +432,20 @@ function AccountActions({ user, onUpdateStatus }) {
   );
 }
 
-function RoleBadge({ role }) {
+// Accounts holding duties outside their designation's scope stand out: amber, or red for licensed clinical acts.
+function AccessProfileBadge({ user }) {
+  const { label, overrides, critical } = accessSummary(user);
+  if (!overrides) return <RoleBadge role={label} />;
+  return (
+    <RoleBadge
+      role={label}
+      tone={critical ? "border-red-300 bg-red-50 text-red-800" : "border-amber-200 bg-amber-50 text-amber-800"}
+      title={critical ? "Includes licensed clinical acts outside a clinical designation." : "Includes duties outside this designation's usual scope."}
+    />
+  );
+}
+
+function RoleBadge({ role, tone, title }) {
   const displayRole = formatDisplayValue(role, "Unassigned");
   const map = {
     Admin: "bg-purple-50 text-purple-700 border-purple-200",
@@ -442,8 +455,9 @@ function RoleBadge({ role }) {
 
   return (
     <span
+      title={title}
       className={`inline-block whitespace-nowrap rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-        map[displayRole] || "border-slate-200 bg-slate-50 text-slate-600"
+        tone || map[displayRole] || "border-slate-200 bg-slate-50 text-slate-600"
       }`}
     >
       {displayRole}

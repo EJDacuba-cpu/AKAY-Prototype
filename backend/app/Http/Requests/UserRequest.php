@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Models\BarangayHealthCenter;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Services\ActionPermissions;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -28,9 +29,11 @@ class UserRequest extends FormRequest
             'status' => ['sometimes', Rule::in([User::STATUS_ACTIVE, User::STATUS_INACTIVE])],
             'professional_designation' => ['nullable', 'string', 'max:100'],
             'permissions' => [$isUpdate ? 'sometimes' : 'present', 'array'],
-            'permissions.*' => ['string', 'distinct', Rule::in(\App\Services\ActionPermissions::ALL)],
+            'permissions.*' => ['string', 'distinct', Rule::in(ActionPermissions::ALL)],
             'facility_assignments' => ['prohibited'],
             'permissions_confirmed' => ['required_with:permissions', 'accepted'],
+            'acknowledged_overrides' => ['sometimes', 'array'],
+            'acknowledged_overrides.*' => ['string', Rule::in(ActionPermissions::ALL)],
             'barangay_health_center_id' => ['nullable', 'exists:barangay_health_centers,id'],
             'rural_health_unit_id' => ['nullable', 'exists:rural_health_units,id'],
         ];
@@ -41,21 +44,23 @@ class UserRequest extends FormRequest
         $validator->after(function ($validator): void {
             if ($validator->errors()->isNotEmpty()) return;
             $existingUser = $this->route('user');
-            $designation = strtolower(trim((string) $this->input('professional_designation', $existingUser?->professional_designation)));
-            $permissionSets = [$this->input('permissions', $existingUser?->permissions ?? [])];
-            foreach ($permissionSets as $permissions) {
-                if (array_intersect((array) $permissions, ['consultations.finalize', 'records.correct', 'referrals.submit']) && ! in_array($designation, ['midwife', 'nurse', 'doctor'], true)) {
-                    $validator->errors()->add('professional_designation', 'Clinical authorization requires a midwife, nurse, or doctor designation.');
+            $designation = $this->input('professional_designation', $existingUser?->professional_designation);
+            $role = $this->input('role', $existingUser?->role);
+            $permissions = (array) $this->input('permissions', $existingUser?->permissions ?? []);
+            if ($this->exists('permissions')) {
+                if ($role === User::ROLE_ADMIN && $permissions) {
+                    $validator->errors()->add('permissions', 'Administrative accounts do not carry facility duties.');
+                }
+                foreach (ActionPermissions::missingRequirements($permissions) as $permission => $required) {
+                    $validator->errors()->add('permissions', "{$permission} also requires ".implode(', ', $required).'.');
                 }
             }
-            $role = $this->input('role', $existingUser?->role);
-            if ($this->exists('permissions')) {
-                $clinical = in_array($designation, ['midwife', 'nurse', 'doctor'], true);
-                $allowed = $role === User::ROLE_ADMIN ? [] : ($clinical
-                    ? array_values(array_filter(\App\Services\ActionPermissions::ALL, fn ($p) => $role === User::ROLE_RHU_STAFF || ! in_array($p, ['rhu.manage', 'conditions.confirm'], true)))
-                    : ($designation === 'logistics' ? \App\Services\ActionPermissions::PRESETS['inventory'] : \App\Services\ActionPermissions::PRESETS['encoder']));
-                if (array_diff($this->input('permissions', []), $allowed)) {
-                    $validator->errors()->add('permissions', 'One or more duties are incompatible with this designation or home facility.');
+            // Any designation may hold any duty, but every duty outside its usual scope must be acknowledged
+            // whenever the request changes what the account can do, including a designation-only change.
+            if ($role !== User::ROLE_ADMIN && $this->hasAny(['permissions', 'professional_designation', 'role'])) {
+                $unacknowledged = array_diff(ActionPermissions::overrides($permissions, $designation, $role), (array) $this->input('acknowledged_overrides', []));
+                if ($unacknowledged) {
+                    $validator->errors()->add('acknowledged_overrides', 'Confirm these overrides before saving: '.implode(', ', $unacknowledged).'.');
                 }
             }
             $bhcId = $this->exists('barangay_health_center_id')

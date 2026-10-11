@@ -27,7 +27,7 @@ test("clinical collection failures still surface instead of being silently swall
   }), /Database unavailable/);
 });
 
-test("sidebar hides restricted modules but keeps assigned modules and admin navigation", () => {
+test("sidebar locks restricted modules but keeps assigned modules and admin navigation", () => {
   const encoder = { permissions: ["patients.register", "inventory.view"] };
   assert.equal(navigationAllowed(encoder, "/bhc/patients"), true);
   assert.equal(navigationAllowed(encoder, "/bhc/medicine-availability"), true);

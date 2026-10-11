@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UserRequest;
 use App\Models\User;
+use App\Services\ActionPermissions;
 use App\Services\AuditLogger;
 use App\Services\UserNotificationService;
 use App\Services\UserSessionRevocationService;
@@ -40,11 +41,12 @@ class UserController extends Controller
         $data['created_by'] = $request->user()->id;
         $data['status'] ??= User::STATUS_ACTIVE;
 
-        unset($data['facility_assignments'], $data['permissions_confirmed']);
+        $acknowledged = $data['acknowledged_overrides'] ?? [];
+        unset($data['facility_assignments'], $data['permissions_confirmed'], $data['acknowledged_overrides']);
         $user = User::create($data);
 
         $notifications->notifyUser($user, 'Account created', 'Your AKAY account has been created.', 'account_created');
-        $auditLogger->log($request, 'created', 'users', "Created user {$user->email}.");
+        $auditLogger->log($request, 'created', 'users', "Created user {$user->email}.".$this->accessAudit($user, [], $acknowledged));
 
         return response()->json(['data' => $user->load(['barangayHealthCenter', 'ruralHealthUnit'])], 201);
     }
@@ -66,7 +68,9 @@ class UserController extends Controller
             unset($data['password']);
         }
 
-        unset($data['permissions_confirmed']);
+        $acknowledged = $data['acknowledged_overrides'] ?? [];
+        $previousPermissions = $user->permissions ?? [];
+        unset($data['permissions_confirmed'], $data['acknowledged_overrides']);
         unset($data['facility_assignments']);
         $securityContextChanged = array_key_exists('password', $data) || array_key_exists('permissions', $data) || array_key_exists('professional_designation', $data);
         foreach (['role', 'status', 'barangay_health_center_id', 'rural_health_unit_id'] as $field) {
@@ -83,7 +87,9 @@ class UserController extends Controller
             $securityContextChanged,
             $auditLogger,
             $notifications,
-            $sessions
+            $sessions,
+            $previousPermissions,
+            $acknowledged
         ): void {
             $previousStatus = $user->status;
             $user->update($data);
@@ -96,7 +102,7 @@ class UserController extends Controller
                 $notifications->notifyUser($user, 'Account deactivated', 'Your AKAY account has been deactivated.', 'account_deactivated');
             }
 
-            $auditLogger->log($request, 'updated', 'users', "Updated user {$user->email}.");
+            $auditLogger->log($request, 'updated', 'users', "Updated user {$user->email}.".$this->accessAudit($user, $previousPermissions, $acknowledged));
         });
 
         return response()->json(['data' => $user->fresh()->load(['barangayHealthCenter', 'ruralHealthUnit', 'facilityAssignments.barangayHealthCenter'])]);
@@ -115,5 +121,27 @@ class UserController extends Controller
         });
 
         return response()->json(['data' => $user->fresh()]);
+    }
+
+    /** Audit wording for duties added or removed and the overrides the admin acknowledged in this request. */
+    private function accessAudit(User $user, array $previous, array $acknowledged): string
+    {
+        $current = $user->permissions ?? [];
+        $parts = [];
+        if ($added = array_values(array_diff($current, $previous))) {
+            $parts[] = 'Permissions added: '.implode(', ', $added).'.';
+        }
+        if ($removed = array_values(array_diff($previous, $current))) {
+            $parts[] = 'Permissions removed: '.implode(', ', $removed).'.';
+        }
+        $overrides = array_intersect(ActionPermissions::overrides($current, $user->professional_designation, $user->role), $acknowledged);
+        if ($overrides) {
+            $parts[] = 'Overrides acknowledged: '.implode(', ', array_map(
+                fn ($p) => ActionPermissions::overrideTier($p, $user->professional_designation) === 'critical' ? "{$p} (CRITICAL)" : $p,
+                $overrides
+            )).'.';
+        }
+
+        return $parts ? ' '.implode(' ', $parts) : '';
     }
 }

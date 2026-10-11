@@ -23,6 +23,8 @@ import { Bar } from "react-chartjs-2";
 
 /* Layout */
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import ModuleGate from "../../components/common/access/ModuleGate";
+import LockedPlaceholder from "../../components/common/access/LockedPlaceholder";
 
 /* Cards */
 import {
@@ -170,32 +172,44 @@ export default function BHCDashboard() {
           <CareSnapshot
             stats={stats}
             rhuVolumeSnapshot={rhuVolumeSnapshot}
-            access={access}
           />
 
+          {/* Unassigned modules keep their slot, blurred over static placeholders; their data is never loaded. */}
           <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="min-w-0 space-y-4">
-              {access.clinical ? <ChiefComplaintSummaryCard
-                activeCount={activeReferrals.length}
-                referrals={activeReferrals}
-              /> : <section className="rounded-xl border border-slate-200 bg-white p-5">
-                <h2 className="font-semibold text-slate-900">Your assigned access</h2>
-                <p className="mt-2 text-sm text-slate-600">{access.patients ? "Register patients and prepare current consultations for clinical review." : "Manage medicines and health supplies within your assigned facility."}</p>
-                <p className="mt-2 text-xs text-slate-500">Clinical history, completed records, and reports require separate MHO authorization.</p>
-                <Link className="mt-4 inline-block text-sm font-semibold text-red-700" to={access.patients ? "/bhc/patients" : "/bhc/medicine-availability"}>{access.patients ? "Open Patients" : "Open Medicines & Health Supplies"} →</Link>
-              </section>}
+              <ModuleGate
+                module="history"
+                className="rounded-xl"
+                placeholder={<ChiefComplaintSummaryCard activeCount={0} referrals={[]} />}
+              >
+                <ChiefComplaintSummaryCard
+                  activeCount={activeReferrals.length}
+                  referrals={activeReferrals}
+                />
+              </ModuleGate>
             </div>
 
-            {access.inventory && <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
-              <RHUReadinessCard
-                availability={doctorAvailability}
-                medicineAlerts={medicineAlerts}
-              />
+            <ModuleGate
+              module="inventory"
+              className="rounded-xl xl:self-start"
+              placeholder={
+                <div className="space-y-4">
+                  <LockedPlaceholder lines={4} className="min-h-56" />
+                  <MedicineAvailabilityCard medicineAlerts={[]} loading />
+                </div>
+              }
+            >
+              <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+                <RHUReadinessCard
+                  availability={doctorAvailability}
+                  medicineAlerts={medicineAlerts}
+                />
 
-              <MedicineAvailabilityCard
-                medicineAlerts={medicineAlerts}
-              />
-            </aside>}
+                <MedicineAvailabilityCard
+                  medicineAlerts={medicineAlerts}
+                />
+              </aside>
+            </ModuleGate>
           </section>
         </div>
       </PageStateWrapper>
@@ -239,7 +253,7 @@ function BHCWorkboardHeader({ userName, now }) {
 }
 
 
-function CareSnapshot({ stats, rhuVolumeSnapshot, access }) {
+function CareSnapshot({ stats, rhuVolumeSnapshot }) {
   const cards = [
     {
       title: "Registered Patients",
@@ -273,22 +287,34 @@ function CareSnapshot({ stats, rhuVolumeSnapshot, access }) {
 
   return (
     <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-      {cards.filter((_, index) => index === 0 ? access.patients : access.clinical).map((card, index) => (
-        <BHCStatCard
+      {cards.map((card, index) => (
+        <ModuleGate
           key={card.title}
-          title={card.title}
-          value={card.value}
-          description={card.description}
-          icon={card.icon}
-          color={card.color}
-          delay={index + 1}
-        />
+          module={index === 0 ? "patients" : "history"}
+          className="rounded-xl"
+          placeholder={<BHCStatCard {...card} value="—" />}
+        >
+          <BHCStatCard
+            title={card.title}
+            value={card.value}
+            description={card.description}
+            icon={card.icon}
+            color={card.color}
+            delay={index + 1}
+          />
+        </ModuleGate>
       ))}
 
-      {access.clinical && <RHUVolumeStatCard
-        snapshot={rhuVolumeSnapshot}
-        delay={cards.length + 1}
-      />}
+      <ModuleGate
+        module="history"
+        className="rounded-xl"
+        placeholder={<BHCStatCard title="RHU Patient Volume" value="—" description="RHU activity" icon={<HeartPulse size={17} />} color="blue" />}
+      >
+        <RHUVolumeStatCard
+          snapshot={rhuVolumeSnapshot}
+          delay={cards.length + 1}
+        />
+      </ModuleGate>
     </section>
   );
 }

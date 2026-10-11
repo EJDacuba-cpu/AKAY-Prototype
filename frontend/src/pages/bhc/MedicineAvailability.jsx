@@ -14,6 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import RestrictedArea from "../../components/common/access/RestrictedArea";
 import {
   ListToolbar,
   PageStateWrapper,
@@ -247,15 +248,16 @@ export default function MedicineAvailability() {
           onClearFilters={clearFilters}
           onRemoveFilter={removeFilter}
           actions={
-            activeTab === "bhc" && canManageBhcInventory ? (
-              <button
-                type="button"
-                onClick={openAddModal}
-                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
+            activeTab === "bhc" ? (
+              <RestrictedArea
+                locked={!canManageBhcInventory}
+                label="Stock Management"
+                compact
+                className="shrink-0 rounded-lg"
+                placeholder={<AddMedicineButton />}
               >
-                <Plus size={15} />
-                Add Medicine
-              </button>
+                <AddMedicineButton onClick={openAddModal} />
+              </RestrictedArea>
             ) : null
           }
         />
@@ -731,6 +733,19 @@ function formatDateTime(value) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function AddMedicineButton({ onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
+    >
+      <Plus size={15} />
+      Add Medicine
+    </button>
+  );
 }
 
 function canManageBhcMedicineInventory(user = {}) {

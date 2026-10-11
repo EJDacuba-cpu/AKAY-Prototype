@@ -12,6 +12,9 @@ export function navItemClass(active) {
   }`;
 }
 
+// A module the account holds no permission for: listed so navigation looks the same for everyone, never a link.
+export const LOCKED_NAV_ITEM_CLASS = `group relative flex h-9 w-full cursor-not-allowed items-center border-l-4 border-l-transparent text-[13px] font-medium text-gray-400 ${FOCUS_RING}`;
+
 export function childLinkClass(active) {
   return `relative block py-1.5 pl-4 pr-2 text-[12px] transition-colors duration-150 ${FOCUS_RING} ${
     active

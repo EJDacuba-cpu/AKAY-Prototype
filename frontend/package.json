@@ -27,7 +27,8 @@
     "test:patient-overview": "node --test src/utils/bmi.test.js src/utils/revealSequence.test.js src/utils/revealFocus.test.js src/utils/bodyFigureGeometry.test.js src/utils/bodyFindings.test.js src/utils/findingLink.test.js src/utils/bodyFindingsSummary.test.js src/utils/vitalTrends.test.js src/utils/backgroundSummary.test.js src/utils/medicationSummary.test.js",
     "test:request-timeout": "node --test src/services/requestTimeout.test.js",
     "test:prefetch-profile": "node --test src/utils/prefetchPatientProfile.test.js",
-    "test:household-parents": "node --test src/utils/householdParents.test.js"
+    "test:household-parents": "node --test src/utils/householdParents.test.js",
+    "test:access": "node --test src/utils/accessPolicy.test.js src/utils/accountSetup.test.js src/utils/dashboardAccess.test.js"
   },
   "dependencies": {
     "@fontsource-variable/public-sans": "^5.3.0",
