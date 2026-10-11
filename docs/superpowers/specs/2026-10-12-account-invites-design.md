@@ -43,7 +43,7 @@ New migration `backend/database/migrations/2026_10_12_000001_create_account_invi
 | `token_hash` | `sha256` of the raw token, nullable. Cleared when the invite is completed, expires, or a temporary password is issued. |
 | `status` | `pending` (a link is out), `expired`, `temporary` (a temporary password was issued and not yet changed), `completed`. |
 | `completed_via` | Nullable: `link`, `temporary_password` or `reset`: how the user got their password. |
-| `delivery` | `sent` or `failed`: whether the last send reached the mailer. |
+| `delivery` | `sent`, `failed` (the last send did not reach the mailer) or `copied` (the MHO copied the link to share it another way). |
 | `expires_at` | 48 hours after the last send. |
 | `sent_at`, `completed_at` | Timestamps. |
 | `created_by` | FK `users` (the MHO), nullable on delete. |
@@ -56,7 +56,7 @@ New migration `backend/database/migrations/2026_10_12_000001_create_account_invi
 - `temp_password_expires_at` timestamp, nullable.
 
 ### B3. `password_reset_requests`
-- `delivery` string, nullable: `sent` or `failed` for the last emailed link (section F4).
+- `delivery` string, nullable: `sent`, `failed` or `copied`, as for invites (section F4).
 - `completed_via` string, nullable: `link`, `invite` or `temporary_password`.
 
 ### B4. One rule for every route
@@ -162,6 +162,7 @@ Reset requests:
 | `approved` + `delivery = failed` | Pending | Email not sent | Resend link, Copy link |
 | `expired` | Pending | Link expired | Resend link |
 | `approved` + `delivery = sent` | In progress | Link sent · expires in {time} | Resend link, Copy link |
+| `approved` + `delivery = copied` | In progress | Link shared by the MHO · expires in {time} | Resend link, Copy link |
 | `completed` via `link` | Complete | Password set | none |
 | `completed` via `invite` / `temporary_password` | Complete | Completed through the account invite / a temporary password | none |
 | `rejected` | Cancelled | Declined | none |
@@ -174,6 +175,7 @@ Invites:
 | `expired` | Pending | Link expired | Resend link; menu: Edit email, Issue temporary password |
 | `temporary`, past `temp_password_expires_at` | Pending | Temporary password expired | Resend link; menu: Issue temporary password |
 | `pending` + `delivery = sent` | In progress | Link sent · expires in {time} | Resend link; menu: Copy link, Edit email, Issue temporary password |
+| `pending` + `delivery = copied` | In progress | Link shared by the MHO · expires in {time} | Resend link; menu: Copy link, Edit email, Issue temporary password |
 | `temporary` | In progress | Temporary password issued | menu: Issue temporary password |
 | `completed` via `link` | Complete | Password set | none |
 | `completed` via `temporary_password` / `reset` | Complete | Temporary password changed / Completed through a password reset | none |
