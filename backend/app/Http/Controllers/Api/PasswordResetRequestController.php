@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\PasswordResetApprovedMail;
 use App\Models\PasswordResetRequest;
 use App\Models\User;
+use App\Services\AccessRequestStatus;
 use App\Services\AuditLogger;
 use App\Services\UserNotificationService;
 use App\Services\UserSessionRevocationService;
@@ -290,14 +291,7 @@ class PasswordResetRequestController extends Controller
 
     private function expireStaleApprovedRequests(): void
     {
-        PasswordResetRequest::query()
-            ->where('status', PasswordResetRequest::STATUS_APPROVED)
-            ->whereNotNull('expires_at')
-            ->where('expires_at', '<=', now())
-            ->update([
-                'status' => PasswordResetRequest::STATUS_EXPIRED,
-                'reset_token_hash' => null,
-            ]);
+        AccessRequestStatus::expireStaleResetRequests();
     }
 
     private function toResponse(PasswordResetRequest $resetRequest): array

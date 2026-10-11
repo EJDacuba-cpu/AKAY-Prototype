@@ -159,6 +159,12 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::get('/admin/password-reset-requests/{passwordResetRequest}', [PasswordResetRequestController::class, 'show']);
         Route::post('/admin/password-reset-requests/{passwordResetRequest}/approve', [PasswordResetRequestController::class, 'approve']);
         Route::post('/admin/password-reset-requests/{passwordResetRequest}/reject', [PasswordResetRequestController::class, 'reject']);
+        Route::get('/account-invites', [AccountInviteController::class, 'index']);
+        Route::post('/account-invites/{invite}/resend', [AccountInviteController::class, 'resend']);
+        Route::patch('/account-invites/{invite}/email', [AccountInviteController::class, 'updateEmail']);
+        Route::post('/account-invites/{invite}/link', [AccountInviteController::class, 'link']);
+        Route::post('/account-invites/{invite}/temporary-password', [AccountInviteController::class, 'temporaryPassword']);
+        Route::get('/password-invites/summary', [AccountInviteController::class, 'summary']);
         Route::get('/audit-logs', [AuditLogController::class, 'index']);
         Route::get('/reports/admin', [ReportController::class, 'admin']);
     });
