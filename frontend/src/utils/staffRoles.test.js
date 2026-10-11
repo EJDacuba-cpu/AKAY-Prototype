@@ -13,7 +13,7 @@ import {
 } from "./staffRoles.js";
 import { rolesData } from "./staffRoles.fixture.js";
 
-const [{ defaults: midwife }, , { defaults: encoder }] = rolesData.roles;
+const [, , { defaults: encoder }] = rolesData.roles;
 
 test("roles are grouped by facility tier", () => {
   assert.deepEqual(rolesForTier(rolesData, "bhw").map(r => r.key), ["midwife", "bhw", "encoder"]);
