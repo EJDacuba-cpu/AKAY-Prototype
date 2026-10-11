@@ -172,9 +172,9 @@ export default function AddUser() {
   const [title, subtitle] = HEADINGS[current];
 
   return <DashboardLayout role="admin" title={id ? "Edit User Account" : "Create Account"}>
-    <form onSubmit={next} noValidate className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-1 pt-1">
+    <form onSubmit={next} noValidate className="mx-auto flex min-h-full w-full max-w-[1500px] flex-col">
       <button type="button" className="self-start text-sm text-red-700" onClick={() => navigate("/admin/users")}>← Account Directory</button>
-      <div className="mt-4 flex flex-1 flex-col gap-6 md:grid md:grid-cols-[12rem_minmax(0,1fr)] md:items-stretch md:gap-8">
+      <div className="mt-4 flex flex-1 flex-col gap-6 md:grid md:grid-cols-[12rem_minmax(0,1fr)] md:items-stretch md:gap-6">
         <AccountStepper steps={labels} current={step} reached={reached} onSelect={goTo} />
         <div className="flex min-w-0 flex-col">
           <header className="pb-0">
@@ -230,7 +230,7 @@ export default function AddUser() {
             {!editLoading && current === STEPS.review && <PermissionReviewSummary review={admin ? null : review} details={details} confirmed={confirmed} onConfirm={value => { setConfirmed(value); setErrors({}); }} confirmationLabel={ACCOUNT_CONFIRMATION} error={errors.confirmed} />}
           </section>
 
-          <div className="sticky bottom-0 -mx-1 mt-auto flex justify-between gap-3 border-t border-slate-200 bg-slate-50/95 px-1 py-3 backdrop-blur">
+          <div className="sticky bottom-0 mt-auto flex justify-between gap-3 border-t border-slate-200 bg-slate-50/95 py-3 backdrop-blur">
             <button type="button" disabled={!step || busy} onClick={() => goTo(step - 1)} className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm disabled:opacity-40">Back</button>
             <button type="submit" disabled={busy || !loaded} className="rounded-lg bg-red-700 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40">{busy ? "Saving…" : last ? id ? "Save Changes" : "Create Account" : "Continue"}</button>
           </div>
