@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   applyFacilityChange,
   availableDuties,
+  defaultRoleKey,
   isValidContactNumber,
   licensedGrants,
   needsReplaceConfirm,
@@ -58,4 +59,11 @@ test("same-tier facility change keeps role and access; tier change clears them",
   assert.deepEqual(applyFacilityChange(form, "bhc", 2), { ...form, barangay_health_center_id: 2 });
   assert.deepEqual(applyFacilityChange(form, "rhu", 5), { ...form, role: "rhu", staff_role: "", permissions: [], barangay_health_center_id: null, rural_health_unit_id: 5 });
   assert.deepEqual(applyFacilityChange(form, "admin", null), { ...form, role: "admin", staff_role: "", permissions: [], barangay_health_center_id: null, rural_health_unit_id: null });
+});
+
+test("each facility tier opens on its first role, and admins have none", () => {
+  assert.equal(defaultRoleKey(rolesData, "bhc"), "midwife");
+  assert.equal(defaultRoleKey(rolesData, "rhu"), "nurse");
+  assert.equal(defaultRoleKey(rolesData, "admin"), undefined);
+  assert.equal(defaultRoleKey(null, "bhc"), undefined);
 });

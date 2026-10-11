@@ -35,6 +35,22 @@ class UserController extends Controller
         return response()->json(['data' => $query->latest()->paginate($request->integer('per_page', 25))]);
     }
 
+    /** Lets the account form say "already taken" before saving. Emails are compared without case, as login does. */
+    public function emailAvailable(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'string', 'max:255'],
+            'ignore' => ['nullable', 'integer'],
+        ]);
+
+        $taken = User::query()
+            ->whereRaw('lower(email) = ?', [strtolower(trim($validated['email']))])
+            ->when(isset($validated['ignore']), fn ($query) => $query->where('id', '!=', $validated['ignore']))
+            ->exists();
+
+        return response()->json(['available' => ! $taken]);
+    }
+
     public function store(UserRequest $request, AuditLogger $auditLogger, UserNotificationService $notifications)
     {
         $data = $request->validated();

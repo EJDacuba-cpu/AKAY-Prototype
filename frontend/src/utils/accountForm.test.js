@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { STEPS, routeServerErrors, validateAccountStep } from "./accountForm.js";
+import { STEPS, isValidEmail, routeServerErrors, validateAccountStep } from "./accountForm.js";
 
 const form = {
   role: "bhc", name: "Joshua", email: "joshua@example.test", contact_number: "0917 123 4567",
@@ -25,6 +25,17 @@ test("personal details reports every problem at once", () => {
 test("contact numbers may contain spaces or dashes but must be a PH mobile number", () => {
   assert.deepEqual(validateAccountStep(STEPS.personal, { ...form, contact_number: "0917-123-4567" }, create), {});
   assert.deepEqual(Object.keys(validateAccountStep(STEPS.personal, { ...form, contact_number: "+639171234567" }, create)), ["contact_number"]);
+});
+
+test("a missing or malformed mobile number only asks for the mobile number", () => {
+  for (const contact_number of ["", "12345", "+639171234567"]) {
+    assert.deepEqual(validateAccountStep(STEPS.personal, { ...form, contact_number }, create), { contact_number: "Enter mobile number." });
+  }
+});
+
+test("email addresses need a name, an @ and a domain", () => {
+  assert.equal(isValidEmail("joshua@example.test"), true);
+  for (const bad of ["", "nope", "a@b", "a b@c.d", " joshua@example.test"]) assert.equal(isValidEmail(bad), false);
 });
 
 test("passwords must match and be long enough", () => {

@@ -13,6 +13,11 @@ export function rolesForTier(rolesData, tier) {
   return (rolesData?.roles || []).filter(role => role.tier === tier);
 }
 
+/** The role a new account opens on: the first role of its facility tier. Admin accounts have no role. */
+export function defaultRoleKey(rolesData, tier) {
+  return rolesForTier(rolesData, tier)[0]?.key;
+}
+
 export function availableDuties(rolesData, tier) {
   const available = rolesData?.available?.[tier] || [];
   return ALL_PERMISSIONS.filter(key => available.includes(key));

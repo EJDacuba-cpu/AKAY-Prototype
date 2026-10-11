@@ -4,6 +4,8 @@ export const STEPS = { facility: "Facility", personal: "Personal Details", acces
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+export const isValidEmail = value => EMAIL.test(String(value || ""));
+
 /**
  * Every problem on one step, keyed by field, so the form can mark them all at once.
  * `editing` lets the password stay blank; `hasFacility` says a facility of the chosen tier is picked.
@@ -17,8 +19,8 @@ export function validateAccountStep(step, form, { editing, hasFacility, confirme
   }
   if (step === STEPS.personal) {
     if (!form.name.trim()) errors.name = "Enter the full name.";
-    if (!EMAIL.test(form.email)) errors.email = "Enter a valid email address.";
-    if (!isValidContactNumber(form.contact_number)) errors.contact_number = "Enter a mobile number like 09171234567.";
+    if (!isValidEmail(form.email)) errors.email = "Enter a valid email address.";
+    if (!isValidContactNumber(form.contact_number)) errors.contact_number = "Enter mobile number.";
     if (!editing || form.password || form.password_confirmation) {
       if (!form.password && form.password_confirmation) errors.password = "Enter the new password, or clear the confirmation.";
       else if (form.password.length < 8) errors.password = "Password must contain at least 8 characters.";

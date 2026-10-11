@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { Eye, EyeOff, HandHeart, Hospital, House, Keyboard, ShieldCheck, Stethoscope, Syringe, UserRound } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Input from "../../components/common/atoms/Input";
 import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
 import NoticeModal from "../../components/common/modals/NoticeModal";
-import AccountStepper from "../../components/features/access/AccountStepper";
+import AccountStepper, { STEPPER_HEIGHT } from "../../components/features/access/AccountStepper";
 import Field, { FieldMessage } from "../../components/features/access/FieldError";
 import FacilityPickerModal from "../../components/features/access/FacilityPickerModal";
 import PermissionMatrix from "../../components/features/access/PermissionMatrix";
@@ -13,9 +13,9 @@ import PermissionReviewSummary, { ACCOUNT_CONFIRMATION } from "../../components/
 import { apiRequest, unwrapData } from "../../services/apiClient";
 import { getBarangayHealthCenters, getRuralHealthUnits } from "../../services/facilityService";
 import { getStaffRoles } from "../../services/staffRolesService";
-import { STEPS, routeServerErrors, validateAccountStep } from "../../utils/accountForm";
+import { STEPS, isValidEmail, routeServerErrors, validateAccountStep } from "../../utils/accountForm";
 import { reviewPermissions, setPermission, withRequirements } from "../../utils/accessPolicy";
-import { TIERS, applyFacilityChange, availableDuties, normalizeContactNumber, needsReplaceConfirm, roleDefaults, roleFor, rolesForTier } from "../../utils/staffRoles";
+import { TIERS, applyFacilityChange, availableDuties, defaultRoleKey, normalizeContactNumber, needsReplaceConfirm, roleDefaults, roleFor, rolesForTier } from "../../utils/staffRoles";
 
 const empty = { name: "", email: "", contact_number: "", password: "", password_confirmation: "", role: "", staff_role: "", permissions: [], barangay_health_center_id: null, rural_health_unit_id: null };
 const FACILITY_TYPES = [
@@ -31,6 +31,8 @@ const HEADINGS = {
   [STEPS.review]: ["Review", "Check everything before saving."],
 };
 const card = selected => `flex min-h-24 items-center gap-3 rounded-xl border p-4 text-left text-sm font-semibold transition ${selected ? "border-red-600 bg-red-50 text-red-800" : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"}`;
+const facilityCard = selected => `flex min-h-48 flex-col items-center justify-center gap-3 rounded-xl border p-6 text-center text-sm font-semibold transition md:min-h-[260px] ${selected ? "border-red-600 bg-red-50 text-red-800" : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"}`;
+const EMAIL_TAKEN = "Email is already taken.";
 const pulse = "animate-pulse rounded bg-slate-200 motion-reduce:animate-none";
 
 export default function AddUser() {
@@ -51,6 +53,9 @@ export default function AddUser() {
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [touched, setTouched] = useState({});
+  const [takenEmails, setTakenEmails] = useState({});
+  const emailChecks = useRef(new Map());
 
   const admin = form.role === TIERS.admin;
   const keys = admin ? [STEPS.facility, STEPS.personal, STEPS.review] : [STEPS.facility, STEPS.personal, STEPS.access, STEPS.review];
@@ -84,6 +89,45 @@ export default function AddUser() {
     }).catch(e => { if (active) setNotice({ title: "Could not load the form", messages: [e.message] }); });
     return () => { active = false; };
   }, [id]);
+
+  // A new account opens Role & Access on the first role of its tier, so there is nothing to click before reviewing the duties.
+  useEffect(() => {
+    if (id || current !== STEPS.access || form.staff_role) return;
+    const key = defaultRoleKey(rolesData, form.role);
+    if (key) setForm(f => ({ ...f, staff_role: key, permissions: roleDefaults(rolesData, key) }));
+  }, [id, current, form.role, form.staff_role, rolesData]);
+
+  // Asks the server once per address whether it is in use. A failed check is forgotten and retried; saving still validates.
+  function checkEmail(email) {
+    if (!isValidEmail(email)) return Promise.resolve(null);
+    const key = email.toLowerCase();
+    if (!emailChecks.current.has(key)) {
+      const query = new URLSearchParams({ email, ...(id ? { ignore: id } : {}) });
+      emailChecks.current.set(key, apiRequest(`/users/email-available?${query}`)
+        .then(result => !result.available)
+        .catch(() => null)
+        .then(taken => {
+          if (taken === null) emailChecks.current.delete(key);
+          else setTakenEmails(t => ({ ...t, [key]: taken }));
+          return taken;
+        }));
+    }
+    return emailChecks.current.get(key);
+  }
+
+  // Fields the admin has left are checked as they type, so problems show before Continue.
+  function blur(key) {
+    setTouched(t => ({ ...t, [key]: true }));
+    if (key === "email") checkEmail(form.email);
+  }
+
+  const liveErrors = {};
+  if (current === STEPS.personal) {
+    const found = validateAccountStep(STEPS.personal, form, { editing: Boolean(id), hasFacility: Boolean(home), confirmed });
+    for (const key of Object.keys(touched)) if (found[key]) liveErrors[key] = found[key];
+    if (touched.email && !found.email && takenEmails[form.email.toLowerCase()]) liveErrors.email = EMAIL_TAKEN;
+  }
+  const fieldError = key => errors[key] ?? liveErrors[key];
 
   function change(key, value) {
     setForm(f => ({ ...f, [key]: value }));
@@ -135,6 +179,12 @@ export default function AddUser() {
   async function next(e) {
     e.preventDefault();
     const found = validateAccountStep(current, form, { editing: Boolean(id), hasFacility: Boolean(home), confirmed });
+    if (current === STEPS.personal && !found.email) {
+      setBusy(true);
+      const taken = await checkEmail(form.email);
+      setBusy(false);
+      if (taken) found.email = EMAIL_TAKEN;
+    }
     setErrors(found);
     if (Object.keys(found).length) return;
     if (!last) { setReached(r => Math.max(r, step + 1)); goTo(step + 1); return; }
@@ -170,40 +220,41 @@ export default function AddUser() {
   ];
   const passwordType = showPassword ? "text" : "password";
   const [title, subtitle] = HEADINGS[current];
+  const centered = current === STEPS.facility && !editLoading;
 
   return <DashboardLayout role="admin" title={id ? "Edit User Account" : "Create Account"} contentClassName="p-0">
     <form onSubmit={next} noValidate className="flex min-h-full w-full flex-col">
       <div className="w-full flex-1 px-3 py-3 sm:p-4 lg:p-5"><div className="mx-auto w-full max-w-[1500px]">
         <div className="md:grid md:grid-cols-[12rem_minmax(0,1fr)] md:gap-x-6">
         <AccountStepper steps={labels} current={step} reached={reached} onSelect={goTo} />
-        <div className="mt-4 min-w-0 md:mt-0">
-        <header>
+        <div className={`mt-4 min-w-0 md:mt-0 ${centered ? `md:flex md:flex-col md:justify-center ${STEPPER_HEIGHT}` : ""}`}>
+        <header className={centered ? "text-center" : undefined}>
           <h1 className="text-xl font-bold text-slate-900">{title}</h1>
           <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
         </header>
-        <div className={`mb-4 mt-5 ${current === STEPS.facility && !editLoading ? "space-y-1" : "space-y-4 rounded-xl border border-slate-200 bg-white p-5 sm:p-6"}`}>
+        <div className={`relative mt-5 ${centered ? "" : "mb-4 space-y-4 rounded-xl border border-slate-200 bg-white p-5 sm:p-6"}`}>
           {editLoading && <div aria-busy="true" aria-label="Loading account" className="space-y-4"><span className={`block h-10 w-full ${pulse}`} /><span className={`block h-10 w-2/3 ${pulse}`} /><span className={`block h-10 w-1/2 ${pulse}`} /></div>}
 
           {!editLoading && current === STEPS.facility && <>
             <div className="grid gap-3 sm:grid-cols-3">{FACILITY_TYPES.map(({ tier, label, icon: Icon, description }) => {
               const selected = form.role === tier;
-              return <button key={tier} type="button" aria-pressed={selected} onClick={() => chooseTier(tier)} className={`${card(selected)} min-h-40 flex-col items-start justify-start`}>
-                <Icon size={22} aria-hidden="true" className="text-red-700" />
-                <span>{label}</span>
-                <span className="text-xs font-normal text-slate-600">{description}</span>
+              return <button key={tier} type="button" aria-pressed={selected} onClick={() => chooseTier(tier)} className={facilityCard(selected)}>
+                <Icon size={32} aria-hidden="true" className="text-red-700" />
+                <span className="text-base">{label}</span>
+                <span className="max-w-xs text-xs font-normal text-slate-600">{description}</span>
                 {selected && tier !== TIERS.admin && <span className="text-xs font-normal text-slate-600">{homeName || "Facility selected"} · <span className="font-semibold text-red-700 underline">Change</span></span>}
                 {selected && tier === TIERS.admin && <span className="text-xs font-normal text-slate-600">Not tied to a facility</span>}
               </button>;
             })}</div>
-            <FieldMessage>{errors.role || errors.facility}</FieldMessage>
+            <div className="absolute inset-x-0 top-full"><FieldMessage>{errors.role || errors.facility}</FieldMessage></div>
           </>}
 
           {!editLoading && current === STEPS.personal && <div className="grid grid-cols-1 gap-y-1">
-        <Field label="Full name" error={errors.name}><Input value={form.name} onChange={e => change("name", e.target.value)} /></Field>
-        <Field label="Email" error={errors.email}><Input type="email" value={form.email} onChange={e => change("email", e.target.value)} /></Field>
-        <Field label="Contact number" error={errors.contact_number}><Input type="tel" inputMode="numeric" placeholder="09XX XXX XXXX" value={form.contact_number} onChange={e => change("contact_number", e.target.value)} /></Field>
-        <Field label={id ? "New password (optional)" : "Password"} error={errors.password}><Input type={passwordType} autoComplete="new-password" value={form.password} onChange={e => change("password", e.target.value)} /></Field>
-        <Field label="Confirm password" error={errors.password_confirmation}><Input type={passwordType} autoComplete="new-password" value={form.password_confirmation} onChange={e => change("password_confirmation", e.target.value)} /></Field>
+        <Field label="Full name" error={fieldError("name")}><Input value={form.name} onChange={e => change("name", e.target.value)} onBlur={() => blur("name")} /></Field>
+        <Field label="Email" error={fieldError("email")}><Input type="email" value={form.email} onChange={e => change("email", e.target.value)} onBlur={() => blur("email")} /></Field>
+        <Field label="Contact number" error={fieldError("contact_number")}><Input type="tel" inputMode="numeric" placeholder="09XX XXX XXXX" value={form.contact_number} onChange={e => change("contact_number", e.target.value)} onBlur={() => blur("contact_number")} /></Field>
+        <Field label={id ? "New password (optional)" : "Password"} error={fieldError("password")}><Input type={passwordType} autoComplete="new-password" value={form.password} onChange={e => change("password", e.target.value)} onBlur={() => blur("password")} /></Field>
+        <Field label="Confirm password" error={fieldError("password_confirmation")}><Input type={passwordType} autoComplete="new-password" value={form.password_confirmation} onChange={e => change("password_confirmation", e.target.value)} onBlur={() => blur("password_confirmation")} /></Field>
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           {id ? <p className="text-xs text-slate-500">Leave blank to keep the current password.</p> : <span />}
           <button type="button" onClick={() => setShowPassword(s => !s)} className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600">
