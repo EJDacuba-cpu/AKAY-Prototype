@@ -13,6 +13,14 @@ class PasswordResetRequest extends Model
     public const STATUS_COMPLETED = 'completed';
     public const STATUS_EXPIRED = 'expired';
 
+    public const DELIVERY_SENT = 'sent';
+    public const DELIVERY_FAILED = 'failed';
+    public const DELIVERY_COPIED = 'copied';
+
+    public const VIA_LINK = 'link';
+    public const VIA_INVITE = 'invite';
+    public const VIA_TEMPORARY_PASSWORD = 'temporary_password';
+
     protected $fillable = [
         'user_id',
         'email',
@@ -26,6 +34,8 @@ class PasswordResetRequest extends Model
         'expires_at',
         'reset_token_hash',
         'admin_note',
+        'delivery',
+        'completed_via',
     ];
 
     protected $casts = [

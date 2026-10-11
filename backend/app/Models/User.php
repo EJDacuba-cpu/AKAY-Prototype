@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -69,6 +70,8 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'permissions' => 'array',
+            'must_change_password' => 'boolean',
+            'temp_password_expires_at' => 'datetime',
         ];
     }
 
@@ -139,5 +142,10 @@ class User extends Authenticatable
     public function passwordResetRequests(): HasMany
     {
         return $this->hasMany(PasswordResetRequest::class);
+    }
+
+    public function accountInvite(): HasOne
+    {
+        return $this->hasOne(AccountInvite::class);
     }
 }
