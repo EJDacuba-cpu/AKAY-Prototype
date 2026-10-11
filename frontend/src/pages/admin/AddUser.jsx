@@ -1,100 +1,195 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
+import { Eye, EyeOff, HandHeart, Hospital, House, Keyboard, ShieldCheck, Stethoscope, Syringe, UserRound } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Input from "../../components/common/atoms/Input";
 import Select from "../../components/common/atoms/Select";
-import PresetPicker from "../../components/features/access/PresetPicker";
+import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
 import PermissionMatrix from "../../components/features/access/PermissionMatrix";
-import AccessPreview from "../../components/features/access/AccessPreview";
-import PermissionReviewSummary, { confirmationsComplete } from "../../components/features/access/PermissionReviewSummary";
+import PermissionReviewSummary, { ACCOUNT_CONFIRMATION } from "../../components/features/access/PermissionReviewSummary";
 import { apiRequest, unwrapData } from "../../services/apiClient";
 import { getBarangayHealthCenters, getRuralHealthUnits } from "../../services/facilityService";
-import { PERMISSION_PRESETS } from "../../utils/actionPermissions";
-import { initialPresetSelection, reviewPermissions, setPermission, togglePreset, withRequirements } from "../../utils/accessPolicy";
-import { suggestedPreset } from "../../utils/accountSetup";
+import { getStaffRoles } from "../../services/staffRolesService";
+import { reviewPermissions, setPermission, withRequirements } from "../../utils/accessPolicy";
+import { TIERS, applyFacilityChange, availableDuties, isValidContactNumber, needsReplaceConfirm, normalizeContactNumber, roleDefaults, roleFor, rolesForTier } from "../../utils/staffRoles";
 
-const empty = { name: "", email: "", password: "", role: "bhw", professional_designation: "", permissions: [], barangay_health_center_id: null, rural_health_unit_id: null };
+const empty = { name: "", email: "", contact_number: "", password: "", password_confirmation: "", role: "", staff_role: "", permissions: [], barangay_health_center_id: null, rural_health_unit_id: null };
+const FACILITY_TYPES = [
+  { tier: TIERS.bhc, label: "Barangay Health Center", icon: House },
+  { tier: TIERS.rhu, label: "Rural Health Unit", icon: Hospital },
+  { tier: TIERS.admin, label: "Municipal Health Officer", icon: ShieldCheck },
+];
+const ROLE_ICONS = { midwife: Stethoscope, bhw: HandHeart, encoder: Keyboard, nurse: Syringe, doctor: UserRound };
 const panel = "rounded-xl border border-slate-200 bg-white p-5 sm:p-6 space-y-4";
 const button = "rounded-lg bg-red-700 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40";
-const unconfirmed = { reviewed: false, overrides: false, critical: false };
+const card = selected => `flex items-center gap-3 rounded-xl border p-4 text-left text-sm font-semibold transition ${selected ? "border-red-600 bg-red-50 text-red-800" : "border-slate-200 text-slate-800 hover:border-slate-300"}`;
+
 export default function AddUser() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const id = params.get("userId");
   const [form, setForm] = useState(empty);
-  const [kind, setKind] = useState("staff");
   const [step, setStep] = useState(0);
-  const [presets, setPresets] = useState([]);
-  const [originalPermissions, setOriginalPermissions] = useState(null);
-  const [confirmations, setConfirmations] = useState(unconfirmed);
+  const [rolesData, setRolesData] = useState(null);
   const [facilities, setFacilities] = useState({ bhc: [], rhu: [] });
+  const [originalTier, setOriginalTier] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [pending, setPending] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [loaded, setLoaded] = useState(!id);
-  const steps = ["Account Type", "Personal Details", ...(kind === "staff" ? ["Home Facility", "Access & Permissions"] : []), id ? "Review & Save" : "Review & Create"];
+  const [loaded, setLoaded] = useState(false);
+
+  const admin = form.role === TIERS.admin;
+  const reviewLabel = id ? "Review & Save" : "Review & Create";
+  const steps = admin ? ["Facility", "Personal Details", reviewLabel] : ["Facility", "Personal Details", "Role & Access", reviewLabel];
   const current = steps[step];
   const last = step === steps.length - 1;
-  const suggested = suggestedPreset(form.professional_designation, form.role);
-  const review = reviewPermissions({ designation: form.professional_designation, role: form.role, permissions: form.permissions, presets, previous: originalPermissions });
-  const confirmed = kind === "admin" || confirmationsComplete(review, confirmations);
-  const home = form.barangay_health_center_id ? facilities.bhc.find(f => String(f.id) === String(form.barangay_health_center_id)) : facilities.rhu.find(f => String(f.id) === String(form.rural_health_unit_id));
+  const tierFacilities = (form.role === TIERS.bhc ? facilities.bhc : form.role === TIERS.rhu ? facilities.rhu : []).filter(f => !f.status || f.status === "active");
+  const facilityId = form.role === TIERS.bhc ? form.barangay_health_center_id : form.rural_health_unit_id;
+  const home = tierFacilities.find(f => String(f.id) === String(facilityId));
+  const role = roleFor(rolesData, form.staff_role);
+  const defaults = roleDefaults(rolesData, form.staff_role);
+  const review = reviewPermissions({ permissions: form.permissions, defaults, licensedRole: Boolean(role?.licensed) });
+
   useEffect(() => {
     let active = true;
-    Promise.all([getBarangayHealthCenters(), getRuralHealthUnits(), id ? apiRequest(`/users/${id}`) : null]).then(([bhc, rhu, response]) => {
+    Promise.all([getBarangayHealthCenters(), getRuralHealthUnits(), getStaffRoles(), id ? apiRequest(`/users/${id}`) : null]).then(([bhc, rhu, roles, response]) => {
       if (!active) return;
       setFacilities({ bhc, rhu });
+      setRolesData(roles);
       if (response) {
         const u = unwrapData(response);
-        // Prerequisites missing from older accounts are ticked now and shown as New at review.
-        const permissions = withRequirements(u.permissions || []);
-        setForm({ ...empty, name:u.name, email:u.email, role:u.role, professional_designation:u.professional_designation || "", permissions, barangay_health_center_id:u.barangay_health_center_id, rural_health_unit_id:u.rural_health_unit_id });
-        setPresets(initialPresetSelection(permissions)); setOriginalPermissions(u.permissions || []); setKind(u.role === "admin" ? "admin" : "staff");
+        // Accounts saved before roles existed hold no role; Role & Access asks for one before saving.
+        const permissions = withRequirements(u.permissions ?? roleDefaults(roles, u.staff_role));
+        setForm({ ...empty, name: u.name, email: u.email, contact_number: u.contact_number || "", role: u.role, staff_role: u.staff_role || "", permissions, barangay_health_center_id: u.barangay_health_center_id, rural_health_unit_id: u.rural_health_unit_id });
+        setOriginalTier(u.role);
       }
       setLoaded(true);
     }).catch(e => { if (active) setError(e.message); });
     return () => { active = false; };
   }, [id]);
-  function change(key, value) { setForm(f => ({ ...f, [key]: value, ...(key === "professional_designation" ? { permissions: [] } : {}) })); if (key === "professional_designation") setPresets([]); setConfirmations(unconfirmed); }
-  function changeAccess(next) { setForm(f => ({ ...f, permissions: next.permissions })); setPresets(next.presets); setConfirmations(unconfirmed); }
+
+  function change(key, value) { setForm(f => ({ ...f, [key]: value })); }
+
+  function chooseTier(tier) {
+    if (tier === form.role) return;
+    const apply = () => { setForm(f => applyFacilityChange(f, tier, null)); setConfirmed(false); };
+    // Editing an existing account to another tier discards its role and duties, so ask first.
+    if (id && originalTier && form.role) {
+      setPending({ title: "Change facility type?", description: "Changing the facility type will clear this account's role and access. Continue?", confirmText: "Change", apply });
+    } else apply();
+  }
+
+  function chooseFacility(value) { setForm(f => applyFacilityChange(f, f.role, value ? Number(value) : null)); setConfirmed(false); }
+
+  function chooseRole(key) {
+    if (key === form.staff_role) return;
+    const apply = () => { setForm(f => ({ ...f, staff_role: key, permissions: roleDefaults(rolesData, key) })); setConfirmed(false); };
+    if (needsReplaceConfirm(rolesData, form.staff_role, form.permissions)) {
+      setPending({ title: "Replace access?", description: `Replace current access with ${roleFor(rolesData, key).label} defaults?`, confirmText: "Replace", apply });
+    } else apply();
+  }
+
+  function changeAccess(key, on) { setForm(f => ({ ...f, permissions: setPermission(f.permissions, key, on) })); setConfirmed(false); }
+
   function validate() {
-    if (current === "Personal Details") {
-      if (!form.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return "Enter a name and valid email.";
-      if ((!id || form.password) && form.password.length < 8) return "Password must contain at least 8 characters.";
-      if (!form.professional_designation) return "Select a professional designation.";
+    if (current === "Facility") {
+      if (!form.role) return "Choose where this account will work.";
+      if (form.role === TIERS.bhc && !home) return "Choose the Barangay Health Center.";
+      if (form.role === TIERS.rhu && !home) return "Choose the Rural Health Unit.";
     }
-    if (current === "Home Facility" && !home) return "Choose the primary BHC or RHU.";
-    if (current === "Access & Permissions" && !form.permissions.length) return "Select at least one role preset or duty before continuing.";
-    if (last && !confirmed) return "Tick each confirmation in the review before saving.";
+    if (current === "Personal Details") {
+      if (!form.name.trim()) return "Enter the full name.";
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return "Enter a valid email address.";
+      if (!isValidContactNumber(form.contact_number)) return "Enter a mobile number like 09171234567.";
+      if ((!id || form.password) && form.password.length < 8) return "Password must contain at least 8 characters.";
+      if ((!id || form.password) && form.password !== form.password_confirmation) return "Passwords do not match.";
+    }
+    if (current === "Role & Access") {
+      if (!form.staff_role) return "Choose a role.";
+      if (!form.permissions.length) return "Select at least one duty.";
+    }
+    if (last && !confirmed) return "Tick the confirmation before saving.";
     return "";
   }
+
   async function next(e) {
-    e.preventDefault(); const invalid = validate(); setError(invalid); if (invalid) return;
+    e.preventDefault();
+    const invalid = validate();
+    setError(invalid);
+    if (invalid) return;
     if (!last) { setStep(s => s + 1); return; }
     setBusy(true);
-    const body = { ...form, role:kind === "admin" ? "admin" : form.role, permissions:kind === "admin" ? [] : form.permissions, permissions_confirmed:true, acknowledged_overrides:kind === "admin" ? [] : review.overrides.map(o => o.key), barangay_health_center_id:kind === "admin" ? null : form.barangay_health_center_id, rural_health_unit_id:kind === "admin" ? null : form.rural_health_unit_id };
-    if (!body.password) delete body.password;
-    try { await apiRequest(id ? `/users/${id}` : "/users", { method:id ? "PATCH" : "POST", body }); navigate("/admin/users"); }
-    catch(e) { setError(Object.values(e.errors || {}).flat().join(" ") || e.message); }
+    const body = {
+      name: form.name.trim(), email: form.email, contact_number: normalizeContactNumber(form.contact_number), role: form.role,
+      staff_role: admin ? null : form.staff_role, permissions: admin ? [] : form.permissions, permissions_confirmed: true,
+      barangay_health_center_id: form.barangay_health_center_id, rural_health_unit_id: form.rural_health_unit_id,
+    };
+    if (form.password) Object.assign(body, { password: form.password, password_confirmation: form.password_confirmation });
+    try { await apiRequest(id ? `/users/${id}` : "/users", { method: id ? "PATCH" : "POST", body }); navigate("/admin/users"); }
+    catch (e) { setError(Object.values(e.errors || {}).flat().join(" ") || e.message); }
     finally { setBusy(false); }
   }
-  const details = [["Account Type",kind === "admin" ? "Admin / MHO" : "Facility Staff"],["Name",form.name],["Email",form.email],["Designation",form.professional_designation],["Home Facility",kind === "admin" ? "Not applicable" : home?.name],["Credentials",form.password ? "Password set (hidden)" : "Existing password retained"],...(kind === "admin" ? [["Permissions","Account and facility administration"]] : []),["Additional Assignments","Managed separately after account creation"]];
+
+  const details = [
+    ["Facility", admin ? "Municipal Health Officer (not tied to a facility)" : home?.name],
+    ["Name", form.name], ["Email", form.email], ["Contact number", normalizeContactNumber(form.contact_number)],
+    ["Role", admin ? "Municipal Health Officer" : role?.label],
+    ["Credentials", form.password ? "Password set (hidden)" : "Existing password retained"],
+  ];
+  const passwordType = showPassword ? "text" : "password";
+
   return <DashboardLayout role="admin" title={id ? "Edit User Account" : "Create Account"}><form onSubmit={next} className="mx-auto max-w-4xl space-y-5 pb-8">
     <button type="button" className="text-sm text-red-700" onClick={() => navigate("/admin/users")}>← Account Directory</button>
-    <ol aria-label="Account setup progress" className="flex flex-wrap gap-2">{steps.map((label,i) => <li key={label} aria-current={i === step ? "step" : undefined} className={`rounded-full px-3 py-2 text-xs font-semibold ${i === step ? "bg-red-700 text-white" : i < step ? "bg-red-50 text-red-700" : "bg-white text-slate-500"}`}>{i+1}. {label}</li>)}</ol>
+    <ol aria-label="Account setup progress" className="flex flex-wrap gap-2">{steps.map((label, i) => <li key={label} aria-current={i === step ? "step" : undefined} className={`rounded-full px-3 py-2 text-xs font-semibold ${i === step ? "bg-red-700 text-white" : i < step ? "bg-red-50 text-red-700" : "bg-white text-slate-500"}`}>{i + 1}. {label}</li>)}</ol>
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     <section className={panel}><h1 className="text-lg font-bold">{current}</h1>
-    {current === "Account Type" && <div className="grid gap-3 sm:grid-cols-2">{[["admin","Admin / MHO","Centralized account, facility, and access management."],["staff","Facility Staff","Personal staff account with a primary BHC or RHU."]].map(([key,label,description]) => <button key={key} type="button" aria-pressed={kind === key} onClick={() => { setKind(key); setConfirmations(unconfirmed); }} className={`rounded-xl border p-5 text-left ${kind === key ? "border-red-600 bg-red-50" : "border-slate-200"}`}><strong>{label}</strong><p className="mt-2 text-sm text-slate-500">{description}</p></button>)}</div>}
-    {current === "Personal Details" && <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm">Full name<Input value={form.name} onChange={e => change("name",e.target.value)}/></label><label className="text-sm">Email<Input type="email" value={form.email} onChange={e => change("email",e.target.value)}/></label><label className="text-sm">{id ? "New password (optional)" : "Password"}<Input type="password" autoComplete="new-password" value={form.password} onChange={e => change("password",e.target.value)}/></label><label className="text-sm">Professional designation<Select placeholder="Select designation" value={form.professional_designation} onChange={e => change("professional_designation",e.target.value)} options={["Midwife","Nurse","Doctor","Encoder","BHW","Logistics","MHO","Other"].map(v => ({value:v,label:v}))}/></label></div>}
-    {current === "Home Facility" && <><p className="text-sm text-slate-500">Choose where this person is primarily based. Additional BHC access for RHU-based nurses is managed later in Staff Assignments.</p><Select aria-label="Home Facility" placeholder="Select home facility" value={home ? `${form.barangay_health_center_id ? "bhc" : "rhu"}:${home.id}` : ""} options={Object.entries(facilities).flatMap(([type,list]) => list.filter(f => !f.status || f.status === "active").map(f => ({value:`${type}:${f.id}`,label:`${type.toUpperCase()} · ${f.name}`})))} onChange={e => { const [type,value]=e.target.value.split(":"); setForm(f => ({...f,role:type === "bhc" ? "bhw" : "rhu_staff",barangay_health_center_id:type === "bhc" ? Number(value) : null,rural_health_unit_id:type === "rhu" ? Number(value) : null,permissions:[]}));setPresets([]);setConfirmations(unconfirmed); }}/></>}
-    {current === "Access & Permissions" && <>
-      <p className="text-sm text-slate-500">Suggested: <strong>{PERMISSION_PRESETS[suggested].label}</strong>. Start from one or more presets, then grant or remove individual duties. Overrides are reviewed before saving.</p>
-      <PresetPicker presets={presets} designation={form.professional_designation} role={form.role} suggested={suggested} onToggle={key => changeAccess(togglePreset({ permissions: form.permissions, presets }, key))}/>
-      <PermissionMatrix permissions={form.permissions} presets={presets} designation={form.professional_designation} role={form.role} onChange={(key, on) => changeAccess(setPermission({ permissions: form.permissions, presets }, key, on))}/>
-      <AccessPreview permissions={form.permissions}/>
+
+    {current === "Facility" && <>
+      <p className="text-sm text-slate-500">Where will this account work?</p>
+      <div className="grid gap-3 sm:grid-cols-3">{FACILITY_TYPES.map(({ tier, label, icon: Icon }) => (
+        <button key={tier} type="button" aria-pressed={form.role === tier} onClick={() => chooseTier(tier)} className={`${card(form.role === tier)} flex-col items-start py-6`}>
+          <Icon size={22} aria-hidden="true" className="text-red-700" />{label}
+        </button>
+      ))}</div>
+      {(form.role === TIERS.bhc || form.role === TIERS.rhu) && (
+        <label className="block text-sm">{form.role === TIERS.bhc ? "Which Barangay Health Center?" : "Which Rural Health Unit?"}
+          <Select placeholder="Select facility" value={home ? String(home.id) : ""} onChange={e => chooseFacility(e.target.value)} options={tierFacilities.map(f => ({ value: String(f.id), label: f.name }))}/>
+        </label>
+      )}
+      {admin && <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">Municipal Health Officer accounts are not tied to a facility.</p>}
     </>}
-    {last && (kind === "staff"
-      ? <PermissionReviewSummary review={review} name={form.name} details={details} confirmations={confirmations} onConfirm={(key, value) => setConfirmations(c => ({ ...c, [key]: value }))}/>
-      : <dl className="grid gap-4 text-sm sm:grid-cols-2">{details.map(([label,value]) => <div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 break-words font-medium">{value}</dd></div>)}</dl>)}
-    </section><div className="flex justify-between"><button type="button" disabled={!step || busy} onClick={() => {setStep(s => s-1);setError("");}} className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm disabled:opacity-40">Back</button><button type="submit" disabled={busy || !loaded || (last && !confirmed)} className={button}>{busy ? "Saving…" : last ? id ? "Save Changes" : "Create Account" : "Continue"}</button></div>
+
+    {current === "Personal Details" && <div className="grid gap-4 sm:grid-cols-2">
+      <label className="text-sm">Full name<Input value={form.name} onChange={e => change("name", e.target.value)}/></label>
+      <label className="text-sm">Email<Input type="email" value={form.email} onChange={e => change("email", e.target.value)}/></label>
+      <label className="text-sm">Contact number<Input type="tel" inputMode="numeric" placeholder="09XX XXX XXXX" value={form.contact_number} onChange={e => change("contact_number", e.target.value)}/></label>
+      <div className="hidden sm:block"/>
+      <label className="text-sm">{id ? "New password (optional)" : "Password"}<Input type={passwordType} autoComplete="new-password" value={form.password} onChange={e => change("password", e.target.value)}/></label>
+      <label className="text-sm">Confirm password<Input type={passwordType} autoComplete="new-password" value={form.password_confirmation} onChange={e => change("password_confirmation", e.target.value)}/></label>
+      <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-2">
+        {id ? <p className="text-xs text-slate-500">Leave blank to keep the current password.</p> : <span/>}
+        <button type="button" onClick={() => setShowPassword(s => !s)} className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+          {showPassword ? <EyeOff size={14} aria-hidden="true"/> : <Eye size={14} aria-hidden="true"/>}{showPassword ? "Hide passwords" : "Show passwords"}
+        </button>
+      </div>
+    </div>}
+
+    {current === "Role & Access" && <>
+      <div role="group" aria-label="Role" className="grid gap-3 sm:grid-cols-3">{rolesForTier(rolesData, form.role).map(r => {
+        const Icon = ROLE_ICONS[r.key] || UserRound;
+        return <button key={r.key} type="button" aria-pressed={form.staff_role === r.key} onClick={() => chooseRole(r.key)} className={card(form.staff_role === r.key)}><Icon size={18} aria-hidden="true" className="text-red-700"/>{r.label}</button>;
+      })}</div>
+      {form.staff_role
+        ? <PermissionMatrix permissions={form.permissions} available={availableDuties(rolesData, form.role)} defaults={defaults} licensedRole={Boolean(role?.licensed)} onChange={changeAccess} onReset={() => { setForm(f => ({ ...f, permissions: defaults })); setConfirmed(false); }}/>
+        : <p className="text-sm text-slate-500">Choose a role to see its access.</p>}
+    </>}
+
+    {last && <PermissionReviewSummary review={admin ? null : review} details={details} confirmed={confirmed} onConfirm={setConfirmed} confirmationLabel={ACCOUNT_CONFIRMATION}/>}
+    </section>
+
+    <div className="flex justify-between"><button type="button" disabled={!step || busy} onClick={() => { setStep(s => s - 1); setError(""); }} className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm disabled:opacity-40">Back</button><button type="submit" disabled={busy || !loaded || (last && !confirmed)} className={button}>{busy ? "Saving…" : last ? id ? "Save Changes" : "Create Account" : "Continue"}</button></div>
+    <ConfirmationModal open={Boolean(pending)} title={pending?.title} description={pending?.description} confirmText={pending?.confirmText} onCancel={() => setPending(null)} onConfirm={() => { pending.apply(); setPending(null); }}/>
   </form></DashboardLayout>;
 }
