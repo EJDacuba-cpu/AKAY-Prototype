@@ -156,6 +156,14 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Brand-red checkboxes and radios instead of the browser's blue. In the base layer so accent-* utilities still win. */
+@layer base {
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--color-brand-700);
+  }
+}
+
 /* Bold sans headings (medical-ehr-minimalism). Utility classes still win. */
 h1,
 h2,

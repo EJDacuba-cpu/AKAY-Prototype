@@ -19,9 +19,9 @@ import { TIERS, applyFacilityChange, availableDuties, normalizeContactNumber, ne
 
 const empty = { name: "", email: "", contact_number: "", password: "", password_confirmation: "", role: "", staff_role: "", permissions: [], barangay_health_center_id: null, rural_health_unit_id: null };
 const FACILITY_TYPES = [
-  { tier: TIERS.bhc, label: "Barangay Health Center", icon: House },
-  { tier: TIERS.rhu, label: "Rural Health Unit", icon: Hospital },
-  { tier: TIERS.admin, label: "Municipal Health Officer", icon: ShieldCheck },
+  { tier: TIERS.bhc, label: "Barangay Health Center", icon: House, description: "Barangay-level staff who register patients, record consultations and refer to the RHU." },
+  { tier: TIERS.rhu, label: "Rural Health Unit", icon: Hospital, description: "Municipal clinic staff who receive referrals, confirm conditions and manage doctor availability." },
+  { tier: TIERS.admin, label: "Municipal Health Officer", icon: ShieldCheck, description: "Administrator. Manages facilities, accounts and reports. Not tied to a facility." },
 ];
 const ROLE_ICONS = { midwife: Stethoscope, bhw: HandHeart, encoder: Keyboard, nurse: Syringe, doctor: UserRound };
 const HEADINGS = {
@@ -185,11 +185,12 @@ export default function AddUser() {
           {editLoading && <div aria-busy="true" aria-label="Loading account" className="space-y-4"><span className={`block h-10 w-full ${pulse}`} /><span className={`block h-10 w-2/3 ${pulse}`} /><span className={`block h-10 w-1/2 ${pulse}`} /></div>}
 
           {!editLoading && current === STEPS.facility && <>
-            <div className="grid gap-3 sm:grid-cols-3">{FACILITY_TYPES.map(({ tier, label, icon: Icon }) => {
+            <div className="grid gap-3 sm:grid-cols-3">{FACILITY_TYPES.map(({ tier, label, icon: Icon, description }) => {
               const selected = form.role === tier;
-              return <button key={tier} type="button" aria-pressed={selected} onClick={() => chooseTier(tier)} className={`${card(selected)} flex-col items-start justify-center`}>
+              return <button key={tier} type="button" aria-pressed={selected} onClick={() => chooseTier(tier)} className={`${card(selected)} min-h-40 flex-col items-start justify-start`}>
                 <Icon size={22} aria-hidden="true" className="text-red-700" />
                 <span>{label}</span>
+                <span className="text-xs font-normal text-slate-600">{description}</span>
                 {selected && tier !== TIERS.admin && <span className="text-xs font-normal text-slate-600">{homeName || "Facility selected"} · <span className="font-semibold text-red-700 underline">Change</span></span>}
                 {selected && tier === TIERS.admin && <span className="text-xs font-normal text-slate-600">Not tied to a facility</span>}
               </button>;

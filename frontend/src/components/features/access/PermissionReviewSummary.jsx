@@ -33,9 +33,9 @@ export default function PermissionReviewSummary({ review, details = [], confirme
       {review && (
         <section aria-labelledby="review-permissions-title">
           <h2 id="review-permissions-title" className="text-sm font-semibold text-slate-900">Access ({review.rows.length})</h2>
-          <div className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-200">
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
             {groups.map(group => (
-              <div key={group.key} className="p-3">
+              <div key={group.key} className="rounded-lg border border-slate-200 p-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{group.label}</p>
                 <ul className="mt-1.5 space-y-1">
                   {group.rows.map(row => (
@@ -54,7 +54,7 @@ export default function PermissionReviewSummary({ review, details = [], confirme
                 </ul>
               </div>
             ))}
-            {!groups.length && <p className="p-3 text-sm text-slate-500">No access selected.</p>}
+            {!groups.length && <p className="rounded-lg border border-slate-200 p-3 text-sm text-slate-500 sm:col-span-2">No access selected.</p>}
           </div>
         </section>
       )}

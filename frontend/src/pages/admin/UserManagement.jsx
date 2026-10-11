@@ -1,4 +1,4 @@
-import { accessSummary } from "../../utils/accountSetup";
+import { roleLabel } from "../../utils/accountSetup";
 import { getStaffRoles } from "../../services/staffRolesService";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -267,7 +267,7 @@ function AccountsTable({ users, rolesData, onUpdateStatus }) {
   return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
     <TableHeader title="Account Directory" description="Manage personal accounts, home access, and additional nurse assignments." count={users.length}/>
     <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[1050px] text-left"><thead><tr className="bg-slate-50 text-xs text-slate-500">{["Account","Role & Access","Home Facility","Additional Assignments","Status","Actions"].map(label=><th key={label} className="px-4 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{users.length===0 ? <EmptyRow colSpan={6} message="No accounts match the current filters."/> : users.map(user=><tr key={user.id}><td className="px-4 py-4"><p className="text-sm font-semibold">{getDisplayName(user)}</p><p className="text-xs text-slate-500">{user.email}</p>{user.contact_number&&<p className="text-xs text-slate-500">{user.contact_number}</p>}</td><td className="px-4 py-4"><AccessProfileBadge user={user} rolesData={rolesData}/></td><td className="px-4 py-4 text-sm">{getFacilityName(user)}</td><td className="px-4 py-4 text-xs"><Link className="text-red-700" to={"/admin/staff-assignments?userId="+user.id}>{assignmentSummary(user)}</Link></td><td className="px-4 py-4"><StatusBadge status={user.status}/></td><td className="px-4 py-4"><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></td></tr>)}</tbody></table></div>
-    <div className="divide-y divide-slate-100 md:hidden">{users.map(user=><article key={user.id} className="space-y-3 p-4"><div className="flex justify-between"><div><h3 className="font-semibold">{getDisplayName(user)}</h3><p className="text-xs text-slate-500">{user.email}</p></div><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></div><dl className="grid grid-cols-2 gap-3 text-sm">{[["Role & Access",accessSummary(user,rolesData).label],["Contact",user.contact_number||"Not recorded"],["Home Facility",getFacilityName(user)],["Status",user.status]].map(([label,value])=><div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl><Link className="block text-xs text-red-700" to={"/admin/staff-assignments?userId="+user.id}>Additional Assignments: {assignmentSummary(user)}</Link></article>)}</div>
+    <div className="divide-y divide-slate-100 md:hidden">{users.map(user=><article key={user.id} className="space-y-3 p-4"><div className="flex justify-between"><div><h3 className="font-semibold">{getDisplayName(user)}</h3><p className="text-xs text-slate-500">{user.email}</p></div><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></div><dl className="grid grid-cols-2 gap-3 text-sm">{[["Role & Access",roleLabel(user,rolesData)],["Contact",user.contact_number||"Not recorded"],["Home Facility",getFacilityName(user)],["Status",user.status]].map(([label,value])=><div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl><Link className="block text-xs text-red-700" to={"/admin/staff-assignments?userId="+user.id}>Additional Assignments: {assignmentSummary(user)}</Link></article>)}</div>
     <TablePagination currentPage={1} totalPages={1}/>
   </div>;
 }
@@ -436,31 +436,14 @@ function AccountActions({ user, onUpdateStatus }) {
   );
 }
 
-// Access that differs from the role defaults stands out: amber, or red when a non-licensed role holds licensed duties.
 function AccessProfileBadge({ user, rolesData }) {
-  const { label, custom, licensed } = accessSummary(user, rolesData);
-  if (licensed) return <RoleBadge role={label} tone="border-red-300 bg-red-50 text-red-800" title="Includes licensed duties for a non-licensed role."/>;
-  if (custom) return <RoleBadge role={label} tone="border-amber-200 bg-amber-50 text-amber-800" title="Access differs from the role defaults."/>;
-  return <RoleBadge role={label} />;
+  return <RoleBadge role={roleLabel(user, rolesData)} />;
 }
 
-function RoleBadge({ role, tone, title }) {
-  const displayRole = formatDisplayValue(role, "Unassigned");
-  const map = {
-    Admin: "bg-purple-50 text-purple-700 border-purple-200",
-    "Municipal Health Officer": "bg-purple-50 text-purple-700 border-purple-200",
-    BHC: "bg-red-50 text-red-700 border-red-200",
-    RHU: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  };
-
+function RoleBadge({ role }) {
   return (
-    <span
-      title={title}
-      className={`inline-block whitespace-nowrap rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-        tone || map[displayRole] || "border-slate-200 bg-slate-50 text-slate-600"
-      }`}
-    >
-      {displayRole}
+    <span className="inline-block whitespace-nowrap rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
+      {formatDisplayValue(role, "Unassigned")}
     </span>
   );
 }
