@@ -156,12 +156,13 @@ Password & Invites is one module, so the same event has the same name on both ta
 | Where | Today | New (both tabs) |
 |---|---|---|
 | Sidebar, page title, Users page link | Password Resets / Password Reset Requests | Password & Invites |
-| Tabs | (none) | Reset requests (n) · Invites (n), where n counts rows that need the MHO: Awaiting approval and Email not sent |
+| Tabs | (none) | Reset requests (n) · Invites (n), where n counts rows that need the MHO: Awaiting approval, Email not sent and Link expired |
 | Status filter | All Status | All statuses, listing only that tab's terms |
 | Summary cards | Pending Review / Visible Requests / Security: Admin approval required | Needs action / Showing / Links expire in: 60 minutes (resets) or 48 hours (invites) |
 | Table columns | User, Email, Role, Facility, Requested, Status | Account, Email, Role (staff role, e.g. "Midwife"), Facility, Date (requested or invited), Status |
-| Link actions | Approve and send link | **Send link** on Reset requests (after approval) and **Resend link** on both tabs once a link exists |
-| Copy link | (none) | **Copy link** on both tabs while a link is usable |
+| Link actions | Approve and send link | **Approve** stays on Awaiting approval (it sends the link). **Resend link** on both tabs for Link sent, Email not sent and Link expired |
+| Copy link | (none) | **Copy link** on both tabs for Link sent and Email not sent |
+| Row actions | View details, Approve, Reject | View details plus the status's main action. Invites keep Copy link, Edit email and Issue temporary password in a `⋯` menu; Reset requests show Copy link as a button |
 | Reject action and dialog | Reject request / Reject password reset? | Decline request / Decline this reset request? (Reset requests only) |
 
 ### F3. What this adds to reset requests
