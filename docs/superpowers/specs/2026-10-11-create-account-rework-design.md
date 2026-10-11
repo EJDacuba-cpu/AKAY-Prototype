@@ -24,6 +24,8 @@ All UI text is English.
 | D7 | The checklist only shows duties that work at the chosen facility type. It has no locked rows and no access preview. |
 | D8 | The contact number is required, in PH mobile format: `09` followed by 9 digits. |
 | D9 | Encoder is BHC-only for now. RHU consultation is planned but not yet built. Role-to-facility rules are data-driven, so Encoder can later be opened to RHU by changing data rather than restructuring code. |
+| D9a | Focus is the Create/Edit Account flow and the BHC roles. RHU roles keep today's duties unchanged (provisional, section B3). |
+| D9b | Role rules have one copy only, in the backend, served to the frontend by `GET /staff-roles`. |
 | D10 | The Nurse-only rule in Staff Assignments stays. It now reads `staff_role = 'nurse'`. |
 
 ---
@@ -40,7 +42,7 @@ One migration on `users`:
 `down()` re-adds `professional_designation`, copies `staff_role` back with title case, and drops the two new columns.
 
 ### B2. Role definitions (single source of truth)
-These live in a backend class `App\Services\StaffRoles` and a frontend mirror `frontend/src/utils/staffRoles.js`. A shared fixture keeps the two in step (section G).
+These live **only** in a backend class `App\Services\StaffRoles`. The frontend never keeps its own copy: it loads them from `GET /staff-roles` (section C5), so there is nothing to keep in sync.
 
 | `staff_role` | Label | Facility tiers | Licensed | Default duties |
 |---|---|---|---|---|
@@ -56,9 +58,9 @@ Only these duties may be granted. Anything else is rejected with a 422.
 | Tier | Available duties |
 |---|---|
 | `bhw` (BHC) | patients.register, consultations.encode, consultations.finalize, clinical.history, records.correct, followups.manage, referrals.submit, inventory.view, inventory.manage, items.dispense, reports.view |
-| `rhu_staff` (RHU) | patients.register, clinical.history, inventory.view, inventory.manage, reports.view, rhu.manage, conditions.confirm |
+| `rhu_staff` (RHU, provisional) | patients.register, clinical.history, inventory.view, reports.view, rhu.manage, conditions.confirm |
 
-**Implementation check:** before coding, confirm each RHU entry against `routes/api.php` and the RHU screens. In particular, confirm that RHU accounts have a working screen for `inventory.manage`. If an entry does not match, ask the user before changing this table.
+**RHU is provisional.** The RHU module is not finished, so this project does no RHU work. The Nurse and Doctor defaults and the RHU available duties are copied from what RHU accounts get today (the current `rhu` preset), and no RHU screens are checked or changed. Nurse and Doctor accounts must still be creatable, because Staff Assignments depends on them. Revisit this table when the RHU module is finished.
 
 The existing prerequisite rules (`REQUIRES`) stay unchanged. For example, finalizing requires `clinical.history`, and managing stock requires `inventory.view`.
 
@@ -90,6 +92,17 @@ The existing prerequisite rules (`REQUIRES`) stay unchanged. For example, finali
 ### C4. Other readers
 - `NurseAssignmentPolicy` and `StaffAssignmentController::eligible` filter on `staff_role = 'nurse'`.
 - `AuthController` returns `staff_role` and `contact_number` in place of `professional_designation`.
+
+### C5. `GET /staff-roles` (admin only)
+- Registered in the `role:admin` route group. Returns the `StaffRoles` data:
+  ```json
+  { "data": {
+      "roles": [{ "key": "midwife", "label": "Midwife", "tier": "bhw", "licensed": true, "defaults": ["patients.register", "..."] }],
+      "available": { "bhw": ["patients.register", "..."], "rhu_staff": ["..."] }
+  } }
+  ```
+- `StaffRoles` exposes the same data to `UserRequest` validation, so the screen and the server always use one copy.
+- Duty labels, notes, groups and `REQUIRES` stay in the existing frontend `PERMISSION_CATALOG`. Only role rules move to the API.
 - `User` fillable: replace `professional_designation` with `staff_role` and `contact_number`.
 
 ---
@@ -98,6 +111,8 @@ The existing prerequisite rules (`REQUIRES`) stay unchanged. For example, finali
 
 Steps for staff accounts: **Facility → Personal Details → Role & Access → Review & Create**.
 Steps for admin accounts: **Facility → Personal Details → Review & Create**.
+
+The page loads `GET /staff-roles` together with the facility lists. If that request fails, the page shows the error and blocks Continue, as it does today when facilities fail to load.
 
 ### D1. Facility
 - Heading: "Where will this account work?"
@@ -141,7 +156,8 @@ Steps for admin accounts: **Facility → Personal Details → Review & Create**.
 ---
 
 ## E. Frontend: Account Directory (`pages/admin/UserManagement.jsx`)
-- Rewrite `accessSummary` in `utils/accountSetup.js`:
+- The directory also loads `GET /staff-roles`, so labels and default comparisons come from the same API data.
+- Rewrite `accessSummary` in `utils/accountSetup.js` to take the staff-roles data as an argument:
   - Admin: "Municipal Health Officer".
   - Staff whose duties match the role defaults: the role label, e.g. "Midwife".
   - Staff whose duties differ: "Midwife · Custom (+1, −2)", counting duties added and removed against the defaults.
@@ -177,8 +193,7 @@ Steps for admin accounts: **Facility → Personal Details → Review & Create**.
 - Update or delete the tests that rely on designations and overrides: `PermissionOverrideTest`, `ApprovedFacilityPermissionsTest`, `AccountFacilityRevisionTest`, `PatientCreationPermissionsTest`, `RhuConditionConfirmationTest`, `RhuProviderAvailabilityTest`, `HouseholdParentLinkTest`. These should set `staff_role` where they set a designation.
 
 **Frontend (Vitest)**
-- `staffRoles.js`: defaults are a subset of the tier's available duties, and every default's prerequisites are included.
-- Parity: one fixture file, `backend/tests/fixtures/staff-roles.json` (roles, tiers, licensed flag, defaults, available duties per tier). A Vitest test compares `staffRoles.js` to it, and a PHPUnit test compares `StaffRoles` to it, so neither side can drift.
+- Helpers are tested with a small sample of staff-roles data passed in as an argument (no network).
 - Access helpers: role switch resets to defaults, Added, Removed and Licensed chip logic, and `accessSummary` labels.
 - Rewrite `accessPolicy.test.js` and `accountSetup.test.js` for the new rules.
 
