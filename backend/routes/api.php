@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\HealthRecordDraftController;
 use App\Http\Controllers\Api\IncomingReferralController;
 use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\AccountInviteController;
 use App\Http\Controllers\Api\PasswordResetRequestController;
 use App\Http\Controllers\Api\PatientController;
 use App\Http\Controllers\Api\ReferralController;
@@ -36,6 +37,8 @@ Route::post('/auth/reset-password', [PasswordResetRequestController::class, 'com
 Route::post('/auth/password-reset/request', [PasswordResetRequestController::class, 'request'])->middleware('throttle:5,1');
 Route::get('/auth/password-reset/verify', [PasswordResetRequestController::class, 'verify'])->middleware('throttle:20,1');
 Route::post('/auth/password-reset/complete', [PasswordResetRequestController::class, 'complete'])->middleware('throttle:10,1');
+Route::get('/auth/invites/verify', [AccountInviteController::class, 'verify'])->middleware('throttle:20,1');
+Route::post('/auth/invites/accept', [AccountInviteController::class, 'accept'])->middleware('throttle:10,1');
 
 Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'active'])->group(function () {
     Route::get('/auth/profile', [AuthController::class, 'profile']);
