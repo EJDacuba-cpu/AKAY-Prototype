@@ -1,11 +1,12 @@
 import { PERMISSION_CATALOG, PERMISSION_GROUPS } from "../../../utils/actionPermissions";
 import { AccessChip } from "./AccessChips";
+import { FieldMessage } from "./FieldError";
 
 export const ACCOUNT_CONFIRMATION = "I have reviewed all access listed above and authorize this account to perform them.";
 export const ASSIGNMENT_CONFIRMATION = "I have reviewed all duties listed above and authorize this assignment.";
 
 /** Pre-save review: the details, every duty grouped by module, and the one confirmation saving requires. `review` is optional (admin accounts). */
-export default function PermissionReviewSummary({ review, details = [], confirmed, onConfirm, confirmationLabel = ACCOUNT_CONFIRMATION }) {
+export default function PermissionReviewSummary({ review, details = [], confirmed, onConfirm, confirmationLabel = ACCOUNT_CONFIRMATION, error }) {
   const groups = review
     ? PERMISSION_GROUPS
       .map(group => ({
@@ -58,10 +59,13 @@ export default function PermissionReviewSummary({ review, details = [], confirme
         </section>
       )}
 
-      <label className="flex items-start gap-2 rounded-lg bg-slate-50 p-3 text-sm">
-        <input type="checkbox" className="mt-0.5" checked={Boolean(confirmed)} onChange={event => onConfirm(event.target.checked)} />
-        <span>{confirmationLabel}</span>
-      </label>
+      <div>
+        <label className={`flex items-start gap-2 rounded-lg bg-slate-50 p-3 text-sm ${error ? "ring-1 ring-red-500" : ""}`}>
+          <input type="checkbox" className="mt-0.5" checked={Boolean(confirmed)} aria-invalid={error ? true : undefined} onChange={event => onConfirm(event.target.checked)} />
+          <span>{confirmationLabel}</span>
+        </label>
+        <FieldMessage>{error}</FieldMessage>
+      </div>
     </div>
   );
 }
