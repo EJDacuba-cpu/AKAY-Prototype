@@ -23,7 +23,7 @@ Out of band, the MHO phones the person before creating the account to confirm wh
 | D6 | Password rules for accepting an invite and for the forced change are the same as the existing reset: at least 8 characters, upper and lower case, and a number. |
 | D7 | Invites live in a new table, `account_invites`, separate from `password_reset_requests`: invites have no approval step and a different lifecycle. |
 | D8 | Existing accounts, including the test accounts, keep their passwords and get no invite. The Invites tab lists only accounts created after this change. |
-| D9 | Forgot password is unchanged: the user asks, the MHO approves, a link is emailed. Only its wording changes (section F). |
+| D9 | The forgot-password approval flow is unchanged: the user asks, the MHO approves, a link is emailed. Reset requests gain the shared statuses and wording (section F) and the delivery, resend and copy-link actions (F4). |
 | D10 | Every field on the account forms shows a live, animated validation icon on its right edge (section E1). |
 | D11 | No SMS. Emails go through the existing mailer (Gmail SMTP). |
 | D12 | Both tabs use the same **four statuses**: **Pending** (the MHO must act), **In progress** (waiting for the user), **Complete** (the user has a password), **Cancelled** (stopped: declined, or the account was deactivated). The exact reason shows in a tooltip on the badge and in View details (section F). |
