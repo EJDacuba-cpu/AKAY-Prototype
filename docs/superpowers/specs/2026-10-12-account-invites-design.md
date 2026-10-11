@@ -53,6 +53,9 @@ New migration `backend/database/migrations/2026_10_12_000001_create_account_invi
 - `must_change_password` boolean, default `false`.
 - `temp_password_expires_at` timestamp, nullable.
 
+### B3. `password_reset_requests`
+- `delivery` string, nullable: `sent` or `failed` for the last emailed link (section F3).
+
 ---
 
 ## C. Backend
@@ -133,25 +136,38 @@ Used on: Create/Edit Account (name, email, contact number), Accept invite and Ch
 
 ---
 
-## F. Wording on the Reset requests tab
+## F. Wording: one vocabulary for both tabs
 
-UI text only; stored status values do not change.
+Password & Invites is one module, so the same event has the same name on both tabs. Each tab shows only the terms that can happen to it. UI text only; stored status values do not change.
 
-| Where | Today | New |
+### F1. Statuses
+| Term | Meaning | Reset requests (stored value) | Invites (stored value) |
+|---|---|---|---|
+| **Awaiting approval** | The MHO has to decide. | `pending` | does not happen |
+| **Link sent** | A one-time link was emailed; waiting for the user. | `approved` + `delivery = sent` | `pending` + `delivery = sent` |
+| **Email not sent** | The link could not be emailed. Resend, or copy the link. | `approved` + `delivery = failed` | `pending` + `delivery = failed` |
+| **Link expired** | The link was not used in time. | `expired` | `expired` |
+| **Password set** | The user chose their password through the link. | `completed` | `accepted` |
+| **Declined** | The MHO turned the request down. | `rejected` | does not happen |
+| **Temporary password issued** | The MHO gave a temporary password instead. | does not happen | `superseded` by a temporary password |
+| **Closed by reset** | A completed reset made the invite unnecessary. | does not happen | `superseded` by a reset |
+
+### F2. Shared labels
+| Where | Today | New (both tabs) |
 |---|---|---|
 | Sidebar, page title, Users page link | Password Resets / Password Reset Requests | Password & Invites |
-| Status `pending` | Pending | Awaiting approval |
-| Status `approved` | Approved | Link sent |
-| Status `rejected` | Rejected | Declined |
-| Status `completed` | Completed | Password changed |
-| Status `expired` | Expired | Link expired |
-| Status filter | All Status | All statuses |
-| Summary cards | Pending Review / Visible Requests / Security: Admin approval required | Awaiting approval / Showing / Approval: Required |
-| Table column | User | Account |
-| Table column Role | facility type (e.g. "Barangay Health Center") | staff role (e.g. "Midwife") |
-| Reject action and dialog | Reject request / Reject password reset? | Decline request / Decline this reset request? |
+| Tabs | (none) | Reset requests (n) · Invites (n), where n counts rows that need the MHO: Awaiting approval and Email not sent |
+| Status filter | All Status | All statuses, listing only that tab's terms |
+| Summary cards | Pending Review / Visible Requests / Security: Admin approval required | Needs action / Showing / Links expire in: 60 minutes (resets) or 48 hours (invites) |
+| Table columns | User, Email, Role, Facility, Requested, Status | Account, Email, Role (staff role, e.g. "Midwife"), Facility, Date (requested or invited), Status |
+| Link actions | Approve and send link | **Send link** on Reset requests (after approval) and **Resend link** on both tabs once a link exists |
+| Copy link | (none) | **Copy link** on both tabs while a link is usable |
+| Reject action and dialog | Reject request / Reject password reset? | Decline request / Decline this reset request? (Reset requests only) |
 
-Invites tab statuses: `pending` + `sent` → **Waiting for user**; `pending` + `failed` → **Email not sent**; `expired` → **Link expired**; `accepted` → **Accepted**; `superseded` → **Temporary password issued** (or **Reset completed** when superseded by a reset).
+### F3. What this adds to reset requests
+For "Email not sent", "Resend link" and "Copy link" to mean the same on both tabs, reset requests gain what invites have:
+- `password_reset_requests.delivery` (`sent` or `failed`, nullable), set when a link is emailed. Today an approval whose email fails returns a server error but leaves the request `approved`, so the MHO sees a sent link that never arrived; after this change the approval saves with `delivery = failed` and shows **Email not sent**.
+- `POST /api/password-reset-requests/{request}/resend` and `/link` behave like the invite actions: rotate the token, restart the 60-minute window, email it or return the URL.
 
 ---
 
@@ -174,8 +190,9 @@ Backend (PHPUnit):
 - Resend, edit email (uniqueness), copy link: each rotates the token and kills the old one; refused once accepted; admin only.
 - Temporary password: returned once, never logged; expired one cannot sign in; `password.current` blocks other routes until changed; change-password clears the flags.
 - Completing a reset supersedes a pending invite.
+- Reset requests: an approval whose email fails saves `delivery = failed`; resend and copy link rotate the token and restart the 60-minute window.
 
-Frontend (`node --test`): status labels for both tabs, the Field state rules (when a field becomes valid), and the forced-change redirect rule.
+Frontend (`node --test`): the shared status terms (each stored value on each tab maps to the right term), the Field state rules (when a field becomes valid), and the forced-change redirect rule.
 
 Browser: create an account and see the notice, open the invite link from the mail log, set a password and sign in; issue a temporary password and get forced to change it; check the icons and the new wording.
 
@@ -186,7 +203,7 @@ Browser: create an account and see the notice, open the invite link from the mai
 1. Live validation icons on Create Account (E1). Independent and small.
 2. Backend: migration, invite service and routes, mail, create-account change, temporary password and `password.current`.
 3. Accept invite page and Create/Edit Account changes (D1, D2).
-4. Password & Invites tabs and wording (D4, F).
+4. Password & Invites tabs, the shared wording, and the reset-request delivery, resend and copy-link additions (D4, F).
 5. Forced password change page (D3).
 
 ---
