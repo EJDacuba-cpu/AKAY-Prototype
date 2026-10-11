@@ -14,6 +14,7 @@ import { apiRequest, unwrapData } from "../../services/apiClient";
 import { getBarangayHealthCenters, getRuralHealthUnits } from "../../services/facilityService";
 import { getStaffRoles } from "../../services/staffRolesService";
 import { STEPS, isValidEmail, routeServerErrors, validateAccountStep } from "../../utils/accountForm";
+import { fieldState } from "../../utils/fieldState";
 import { reviewPermissions, setPermission, withRequirements } from "../../utils/accessPolicy";
 import { TIERS, applyFacilityChange, availableDuties, defaultRoleKey, normalizeContactNumber, needsReplaceConfirm, roleDefaults, roleFor, rolesForTier } from "../../utils/staffRoles";
 
@@ -55,6 +56,7 @@ export default function AddUser() {
   const [loaded, setLoaded] = useState(false);
   const [touched, setTouched] = useState({});
   const [takenEmails, setTakenEmails] = useState({});
+  const [checkingEmail, setCheckingEmail] = useState(false);
   const emailChecks = useRef(new Map());
 
   const admin = form.role === TIERS.admin;
@@ -118,7 +120,10 @@ export default function AddUser() {
   // Fields the admin has left are checked as they type, so problems show before Continue.
   function blur(key) {
     setTouched(t => ({ ...t, [key]: true }));
-    if (key === "email") checkEmail(form.email);
+    if (key === "email") {
+      setCheckingEmail(true);
+      checkEmail(form.email).finally(() => setCheckingEmail(false));
+    }
   }
 
   const liveErrors = {};
@@ -128,6 +133,11 @@ export default function AddUser() {
     if (touched.email && !found.email && takenEmails[form.email.toLowerCase()]) liveErrors.email = EMAIL_TAKEN;
   }
   const fieldError = key => errors[key] ?? liveErrors[key];
+  // The icon on a Personal Details field; the email is only valid once the server has said it is free.
+  const stateOf = key => fieldState({
+    touched: touched[key], error: fieldError(key), checking: key === "email" && checkingEmail,
+    confirmed: key === "email" ? takenEmails[form.email.toLowerCase()] === false : undefined,
+  });
 
   function change(key, value) {
     setForm(f => ({ ...f, [key]: value }));
@@ -181,7 +191,9 @@ export default function AddUser() {
     const found = validateAccountStep(current, form, { editing: Boolean(id), hasFacility: Boolean(home), confirmed });
     if (current === STEPS.personal && !found.email) {
       setBusy(true);
+      setCheckingEmail(true);
       const taken = await checkEmail(form.email);
+      setCheckingEmail(false);
       setBusy(false);
       if (taken) found.email = EMAIL_TAKEN;
     }
@@ -250,9 +262,9 @@ export default function AddUser() {
           </>}
 
           {!editLoading && current === STEPS.personal && <div className="grid grid-cols-1 gap-y-1">
-        <Field label="Full name" error={fieldError("name")}><Input value={form.name} onChange={e => change("name", e.target.value)} onBlur={() => blur("name")} /></Field>
-        <Field label="Email" error={fieldError("email")}><Input type="email" value={form.email} onChange={e => change("email", e.target.value)} onBlur={() => blur("email")} /></Field>
-        <Field label="Contact number" error={fieldError("contact_number")}><Input type="tel" inputMode="numeric" placeholder="09XX XXX XXXX" value={form.contact_number} onChange={e => change("contact_number", e.target.value)} onBlur={() => blur("contact_number")} /></Field>
+        <Field label="Full name" error={fieldError("name")} state={stateOf("name")}><Input value={form.name} onChange={e => change("name", e.target.value)} onBlur={() => blur("name")} /></Field>
+        <Field label="Email" error={fieldError("email")} state={stateOf("email")}><Input type="email" value={form.email} onChange={e => change("email", e.target.value)} onBlur={() => blur("email")} /></Field>
+        <Field label="Contact number" error={fieldError("contact_number")} state={stateOf("contact_number")}><Input type="tel" inputMode="numeric" placeholder="09XX XXX XXXX" value={form.contact_number} onChange={e => change("contact_number", e.target.value)} onBlur={() => blur("contact_number")} /></Field>
         <Field label={id ? "New password (optional)" : "Password"} error={fieldError("password")}><Input type={passwordType} autoComplete="new-password" value={form.password} onChange={e => change("password", e.target.value)} onBlur={() => blur("password")} /></Field>
         <Field label="Confirm password" error={fieldError("password_confirmation")}><Input type={passwordType} autoComplete="new-password" value={form.password_confirmation} onChange={e => change("password_confirmation", e.target.value)} onBlur={() => blur("password_confirmation")} /></Field>
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">

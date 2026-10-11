@@ -588,3 +588,18 @@ textarea,
     transition: none;
   }
 }
+
+@keyframes akay-check-in {
+  from { opacity: 0; transform: scale(.6); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.akay-check-in {
+  animation: akay-check-in 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .akay-check-in {
+    animation: none;
+  }
+}
