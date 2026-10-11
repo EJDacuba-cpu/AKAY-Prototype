@@ -47,7 +47,9 @@ class AuthController extends Controller
             ], 422);
         }
 
-        if ($user->must_change_password && $user->temp_password_expires_at?->isPast()) {
+        // Fail closed: a temporary password with no recorded expiry is treated as expired.
+        if ($user->must_change_password
+            && (! $user->temp_password_expires_at || $user->temp_password_expires_at->isPast())) {
             return response()->json([
                 'message' => 'This temporary password has expired. Ask the MHO for a new one.',
                 'code' => 'TEMP_PASSWORD_EXPIRED',
@@ -116,7 +118,8 @@ class AuthController extends Controller
     public function changePassword(
         Request $request,
         PasswordSetRecorder $recorder,
-        AuditLogger $auditLogger
+        AuditLogger $auditLogger,
+        UserSessionRevocationService $sessions
     ) {
         $validated = $request->validate([
             'current_password' => ['required', 'string'],
@@ -133,7 +136,7 @@ class AuthController extends Controller
 
         $wasTemporary = (bool) $user->must_change_password;
 
-        DB::transaction(function () use ($user, $validated, $wasTemporary, $recorder): void {
+        DB::transaction(function () use ($user, $validated, $wasTemporary, $recorder, $sessions): void {
             $user->forceFill([
                 'password' => $validated['password'],
                 'must_change_password' => false,
@@ -143,14 +146,20 @@ class AuthController extends Controller
             if ($wasTemporary) {
                 $recorder->record($user, PasswordSetRecorder::ROUTE_TEMPORARY_PASSWORD);
             }
+
+            // Every session opened before the change (including any opened with the temporary password) ends.
+            $sessions->revokeAllTokens($user, 'password-changed');
         });
+
+        $session = $sessions->issuePersistentSession($user);
 
         $auditLogger->log($request, 'password changed', 'auth', 'User changed their password.');
 
-        return response()->json([
-            'message' => 'Password changed.',
-            'user' => $this->userPayload($user->fresh()),
-        ]);
+        return $this->sessionResponse($user->fresh(), $session, ['message' => 'Password changed.'])
+            ->withCookie($this->refreshCookie(
+                $session['refresh']->plainTextToken,
+                $session['refresh']->accessToken->expires_at
+            ));
     }
 
     public function forgotPassword(Request $request, UserNotificationService $notifications)
@@ -193,9 +202,10 @@ class AuthController extends Controller
             : response()->json(['message' => __($status)], 422);
     }
 
-    private function sessionResponse(User $user, array $session)
+    private function sessionResponse(User $user, array $session, array $extra = [])
     {
         return response()->json([
+            ...$extra,
             'token' => $session['access']->plainTextToken,
             'token_type' => 'Bearer',
             'expires_at' => $session['access']->accessToken->expires_at,

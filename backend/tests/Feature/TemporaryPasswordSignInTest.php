@@ -82,14 +82,15 @@ class TemporaryPasswordSignInTest extends TestCase
     {
         [$token] = $this->signIn();
 
-        $this->withToken($token)->postJson('/api/auth/change-password', [
+        $token = $this->withToken($token)->postJson('/api/auth/change-password', [
             'current_password' => $this->temporary,
             'password' => 'Brandnew123',
             'password_confirmation' => 'Brandnew123',
         ])
             ->assertOk()
             ->assertJsonPath('message', 'Password changed.')
-            ->assertJsonPath('user.must_change_password', false);
+            ->assertJsonPath('user.must_change_password', false)
+            ->json('token');
 
         $this->user->refresh();
         $this->assertTrue(Hash::check('Brandnew123', $this->user->password));
@@ -109,6 +110,9 @@ class TemporaryPasswordSignInTest extends TestCase
         $response = $this->withToken($token)->getJson('/api/patients');
         $this->assertNotSame('PASSWORD_CHANGE_REQUIRED', $response->json('code'));
         $this->assertNotSame(401, $response->status());
+
+        $this->app['auth']->forgetGuards();
+        $this->withToken($token)->getJson('/api/notifications')->assertOk();
     }
 
     public function test_an_expired_temporary_password_cannot_sign_in(): void
@@ -153,5 +157,46 @@ class TemporaryPasswordSignInTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('current_password');
 
         $this->assertTrue((bool) $this->user->fresh()->must_change_password);
+    }
+
+    public function test_changing_the_password_ends_other_sessions_and_returns_a_working_one(): void
+    {
+        [$first] = $this->signIn();
+        [$second] = $this->signIn();
+
+        $response = $this->withToken($first)->postJson('/api/auth/change-password', [
+            'current_password' => $this->temporary,
+            'password' => 'Brandnew123',
+            'password_confirmation' => 'Brandnew123',
+        ])->assertOk()
+            ->assertJsonPath('message', 'Password changed.')
+            ->assertJsonPath('user.must_change_password', false);
+
+        $fresh = $response->json('token');
+        $this->assertNotEmpty($fresh);
+
+        foreach ([$first, $second] as $old) {
+            $this->app['auth']->forgetGuards();
+            $this->withToken($old)->getJson('/api/auth/profile')->assertUnauthorized();
+        }
+
+        $this->app['auth']->forgetGuards();
+        $this->withToken($fresh)->getJson('/api/auth/profile')
+            ->assertOk()
+            ->assertJsonPath('user.must_change_password', false);
+        $this->app['auth']->forgetGuards();
+        $this->withToken($fresh)->getJson('/api/notifications')->assertOk();
+    }
+
+    public function test_a_temporary_password_without_an_expiry_cannot_sign_in(): void
+    {
+        $this->user->forceFill(['temp_password_expires_at' => null])->save();
+
+        $this->postJson('/api/auth/login', [
+            'email' => $this->user->email,
+            'password' => $this->temporary,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'TEMP_PASSWORD_EXPIRED');
     }
 }
