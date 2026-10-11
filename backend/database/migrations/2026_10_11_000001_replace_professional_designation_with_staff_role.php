@@ -1,6 +1,5 @@
 <?php
 
-use App\Services\StaffRoles;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -8,15 +7,30 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    // Frozen copies, so later changes to StaffRoles never alter what this migration does.
+    private const ROLES_BY_TIER = ['bhw' => ['midwife', 'bhw', 'encoder'], 'rhu_staff' => ['nurse', 'doctor']];
+
+    private const LEGACY_FALLBACK = [
+        'bhw' => ['patients.register', 'consultations.encode', 'inventory.view'],
+        'rhu_staff' => ['patients.register', 'clinical.history', 'rhu.manage', 'conditions.confirm', 'inventory.view', 'reports.view'],
+    ];
+
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table): void {
             $table->string('staff_role')->nullable();
             $table->string('contact_number', 11)->nullable();
         });
-        // Designations without a matching role (Logistics, MHO, Other, blank) stay NULL until an admin picks one.
-        DB::table('users')->whereNotNull('professional_designation')->orderBy('id')->each(function ($row): void {
-            DB::table('users')->where('id', $row->id)->update(['staff_role' => StaffRoles::fromDesignation($row->professional_designation)]);
+        // The backfill must not change what any account can do. A designation becomes a role only where it fits the
+        // account's tier; anything else (Logistics, MHO, Other, a BHC "Nurse") stays NULL until an admin picks one.
+        // NULL permissions are frozen at the tier fallback ActionPermissions::home() used before roles existed.
+        DB::table('users')->orderBy('id')->each(function ($row): void {
+            $role = strtolower(trim((string) $row->professional_designation));
+            $update = ['staff_role' => in_array($role, self::ROLES_BY_TIER[$row->role] ?? [], true) ? $role : null];
+            if ($row->permissions === null && isset(self::LEGACY_FALLBACK[$row->role])) {
+                $update['permissions'] = json_encode(self::LEGACY_FALLBACK[$row->role]);
+            }
+            DB::table('users')->where('id', $row->id)->update($update);
         });
         if (DB::getDriverName() === 'pgsql') {
             DB::statement("ALTER TABLE public.users ADD CONSTRAINT users_staff_role_check CHECK (staff_role IS NULL OR staff_role IN ('midwife','bhw','encoder','nurse','doctor'))");
@@ -29,7 +43,7 @@ return new class extends Migration
     {
         Schema::table('users', fn (Blueprint $table) => $table->string('professional_designation')->nullable());
         DB::table('users')->whereNotNull('staff_role')->orderBy('id')->each(function ($row): void {
-            DB::table('users')->where('id', $row->id)->update(['professional_designation' => StaffRoles::label($row->staff_role)]);
+            DB::table('users')->where('id', $row->id)->update(['professional_designation' => $row->staff_role === 'bhw' ? 'BHW' : ucfirst($row->staff_role)]);
         });
         if (DB::getDriverName() === 'pgsql') {
             DB::unprepared($this->inventoryFacilityFunction("lower(trim(u.professional_designation)) = 'nurse'"));
