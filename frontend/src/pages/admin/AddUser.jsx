@@ -171,69 +171,67 @@ export default function AddUser() {
   const passwordType = showPassword ? "text" : "password";
   const [title, subtitle] = HEADINGS[current];
 
-  return <DashboardLayout role="admin" title={id ? "Edit User Account" : "Create Account"}>
-    <form onSubmit={next} noValidate className="mx-auto flex min-h-full w-full max-w-[1500px] flex-col">
-      <button type="button" className="self-start text-sm text-red-700" onClick={() => navigate("/admin/users")}>← Account Directory</button>
-      <div className="mt-4 flex flex-1 flex-col gap-6 md:grid md:grid-cols-[12rem_minmax(0,1fr)] md:items-stretch md:gap-6">
+  return <DashboardLayout role="admin" title={id ? "Edit User Account" : "Create Account"} contentClassName="p-0">
+    <form onSubmit={next} noValidate className="flex min-h-full w-full flex-col">
+      <div className="w-full flex-1 px-3 py-3 sm:p-4 lg:p-5"><div className="mx-auto w-full max-w-[1500px] md:grid md:grid-cols-[12rem_minmax(0,1fr)] md:grid-rows-[auto_1fr] md:gap-x-6">
+        <button type="button" className="self-start text-left text-sm font-medium text-red-700 md:leading-7" onClick={() => navigate("/admin/users")}>← Account Directory</button>
+        <header className="mt-3 md:mt-0">
+          <h1 className="text-xl font-bold text-slate-900">{title}</h1>
+          <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+        </header>
         <AccountStepper steps={labels} current={step} reached={reached} onSelect={goTo} />
-        <div className="flex min-w-0 flex-col">
-          <header className="pb-0">
-            <h1 className="text-xl font-bold text-slate-900">{title}</h1>
-            <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
-          </header>
-          <section className="mb-4 mt-5 space-y-4 rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
-            {editLoading && <div aria-busy="true" aria-label="Loading account" className="space-y-4"><span className={`block h-10 w-full ${pulse}`} /><span className={`block h-10 w-2/3 ${pulse}`} /><span className={`block h-10 w-1/2 ${pulse}`} /></div>}
+        <div className={`mb-4 mt-4 min-w-0 md:mt-5 ${current === STEPS.facility && !editLoading ? "space-y-1" : "space-y-4 rounded-xl border border-slate-200 bg-white p-5 sm:p-6"}`}>
+          {editLoading && <div aria-busy="true" aria-label="Loading account" className="space-y-4"><span className={`block h-10 w-full ${pulse}`} /><span className={`block h-10 w-2/3 ${pulse}`} /><span className={`block h-10 w-1/2 ${pulse}`} /></div>}
 
-            {!editLoading && current === STEPS.facility && <>
-              <div className="grid gap-3 sm:grid-cols-3">{FACILITY_TYPES.map(({ tier, label, icon: Icon }) => {
-                const selected = form.role === tier;
-                return <button key={tier} type="button" aria-pressed={selected} onClick={() => chooseTier(tier)} className={`${card(selected)} flex-col items-start justify-center`}>
-                  <Icon size={22} aria-hidden="true" className="text-red-700" />
-                  <span>{label}</span>
-                  {selected && tier !== TIERS.admin && <span className="text-xs font-normal text-slate-600">{homeName || "Facility selected"} · <span className="font-semibold text-red-700 underline">Change</span></span>}
-                  {selected && tier === TIERS.admin && <span className="text-xs font-normal text-slate-600">Not tied to a facility</span>}
-                </button>;
+          {!editLoading && current === STEPS.facility && <>
+            <div className="grid gap-3 sm:grid-cols-3">{FACILITY_TYPES.map(({ tier, label, icon: Icon }) => {
+              const selected = form.role === tier;
+              return <button key={tier} type="button" aria-pressed={selected} onClick={() => chooseTier(tier)} className={`${card(selected)} flex-col items-start justify-center`}>
+                <Icon size={22} aria-hidden="true" className="text-red-700" />
+                <span>{label}</span>
+                {selected && tier !== TIERS.admin && <span className="text-xs font-normal text-slate-600">{homeName || "Facility selected"} · <span className="font-semibold text-red-700 underline">Change</span></span>}
+                {selected && tier === TIERS.admin && <span className="text-xs font-normal text-slate-600">Not tied to a facility</span>}
+              </button>;
+            })}</div>
+            <FieldMessage>{errors.role || errors.facility}</FieldMessage>
+          </>}
+
+          {!editLoading && current === STEPS.personal && <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2 xl:grid-cols-[1.1fr_1.5fr_1.2fr_1.1fr_1.1fr]">
+        <Field label="Full name" error={errors.name}><Input value={form.name} onChange={e => change("name", e.target.value)} /></Field>
+        <Field label="Email" error={errors.email}><Input type="email" value={form.email} onChange={e => change("email", e.target.value)} /></Field>
+        <Field label="Contact number" error={errors.contact_number}><Input type="tel" inputMode="numeric" placeholder="09XXXXXXXXX" value={form.contact_number} onChange={e => change("contact_number", e.target.value)} /></Field>
+        <Field label={id ? "New password (optional)" : "Password"} error={errors.password}><Input type={passwordType} autoComplete="new-password" value={form.password} onChange={e => change("password", e.target.value)} /></Field>
+        <Field label="Confirm password" error={errors.password_confirmation}><Input type={passwordType} autoComplete="new-password" value={form.password_confirmation} onChange={e => change("password_confirmation", e.target.value)} /></Field>
+        {/* Sixth grid cell: fills the gap beside Confirm password on two columns, spans the row below the fields on one line. */}
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:pt-7 xl:col-span-5 xl:pt-0">
+          {id ? <p className="text-xs text-slate-500">Leave blank to keep the current password.</p> : <span />}
+          <button type="button" onClick={() => setShowPassword(s => !s)} className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+            {showPassword ? <EyeOff size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}{showPassword ? "Hide passwords" : "Show passwords"}
+          </button>
+        </div>
+      </div>}
+
+          {!editLoading && current === STEPS.access && <>
+            {rolesData
+              ? <div role="group" aria-label="Role" className="grid gap-3 sm:grid-cols-3">{rolesForTier(rolesData, form.role).map(r => {
+                const Icon = ROLE_ICONS[r.key] || UserRound;
+                return <button key={r.key} type="button" aria-pressed={form.staff_role === r.key} onClick={() => chooseRole(r.key)} className={card(form.staff_role === r.key)}><Icon size={18} aria-hidden="true" className="text-red-700" />{r.label}</button>;
               })}</div>
-              <FieldMessage>{errors.role || errors.facility}</FieldMessage>
-            </>}
+              : <div aria-busy="true" aria-label="Loading roles" className="grid gap-3 sm:grid-cols-3">{[0, 1, 2].map(i => <span key={i} className={`block h-24 ${pulse}`} />)}</div>}
+            <FieldMessage>{errors.staff_role || errors.permissions}</FieldMessage>
+            {form.staff_role
+              ? <PermissionMatrix permissions={form.permissions} available={availableDuties(rolesData, form.role)} defaults={defaults} licensedRole={Boolean(role?.licensed)} onChange={changeAccess} onReset={() => { setForm(f => ({ ...f, permissions: defaults })); setConfirmed(false); setErrors(e => ({ ...e, permissions: undefined })); }} />
+              : <p className="text-sm text-slate-500">Choose a role to see its access.</p>}
+          </>}
 
-            {!editLoading && current === STEPS.personal && <>
-              <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
-                <Field label="Full name" error={errors.name}><Input value={form.name} onChange={e => change("name", e.target.value)} /></Field>
-                <Field label="Email" error={errors.email}><Input type="email" value={form.email} onChange={e => change("email", e.target.value)} /></Field>
-                <Field label="Contact number" error={errors.contact_number}><Input type="tel" inputMode="numeric" placeholder="09XX XXX XXXX" value={form.contact_number} onChange={e => change("contact_number", e.target.value)} /></Field>
-                <div className="hidden sm:block" />
-                <Field label={id ? "New password (optional)" : "Password"} error={errors.password}><Input type={passwordType} autoComplete="new-password" value={form.password} onChange={e => change("password", e.target.value)} /></Field>
-                <Field label="Confirm password" error={errors.password_confirmation}><Input type={passwordType} autoComplete="new-password" value={form.password_confirmation} onChange={e => change("password_confirmation", e.target.value)} /></Field>
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                {id ? <p className="text-xs text-slate-500">Leave blank to keep the current password.</p> : <span />}
-                <button type="button" onClick={() => setShowPassword(s => !s)} className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600">
-                  {showPassword ? <EyeOff size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}{showPassword ? "Hide passwords" : "Show passwords"}
-                </button>
-              </div>
-            </>}
+          {!editLoading && current === STEPS.review && <PermissionReviewSummary review={admin ? null : review} details={details} confirmed={confirmed} onConfirm={value => { setConfirmed(value); setErrors({}); }} confirmationLabel={ACCOUNT_CONFIRMATION} error={errors.confirmed} />}
+        </div>
+      </div></div>
 
-            {!editLoading && current === STEPS.access && <>
-              {rolesData
-                ? <div role="group" aria-label="Role" className="grid gap-3 sm:grid-cols-3">{rolesForTier(rolesData, form.role).map(r => {
-                  const Icon = ROLE_ICONS[r.key] || UserRound;
-                  return <button key={r.key} type="button" aria-pressed={form.staff_role === r.key} onClick={() => chooseRole(r.key)} className={card(form.staff_role === r.key)}><Icon size={18} aria-hidden="true" className="text-red-700" />{r.label}</button>;
-                })}</div>
-                : <div aria-busy="true" aria-label="Loading roles" className="grid gap-3 sm:grid-cols-3">{[0, 1, 2].map(i => <span key={i} className={`block h-24 ${pulse}`} />)}</div>}
-              <FieldMessage>{errors.staff_role || errors.permissions}</FieldMessage>
-              {form.staff_role
-                ? <PermissionMatrix permissions={form.permissions} available={availableDuties(rolesData, form.role)} defaults={defaults} licensedRole={Boolean(role?.licensed)} onChange={changeAccess} onReset={() => { setForm(f => ({ ...f, permissions: defaults })); setConfirmed(false); setErrors(e => ({ ...e, permissions: undefined })); }} />
-                : <p className="text-sm text-slate-500">Choose a role to see its access.</p>}
-            </>}
-
-            {!editLoading && current === STEPS.review && <PermissionReviewSummary review={admin ? null : review} details={details} confirmed={confirmed} onConfirm={value => { setConfirmed(value); setErrors({}); }} confirmationLabel={ACCOUNT_CONFIRMATION} error={errors.confirmed} />}
-          </section>
-
-          <div className="sticky bottom-0 mt-auto flex justify-between gap-3 border-t border-slate-200 bg-slate-50/95 py-3 backdrop-blur">
-            <button type="button" disabled={!step || busy} onClick={() => goTo(step - 1)} className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm disabled:opacity-40">Back</button>
-            <button type="submit" disabled={busy || !loaded} className="rounded-lg bg-red-700 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40">{busy ? "Saving…" : last ? id ? "Save Changes" : "Create Account" : "Continue"}</button>
-          </div>
+      <div className="sticky bottom-0 border-t border-slate-200 bg-white px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-4 lg:px-5">
+        <div className="mx-auto flex w-full max-w-[1500px] justify-between gap-3">
+          <button type="button" disabled={!step || busy} onClick={() => goTo(step - 1)} className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm disabled:opacity-40">Back</button>
+          <button type="submit" disabled={busy || !loaded} className="rounded-lg bg-red-700 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40">{busy ? "Saving…" : last ? id ? "Save Changes" : "Create Account" : "Continue"}</button>
         </div>
       </div>
     </form>
